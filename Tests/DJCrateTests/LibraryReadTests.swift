@@ -63,31 +63,33 @@ struct LibraryReadTests {
 
     func fixture() throws -> RekordboxFixture {
         let fixture = try RekordboxFixture()
-        var first = TrackSpec(id: "101", uuid: "track-101")
-        first.title = "시험 Alpha"
-        first.folderPath = "/synthetic/alpha.mp3"
-        first.analysisDataPath = "/PIONEER/USBANLZ/test/ANLZ0000.DAT"
-        var loop = CueSpec(id: "loop", kind: 1, inMsec: 1000)
-        loop.outMsec = 3000; loop.activeLoop = 1; loop.beatLoopSize = 4 << 16 | 1
-        first.cues = [CueSpec(id: "memory", inMsec: 500), loop]
-        first.gain = RekordboxAutoGain.halves(0.5)
-        try fixture.add(first)
-        try fixture.putAnalysis(for: first, dat: AnlzBuilder.dat(beats: AnlzBuilder.beats(bpm: 128, first: 0, count: 16)), ext: nil)
-        var second = TrackSpec(id: "102", uuid: "track-102")
-        second.title = "시험 Beta"; second.bpm100 = 0; second.folderPath = "/synthetic/beta.mp3"
-        try fixture.add(second)
-        try fixture.add(TrackSpec(id: "103", uuid: "deleted"))
-        try fixture.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '103'")
-        try fixture.insert("djmdKey", ["ID": .text("k1"), "ScaleName": .text("8A")])
-        try fixture.insert("djmdArtist", ["ID": .text("a1"), "Name": .text("합성 아티스트")])
-        try fixture.execute("UPDATE djmdContent SET KeyID = 'k1', ArtistID = 'a1', Commnt = 'TVA 시험 OP 1' WHERE ID = '101'")
-        for (id, parent, name, attribute, seq) in [("f1", "root", "시험 폴더", 1, 1), ("p1", "f1", "시험 목록", 0, 1), ("p2", "root", "빈 목록", 0, 2)] {
-            try fixture.insert("djmdPlaylist", ["ID": .text(id), "ParentID": .text(parent), "Name": .text(name), "Attribute": .int(attribute), "Seq": .int(seq)])
+        return try fixture.withConnection {
+            var first = TrackSpec(id: "101", uuid: "track-101")
+            first.title = "시험 Alpha"
+            first.folderPath = "/synthetic/alpha.mp3"
+            first.analysisDataPath = "/PIONEER/USBANLZ/test/ANLZ0000.DAT"
+            var loop = CueSpec(id: "loop", kind: 1, inMsec: 1000)
+            loop.outMsec = 3000; loop.activeLoop = 1; loop.beatLoopSize = 4 << 16 | 1
+            first.cues = [CueSpec(id: "memory", inMsec: 500), loop]
+            first.gain = RekordboxAutoGain.halves(0.5)
+            try fixture.add(first)
+            try fixture.putAnalysis(for: first, dat: AnlzBuilder.dat(beats: AnlzBuilder.beats(bpm: 128, first: 0, count: 16)), ext: nil)
+            var second = TrackSpec(id: "102", uuid: "track-102")
+            second.title = "시험 Beta"; second.bpm100 = 0; second.folderPath = "/synthetic/beta.mp3"
+            try fixture.add(second)
+            try fixture.add(TrackSpec(id: "103", uuid: "deleted"))
+            try fixture.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '103'")
+            try fixture.insert("djmdKey", ["ID": .text("k1"), "ScaleName": .text("8A")])
+            try fixture.insert("djmdArtist", ["ID": .text("a1"), "Name": .text("합성 아티스트")])
+            try fixture.execute("UPDATE djmdContent SET KeyID = 'k1', ArtistID = 'a1', Commnt = 'TVA 시험 OP 1' WHERE ID = '101'")
+            for (id, parent, name, attribute, seq) in [("f1", "root", "시험 폴더", 1, 1), ("p1", "f1", "시험 목록", 0, 1), ("p2", "root", "빈 목록", 0, 2)] {
+                try fixture.insert("djmdPlaylist", ["ID": .text(id), "ParentID": .text(parent), "Name": .text(name), "Attribute": .int(attribute), "Seq": .int(seq)])
+            }
+            for (index, id) in ["102", "101", "101", "103"].enumerated() {
+                try fixture.insert("djmdSongPlaylist", ["ID": .text("s\(index)"), "PlaylistID": .text("p1"), "ContentID": .text(id), "TrackNo": .int(index + 1)])
+            }
+            return fixture
         }
-        for (index, id) in ["102", "101", "101", "103"].enumerated() {
-            try fixture.insert("djmdSongPlaylist", ["ID": .text("s\(index)"), "PlaylistID": .text("p1"), "ContentID": .text(id), "TrackNo": .int(index + 1)])
-        }
-        return fixture
     }
 
     func reader(_ fixture: RekordboxFixture, preset: CommentPreset = .none) throws -> LibraryRead {

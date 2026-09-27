@@ -18,16 +18,18 @@ struct RekordboxPlaylistWriterTests {
     /// 곡 다섯 개(ID 101~105)와 빈 masterPlaylists6.xml이 있는 라이브러리
     func library(_ playlists: [PlaylistSpec] = []) throws -> RekordboxFixture {
         let fixture = try RekordboxFixture(localUpdateCount: 1000)
-        for id in 101...105 { try fixture.add(TrackSpec(id: String(id))) }
-        var xml = MasterPlaylistsXMLTests.empty
-        for playlist in playlists {
-            try fixture.add(playlist)
-            var parsed = MasterPlaylistsXML(text: xml)
-            try parsed.append(id: playlist.id, parentID: playlist.parentID, isFolder: playlist.isFolder, timestamp: 1_000)
-            xml = parsed.text
+        return try fixture.withConnection {
+            for id in 101...105 { try fixture.add(TrackSpec(id: String(id))) }
+            var xml = MasterPlaylistsXMLTests.empty
+            for playlist in playlists {
+                try fixture.add(playlist)
+                var parsed = MasterPlaylistsXML(text: xml)
+                try parsed.append(id: playlist.id, parentID: playlist.parentID, isFolder: playlist.isFolder, timestamp: 1_000)
+                xml = parsed.text
+            }
+            try xml.write(to: xmlURL(fixture), atomically: true, encoding: .utf8)
+            return fixture
         }
-        try xml.write(to: xmlURL(fixture), atomically: true, encoding: .utf8)
-        return fixture
     }
 
     func xmlURL(_ fixture: RekordboxFixture) -> URL { fixture.root.appending(path: "masterPlaylists6.xml") }

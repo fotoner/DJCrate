@@ -8,6 +8,7 @@ import RekordboxKit
 /// 같은 키의 암호화 DB를 새로 만들고, 곡·큐·게인 행과 분석 파일을 합성해 넣는다. 실데이터·클라우드 토큰은 없다.
 /// 시험이 끝나면 임시 폴더째 지운다.
 public final class RekordboxFixture {
+    private var connection: CipherDatabase?
     public let root: URL
     public var database: URL { root.appending(path: "master.db") }
     /// 분석 파일 뿌리(`share`). `RekordboxWriter.write(shareRoot:)`에 넘긴다.
@@ -48,12 +49,26 @@ public final class RekordboxFixture {
         try CipherDatabase(path: database.path, key: RekordboxKey.derive(), writable: true)
     }
 
+    /// 준비 또는 조회 묶음 안에서만 연결을 재사용한다. 실제 쓰기·복원은 묶음 밖에서 한다.
+    public func withConnection<T>(_ body: () throws -> T) throws -> T {
+        if connection != nil { return try body() }
+        let db = try open()
+        connection = db
+        defer {
+            connection = nil
+            db.close()
+        }
+        return try body()
+    }
+
     /// 곡 하나를 넣는다(djmdContent + 큐 행 + contentCue JSON + 게인 행).
     @discardableResult
     public func add(_ track: TrackSpec) throws -> TrackSpec {
-        let db = try open()
-        defer { db.close() }
+        let db = try connection ?? open()
+        defer { if connection == nil { db.close() } }
         try db.execute("BEGIN")
+        var committed = false
+        defer { if !committed { try? db.execute("ROLLBACK") } }
         try db.run("""
             INSERT INTO djmdContent (ID, UUID, Title, FileType, BitRate, Analysed, Length, BPM, FolderPath, CueUpdated, AnalysisDataPath,
                 AnalysisUpdated, TrackInfoUpdated, MasterDBID, DeviceID, ArtistID, AlbumID, ComposerID, ImagePath,
@@ -97,6 +112,7 @@ public final class RekordboxFixture {
                       .text(UUID().uuidString.lowercased()), .text(Self.stamp), .text(Self.stamp)])
         }
         try db.execute("COMMIT")
+        committed = true
         return track
     }
 
@@ -117,9 +133,11 @@ public final class RekordboxFixture {
     /// 재생 목록·폴더 하나(djmdPlaylist + 클라우드 거울 행 + 곡 항목). 동기화를 마친 행처럼 상태 256·usn을 채운다.
     @discardableResult
     public func add(_ playlist: PlaylistSpec) throws -> PlaylistSpec {
-        let db = try open()
-        defer { db.close() }
+        let db = try connection ?? open()
+        defer { if connection == nil { db.close() } }
         try db.execute("BEGIN")
+        var committed = false
+        defer { if !committed { try? db.execute("ROLLBACK") } }
         try db.run("""
             INSERT INTO djmdPlaylist (ID, Seq, Name, ImagePath, Attribute, ParentID, SmartList, UUID, rb_data_status, rb_local_data_status,
                 rb_local_deleted, rb_local_synced, usn, rb_local_usn, created_at, updated_at)
@@ -140,13 +158,14 @@ public final class RekordboxFixture {
                       .text(UUID().uuidString.lowercased()), .text(Self.stamp), .text(Self.stamp)])
         }
         try db.execute("COMMIT")
+        committed = true
         return playlist
     }
 
     /// `.DAT`의 contentFile 행(그리드 BPM 변경 때 해시·크기를 고친다)
     public func addContentFile(for track: TrackSpec, hash: String, size: Int) throws {
-        let db = try open()
-        defer { db.close() }
+        let db = try connection ?? open()
+        defer { if connection == nil { db.close() } }
         try db.run("""
             INSERT INTO contentFile (ID, ContentID, Path, Hash, Size, UUID, rb_data_status, rb_local_deleted, rb_local_usn, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, 256, 0, 13, ?, ?)
@@ -160,22 +179,22 @@ public final class RekordboxFixture {
         values["created_at"] = values["created_at"] ?? .text(Self.stamp)
         values["updated_at"] = values["updated_at"] ?? .text(Self.stamp)
         let keys = values.keys.sorted()
-        let db = try open()
-        defer { db.close() }
+        let db = try connection ?? open()
+        defer { if connection == nil { db.close() } }
         try db.run("INSERT INTO \(table) (\(keys.joined(separator: ", "))) VALUES (\(keys.map { _ in "?" }.joined(separator: ", ")))",
                    keys.map { values[$0]! })
     }
 
     public func execute(_ sql: String, _ values: [CipherDatabase.Value] = []) throws {
-        let db = try open()
-        defer { db.close() }
+        let db = try connection ?? open()
+        defer { if connection == nil { db.close() } }
         try db.run(sql, values)
     }
 
     /// 질의 결과를 칸 이름 → 글자로(NULL은 "NULL").
     public func rows(_ sql: String, _ values: [CipherDatabase.Value] = []) throws -> [[String: String]] {
-        let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-        defer { db.close() }
+        let db = try connection ?? CipherDatabase(path: database.path, key: RekordboxKey.derive())
+        defer { if connection == nil { db.close() } }
         var out: [[String: String]] = []
         try db.query(sql, values) { r in
             var row: [String: String] = [:]

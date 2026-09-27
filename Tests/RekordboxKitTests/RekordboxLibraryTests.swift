@@ -9,41 +9,43 @@ struct RekordboxLibraryTests {
     /// 곡 2개(하나는 삭제 행) + 아티스트·앨범·장르·키·재생 목록·재생 이력·오토게인
     func makeLibrary() throws -> (RekordboxFixture, TrackSpec, TrackSpec) {
         let fixture = try RekordboxFixture()
-        for (table, id, name) in [("djmdArtist", "ar1", "아티스트"), ("djmdArtist", "ar2", "작곡가"), ("djmdArtist", "ar3", "앨범 아티스트"),
-                                  ("djmdGenre", "g1", "Anime")] {
-            try fixture.insert(table, ["ID": .text(id), "Name": .text(name)])
-        }
-        try fixture.insert("djmdAlbum", ["ID": .text("al1"), "Name": .text("앨범"), "AlbumArtistID": .text("ar3")])
-        try fixture.insert("djmdKey", ["ID": .text("k1"), "ScaleName": .text("8B")])
+        return try fixture.withConnection {
+            for (table, id, name) in [("djmdArtist", "ar1", "아티스트"), ("djmdArtist", "ar2", "작곡가"), ("djmdArtist", "ar3", "앨범 아티스트"),
+                                      ("djmdGenre", "g1", "Anime")] {
+                try fixture.insert(table, ["ID": .text(id), "Name": .text(name)])
+            }
+            try fixture.insert("djmdAlbum", ["ID": .text("al1"), "Name": .text("앨범"), "AlbumArtistID": .text("ar3")])
+            try fixture.insert("djmdKey", ["ID": .text("k1"), "ScaleName": .text("8B")])
 
-        var live = TrackSpec(id: "101")
-        live.title = "살아 있는 곡"
-        live.bpm100 = 17450
-        live.cues = [.autoCue(at: 1000), CueSpec(id: "c2", kind: 5, inMsec: 20_000)]
-        live.gain = RekordboxAutoGain.halves(0.5)
-        try fixture.add(live)
-        try fixture.execute("""
-            UPDATE djmdContent SET ArtistID = 'ar1', ComposerID = 'ar2', AlbumID = 'al1', GenreID = 'g1', KeyID = 'k1',
-                Commnt = 'TVA 작품 OP 1', ReleaseYear = 2024, TrackNo = 3, ImagePath = '/PIONEER/Artwork/1.jpg' WHERE ID = '101'
-            """)
-        var deleted = TrackSpec(id: "102")
-        deleted.title = "지운 곡"
-        try fixture.add(deleted)
-        try fixture.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '102'")
-        // 삭제된 큐 행은 읽지 않는다
-        try fixture.execute("UPDATE djmdCue SET rb_local_deleted = 1 WHERE ID = 'c2'")
+            var live = TrackSpec(id: "101")
+            live.title = "살아 있는 곡"
+            live.bpm100 = 17450
+            live.cues = [.autoCue(at: 1000), CueSpec(id: "c2", kind: 5, inMsec: 20_000)]
+            live.gain = RekordboxAutoGain.halves(0.5)
+            try fixture.add(live)
+            try fixture.execute("""
+                UPDATE djmdContent SET ArtistID = 'ar1', ComposerID = 'ar2', AlbumID = 'al1', GenreID = 'g1', KeyID = 'k1',
+                    Commnt = 'TVA 작품 OP 1', ReleaseYear = 2024, TrackNo = 3, ImagePath = '/PIONEER/Artwork/1.jpg' WHERE ID = '101'
+                """)
+            var deleted = TrackSpec(id: "102")
+            deleted.title = "지운 곡"
+            try fixture.add(deleted)
+            try fixture.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '102'")
+            // 삭제된 큐 행은 읽지 않는다
+            try fixture.execute("UPDATE djmdCue SET rb_local_deleted = 1 WHERE ID = 'c2'")
 
-        for (id, name, parent, attribute, seq) in [("f1", "폴더", "root", 1, 1), ("p1", "셋 A", "f1", 0, 2), ("p2", "셋 B", "f1", 0, 1),
-                                                   ("p3", "맨 위", "root", 0, 0)] {
-            try fixture.insert("djmdPlaylist", ["ID": .text(id), "Name": .text(name), "ParentID": .text(parent),
-                                                "Attribute": .int(attribute), "Seq": .int(seq)])
+            for (id, name, parent, attribute, seq) in [("f1", "폴더", "root", 1, 1), ("p1", "셋 A", "f1", 0, 2), ("p2", "셋 B", "f1", 0, 1),
+                                                       ("p3", "맨 위", "root", 0, 0)] {
+                try fixture.insert("djmdPlaylist", ["ID": .text(id), "Name": .text(name), "ParentID": .text(parent),
+                                                    "Attribute": .int(attribute), "Seq": .int(seq)])
+            }
+            for (id, playlist, content, no) in [("s1", "p1", "101", 2), ("s2", "p1", "102", 1), ("s3", "p2", "101", 1), ("s4", "p2", "101", 2)] {
+                try fixture.insert("djmdSongPlaylist", ["ID": .text(id), "PlaylistID": .text(playlist), "ContentID": .text(content),
+                                                        "TrackNo": .int(no)])
+            }
+            for n in 0..<3 { try fixture.insert("djmdSongHistory", ["ID": .text("h\(n)"), "ContentID": .text("101")]) }
+            return (fixture, live, deleted)
         }
-        for (id, playlist, content, no) in [("s1", "p1", "101", 2), ("s2", "p1", "102", 1), ("s3", "p2", "101", 1), ("s4", "p2", "101", 2)] {
-            try fixture.insert("djmdSongPlaylist", ["ID": .text(id), "PlaylistID": .text(playlist), "ContentID": .text(content),
-                                                    "TrackNo": .int(no)])
-        }
-        for n in 0..<3 { try fixture.insert("djmdSongHistory", ["ID": .text("h\(n)"), "ContentID": .text("101")]) }
-        return (fixture, live, deleted)
     }
 
     @Test func 곡_정보는_연결된_표에서_채운다() throws {

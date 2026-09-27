@@ -8,14 +8,16 @@ import Testing
 struct DuplicateReadTests {
     private func fixture() throws -> RekordboxFixture {
         let fixture = try LibraryReadTests().fixture()
-        try fixture.execute("UPDATE djmdContent SET Title = '시험 alpha', ArtistID = 'a1', Length = 202, BitRate = 0, FolderPath = '/synthetic/copy.flac' WHERE ID = '102'")
-        try fixture.execute("UPDATE djmdCue SET Comment = 'CUE(Auto)' WHERE ID = 'memory'")
-        try fixture.insert("djmdSongPlaylist", ["ID": .text("second-list"), "PlaylistID": .text("p2"), "ContentID": .text("101"), "TrackNo": .int(1)])
-        try fixture.insert("djmdSongPlaylist", ["ID": .text("deleted-entry"), "PlaylistID": .text("p2"), "ContentID": .text("102"), "TrackNo": .int(2), "rb_local_deleted": .int(1)])
-        for index in 0..<3 {
-            try fixture.insert("djmdSongHistory", ["ID": .text("play-\(index)"), "ContentID": .text("101"), "rb_local_deleted": .int(index == 2 ? 1 : 0)])
+        return try fixture.withConnection {
+            try fixture.execute("UPDATE djmdContent SET Title = '시험 alpha', ArtistID = 'a1', Length = 202, BitRate = 0, FolderPath = '/synthetic/copy.flac' WHERE ID = '102'")
+            try fixture.execute("UPDATE djmdCue SET Comment = 'CUE(Auto)' WHERE ID = 'memory'")
+            try fixture.insert("djmdSongPlaylist", ["ID": .text("second-list"), "PlaylistID": .text("p2"), "ContentID": .text("101"), "TrackNo": .int(1)])
+            try fixture.insert("djmdSongPlaylist", ["ID": .text("deleted-entry"), "PlaylistID": .text("p2"), "ContentID": .text("102"), "TrackNo": .int(2), "rb_local_deleted": .int(1)])
+            for index in 0..<3 {
+                try fixture.insert("djmdSongHistory", ["ID": .text("play-\(index)"), "ContentID": .text("101"), "rb_local_deleted": .int(index == 2 ? 1 : 0)])
+            }
+            return fixture
         }
-        return fixture
     }
 
     @Test func 후보_JSON은_원본_큐와_직접_소속과_재생수와_음질을_비교한다() throws {
