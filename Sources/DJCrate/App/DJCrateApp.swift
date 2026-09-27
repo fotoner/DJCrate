@@ -3,7 +3,11 @@ import DJCDomain
 import DJCStorage
 import SwiftUI
 
-@main
+@MainActor
+package func runDJCrate() {
+    DJCrateApp.main()
+}
+
 struct DJCrateApp: App {
     /// 문구 카탈로그(이 타깃 번들)를 가장 먼저 정한다. 하위 모듈의 문구(막힘 이유 등)도 이 카탈로그로 찾는다.
     private let strings: Void = UIStrings.bundle = .module

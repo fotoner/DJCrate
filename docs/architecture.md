@@ -16,6 +16,8 @@ DJCrate · DJCrate(CLI)
 - **DJCAnalysis**: 소리 분석과 곡 편집 렌더. rekordbox를 모른다(시간축 차이는 인자로 받는다).
 - **DJCrate**: 화면 모델은 바깥을 주입받는다. 덱은 `DeckAudioEngine`(오디오)·`DeckStorage`(초안·설정), 반영 흐름은 `ReflectionHost`(라이브러리)·`ReflectionPrompter`(확인 창). 시험에서는 가짜로 바꾼다.
 
+앱·CLI 본체(`DJCrate`·`djc`)는 라이브러리 타깃으로 두어 실행 파일과 테스트가 컴파일 결과를 공유한다. 실행 진입점만 `DJCrateExecutable`·`djcExecutable`로 분리하고, 제품 이름과 리소스 소유 모듈은 유지한다. 패키지 밖에 본체 API를 공개하지 않는다([CI 검증](ci.md#본체-컴파일-공유)).
+
 ## 테스트
 
 - 순서: 실패하는 테스트 → 구현 → `scripts/check.sh`(쓰기 80%, 코어 60% 줄 커버리지 목표).

@@ -86,20 +86,23 @@ enum CLI {
     }
 }
 
-// 새 읽기 명령과 JSON 조회는 옛 데이터 폴더를 옮기지도 않는다.
-let arguments = Array(CommandLine.arguments.dropFirst())
-if arguments.first != "lab" { CLILocalization.configure() }
-if arguments.first != "draft", !ReadCommands.names.contains(arguments.first ?? ""), !ReadCommands.handlesJSON(arguments) {
-    LegacyMigration.run()
-}
-
-do {
-    try await CLI.run(arguments)
-} catch {
-    if (ReadCommands.handlesJSON(arguments) || (arguments.first == "draft" && arguments.contains("--json"))), let data = try? ReadJSON.error(command: arguments.first ?? "", error: error) {
-        FileHandle.standardError.write(data + Data("\n".utf8))
-    } else {
-        FileHandle.standardError.write(Data(String(ui: "오류: \(String(describing: error))\n").utf8))
+@MainActor
+package func runDJC() async {
+    // 새 읽기 명령과 JSON 조회는 옛 데이터 폴더를 옮기지도 않는다.
+    let arguments = Array(CommandLine.arguments.dropFirst())
+    if arguments.first != "lab" { CLILocalization.configure() }
+    if arguments.first != "draft", !ReadCommands.names.contains(arguments.first ?? ""), !ReadCommands.handlesJSON(arguments) {
+        LegacyMigration.run()
     }
-    exit(1)
+
+    do {
+        try await CLI.run(arguments)
+    } catch {
+        if (ReadCommands.handlesJSON(arguments) || (arguments.first == "draft" && arguments.contains("--json"))), let data = try? ReadJSON.error(command: arguments.first ?? "", error: error) {
+            FileHandle.standardError.write(data + Data("\n".utf8))
+        } else {
+            FileHandle.standardError.write(Data(String(ui: "오류: \(String(describing: error))\n").utf8))
+        }
+        exit(1)
+    }
 }

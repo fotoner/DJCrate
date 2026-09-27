@@ -14,8 +14,8 @@ let package = Package(
         .library(name: "RekordboxKit", targets: ["RekordboxKit"]),
         .library(name: "DJCStorage", targets: ["DJCStorage"]),
         .library(name: "DJCAnalysis", targets: ["DJCAnalysis"]),
-        .executable(name: "djc", targets: ["djc"]),
-        .executable(name: "DJCrate", targets: ["DJCrate"]),
+        .executable(name: "djc", targets: ["djcExecutable"]),
+        .executable(name: "DJCrate", targets: ["DJCrateExecutable"]),
     ],
     dependencies: [
         .package(url: "https://github.com/sqlcipher/SQLCipher.swift", exact: "4.19.0"),
@@ -32,20 +32,25 @@ let package = Package(
         .target(name: "DJCStorage", dependencies: ["DJCDomain", "RekordboxKit"]),
         // 소리 분석: 파형·그리드 추정·조성·음량·섹션
         .target(name: "DJCAnalysis", dependencies: ["DJCDomain"]),
-        // 명령줄 도구
-        .executableTarget(
+        // 본체를 라이브러리로 공유해 실행용·테스트용 중복 컴파일을 피한다.
+        .target(
             name: "djc",
             dependencies: ["DJCDomain", "RekordboxKit", "DJCStorage", "DJCAnalysis"],
             resources: [.process("Resources")]
         ),
         // macOS 앱. 문구 카탈로그는 Resources/에 있다.
-        // 번들 없이 도는 개발 빌드도 macOS 언어를 따르게 실행 파일에 언어 목록(Info.plist)을 넣는다.
-        // 넣지 않으면 메인 번들 언어가 영어뿐이라 카탈로그 번들도 늘 영어를 고른다.
-        .executableTarget(
+        .target(
             name: "DJCrate",
             dependencies: ["DJCDomain", "RekordboxKit", "DJCStorage", "DJCAnalysis"],
             exclude: ["Info.plist"],
-            resources: [.process("Resources")],
+            resources: [.process("Resources")]
+        ),
+        .executableTarget(name: "djcExecutable", dependencies: ["djc"]),
+        // 번들 없이 도는 개발 빌드도 macOS 언어를 따르게 실행 파일에 언어 목록(Info.plist)을 넣는다.
+        // 넣지 않으면 메인 번들 언어가 영어뿐이라 카탈로그 번들도 늘 영어를 고른다.
+        .executableTarget(
+            name: "DJCrateExecutable",
+            dependencies: ["DJCrate"],
             linkerSettings: [.unsafeFlags([
                 "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
                 "-Xlinker", Context.packageDirectory + "/Sources/DJCrate/Info.plist",
