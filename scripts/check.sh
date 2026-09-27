@@ -112,15 +112,17 @@ awk '
 }
 
 # 디버그 앱·CLI·테스트를 같은 계측 설정으로 한 번 빌드해 설정 전환에 따른 재컴파일을 줄인다.
+# 체크아웃으로 수정 시각만 바뀐 파일은 내용 해시로 기존 컴파일 결과를 재사용한다.
+debug_arguments=(--enable-code-coverage -Xswiftc -enable-incremental-file-hashing)
 if [[ "$mode" != release ]]; then
-    run_stage "디버그·테스트 빌드(커버리지 계측)" debug-build swift build --build-tests --enable-code-coverage
+    run_stage "디버그·테스트 빌드(커버리지 계측)" debug-build swift build --build-tests "${debug_arguments[@]}"
 fi
 if [[ "$mode" != coverage ]]; then
     run_stage "릴리스 앱 빌드" release-build swift build -c release --product DJCrate
 fi
 if [[ "$mode" != release ]]; then
-    run_stage "번역(en·ja 누락·안 쓰는 문구·자리표시자)" translations swift scripts/i18n.swift check --enable-code-coverage
-    run_stage "전체 테스트 실행·프로파일 수집(빌드 생략)" test swift test --skip-build --enable-code-coverage
+    run_stage "번역(en·ja 누락·안 쓰는 문구·자리표시자)" translations swift scripts/i18n.swift check "${debug_arguments[@]}"
+    run_stage "전체 테스트 실행·프로파일 수집(빌드 생략)" test swift test --skip-build "${debug_arguments[@]}"
     run_stage "커버리지 보고·목표 검사" coverage coverage
 fi
 echo "▸ 통과"

@@ -17,10 +17,11 @@ CASES = {
     "term": 143, "int": 130, "int-group": 130,
 }
 CANCELLATIONS = {"term", "int", "int-group"}
-DEBUG = "build --build-tests --enable-code-coverage"
+HASHING = "-Xswiftc -enable-incremental-file-hashing"
+DEBUG = f"build --build-tests --enable-code-coverage {HASHING}"
 RELEASE = "build -c release --product DJCrate"
-TRANSLATIONS = "scripts/i18n.swift check --enable-code-coverage"
-TEST = "test --skip-build --enable-code-coverage"
+TRANSLATIONS = f"scripts/i18n.swift check --enable-code-coverage {HASHING}"
+TEST = f"test --skip-build --enable-code-coverage {HASHING}"
 PARTITIONS = {
     "coverage-only": (["--coverage"], "ok", 0, [DEBUG, TRANSLATIONS, TEST]),
     "release-only": (["--release"], "ok", 0, [RELEASE]),
@@ -166,8 +167,7 @@ def check_case(case, expected):
         if case == "debug-fail" and len(calls) != 1:
             errors.append("실패 뒤에도 다음 명령 실행")
         if case == "ok" and (
-            calls.count("build --build-tests --enable-code-coverage") != 1
-            or "test --skip-build --enable-code-coverage" not in calls
+            calls != [DEBUG, RELEASE, TRANSLATIONS, TEST]
         ):
             errors.append("디버그·테스트 빌드 공유 누락")
         assert not errors, ", ".join(errors) + "\n" + content

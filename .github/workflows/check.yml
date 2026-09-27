@@ -75,9 +75,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .build
-          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-v2-${{ matrix.mode }}-${{ steps.toolchain.outputs.cache-key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-${{ github.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-v3-${{ matrix.mode }}-${{ steps.toolchain.outputs.cache-key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swiftpm-v2-${{ matrix.mode }}-${{ steps.toolchain.outputs.cache-key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-v3-${{ matrix.mode }}-${{ steps.toolchain.outputs.cache-key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-
 
       - name: 분담한 검사 실행
         id: check
@@ -91,7 +91,7 @@ jobs:
           trap finish_check EXIT
           echo "▸ CI 검사 시작: $CHECK_MODE ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
           case "$CHECK_MODE" in
-            test) swift test 2>&1 | tee "$RUNNER_TEMP/djc-check.log" ;;
+            test) swift test -Xswiftc -enable-incremental-file-hashing 2>&1 | tee "$RUNNER_TEMP/djc-check.log" ;;
             coverage) scripts/check.sh --coverage 2>&1 | tee "$RUNNER_TEMP/djc-check.log" ;;
             release) scripts/check.sh --release 2>&1 | tee "$RUNNER_TEMP/djc-check.log" ;;
             *) echo "::error::알 수 없는 검사 모드: $CHECK_MODE"; exit 2 ;;

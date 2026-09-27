@@ -205,8 +205,10 @@ func translationProblems(_ catalog: [String: Any], name: String, languages: [Str
 
 // 전체 검사와 같은 계측 설정을 써서 번역 확인 때문에 디버그 빌드를 다시 하지 않는다.
 let buildArguments = Array(CommandLine.arguments.dropFirst(2))
-guard buildArguments.isEmpty || buildArguments == ["--enable-code-coverage"] else {
-    fail("사용: swift scripts/i18n.swift sync|check [--enable-code-coverage]")
+let coverageArguments = ["--enable-code-coverage"]
+let hashingArguments = ["-Xswiftc", "-enable-incremental-file-hashing"]
+guard [[], coverageArguments, hashingArguments, coverageArguments + hashingArguments].contains(buildArguments) else {
+    fail("사용: swift scripts/i18n.swift sync|check [--enable-code-coverage] [-Xswiftc -enable-incremental-file-hashing]")
 }
 
 func buildDebug() {
