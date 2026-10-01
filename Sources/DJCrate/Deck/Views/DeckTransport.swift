@@ -181,6 +181,9 @@ struct HotCuePad: View {
         let engaged = cue != nil && cue?.id == deck.engagedLoopID
         let accessibility = deck.hotCueAccessibility(slot: slot)
         Button {
+#if DEBUG
+            HotCueScrollTrace.recordButton()
+#endif
             // Shift+클릭 = 지우기
             if NSEvent.modifierFlags.contains(.shift) { deck.deleteHotCue(slot: slot) } else { deck.pressHotCue(slot: slot) }
         } label: {

@@ -34,10 +34,16 @@ struct OverviewWaveformView: View {
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { value in
+#if DEBUG
+                    HotCueScrollTrace.recordDrag(wave: "overviewWaveform", ended: false)
+#endif
                     if !scrubbing { scrubbing = true; deck.beginScrub() }
                     deck.scrub(to: Double(value.location.x / max(geo.size.width, 1)) * duration)
                 }
                 .onEnded { _ in
+#if DEBUG
+                    HotCueScrollTrace.recordDrag(wave: "overviewWaveform", ended: true)
+#endif
                     scrubbing = false
                     deck.endScrub()
                 })
@@ -49,6 +55,7 @@ struct OverviewWaveformView: View {
         .background(Palette.well)
         .environment(\.colorScheme, .dark)
         .modifier(OverviewAccessibilityMarkers(deck: deck))
+        .selfTestFrame("overviewWaveform")
     }
 }
 

@@ -102,6 +102,7 @@ struct ZoomWaveformView: View {
                         .onChanged { value in
 #if DEBUG
                             ScrubHotCueTrace.recordDrag(ended: false)
+                            HotCueScrollTrace.recordDrag(wave: "zoomWaveform", ended: false)
 #endif
                             if drag == nil {
                                 switch pointerTarget(atX: value.startLocation.x, xOf: xOf, suggestions: []) {
@@ -128,6 +129,7 @@ struct ZoomWaveformView: View {
                         .onEnded { value in
 #if DEBUG
                             ScrubHotCueTrace.recordDrag(ended: true)
+                            HotCueScrollTrace.recordDrag(wave: "zoomWaveform", ended: true)
 #endif
                             hotCueKeys.end()
                             switch drag {
