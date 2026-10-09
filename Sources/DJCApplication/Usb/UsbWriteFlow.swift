@@ -144,7 +144,7 @@ public struct UsbWriteFlow {
         guard exportSourceIsCurrent(job), await ready(job.volume, sourceIsCurrent: { await exportInputsAreCurrent(job) }), exportSourceIsCurrent(job) else { return nil }
         guard let flag = begin(job.volume, title: String(ui: "USB에 쓸 내용을 확인하는 중…")) else { return nil }
         let service = service
-        let result = await Task.detached(priority: .userInitiated) { Result { try service.preview(job.input) } }.value
+        let result = await BlockingWork.run { Result { try service.preview(job.input) } }
         session.end(job.volumeKey)
         guard await exportInputsAreCurrent(job) else { return nil }
         switch result {
@@ -208,7 +208,7 @@ public struct UsbWriteFlow {
         if let reused {
             summary = reused
         } else {
-            switch await Task.detached(priority: .userInitiated, operation: { Result { try service.preview(job.input) } }).value {
+            switch await BlockingWork.run({ Result { try service.preview(job.input) } }) {
             case let .success(value): summary = value
             case let .failure(error): return previewFailed(error)
             }
@@ -247,9 +247,9 @@ public struct UsbWriteFlow {
         let consumer = Task { @MainActor in
             for await progress in stream { session.report(progress, for: key) }
         }
-        let result = await Task.detached(priority: .userInitiated) {
+        let result = await BlockingWork.run {
             Result { try body { continuation.yield($0) } }
-        }.value
+        }
         continuation.finish()
         await consumer.value
         return result
@@ -279,7 +279,7 @@ public struct UsbWriteFlow {
     /// 확인 창 뒤: 그 사이 끝나지 않은 쓰기가 생겼으면 회복부터, 저널을 읽지 못하면 멈춘다. 쓰러 가도 되면 nil
     private func journalStop<Summary>(_ key: String, sourceIsCurrent: @MainActor () async -> Bool = { true }) async -> Outcome<Summary>? {
         let service = service
-        let journal = await Task.detached(priority: .userInitiated) { service.journal(volumeKey: key) }.value
+        let journal = await BlockingWork.run { service.journal(volumeKey: key) }
         guard await sourceIsCurrent() else { return .stopped }
         switch UsbWriteDecision.journalCheck(journal) {
         case .proceed: return nil
@@ -295,7 +295,7 @@ public struct UsbWriteFlow {
     public func previewMigration(_ volume: UsbVolumeInfo) async -> UsbMigrationSummary? {
         guard await ready(volume), let flag = begin(volume, title: String(ui: "USB에 쓸 내용을 확인하는 중…")) else { return nil }
         let service = service
-        let result = await Task.detached(priority: .userInitiated) { Result { try service.previewMigration(volume) } }.value
+        let result = await BlockingWork.run { Result { try service.previewMigration(volume) } }
         session.end(volume.usbKey)
         switch result {
         case let .success(summary):
@@ -337,7 +337,7 @@ public struct UsbWriteFlow {
 
     private func runMigration(_ volume: UsbVolumeInfo, flag: UsbCancelFlag) async -> Outcome<UsbMigrationWritten> {
         let service = service, key = volume.usbKey
-        let result = await Task.detached(priority: .userInitiated) { Result { try service.previewMigration(volume) } }.value
+        let result = await BlockingWork.run { Result { try service.previewMigration(volume) } }
         let summary: UsbMigrationSummary
         switch result {
         case let .success(value): summary = value
@@ -465,7 +465,7 @@ public struct UsbWriteFlow {
                                         sourceIsCurrent: @MainActor () -> Bool) async -> Bool {
         guard sourceIsCurrent() else { return false }
         let service = service
-        let result = await Task.detached(priority: .userInitiated) {
+        let result = await BlockingWork.run {
             Result {
                 let actual = try service.currentVolume(volume)
                 // 교체를 발견했으면 원문 파일도 읽지 않는다.
@@ -473,7 +473,7 @@ public struct UsbWriteFlow {
                 let files = try baseFiles.map { _ in try service.syncSelectionBaseFiles(actual, formats: formats) }
                 return (actual, files)
             }
-        }.value
+        }
         // actual 확인 중 원본·epoch·초안·캐시가 바뀌어도 옛 결과를 채택하지 않는다.
         guard sourceIsCurrent() else { return false }
         guard case let .success((actual, files)) = result, actual.matchesSyncWriteVolume(volume), files == baseFiles else {
@@ -527,7 +527,7 @@ public struct UsbWriteFlow {
         guard await editInputsAreCurrent(job, edits: screen.draftEdits(volumeKey) ?? []) else { return nil }
         guard let flag = begin(job.volume, title: String(ui: "USB에 쓸 내용을 확인하는 중…")) else { return nil }
         let service = service
-        let result = await Task.detached(priority: .userInitiated) { Result { try service.previewEdit(job.input) } }.value
+        let result = await BlockingWork.run { Result { try service.previewEdit(job.input) } }
         session.end(job.volumeKey)
         guard await editInputsAreCurrent(job, edits: screen.draftEdits(volumeKey) ?? []) else { return nil }
         switch result {
@@ -653,14 +653,14 @@ public struct UsbWriteFlow {
     /// 지금 초안으로 미리 보기(메인 액터 밖)
     private func editPreview(_ job: UsbEditJob) async -> Result<UsbEditSummary, any Error> {
         let service = service
-        return await Task.detached(priority: .userInitiated) { Result { try service.previewEdit(job.input) } }.value
+        return await BlockingWork.run { Result { try service.previewEdit(job.input) } }
     }
 
     /// 지금 초안 파일의 편집(메인 액터 밖에서 읽는다). 읽지 못하면 빈 목록 — 확인한 것과 달라 다시 미리 보며 오류를 알린다.
     /// 초안 폴더가 없으면(초안을 다루지 않는 시험·캡처) nil
     private func draftEdits(_ key: String) async -> [UsbLibraryEdit]? {
         guard let editing = screen.draftEditing() else { return nil }
-        return await Task.detached(priority: .userInitiated) { editing.edits(key) }.value
+        return await BlockingWork.run { editing.edits(key) }
     }
 
     /// 시작 전 확인: rekordbox·Agent, 볼륨 잠금, 끝나지 않은 쓰기(회복 알림), 읽지 못한 저널
@@ -668,7 +668,7 @@ public struct UsbWriteFlow {
         guard await sourceIsCurrent() else { return false }
         let service = service
         let running = isRekordboxRunning ?? { service.isRekordboxRunning() }
-        let isRunning = await Task.detached(priority: .userInitiated, operation: { running() }).value
+        let isRunning = await BlockingWork.run { running() }
         guard await sourceIsCurrent() else { return false }
         if isRunning {
             notify(Text.rekordboxRunningTitle, Text.rekordboxRunningDetail)
@@ -676,7 +676,7 @@ public struct UsbWriteFlow {
         }
         guard !isBusy(volume) else { return false }
         let key = volume.usbKey
-        let journal = await Task.detached(priority: .userInitiated) { service.journal(volumeKey: key) }.value
+        let journal = await BlockingWork.run { service.journal(volumeKey: key) }
         guard await sourceIsCurrent() else { return false }
         switch UsbWriteDecision.journalCheck(journal) {
         case .proceed: return true
@@ -713,7 +713,7 @@ public struct UsbWriteFlow {
     public func offerRecovery(_ volume: UsbVolumeInfo) async {
         guard !session.busyVolumes.contains(volume.usbKey), session.activeWrite == nil else { return }
         let service = service, key = volume.usbKey
-        guard await Task.detached(priority: .userInitiated, operation: { service.journal(volumeKey: key) }).value.isPending else { return }
+        guard await BlockingWork.run({ service.journal(volumeKey: key) }).isPending else { return }
         switch confirmation.choose(Self.pendingPrompt(volume)) {
         case .confirm: await recover(volume)
         case .alternate: await revert(volume)
@@ -725,7 +725,7 @@ public struct UsbWriteFlow {
     private func recover(_ volume: UsbVolumeInfo) async {
         guard begin(volume, title: String(ui: "USB를 회복하는 중…"), cancellable: false) != nil else { return }
         let service = service
-        let result = await Task.detached(priority: .userInitiated) { Result { try service.recover(volume) } }.value
+        let result = await BlockingWork.run { Result { try service.recover(volume) } }
         session.end(volume.usbKey)
         switch result {
         case let .success(report):
@@ -753,7 +753,7 @@ public struct UsbWriteFlow {
     private func revert(_ volume: UsbVolumeInfo) async {
         let key = volume.usbKey, service = service
         guard begin(volume, title: String(ui: "USB를 되돌리는 중…"), cancellable: false) != nil else { return }
-        let recovered = await Task.detached(priority: .userInitiated) { Result { try service.recover(volume) } }.value
+        let recovered = await BlockingWork.run { Result { try service.recover(volume) } }
         let report: UsbWriteReport
         switch recovered {
         case let .failure(error):
@@ -781,9 +781,9 @@ public struct UsbWriteFlow {
         var discard = false
         while true {
             let flagged = discard
-            let result = await Task.detached(priority: .userInitiated) {
+            let result = await BlockingWork.run {
                 Result { try service.restore(volume, backup: backup, discardDeviceChanges: flagged) }
-            }.value
+            }
             switch result {
             case .success:
                 session.end(key)
@@ -875,7 +875,7 @@ public struct UsbWriteFlow {
         case .writeRolledBack:
             // 백업 폴더 찾기는 폴더를 열거하고 manifest를 읽는다: 메인 액터 밖에서
             let service = service
-            backup = await Task.detached(priority: .userInitiated) { service.latestBackup(volumeKey: volumeKey) }.value
+            backup = await BlockingWork.run { service.latestBackup(volumeKey: volumeKey) }
         case let .restoreFailed(_, _, folder):
             backup = folder.isEmpty ? nil : URL(filePath: folder)
         default:

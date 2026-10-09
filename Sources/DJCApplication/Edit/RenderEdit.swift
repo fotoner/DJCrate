@@ -31,10 +31,9 @@ public struct RenderEdit: Sendable {
         self.stager = stager
     }
 
-    /// 창을 열 때 원곡 음원이 있는지
-    @concurrent
+    /// 창을 열 때 원곡 음원이 있는지(잠든·빠진 볼륨에서 오래 걸릴 수 있어 협력 풀 밖에서 본다)
     public func sourceExists(_ url: URL) async -> Bool {
-        files.fileExists(url)
+        await BlockingWork.run { [files] in files.fileExists(url) }
     }
 
     /// 이미 있는 파일은 덮지 않고 이름에 번호를 붙인다. 원곡·rekordbox에는 쓰지 않는다.

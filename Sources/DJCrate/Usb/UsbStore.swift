@@ -117,11 +117,11 @@ import Observation
         }
         let service = writeService, volume = saved.job.volume
         let formats = libraries[key]?.formats ?? UsbFormat.defaultSet
-        let matches = await Task.detached(priority: .utility) {
+        let matches = await BlockingWork.run(qos: .utility) {
             guard let actual = try? service.currentVolume(volume), actual.matchesSyncWriteVolume(volume),
                   let files = try? service.syncSelectionBaseFiles(actual, formats: formats) else { return false }
             return files == expected
-        }.value
+        }
         guard syncDraftSources[key]?.id == saved.id else { return }
         if !matches || !saved.sourceIsCurrent() || self.volume(key)?.matchesSyncWriteVolume(volume) != true || draftEdits[key] != saved.edits {
             invalidateSyncDraft(key)
@@ -301,7 +301,7 @@ import Observation
         let key = volume.usbKey
         guard journalChecked.insert(key).inserted else { return }
         let journal = journal
-        let info = await Task.detached(priority: .utility) { journal(key) }.value
+        let info = await BlockingWork.run(qos: .utility) { journal(key) }
         // 기다리는 동안 떨어졌거나 쓰기가 시작됐으면 알리지 않는다
         guard info.isPending, journalChecked.contains(key), !busyVolumes.contains(key), self.volume(key) != nil else { return }
         onPendingJournal?(volume)
@@ -332,11 +332,11 @@ import Observation
 
     private func badges(for library: UsbLibrary) async -> UsbLocalEvaluation {
         let localLibrary = localLibrary
-        return await Task.detached(priority: .utility) { () -> UsbLocalEvaluation in
+        return await BlockingWork.run(qos: .utility) { () -> UsbLocalEvaluation in
             let local = localLibrary()
             let evaluated = UsbSyncBadges.evaluate(library: library, local: local)
             return UsbLocalEvaluation(badges: evaluated.badges, matches: evaluated.matches)
-        }.value
+        }
     }
 
     static func message(for error: any Error) -> String {
@@ -427,7 +427,7 @@ import Observation
     func reloadDraft(_ key: String) async {
         guard let editing = draftEditing else { return }
         await draftQueue(key) { [weak self] in
-            let edits = await Task.detached(priority: .utility) { () -> [UsbLibraryEdit] in editing.edits(key) }.value
+            let edits = await BlockingWork.run(qos: .utility) { () -> [UsbLibraryEdit] in editing.edits(key) }
             self?.setDraft(edits, for: key)
         }
     }

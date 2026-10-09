@@ -22,7 +22,7 @@ struct DeckLoadGenerationTests {
         func reader(_ storage: DeckStorage) -> TrackAssetReader {
             var reader = TrackAssetReader.memory(storage)
             reader.cueDraft = { [self] uuid in
-                if uuid == self.uuid { signal.yield(()); gate.wait() }
+                if uuid == self.uuid { signal.yield(()); gate.waitOffPool() }
                 return storage.testDraftStore.currentCue(uuid)
             }
             return reader

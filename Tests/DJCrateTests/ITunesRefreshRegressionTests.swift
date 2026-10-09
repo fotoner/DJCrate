@@ -68,7 +68,7 @@ struct ITunesRefreshRegressionTests {
                                    captureITunes: {
                                        gate.started.signal()
                                        // 최신 읽기가 끝날 때까지 자동으로 캡처를 재개하지 않는다.
-                                       gate.resume.wait()
+                                       gate.resume.waitOffPool()
                                        return firstFails ? ITunesLibrarySnapshot(status: .unavailable) : old
                                    })
         }

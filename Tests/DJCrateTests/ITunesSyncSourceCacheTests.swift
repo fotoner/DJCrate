@@ -106,7 +106,7 @@ struct ITunesSyncSourceCacheTests {
             let value = await store.iTunesSyncSource(captureITunes: {
                 calls.withLock { $0 += 1 }
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return captured
             })
             firstReturned.withLock { $0 = true }
@@ -148,7 +148,7 @@ struct ITunesSyncSourceCacheTests {
         let refresh = Task {
             let value = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return cached
             })
             refreshReturned.withLock { $0 = true }
@@ -212,7 +212,7 @@ struct ITunesSyncSourceCacheTests {
         let loading = Task {
             let value = await store.iTunesSyncSource(captureITunes: {
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return old
             })
             loadingReturned.withLock { $0 = true }
@@ -316,7 +316,7 @@ struct ITunesSyncSourceCacheTests {
         let loading = Task {
             await model.load(store: store, captureITunes: {
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "늦은 목록")])
             })
             loadingReturned.withLock { $0 = true }
@@ -348,7 +348,7 @@ struct ITunesSyncSourceCacheTests {
         let loading = Task {
             await old.load(store: store, captureITunes: {
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "늦은 목록")])
             })
             loadingReturned.withLock { $0 = true }

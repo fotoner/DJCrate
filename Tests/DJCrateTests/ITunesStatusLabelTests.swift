@@ -51,7 +51,7 @@ struct ITunesStatusLabelTests {
         let (started, signal) = AsyncStream<Void>.makeStream()
         let task = try #require(store.startSimulatedITunesRefresh(quiet: true) {
             signal.yield(())
-            gate.wait()
+            gate.waitOffPool()
             return ITunesLibrarySnapshot(status: .unavailable)
         })
         for await _ in started { break }
