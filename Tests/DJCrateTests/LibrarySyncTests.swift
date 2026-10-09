@@ -249,7 +249,7 @@ struct LibrarySyncTests {
         let loading = Task {
             await store.load(snapshot: fixture.database, quiet: true, refreshITunes: true, synchronizingDrafts: true, captureITunes: {
                                  started.withLock { $0 = true }
-                                 resume.wait()
+                                 resume.waitOffPool()
                                  return ITunesLibrarySnapshot()
                              })
         }

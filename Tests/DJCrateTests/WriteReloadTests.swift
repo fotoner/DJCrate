@@ -41,7 +41,7 @@ struct WriteReloadTests {
                                                                   now: stamp.addingTimeInterval(sameSecond ? 0 : 60))
                                      }, captureITunes: {
                                          captureStarted.withLock { $0 = true }
-                                         resume.wait()
+                                         resume.waitOffPool()
                                          return ITunesLibrarySnapshot(status: .unavailable)
                                      })
             finished.withLock { $0 = true }

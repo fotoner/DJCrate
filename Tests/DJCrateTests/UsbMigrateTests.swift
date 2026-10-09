@@ -123,7 +123,7 @@ struct UsbMigrateTests {
         let (changes, continuation) = AsyncStream.makeStream(of: Void.self)
         service.update {
             $0.writeProgress = [UsbProgress(phase: .files, completedItems: 1, totalItems: 7, cancellable: true)]
-            $0.onWrite = { release.wait() }
+            $0.onWrite = { release.waitOffPool() }
         }
         let c = coordinator(usb)
         let task = Task {

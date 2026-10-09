@@ -348,7 +348,7 @@ struct UsbNativePendingLifecycleTests {
         let f = try NativePendingFixture()
         await f.prepare(); f.remember()
         let gate = TestGate(); defer { gate.open() }
-        let blocker = Task { await f.usb.draftQueue(f.volume.usbKey) { await Task.detached { gate.pass() }.value } }
+        let blocker = Task { await f.usb.draftQueue(f.volume.usbKey) { await BlockingWork.run { gate.pass() } } }
         try #require(await waitUntil { gate.arrivals == 1 })
         let task = Task { await f.coordinator().writeDraft(volumeKey: f.volume.usbKey, database: f.host.database, share: f.host.share) }
         try #require(await waitUntil { f.usb.draftQueueLength(f.volume.usbKey) == 2 })

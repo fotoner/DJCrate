@@ -141,7 +141,7 @@ struct AsyncFailureGuidanceTests {
         let old = Task {
             await store.takeSnapshot(snapshotDirectory: fixture.root, snapshotCopy: { _ in
                 signal.yield(())
-                gate.wait()
+                gate.waitOffPool()
                 throw FixtureFailure()
             })
         }
@@ -165,7 +165,7 @@ struct AsyncFailureGuidanceTests {
         let old = Task {
             await store.takeSnapshot(refreshITunes: false, snapshotDirectory: fixture.root, snapshotCopy: { _ in
                 signal.yield(())
-                gate.wait()
+                gate.waitOffPool()
                 if fails { throw FixtureFailure() }
                 return database
             })
@@ -199,7 +199,7 @@ struct AsyncFailureGuidanceTests {
         var drafts = h.drafts.store
         drafts.cueDraft = { uuid in
             let count = calls.withLock { $0 += 1; return $0 }
-            if uuid == row.track.uuid, count == 2 { signal.yield(()); gate.wait() }
+            if uuid == row.track.uuid, count == 2 { signal.yield(()); gate.waitOffPool() }
             return CueDraft(trackUUID: uuid)
         }
         let storage = DeckStorage.memory(drafts)
@@ -255,7 +255,7 @@ struct AsyncFailureGuidanceTests {
         let read = Task {
             await store.takeSnapshot(refreshITunes: false, snapshotDirectory: fixture.root, snapshotCopy: { _ in
                 signal.yield(())
-                gate.wait()
+                gate.waitOffPool()
                 return database
             })
         }
@@ -364,7 +364,7 @@ struct AsyncFailureGuidanceTests {
         let (started, signal) = AsyncStream<Void>.makeStream()
         let task = try #require(store.startSimulatedITunesRefresh(quiet: false) {
             signal.yield(())
-            gate.wait()
+            gate.waitOffPool()
             return ITunesLibrarySnapshot(status: .unavailable)
         })
         for await _ in started { break }
