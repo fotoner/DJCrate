@@ -6,14 +6,15 @@ DJCrate 개발에 참여하는 사람을 위한 안내다. macOS 27 이상과 Sw
 swift build                                        # 디버그 빌드
 scripts/build-app.sh                               # dist/DJCrate.app 만들기
 scripts/check.sh --quick --filter '^DJCDomainTests\.LoopPlannerTests/'   # 고치는 동안: Suite 하나
-scripts/check.sh --changed                         # 작업 끝: 바꾼 파일에 닿는 시험·검사만
-scripts/check.sh                                   # PR·dev 합치기 전: 빌드·번역 누락·전체 시험·커버리지 목표
+scripts/check.sh --changed                         # 작업 끝·PR·dev 합치기 전: 바꾼 파일에 닿는 시험·검사만
+scripts/check.sh                                   # 릴리스 전·요청: 빌드·번역 누락·전체 시험·커버리지 목표
 ```
 
 `--changed`는 아래처럼 동작한다.
 
 - 처음 몇 줄에 고른 시험과 이유를 낸다.
 - `Package.swift`·`scripts/check.sh`·`.github/**`가 바뀌면 전체 검사로 넓힌다. 규칙 밖 파일이 바뀌어도 넓힌다.
+- PR·`dev` 푸시 CI도 `--changed`만 돈다. 전체 검사는 릴리스(`main`·`release/*`) CI가 돈다. `--changed`가 놓친 회귀는 그때 잡힌다.
 - 같은 작업 트리에서 이미 통과했으면 `재사용: <로그 폴더>`만 낸다. 다시 돌리려면 `--no-reuse`를 준다.
 
 검증 단계와 각 모드가 하는 일은 [AGENTS.md의 검증](AGENTS.md#검증)과 [CI 문서](docs/ci.md#로컬-검증-운영)에 있다.

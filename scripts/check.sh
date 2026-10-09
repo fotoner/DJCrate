@@ -1,6 +1,6 @@
 #!/bin/zsh
 # 검사: 모듈 경계 규칙·문서·훅·시험 지도, 디버그·릴리스 앱, 번역, 시험, 쓰기 80%·코어 60% 커버리지. 인자가 없으면 전체 검사.
-# 작업 중에는 --changed(바꾼 파일에서 고른 시험), 합치기 전·CI는 전체를 쓴다(docs/ci.md).
+# 작업 끝·dev 합치기·PR CI는 --changed(바꾼 파일에서 고른 시험), 릴리스·요청은 전체를 쓴다(docs/ci.md).
 set -euo pipefail
 cd "${0:A:h}/.."
 
@@ -43,6 +43,13 @@ case "${DJC_CIPHER_STRESS-0}" in
     *) echo 'DJC_CIPHER_STRESS는 미설정·0·1만 허용합니다.' >&2; exit 2 ;;
 esac
 if [[ "$mode" == stress ]]; then export DJC_CIPHER_STRESS=1; fi
+# 시험 단계 멈춤 감시: 이 초 동안 시험 출력이 없으면 끝나지 않은 시험과 스택을 남기고 종료 코드 124로 끝낸다(0이면 끈다).
+# CI 정상 실행의 가장 긴 출력 공백은 약 2분이었다. 멈춘 실행은 11분 동안 출력 없이 있다가 잡 제한(30분)으로 취소됐다.
+stall_seconds=${DJC_CHECK_STALL_SECONDS-300}
+if [[ "$stall_seconds" != <-> ]]; then
+    echo 'DJC_CHECK_STALL_SECONDS는 0 이상의 정수(초)만 허용합니다. 0이면 멈춤 감시를 끕니다.' >&2
+    exit 2
+fi
 requested_mode=$mode
 
 # --changed: 바꾼 파일에서 시험을 고른다(scripts/affected-tests.py). 고른 범위·이유를 먼저 보인다.
@@ -77,7 +84,7 @@ toolchain_id() {
         if [[ -e "$candidate" ]]; then /usr/bin/stat -L -f '%N %z %m' "$candidate" 2>/dev/null || true; fi
     done
 }
-reuse_environment=$(env | grep '^DJC_' | grep -vE '^DJC_(HOME|REKORDBOX_DIR|CHECK_LOG_ROOT|TEST_DEFAULTS_PREFIX|CHECK_VERBOSE)=' \
+reuse_environment=$(env | grep '^DJC_' | grep -vE '^DJC_(HOME|REKORDBOX_DIR|CHECK_LOG_ROOT|TEST_DEFAULTS_PREFIX|CHECK_VERBOSE|CHECK_STALL_SECONDS)=' \
     | LC_ALL=C sort || true)
 reuse_cover=$(print -r -- "v1|$reuse_tree|$(toolchain_id)|$reuse_environment" | /usr/bin/shasum -a 256 | cut -d ' ' -f1)
 reuse_key=$(print -r -- "v1|$mode|$test_filter|$plan_base|$reuse_cover" | /usr/bin/shasum -a 256 | cut -d ' ' -f1)
@@ -148,6 +155,7 @@ stage_file=""
 failed_log=""
 stage_pid=""
 pulse_pid=""
+watch_pid=""
 
 # 이 검사에서 시작한 자식만 정리한다. 부모 셸만 취소되어도 빌드가 남지 않아야 한다.
 stop_tree() {
@@ -168,10 +176,11 @@ finish() {
         echo "▸ 종료: $stage_name ($((SECONDS - stage_started))초, 종료코드 $code)"
         failed_log=$log_dir/$stage_file.log
     fi
-    if [[ -n "$pulse_pid" ]]; then
-        stop_tree "$pulse_pid"
-        wait "$pulse_pid" 2>/dev/null || true
-    fi
+    local helper
+    for helper in $pulse_pid $watch_pid; do
+        stop_tree "$helper"
+        wait "$helper" 2>/dev/null || true
+    done
     if [[ "$(live_fingerprint)" != "$live_before" ]]; then
         echo "✘ 검사 중 실제 rekordbox 라이브러리 파일이 바뀌었습니다. rekordbox를 쓰지 않았다면 시험이 실제 라이브러리를 건드린 것이니 바로 멈추고 알리세요" >&2
         (( code == 0 )) && code=3
@@ -257,7 +266,9 @@ print_summary() {
         if [[ -n "$plan_required" ]]; then print -rl -- ${(f)plan_required} | sed 's/^/⚠ 남은 필수 검사: /'; fi
     else
         echo "✘ 실패: $title · 종료코드 $code · 총 $((SECONDS - check_started))초${tests:+ · 시험 ${tests}개}"
-        if [[ -n "$failed_log" && -f "$failed_log" ]]; then
+        if [[ -f "$log_dir/stall.txt" ]]; then
+            sed 's/^/  /' "$log_dir/stall.txt"
+        elif [[ -n "$failed_log" && -f "$failed_log" ]]; then
             local lines
             # 컴파일러의 색(ESC [ … m)·링크(ESC ] 8 ;; … ESC \) 시퀀스는 요약에서만 지운다(로그 원문은 그대로).
             lines=$(plain_text < "$failed_log" | grep -E '^✘ |error:|fatal error|Test Case .* failed|Fatal error' | head -10 | cut -c1-300 || true)
@@ -338,15 +349,117 @@ run_stage() {
         done
     ) &
     pulse_pid=$!
+    # 시험 단계만 멈춤을 본다. 빌드(특히 릴리스 최적화)는 몇 분 동안 출력이 없을 수 있다.
+    if [[ "$1" == swift && "$2" == test ]] && (( stall_seconds > 0 )); then
+        watch_stall "$stage_pid" "$log_dir/$file.log" &
+        watch_pid=$!
+    fi
     if wait "$stage_pid"; then code=0; else code=$?; fi
     stage_pid=""
-    stop_tree "$pulse_pid"
-    wait "$pulse_pid" 2>/dev/null || true
+    local helper
+    for helper in $pulse_pid $watch_pid; do
+        stop_tree "$helper"
+        wait "$helper" 2>/dev/null || true
+    done
     pulse_pid=""
+    watch_pid=""
+    if [[ -f "$log_dir/stall.txt" ]]; then code=124; fi
     printf '%s\t%d\t%d\n' "$name" "$((SECONDS - stage_started))" "$code" >> "$log_dir/timings.tsv"
     echo "▸ 종료: $name ($((SECONDS - stage_started))초, 종료코드 $code, $(date -u +%Y-%m-%dT%H:%M:%SZ))"
     # zsh의 함수 실패에 따른 errexit은 EXIT 트랩을 건너뛸 수 있어 명시적으로 끝낸다.
     if (( code != 0 )); then failed_log=$log_dir/$file.log; exit "$code"; fi
+}
+
+# 시험 출력에서 시작만 하고 끝나지 않은 시험·Suite(마지막에 시작한 것부터 12개). swift-testing은 `◇ Test 이름 started.`와
+# `✔/✘ Test 이름 (with N test cases )passed/failed after`, XCTest는 `Test Case '…' started.`와 `passed/failed (`를 짝짓는다.
+# 바이트로 비교한다(en_US.UTF-8에서 macOS awk는 한글을 strcoll로 비교한다). `◇ `·`✔ `·`✘ `는 4바이트다.
+unfinished_tests() {
+    plain_text < "$1" | LC_ALL=C awk '
+        /^◇ (Test|Suite) .* started\.$/ {
+            name = substr($0, 5); sub(/ started\.$/, "", name)
+            if (name !~ /^Test (run|case)( |$)/) { open[name]++; order[++n] = name }
+            next
+        }
+        /^(✔|✘) (Test|Suite) .* (passed|failed) after / {
+            name = substr($0, 5); sub(/ (with [0-9]+ test cases? )?(passed|failed) after .*$/, "", name)
+            if (open[name] > 0) open[name]--
+            next
+        }
+        /^Test Case .* started\.$/ { name = $0; sub(/ started\.$/, "", name); open[name]++; order[++n] = name; next }
+        /^Test Case .* (passed|failed) \(/ { name = $0; sub(/ (passed|failed) \(.*$/, "", name); if (open[name] > 0) open[name]--; next }
+        END {
+            for (i = n; i >= 1; i--) {
+                if (open[order[i]] < 1) continue
+                open[order[i]]--
+                if (shown++ < 12) print order[i]; else more++
+            }
+            if (more) printf "… 그 밖 %d개\n", more
+            if (!shown) print "(시험 출력에서 찾지 못했습니다)"
+        }'
+}
+
+descendants() {
+    local child
+    for child in ${(f)"$(pgrep -P "$1" || true)"}; do
+        [[ -n "$child" ]] || continue
+        print -r -- "$child"
+        descendants "$child"
+    done
+}
+
+# 멈춘 시험 단계를 기록한다: 끝나지 않은 시험, 셸·tee·sleep 밖 자손(swift-test·swiftpm-testing-helper·xctest)의 5초 스택.
+# 스택 원문은 로그 폴더의 stall-sample-<pid>.txt, 요약에는 맨 위 함수 몇 줄만 옮긴다.
+report_stall() {
+    local watched=$1 log=$2 pid command file sampled=()
+    {
+        echo "✘ 멈춤: $stage_name — ${stall_seconds}초 동안 시험 출력이 없었습니다(종료코드 124)"
+        echo "끝나지 않은 시험(마지막에 시작한 것부터):"
+        unfinished_tests "$log" | sed 's/^/  /'
+    } > "$log_dir/stall.txt"
+    for pid in $(descendants "$watched"); do
+        command=$(ps -o comm= -p "$pid" 2>/dev/null) || continue
+        case "${command:t}" in zsh|-zsh|sh|bash|tee|sleep|sed|awk|perl) continue ;; esac
+        (( ${#sampled} < 4 )) || break
+        sampled+=("$pid ${command:t}")
+        sample "$pid" 5 -file "$log_dir/stall-sample-$pid.txt" </dev/null >/dev/null 2>&1 &
+    done
+    wait
+    for pid in "${sampled[@]}"; do
+        file="$log_dir/stall-sample-${pid%% *}.txt"
+        if [[ ! -s "$file" ]]; then print -r -- "스택(${pid#* }): sample이 스택을 뜨지 못했습니다"; continue; fi
+        print -r -- "스택(${pid#* }): $file"
+        awk '/^Sort by top of stack/ { on = 1; next } on && NF == 0 { exit } on && shown++ < 6 { print "  " $0 }' "$file"
+    done >> "$log_dir/stall.txt"
+}
+
+# 단계 로그가 stall_seconds 동안 자라지 않으면 기록을 남기고 단계의 프로세스를 끝낸다. TERM으로 안 끝나면 5초 뒤 KILL.
+watch_stall() {
+    local watched=$1 log=$2 size last="" quiet_since=$SECONDS tick=10 sleeper="" victims alive pid
+    if (( stall_seconds < 30 )); then tick=1; fi
+    trap '[[ -n "$sleeper" ]] && kill "$sleeper" 2>/dev/null; exit 0' TERM
+    while true; do
+        sleep "$tick" </dev/null >/dev/null 2>&1 &
+        sleeper=$!
+        wait "$sleeper" || exit 0
+        size=$(/usr/bin/stat -f %z "$log" 2>/dev/null || print 0)
+        if [[ "$size" != "$last" ]]; then last=$size; quiet_since=$SECONDS; continue; fi
+        (( SECONDS - quiet_since >= stall_seconds )) || continue
+        # 여기부터는 TERM을 무시한다: 단계가 끝나면 본 셸이 감시를 끄는데, 그 전에 남은 자손을 KILL까지 마쳐야 한다.
+        trap '' TERM
+        echo "✘ 멈춤: $stage_name — ${stall_seconds}초 동안 시험 출력이 없어 끝나지 않은 시험과 스택을 남기고 끝냅니다"
+        report_stall "$watched" "$log"
+        victims=($(descendants "$watched") "$watched")
+        stop_tree "$watched"
+        for _ in 1 2 3 4 5; do
+            alive=()
+            for pid in $victims; do kill -0 "$pid" 2>/dev/null && alive+=("$pid"); done
+            (( ${#alive} )) || exit 0
+            sleep 1 </dev/null >/dev/null 2>&1
+        done
+        echo "▸ TERM으로 끝나지 않은 시험 프로세스를 KILL합니다: ${alive[*]}"
+        kill -KILL $alive 2>/dev/null
+        exit 0
+    done
 }
 
 require_filtered_tests() {
@@ -452,6 +565,10 @@ if [[ "$mode" == changed ]]; then
     if [[ "$checks" == *" imports "* ]]; then
         run_stage "모듈 경계 규칙(import·핵심부 API·빚 목록)" imports python3 scripts/check-imports.py
     fi
+    # 검사 스크립트 회귀 전체가 돌면 그 안에 든다
+    if [[ "$checks" == *" selection "* && "$checks" != *" scripts "* ]]; then
+        run_stage "안전 시험 선택 검사(실제 지도)" selection python3 scripts/test-check.py affected-real-map safety-
+    fi
     case "$plan_scope" in
         tests)
             run_stage "소스 타깃 전체 빌드: 앱·CLI 포함(커버리지 계측)" build-sources swift build --enable-code-coverage
@@ -495,6 +612,8 @@ if [[ "$mode" == full || "$mode" == coverage ]]; then
 fi
 if [[ "$requested_mode" == changed && " $plan_checks " == *" scripts "* ]]; then
     run_stage "검사 스크립트 회귀" script-tests python3 scripts/test-check.py
+elif [[ "$requested_mode" == changed && " $plan_checks " == *" selection "* ]]; then
+    run_stage "안전 시험 선택 검사(실제 지도)" selection python3 scripts/test-check.py affected-real-map safety-
 fi
 # 디버그 앱·CLI·테스트를 같은 계측 설정으로 한 번 빌드해 설정 전환에 따른 재컴파일을 줄인다.
 if [[ "$mode" != release ]]; then

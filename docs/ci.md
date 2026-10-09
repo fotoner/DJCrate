@@ -10,20 +10,20 @@ TDD로 일하되, 단계마다 돌리는 범위를 달리해 매번 전체 검�
 |---|---|---|---|
 | 편집 중 | Swift 파일을 고칠 때마다 | 모듈 경계 검사(Claude Code는 PostToolUse 훅이 `scripts/check-imports.py`를 알아서 돌린다) | 수 초 |
 | 빨강·초록 | 시험을 쓰고 고칠 때 | `scripts/check.sh --quick --filter '^DJCDomainTests\.LoopPlannerTests/'`(시험·Suite 하나) | 10~60초(빌드 포함) |
-| 작업 끝 | "됐다"고 말하기 전 | `scripts/check.sh --changed` | 문서만 몇 초, Suite 몇 개 30초 안팎, 쓰기 그룹 변경 약 5분 |
-| 합치기 전·CI | `dev`에 합치기 직전 한 번, PR·`main` 푸시 CI, 사용자 요청 | `scripts/check.sh`(전체) | 8~9분 |
+| 작업 끝·합치기 | "됐다"고 말하기 전, `dev`에 합치기 직전, PR·`dev` 푸시 CI | `scripts/check.sh --changed` | 문서만 몇 초, Suite 몇 개 30초 안팎, 쓰기 그룹 변경 약 5분 |
+| 릴리스 | `main`·`release/*` CI, 수동 실행, 사용자 요청 | `scripts/check.sh`(전체) | 8~9분 |
 | 특수 | 해당 영역을 고칠 때만 | `--stress`(SQLCipher), 아래 "선택 실행 장치", 앱 자가 테스트 | — |
 
-로컬 전체 검사는 사용자가 요청할 때, `dev`에 합치기 직전, `--changed`가 전체로 넓힐 때만 돌린다. `dev` 푸시 CI는 검사 스크립트 회귀(`scripts/test-check.py`)와 `swift test`만 돌린다. 그래서 합치기 전 로컬 전체 검사를 건너뛰면 CI는 시험 회귀만 잡는다. 릴리스 빌드와 커버리지 문제는 잡지 못한다.
+전체 검사는 릴리스 때만 돈다(2026-10-10 결정). 로컬에서는 릴리스 준비, 사용자 요청, `--changed`가 전체로 넓힐 때만 돌린다. `dev`에 합칠 때는 `--changed`로 확인한다. PR·`dev` 푸시 CI도 `--changed`만 돈다([CI 구성](#ci-구성)). `--changed`가 놓치는 회귀와 코어 커버리지(60%)는 릴리스 전체 검사가 잡는다.
 
 | 명령 | 범위 | 쓰임 |
 |---|---|---|
-| `scripts/check.sh` | 가벼운 검사(빌드 전, 십여 초), 디버그·릴리스 앱, 번역, 전체 시험, 커버리지 목표(쓰기 80%, 코어 60%) | 합치기 전·요청·넓히기 때 전체 검사 |
-| `scripts/check.sh --changed [--base <rev>]` | 바꾼 파일에 닿는 시험·검사만(아래) | 작업 끝 확인 |
+| `scripts/check.sh` | 가벼운 검사(빌드 전, 십여 초), 디버그·릴리스 앱, 번역, 전체 시험, 커버리지 목표(쓰기 80%, 코어 60%) | 릴리스·요청·넓히기 때 전체 검사 |
+| `scripts/check.sh --changed [--base <rev>]` | 바꾼 파일에 닿는 시험·검사만(아래) | 작업 끝·`dev` 합치기·PR CI |
 | `scripts/check.sh --quick --filter '<정규식>'` | 필터에 맞는 시험만, 같은 계측 빌드 재사용 | 편집 중 빨강·초록 |
 | `scripts/check.sh --stress` | `CipherColdOpenTests` 필터(경쟁 1개·설정 계약 3개), `DJC_CIPHER_STRESS=1` | SQLCipher 처음 열기 경쟁(`.claude/rules/cipher.md`) |
-| `scripts/check.sh --coverage` | 전체에서 릴리스 빌드만 제외. 앞의 가벼운 검사도 돈다 | 별도 러너의 `--release`와 함께 전체 CI 구성 |
-| `scripts/check.sh --release` | 릴리스 앱 빌드만 | 별도 러너의 `--coverage`와 함께 전체 CI 구성 |
+| `scripts/check.sh --coverage` | 전체에서 릴리스 빌드만 제외. 앞의 가벼운 검사도 돈다 | 릴리스 CI에서 별도 러너의 `--release`와 함께 전체 검사 |
+| `scripts/check.sh --release` | 릴리스 앱 빌드만 | 릴리스 CI에서 별도 러너의 `--coverage`와 함께 전체 검사 |
 
 전체 검사와 `--coverage`는 빌드 전에 십여 초 걸리는 가벼운 검사를 먼저 돈다.
 
@@ -78,9 +78,10 @@ Swift 소스를 바꾸면 그 파일이 선언한 타입을 쓰는 Suite를 고�
 | 쓰기 커버리지 그룹 파일 | 쓰기 그룹 커버리지(80%). 코어 60%는 전체 검사·CI만 본다 |
 | 문서, `skills/**` | `scripts/check-docs.py`와 문장 규칙 |
 | 하네스: `scripts/hooks/**`, `.claude/**`, `scripts/test-harness.py`, `scripts/check-docs.py`, `scripts/check-prose.py`, `scripts/prose-*.txt`, `scripts/worker-lock.sh` | `scripts/test-harness.py`와 `scripts/check-docs.py`. 이것만 바뀌면 넓히지 않는다 |
-| 검사 스크립트: `scripts/test-check.py`, `affected-tests.py`, `test-map.txt` | `python3 scripts/test-check.py` |
+| 검사 스크립트: `scripts/test-check.py`, `affected-tests.py`, `test-map.txt`, `check-imports.py`, `ci-base.sh`, `ci-mtimes.py`, `check.sh` | `python3 scripts/test-check.py`. `check.sh`는 전체 검사로도 넓힌다 |
+| `Sources/**`, `Tests/**`(위 시험에 더해) | 안전 시험 선택 검사: `python3 scripts/test-check.py affected-real-map safety-`(몇 초) |
 
-고른 Suite가 전체의 절반을 넘어도 전체 검사로 넓힌다. 넓힐 때는 이유를 담아 `▸ 전체 검사로 넓힙니다: <이유>`를 출력한다. 넓힌 실행은 문서·훅 검사를 포함해 전체 검사와 같은 단계를 돈다. 검사 스크립트가 바뀌었으면 `scripts/test-check.py`도 돈다.
+고른 Suite가 전체의 절반을 넘어도 전체 검사로 넓힌다. 넓힐 때는 이유를 담아 `▸ 전체 검사로 넓힙니다: <이유>`를 출력한다. 넓힌 실행은 문서·훅 검사를 포함해 전체 검사와 같은 단계를 돈다. 검사 스크립트가 바뀌었으면 `scripts/test-check.py`도 돈다. 전체 검사만으로는 이 검사가 돌지 않는다.
 
 djcTests는 `.build/debug/djc`를 명령 문자열로 띄워서 기호 grep이 닿지 않으므로 경로로 고른다.
 
@@ -119,7 +120,7 @@ Swift·Package 변경이 없으면(문서만) 빌드와 시험 없이 가벼운 
 
 멈출 때는 줄 번호와 묶음 이름을 낸다. Suite 이름 바꾸기, Suite 지우기, 파일 옮기기 뒤에는 지도도 함께 고친다. 일부러 비워 둔 자리는 `maybe`로 적는다.
 
-선택은 기호 이름 grep이라 놓치는 경우가 있다. 프로토콜로만 닿는 구현, 전역 함수, 다른 타입을 거친 동작 변화 등이다. 이 몫은 합치기 전 전체 검사와 CI가 잡는다. 놓친 회귀를 알게 되면 `scripts/test-map.txt`에 줄을 더한다.
+선택은 기호 이름 grep이라 놓치는 경우가 있다. 프로토콜로만 닿는 구현, 전역 함수, 다른 타입을 거친 동작 변화 등이다. 이 몫은 릴리스 전체 검사(`main`·`release/*` CI)가 잡는다. 놓친 회귀를 알게 되면 `scripts/test-map.txt`에 줄을 더한다.
 
 ### 끝 요약과 통과 기록
 
@@ -128,6 +129,7 @@ Swift·Package 변경이 없으면(문서만) 빌드와 시험 없이 가벼운 
 - 단계별 `✔`/`✘`와 초
 - `✔ 통과: <모드> … · 총 N초 · 시험 N개` 또는 `✘ 실패: <모드> · 종료코드 N`
 - 실패면 실패한 시험과 첫 오류 줄(최대 10개). 오류 줄이 없으면 단계 로그 끝 5줄
+- 시험 단계가 멈췄으면 끝나지 않은 시험과 스택 요약([시험 멈춤 감시](#시험-멈춤-감시))
 - 마지막 줄 `로그: <로그 폴더>`
 
 결과 보고는 이 블록의 수치로 한다. 자세한 것은 로그 폴더의 단계 로그에서 grep한다.
@@ -265,6 +267,8 @@ SwiftPM의 시험 실행 명령은 프로파일 병합·내보내기도 하므�
 | `timings.tsv` | 단계별 초·종료 코드 |
 | `exit-code.txt` | 전체 종료 코드 |
 | `coverage.txt` | 파일별 커버리지 집계 입력 |
+| `stall.txt` | 시험 단계가 멈췄을 때 끝나지 않은 시험과 스택 요약 |
+| `stall-sample-<pid>.txt` | 시험 단계가 멈췄을 때 시험 프로세스의 `sample` 원문 |
 
 실패한 단계 뒤의 로그는 생기지 않는다.
 
@@ -273,6 +277,23 @@ SwiftPM의 시험 실행 명령은 프로파일 병합·내보내기도 하므�
 CI는 로그를 캐시 밖인 러너 임시 폴더에 저장한다. `always()` 단계에서는 Job summary와 14일 보관하는 `check-logs-<mode>-<run_id>-<attempt>` artifact를 남긴다. 업로드 대상은 검사·툴체인 텍스트 로그뿐이라 DB·스냅샷은 올리지 않는다. 프로파일·실행물도 올리지 않는다.
 
 취소 때에도 로그 보존을 시도한다. 강제 종료나 러너 유실 때는 업로드를 보장하지 않는다.
+
+### 시험 멈춤 감시
+
+시험 단계(`swift test`)의 로그가 300초 동안 자라지 않으면 `check.sh`는 그 단계가 멈췄다고 본다. 그때 다음을 한 뒤 종료 코드 124로 끝난다.
+
+1. `✘ 멈춤: <단계>` 줄을 낸다.
+2. 끝나지 않은 시험을 로그 폴더의 `stall.txt`에 적는다. 대상은 시작 줄만 남긴 시험과 Suite다. 마지막에 시작한 것부터 12개를 적는다.
+3. 시험 프로세스의 스택을 `sample <pid> 5`로 떠서 `stall-sample-<pid>.txt`에 둔다. 대상은 셸·`tee` 밖의 자손 프로세스다. 최대 4개를 뜬다.
+4. 시험 프로세스를 TERM으로 끝낸다. 5초 안에 끝나지 않은 자손은 KILL한다.
+
+시작 줄은 swift-testing의 `◇ Test … started.`와 XCTest의 `Test Case '…' started.`다. 끝 줄은 `passed`·`failed` 줄이다. 끝 요약에는 `stall.txt`의 내용이 나온다. 그 내용은 끝나지 않은 시험과 스택 맨 위 함수 몇 줄이다. CI에서는 Job summary와 로그 artifact에도 남는다.
+
+`DJC_CHECK_STALL_SECONDS=<초>`로 기준을 바꾼다. 0이면 감시를 끈다. 정수가 아니면 종료 코드 2로 거부한다. 빌드 단계는 보지 않는다. 릴리스 최적화 빌드는 몇 분 동안 출력이 없을 수 있다.
+
+기준을 300초로 둔 근거는 run 37983504195다. 이 실행에서 정상 시험 출력이 가장 오래 끊긴 시간은 115초였다. DJCrateTests는 650초 동안 출력을 내지 않았다. 그 뒤 job 제한 30분이 실행을 끝냈다. 그래서 끝나지 않은 시험도, 스택도 남지 않았다.
+
+비동기 시험이 `await`에서 멈추면 그 작업은 스레드 스택에 없다. 그때는 스택보다 끝나지 않은 시험 목록이 먼저 볼 단서다.
 
 디버그 앱·CLI·시험은 `swift build --build-tests --enable-code-coverage`로 함께 빌드한다. 번역 검사에도 같은 계측 옵션을 넘겨 설정 전환에 따른 재컴파일을 피한다. 앱과 CLI를 실제로 빌드하는 기존 검증은 그대로 둔다. full·coverage에서는 이어서 `swift test --skip-build --enable-code-coverage`로 **전체 시험을 실행**한다. 따로 실행하는 `swift scripts/i18n.swift check`·`sync`의 기본 빌드 설정은 바뀌지 않는다. full의 시험 병렬성과 커버리지 목표는 그대로다.
 
@@ -378,22 +399,54 @@ DB 연결은 SQLCipher 키 유도 때문에 비싸므로, 시험은 필요한 �
 
 ## CI 구성
 
-`.github/workflows/check.yml`은 실행 계기에 따라 검사 범위가 다르다.
+`.github/workflows/check.yml`은 실행 계기에 따라 검사 범위가 다르다. 릴리스가 아니면 바뀐 부분에 닿는 시험만 돈다(2026-10-10 결정). 매일 도는 예약 전체 검사는 두지 않는다.
 
 | 실행 계기 | job | 하는 일 |
 |---|---|---|
-| `dev` 푸시(작업 브랜치를 합칠 때마다) | `test` | `scripts/test-check.py` 뒤 `swift test`만 |
-| PR·`main` 푸시·수동 실행(`workflow_dispatch`) | `coverage` | 계측 디버그 앱·CLI·시험 빌드, 번역 검사, 전체 시험, 줄 커버리지 목표(쓰기 80%, 코어 60%) |
-| PR·`main` 푸시·수동 실행 | `release` | 릴리스 앱 빌드 |
+| `dev` 푸시, 그 밖의 PR(대상이 `main`이 아니고 `release/*`에서 오지 않은 PR) | `changed` | `scripts/check.sh --changed --base <비교 기준>` |
+| 릴리스: `main`·`release/*` 푸시, `main` 대상 PR, `release/*`에서 온 PR, 수동 실행(`workflow_dispatch`) | `coverage` | 계측 디버그 앱·CLI·시험 빌드, 번역 검사, 전체 시험, 줄 커버리지 목표(쓰기 80%, 코어 60%) |
+| 릴리스 | `release` | 릴리스 앱 빌드, 검사 스크립트 회귀(`scripts/test-check.py`) |
 | 수동 실행에서 `run_stress=true` | `stress` | 별도 러너에서 stress 검사 |
 
-PR·`main` 푸시·수동 실행은 전체 검사를 두 러너에 나눠 동시에 돌린다. 시험 수와 커버리지는 Actions의 Job summary에 남긴다. CI는 오디오·UI 앱 자가 테스트를 돌리지 않는다. 앱 설치·서명·배포도 하지 않는다.
+릴리스는 전체 검사를 두 러너에 나눠 동시에 돌린다. 시험 수와 커버리지는 Actions의 Job summary에 남긴다. changed job의 Job summary에는 비교 기준, 고른 범위, 끝 요약 블록이 남는다. CI는 오디오·UI 앱 자가 테스트를 돌리지 않는다. 앱 설치·서명·배포도 하지 않는다.
+
+### changed의 비교 기준
+
+`scripts/ci-base.sh`가 비교 기준을 정한다. changed job은 비교 기준과 견줄 수 있게 기록을 모두 받는다(`fetch-depth: 0`).
+
+| 실행 계기 | 비교 기준 |
+|---|---|
+| PR | 체크아웃한 병합 커밋과 `origin/<PR 기준 브랜치>`의 merge-base. 이 값은 병합 커밋의 첫 부모, 곧 기준 브랜치 끝이다 |
+| 푸시 | 앞 끝(`github.event.before`) |
+
+다음 경우에는 기준을 비운다. 그러면 전체 검사(`scripts/check.sh`)로 넓힌다. 조용히 좁히지 않는다. 넓힌 이유는 경고 주석과 Job summary에 남는다.
+
+- 새 브랜치: `before`가 `000…`이거나 비어 있다.
+- 강제 푸시(`github.event.forced`)
+- 앞 끝이 지금 커밋의 조상이 아니다. 받은 기록에 없는 경우도 같다.
+- PR 기준 브랜치와의 merge-base를 구하지 못했다.
+
+기준을 구해도 `--changed`가 스스로 넓힐 수 있다. `Package.swift`·`scripts/check.sh`·`.github/**`가 바뀐 경우가 그렇다. 고른 Suite가 절반을 넘는 경우도 같다([`--changed`](#--changed)). 넓힌 changed job은 한 러너에서 전체를 차례로 돌기 때문에 릴리스의 두 러너보다 길다.
+
+푸시 실행은 앞 실행을 취소하지 않는다. 푸시는 앞 끝과의 차이만 보므로, 앞 실행을 취소하면 그 차이를 아무도 검사하지 않는다. PR 실행은 새 푸시가 앞 실행을 취소한다. PR은 늘 기준 브랜치와 비교하므로 놓치는 변경이 없다.
+
+`--changed`가 놓칠 수 있는 회귀는 릴리스 전체 검사가 잡는다. 프로토콜로만 닿는 구현, 전역 함수, 다른 타입을 거친 동작 변화 등이다. 코어 커버리지(60%)도 릴리스에서만 본다. 쓰기 그룹 커버리지(80%)는 쓰기 그룹 파일이 바뀐 changed job도 본다.
+
+검사 스크립트 회귀(`scripts/test-check.py`)는 changed job에 따로 단계를 두지 않는다. 검사 스크립트가 바뀌면 `--changed`가 이 검사를 돈다. 릴리스에서는 짧은 `release` 러너가 릴리스 빌드 뒤에 돈다.
+
+Swift가 바뀌면 `--changed`가 그 가운데 안전 시험 선택 경우만 돈다. 이 경우는 실제 지도로 안전 Suite를 고르는지 본다. 파일을 옮기면 지도의 `when`이 다른 파일에 맞아 `--check-map`은 통과해도 안전 Suite를 놓칠 수 있다.
+
+비교 기준이 없어 전체 검사로 넓힌 changed job은 이 검사 전체를 따로 돈다. 인자 없는 `scripts/check.sh`는 이 검사를 돌지 않기 때문이다.
+
+### 제한 시간
+
+검사 단계 제한은 40분, job 제한은 50분이다. 검사 단계가 제한에 걸려도 요약, 로그 보존, 캐시 저장 단계가 돈다. 멈춘 시험은 그보다 먼저 [시험 멈춤 감시](#시험-멈춤-감시)가 끝낸다.
 
 `run_stress`는 기본값이 `false`라 푸시·PR이나 자동 스케줄로는 stress를 돌리지 않는다. 관련 변경을 수동 stress CI로 확인할 때는 이 입력을 켠다.
 
-마지막 `빌드·테스트·커버리지` job은 기존 필수 체크 이름을 유지한다. 이 job은 그 실행의 모든 검사 job이 성공해야 통과하므로, 실패·취소·미실행은 통과시키지 않는다. 한 검사가 실패해도 다른 검사 로그를 잃지 않도록 matrix의 `fail-fast`는 끈다.
+마지막 `빌드·테스트·커버리지` job은 기존 필수 체크 이름을 유지한다. 이 job은 그 실행의 모든 검사 job이 성공해야 통과한다. 모든 검사 job은 changed 하나, 또는 릴리스의 coverage·release·선택한 stress다. 실패·취소·미실행은 통과시키지 않는다. 한 검사가 실패해도 다른 검사 로그를 잃지 않도록 matrix의 `fail-fast`는 끈다.
 
-합치기 전과 릴리스 배포 때 쓰는 인자 없는 `scripts/check.sh`는 전체 검사를 순서대로 돈다. CI 분할용 `--coverage`는 릴리스 빌드만 빼서 돈다. `--release`는 릴리스 빌드만 돈다.
+릴리스와 요청 때 쓰는 인자 없는 `scripts/check.sh`는 전체 검사를 순서대로 돈다. CI 분할용 `--coverage`는 릴리스 빌드만 빼서 돈다. `--release`는 릴리스 빌드만 돈다.
 
 두 명령을 같은 작업 폴더에서 동시에 돌리지 않는다. CI에서는 두 명령이 서로 다른 러너와 `.build`를 쓰므로 SwiftPM 잠금과 산출물이 부딪치지 않는다. 작업 중 로컬 검증은 위 [로컬 검증 운영](#로컬-검증-운영)의 단계대로 범위를 좁힌다.
 
@@ -424,13 +477,46 @@ PR·`main` 푸시·수동 실행은 전체 검사를 두 러너에 나눠 동시
 
 SwiftPM 의존성과 빌드 결과인 `.build`를 캐시한다. 캐시 키는 다음 값으로 만든다.
 
-- OS·아키텍처·캐시 버전
-- 검사 모드: `test`, `coverage`, `release`, `stress`
+- OS·아키텍처·캐시 버전(`v3`)
+- 빌드 묶음: `debug-coverage` 또는 `release`. changed·coverage·stress는 모두 `--enable-code-coverage` 디버그 빌드라 `debug-coverage`를 함께 쓴다.
 - 툴체인 지문
 - `Package.swift`와 `Package.resolved` 해시
 - 커밋
 
-`restore-keys`도 모드를 포함하므로 모드가 다른 산출물이 서로 섞이지 않는다. 캐시가 있어도 검증은 매번 실행한다. 새 키를 처음 쓰면 캐시 없이 시작한다. GitHub의 브랜치 접근 범위 안에 같은 모드 캐시가 없을 때도 같다.
+받을 때는 같은 묶음·툴체인 캐시 가운데 가장 가까운 것을 쓴다(`restore-keys`). `Package.swift`가 바뀌었으면 해시가 다른 캐시도 받는다. 묶음이 다른 산출물은 섞지 않는다. 같은 묶음 캐시가 GitHub의 브랜치 접근 범위 안에 없으면 캐시 없이 시작한다.
+
+저장은 `actions/cache/save` 단계가 따로 한다. `actions/cache`의 자동 저장은 job이 성공할 때만 돈다. 그래서 실패가 이어진 2026-10 초에는 캐시가 하나도 생기지 않았다. run 37983504195도 `Cache not found`였고, `swift test`의 빌드가 399초 걸렸다. 지금은 시험이 실패해도 빌드 결과를 저장한다. 다음 경우에는 저장하지 않는다.
+
+- 취소 상태로 끝난 실행
+- 같은 키를 이미 받은 실행(재실행)
+- 빌드·시험이 없는 changed job(문서·하네스만 바뀜). 이때는 캐시를 받지도 않는다.
+- 캐시를 이미 받은 PR 실행. PR의 캐시는 그 PR에서만 쓸 수 있다. `dev`·`main` 푸시의 캐시는 그 브랜치를 기준으로 한 PR도 쓴다.
+
+저장하기 전에 커버리지 프로파일 폴더(`codecov`)를 지운다. 이 폴더는 시험마다 새로 생기므로 저장할 까닭이 없다.
+
+### 소스 수정 시각 되돌리기
+
+체크아웃은 모든 파일의 수정 시각을 새로 매긴다. Swift 빌드는 수정 시각이 바뀐 소스를 다시 컴파일한다. 그래서 `.build`를 받아도 컴파일이 거의 줄지 않는다. 이 저장소로 로컬에서 잰 결과(2026-10-10, `swift build --build-tests --enable-code-coverage`)는 다음과 같다.
+
+| 상태 | 빌드 시간 |
+|---|--:|
+| 빈 `.build`(cold) | 65초 |
+| 바뀐 것 없음 | 2초 |
+| 모든 추적 파일을 같은 내용의 새 파일로 바꿈(체크아웃 흉내) | 72~74초 |
+| 위와 같되 수정 시각을 앞 값으로 둠(inode만 바뀜) | 1초 |
+| Swift 소스의 수정 시각만 바꿈 | 29초 |
+| 체크아웃 흉내 뒤 `scripts/ci-mtimes.py restore`, 앱 파일 하나는 내용을 바꿈 | 8초 |
+
+inode는 다시 컴파일과 관계가 없다. 수정 시각이 다시 컴파일을 일으킨다. 그래서 캐시와 함께 수정 시각도 저장한다. 캐시를 받은 뒤에는 그 시각으로 되돌린다.
+
+- 저장 전: `scripts/ci-mtimes.py save`가 추적 파일의 내용 해시와 수정 시각을 `.build/djc-source-mtimes.tsv`에 적는다. 이 파일은 캐시에 함께 들어간다.
+- 받은 뒤: `scripts/ci-mtimes.py restore`가 내용 해시가 기록과 같은 파일만 기록한 시각으로 되돌린다.
+
+바뀐 파일과 새 파일은 체크아웃 시각을 그대로 둔다. 이 시각은 캐시를 만든 빌드보다 늦다. 그래서 빌드가 그 파일을 다시 컴파일한다. 내용이 같은 파일은 캐시를 만든 빌드가 본 상태와 같다. 그래서 되돌린 빌드는 그 기계에서 이어 빌드한 것과 같다.
+
+작은 패키지 실험에서는 수정 시각만 바뀐 파일을 다시 컴파일하지 않았다. 이 저장소에서는 달랐다. 실제 CI 시간은 캐시를 받는 첫 실행의 `Build complete` 시간으로 확인한다.
+
+캐시가 있어도 검증은 매번 실행한다. 캐시 복원은 시험 통과의 근거가 아니다.
 
 시험은 합성 픽스처만 쓴다. `DJC_HOME`과 `DJC_REKORDBOX_DIR`은 러너 임시 폴더에 둔다. 개인 라이브러리와 음원은 CI에 올리지 않는다. DB와 백업도 올리지 않는다.
 
@@ -442,7 +528,7 @@ SwiftPM 의존성과 빌드 결과인 `.build`를 캐시한다. 캐시 키는 �
 
 워크플로를 고친 뒤 저장소 루트에서 `actionlint`로 검사한다. actionlint 1.7.12가 아직 공개 미리보기 `xcode-27` 라벨을 모르므로 `.github/actionlint.yaml`은 이 라벨만 허용한다. 이 설정은 self-hosted 러너를 쓰는 설정이 아니다.
 
-`python3 scripts/test-check.py [경우 이름 일부…]`는 합성 명령만으로 `scripts/check.sh`를 검사한다. 인자를 주면 그 경우만 돈다. CI에서도 release를 뺀 job이 먼저 이 검사를 돈다. 실제 Swift 빌드나 라이브러리 접근 없이 다음을 확인한다.
+`python3 scripts/test-check.py [경우 이름 일부…]`는 합성 명령만으로 `scripts/check.sh`를 검사한다. 인자를 주면 그 경우만 돈다. CI에서는 세 job이 이 검사를 돈다. 검사 스크립트가 바뀐 changed job, 비교 기준이 없어 넓힌 changed job, 릴리스의 `release` job이다. Swift만 바뀐 changed job은 안전 시험 선택 경우(`affected-real-map`·`safety-`)만 돈다. 실제 Swift 빌드나 라이브러리 접근 없이 다음을 확인한다.
 
 - 빌드·번역·시험 실패
 - 커버리지·파이프 실패
@@ -451,15 +537,18 @@ SwiftPM 의존성과 빌드 결과인 `.build`를 캐시한다. 캐시 키는 �
 - 분할 모드·quick·stress의 검사 범위와 실패 전파
 - 커버리지 목표 유지와 틀린 인자 거부
 - 합성 `HOME` 아래에서 시험이 DJCrate 사용자 폴더·로그 폴더에 쓰면 종료 코드 4로 실패하는지. 설치 앱이 켜져 있으면 알림만 한다.
+- 가짜 시험이 멈추면 멈춤 감시가 종료 코드 124로 끝내는지. 이때 끝나지 않은 시험과 스택을 남기는지. 빌드 단계와 정한 초보다 짧은 침묵은 기다리는지.
+- `scripts/ci-base.sh`가 PR에서 merge-base를, 푸시에서 앞 끝을 내는지. 기준을 구할 수 없으면 비우는지.
+- `scripts/ci-mtimes.py`가 내용이 같은 파일만 기록한 수정 시각으로 되돌리는지. 바뀐 파일과 새 파일은 그대로 두는지.
 
 ## 푸시 뒤 관리자 확인
 
 1. Actions 설정에서 이 워크플로의 실행을 허용한다. `actions/checkout`, `actions/cache`, `actions/upload-artifact` 실행도 허용한다.
 2. 외부 포크 PR은 **모든 외부 기여자의 실행 승인**을 요구하도록 설정한다. 변경 내용을 확인한 뒤 승인한다.
-3. `dev` 푸시에서 `test`가 도는지 확인한다. PR·`main`·수동 실행에서는 `coverage`와 `release`를 확인한다. `run_stress=true`인 수동 실행에서는 추가 `stress`를 확인한다.
+3. `dev` 푸시와 `dev` 대상 PR에서 `changed`가 도는지, Job summary의 비교 기준이 맞는지 확인한다. `main`·`release/*`·수동 실행에서는 `coverage`와 `release`를 확인한다. `run_stress=true`인 수동 실행에서는 추가 `stress`를 확인한다.
 4. 선택한 stress의 실패·취소·미실행도 필수 집계 체크를 통과시키지 않는지 본다.
 5. 실제 검사 러너가 macOS 27·Xcode 27인지 확인한다. 결과를 합치는 `빌드·테스트·커버리지` job만 Ubuntu에서 돈다. 포크 PR도 호스티드 러너에서만 도는지 확인한다.
-6. 첫 실행의 캐시 저장과 다음 실행의 복원을 확인한다. Job summary의 시험 수·커버리지와 README의 `dev` 상태 배지도 확인한다.
+6. 첫 실행의 캐시 저장과 다음 실행의 복원을 확인한다. 시험이 실패한 실행도 캐시를 저장하는지 본다. Job summary의 시험 수·커버리지와 README의 `dev` 상태 배지도 확인한다.
 7. `dev`·`main` 보호 규칙에 `빌드·테스트·커버리지`를 필수 상태 체크로 더한다. 워크플로 파일만으로는 병합을 막지 못한다.
 
 이 작업은 러너를 등록하지 않는다. 저장소 설정 변경과 푸시도 하지 않는다. 미리보기 이미지 공급이 끊기면 공식 라벨·SDK·실행 OS를 다시 확인한 뒤 러너를 바꾼다.

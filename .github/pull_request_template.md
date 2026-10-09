@@ -4,7 +4,7 @@
 
 ## 확인한 것
 
-실행한 명령과 결과를 적는다(`scripts/check.sh` 포함).
+실행한 명령과 결과를 적는다(`scripts/check.sh --changed` 포함).
 
 - 명령:
 - 결과:
