@@ -1,0 +1,181 @@
+# 바꾼 파일 → 늘 함께 돌릴 시험(scripts/affected-tests.py가 읽는다). 사람이 관리한다.
+# 기호 이름으로 고르는 기본 규칙에 더한다. 안전 시험(라이브러리·USB·사용자 데이터를 지키는 시험)은 경로로 넓게 고른다:
+# 프로세스로 띄우는 CLI 시험·반환값으로만 닿는 값 타입은 기호 grep에 걸리지 않는다. 그 밖은 대략적이어도 되고(놓친 몫은
+# 합치기 전 전체 검사·CI가 덮는다), 놓친 회귀가 나오면 여기에 줄을 더한다.
+# 적은 Suite가 Tests/에 없으면 affected-tests가 실패한다(이름을 바꿨으면 여기도 고친다).
+#
+# group <이름>              묶음 시작
+# when <glob>               이 경로가 바뀌면 묶음을 켠다(`*`는 한 폴더 안, `**`는 하위 폴더까지). 맞는 파일이 하나도 없으면
+#                           affected-tests가 실패한다(오타·파일 이동으로 묶음이 소리 없이 꺼지지 않게)
+# maybe <glob>              when과 같되 맞는 파일이 없어도 된다(앞으로 옮길 자리)
+# suite <시험 타깃>.<Suite>  더할 Suite
+# target <시험 타깃>         더할 시험 타깃 전체
+# check <검사>              켤 가벼운 검사(write-coverage·translations·imports·docs·harness·scripts)
+# note <글>                 고른 범위와 함께 출력할 안내
+# require <글>              --changed가 대신하지 않는 필수 검사. 고른 범위와 끝 요약에 ⚠로 다시 낸다
+# none                      시험이 없는 파일로 인정(없으면 규칙 밖 파일은 전체 검사로 넓힌다)
+# needs <시험 타깃> <제품>   그 타깃을 빌드할 때 제품도 빌드한다
+
+# rekordbox 쓰기 관문·백업·복원과 쓰기·복원 대상을 정하는 곳(조립 지점·위치 값·데이터 폴더). 안전 시험은 지우지 않는다(167-work BRIEF).
+group rekordbox-safety
+when Sources/RekordboxKit/RekordboxWriter**
+when Sources/RekordboxKit/RekordboxGridWriter**
+when Sources/RekordboxKit/RekordboxCompatibility**
+when Sources/RekordboxKit/RekordboxTrackWriter**
+when Sources/RekordboxKit/RekordboxTrackAdd**
+maybe Sources/RekordboxKit/Write/**
+when Sources/RekordboxKit/Database/**
+when Sources/RekordboxKit/PointSnapshot/**
+when Sources/RekordboxKit/WriteSupport/**
+when Sources/DJCDomain/Rekordbox/**
+when Sources/DJCEnvironment/**
+when Sources/DJCApplication/Reflection/**
+when Sources/DJCApplication/Library/LibraryLocation*
+when Sources/DJCAdapters/Reflection/**
+when Sources/DJCAdapters/Library/LibraryLocation*
+when Sources/DJCStorage/Support/DJCPaths*
+when Sources/DJCrate/App/AppComposition*
+when Sources/DJCrate/Reflection/**
+when Sources/djc/CLIComposition*
+when Sources/djc/Commands/**
+suite RekordboxKitTests.RealLibraryProtectionTests
+suite RekordboxKitTests.WriteGuardTests
+suite RekordboxKitTests.WriteTargetGuardTests
+suite RekordboxKitTests.RekordboxBackupTests
+suite RekordboxKitTests.RekordboxBackupPathTests
+suite RekordboxKitTests.RekordboxBackupPruneTests
+suite RekordboxKitTests.RekordboxRestoreChainTests
+suite RekordboxKitTests.RekordboxRestoreFailureTests
+suite RekordboxKitTests.RekordboxWriterGoldenTests
+suite DJCrateTests.RestoreTargetTests
+suite djcTests.CLIRefusalTests
+suite djcTests.CLIWriteTargetTests
+suite djcTests.RestorePathTests
+suite djcTests.LabCredentialTests
+
+# USB 쓰기 관문·실물 동의(UsbPhysicalWriteGate)·라이브 DB 판정(UsbLiveDatabase)·회복·되돌리기·임시 폴더 제한(UsbScratchPath).
+# 모든 모듈의 Usb/ 폴더와 CLI·앱의 USB 입구. 실물 거부는 CLI(--allow-physical --confirm)·앱(쓰기 확인 창)에서도 본다.
+# UsbRollbackIntent 시험은 UsbSyncSelectionPipelineTests의 확장에 있다.
+group usb-safety
+when Sources/*/Usb/**
+when Sources/DJCrate/App/AppComposition+Usb*
+when Sources/djc/CLIComposition+Usb*
+when Sources/djc/Commands/Usb*
+when Sources/djc/Lab/Usb*
+suite RekordboxKitTests.UsbWriteGuardTests
+suite RekordboxKitTests.UsbWriterFailureTests
+suite RekordboxKitTests.UsbRestoreTests
+suite RekordboxKitTests.UsbRecoverTests
+suite RekordboxKitTests.UsbJournalTests
+suite RekordboxKitTests.UsbSyncSelectionPipelineTests
+suite RekordboxKitTests.UsbScratchRootsTests
+suite DJCDomainTests.UsbPhysicalWriteGateTests
+suite DJCStorageTests.UsbScratchPathTests
+suite DJCApplicationTests.UsbWriteDecisionTests
+suite DJCrateTests.UsbWriteCoordinatorTests
+suite DJCrateTests.UsbExportSheetModelTests
+suite djcTests.UsbCommandTests
+suite djcTests.UsbEditCommandTests
+suite djcTests.UsbSettingLabTests
+suite djcTests.UsbPlanLabTests
+suite djcTests.UsbExportCommandTests
+suite djcTests.CLIRefusalTests
+
+# djc 명령·실험 도구는 시험이 .build/debug/djc 프로세스를 명령 문자열로 띄워 닿는다(기호 grep이 못 찾음) → djcTests 전체.
+# DJCAdapters의 실제 구현(.live)도 CLI가 같은 것을 프로세스 안에서 쓴다.
+group djc-process
+when Sources/djc/**
+when Sources/djcExecutable/**
+when Sources/DJCAdapters/**
+target djcTests
+
+# 실험 도구(djc lab)는 라이브 DB·임시 폴더 밖을 거부해야 한다(djcTests 전체에 더해 임시 폴더 규칙 자체).
+group lab-safety
+when Sources/djc/Lab/**
+suite DJCStorageTests.UsbScratchPathTests
+suite RekordboxKitTests.UsbScratchRootsTests
+
+# SQLCipher 처음 열기 경쟁. 여기를 바꾸면 stress도 돌린다(AGENTS.md).
+group cipher
+when Sources/RekordboxKit/Database/**
+when Sources/djc/Lab/CipherLab*
+suite djcTests.CipherColdOpenTests
+suite djcTests.CipherColdOpenConfigurationTests
+require SQLCipher 초기화·cold-open을 바꿨으면 scripts/check.sh --stress
+
+# 시험 격리: 시험 프로세스의 임시 폴더(TestProcess, #182)·DJCrate 데이터 폴더 기본값(DJCPaths)을 쓰는 시험
+# (LiveDraftHome 격리는 DJC_HOME이 있을 때만 돈다).
+group test-isolation
+when Sources/DJCStorage/Support/DJCPaths*
+when Sources/DJCStorage/Support/DJCTempCleanup*
+when Sources/DJCEnvironment/**
+suite DJCrateTests.ArtworkReflectionTests
+suite DJCrateTests.LibrarySyncTests
+suite DJCrateTests.UsbSyncReadEpochTests
+suite DJCrateTests.TrackWritePathTests
+suite DJCrateTests.UsbExportJobLayoutTests
+suite DJCrateTests.MusicalKeyEditingTests
+suite DJCrateTests.HideStreamingTests
+suite DJCrateTests.RecoverySheetTests
+suite DJCAdaptersTests.AdapterTestEnvironmentTests
+suite DJCAdaptersTests.LibraryLocationTests
+suite DJCDomainTests.CachePathsTests
+suite DJCDomainTests.LogPathsTests
+
+# 쓰기 커버리지 그룹: scripts/check.sh 커버리지 awk의 쓰기 정규식과 같은 파일(test-check.py가 맞대어 본다).
+# 그룹 80%는 이 세 타깃 전체로 잰다. Write/ 아래는 정규식이 허용하는 자리라 maybe로 둔다.
+group write-coverage
+when Sources/RekordboxKit/RekordboxWriter**
+when Sources/RekordboxKit/RekordboxGridWriter**
+when Sources/RekordboxKit/RekordboxCompatibility**
+when Sources/RekordboxKit/RekordboxTrackWriter**
+when Sources/RekordboxKit/RekordboxTrackAdd**
+maybe Sources/RekordboxKit/Write/RekordboxWriter**
+maybe Sources/RekordboxKit/Write/RekordboxGridWriter**
+maybe Sources/RekordboxKit/Write/RekordboxCompatibility**
+maybe Sources/RekordboxKit/Write/RekordboxTrackWriter**
+maybe Sources/RekordboxKit/Write/RekordboxTrackAdd**
+when Sources/RekordboxKit/Usb/Write/**
+when Sources/DJCApplication/Reflection/RekordboxWriteGate.swift
+when Sources/DJCAdapters/Reflection/RekordboxWriteGate+Live.swift
+when Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift
+check write-coverage
+target RekordboxKitTests
+target DJCApplicationTests
+target DJCAdaptersTests
+
+# 화면 관찰 범위(#129·#137·#138). LayoutRecomputeTests는 환경 변수가 있어야 돈다.
+group observation
+when Sources/DJCrate/App/ContentView.swift
+when Sources/DJCrate/App/Sidebar*.swift
+when Sources/DJCrate/Library/TrackList/TrackTable*.swift
+suite DJCrateTests.SidebarObservationTests
+suite DJCrateTests.LayoutRecomputeTests
+require 관찰 범위를 바꿨으면 DJC_LAYOUT_RECOMPUTE_TESTS=1 scripts/check.sh --quick --filter LayoutRecomputeTests
+
+# 번역 카탈로그·화면 문구 검사 도구
+group localization
+when Sources/**/*.xcstrings
+when scripts/i18n.swift
+suite DJCrateTests.LocalizationCatalogTests
+suite djcTests.LocalizationTests
+
+group build-script
+when scripts/build-app.sh
+when scripts/make-icon.swift
+when Sources/DJCrate/Info.plist
+suite djcTests.BuildAppScriptTests
+
+# 시험이 없는 파일(빌드·검사 대상이 아님)
+group no-tests
+when .gitignore
+when scripts/coverage.sh
+when scripts/usb-parser-compare.py
+when scripts/xml-compare.py
+when THIRD_PARTY_NOTICES.md
+when Assets/**
+none
+
+# djcTests는 .build/debug/djc 프로세스를 띄운다. --changed는 소스 타깃 전체(제품 포함)를 먼저 빌드하므로 따로 빌드하지 않지만,
+# 고른 범위에 제품을 적어 둔다.
+needs djcTests djc

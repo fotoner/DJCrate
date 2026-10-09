@@ -1,3 +1,5 @@
+import DJCAdapters
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
@@ -36,9 +38,9 @@ struct RelocateModelTests {
                           loadError: (any Error)? = nil,
                           delay: Duration = .zero,
                           progress: [RelocateScanner.Progress] = [],
-                          mounted: [String] = ["/", "/Volumes/Old"]) -> RelocateModel.Dependencies {
-            RelocateModel.Dependencies(
-                loadTargets: { tracks, _ in
+                          mounted: [String] = ["/", "/Volumes/Old"]) -> RelocateSource {
+            RelocateSource(
+                targets: { tracks, _ in
                     if let loadError { throw loadError }
                     return tracks.map { RelocateTarget(track: $0, fileSize: 5_000_000) }
                 },
@@ -53,8 +55,8 @@ struct RelocateModelTests {
         }
     }
 
-    func model(_ dependencies: RelocateModel.Dependencies, snapshot: URL? = URL(filePath: "/tmp/djc-relocate-model.db")) -> RelocateModel {
-        RelocateModel(tracks: Self.tracks, snapshot: snapshot, folder: Self.folder, dependencies: dependencies)
+    func model(_ source: RelocateSource, snapshot: URL? = URL(filePath: "/tmp/djc-relocate-model.db")) -> RelocateModel {
+        RelocateModel(tracks: Self.tracks, snapshot: snapshot, folder: Self.folder, relocate: RelocateTracks(source: source))
     }
 
     @Test func 훑기가_끝나면_미리_보기가_되고_확실한_곡만_미리_고른다() async throws {
@@ -122,7 +124,7 @@ struct RelocateModelTests {
     @Test func 다시_찾을_때_연결된_디스크를_다시_읽는다() async throws {
         let mounted = Mounted(["/"])
         let base = Fake().dependencies()
-        let model = model(RelocateModel.Dependencies(loadTargets: base.loadTargets, scan: base.scan, mountedVolumes: { mounted.value }))
+        let model = model(RelocateSource(targets: base.targets, scan: base.scan, mountedVolumes: { mounted.value }))
         model.start()
         #expect(await waitUntil { !model.isScanning })
         #expect(model.absence(for: "1") == .volumeNotMounted(name: "Old"))
@@ -164,16 +166,17 @@ struct RelocateModelTests {
 
     @Test func 라이브러리_사본이_없으면_훑기_전에_멈춘다() async throws {
         // 실제 입출력 경로: 사본이 없으면 DB도 폴더도 열기 전에 실패한다
-        let model = RelocateModel(tracks: Self.tracks, snapshot: nil, folder: URL(filePath: "/nonexistent-djc-folder"))
+        let model = RelocateModel(tracks: Self.tracks, snapshot: nil, folder: URL(filePath: "/nonexistent-djc-folder"),
+                                  relocate: RelocateTracks(source: .live))
         model.start()
         #expect(await waitUntil { !model.isScanning })
         #expect(model.phase == .failed(DJCError.snapshotNotFound.localizedDescription))
     }
 
     @Test func 폴더_오류는_이유를_그대로_보여_준다() async throws {
-        let dependencies = RelocateModel.Dependencies(
-            loadTargets: { tracks, _ in tracks.map { RelocateTarget(track: $0, fileSize: nil) } },
-            scan: { _, _, _ in throw RelocateScanner.ScanError.protectedFolder })
+        let dependencies = RelocateSource(
+            targets: { tracks, _ in tracks.map { RelocateTarget(track: $0, fileSize: nil) } },
+            scan: { _, _, _ in throw RelocateScanner.ScanError.protectedFolder }, mountedVolumes: { [] })
         let model = model(dependencies)
         model.start()
         #expect(await waitUntil { !model.isScanning })

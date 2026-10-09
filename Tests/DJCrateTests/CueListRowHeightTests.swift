@@ -63,7 +63,7 @@ struct CueListRowHeightTests {
         // 다른 곡의 초안이 들어온 것처럼 큐 id를 모두 새로 만든다.
         h.deck.draft = CueDraft(trackUUID: "track-2", rekordboxCues: (0..<5).map {
             Cue(id: "b\($0)", contentID: "2", kind: 0, inMsec: 3_000 + $0 * 7_000, name: "", colorTableIndex: nil)
-        })
+        }, newID: { UUID() })
         for _ in 0..<200 where findTable(in: window.contentView)?.numberOfRows != 5 { try await Task.sleep(for: .milliseconds(10)) }
         // SwiftUI가 행을 바꾸며 표 설정을 되돌려도 다시 맞춰질 시간을 준다.
         try await Task.sleep(for: .milliseconds(500))

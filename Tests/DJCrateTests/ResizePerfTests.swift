@@ -4,7 +4,7 @@ import Testing
 
 #if DEBUG
 @MainActor
-@Suite("창 크기 성능 기록 계약")
+@Suite("창 크기 성능 기록 계약", .tags(.perfContract))
 struct ResizePerfTests {
     @Test func 포함_구간은_따로_기록하고_초기화하며_꺼졌을_때도_동작은_실행한다() {
         let original = PerfProbe.measuresIntervals

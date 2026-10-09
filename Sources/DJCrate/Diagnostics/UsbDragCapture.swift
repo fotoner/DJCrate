@@ -1,5 +1,7 @@
 #if DEBUG
 import AppKit
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -57,9 +59,10 @@ enum UsbDragCapture {
         guard volume.isDiskImage, volume.name == "DJCDRAG" else { throw Failure("합성 디스크 이미지(DJCDRAG)가 아님") }
         let (events, continuation) = AsyncStream.makeStream(of: [UsbVolumeInfo].self)
         defer { continuation.finish() }
-        let host = SystemUsbHost(io: .reading(snapshots: DJCPaths.userData.appending(path: "drag-usb-snapshots")), events: events, current: { [volume] })
-        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, localLibrary: { nil })
-        usb.draftDirectory = DJCPaths.usbDrafts
+        let host = SystemUsbHost(io: UsbAppComposition.hostIO(snapshots: DJCPaths.userData.appending(path: "drag-usb-snapshots")), events: events,
+                                 current: { [volume] })
+        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: UsbAppComposition.writeService(), localLibrary: { nil })
+        usb.drafts = .live(directory: DJCPaths.usbDrafts)
         store.usb = usb
         await usb.refresh()
         NSApp.appearance = NSAppearance(named: .aqua)
@@ -178,8 +181,8 @@ enum UsbDragCapture {
         log("7 USB 곡 → 같은 USB 컬렉션: 놓기 \(dropped) · USB 초안 \(before)→\(usbDrafts().count)건")
 
         // 8. 끌 수 없는 USB 줄(초안을 받지 않는 볼륨): 끌기가 시작되지 않을 때 고른 줄이 숨지 않는다
-        let directory = usb.draftDirectory
-        usb.draftDirectory = nil
+        let drafts = usb.drafts
+        usb.drafts = nil
         table = try await show(.usb(.playlist(volumeKey: key, id: ga.id)))
         table.selectRowIndexes([1, 3], byExtendingSelection: false)
         // 앞선 끌기가 순서를 바꿀 수 있는 목록이었으면 표는 간격 표시인 채로 남아 있다
@@ -189,7 +192,7 @@ enum UsbDragCapture {
         log("8 초안을 받지 않는 USB 목록: 끌기 \(dragged.summary) · 선택 [\(selected(table))] · 숨은 줄 \(Array(table.hiddenRowIndexes))")
         try captureWindow(window, to: path("usb-playlist-not-draggable"))
         await dragged.end()
-        usb.draftDirectory = directory
+        usb.drafts = drafts
 
         _ = try await show(.usb(.playlist(volumeKey: key, id: na.id)))
         try captureWindow(window, to: path("usb-playlist-na"))

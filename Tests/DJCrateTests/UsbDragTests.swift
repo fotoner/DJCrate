@@ -1,11 +1,14 @@
 @testable import DJCrate
 import AppKit
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import RekordboxKit
 import Testing
+import UniformTypeIdentifiers
 
 /// 끌어 놓기 시험용 끌기 정보(창 서버 세션 없이 표의 놓기 대리자에 넘긴다)
 @MainActor
@@ -65,16 +68,15 @@ struct UsbDragTests {
     func setUp(undo: UndoManager? = nil) async -> (UsbStore, UsbEditActions) {
         let usbHost = FakeUsbHost([image])
         usbHost.serve(image, library: Self.library())
-        let usb = UsbTestData.store(usbHost)
-        usb.writeService = service
-        usb.draftDirectory = drafts
+        let usb = UsbTestData.store(usbHost, service: service)
+        usb.drafts = .live(directory: drafts)
         service.update {
             $0.base = UsbEditTestData.base
             $0.drafts = drafts
         }
         await usb.refresh()
         var actions = UsbEditActions(usb: usb, host: host, prompter: ScriptedPrompter(), namePrompter: ScriptedNamePrompter())
-        actions.undoManager = undo
+        actions.undoManager = { undo }
         return (usb, actions)
     }
 
@@ -83,8 +85,9 @@ struct UsbDragTests {
 
     /// USB 목록을 보는 곡 목록(앱처럼 store.usb를 붙인다)
     func store(_ usb: UsbStore, showing target: UsbSidebarTarget) -> LibraryStore {
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.usbdrag.\(UUID())")!, persist: false),
-                                 resultHistory: WriteResultHistory(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbdrag"), persist: false),
+                                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                                      mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
         store.phase = .loaded
         store.usb = usb
         store.sidebar = .usb(target)
@@ -172,11 +175,11 @@ struct UsbDragTests {
         harness.table.prepareDragFeedback()
         #expect(harness.table.draggingDestinationFeedbackStyle == .gap)
         // 초안을 받지 않는 볼륨(USB 줄을 끌 수 없음)·USB 컬렉션은 간격 표시를 쓰지 않는다
-        usb.draftDirectory = nil
+        usb.drafts = nil
         #expect(harness.coordinator.dragFeedbackStyle == .regular)
         harness.table.prepareDragFeedback()
         #expect(harness.table.draggingDestinationFeedbackStyle == .regular)
-        usb.draftDirectory = drafts
+        usb.drafts = .live(directory: drafts)
         playlist.sidebar = .usb(.collection(volumeKey: key))
         #expect(harness.coordinator.dragFeedbackStyle == .regular)
     }
@@ -230,21 +233,6 @@ struct UsbDragTests {
     }
 
     // MARK: - 목록 안 순서 바꾸기
-
-    @Test("옮길 항목과 놓은 자리 → 순서 바꾸기 편집(자리는 옮기는 곡을 뺀 목록 기준, 그대로면 없음)")
-    func moveEntriesEdit() {
-        let entries = [2, 1, 2]
-        #expect(UsbEditActions.moveEntriesEdit([PlaylistEntry(trackNo: 3, contentID: "2")], before: 1, entries: entries, playlist: 10)
-            == .playlist(edit: .moveTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 3, contentID: "2")], to: 1)))
-        // 맨 끝으로
-        #expect(UsbEditActions.moveEntriesEdit([PlaylistEntry(trackNo: 1, contentID: "2"), PlaylistEntry(trackNo: 2, contentID: "1")], before: nil,
-                                               entries: entries, playlist: 10)
-            == .playlist(edit: .moveTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 1, contentID: "2"), PlaylistEntry(trackNo: 2, contentID: "1")],
-                                           to: 2)))
-        // 제자리
-        #expect(UsbEditActions.moveEntriesEdit([PlaylistEntry(trackNo: 2, contentID: "1")], before: 3, entries: entries, playlist: 10) == nil)
-        #expect(UsbEditActions.moveEntriesEdit([], before: 1, entries: entries, playlist: 10) == nil)
-    }
 
     @Test("USB 목록 표 안에 놓으면 순서 바꾸기 초안이 생기고, 표는 초안을 얹은 순서라 이어서 옮겨도 자리가 맞는다")
     func reorderInsideUsbPlaylist() async throws {
@@ -302,37 +290,6 @@ struct UsbDragTests {
     }
 
     // MARK: - 초안을 얹은 항목
-
-    @Test("초안을 얹은 USB 목록 항목: 계획처럼 차례로 대 보고, 곡 번호를 모르는 편집이 닿으면 nil")
-    func projection() throws {
-        let library = Self.library()
-        let list = try #require(library.playlists.first { $0.id == 10 })
-        func entries(_ edits: [UsbLibraryEdit], _ playlist: UsbPlaylist? = nil) -> [Int]? {
-            UsbDraftProjection.entries(of: playlist ?? list, library: library, edits: edits)
-        }
-        #expect(entries([]) == [2, 1, 2])
-        // 다른 목록·컬렉션만 고치는 편집은 그대로
-        #expect(entries([.playlist(edit: .addTracks(playlist: .id("20"), contentIDs: ["1"])), .refreshTracks(usbContentIDs: [1], parts: [.info]),
-                         .addTracks(localContentIDs: ["11"], playlist: nil), .playlist(edit: .rename(playlist: .id("10"), name: "새 이름"))]) == [2, 1, 2])
-        // 넣기 → 빼기 → 옮기기 → USB에서 곡 빼기
-        #expect(entries([.playlist(edit: .addTracks(playlist: .id("10"), contentIDs: ["3"])),
-                         .playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 1, contentID: "2")])),
-                         .playlist(edit: .moveTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 3, contentID: "3")], to: 1)),
-                         .removeTracks(usbContentIDs: [1])]) == [3, 2])
-        // 자리가 어긋난 편집(쓸 때 막힌다)
-        #expect(entries([.playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 1, contentID: "1")]))]) == nil)
-        // 새 곡 번호·동기화 결과를 쓰기 전에는 모른다. 지운 목록·지운 폴더 안 목록도
-        #expect(entries([.addTracks(localContentIDs: ["11"], playlist: .id("10"))]) == nil)
-        #expect(entries([.syncPlaylist(playlist: .id("10"), localContentIDs: ["11"])]) == nil)
-        #expect(entries([.playlist(edit: .delete(playlist: .id("10")))]) == nil)
-        let inner = try #require(library.playlists.first { $0.id == 40 })
-        #expect(entries([.playlist(edit: .delete(playlist: .id("30")))], inner) == nil)
-
-        // 라이브러리 전체: 바뀐 목록만 두 형식에 함께 얹는다
-        let projected = UsbDraftProjection.library(library, edits: [.playlist(edit: .addTracks(playlist: .id("20"), contentIDs: ["2"]))])
-        #expect(projected.playlists.first { $0.id == 20 }?.entries == [.oneLibrary: [3, 2], .deviceLibrary: [3, 2]])
-        #expect(projected.playlists.first { $0.id == 10 }?.entries == library.playlists.first { $0.id == 10 }?.entries)
-    }
 
     @Test("목록에서 빼기 메뉴도 초안을 얹은 자리로 판정한다(앞 초안이 자리를 바꾼 뒤)")
     func blockReasonUsesProjectedEntries() async throws {

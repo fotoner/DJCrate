@@ -1,10 +1,12 @@
 @testable import DJCrate
+import DJCApplication
 import AppKit
 import DJCAnalysis
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -22,7 +24,7 @@ struct MusicalKeyEditingTests {
                  cues: [], playCount: 0)
     }
 
-    func store() -> LibraryStore { LibraryStore(saveTagDrafts: { _ in }) }
+    func store() -> LibraryStore { LibraryStore.test(saveTagDrafts: { _ in }) }
 
     // MARK: 목록 칸 이름
 
@@ -35,9 +37,9 @@ struct MusicalKeyEditingTests {
 
     // MARK: 고르기 규칙
 
-    @Test func 고르기는_없음과_스물네_이름이고_옛_표기_값은_맨_앞에_보인다() {
-        #expect(KeyPicker.choices(current: "5A").count == 24 && KeyPicker.choices(current: "").first == "1A")
-        #expect(KeyPicker.choices(current: "Em").first == "Em" && KeyPicker.choices(current: "Em").count == 25)
+    @Test func 고르기에서_옛_표기_값은_맨_앞에_보인다() {
+        // 고를 수 있는 이름(없음·Camelot 24개)은 곡 목록 키 메뉴 시험(`TrackListKeyEditTests`)이 본다.
+        #expect(KeyPicker.choices(current: "Em").first == "Em" && KeyPicker.choices(current: "").first == "1A")
     }
 
     @Test func 스트리밍_곡은_키를_고를_수_없고_추가한_곡은_고를_수_있다() throws {
@@ -64,20 +66,11 @@ struct MusicalKeyEditingTests {
         #expect(store.tagDrafts[row.track.uuid]?.fields.musicalKey == "")
         store.setTag(.musicalKey, "5A", rows: [row])
         #expect(store.tagDrafts.isEmpty, "처음 값으로 되돌리면 초안이 사라진다")
-    }
-
-    @Test(arguments: [("8a", "8A"), (" 12b ", "12B"), ("", "")]) func 입력은_정확한_이름으로_다듬어_받는다(raw: String, expected: String) throws {
-        let store = store()
-        let row = Self.row("1", key: "5A")
-        store.setTag(.musicalKey, raw, rows: [row])
-        #expect(store.tagDrafts[row.track.uuid]?.fields.musicalKey == expected)
-    }
-
-    @Test(arguments: ["Am", "C", "13A", "0B", "키", "8A8A"]) func Camelot_이름이_아닌_값은_초안에_넣지_않는다(raw: String) {
-        let store = store()
-        let row = Self.row("1", key: "5A")
-        store.setTag(.musicalKey, raw, rows: [row])
+        // 입력은 Camelot 이름으로 다듬고 아니면 받지 않는다(조합은 Domain `MusicalKeyTagTests`)
+        store.setTag(.musicalKey, "Am", rows: [row])
         #expect(store.tagDrafts.isEmpty)
+        store.setTag(.musicalKey, " 12b ", rows: [row])
+        #expect(store.tagDrafts[row.track.uuid]?.fields.musicalKey == "12B")
     }
 
     @Test func 추가한_곡의_키_기준은_빈칸이라_목록의_키를_골라도_초안이_된다() throws {
@@ -188,10 +181,10 @@ struct MusicalKeyEditingTests {
 
     @Test(arguments: ["library", "estimate", "fileTag"])
     func 키_제안은_적용할_때만_초안을_만든다(source: String) throws {
-        let suite = "djc.test.key-suggestion.\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.suiteName("key-suggestion")
+        let defaults = TestDefaults.open(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
-        let store = LibraryStore(settings: SettingsStore(defaults: defaults), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false), saveTagDrafts: { _ in })
         var row = Self.row("suggestion", key: source == "library" ? nil : "8B", staged: source != "library")
         row.keyEstimated = source == "estimate"
         let estimate = source == "library" ? "8B" : row.track.key
@@ -207,11 +200,11 @@ struct MusicalKeyEditingTests {
 
     @Test(arguments: [false, true])
     func 키_제안_무시는_곡별로_영속화하고_그리드_제안과_초안을_건드리지_않는다(staged: Bool) {
-        let suite = "djc.test.key-ignore.\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.suiteName("key-ignore")
+        let defaults = TestDefaults.open(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
-        let settings = SettingsStore(defaults: defaults)
-        let store = LibraryStore(settings: settings, saveTagDrafts: { _ in })
+        let settings = SettingsStore(defaults: defaults, persist: true)
+        let store = LibraryStore.test(settings: settings, saveTagDrafts: { _ in })
         let row = Self.row("ignored", key: staged ? "8B" : nil, staged: staged), other = Self.row("other")
         settings.setStrings(SettingKeys.dismissedGridSuggestions, [other.track.uuid])
         store.dismissKeySuggestion(rows: [row])
@@ -220,7 +213,7 @@ struct MusicalKeyEditingTests {
         #expect(store.tagDrafts.isEmpty)
         store.applyKeySuggestion(estimate: "8B", rows: [row])
         #expect(store.tagDrafts.isEmpty, "무시한 제안은 늦게 온 적용에서도 초안을 만들지 않는다")
-        let reopened = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: suite)!), saveTagDrafts: { _ in })
+        let reopened = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.open(suite), persist: true), saveTagDrafts: { _ in })
         #expect(reopened.keySuggestion(estimate: "8B", rows: [row]) == nil)
         #expect(settings.strings(SettingKeys.dismissedGridSuggestions) == [other.track.uuid])
         // 무시는 제안만 숨긴다. 직접 키를 고르는 길은 그대로다.
@@ -229,11 +222,11 @@ struct MusicalKeyEditingTests {
     }
 
     @Test func 무시한_키_제안은_다시_보기로_되살리고_그리드_무시는_건드리지_않는다() {
-        let suite = "djc.test.key-restore.\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.suiteName("key-restore")
+        let defaults = TestDefaults.open(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
-        let settings = SettingsStore(defaults: defaults)
-        let store = LibraryStore(settings: settings, saveTagDrafts: { _ in })
+        let settings = SettingsStore(defaults: defaults, persist: true)
+        let store = LibraryStore.test(settings: settings, saveTagDrafts: { _ in })
         let row = Self.row("restore"), other = Self.row("other")
         settings.setStrings(SettingKeys.dismissedGridSuggestions, [row.track.uuid])
         #expect(store.dismissedKeySuggestion(estimate: "8B", rows: [row]) == nil, "무시하기 전에는 되살릴 것이 없다")
@@ -249,15 +242,15 @@ struct MusicalKeyEditingTests {
         #expect(store.dismissedKeySuggestion(estimate: "8B", rows: [other]) == "8B", "다른 곡의 무시는 그대로")
         #expect(settings.strings(SettingKeys.dismissedKeySuggestions) == [other.track.uuid])
         #expect(settings.strings(SettingKeys.dismissedGridSuggestions) == [row.track.uuid], "그리드 제안의 무시는 건드리지 않는다")
-        let reopened = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: suite)!), saveTagDrafts: { _ in })
+        let reopened = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.open(suite), persist: true), saveTagDrafts: { _ in })
         #expect(reopened.keySuggestion(estimate: "8B", rows: [row]) == "8B" && reopened.keySuggestion(estimate: "8B", rows: [other]) == nil)
     }
 
     @Test func 다시_보기는_보일_제안이_남은_한_곡에만_있다() throws {
-        let suite = "djc.test.key-restore-scope.\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.suiteName("key-restore-scope")
+        let defaults = TestDefaults.open(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
-        let store = LibraryStore(settings: SettingsStore(defaults: defaults), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false), saveTagDrafts: { _ in })
         let row = Self.row("scope"), second = Self.row("scope2"), streaming = Self.row("scope3", streaming: true)
         store.dismissKeySuggestion(rows: [row])
         store.dismissKeySuggestion(rows: [row, second])
@@ -274,11 +267,11 @@ struct MusicalKeyEditingTests {
     }
 
     @Test func 재분석은_그_곡의_키_제안_무시만_푼다() {
-        let suite = "djc.test.key-reanalyze.\(UUID())"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.suiteName("key-reanalyze")
+        let defaults = TestDefaults.open(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
-        let settings = SettingsStore(defaults: defaults)
-        let store = LibraryStore(settings: settings, saveTagDrafts: { _ in })
+        let settings = SettingsStore(defaults: defaults, persist: true)
+        let store = LibraryStore.test(settings: settings, saveTagDrafts: { _ in })
         let row = Self.row("reanalyze"), other = Self.row("other-reanalyze")
         settings.setStrings(SettingKeys.dismissedGridSuggestions, [row.track.uuid])
         store.dismissKeySuggestion(rows: [row])
@@ -294,7 +287,7 @@ struct MusicalKeyEditingTests {
 
     @Test(.enabled(if: LiveDraftHome.isIsolated))
     func 덱_재분석은_곡_UUID로_알려_키_제안_무시를_풀게_한다() {
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         var notified: [String] = []
         deck.onReanalyze = { notified.append($0) }
         deck.reanalyze()
@@ -320,16 +313,12 @@ struct MusicalKeyEditingTests {
         try fixture.add(TrackSpec())   // 라이브러리 공통값
         try fixture.insert("djmdKey", ["ID": .text("1486464042"), "ScaleName": .text("8A"), "Seq": .int(1), "UUID": .text("k-8a"),
                                        "rb_data_status": .int(256), "rb_local_deleted": .int(0), "rb_local_usn": .int(1)])
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.musicalkey.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("musicalkey"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
-                                 playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        let database = fixture.database
-        store.takeLiveSnapshot = { _ in database }
-        store.rekordboxDatabase = database
-        store.rekordboxShareRoot = fixture.shareRoot
-        store.launchArguments = ["test"]
-        store.launchEnvironment = [:]
+                                 playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                                 rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot, arguments: ["test"], environment: [:],
+                                 takeLiveSnapshot: { [database = fixture.database] _ in database })
         let path = try TestResources.url("mp3-notag-cbr.mp3").path
         let staged = try JSONDecoder().decode(StagedTrack.self, from: Data("""
             {"uuid":"\(UUID().uuidString)","path":"\(path)","title":"합성 추가 곡","comment":"","duration":2,"addedOn":"2026-10-04"}
@@ -337,22 +326,22 @@ struct MusicalKeyEditingTests {
         store.staged = [staged]
         let row = TrackRow(track: staged.track, cues: [], playCount: 0)
         store.setTag(.musicalKey, "8A", rows: [row])
-        let preview = try await store.previewTrackAdd(rows: [row])
+        let preview = try await store.session.previewAdd(rows: [row])
         #expect(preview.plans.count == 1 && preview.unreadable.isEmpty)
         #expect(preview.keys == [path: "8A"] && preview.report.added.first?.keyWritten == "8A")
-        let prompt = ReflectionCoordinator.addConfirmation(preview)
+        let prompt = ReflectionPrompts.addConfirmation(preview, writesArtwork: true)
         #expect(prompt.details.contains { $0.contains("합성 추가 곡") && $0.contains("키 8A") }, "\(prompt.details)")
         // 분석 없이 넣는 곡에 키를 쓰면 DJCrate가 나중에 분석을 붙이지 못한다고 알린다
         #expect(prompt.details.contains { $0.contains("키를 함께 쓴") && $0.contains("rekordbox에서 분석") }, "\(prompt.details)")
         // 키 줄이 없는 키: 곡은 넣고 키만 막힌다고 미리 알린다
         store.setTag(.musicalKey, "12B", rows: [row])
-        let blocked = try await store.previewTrackAdd(rows: [row])
+        let blocked = try await store.session.previewAdd(rows: [row])
         #expect(blocked.plans.count == 1 && blocked.keys == [path: "12B"])
         #expect(blocked.report.added.first?.written == true && blocked.report.added.first?.keyReason?.contains("12B") == true)
-        #expect(ReflectionCoordinator.addConfirmation(blocked).details.contains { $0.contains("키는 안 들어감") })
+        #expect(ReflectionPrompts.addConfirmation(blocked, writesArtwork: true).details.contains { $0.contains("키는 안 들어감") })
         // 키를 고르지 않은 곡은 키를 넘기지 않는다
         store.setTag(.musicalKey, "", rows: [row])
-        #expect(try await store.previewTrackAdd(rows: [row]).keys.isEmpty)
+        #expect(try await store.session.previewAdd(rows: [row]).keys.isEmpty)
     }
 
     // MARK: 확인 창
@@ -367,7 +356,7 @@ struct MusicalKeyEditingTests {
             """
         let report = try JSONDecoder().decode(RekordboxWriter.Report.self, from: Data(json.utf8))
         // 쓰는 곡의 줄은 쓰기 결과에 남기고, 확인 창에는 막힌 곡과 이유만 보인다(#210)
-        let prompt = ReflectionCoordinator.confirmation(report)
+        let prompt = ReflectionPrompts.confirmation(report)
         #expect(prompt.title == "태그 2곡을 rekordbox에 쓸까요?")
         #expect(prompt.details == ["쓰지 않는 것 1:", "• 곡 x: rekordbox 키 목록에 '12B' 줄이 없습니다. rekordbox에서 이 곡의 키를 직접 고르세요"])
     }
@@ -490,7 +479,7 @@ struct MusicalKeyEditingTests {
         let grid = [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)]
         let edit = try TrackEdit(grid: grid, sourceDuration: 100.5, bars: BarRange.list("1-4"))
         let source = Self.row("src", key: "5A").track
-        let staged = try await EditStaging.stage(fileAt: output, edit: edit, cues: [], source: source, home: home)
+        let staged = try await StageEdit.put(output, grid: [edit.outputGrid], cues: [], source: source, home: home)
         let tags = try #require(TagDraftStore.load(trackUUID: staged.uuid, directory: home.appending(path: "tag-drafts")))
         #expect(!tags.changedKeys.contains(.musicalKey) && tags.fields.musicalKey == tags.base.musicalKey)
         #expect(tags.fields.title == "곡 src (Edit)")
@@ -500,7 +489,7 @@ struct MusicalKeyEditingTests {
 /// 키 있는 곡·없는 곡·옛 표기 곡·추가한 곡·스트리밍 곡이 든 시트
 @MainActor
 private final class SheetKeyHarness {
-    let store = LibraryStore(saveTagDrafts: { _ in })
+    let store = LibraryStore.test(saveTagDrafts: { _ in })
     let coordinator: SheetCoordinator
     let table = SheetTableView()
     let window: NSWindow

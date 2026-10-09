@@ -1,9 +1,7 @@
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
 import Foundation
-import RekordboxKit
 
 /// 큐 편집(초안만 바뀐다, 규칙은 `CueDraft` 확장)
 extension DeckModel {
@@ -73,7 +71,7 @@ extension DeckModel {
     @discardableResult
     func storeMemoryCue(at time: Double, loop: EditableCue.Loop?) -> EditableCue.ID? {
         guard var edited = commandDraft() else { return nil }
-        switch edited.addMemory(at: time, loop: loop) {
+        switch edited.addMemory(at: time, loop: loop, newID: storage.drafts.newCueID) {
         case let .existing(id):
             selectedCueID = id
             return nil
@@ -96,7 +94,7 @@ extension DeckModel {
     }
 
     func pressHotCue(slot: Int) {
-        AudioEvents.record("조작 핫큐 \(String(UnicodeScalar(UInt8(65 + slot)))) · 재생 중=\(isPlaying) · 위치 \(String(format: "%.2f", playhead))")
+        audio.recordEvent("조작 핫큐 \(String(UnicodeScalar(UInt8(65 + slot)))) · 재생 중=\(isPlaying) · 위치 \(String(format: "%.2f", playhead))")
         if let cue = hotCue(slot: slot), scrubAnchor != nil {
             // 확대 파형을 끄는 중(#133): 자리만 옮기고 끌기는 거기서 이어 간다. 재생·루프는 놓은 뒤 평소대로(끌기가 쥐고 있다).
             scrub(to: cue.time)
@@ -118,7 +116,7 @@ extension DeckModel {
             selectedCueID = cue.id
         } else if let loop = instantLoop {
             // 즉석 루프 중에 빈 칸을 누르면 그 루프를 루프 핫큐로 저장하고 계속 반복한다(CDJ와 같다).
-            var cue = EditableCue(kind: .hot(slot), time: loop.start)
+            var cue = EditableCue(id: storage.drafts.newCueID(), kind: .hot(slot), time: loop.start)
             cue.loop = EditableCue.Loop(end: loop.end, active: false, beats: loop.beats)
             mutate(name: String(ui: "핫큐 찍기")) { $0.place(cue) }
             instantLoop = nil
@@ -129,7 +127,7 @@ extension DeckModel {
                 if let reason = hotCueCreationUnavailableReason { showToast(reason) }
                 return
             }  // 소리·그리드 없이 0초에 박히지 않게
-            let cue = EditableCue(kind: .hot(slot), time: snapped(currentTime))
+            let cue = EditableCue(id: storage.drafts.newCueID(), kind: .hot(slot), time: snapped(currentTime))
             mutate(name: String(ui: "핫큐 찍기")) { $0.place(cue) }
             selectedCueID = cue.id
         }
@@ -247,12 +245,12 @@ extension DeckModel {
     func reloadExternalCueDraft(_ saved: CueDraft?) {
         guard !isWriteLocked, !hasUncommittedCueEdits, let row, saved == nil || saved?.trackUUID == row.track.uuid else { return }
         guard !currentDraftSaveFailures.contains(where: { $0.kind == .cue }) else { return }
-        let saved = saved?.includingAutoCues(from: row.cues)
+        let saved = saved?.includingAutoCues(from: row.cues, newID: storage.drafts.newCueID)
         if let saved, saved.base == draft?.base, saved.cues == draft?.cues { return }
         if saved == nil, draft?.hasChanges != true { return }
         // 그리드·게인 실행 취소에도 옛 큐가 들어 있으므로 이 곡의 덱 이력을 비운다.
         clearDraftUndo()
-        draft = saved ?? CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues)
+        draft = saved ?? CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues, newID: storage.drafts.newCueID)
         if cue(selectedCueID) == nil { selectedCueID = nil }
         if cue(engagedLoopID)?.loop == nil { engagedLoopID = nil }
         refreshSuggestions()
@@ -287,7 +285,7 @@ extension DeckModel {
 
     func persist(_ draft: CueDraft) {
         hasUncommittedCueEdits = false
-        storage.saveCueDraft(draft, draftSaveCompletion(.cue, uuid: draft.trackUUID))
+        storage.drafts.saveCue(draft, completion: draftSaveCompletion(.cue, uuid: draft.trackUUID))
         onCueDraftChange?(draft)
         onDraftChange?(draft.trackUUID, .cue, draft.hasChanges)
     }

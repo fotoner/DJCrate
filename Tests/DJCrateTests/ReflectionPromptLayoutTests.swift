@@ -1,12 +1,14 @@
 @testable import DJCrate
+import DJCApplication
 import AppKit
 @testable import RekordboxKit
+import DJCDomain
 import Testing
 
 @MainActor
 @Suite("반영 확인 창 목록")
 struct ReflectionPromptLayoutTests {
-    typealias Fixture = ReflectionCoordinatorTests
+    typealias Fixture = ReflectionPresenterTests
 
     func detailText(_ prompt: ReflectionPrompt) throws -> String {
         _ = NSApplication.shared
@@ -70,17 +72,13 @@ struct ReflectionPromptLayoutTests {
         #expect(empty.kind == .warning && empty.text == "XML로 만들 곡이 없습니다 · 고른 곡에 rekordbox와 다른 큐·그리드 초안이 없습니다.")
     }
 
-    /// 막힘이 없으면 곡이 많아도 묻지 않고 모두 쓴다(#210). 곡마다의 결과는 쓰기 결과에 남는다.
-    @Test func 그리드와_게인_각_100곡은_막힘이_없으면_묻지_않고_모두_쓴다() async throws {
-        let host = FakeReflectionHost(), prompter = ScriptedPrompter()
-        host.preview = .success(Fixture.preview(cues: [],
-            grids: (1...100).map { Fixture.outcome("grid-\($0)", .written, added: 64) },
-            gains: (1...100).map { Fixture.outcome("gain-\($0)", .written, added: -250) }))
-        await ReflectionCoordinator(host: host, prompter: prompter, isRekordboxRunning: { false })
-            .write(rows: [Fixture.row("grid-1")])
-        #expect(prompter.shown.isEmpty)
-        #expect(host.wrote?.grids.count == 100 && host.wrote?.gains.count == 100 && host.locks == [true, false])
-        let lines = try #require(host.resultHistory.latest).text.components(separatedBy: "\n")
+    /// 곡이 많아도 쓴 곡마다의 결과는 쓰기 결과에 남는다(묻지 않고 모두 쓰는 판정은 반영 세션 시험).
+    @Test func 그리드와_게인_각_100곡을_쓴_결과는_곡마다_남는다() throws {
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(), feedback: AppFeedback(announce: { _ in }))
+        let report = Fixture.preview(cues: [], grids: (1...100).map { Fixture.outcome("grid-\($0)", .written, added: 64) },
+                                     gains: (1...100).map { Fixture.outcome("gain-\($0)", .written, added: -250) }).report
+        ReflectionPresenter(store: store, prompter: ScriptedPrompter()).publish(.written(report, preview: report, followUp: []))
+        let lines = try #require(store.resultHistory.latest).text.components(separatedBy: "\n")
         #expect(lines.contains("• 곡 grid-100 — 그리드 쓰기 완료") && lines.contains("• 곡 gain-100 — 게인 쓰기 완료"))
     }
 
@@ -89,7 +87,7 @@ struct ReflectionPromptLayoutTests {
             cues: (1...100).map { Fixture.outcome("cue-\($0)", .written) }
                 + (1...100).map { Fixture.outcome("blocked-\($0)", .blocked, reason: "분석 전") },
             analyses: (1...100).map { Fixture.outcome("analysis-\($0)", .written, added: 96) })
-        let prompt = ReflectionCoordinator.confirmation(preview.report)
+        let prompt = ReflectionPrompts.confirmation(preview.report)
         #expect(prompt.text.count < 180)
         let lines = try detailText(prompt).components(separatedBy: "\n")
         #expect(lines == ["쓰지 않는 것 100:"] + (1...100).map { "• 곡 blocked-\($0): 분석 전" })
@@ -102,8 +100,8 @@ struct ReflectionPromptLayoutTests {
         var deleted = RekordboxTrackWriter.Report(dryRun: true)
         deleted.deleted = outcomes
         let prompts = [
-            ReflectionCoordinator.addConfirmation(Fixture.addPreview(outcomes)),
-            ReflectionCoordinator.deleteConfirmation(.init(report: deleted, contentIDs: [])),
+            ReflectionPrompts.addConfirmation(Fixture.addPreview(outcomes), writesArtwork: true),
+            ReflectionPrompts.deleteConfirmation(.init(report: deleted, contentIDs: [])),
         ]
         for prompt in prompts {
             #expect(prompt.text.count < 180)
@@ -120,37 +118,12 @@ struct ReflectionPromptLayoutTests {
     @Test func 되돌리기는_경고_본문을_유지하고_100곡을_목록에_보여_준다() throws {
         let report = Fixture.preview(cues: (1...100).map { Fixture.outcome("restore-\($0)", .written) }).report
         let backup = RekordboxWriter.Backup(url: URL(filePath: "/tmp/layout-test"), createdAt: .now, isWrite: true, report: report)
-        let prompt = ReflectionCoordinator.restoreConfirmation(backup, changedSince: true)
+        let prompt = ReflectionPrompts.restoreConfirmation(backup, changedSince: true)
         #expect(!prompt.text.contains("곡 restore-"))
         #expect(prompt.text.contains("복원하면 그 변경도 함께 사라집니다"))
         #expect(prompt.critical && prompt.destructive)
         let lines = try detailText(prompt).components(separatedBy: "\n")
         for index in 1...100 { #expect(lines.contains("• 곡 restore-\(index)")) }
-    }
-
-    /// 모두 막히면 창을 띄우지 않고(#230) 결과 기록(결과 보기)에 100곡의 이유를 모두 남긴다.
-    @Test func 모두_막힌_경우도_전체_이유를_결과_보기에_남긴다() async throws {
-        let host = FakeReflectionHost(), prompter = ScriptedPrompter()
-        host.preview = .success(Fixture.preview(cues: (1...100).map {
-            Fixture.outcome("blocked-\($0)", .blocked, reason: "막힌 이유")
-        }))
-        let tracks = (1...100).map { Fixture.track("blocked-\($0)", written: false, reason: "막힌 이유") }
-        host.addPreview = .success(Fixture.addPreview(tracks))
-        var deleted = RekordboxTrackWriter.Report(dryRun: true)
-        deleted.deleted = tracks
-        host.deletePreview = .success(.init(report: deleted, contentIDs: []))
-        let coordinator = ReflectionCoordinator(host: host, prompter: prompter, isRekordboxRunning: { false })
-        await coordinator.write(rows: [Fixture.row("blocked-1")])
-        var lines = host.resultHistory.latest?.text.components(separatedBy: "\n") ?? []
-        #expect(lines == (1...100).map { "• 곡 blocked-\($0) — 큐 쓰지 않음: 막힌 이유" })
-        await coordinator.addTracks(rows: [Fixture.row("djc-blocked-1")])
-        lines = host.resultHistory.latest?.text.components(separatedBy: "\n") ?? []
-        #expect(lines == (1...100).map { "• 곡 blocked-\($0) — 넣지 않음: 막힌 이유" })
-        await coordinator.deleteTracks(rows: [Fixture.row("blocked-1")])
-        lines = host.resultHistory.latest?.text.components(separatedBy: "\n") ?? []
-        #expect(lines == (1...100).map { "• 곡 blocked-\($0) — 빼지 않음: 막힌 이유" })
-        #expect(prompter.shown.isEmpty && host.toast?.kind == .warning)
-        #expect(host.wrote == nil && host.added == nil && host.deleted == nil)
     }
 
     @Test(arguments: [NSAppearance.Name.aqua, .darkAqua])
@@ -159,7 +132,7 @@ struct ReflectionPromptLayoutTests {
         let preview = Fixture.preview(cues: [], grids: [Fixture.outcome("쓰는 곡", .written)] + (1...100).map {
             Fixture.outcome("\($0) " + String(repeating: "긴 제목 ", count: 30), .blocked, reason: "막힌 이유")
         })
-        let alert = AlertPrompter().makeAlert(ReflectionCoordinator.confirmation(preview.report))
+        let alert = AlertPrompter().makeAlert(ReflectionPrompts.confirmation(preview.report))
         alert.window.appearance = NSAppearance(named: appearance)
         alert.layout()
         let screen = try #require(alert.window.screen ?? NSScreen.main)

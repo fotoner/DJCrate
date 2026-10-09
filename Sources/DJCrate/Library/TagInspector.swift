@@ -1,12 +1,11 @@
-import RekordboxKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import SwiftUI
 
 /// Mp3tag처럼 여러 곡을 한꺼번에 편집하는 인스펙터. 초안에 저장하고 반영 때 rekordbox 곡 정보에 쓴다(음원 파일에는 쓰지 않는다).
 struct TagInspector: View {
     @Environment(\.textScale) private var textScale
+    @Environment(\.reflection) private var reflection
     @Bindable var store: LibraryStore
 
     var body: some View {
@@ -59,7 +58,7 @@ struct TagInspector: View {
                             .foregroundStyle(UIColors.warning.color).font(.scaled(.caption, textScale))
                     }
                     if rows.count == 1, let row = rows.first, store.tagDrafts[row.track.uuid] != nil {
-                        Button(.ui("태그 현재값 가져오기…")) { DraftRecoveryPanels.recover(store: store, row: row, kind: .tags) }
+                        Button(.ui("태그 현재값 가져오기…")) { reflection?.startRecovery(row: row, kind: .tags) }
                             .disabled(store.isRecoveringDraft)
                     }
                     Button(.ui("태그 초안 버리기")) { store.revertTags(rows: rows) }

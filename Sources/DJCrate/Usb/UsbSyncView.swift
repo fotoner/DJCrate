@@ -1,3 +1,4 @@
+import DJCApplication
 import DJCDomain
 import SwiftUI
 
@@ -123,7 +124,7 @@ struct UsbSyncView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Button(.ui("닫기")) {
-                    Task { if await model.close(store: store, usb: usb) { dismiss() } }
+                    model.closeTapped(store: store, usb: usb) { dismiss() }
                 }
                 .keyboardShortcut(.cancelAction)
                 .disabled(isOperating || usb.activeWrite != nil)
@@ -158,7 +159,7 @@ struct UsbSyncView: View {
             }
             Spacer()
             Button {
-                Task { await model.refresh(store: store, usb: usb) }
+                model.refreshTapped(store: store, usb: usb)
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
@@ -172,7 +173,7 @@ struct UsbSyncView: View {
     private var transferButtons: some View {
         VStack(spacing: 16) {
             Button {
-                Task { if await model.sync(store: store, usb: usb) { dismiss() } }
+                model.syncTapped(store: store, usb: usb) { dismiss() }
             } label: {
                 HStack(spacing: 8) {
                     Text(verbatim: "SYNC")
@@ -187,7 +188,7 @@ struct UsbSyncView: View {
             .accessibilityLabel(.ui("USB와 동기화…"))
             .accessibilityIdentifier("usb-sync-apply")
             Button {
-                Task { await model.importCueGrid(store: store, usb: usb) }
+                model.importTapped(store: store, usb: usb)
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.left")

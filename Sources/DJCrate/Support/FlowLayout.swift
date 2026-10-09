@@ -1,7 +1,4 @@
-import RekordboxKit
-import DJCAnalysis
 import DJCDomain
-import DJCStorage
 import SwiftUI
 
 /// 칩의 자연 크기는 캐시에 재 두고 제안 폭마다 줄만 나눈다(#138). justified면 각 줄의 양쪽 끝을 맞춘다.

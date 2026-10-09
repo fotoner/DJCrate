@@ -5,11 +5,7 @@ import Foundation
 ///
 /// 2026-10-08 rekordbox 7.2.x 실험(동기화 관리자에서 선택을 바꿔 SYNC → USB 사본 전후 비교, 값은 적지 않음):
 /// rekordbox는 매번 파일 전체를 같은 모양으로 다시 쓴다. 그래서 원문을 고쳐 쓰지 않고 칸 규칙대로 새로 만든다.
-public struct UsbSyncXMLWriteContract: Codable, Hashable, Sendable {
-    public let revision: Int
-
-    public init(revision: Int) { self.revision = revision }
-
+extension UsbSyncXMLWriteContract {
     public static let confirmed = Self(revision: 1)
 
     /// 비상 스위치. nil이면 선택 파일 쓰기를 백업·USB 쓰기 전에 막는다.

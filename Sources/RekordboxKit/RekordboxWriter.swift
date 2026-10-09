@@ -17,72 +17,9 @@ import Foundation
 /// 초안을 시작한 뒤 rekordbox에서 그 곡의 큐가 바뀌었으면 그 곡은 쓰지 않는다.
 /// 그리드·오토게인·분석 붙이기·재생 목록은 역할별 확장(`+Grid`·`+Gain`·`+Analysis`·`+Playlist`)에 있다.
 public enum RekordboxWriter {
-    public struct Outcome: Codable, Hashable, Sendable {
-        public enum Status: String, Codable, Sendable {
-            case written
-            case blocked
-            case unchanged
-        }
-
-        public var trackUUID: String
-        public var title: String
-        public var status: Status
-        public var reason: String?
-        public var removed: Int
-        public var added: Int
-        /// 태그 쓰기에서 바꾼 칸(`TagFields.Key` 이름). 다른 쓰기와 옛 보고서에는 없다.
-        public var fields: [String]? = nil
-        /// 그림 쓰기에서 한 일(넣기·바꾸기·지우기). 다른 쓰기와 옛 보고서에는 없다.
-        public var artwork: ArtworkWriteKind? = nil
-    }
-
-    public struct Report: Codable, Sendable {
-        public var outcomes: [Outcome]
-        /// 쓰기 전 백업 폴더(시험 실행이면 nil)
-        public var backup: String?
-        public var dryRun: Bool
-        public var createdAt: String
-        /// 쓴 직후 rekordbox 변경 카운터. 되돌리기 전에 지금 값과 비교해 그 뒤 rekordbox에서 바뀐 게 있는지 본다.
-        public var finalUpdateCount: Int?
-        /// 그리드(분석 파일) 쓰기 결과. 옛 보고서에는 없다.
-        public var gridOutcomes: [Outcome]?
-        /// 오토게인 쓰기 결과(added = 새 게인 ×100 dB). 옛 보고서에는 없다.
-        public var gainOutcomes: [Outcome]?
-        /// 분석 전 곡에 분석 파일을 붙인 결과(added = 박 수). 옛 보고서에는 없다.
-        public var analysisOutcomes: [Outcome]?
-        /// 새로 만든 분석·아트워크 파일(되돌릴 때 지운다). 반환값은 절대 경로, 백업 JSON은 share 기준 상대 경로. 옛 보고서에는 없다.
-        public var createdFiles: [String]?
-        /// 재생 목록 편집 결과(편집 순서대로). 옛 보고서에는 없다.
-        public var playlistOutcomes: [PlaylistOutcome]?
-        /// 분석을 붙이며 음원 내장 그림으로 아트워크도 넣은(시험 실행이면 넣을) 곡 UUID. 옛 보고서에는 없다.
-        public var artworkAdded: [String]?
-        /// 태그(곡 정보) 쓰기 결과(added = 바꾼 칸 수). 옛 보고서에는 없다.
-        public var tagOutcomes: [Outcome]?
-        /// 중복 묶음 합치기 결과(removed = 컬렉션에서 뺀 곡 수).
-        public var mergeOutcomes: [Outcome]?
-        /// 곡 정보 그림 쓰기 결과(`Outcome.artwork` = 넣기·바꾸기·지우기). 옛 보고서에는 없다.
-        public var artworkOutcomes: [Outcome]?
-        /// 쓰기는 끝났지만 알릴 것(보고서를 백업에 저장하지 못함 등). 옛 보고서에는 없다.
-        public var warnings: [String]?
-        public var iTunesSyncWritten: Bool?
-        public var mergeWritten: [Outcome] { (mergeOutcomes ?? []).filter { $0.status == .written } }
-        public var mergeBlocked: [Outcome] { (mergeOutcomes ?? []).filter { $0.status == .blocked } }
-
-        public var written: [Outcome] { outcomes.filter { $0.status == .written } }
-        public var blocked: [Outcome] { outcomes.filter { $0.status == .blocked } }
-        public var gridWritten: [Outcome] { (gridOutcomes ?? []).filter { $0.status == .written } }
-        public var gridBlocked: [Outcome] { (gridOutcomes ?? []).filter { $0.status == .blocked } }
-        public var gainWritten: [Outcome] { (gainOutcomes ?? []).filter { $0.status == .written } }
-        public var gainBlocked: [Outcome] { (gainOutcomes ?? []).filter { $0.status == .blocked } }
-        public var analysisWritten: [Outcome] { (analysisOutcomes ?? []).filter { $0.status == .written } }
-        public var analysisBlocked: [Outcome] { (analysisOutcomes ?? []).filter { $0.status == .blocked } }
-        public var tagWritten: [Outcome] { (tagOutcomes ?? []).filter { $0.status == .written } }
-        public var tagBlocked: [Outcome] { (tagOutcomes ?? []).filter { $0.status == .blocked } }
-        public var artworkWritten: [Outcome] { (artworkOutcomes ?? []).filter { $0.status == .written } }
-        public var artworkBlocked: [Outcome] { (artworkOutcomes ?? []).filter { $0.status == .blocked } }
-        public var playlistWritten: [PlaylistOutcome] { (playlistOutcomes ?? []).filter { $0.status == .written } }
-        public var playlistBlocked: [PlaylistOutcome] { (playlistOutcomes ?? []).filter { $0.status == .blocked } }
-    }
+    // 결과 값은 DJCDomain에 있다(#167). 옛 이름을 남긴다.
+    public typealias Outcome = RekordboxWriteOutcome
+    public typealias Report = RekordboxWriteReport
 
     public static var liveDatabase: URL { LibrarySnapshot.rekordboxDirectory.appending(path: "master.db") }
 

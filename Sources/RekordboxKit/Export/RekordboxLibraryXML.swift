@@ -66,30 +66,8 @@ public enum RekordboxLibraryXML {
         }
     }
 
-    /// 파일에 넣지 못해 뺀 것
-    public struct Omitted: Sendable, Equatable {
-        public var streamingTracks = 0
-        public var intelligentPlaylists = 0
-        /// XML로 옮길 수 없는 큐 종류(Kind 4 등)의 큐 수
-        public var unknownCues = 0
-        /// 컬렉션에 넣지 않은 곡(삭제·스트리밍)을 가리키던 재생 목록 항목 수
-        public var playlistEntries = 0
-        /// 없는 폴더를 가리켜 ROOT에서 닿지 않는 재생 목록·폴더 수(rekordbox 트리에 없으므로 지어 붙이지 않는다)
-        public var orphanedPlaylists = 0
-        public init() {}
-    }
-
-    public struct Summary: Sendable, Equatable {
-        public var tracks = 0
-        public var marks = 0
-        public var tracksWithGrid = 0
-        public var tracksWithoutGrid = 0
-        public var folders = 0
-        public var playlists = 0
-        public var playlistEntries = 0
-        public var omitted = Omitted()
-        public init() {}
-    }
+    public typealias Omitted = LibraryXMLSummary.Omitted
+    public typealias Summary = LibraryXMLSummary
 
     public struct Collection: Sendable {
         public var entries: [Entry]
@@ -120,13 +98,7 @@ public enum RekordboxLibraryXML {
         }
     }
 
-    public struct Progress: Sendable, Equatable {
-        public enum Phase: Sendable, Equatable { case readingLibrary, readingGrids, writing }
-        public var phase: Phase
-        public var done: Int
-        public var total: Int
-        public init(phase: Phase, done: Int, total: Int) { self.phase = phase; self.done = done; self.total = total }
-    }
+    public typealias Progress = LibraryXMLProgress
 
     // MARK: - 읽기
 

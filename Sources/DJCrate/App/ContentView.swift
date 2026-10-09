@@ -1,7 +1,5 @@
-import RekordboxKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -12,13 +10,14 @@ struct ContentView: View {
     @Environment(\.undoManager) private var undoManager
     @Bindable var store: LibraryStore
     @Bindable var deck: DeckModel
+    /// 저장소·덱·창을 잇는 조립 지점(처음 나타날 때 한 번 잇는다)
+    let app: AppComposition
     /// 저장된 창 프레임을 적용했는지. 그 전의 기본 크기 폭으로는 사이드바를 접지 않는다(#119).
     var windowFrameRestored = true
     @AppStorage(SettingKeys.showTagEditor.name) private var showTagEditor = SettingKeys.showTagEditor.defaultValue
     @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
     /// 이름에 점이 들어 `@AppStorage`로 두면 창 프레임 자동 저장 같은 다른 설정이 바뀔 때마다 본문을 다시 계산한다(#138).
     @State private var sidebarVisible = ObservedSetting(SettingKeys.sidebarVisible)
-    @State private var keys = KeyRouter()
     /// 인스펙터 내용을 그릴지. 닫혀 있어도 SwiftUI가 내용을 계속 계산해, 곡을 고를 때마다 입력 칸을 새로 만들고
     /// 덱까지 창 레이아웃을 다시 잡았다(#129). 열려 있을 때만 그린다.
     @State private var inspectorContentShown = false
@@ -62,7 +61,7 @@ struct ContentView: View {
                 .overlay(alignment: .bottom) {
                     if let toast = store.toast {
                         AppToastView(toast: toast,
-                                     onUndo: toast.undoBackup.map { url in { store.toast = nil; DirectWritePanels.restore(store: store, backupURL: url) } },
+                                     onUndo: toast.undoBackup.map { url in { store.toast = nil; app.reflection.startRestore(backupURL: url) } },
                                      onDetails: toast.showsResult ? { store.showingWriteResult = true } : nil,
                                      onAction: toast.action.map { action in { Task { await store.usbCoordinator?.perform(action) } } },
                                      onClose: { if store.toast?.id == toast.id { store.toast = nil } })
@@ -106,8 +105,13 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.15), value: store.writeStage)
         .searchable(text: $store.search, placement: .toolbar, prompt: Text(.ui("제목·아티스트·코멘트")))
         .toolbar(id: "main") { toolbarContent }
-        .focusedSceneValue(\.appCommands, AppCommandContext(store: store, deck: deck, showTagEditor: $showTagEditor))
+        .focusedSceneValue(\.appCommands, AppCommandContext(store: store, deck: deck, windows: app.windows, reflection: app.reflection,
+                                                            showTagEditor: $showTagEditor))
         .onAppear { setUp() }
+        // 보조 창·목록 메뉴 동작은 조립 지점이 한 번 만든 것을 내려 준다(값이 바뀌지 않아 본문을 다시 계산하지 않는다).
+        .environment(\.appWindows, app.windows)
+        .environment(\.trackListActions, app.trackListActions)
+        .environment(\.reflection, app.reflection)
         .onChange(of: undoManager, initial: true) {
             deck.undoManager = undoManager
             store.undoManager = undoManager
@@ -115,12 +119,12 @@ struct ContentView: View {
         .task {
             while !Task.isCancelled {
                 // 끄는 중인 큐·그리드는 손을 놓아 저장한 뒤에 다시 읽는다.
-                if !deck.hasUncommittedCueEdits, deck.cueDragBase == nil, deck.gridDragBase == nil { store.refreshExternalDrafts() }
+                if !deck.hasUncommittedCueEdits, deck.cueDragBase == nil, deck.gridDragBase == nil { await store.refreshExternalDrafts() }
                 do { try await Task.sleep(for: .seconds(1)) } catch { break }
             }
         }
         // 하루 한 번 자동 시점 스냅샷(#228): rekordbox가 꺼져 있고 라이브러리가 바뀌었으면 뒤에서 조용히 남긴다
-        .task { await AutoPointSnapshotRunner(store: store).loop() }
+        .task { await app.autoPointSnapshots().loop() }
         // rekordbox에서 곡을 지우거나 고치고 돌아오면 새로 읽는다(옛 목록에 지워진 곡이 남지 않게)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await store.refreshIfRekordboxChanged() }
@@ -212,53 +216,9 @@ struct ContentView: View {
     }
 
     private func setUp() {
-            deck.feedback = store.feedback
-            store.recoveryMemoryInput = { [weak deck] uuid, kind in deck?.inputForDraftRecovery(uuid: uuid, kind: kind) }
-            store.onDraftRecovered = { [weak deck] draft, row, grid in
-                deck?.applyDraftRecovery(draft, currentRow: row, currentGrid: grid)
-                TrackEditWindow.shared.draftRecovered(draft.uuid)
-            }
-            // 목록 선택은 덱을 바꾸지 않는다. 더블클릭·⌘→·오른쪽 클릭·끌어다 놓기로만 덱에 올린다(#93).
-            store.onLoadToDeck = { [weak deck] row in deck?.load(row) }
-            store.confirmDeckReplacement = { [weak deck] _ in deck?.confirmDiscardingFlip() ?? true }
-            store.allowsLibrarySync = { [weak deck] in
-                guard let deck else { return true }
-                return !deck.hasUncommittedCueEdits && deck.cueDragBase == nil && deck.gridDragBase == nil
-            }
-            store.onCueDraftsReloaded = { [weak deck] drafts in
-                guard let deck, let uuid = deck.row?.track.uuid else { return }
-                deck.reloadExternalCueDraft(drafts[uuid])
-            }
-            store.onGridDraftSaved = { [weak deck] uuid in deck?.gridDraftSavedExternally(uuid) }
-            store.deckGridDraftState = { [weak deck] in
-                guard let deck, let uuid = deck.row?.track.uuid else { return nil }
-                return (uuid, deck.gridDraft?.hasChanges == true || deck.gridDragBase != nil)
-            }
-            store.adoptImportedGridDraft = { [weak deck] draft in deck?.adoptImportedGridDraft(draft) ?? false }
-            deck.onStagedGridChange = { [weak store] uuid, bpm in store?.stagedGridChanged(uuid: uuid, bpm: bpm) }
-            deck.onCueDraftChange = { [weak store] draft in store?.cueDraftChanged(draft) }
-            deck.onReanalyze = { [weak store] uuid in store?.restoreKeySuggestion(uuid: uuid) }
-            store.onWriteLock = { [weak deck] locked in deck?.isWriteLocked = locked }
-            store.onRekordboxWritten = { [weak deck, weak store] uuids in
-                // 처음부터 다시 불러오지 않고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다(소리·파형은 그대로).
-                guard let deck, let uuid = deck.row?.track.uuid, uuids.contains(uuid) else { return }
-                deck.refreshAfterWrite(store?.rowsByUUID[uuid])
-            }
-            keys.install(deck: deck, store: store)
-            TrackEditWindow.shared.attach(deck: deck, store: store)
-            FlipWindow.shared.attach(deck: deck, store: store)
-            #if DEBUG
-            DevSelfTests.runIfRequested(store: store, deck: deck)
-            DevSelfTests.runBlockedReasonsCaptureIfRequested(store: store, deck: deck)
-            DevSelfTests.runAsyncGuidanceCaptureIfRequested(store: store, deck: deck)
-            UsbMigrateCapture.runIfRequested(store: store)
-            DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck)
-            #endif
-            deck.onDraftChange = { [weak store] uuid, kind, exists in
-                store?.draftChanged(trackUUID: uuid, kind: kind, exists: exists)
-            }
-            if ProcessInfo.processInfo.arguments.contains("--inspector") { showTagEditor = true }
-            if ProcessInfo.processInfo.arguments.contains("--sheet") { sheetMode = true }
+        app.connect()
+        if ProcessInfo.processInfo.arguments.contains("--inspector") { showTagEditor = true }
+        if ProcessInfo.processInfo.arguments.contains("--sheet") { sheetMode = true }
     }
 }
 

@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -26,8 +27,8 @@ extension DevSelfTests {
                 log("실패 · 합성 라이브러리 로드"); exit(1)
             }
             check(store.iTunesLibrary.index["itunes:A"]?.name == "iTunes 합성 목록", "합성 iTunes 목록 로드")
-            let explicitDatabase = LibraryStore.explicitDatabaseRequested(arguments: ProcessInfo.processInfo.arguments, environment: env)
-            let syncDirectory = explicitDatabase ? snapshot.deletingLastPathComponent() : LibrarySnapshot.rekordboxDirectory(in: env)
+            // 동기화가 쓰는 곳: 명시한 사본이면 그 사본 옆, 아니면 라이브 rekordbox 폴더(저장소의 위치 값)
+            let syncDirectory = store.location.iTunesSyncTarget(opened: snapshot).deletingLastPathComponent()
             let syncURL = syncDirectory.appending(path: "playlists3.sync")
             let syncBefore = try? Data(contentsOf: syncURL)
             @MainActor func button(_ id: String, in view: NSView) -> NSButton? {
@@ -99,8 +100,8 @@ extension DevSelfTests {
             store.showingITunesSync = false
             await store.refreshITunesPlaylists()
             check(store.iTunesLibrary.index["itunes:C"] != nil, "다시 읽은 뒤에도 선택 유지")
-            if !explicitDatabase {
-                check(store.snapshotURL.map { LibrarySnapshot.sameDirectory($0.deletingLastPathComponent(), LibrarySnapshot.defaultDirectory(in: env)) } == true,
+            if !store.location.opensExplicitCopy {
+                check(store.snapshotURL.map { LibrarySnapshot.sameDirectory($0.deletingLastPathComponent(), store.location.snapshotDirectory) } == true,
                       "사본 폴더 모드의 새 스냅샷으로 갱신")
             }
             store.sidebar = .itunesPlaylist("itunes:A")
@@ -122,7 +123,7 @@ extension DevSelfTests {
             }
             deck.pressHotCue(slot: 0)
             check(deck.row?.track.id == row.track.id && deck.hotCue(slot: 0) != nil, "기존 곡에 핫큐 초안")
-            DraftWriter.flush()
+            store.useCases.watch.flush()
             check(CueDraftStore.load(trackUUID: row.track.uuid)?.hasChanges == true, "핫큐 초안 파일 저장")
             check((try? Data(contentsOf: snapshot)) == before && store.playlistDraft.isEmpty, "DB 사본과 목록 구성 불변")
             log("전체 통과 · 동기화 선택·취소·저장·다시 읽기·기존 9개 검증")

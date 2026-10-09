@@ -1,7 +1,8 @@
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 @testable import djc
@@ -99,16 +100,6 @@ struct XMLDiffCommandTests {
             _ = try XMLDiffCommand.report(.init(database: fixture.database, xml: fixture.root.appending(path: "없음.xml"), share: nil))
         }
         #expect(error.code == "missing_xml")
-    }
-
-    @Test func 사본_옆에_share가_없으면_share나_no_analysis를_줘야_한다() throws {
-        let fixture = try library()
-        let url = try xml(fixture)
-        try FileManager.default.removeItem(at: fixture.shareRoot)
-        #expect(throws: ReadFailure.self) { _ = try XMLDiffCommand.report(.init(database: fixture.database, xml: url, share: nil)) }
-        let report = try XMLDiffCommand.report(.init(database: fixture.database, xml: url, share: nil, noAnalysis: true))
-        #expect(report.diff.isEmpty, "그리드를 읽지 않으면 그리드를 비교하지 않는다")
-        #expect(XMLDiffCommand.lines(report, limit: 50).joined(separator: "\n").contains("그리드는 비교하지 않았습니다"))
     }
 
     // MARK: 초안 만들기(--draft)

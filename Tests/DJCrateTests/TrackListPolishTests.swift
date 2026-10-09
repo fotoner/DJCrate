@@ -1,7 +1,7 @@
 @testable import DJCrate
 import AppKit
+import DJCApplication
 import DJCDomain
-import DJCTestSupport
 import RekordboxKit
 import Testing
 
@@ -19,7 +19,7 @@ struct TrackListPolishTests {
     }
 
     static func counts(_ cues: [EditableCue]) -> CueCounts {
-        var draft = CueDraft(trackUUID: "draft", rekordboxCues: [])
+        var draft = CueDraft(trackUUID: "draft")
         draft.cues = cues
         return CueCounts(draft)
     }
@@ -175,7 +175,7 @@ struct TrackListPolishTests {
     }
 
     @Test func 칸이_배치된_뒤_그_크기로_그린다() {
-        let cell = PreviewWaveformCell()
+        let cell = PreviewWaveformCell(cache: PreviewWaveformCache(previews: ShowPreviewWaveforms(previews: .none)))
         cell.configure(url: nil, revision: "one", cues: [PreviewCueMark(EditableCue(kind: .hot(0), time: 2))], duration: 100)
         // 크기가 정해지기 전에는 그리지 않는다(잘못된 크기로 한 번 더 그리지 않게).
         #expect(cell.request == nil)
@@ -187,8 +187,8 @@ struct TrackListPolishTests {
     // MARK: -
 
     static func table(columns: [String], rows: [TrackRow]) -> (TrackListCoordinator, NSTableView) {
-        let store = LibraryStore(saveTagDrafts: { _ in })
-        let coordinator = TrackListCoordinator(store: store)
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
+        let coordinator = TrackListCoordinator(store: store, actions: .live(store: store))
         let table = NSTableView()
         for id in columns { table.addTableColumn(NSTableColumn(identifier: .init(id))) }
         coordinator.table = table

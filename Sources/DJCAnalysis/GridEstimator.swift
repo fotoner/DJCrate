@@ -7,19 +7,8 @@ import Foundation
 /// 고정 간격이므로, 박에 번호를 매긴 뒤(빠진 박은 간격으로 건너뛴다) 직선으로 맞추고
 /// 직선에서 계속 벗어나는 곳(실제 변속·위상 점프)에서만 구간을 나눈다. 1박은 MU 마디 시작의 다수결이다.
 public enum GridEstimator {
-    public struct Estimate: Codable, Sendable, Hashable {
-        public var segments: [GridSegment]
-        /// 맞춘 직선과 MU 박의 차이 중앙값(ms). 작을수록 박이 고르다.
-        public var medianResidualMs: Double
-        /// 직선에서 25ms 안에 든 박의 비율(0~1).
-        public var inlierRatio: Double
-        /// 1박 다수결에서 이긴 표의 비율(0~1). 마디 정보가 없으면 0.
-        public var downbeatConfidence: Double
-        public var bpm: Double { segments.first?.bpm ?? 0 }
-
-        /// 믿을 만한 추정인지(적용 버튼을 바로 권할지).
-        public var isConfident: Bool { inlierRatio >= 0.85 && medianResidualMs <= 15 }
-    }
+    /// 추정 결과 값은 DJCDomain에 있다(#167, 덱이 제안으로 들고 있다)
+    public typealias Estimate = GridEstimate
 
     /// rekordbox 라이브러리의 BPM은 거의 모두 105~215 안에 있다(분석 범위 설정). 추정도 이 범위로 옮긴다.
     public static let defaultRange: ClosedRange<Double> = 105...215

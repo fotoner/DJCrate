@@ -1,7 +1,9 @@
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 @testable import djc
@@ -41,8 +43,8 @@ struct UsbMigrateCommandTests {
         fixture.formats = [.deviceLibrary]
         fixture.myTagLinks = []
         try fixture.write(to: UsbTreeFixture(base: usb.usbURL))
-        let session = UsbMigrateSession(root: usb.usbURL, guard: usb.writeGuard(), paths: usb.paths, fileSystem: usb.fileSystem(),
-                                        copies: usb.home.appending(path: "usb-snapshots"))
+        let session = UsbMigrateSession(root: usb.usbURL, guard: usb.writeGuard(), paths: usb.paths, engine: .live(fileSystem: usb.fileSystem()),
+                                        device: .testing(), copies: usb.home.appending(path: "usb-snapshots"))
         let (result, report) = try session.write(options: UsbWriteOptions(), progress: { _ in }, isCancelled: { false })
         let lines = UsbCommands.migrateLines(result: result, report: report)
         #expect(lines.contains("옮길 것: 곡 3 · 재생 목록 1 · OneLibrary 앨범아트 6"))

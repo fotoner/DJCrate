@@ -1,7 +1,8 @@
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 @testable import djc
@@ -12,7 +13,7 @@ struct UsbInfoRoundTripTests {
     static func info(_ tree: UsbTreeFixture) throws -> UsbInfo {
         let scratch = FileManager.default.temporaryDirectory.appending(path: "djc-usbinfo-rt-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: scratch) }
-        return try UsbRead.info(root: tree.base, scratch: scratch, volume: nil, appVersion: { "7.2.18" })
+        return try UsbRead.testing().info(root: tree.base, scratch: scratch, volume: nil)
     }
 
     /// 작성기(`PdbWriter`)로 만든 합성 Device Library

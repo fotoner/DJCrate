@@ -1,5 +1,5 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
 
 /// rekordbox는 스냅샷으로 읽고, 앱이 읽는 초안 파일만 고친다.
@@ -21,94 +21,33 @@ enum DraftCommands {
 
     static func run(_ args: [String]) throws {
         let options = try Options(args)
-        let snapshot = try LibraryRead.resolve(database: options.values["--db"].map { URL(filePath: $0) })
-        let read = try LibraryRead(snapshot: snapshot)
-        let (track, cues) = try read.draftSource(id: options.id)
-        let uuid = track.uuid
-        guard !uuid.isEmpty, !uuid.contains("/"), !uuid.contains("\0"), uuid != ".", uuid != ".." else {
-            throw invalid(String(ui: "곡 UUID를 초안 파일 이름으로 쓸 수 없습니다"))
-        }
-        // 기존 HOME과 아직 없는 초안 경로의 /private 표기가 달라지지 않게 먼저 정규화한다.
-        let home = DJCPaths.userData.resolvingSymlinksInPath().standardizedFileURL
-        let directory = home.appending(path: "\(options.kind)-drafts")
-        let file = directory.appending(path: "\(uuid).json")
-        // DB의 UUID나 외부 링크 때문에 초안 폴더 밖을 고치지 않는다.
-        guard directory.resolvingSymlinksInPath().standardizedFileURL == directory.standardizedFileURL,
-              file.resolvingSymlinksInPath().standardizedFileURL == file.standardizedFileURL else {
-            throw invalid(String(ui: "초안 폴더나 파일의 심볼릭 링크를 해제하세요"))
-        }
+        // 초안은 데이터 폴더의 실제 경로 아래 곡별 파일에 바로 쓴다(유스케이스 `EditDraftFiles`, 앱은 바깥 변경 확인으로 받는다)
+        let library = CLIComposition.live.library(home: CLIComposition.resolvedDraftHome)
+        let read = try library.queries.open(database: options.values["--db"].map { URL(filePath: $0) })
+        let (track, cues) = try read.draftSource(options.id)
+        let edits = library.draftEdits
+        let kind: EditDraftFiles.Kind = options.kind == "cue" ? .cue : .tag
+        try edits.checkTarget(kind, uuid: track.uuid)
         var result = Result(kind: options.kind, action: options.remove ? "remove" : "save", contentID: track.id,
-                            trackUUID: uuid, dryRun: options.dryRun)
-        do {
-            if options.remove {
-                if !options.dryRun {
-                    if options.kind == "cue" { try CueDraftStore.remove(trackUUID: uuid, directory: directory) }
-                    else { try TagDraftStore.remove(trackUUID: uuid, directory: directory) }
-                }
-            } else if options.kind == "cue" {
-                // 자동 큐를 빼고 만든 옛 초안에는 곡의 자동 큐를 채운다(#145, 앱 덱과 같은 목록·한도).
-                let saved: CueDraft? = try existing(file)
-                var draft = saved?.includingAutoCues(from: cues) ?? CueDraft(trackUUID: uuid, rekordboxCues: cues)
-                guard draft.trackUUID == uuid, Set(draft.base.map(\.id)).count == draft.base.count,
-                      Set(draft.cues.map(\.id)).count == draft.cues.count,
-                      (draft.base + draft.cues).allSatisfy({ cue in
-                          switch cue.kind { case .memory: true; case let .hot(slot): (0..<8).contains(slot) }
-                      }) else { throw corrupt() }
-                let time = try options.number("--time")
-                let end = try options.values["--loop-end"].map { _ in try options.number("--loop-end") }
-                let beats = try options.values["--beats"].map { _ in try options.number("--beats") }
-                guard time >= 0, time <= Double(track.lengthSeconds),
-                      end.map({ $0 > time && $0 <= Double(track.lengthSeconds) }) ?? true,
-                      beats.map({ $0 > 0 && EditableCue.Loop.beatLoopSize(beats: $0) != 0 }) ?? true else {
-                    throw invalid(String(ui: "큐·루프 시각은 곡 길이 안에, 루프 끝은 시작 뒤에, 박 수는 정수 또는 1/n으로 쓰세요"))
-                }
-                let loop = end.map { EditableCue.Loop(end: $0, beats: beats) }
-                let selected: UUID
-                if let slot = options.slot {
-                    let cue = EditableCue(kind: .hot(slot), time: time, name: options.values["--name"] ?? "", loop: loop)
-                    draft.place(cue); selected = cue.id
-                } else {
-                    switch draft.addMemory(at: time, loop: loop) {
-                    case .limitReached: throw ReadFailure("invalid_draft", String(ui: "메모리 큐는 rekordbox 자동 큐를 포함해 10개까지입니다. 기존 큐를 앱에서 정리하세요"))
-                    case let .existing(id): selected = id
-                    case let .added(id):
-                        selected = id
-                        if var cue = draft.cue(id) { cue.name = options.values["--name"] ?? ""; draft.place(cue) }
-                    }
-                }
-                if options.flags.contains("--active"), draft.cue(selected)?.loop?.active != true { draft.toggleActiveLoop(selected) }
-                let issues = draft.issues(duration: Double(track.lengthSeconds))
-                guard issues.isEmpty else { throw invalid(issues.joined(separator: "; ")) }
-                result.cue = draft; result.hasChanges = draft.hasChanges
-                if !options.dryRun { try CueDraftStore.save(draft, directory: directory) }
-            } else {
-                // 안 고친 독립 칸(키·평점·곡 색)은 옛 초안(그 칸이 없던 때의 것)이라도 기준을 지금 값으로 맞춘다: 그 위에 고쳐도 기준이 어긋나 막히지 않게
-                var draft: TagDraft = (try existing(file) ?? TagDraft(track: track)).adoptingIndependentKeys(of: TagFields(track: track))
-                guard draft.trackUUID == uuid else { throw corrupt() }
-                for key in TagFields.Key.allCases {
-                    guard let value = options.values[Options.flag(key)] else { continue }
-                    // 키는 "8a"를, 평점은 "★★★"·"0"을, 곡 색은 rekordbox 색 이름("Blue")도 받아 초안 값으로 다듬는다.
-                    // 다른 표기는 그대로 두어 초안 검사가 거절한다.
-                    draft.fields[key] = switch key {
-                    case .musicalKey: KeyNotation.normalizedCamelotName(value) ?? value
-                    case .rating: TrackRating.accepted(value) ?? value
-                    case .color: TrackColor.accepted(value, in: read.colors) ?? value
-                    default: value
-                    }
-                }
-                guard draft.issues.isEmpty else { throw invalid(draft.issues.joined(separator: "; ")) }
-                // 이번에 고친 칸 가운데 쓰기를 확인하지 않은 곡의 칸(평점·곡 색: 상태 0·256·257 밖의 곡)은 초안을 만들지 않는다(앱과 같은 판단)
-                let touched = draft.changedKeys.filter { options.values[Options.flag($0)] != nil }
-                if let reason = TagWriteScope.blockReason(keys: touched, state: track.dataStatus, inPlaylist: read.isInPlaylist(id: track.id)) {
-                    throw ReadFailure("unverified_field", reason)
-                }
-                result.tag = draft; result.hasChanges = draft.hasChanges
-                if !options.dryRun { try TagDraftStore.save(draft, directory: directory) }
-            }
-        } catch let error as ReadFailure { throw error }
-        catch { throw ReadFailure("draft_io_failed", String(ui: "초안을 읽거나 저장하지 못했습니다. DJC_HOME의 초안 파일과 접근 권한을 확인하세요")) }
-        // 지우기는 읽지 못한 기존 파일을 지우지 않고 옮긴다. 조용히 사라지지 않게 알린다.
-        let preserved = DamagedDrafts.take(home: home).map(\.name)
+                            trackUUID: track.uuid, dryRun: options.dryRun)
+        if options.remove {
+            try edits.remove(kind, uuid: track.uuid, dryRun: options.dryRun)
+        } else if kind == .cue {
+            let draft = try edits.addCue({
+                EditDraftFiles.CueRequest(time: try options.number("--time"),
+                                          loopEnd: try options.values["--loop-end"].map { _ in try options.number("--loop-end") },
+                                          beats: try options.values["--beats"].map { _ in try options.number("--beats") },
+                                          slot: options.slot, name: options.values["--name"], active: options.flags.contains("--active"))
+            }, track: track, rekordboxCues: cues, dryRun: options.dryRun)
+            result.cue = draft; result.hasChanges = draft.hasChanges
+        } else {
+            var values: [TagFields.Key: String] = [:]
+            for key in TagFields.Key.allCases { values[key] = options.values[Options.flag(key)] }
+            let draft = try edits.setTags(values, track: track, colors: read.colors, inPlaylist: read.isInPlaylist(track.id),
+                                          dryRun: options.dryRun)
+            result.tag = draft; result.hasChanges = draft.hasChanges
+        }
+        let preserved = library.watch.takeMovedFiles().map(\.name)
         if !preserved.isEmpty { result.preserved = preserved }
         if options.flags.contains("--json") {
             print(String(decoding: try ReadJSON.encode(command: "draft", data: result), as: UTF8.self))
@@ -127,16 +66,6 @@ enum DraftCommands {
                 print(String(ui: "  읽지 못한 기존 초안 파일은 지우지 않고 damaged-drafts에 옮겨 두었습니다: \(preserved.joined(separator: ", "))"))
             }
         }
-    }
-
-    private static func existing<T: Decodable>(_ file: URL) throws -> T? {
-        do { return try JSONDecoder().decode(T.self, from: Data(contentsOf: file)) }
-        catch CocoaError.fileReadNoSuchFile { return nil }
-        catch { throw corrupt() }
-    }
-
-    private static func corrupt() -> ReadFailure {
-        ReadFailure("invalid_draft", String(ui: "기존 초안을 읽을 수 없습니다. 초안을 백업하고 앱에서 확인한 뒤 다시 시도하세요"))
     }
 
     private static func invalid(_ message: String) -> ReadFailure {

@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import DJCDomain
 import QuartzCore
 
 extension DevSelfTests {

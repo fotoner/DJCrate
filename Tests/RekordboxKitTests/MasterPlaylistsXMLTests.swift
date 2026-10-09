@@ -1,3 +1,4 @@
+import DJCDomain
 import Foundation
 @testable import RekordboxKit
 import Testing

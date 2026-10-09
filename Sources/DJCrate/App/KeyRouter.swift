@@ -1,4 +1,5 @@
 import AppKit
+import DJCApplication
 import DJCDomain
 
 /// 창 전체 단축키와 검색창 포커스 정리.
@@ -14,13 +15,16 @@ final class KeyRouter {
     @ObservationIgnored private var monitors: [Any] = []
     @ObservationIgnored weak var deck: DeckModel?
     @ObservationIgnored private weak var store: LibraryStore?
+    /// 덱 단축키를 받지 않는 곡 편집·Flip 창
+    @ObservationIgnored private weak var windows: AppWindows?
     @ObservationIgnored private var resignObserver: NSObjectProtocol?
     /// 미리 듣기를 시작한 CUE 키(떼면 미리 듣기를 끝낸다)
     @ObservationIgnored private var heldCueKey: UInt16?
 
-    func install(deck: DeckModel, store: LibraryStore? = nil) {
+    func install(deck: DeckModel, store: LibraryStore? = nil, windows: AppWindows? = nil) {
         self.deck = deck
         self.store = store
+        self.windows = windows
         guard monitors.isEmpty else { return }
         if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp], handler: { [weak self] event in
             // `self?.route(event) ?? event`로 쓰면 처리했다는 nil까지 원래 이벤트로 바뀌어 새어 나간다.
@@ -57,7 +61,7 @@ final class KeyRouter {
         let responder = window.firstResponder
         let focus = Self.focus(in: window)
         let context = KeyRoutingPolicy.Context(
-            isMainWindow: Self.isDeckWindow(window),
+            isMainWindow: isDeckWindow(window),
             hasModalWindow: NSApp.modalWindow != nil,
             hasAttachedSheet: window.attachedSheet != nil,
             hasShortcutModifiers: !event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
@@ -226,9 +230,9 @@ final class KeyRouter {
     }
 
     /// 덱 단축키를 받는 창: 설정·단축키 안내 창과 곡 편집·Flip 창(자체 재생기·단축키가 있다)을 제외한 주 창.
-    private static func isDeckWindow(_ window: NSWindow) -> Bool {
+    private func isDeckWindow(_ window: NSWindow) -> Bool {
         window === NSApp.mainWindow && window !== SettingsWindow.current && window !== ShortcutsWindow.current
-            && window !== TrackEditWindow.shared.window && window !== FlipWindow.shared.window
+            && window !== windows?.trackEdit.window && window !== windows?.flip.window
     }
 
     // MARK: - 목록 포커스
@@ -272,7 +276,7 @@ final class KeyRouter {
     /// 글자 칸·표가 아닌 곳(파형·덱 버튼·빈 곳)을 누르면 포커스를 창으로 돌려 단축키가 덱으로 가게 한다.
     /// 검색창에 포커스가 박혀 스페이스가 검색어로 들어가던 문제를 여기서 푼다.
     private func releaseFocusIfNeeded(_ event: NSEvent) {
-        guard NSApp.modalWindow == nil, let window = event.window, Self.isDeckWindow(window),
+        guard NSApp.modalWindow == nil, let window = event.window, isDeckWindow(window),
               window.attachedSheet == nil,
               let root = window.contentView?.superview,
               let hit = root.hitTest(event.locationInWindow) else { return }

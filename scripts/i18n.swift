@@ -10,7 +10,7 @@ let resources = root.appending(path: "Sources/DJCrate/Resources")
 let catalogURL = resources.appending(path: "Localizable.xcstrings")
 let infoPlistCatalogURL = resources.appending(path: "InfoPlist.xcstrings")
 /// 앱·CLI가 같은 카탈로그로 문구를 찾는다. CLI의 Lab은 개발자용이라 한국어를 유지한다.
-let modules = ["DJCrate", "djc", "DJCDomain", "RekordboxKit", "DJCStorage", "DJCAnalysis"]
+let modules = ["DJCrate", "djc", "DJCDomain", "RekordboxKit", "DJCStorage", "DJCAnalysis", "DJCApplication", "DJCAdapters"]
 let languages = ["en", "ja"]
 
 struct Extracted {

@@ -1,9 +1,11 @@
 @testable import DJCrate
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCAnalysis
 import DJCStorage
 import Foundation
-import DJCTestSupport
+import RekordboxFixtures
 import RekordboxKit
 import Synchronization
 import Testing
@@ -17,82 +19,88 @@ struct DraftSaveRecoveryTests {
     }
 
     func cue(_ uuid: String, time: Double) -> CueDraft {
-        var draft = CueDraft(trackUUID: uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: uuid)
         draft.place(EditableCue(kind: .memory, time: time))
         return draft
     }
 
-    @Test(.enabled(if: LiveDraftHome.isIsolated)) func 큐_저장에_실패해도_다시_읽을_입력을_보존한다() throws {
+    @Test func 큐_저장에_실패해도_다시_읽을_입력을_보존한다() throws {
+        let writer = DraftWriter()
+        let home = try directory(), locations = DraftLocations(home: home)
+        defer { try? FileManager.default.removeItem(at: home) }
         let uuid = UUID().uuidString
-        let file = CueDraftStore.directory.appending(path: "\(uuid).json")
+        let file = locations.cue.appending(path: "\(uuid).json")
         try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: file) }
-        var draft = CueDraft(trackUUID: uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: uuid)
         draft.place(EditableCue(kind: .memory, time: 4))
-        DraftWriter.save(draft)
-        DraftWriter.flush()
-        #expect(CueDraftStore.load(trackUUID: uuid) == nil)
-        #expect(DeckStorage.live.loadCueDraft(uuid) == draft)
+        writer.save(draft, directory: locations.cue)
+        writer.flush()
+        #expect(CueDraftStore.load(trackUUID: uuid, directory: locations.cue) == nil)
+        #expect(DraftStore.live(writer: writer, home: home).currentCue(uuid) == draft)
         try FileManager.default.removeItem(at: file)
-        DraftWriter.retry(trackUUID: uuid)
-        DraftWriter.flush()
+        writer.retry(trackUUID: uuid, in: locations)
+        writer.flush()
     }
 
-    @Test(.enabled(if: LiveDraftHome.isIsolated)) func 그리드_저장에_실패해도_다시_읽을_입력을_보존한다() throws {
+    @Test func 그리드_저장에_실패해도_다시_읽을_입력을_보존한다() throws {
+        let writer = DraftWriter()
+        let home = try directory(), locations = DraftLocations(home: home)
+        defer { try? FileManager.default.removeItem(at: home) }
         let uuid = UUID().uuidString
-        let file = GridDraftStore.directory.appending(path: "\(uuid).json")
+        let file = locations.grid.appending(path: "\(uuid).json")
         try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: file) }
         let draft = GridDraft(trackUUID: uuid, base: [], segments: [GridSegment(start: 1, bpm: 120, firstBeatNumber: 1)])
-        DraftWriter.save(draft)
-        DraftWriter.flush()
-        #expect(GridDraftStore.load(trackUUID: uuid) == nil)
-        #expect(DeckStorage.live.loadGridDraft(uuid) == draft)
+        writer.save(draft, directory: locations.grid)
+        writer.flush()
+        #expect(GridDraftStore.load(trackUUID: uuid, directory: locations.grid) == nil)
+        #expect(DraftStore.live(writer: writer, home: home).currentGrid(uuid) == draft)
         try FileManager.default.removeItem(at: file)
-        DraftWriter.retry(trackUUID: uuid)
-        DraftWriter.flush()
+        writer.retry(trackUUID: uuid, in: locations)
+        writer.flush()
     }
 
     @Test func 큐_실패와_추가_편집_뒤_최신값을_재시도하고_다른_UUID는_보존한다() throws {
+        let writer = DraftWriter()
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }
         let uuid = UUID().uuidString, other = UUID().uuidString
         let saved = cue(uuid, time: 1)
-        DraftWriter.save(saved, directory: root)
-        DraftWriter.flush()
-        let savedRevision = try #require(DraftWriter.state(.cue, trackUUID: uuid, directory: root)?.savedRevision)
+        writer.save(saved, directory: root)
+        writer.flush()
+        let savedRevision = try #require(writer.state(.cue, trackUUID: uuid, directory: root)?.savedRevision)
         let fail = Mutex(true)
         let write: @Sendable (CueDraft, URL) throws -> Void = { draft, directory in
             if fail.withLock({ $0 }) { throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: "/private/example/sensitive"]) }
             try CueDraftStore.save(draft, directory: directory)
         }
-        DraftWriter.save(cue(uuid, time: 2), directory: root, write: write)
-        DraftWriter.save(cue(other, time: 5), directory: root, write: write)
+        writer.save(cue(uuid, time: 2), directory: root, write: write)
+        writer.save(cue(other, time: 5), directory: root, write: write)
         let latest = cue(uuid, time: 3)
-        DraftWriter.save(latest, directory: root, write: write)
-        let errors = DraftWriter.flush()
-        let state = try #require(DraftWriter.state(.cue, trackUUID: uuid, directory: root))
+        writer.save(latest, directory: root, write: write)
+        writer.flush()
+        let state = try #require(writer.state(.cue, trackUUID: uuid, directory: root))
         #expect(state.savedRevision == savedRevision && state.failure?.revision == state.revision)
-        #expect(errors.contains { $0.trackUUID == uuid && !$0.reason.contains("sensitive") })
+        #expect(state.failure.map { !$0.reason.contains("sensitive") } == true)
         #expect(CueDraftStore.load(trackUUID: uuid, directory: root) == saved)
-        #expect(DraftWriter.pendingCue(trackUUID: uuid, directory: root) == latest)
+        #expect(writer.pendingCue(trackUUID: uuid, directory: root) == latest)
         fail.withLock { $0 = false }
-        DraftWriter.retry(trackUUID: uuid, cueDirectory: root)
-        DraftWriter.flush()
+        writer.retry(.cue, trackUUID: uuid, directory: root)
+        writer.flush()
         #expect(CueDraftStore.load(trackUUID: uuid, directory: root) == latest)
-        #expect(DraftWriter.pendingCue(trackUUID: uuid, directory: root) == nil)
-        #expect(DraftWriter.state(.cue, trackUUID: uuid, directory: root)?.failure == nil)
-        #expect(DraftWriter.state(.cue, trackUUID: other, directory: root)?.failure != nil)
+        #expect(writer.pendingCue(trackUUID: uuid, directory: root) == nil)
+        #expect(writer.state(.cue, trackUUID: uuid, directory: root)?.failure == nil)
+        #expect(writer.state(.cue, trackUUID: other, directory: root)?.failure != nil)
     }
 
     @Test func 그리드_실패와_추가_편집_뒤_최신값을_재시도하고_flush한다() throws {
+        let writer = DraftWriter()
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }
         let uuid = UUID().uuidString
         let saved = GridDraft(trackUUID: uuid, base: [], segments: [GridSegment(start: 1, bpm: 120, firstBeatNumber: 1)])
-        DraftWriter.save(saved, directory: root)
-        DraftWriter.flush()
-        let savedRevision = DraftWriter.state(.grid, trackUUID: uuid, directory: root)?.savedRevision
+        writer.save(saved, directory: root)
+        writer.flush()
+        let savedRevision = writer.state(.grid, trackUUID: uuid, directory: root)?.savedRevision
         let fail = Mutex(true)
         let write: @Sendable (GridDraft, URL) throws -> Void = { draft, directory in
             if fail.withLock({ $0 }) { throw CocoaError(.fileWriteOutOfSpace) }
@@ -100,79 +108,83 @@ struct DraftSaveRecoveryTests {
         }
         var latest = saved
         latest.segments[0].bpm = 125
-        DraftWriter.save(latest, directory: root, write: write)
-        DraftWriter.flush()
+        writer.save(latest, directory: root, write: write)
+        writer.flush()
         latest.segments[0].bpm = 130
-        DraftWriter.save(latest, directory: root, write: write)
-        DraftWriter.flush()
-        #expect(DraftWriter.state(.grid, trackUUID: uuid, directory: root)?.savedRevision == savedRevision)
+        writer.save(latest, directory: root, write: write)
+        writer.flush()
+        #expect(writer.state(.grid, trackUUID: uuid, directory: root)?.savedRevision == savedRevision)
         #expect(GridDraftStore.load(trackUUID: uuid, directory: root) == saved)
-        #expect(DraftWriter.pendingGrid(trackUUID: uuid, directory: root) == latest)
-        #expect(DraftWriter.failures(gridDirectory: root).contains { $0.trackUUID == uuid && $0.reason.contains("빈 공간") })
+        #expect(writer.pendingGrid(trackUUID: uuid, directory: root) == latest)
+        #expect(writer.state(.grid, trackUUID: uuid, directory: root)?.failure?.reason.contains("빈 공간") == true)
         fail.withLock { $0 = false }
-        DraftWriter.retry(trackUUID: uuid, gridDirectory: root)
-        DraftWriter.flush()
+        writer.retry(.grid, trackUUID: uuid, directory: root)
+        writer.flush()
         #expect(GridDraftStore.load(trackUUID: uuid, directory: root) == latest)
-        let state = try #require(DraftWriter.state(.grid, trackUUID: uuid, directory: root))
+        let state = try #require(writer.state(.grid, trackUUID: uuid, directory: root))
         #expect(state.savedRevision == state.revision && state.failure == nil)
     }
 
     @Test func 재시도_중_추가_편집과_최신_실패를_옛_성공으로_지우지_않는다() throws {
+        let writer = DraftWriter()
         let root = try directory()
         defer { try? FileManager.default.removeItem(at: root) }
         let uuid = UUID().uuidString
         let started = DispatchSemaphore(value: 0), finish = DispatchSemaphore(value: 0)
         let attempt = Mutex(0)
         let original = cue(uuid, time: 1), latest = cue(uuid, time: 3)
-        DraftWriter.save(original, directory: root, write: { draft, directory in
+        writer.save(original, directory: root, write: { draft, directory in
             let number = attempt.withLock { $0 += 1; return $0 }
             if number == 1 { throw CocoaError(.fileWriteNoPermission) }
             started.signal()
             finish.wait()
             try CueDraftStore.save(draft, directory: directory)
         })
-        DraftWriter.flush()
-        DraftWriter.retry(trackUUID: uuid, cueDirectory: root)
+        writer.flush()
+        writer.retry(.cue, trackUUID: uuid, directory: root)
         #expect(started.wait(timeout: .now() + 5) == .success)
-        DraftWriter.save(latest, directory: root, write: { _, _ in throw CocoaError(.fileWriteOutOfSpace) })
+        writer.save(latest, directory: root, write: { _, _ in throw CocoaError(.fileWriteOutOfSpace) })
         finish.signal()
-        DraftWriter.flush()
-        let state = try #require(DraftWriter.state(.cue, trackUUID: uuid, directory: root))
+        writer.flush()
+        let state = try #require(writer.state(.cue, trackUUID: uuid, directory: root))
         #expect(state.failure?.revision == state.revision && state.savedRevision != state.revision)
         #expect(CueDraftStore.load(trackUUID: uuid, directory: root) == original)
-        #expect(DraftWriter.pendingCue(trackUUID: uuid, directory: root) == latest)
-        DraftWriter.save(latest, directory: root)
-        DraftWriter.flush()
+        #expect(writer.pendingCue(trackUUID: uuid, directory: root) == latest)
+        writer.save(latest, directory: root)
+        writer.flush()
         #expect(CueDraftStore.load(trackUUID: uuid, directory: root) == latest)
     }
 
-    @Test(.enabled(if: LiveDraftHome.isIsolated)) @MainActor func 저장_실패가_있으면_디스크의_옛_초안을_실제_쓰기에_넘기지_않는다() async throws {
+    @Test @MainActor func 저장_실패가_있으면_디스크의_옛_초안을_실제_쓰기에_넘기지_않는다() async throws {
+        let writer = DraftWriter()
         let fixture = try RekordboxFixture()
         let spec = TrackSpec()
         try fixture.add(spec)
+        let home = fixture.root.appending(path: "drafts"), locations = DraftLocations(home: home)
         let old = cue(spec.uuid, time: 1), latest = cue(spec.uuid, time: 2)
-        DraftWriter.save(old)
-        DraftWriter.flush()
-        DraftWriter.save(latest, write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
-        DraftWriter.flush()
-        let failure = try #require(DraftWriter.failures().first { $0.trackUUID == spec.uuid })
+        writer.save(old, directory: locations.cue)
+        writer.flush()
+        writer.save(latest, directory: locations.cue, write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
+        writer.flush()
+        let failure = try #require(writer.failures(in: locations).first { $0.trackUUID == spec.uuid })
         defer {
-            DraftWriter.save(CueDraft(trackUUID: spec.uuid, rekordboxCues: []))
-            DraftWriter.flush()
+            writer.save(CueDraft(trackUUID: spec.uuid), directory: locations.cue)
+            writer.flush()
         }
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups)
-        await store.load(snapshot: fixture.database, arguments: ["test", "--db", fixture.database.path], environment: [:])
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+                                 draftHome: home, arguments: ["test", "--db", fixture.database.path], environment: [:], writer: writer)
+        await store.load(snapshot: fixture.database)
         let row = try #require(store.rowsByUUID[spec.uuid])
         do {
-            _ = try await store.previewWrite(rows: [row], playlists: false)
+            _ = try await store.session.previewWrite(rows: [row], playlists: false)
             Issue.record("저장 실패가 있는데 미리 보기가 통과했다")
         } catch { #expect(error.localizedDescription.contains(failure.message)) }
         do {
-            _ = try await store.writeToRekordbox([old], to: fixture.database, shareRoot: fixture.shareRoot)
+            _ = try await store.session.writeToRekordbox([old], to: fixture.database, shareRoot: fixture.shareRoot)
             Issue.record("저장 실패가 있는데 실제 쓰기가 통과했다")
         } catch { #expect(error.localizedDescription.contains(failure.message)) }
         #expect(try RekordboxLibrary.load(snapshot: fixture.database).cues.isEmpty)
-        #expect(DraftWriter.pendingCue(trackUUID: spec.uuid) == latest)
+        #expect(writer.pendingCue(trackUUID: spec.uuid, directory: locations.cue) == latest)
     }
 
     @Test func 그리드_초안_삭제_실패도_오류로_전달한다() throws {
@@ -191,17 +203,18 @@ struct DraftSaveRecoveryTests {
     }
 
     @Test @MainActor func 덱에서_옛_완료는_최신_실패와_다른_UUID를_지우지_않는다() async throws {
-        let callbacks = Mutex<[@Sendable (DraftWriter.Failure?) -> Void]>([])
-        var storage = DeckStorage.memory(MemoryDrafts())
-        storage.saveCueDraft = { _, completion in callbacks.withLock { $0.append(completion) } }
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
+        let callbacks = Mutex<[@Sendable (DraftSaveFailure?) -> Void]>([])
+        var drafts = MemoryDrafts().store
+        drafts.saveCue = { _, completion in callbacks.withLock { $0.append(completion) } }
+        let storage = DeckStorage.memory(drafts)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
         let uuid = UUID().uuidString, other = UUID().uuidString
         deck.persist(cue(uuid, time: 1))
         deck.persist(cue(uuid, time: 2))
         deck.persist(cue(other, time: 3))
         let completions = callbacks.withLock { $0 }
-        let newest = DraftWriter.Failure(kind: .cue, trackUUID: uuid, revision: 2, reason: "합성 실패")
-        let otherFailure = DraftWriter.Failure(kind: .cue, trackUUID: other, revision: 3, reason: "다른 합성 실패")
+        let newest = DraftSaveFailure(kind: .cue, trackUUID: uuid, revision: 2, reason: "합성 실패")
+        let otherFailure = DraftSaveFailure(kind: .cue, trackUUID: other, revision: 3, reason: "다른 합성 실패")
         completions[1](newest)
         completions[2](otherFailure)
         for _ in 0..<100 where deck.draftSaveFailures.count < 2 { try await Task.sleep(for: .milliseconds(5)) }
@@ -213,12 +226,13 @@ struct DraftSaveRecoveryTests {
     }
 
     @Test @MainActor func 큐_저장_실패_중_외부_재읽기로_입력을_버리지_않는다() async throws {
-        var storage = DeckStorage.memory(MemoryDrafts())
-        storage.saveCueDraft = { draft, completion in
-            completion(DraftWriter.Failure(kind: .cue, trackUUID: draft.trackUUID, revision: 1, reason: "합성 실패"))
+        var drafts = MemoryDrafts().store
+        drafts.saveCue = { draft, completion in
+            completion(DraftSaveFailure(kind: .cue, trackUUID: draft.trackUUID, revision: 1, reason: "합성 실패"))
         }
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
-        let row = ReflectionCoordinatorTests.row("failed-external")
+        let storage = DeckStorage.memory(drafts)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
+        let row = ReflectionPresenterTests.row("failed-external")
         deck.row = row
         let latest = cue(row.track.uuid, time: 8)
         deck.draft = latest
@@ -228,46 +242,52 @@ struct DraftSaveRecoveryTests {
         #expect(deck.draft == latest)
     }
 
-    @Test(.enabled(if: LiveDraftHome.isIsolated)) func 실패한_초안_삭제는_디스크의_옛_입력으로_다시_읽지_않는다() throws {
+    @Test func 실패한_초안_삭제는_디스크의_옛_입력으로_다시_읽지_않는다() throws {
+        let writer = DraftWriter()
+        let home = try directory(), cues = DraftLocations(home: home).cue
+        defer { try? FileManager.default.removeItem(at: home) }
         let uuid = UUID().uuidString
         let saved = cue(uuid, time: 1)
-        DraftWriter.save(saved)
-        DraftWriter.flush()
+        writer.save(saved, directory: cues)
+        writer.flush()
         var reverted = saved
         reverted.revert()
-        DraftWriter.save(reverted, write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
-        DraftWriter.flush()
-        defer { DraftWriter.removeCue(trackUUID: uuid); DraftWriter.flush() }
-        #expect(CueDraftStore.load(trackUUID: uuid) == saved)
-        #expect(DraftWriter.pendingCue(trackUUID: uuid) == reverted)
-        #expect(DeckStorage.live.loadCueDraft(uuid) == nil)
+        writer.save(reverted, directory: cues, write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
+        writer.flush()
+        defer { writer.removeCue(trackUUID: uuid, directory: cues); writer.flush() }
+        #expect(CueDraftStore.load(trackUUID: uuid, directory: cues) == saved)
+        #expect(writer.pendingCue(trackUUID: uuid, directory: cues) == reverted)
+        #expect(DraftStore.live(writer: writer, home: home).currentCue(uuid) == nil)
     }
 
-    @Test(.enabled(if: LiveDraftHome.isIsolated)) @MainActor func 사본_쓰기가_성공한_뒤_초안_정리_실패는_별도로_알린다() async throws {
+    @Test @MainActor func 사본_쓰기가_성공한_뒤_초안_정리_실패는_별도로_알린다() async throws {
+        let writer = DraftWriter()
         let fixture = try RekordboxFixture()
         let spec = TrackSpec()
         try fixture.add(spec)
+        let home = fixture.root.appending(path: "drafts"), cues = DraftLocations(home: home).cue
         let draft = cue(spec.uuid, time: 4)
-        DraftWriter.save(draft)
-        DraftWriter.flush()
-        // 함께 쓰는 초안 폴더 권한 대신 이 곡의 파일만 잠가 정리(삭제) 실패를 만든다(다른 묶음과 섞이지 않게).
-        let file = CueDraftStore.directory.appending(path: "\(spec.uuid).json")
+        writer.save(draft, directory: cues)
+        writer.flush()
+        // 초안 폴더 권한 대신 이 곡의 파일만 잠가 정리(삭제) 실패를 만든다.
+        let file = cues.appending(path: "\(spec.uuid).json")
         try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: file.path)
         defer {
             try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file.path)
-            DraftWriter.removeCue(trackUUID: spec.uuid)
-            DraftWriter.flush()
+            writer.removeCue(trackUUID: spec.uuid, directory: cues)
+            writer.flush()
         }
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups)
-        await store.load(snapshot: fixture.database, arguments: ["test", "--db", fixture.database.path], environment: [:])
-        let report = try await store.writeToRekordbox([draft], to: fixture.database, shareRoot: fixture.shareRoot)
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+                                 draftHome: home, arguments: ["test", "--db", fixture.database.path], environment: [:], writer: writer)
+        await store.load(snapshot: fixture.database)
+        let report = try await store.session.writeToRekordbox([draft], to: fixture.database, shareRoot: fixture.shareRoot)
         #expect(report.written.map(\.trackUUID) == [spec.uuid])
         #expect(try RekordboxLibrary.load(snapshot: fixture.database).cues.contains { $0.inMsec == 4000 })
         // 사본 쓰기의 백업은 저장소에 준 백업 폴더에 남는다(사용자 백업 폴더를 밀어내지 않는다).
         #expect(RekordboxWriter.backups(in: fixture.backups).contains { $0.isWrite })
         #expect(store.lastError?.contains("썼지만") == true)
-        #expect(DraftWriter.pendingCue(trackUUID: spec.uuid)?.hasChanges == false)
-        #expect(CueDraftStore.load(trackUUID: spec.uuid) == draft)
+        #expect(writer.pendingCue(trackUUID: spec.uuid, directory: cues)?.hasChanges == false)
+        #expect(CueDraftStore.load(trackUUID: spec.uuid, directory: cues) == draft)
     }
 
     @Test @MainActor func 명시적_추정_대체는_원본_승인을_저장하고_버리면_막힘을_복원한다() async throws {
@@ -295,23 +315,8 @@ struct DraftSaveRecoveryTests {
         #expect(h.deck.gridEditBlockedReason != nil && !h.deck.canEditGrid)
     }
 
-    @Test @MainActor func 원본과_다른_base에는_추정_대체_승인을_붙이지_않는다() async throws {
-        let h = try DeckHarness(grid: nil)
-        try await h.loaded()
-        let original = BeatGrid(beats: (0..<40).map { .init(number: $0 % 4 + 1, bpm: 120, time: 0.5 + Double($0) * 0.5) })
-        h.deck.originalGrid = original
-        var stale = GridDraft(trackUUID: "track-1", grid: original)
-        stale.base[0].start += 0.1
-        h.deck.gridDraft = stale
-        h.deck.gridEditBlockedReason = "합성 원본 변경"
-        let estimate = try #require(GridEstimator.estimate(beats: original.beats.map(\.time), bars: [0.5, 2.5, 4.5], duration: 20))
-        h.deck.gridSuggestion = estimate
-        h.deck.gridSuggestion?.segments[0].bpm = 125
-        h.deck.applyGridSuggestion()
-        #expect(h.deck.gridDraft == stale && h.deck.gridEditBlockedReason != nil)
-    }
-
-    @Test(.enabled(if: LiveDraftHome.isIsolated)) func 실패한_큐와_그리드_삭제를_다시_읽으면_현재_원본을_사용한다() throws {
+    @Test func 실패한_큐와_그리드_삭제를_다시_읽으면_현재_원본을_사용한다() async throws {
+        let writer = DraftWriter()
         let fixture = try RekordboxFixture()
         var spec = TrackSpec()
         spec.cues = [CueSpec(kind: 0, inMsec: 4000)]
@@ -322,27 +327,33 @@ struct DraftSaveRecoveryTests {
         // 분석 파일은 합성 사본의 share에서 읽는다(DJC_REKORDBOX_DIR에 기대지 않는다).
         let library = try RekordboxLibrary.load(snapshot: fixture.database)
         let track = try #require(library.tracks.first)
-        let fresh = DeckPayload.load(track: track, cues: library.cues, duration: 180, storage: .live, analysisRoot: fixture.shareRoot)
+        // 덱이 곡을 올릴 때와 같은 읽기(실제 초안 파일·합성 사본의 share)
+        let home = fixture.root.appending(path: "drafts"), locations = DraftLocations(home: home)
+        let loader = LoadDeckTrack(assets: .live(drafts: .live(writer: writer, home: home)), cache: MemoryAnalysisStore().store)
+        let request = DeckTrackRequest(uuid: track.uuid, audioFile: nil, analysisPath: track.analysisDataPath,
+                                       imagePath: nil, shareRoot: fixture.shareRoot, rekordboxCues: library.cues)
+        let fresh = await loader.content(request, duration: 180)
         var editedCue = fresh.draft
         editedCue.place(EditableCue(kind: .memory, time: 8))
-        var editedGrid = try #require(fresh.gridDraft)
+        var editedGrid = try #require(fresh.grid.gridDraft)
         editedGrid.shift(by: 0.1)
-        DraftWriter.save(editedCue)
-        DraftWriter.save(editedGrid)
-        DraftWriter.flush()
-        DraftWriter.save(fresh.draft, write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
-        DraftWriter.save(try #require(fresh.gridDraft), write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
-        DraftWriter.flush()
+        writer.save(editedCue, directory: locations.cue)
+        writer.save(editedGrid, directory: locations.grid)
+        writer.flush()
+        writer.save(fresh.draft, directory: locations.cue, write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
+        writer.save(try #require(fresh.grid.gridDraft), directory: locations.grid, write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
+        writer.flush()
         defer {
-            DraftWriter.removeCue(trackUUID: spec.uuid)
-            DraftWriter.removeGrid(trackUUID: spec.uuid)
-            DraftWriter.flush()
+            writer.removeCue(trackUUID: spec.uuid, directory: locations.cue)
+            writer.removeGrid(trackUUID: spec.uuid, directory: locations.grid)
+            writer.flush()
         }
-        let reloaded = DeckPayload.load(track: track, cues: library.cues, duration: 180, storage: .live, analysisRoot: fixture.shareRoot)
-        #expect(CueDraftStore.load(trackUUID: spec.uuid) == editedCue && GridDraftStore.load(trackUUID: spec.uuid) == editedGrid)
+        let reloaded = await loader.content(request, duration: 180)
+        #expect(CueDraftStore.load(trackUUID: spec.uuid, directory: locations.cue) == editedCue
+            && GridDraftStore.load(trackUUID: spec.uuid, directory: locations.grid) == editedGrid)
         #expect(!reloaded.draft.hasChanges && reloaded.draft.cues.map(\.time) == [4])
         #expect(reloaded.draft.cues.map(\.sourceID) == fresh.draft.cues.map(\.sourceID))
-        #expect(reloaded.gridDraft == fresh.gridDraft)
-        #expect(reloaded.originalGrid == fresh.originalGrid && reloaded.gridBlockedReason == nil)
+        #expect(reloaded.grid.gridDraft == fresh.grid.gridDraft)
+        #expect(reloaded.grid.originalGrid == fresh.grid.originalGrid && reloaded.grid.blockedReason == nil)
     }
 }

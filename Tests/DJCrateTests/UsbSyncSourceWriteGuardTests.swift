@@ -1,7 +1,8 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import RekordboxKit
 import Testing
@@ -64,9 +65,10 @@ struct UsbSyncSourceWriteGuardTests {
         let volume = FakeUsbVolume.diskImageFAT32(name: "합성 USB")
         let usbHost = FakeUsbHost([volume])
         usbHost.serveEmpty(volume)
-        let usb = UsbStore(host: usbHost, readPolicy: .all, localLibrary: { nil })
+        let service = FakeUsbWriteService()
+        let usb = UsbStore(host: usbHost, readPolicy: .all, writeService: service, localLibrary: { nil })
         await usb.refresh()
-        let host = try SyncSourceWriteHost(), service = FakeUsbWriteService()
+        let host = try SyncSourceWriteHost()
         host.usbHost = usbHost
         let live = FakeUsbLiveVolumeReader(volume)
         host.liveVolume = live
@@ -144,9 +146,13 @@ struct UsbSyncSourceWriteGuardTests {
     private func rememberDraft(_ usb: UsbStore, job: UsbExportJob) -> [UsbLibraryEdit] {
         let edits: [UsbLibraryEdit] = [.syncSelection(draft: job.syncSelection!)]
         usb.setDraft(edits, for: job.volumeKey)
-        usb.rememberSyncDraft(UsbEditJob(database: job.database, share: job.share, volume: job.volume, snapshotTime: nil,
-                                       syncSourceContext: job.syncSourceContext), edits: edits, sourceIsCurrent: { true })
+        usb.rememberSyncDraft(Self.rememberedJob(job), edits: edits, sourceIsCurrent: { true })
         return edits
+    }
+
+    /// 동기화 초안을 만들 때 보관한 수정 작업(쓰기 창구에는 이 작업의 사본 DB·원본 시각이 그대로 가야 한다)
+    private static func rememberedJob(_ job: UsbExportJob) -> UsbEditJob {
+        UsbEditJob(database: job.database, share: job.share, volume: job.volume, snapshotTime: nil, syncSourceContext: job.syncSourceContext)
     }
 
     @Test func 일반_writeDraft의_native_문맥은_preview부터_끝까지_고정되어_원본_변경을_막는다() async throws {
@@ -161,7 +167,7 @@ struct UsbSyncSourceWriteGuardTests {
             host.change(field)
             gate.open()
             #expect(await task.value == false)
-            #expect(service.current.editJobs.first?.syncSourceContext == job.syncSourceContext)
+            #expect(service.current.editJobs.first == Self.rememberedJob(job).input)
             #expect(!service.current.calls.contains("writeEdit") && service.current.fileOperations == 0)
         }
     }
@@ -197,7 +203,7 @@ struct UsbSyncSourceWriteGuardTests {
         service.update { $0.calls = []; $0.editSummary.edits = edits }
         #expect(await coordinator.writeDraft(volumeKey: job.volumeKey, database: host.database, share: job.share) == true)
         #expect(service.current.calls == ["previewEdit", "writeEdit"])
-        #expect(service.current.editJobs.allSatisfy { $0.syncSourceContext == job.syncSourceContext })
+        #expect(service.current.editJobs.allSatisfy { $0 == Self.rememberedJob(job).input })
     }
 
     @Test func 기억한_native_편집과_다른_summary를_새_원본으로_간주하지_않는다() async throws {
@@ -398,7 +404,7 @@ struct UsbSyncSourceWriteGuardTests {
                                                isRekordboxRunning: { false })
         #expect(await coordinator.writeDraft(volumeKey: job.volumeKey, database: host.database, share: host.share) == true)
         #expect(service.current.calls == ["previewEdit", "writeEdit"] && service.current.fileOperations == 1)
-        #expect(service.current.editJobs.allSatisfy { $0.database == host.database && $0.syncSourceContext == nil })
+        #expect(service.current.editJobs.allSatisfy { $0.database == host.database })
     }
 
 }

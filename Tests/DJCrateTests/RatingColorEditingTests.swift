@@ -2,8 +2,9 @@
 import AppKit
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
+import RekordboxKit
 import Testing
 
 /// 평점·곡 색 편집(#65): 곡 목록 칸(초안 표시·메뉴로 고르기), 태그 시트, 쓰기를 확인한 곡에만 초안 만들기, 목록 거르기.
@@ -24,44 +25,22 @@ struct RatingColorEditingTests {
         return row
     }
 
-    func store() -> LibraryStore { LibraryStore(saveTagDrafts: { _ in }) }
+    func store() -> LibraryStore { LibraryStore.test(saveTagDrafts: { _ in }) }
 
     // MARK: 고칠 수 있는 곡
 
-    @Test func 상태_0·256·257_곡은_재생_목록에_들어도_평점과_곡_색을_고친다() {
-        // R65(2026-10-09): 재생 목록에 든 곡도 연다
-        for row in [Self.row("1"), Self.row("2", state: 256), Self.row("3", state: 257), Self.row("7", inPlaylist: true),
-                    Self.row("8", state: 256, inPlaylist: true)] {
-            #expect(TrackListTagEditing.unavailableReason(row, key: .rating) == nil, "\(row.track.id)")
-            #expect(TrackListTagEditing.unavailableReason(row, key: .color) == nil, "\(row.track.id)")
-        }
-        for (row, words) in [(Self.row("4", state: 258, inPlaylist: true), "rekordbox에서 직접 고치세요"), (Self.row("5", staged: true), "넣은 뒤"),
-                             (Self.row("6", streaming: true), "스트리밍")] {
-            for key in [TagFields.Key.rating, .color] {
-                let reason = TrackListTagEditing.unavailableReason(row, key: key)
-                #expect(reason?.contains(words) == true, "\(row.track.id) \(key)")
-            }
-            // 아직 초안이 없는 칸에서 "초안을 버리세요"라고 하지 않는다
-            #expect(TrackListTagEditing.unavailableReason(row, key: .rating)?.contains("초안") != true)
-            // 다른 태그 칸은 예전과 같다(스트리밍만 막는다)
-            #expect((TrackListTagEditing.unavailableReason(row, key: .title) == nil) == !row.track.isStreaming)
-        }
-    }
-
     @Test func 고칠_수_없는_곡이나_고를_수_없는_값은_초안을_만들지_않는다() {
+        // 곡 상태·재생 목록별 범위(`TagWriteScope`)와 값 다듬기·거절은 Domain `RatingColorTagTests`. 여기서는 저장소가 그 규칙을 거치는지만 본다.
         let store = store()
-        let ok = Self.row("1"), synced = Self.row("2", state: 256), listed = Self.row("3", inPlaylist: true), staged = Self.row("4", staged: true)
-        let unverified = Self.row("5", state: 258)
-        store.setTag(.rating, "4", rows: [ok, synced, listed, staged, unverified])
-        #expect(store.tagDrafts.keys.sorted() == [ok.track.uuid, synced.track.uuid, listed.track.uuid])
-        #expect(store.tagCell(ok, .rating) == "4" && store.tagCell(synced, .rating) == "4" && store.tagCell(listed, .rating) == "4")
-        #expect(store.tagCell(unverified, .rating) == "")
-        store.revertTags(rows: [synced, listed])
+        let ok = Self.row("1"), staged = Self.row("4", staged: true), unverified = Self.row("5", state: 258)
+        store.setTag(.rating, "4", rows: [ok, staged, unverified])
+        #expect(store.tagDrafts.keys.sorted() == [ok.track.uuid])
+        #expect(store.tagCell(ok, .rating) == "4" && store.tagCell(unverified, .rating) == "")
         // 시트 붙여넣기의 별·색 이름도 다듬어 받는다. 고를 수 없는 값은 건너뛴다.
         store.applyTagEdits([(row: ok, key: .rating, value: "★★"), (row: ok, key: .color, value: "blue")])
         #expect(store.tagCell(ok, .rating) == "2" && store.tagCell(ok, .color) == "7")
-        store.applyTagEdits([(row: ok, key: .rating, value: "7"), (row: ok, key: .color, value: "빨강")])
-        #expect(store.tagCell(ok, .rating) == "2" && store.tagCell(ok, .color) == "7")
+        store.applyTagEdits([(row: ok, key: .color, value: "빨강")])
+        #expect(store.tagCell(ok, .color) == "7")
         // 되돌리기(기준 값)는 받는다
         store.revertTags(rows: [ok])
         #expect(store.tagDrafts.isEmpty)
@@ -132,9 +111,6 @@ struct RatingColorEditingTests {
         h.click(row: 0, column: "color")
         h.pressReturn()
         #expect(opened?.items.first { $0.state == .on }?.title == "없음")
-        // 메뉴 칸은 글자 칸 흐름(Return의 첫 칸·Tab)에 끼지 않는다
-        #expect(!TrackListTagEditing.isTextColumn("rating") && !TrackListTagEditing.isTextColumn("color"))
-        #expect(TrackListTagEditing.firstColumn(in: ["rating", "color", "title"]) == "title")
     }
 
     @Test func 고칠_수_없는_곡의_평점_칸_더블클릭은_덱에_올린다() {
@@ -153,7 +129,6 @@ struct RatingColorEditingTests {
         let ids = TrackColumn.all.map(\.id)
         let key = ids.firstIndex(of: "key")!
         #expect(Array(ids[key...key + 2]) == ["key", "rating", "color"])
-        #expect(TrackListTagEditing.key(forColumn: "rating") == .rating && TrackListTagEditing.key(forColumn: "color") == .color)
         let rows = [Self.row("1", rating: 2, color: "7"), Self.row("2", rating: 5, color: "1"), Self.row("3")]
         let byRating = rows.sorted(using: TrackColumn.comparator(key: "rating", ascending: false)!)
         #expect(byRating.map(\.track.id) == ["2", "1", "3"])
@@ -209,7 +184,9 @@ struct RatingColorEditingTests {
         try fixture.execute("UPDATE djmdContent SET Rating = 4, ColorID = '7' WHERE ID = '102'")
         try fixture.execute("UPDATE djmdContent SET Rating = 5 WHERE ID = '103'")
         try fixture.add(PlaylistSpec(id: "201", name: "목록", seq: 1, contentIDs: ["102"]))
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
+        // 초안은 이 시험의 폴더에서만 읽는다(함께 도는 시험의 초안이 섞이지 않게, `LibraryDraftFolderTests`)
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in },
+                                 draftHome: fixture.root.appending(path: "drafts"))
         await store.load(snapshot: fixture.database)
         #expect(store.trackColors.first { $0.id == "2" }?.name == "Opener")
         #expect(store.rowsByID["102"]?.inPlaylist == true && store.rowsByID["101"]?.inPlaylist == false)

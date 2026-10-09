@@ -1,7 +1,7 @@
 import DJCDomain
-import DJCTestSupport
 import Darwin
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 

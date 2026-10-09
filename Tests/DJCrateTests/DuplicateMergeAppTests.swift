@@ -1,4 +1,5 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -25,7 +26,7 @@ struct DuplicateMergeAppTests {
 
     @Test func 같은_곡이나_기존_초안을_덮지_않는다() throws {
         var saved: [DuplicateMergeDraft] = []
-        let store = LibraryStore(resultHistory: .init(), mergeDraftSaver: { saved = $0 })
+        let store = LibraryStore.test(resultHistory: .init(), mergeDraftSaver: { saved = $0 })
         try store.stageMerge(draft())
         #expect(saved == [draft()] && store.pendingUUIDs.isSuperset(of: ["a", "b"]))
         #expect(throws: DuplicateMerge.Blocked.self) { try store.stageMerge(draft()) }
@@ -33,22 +34,8 @@ struct DuplicateMergeAppTests {
         #expect(saved.isEmpty)
     }
 
-    @Test func 합치기만_있어도_확인후_한번_쓰고_손실을_알린다() async throws {
-        let host = FakeReflectionHost(), prompter = ScriptedPrompter()
-        let merge = draft()
-        var preview = ReflectionCoordinatorTests.preview(cues: [])
-        preview.merges = [merge]
-        preview.report.mergeOutcomes = [.init(trackUUID: "a", title: "남길 곡", status: .written, reason: nil, removed: 1, added: 0)]
-        host.preview = .success(preview)
-        await ReflectionCoordinator(host: host, prompter: prompter, isRekordboxRunning: { false }).write(rows: [ReflectionCoordinatorTests.row("a")])
-        #expect(host.wroteMerges == [merge])
-        let prompt = try #require(prompter.shown.first)
-        #expect(prompt.destructive && (prompt.text + prompt.details.joined()).contains("재생 기록"))
-        #expect(host.toast?.kind == .success && host.toast?.title.contains("합치기") == true)
-    }
-
     @Test func DB를_쓴_뒤_초안_저장실패는_경고로_남기고_쓰기결과를_유지한다() {
-        let store = LibraryStore(resultHistory: .init(), mergeDraftSaver: { _ in throw FixtureFailure() })
+        let store = LibraryStore.test(resultHistory: .init(), mergeDraftSaver: { _ in throw FixtureFailure() })
         store.mergeDrafts = [draft()]
         store.saveMergeDraftsAfterWrite([])
         #expect(store.mergeDrafts.isEmpty)

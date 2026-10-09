@@ -1,7 +1,7 @@
 @testable import DJCrate
 import AppKit
 import DJCDomain
-import DJCTestSupport
+import RekordboxFixtures
 import SwiftUI
 import Testing
 
@@ -14,7 +14,7 @@ struct SheetEditingTests {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec(id: "1"))
         try fixture.add(TrackSpec(id: "2"))
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         let revisionBeforeLoad = store.tagRevision
         await store.load(snapshot: fixture.database)
         #expect(store.tagRevision > revisionBeforeLoad)
@@ -194,7 +194,7 @@ struct SheetEditingTests {
 
 @MainActor
 private final class SheetEditingHarness {
-    let store = LibraryStore(saveTagDrafts: { _ in })
+    let store = LibraryStore.test(saveTagDrafts: { _ in })
     let coordinator: SheetCoordinator
     let table = SheetTableView()
     let window: NSWindow

@@ -1,5 +1,7 @@
-import DJCTestSupport
+import DJCDomain
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 import UniformTypeIdentifiers

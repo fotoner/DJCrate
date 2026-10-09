@@ -1,9 +1,7 @@
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
 import Foundation
-import RekordboxKit
 
 /// 게인: rekordbox 오토게인·DJCrate 측정·곡 초안·트림 (계산 규칙은 `GainPolicy`)
 extension DeckModel {

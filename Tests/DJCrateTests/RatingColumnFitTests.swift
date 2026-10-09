@@ -1,6 +1,7 @@
 @testable import DJCrate
 import AppKit
 import DJCDomain
+import DJCTestKit
 import Testing
 
 /// 곡 목록 평점 칸 폭(#65): 기본 폭 66에서 별 다섯 칸이 "★★★…"로 잘려 평점 3·4·5가 같은 모양으로 보였다.
@@ -25,8 +26,8 @@ struct RatingColumnFitTests {
 
         init(scale: Double = 1, ratingWidth: CGFloat? = nil, colorWidth: CGFloat? = nil) {
             _ = NSApplication.shared
-            let store = LibraryStore(saveTagDrafts: { _ in })
-            coordinator = TrackListCoordinator(store: store)
+            let store = LibraryStore.test(saveTagDrafts: { _ in })
+            coordinator = TrackListCoordinator(store: store, actions: .live(store: store))
             coordinator.isMouseDown = { false }
             table.identifier = KeyRouter.trackListID
             table.coordinator = coordinator
@@ -103,8 +104,9 @@ struct RatingColumnFitTests {
     // MARK: 어떤 폭·글자 배율에서도
 
     /// 칸 폭을 최소 폭부터 기본 폭을 한참 넘을 때까지 한 칸씩 바꿔 가며, 다섯 평점이 늘 서로 다르게 읽히고 잘리지 않는지 본다.
-    @Test(arguments: scales)
-    func 칸_폭이_어떻든_평점_다섯_값이_서로_다르게_읽힌다(_ scale: Double) {
+    /// 글자 배율마다의 규칙은 `FittingTextTests`가 창 없이 보고, 여기서는 가장 큰 배율로 칸이 규칙에 맞는 자리를 넘기는지 본다.
+    @Test func 칸_폭이_어떻든_평점_다섯_값이_서로_다르게_읽힌다() {
+        let scale = 1.5
         let h = Harness(scale: scale)
         defer { h.close() }
         var shownStars = 0, shownCompact = 0
@@ -120,23 +122,6 @@ struct RatingColumnFitTests {
         }
         // 좁을 때는 숫자, 넉넉하면 별(두 모양 모두 쓰인다)
         #expect(shownStars > 0 && shownCompact > 0)
-    }
-
-    /// 칸을 가장 좁게 끌어도(최소 폭) 숫자 표기는 모든 글자 배율에서 들어간다.
-    @Test(arguments: scales)
-    func 최소_폭에서도_숫자_표기가_들어간다(_ scale: Double) {
-        let h = Harness(scale: scale)
-        defer { h.close() }
-        let font = NSFont.systemFont(ofSize: TextScale.pointSize(NSFont.systemFontSize, scale: scale))
-        let widest = Self.compact.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-        // 칸 폭 = 글자 + 글자 자리 양옆 2pt
-        #expect(h.rating.minWidth >= ceil(widest) + 4)
-        #expect(h.rating.minWidth == TrackColumn.ratingMinWidth)
-        h.rating.width = 0   // 최소 폭으로 눌린다
-        h.relayout()
-        #expect(h.rating.width == h.rating.minWidth)
-        #expect(h.ratingTexts == Self.compact)
-        #expect(h.rows.indices.allSatisfy { h.fits(row: $0, column: "rating") })
     }
 
     // MARK: 옛 기본 폭(66)으로 저장된 사용자
@@ -172,8 +157,8 @@ struct RatingColumnFitTests {
     }
 
     @Test func 옛_기본_폭은_한_번만_넓히고_그_뒤에_줄인_폭은_덮어쓰지_않는다() throws {
-        let name = "djc.test.ratingWidth.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: name))
+        let name = TestDefaults.suiteName("ratingWidth")
+        let defaults = TestDefaults.open(name)
         defer { defaults.removePersistentDomain(forName: name) }
         let table = NSTableView()
         let column = NSTableColumn(identifier: .init("rating"))
@@ -190,8 +175,8 @@ struct RatingColumnFitTests {
     }
 
     @Test func 사용자가_바꾼_폭은_옮기지_않고_표시만_남긴다() throws {
-        let name = "djc.test.ratingWidth.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: name))
+        let name = TestDefaults.suiteName("ratingWidth")
+        let defaults = TestDefaults.open(name)
         defer { defaults.removePersistentDomain(forName: name) }
         let table = NSTableView()
         let column = NSTableColumn(identifier: .init("rating"))
@@ -201,8 +186,8 @@ struct RatingColumnFitTests {
         TrackColumn.migrateRatingWidth(in: table, defaults: defaults)
         #expect(column.width == 52 && defaults.bool(forKey: TrackColumn.ratingWidthMigratedKey))
         // 성능 측정(칸 배치를 저장하지 않음)에서는 표시를 남기지 않는다
-        let other = "djc.test.ratingWidth.\(UUID().uuidString)"
-        let perf = try #require(UserDefaults(suiteName: other))
+        let other = TestDefaults.suiteName("ratingWidth")
+        let perf = TestDefaults.open(other)
         defer { perf.removePersistentDomain(forName: other) }
         column.width = TrackColumn.legacyRatingWidth
         TrackColumn.migrateRatingWidth(in: table, defaults: perf, remember: false)

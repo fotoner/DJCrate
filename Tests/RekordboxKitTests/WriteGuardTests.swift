@@ -1,6 +1,6 @@
 import DJCDomain
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -13,7 +13,7 @@ struct WriteGuardTests {
     }
 
     func draft(_ track: TrackSpec) -> CueDraft {
-        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: track.uuid)
         draft.place(EditableCue(kind: .memory, time: 10))
         return draft
     }
@@ -73,18 +73,26 @@ struct WriteGuardTests {
     /// 곡 빼기·합치기(#196)가 이력 행의 상태를 고치고 지운 표시를 읽으며, 추천 좋아요가 어느 곡을 가리키는지 읽는다. 확인 안 된 표 9개도 곡 ID(`ContentID`)를
     /// 읽는다(#203). 칸이 없으면 쓰는 도중 SQL이 실패하므로 백업을 뜨기 전에 막는다. 인덱스가 걸린 칸이라 이름을 바꿔 없앤다(`DROP COLUMN`은 인덱스 칸을 못 없앤다).
     /// 확인 안 된 표는 `unverifiedReferenceTables`에서 가져와, 표가 늘면 `requiredColumns`도 더하게 한다.
-    @Test(arguments: [("djmdSongHistory", "rb_data_status"), ("djmdSongHistory", "rb_local_deleted"),
-                      ("djmdRecommendLike", "ContentID1"), ("djmdRecommendLike", "ContentID2")]
-          + RekordboxTrackWriter.unverifiedReferenceTables.map { ($0, "ContentID") })
-    func 곡_빼기가_읽고_고치는_칸이_없어지면_백업_전에_막는다(_ column: (table: String, name: String)) throws {
-        #expect(RekordboxCompatibility.requiredColumns[column.table]?.contains(column.name) == true)
+    /// 칸마다 같은 구조 확인(`checkSchema`)을 지나므로 모든 칸을 한 사본에서 없애고 막힘 이유에 칸이 모두 적히는지 본다(#167: 칸마다 사본 13개 → 1개).
+    static let deleteColumns: [(table: String, name: String)] = [("djmdSongHistory", "rb_data_status"), ("djmdSongHistory", "rb_local_deleted"),
+                                                                 ("djmdRecommendLike", "ContentID1"), ("djmdRecommendLike", "ContentID2")]
+        + RekordboxTrackWriter.unverifiedReferenceTables.map { ($0, "ContentID") }
+
+    @Test func 곡_빼기가_읽고_고치는_칸이_없어지면_백업_전에_막는다() throws {
         let (fixture, a, _) = try RekordboxTrackWriterTests().deleteFixture()
-        try fixture.execute("ALTER TABLE \(column.table) RENAME COLUMN \(column.name) TO \(column.name)_renamed")
+        try fixture.session { db in
+            for column in Self.deleteColumns {
+                #expect(RekordboxCompatibility.requiredColumns[column.table]?.contains(column.name) == true, "\(column)")
+                try db.execute("ALTER TABLE \(column.table) RENAME COLUMN \(column.name) TO \(column.name)_renamed")
+            }
+        }
         let reason = refusal {
             _ = try RekordboxTrackWriter.delete(contentIDs: [a.id], from: fixture.database, shareRoot: fixture.shareRoot, dryRun: false,
                                                 backups: fixture.backups)
         }
-        #expect(reason?.contains("\(column.table).\(column.name)") == true, "\(reason ?? "")")
+        for column in Self.deleteColumns {
+            #expect(reason?.contains("\(column.table).\(column.name)") == true, "\(column) \(reason ?? "")")
+        }
         #expect(try fixture.rows("SELECT ID FROM djmdContent WHERE ID = ?", [.text(a.id)]).count == 1)
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: fixture.backups.path)) ?? []).isEmpty, "막힐 쓰기는 백업도 뜨지 않는다")
         #expect(try fixture.localUpdateCount() == 2000)

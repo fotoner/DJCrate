@@ -1,3 +1,4 @@
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -30,7 +31,7 @@ extension DevSelfTests {
             log("분석 파일 폴더가 실제 rekordbox 폴더를 가리킵니다. 사본으로 바꾼 뒤 하세요"); exit(2)
         }
         let files = args[i + 1].split(separator: ",").map { URL(filePath: String($0)) }
-        let coordinator = ReflectionCoordinator(host: store, prompter: AgreeingPrompter(log: log))
+        let coordinator = AppComposition.reflection(store: store, prompter: AgreeingPrompter(log: log))
         Task {
             func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
             @MainActor func loaded() -> Bool { if case .loaded = store.phase { !store.rows.isEmpty } else { false } }
@@ -53,9 +54,9 @@ extension DevSelfTests {
             log("추가 목록 \(store.staged.count)곡 · 그리드 " + store.staged.map { "\($0.title.prefix(16)) \($0.bpm.map { String(format: "%.2f", $0) } ?? "-")" }.joined(separator: ", "))
             // 곡마다 큐 초안(메모리 큐·핫큐)을 만들어 둔다(넣을 때 함께 들어가는지)
             for track in store.staged {
-                var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
-                draft.place(EditableCue(kind: .memory, time: 0.2))
-                draft.place(EditableCue(kind: .hot(0), time: 0.6))
+                var draft = CueDraft(trackUUID: track.uuid)
+                draft.place(EditableCue(id: UUID(), kind: .memory, time: 0.2))
+                draft.place(EditableCue(id: UUID(), kind: .hot(0), time: 0.6))
                 try? CueDraftStore.save(draft)
             }
 

@@ -2,6 +2,7 @@
 import AppKit
 import DJCDomain
 import Testing
+import UniformTypeIdentifiers
 
 @MainActor
 struct PlaylistDragTests {

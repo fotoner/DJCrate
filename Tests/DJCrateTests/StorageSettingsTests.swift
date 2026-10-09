@@ -1,9 +1,11 @@
+import DJCAdapters
 import DJCAnalysis
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 @testable import DJCrate
+import RekordboxFixtures
 import RekordboxKit
 import Synchronization
 import Testing
@@ -41,7 +43,7 @@ struct StorageSettingsTests {
     @Test func 탭을_열면_종류별_용량과_백업_개수를_읽는다() async throws {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }
-        let model = StorageSettingsModel(paths: scene.paths)
+        let model = StorageSettingsModel(paths: scene.paths, files: .live)
         await model.refresh()
         #expect(model.usage?.first { $0.kind == .waveforms }?.bytes == 3_000)
         #expect(model.usage?.first { $0.kind == .analysis }?.bytes == 2_000)
@@ -54,23 +56,25 @@ struct StorageSettingsTests {
         defer { try? FileManager.default.removeItem(at: scene.root) }
         try scene.write("point-snapshots/2026-01-01T000000Z-manual/master.db", bytes: 4_000)
         try scene.write("point-snapshots/.partial-x/master.db", bytes: 100)
-        let defaults = try #require(UserDefaults(suiteName: "djc.test.storage.points.\(UUID())"))
+        let defaults = TestDefaults.make("storage.points")
         let shared = scene.root.appending(path: "shared-settings.json")
-        let model = StorageSettingsModel(paths: scene.paths, settings: SettingsStore(defaults: defaults, persist: true, sharedFile: shared))
+        let model = StorageSettingsModel(paths: scene.paths, files: .live, settings: SettingsStore(defaults: defaults, persist: true, sharedFile: .live(file: shared)))
         await model.refresh()
         #expect(model.backups.first { $0.kind == .pointSnapshots } == .init(kind: .pointSnapshots, count: 1, bytes: 4_000), "뜨는 중인 폴더는 세지 않는다")
         #expect(model.autoSnapshotDays == 7)
         model.autoSnapshotDays = 14
         #expect(defaults.double(forKey: SettingKeys.pointSnapshotAutoDays.name) == 14)
-        #expect(StorageSettingsModel(paths: scene.paths, settings: SettingsStore(defaults: defaults, persist: true)).autoSnapshotDays == 14)
+        #expect(StorageSettingsModel(paths: scene.paths, files: .live, settings: SettingsStore(defaults: defaults, persist: true)).autoSnapshotDays == 14)
         // CLI(다른 프로세스)도 같은 값을 읽게 데이터 폴더의 공유 파일에도 적는다
         #expect(SharedSettingsFile.value(SettingKeys.pointSnapshotAutoDays, in: shared) == 14)
     }
 
     @Test func 자동_시점_스냅샷은_기본으로_켜고_끄면_저장한다() throws {
-        let defaults = try #require(UserDefaults(suiteName: "djc.test.storage.auto.\(UUID())"))
+        let defaults = TestDefaults.make("storage.auto")
         let settings = SettingsStore(defaults: defaults, persist: true, sharedFile: nil)
-        let model = StorageSettingsModel(settings: settings)
+        // 캐시 폴더는 읽지 않는다(설정만 본다)
+        let unused = FileManager.default.temporaryDirectory.appending(path: "djc-storage-settings-\(UUID())")
+        let model = StorageSettingsModel(paths: DJCCachePaths(root: unused, snapshots: unused), files: .live, settings: settings)
         #expect(model.autoSnapshotEnabled)
         model.autoSnapshotEnabled = false
         #expect(!settings.value(SettingKeys.pointSnapshotAuto))
@@ -79,10 +83,10 @@ struct StorageSettingsTests {
     @Test func 다른_디스크라_클론이_안_되면_자동_스냅샷을_뜨지_않는다고_알린다() async throws {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }
-        let cloning = StorageSettingsModel(paths: scene.paths, canClone: { true })
+        let cloning = StorageSettingsModel(paths: scene.paths, files: .live, canClone: { true })
         await cloning.refresh()
         #expect(cloning.autoSnapshotNote == nil)
-        let other = StorageSettingsModel(paths: scene.paths, canClone: { false })
+        let other = StorageSettingsModel(paths: scene.paths, files: .live, canClone: { false })
         await other.refresh()
         #expect(other.autoSnapshotNote?.contains("다른 디스크") == true, "\(other.autoSnapshotNote ?? "")")
     }
@@ -90,21 +94,21 @@ struct StorageSettingsTests {
     @Test func 앱을_켜면_지금_설정을_공유_파일에_맞춘다() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "djc-shared-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
-        let defaults = try #require(UserDefaults(suiteName: "djc.test.storage.sync.\(UUID())"))
+        let defaults = TestDefaults.make("storage.sync")
         defaults.set(21.0, forKey: SettingKeys.pointSnapshotAutoDays.name)
         let shared = root.appending(path: "shared-settings.json")
-        SettingsStore(defaults: defaults, persist: true, sharedFile: shared).syncShared()
+        SettingsStore(defaults: defaults, persist: true, sharedFile: .live(file: shared)).syncShared()
         #expect(SharedSettingsFile.value(SettingKeys.pointSnapshotAutoDays, in: shared) == 21)
         // 자가 테스트(설정을 쓰지 않는 실행)는 파일을 만들지 않는다
         let other = root.appending(path: "other.json")
-        SettingsStore(defaults: defaults, persist: false, sharedFile: other).syncShared()
+        SettingsStore(defaults: defaults, persist: false, sharedFile: .live(file: other)).syncShared()
         #expect(!FileManager.default.fileExists(atPath: other.path))
     }
 
     @Test func 종류를_비우면_확인_없이_지우고_한_줄로_알리고_용량을_다시_읽는다() async throws {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }
-        let model = StorageSettingsModel(paths: scene.paths)
+        let model = StorageSettingsModel(paths: scene.paths, files: .live)
         await model.refresh()
         await model.clear([.waveforms])
         #expect(!scene.exists("waveforms/a-1.json"))
@@ -124,7 +128,7 @@ struct StorageSettingsTests {
         let opened = try scene.write("master-2026-01-01T000000.db", bytes: 10, under: scene.paths.snapshots)
         try scene.write("master-2026-01-02T000000.db", bytes: 10, under: scene.paths.snapshots)
         try scene.write("master-2026-01-03T000000.db", bytes: 10, under: scene.paths.snapshots)
-        let model = StorageSettingsModel(paths: scene.paths, openSnapshot: { opened })
+        let model = StorageSettingsModel(paths: scene.paths, files: .live, openSnapshot: { opened })
         await model.clear([.snapshots])
         let left = try FileManager.default.contentsOfDirectory(atPath: scene.paths.snapshots.path).sorted()
         #expect(left == ["master-2026-01-01T000000.db", "master-2026-01-03T000000.db"])
@@ -136,7 +140,7 @@ struct StorageSettingsTests {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }
         let reason = Mutex<String?>("시험 쓰기 중")
-        let model = StorageSettingsModel(paths: scene.paths, busyReason: { reason.withLock { $0 } })
+        let model = StorageSettingsModel(paths: scene.paths, files: .live, busyReason: { reason.withLock { $0 } })
         #expect(model.blockReason == "시험 쓰기 중")
         await model.clear([.waveforms])
         #expect(scene.exists("waveforms/a-1.json"))

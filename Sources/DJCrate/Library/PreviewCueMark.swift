@@ -1,22 +1,8 @@
 import AppKit
 import DJCDomain
 
-/// 큐 이름·ID는 그림에 필요 없다. 위치만 비교해 이름 편집 때 파형을 다시 만들지 않는다.
-struct PreviewCueMark: Hashable, Sendable {
-    let time: Double
-    let end: Double?
-    let hot: Bool
-
-    init(_ cue: EditableCue) {
-        time = cue.time; end = cue.loop?.end
-        if case .hot = cue.kind { hot = true } else { hot = false }
-    }
-
-    static func current(saved: [Cue], draft: [Self]?) -> [Self] {
-        // rekordbox 자동 큐도 메모리 큐로 보인다(#145, 덱 목록과 같다).
-        draft ?? saved.compactMap(EditableCue.init).map(Self.init)
-    }
-
+/// 곡 목록 미리 보기 파형 위 큐 눈금 그리기(값 `PreviewCueMark`은 DJCDomain)
+extension PreviewCueMark {
     struct Shape {
         let rect: CGRect
         let color: UIColors

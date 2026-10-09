@@ -1,8 +1,6 @@
 import AppKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
-import RekordboxKit
 
 struct PreviewWaveformRequest: Hashable, Sendable {
     let url: URL?
@@ -62,12 +60,13 @@ enum PreviewWaveformRenderer {
 }
 
 enum PreviewWaveformSource {
-    static func addingFallback(to source: AnlzPreviewWaveform?, audioURL: URL?, key: String) -> AnlzPreviewWaveform? {
+    /// 분석 파일에 파랑·3밴드 파형이 없으면 음원 파형(`audioColumns`, 무거운 일)으로 채운다. 취소됐거나 곡 열쇠가 없으면 음원을 보지 않는다
+    static func addingFallback(to source: AnlzPreviewWaveform?, audioURL: URL?, key: String,
+                               audioColumns: (URL, String) -> [WaveformColumn]?) -> AnlzPreviewWaveform? {
         var blue = source?.blueColumns
         var bands = source?.colorColumns
         if blue == nil || bands == nil, !Task.isCancelled, let audioURL, !key.isEmpty,
-           let fallback = try? WaveformCache.load(fileAt: audioURL, key: key) {
-            let columns = fallback.downsampled(to: 400).colorColumns
+           let columns = audioColumns(audioURL, key) {
             if blue == nil { blue = columns }
             if bands == nil { bands = columns }
         }
@@ -76,12 +75,12 @@ enum PreviewWaveformSource {
     }
 }
 
-/// 파일 읽기와 비트맵 생성은 메인 액터 밖에서 직렬 처리한다. 빈 자료도 기억한다.
+/// 음원 파형 대체와 비트맵 생성은 메인 액터 밖에서 직렬 처리한다. 빈 자료도 기억한다. 원자료(분석 파일·음원 파형)는 유스케이스(`ShowPreviewWaveforms`)로 읽는다.
+/// 라이브러리 저장소가 하나 들고(`LibraryStore.previewImages`) 목록 칸이 나눠 쓴다.
 actor PreviewWaveformCache {
-    static let shared = PreviewWaveformCache()
-    private let store: PreviewWaveformStore
+    private let previews: ShowPreviewWaveforms
 
-    init(store: PreviewWaveformStore = .shared) { self.store = store }
+    init(previews: ShowPreviewWaveforms) { self.previews = previews }
     private final class Entry {
         let image: CGImage?
         init(_ image: CGImage?) { self.image = image }
@@ -96,14 +95,15 @@ actor PreviewWaveformCache {
     func image(for request: PreviewWaveformRequest) async -> CGImage? {
         guard !Task.isCancelled else { return nil }
         let key = request.trackKey.isEmpty ? request.url?.absoluteString ?? "" : request.trackKey
-        let source = PreviewWaveformStore.Source(uuid: key, url: request.url)
-        let revision = await store.revision(for: source)
+        let revision = await previews.revision(key: key, analysisFile: request.url)
         let imageKey = "\(request.cacheKey)\u{1F}\(revision)" as NSString
         guard !Task.isCancelled else { return nil }
         if let hit = cache.object(forKey: imageKey) { return hit.image }
-        let raw = await store.waveform(for: source)
+        let raw = await previews.waveform(key: key, analysisFile: request.url)
         var image: CGImage?
-        let waveform = PreviewWaveformSource.addingFallback(to: raw, audioURL: request.audioURL, key: request.trackKey)
+        // 음원 대체는 이 액터 위에서 동기로 돌려 칸이 많아도 음원을 한 번에 하나씩만 푼다
+        let waveform = PreviewWaveformSource.addingFallback(to: raw, audioURL: request.audioURL, key: request.trackKey,
+                                                            audioColumns: previews.audioColumns)
         if !Task.isCancelled {
             image = PreviewWaveformRenderer.image(waveform, mode: request.mode,
                                                  appearance: request.appearance, emphasized: request.emphasized,
@@ -117,13 +117,15 @@ actor PreviewWaveformCache {
 
 /// 재사용·모양새 전환 뒤 늦게 도착한 이미지는 버린다. 재생 틱은 읽지 않는다.
 final class PreviewWaveformCell: NSTableCellView {
+    private let cache: PreviewWaveformCache
     private let waveformLayer = CALayer()
     private var source: (url: URL?, revision: String, mode: WaveformColorMode, audioURL: URL?, key: String,
                          cues: [PreviewCueMark], duration: Double)?
     private(set) var request: PreviewWaveformRequest?
     private var task: Task<Void, Never>?
 
-    init() {
+    init(cache: PreviewWaveformCache) {
+        self.cache = cache
         super.init(frame: .zero)
         wantsLayer = true
         layer?.addSublayer(waveformLayer)
@@ -200,8 +202,8 @@ final class PreviewWaveformCell: NSTableCellView {
         request = next
         task?.cancel()
         if !resizedOnly { show(nil) }
-        task = Task(priority: .utility) { [weak self] in
-            let image = await PreviewWaveformCache.shared.image(for: next)
+        task = Task(priority: .utility) { [weak self, cache] in
+            let image = await cache.image(for: next)
             guard !Task.isCancelled, let self, self.request == next else { return }
             self.show(image)
         }

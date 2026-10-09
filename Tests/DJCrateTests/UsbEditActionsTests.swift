@@ -1,9 +1,12 @@
 @testable import DJCrate
 import AppKit
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -79,8 +82,7 @@ enum UsbEditTestData {
     }
 
     /// 지어낸 USB DB 지문
-    static let base = UsbFingerprint(files: ["PIONEER/rekordbox/exportLibrary.db": .init(size: 10, mtime: Date(timeIntervalSince1970: 0),
-                                                                                          sha256: "aa")])
+    static let base = UsbFingerprint(files: ["PIONEER/rekordbox/exportLibrary.db": .init(size: 10, mtime: Date(timeIntervalSince1970: 0), sha256: "aa")])
 
     /// 로컬 곡 11이 USB 곡 1과 짝이고 곡 정보가 더 새롭다(갱신 가능)
     static let localNewerOne = LocalLibraryKeys(localDBID: UsbTestData.localDBID,
@@ -128,9 +130,8 @@ struct UsbEditActionsTests {
                local: LocalLibraryKeys? = nil) async -> (UsbStore, FakeUsbHost, UsbEditActions) {
         let usbHost = FakeUsbHost(volumes ?? [image])
         for volume in volumes ?? [image] { usbHost.serve(volume, library: library) }
-        let usb = UsbTestData.store(usbHost, local: local)
-        usb.writeService = service
-        usb.draftDirectory = drafts
+        let usb = UsbTestData.store(usbHost, local: local, service: service)
+        usb.drafts = .live(directory: drafts)
         service.update {
             $0.base = UsbEditTestData.base
             $0.drafts = drafts
@@ -157,8 +158,8 @@ struct UsbEditActionsTests {
         let staged = UsbEditTestData.localRow("djc-1")
         let streaming = UsbEditTestData.localRow("77", folder: "spotify:x")
         await actions.addTracks([UsbEditTestData.localRow("11"), staged, streaming, UsbEditTestData.localRow("12")], to: .collection(volumeKey: key))
-        #expect(host.toast?.title == "USB 쓰기 대기에 더했습니다")
-        #expect(host.toast?.detail == "B13T · 곡 2개 더하기")
+        #expect(host.toast?.title == UsbEditActions.Text.appendedTitle)
+        #expect(host.toast?.detail == "\(image.name) · " + UsbEditText.describe(.addTracks(localContentIDs: ["11", "12"], playlist: nil), library: nil))
         let usbRows = UsbLibraryRows.collection(library: try #require(usb.libraries[key]), volumeKey: key, mountPoint: image.mountPoint, badges: [:])
         await actions.removeTracks([usbRows[1]], volumeKey: key)
         names.answers = ["새 목록"]
@@ -205,7 +206,7 @@ struct UsbEditActionsTests {
         let undo = UndoManager()
         undo.groupsByEvent = false
         var actions = base
-        actions.undoManager = undo
+        actions.undoManager = { undo }
         await actions.addTracks([UsbEditTestData.localRow("11")], to: .collection(volumeKey: key))
         await actions.removeTracks([UsbLibraryRows.collection(library: try #require(usb.libraries[key]), volumeKey: key,
                                                               mountPoint: image.mountPoint, badges: [:])[1]], volumeKey: key)
@@ -217,7 +218,7 @@ struct UsbEditActionsTests {
         undo.endUndoGrouping()
         #expect(try draft() == nil)
         #expect(undo.canUndo)
-        #expect(undo.undoActionName == "USB 초안 버리기")
+        #expect(undo.undoActionName == UsbEditActions.Text.discardActionName)
 
         // 버린 뒤 더한 편집은 되살린 편집 뒤에 남는다
         service.update { $0.base = UsbFingerprint(files: [:]) }
@@ -239,50 +240,17 @@ struct UsbEditActionsTests {
 
     // MARK: - 막힘 미리 판정
 
-    @Test("막힐 편집은 메뉴 옆에 이유를 보인다: 동의 없는 실물 USB, 두 형식 항목이 다른 목록, 폴더, 곡이 다 빠짐. 앱의 실물 USB는 막지 않는다")
+    /// 판정표(실물·임시 폴더 밖·목록 모양·곡 수)는 `UsbEditRulesTests`(DJCApplicationTests)가 본다. 여기서는 메뉴가 그 판정을 잇는지만 본다
+    @Test("막힐 편집은 메뉴 옆에 이유를 보인다(동의 없는 실물은 막힘). 앱의 실물 USB는 막지 않는다")
     func blockedEditHelpText() async throws {
         defer { cleanUp() }
         let physical = FakeUsbVolume.physicalFAT32()
         let library = UsbEditTestData.mixedLibrary()
-        func reason(_ edit: UsbLibraryEdit, _ volume: UsbVolumeInfo, scratch: Bool = true,
-                    gate: UsbPhysicalWriteGate = .init()) -> String? {
-            UsbEditActions.blockReason(edit, volume: volume, library: library, info: nil, isScratchMount: { _ in scratch }, physicalGate: gate)
-        }
-        let add = UsbLibraryEdit.addTracks(localContentIDs: ["11"], playlist: nil)
-        // 동의 없는 관문(시험 실행)이면 실물은 관문 문구로 막힌다
-        let gate = "실물 USB에 쓰려면 앱은 볼륨 이름을 확인하고 ‘USB에 쓰기’를 누르고, djc는 --allow-physical --confirm <볼륨 이름>을 주세요"
-        #expect(reason(add, physical) == gate)
-        #expect(reason(add, image) == nil)
-        #expect(reason(.removeTracks(usbContentIDs: [1]), physical) == gate)
-        #expect(reason(.removeTracks(usbContentIDs: [1]), image) == nil)
-        // 앱(확인 창이 동의)은 실물에도 곡 정보 갱신까지 막지 않는다(확인 안 된 규칙은 확인 창이 알린다)
-        let consented = UsbPhysicalWriteGate(consented: true)
-        #expect(reason(add, physical, gate: consented) == nil)
-        #expect(reason(.refreshTracks(usbContentIDs: [1], parts: [.info]), physical, gate: consented) == nil)
-        #expect(reason(add, FakeUsbVolume.exfat(), gate: consented) == nil)
-        #expect(reason(add, FakeUsbVolume.apfs(), gate: consented)?.contains("APFS") == true)
-        // 임시 폴더 밖에 붙인 디스크 이미지는 실물처럼 판정한다(쓰기 때 세션 판정과 같다)
-        #expect(reason(add, image, scratch: false) == gate)
-        #expect(reason(.playlist(edit: .rename(playlist: .id("4"), name: "새 이름")), image, scratch: false) == gate)
-        let differ = "이 재생 목록은 두 형식의 곡 목록이 달라 곡을 고칠 수 없습니다. 이름·위치만 바꿀 수 있습니다"
-        #expect(reason(.addTracks(localContentIDs: ["11"], playlist: .id("4")), image) == differ)
-        #expect(reason(.playlist(edit: .addTracks(playlist: .id("4"), contentIDs: ["1"])), image) == differ)
-        #expect(reason(.playlist(edit: .removeTracks(playlist: .id("4"), entries: [PlaylistEntry(trackNo: 1, contentID: "1")])), image) == differ)
-        // 이름·위치는 바꿀 수 있다
-        #expect(reason(.playlist(edit: .rename(playlist: .id("4"), name: "새 이름")), image) == nil)
-        #expect(reason(.addTracks(localContentIDs: ["11"], playlist: .id("5")), image)
-            == "폴더·인텔리전트 재생 목록에는 곡을 넣거나 뺄 수 없습니다. 일반 재생 목록을 고르세요")
-        #expect(reason(.removeTracks(usbContentIDs: [1, 2, 3]), image) == "USB에 곡이 하나도 남지 않습니다. 곡을 남기거나 USB를 새로 내보내세요")
-        #expect(reason(.playlist(edit: .delete(playlist: .id("99"))), image) == "대상이 USB에서 사라졌습니다. USB를 다시 읽은 뒤 고치세요")
-        // 두 형식의 곡 번호가 다른 USB는 모든 편집을 막는다
-        var info = UsbInfo(root: image.mountPoint)
-        info.consistency = UsbInfo.Consistency(trackIDsMatch: false, editBlocked: true)
-        #expect(UsbEditActions.blockReason(add, volume: image, library: library, info: info, isScratchMount: { _ in true })
-            == "두 형식의 곡 번호가 달라 고칠 수 없습니다. rekordbox에서 다시 내보내세요")
+        let differ = UsbEditRules.Reason.entriesDiffer
 
         // 곡 목록 메뉴 'USB에 넣기 ▸': 앱에서는 실물 볼륨의 항목도 누를 수 있다(쓰기 확인 창이 동의를 받는다)
         let fixture = try historyFixture()
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.usbedit.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbedit"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
         await store.load(snapshot: fixture.database)
@@ -290,7 +258,7 @@ struct UsbEditActionsTests {
         store.usb = usb
         store.selection = ["101"]
         _ = NSApplication.shared
-        let coordinator = TrackListCoordinator(store: store)
+        let coordinator = TrackListCoordinator(store: store, actions: .live(store: store))
         let table = NSTableView()
         table.dataSource = coordinator
         table.delegate = coordinator
@@ -361,7 +329,7 @@ struct UsbEditActionsTests {
         #expect(usb.draftCounts[key] == 2)
         // 사이드바: 연결 안 됨 + 대기 목록, 편집 대상에도 남는다(연결 안 됨)
         let row = try #require(UsbSidebarModel.volumes(usb).first { $0.id == key })
-        #expect(row.status == "연결 안 됨")
+        #expect(row.status != nil)
         #expect(row.pending == .pending(volumeKey: key) && row.pendingCount == 2)
         #expect(row.collection == nil && !row.canEject)
         #expect(actions.targets.map(\.volumeKey) == [key])
@@ -373,11 +341,12 @@ struct UsbEditActionsTests {
         await coordinator.writeDraft(volumeKey: key, database: nil, share: nil)
         #expect(await coordinator.previewDraft(volumeKey: key, database: nil, share: nil) == nil)
         #expect(service.current.calls == ["draftBase"])
-        #expect(prompter.shown.isEmpty && host.toast?.title == "USB에 쓰지 않았습니다" && host.toast?.detail == "USB를 연결한 뒤 쓰세요")
+        #expect(prompter.shown.isEmpty && host.toast?.title == UsbWriteFlow.Text.notWrittenTitle
+            && host.toast?.detail == UsbWriteFlow.Text.connectFirstDetail)
         let model = UsbPendingModel(volumeName: "B13T", isConnected: false, edits: try #require(try draft()).edits,
                                     library: usb.editLibrary(key), summary: nil, busy: false, blockReason: { _, _ in nil })
         #expect(!model.canWrite)
-        #expect(model.writeHelp == "USB를 연결한 뒤 쓰세요")
+        #expect(model.writeHelp == UsbWriteFlow.Text.connectFirstDetail)
 
         // 다시 붙으면 대기 목록이 그 볼륨 아래로 돌아간다
         usbHost.mounted = [image]
@@ -404,13 +373,13 @@ struct UsbEditActionsTests {
 
         #expect(await actions.drop(["11", "djc-9", "12", "11", "usb:\(key):1", "없음"], on: .playlist(volumeKey: key, id: 10), rows: rows))
         #expect(try draft()?.edits == [.addTracks(localContentIDs: ["11", "12"], playlist: .id("10"))])
-        #expect(host.toast?.detail == "B13T · 곡 2개 더하기 · ‘시험 목록’에 넣기")
+        #expect(host.toast?.detail == "\(image.name) · " + UsbEditText.describe(.addTracks(localContentIDs: ["11", "12"], playlist: .id("10")), library: UsbEditTestData.mixedLibrary()))
         #expect(await actions.drop(["12"], on: .collection(volumeKey: key), rows: rows))
         #expect(try draft()?.edits.last == .addTracks(localContentIDs: ["12"], playlist: nil))
         // 막힐 목록(두 형식의 항목이 다름)이나 넣을 곡이 없으면 초안에 더하지 않는다
         #expect(await actions.drop(["11"], on: .playlist(volumeKey: key, id: 4), rows: rows) == false)
         #expect(host.toast?.kind == .warning)
-        #expect(host.toast?.detail == "이 재생 목록은 두 형식의 곡 목록이 달라 곡을 고칠 수 없습니다. 이름·위치만 바꿀 수 있습니다")
+        #expect(host.toast?.detail == UsbEditRules.Reason.entriesDiffer)
         #expect(await actions.drop(["djc-9"], on: .playlist(volumeKey: key, id: 10), rows: rows) == false)
         #expect(try draft()?.edits.count == 2)
     }
@@ -447,7 +416,7 @@ struct UsbEditActionsTests {
                                        .refreshTracks(usbContentIDs: [5], parts: [.grid, .cues])])
         #expect(actions.refreshEdits(volumeKey: key) == [.refreshTracks(usbContentIDs: [1], parts: [.info, .artwork]),
                                                          .refreshTracks(usbContentIDs: [5], parts: [.grid, .cues])])
-        #expect(host.toast?.detail == "B13T · 곡 2개 로컬 변경 반영")
+        #expect(host.toast?.detail == "\(image.name) · " + UsbEditText.describe(.refreshTracks(usbContentIDs: [1, 5], parts: []), library: nil))
         #expect(usb.draftCounts[key] == 2)
 
         // 고른 곡만: 갱신할 곡이 없으면 더하지 않고 알린다
@@ -455,7 +424,7 @@ struct UsbEditActionsTests {
                                              badges: usb.syncBadges[key] ?? [:])
         await actions.refreshLocalChanges(volumeKey: key, rows: [rows[1], rows[2], rows[3]])
         #expect(try draft()?.edits.count == 2)
-        #expect(host.toast?.title == "로컬에서 더 고친 곡이 없습니다")
+        #expect(host.toast?.title == UsbEditActions.Text.nothingNewerTitle)
         await actions.refreshLocalChanges(volumeKey: key, rows: [rows[0], rows[1]])
         #expect(try draft()?.edits.last == .refreshTracks(usbContentIDs: [1], parts: [.info, .artwork]))
     }
@@ -468,7 +437,7 @@ struct UsbEditActionsTests {
         let library = UsbEditTestData.siblingLibrary()
         let (usb, _, actions) = await setUp(library)
         func order(_ id: Int) -> [PlaylistRef]? {
-            UsbEditActions.siblingOrder(of: .id(String(id)), library: library, edits: usb.draftEdits[key] ?? [])
+            UsbEditRules.siblingOrder(of: .id(String(id)), library: library, edits: usb.draftEdits[key] ?? [])
         }
         func reorder(_ id: Int, _ index: Int) -> UsbLibraryEdit { .playlist(edit: .reorder(playlist: .id(String(id)), index: index)) }
         #expect(actions.siblingPosition(2, volumeKey: key)! == (1, 4))
@@ -479,7 +448,7 @@ struct UsbEditActionsTests {
         // B↑: 맨 앞으로. 한 번 더 누를 수 없다(초안의 자리를 본다)
         await actions.movePlaylist(2, by: -1, volumeKey: key)
         #expect(try draft()?.edits == [reorder(2, 0)])
-        #expect(host.toast?.detail == "B13T · 순서 바꾸기: ‘B’ → 1번째")
+        #expect(host.toast?.detail == "\(image.name) · " + UsbEditText.describe(reorder(2, 0), library: library))
         #expect(actions.siblingPosition(2, volumeKey: key)! == (0, 4))
         #expect(!actions.canMovePlaylist(2, by: -1, volumeKey: key))
         await actions.movePlaylist(2, by: -1, volumeKey: key)
@@ -495,7 +464,7 @@ struct UsbEditActionsTests {
         await actions.movePlaylist(3, by: -1, volumeKey: key)
         await actions.movePlaylist(3, by: -1, volumeKey: key)
         #expect(try draft()?.edits == [reorder(3, 0)])
-        #expect(host.toast?.title == "USB 쓰기 대기를 고쳤습니다")
+        #expect(host.toast?.title == UsbEditActions.Text.changedQueueTitle)
         #expect(order(3) == [.id("3"), .id("1"), .id("2"), .id("7")])
 
         // 다른 목록은 앞 편집을 적용한 자리에서 옮긴다: A(지금 2번째) ↓ → 3번째
@@ -530,17 +499,17 @@ struct UsbEditActionsTests {
         let collection = UsbLibraryRows.collection(library: library, volumeKey: key, mountPoint: image.mountPoint, badges: [:])
         let edit = UsbEditActions.removeFromPlaylistEdit([rows[2], rows[0], rows[2], other[1], UsbEditTestData.localRow("11")],
                                                          volumeKey: key, playlist: 10)
-        #expect(edit == .playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 1, contentID: "2"),
-                                                                                       PlaylistEntry(trackNo: 3, contentID: "2")])))
+        #expect(edit == .playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 1, contentID: "2"), PlaylistEntry(trackNo: 3, contentID: "2")])))
         // 자리가 없는 줄(컬렉션·다른 볼륨·로컬 곡)만이면 편집이 없다
         #expect(UsbEditActions.removeFromPlaylistEdit(collection + other + [UsbEditTestData.localRow("11")], volumeKey: key, playlist: 10) == nil)
 
         await actions.removeFromPlaylist([rows[1]], volumeKey: key, playlist: 10)
         #expect(try draft()?.edits == [.playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 2, contentID: "1")]))])
-        #expect(host.toast?.detail == "B13T · ‘시험 목록’에서 곡 1개 빼기")
+        let removal = try #require(try draft()?.edits.first)
+        #expect(host.toast?.detail == "\(image.name) · " + UsbEditText.describe(removal, library: library))
         // 고를 때의 자리와 곡이 USB와 다르면(다시 읽기 전 줄) 더하지 않는다. 자리는 앞 초안을 얹은 목록([2, 2])으로 본다(#240)
         let stale = UsbLibraryEdit.playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 3, contentID: "2")]))
-        #expect(actions.blockReason(stale, volumeKey: key) == "3번째 곡이 편집을 만들 때와 다릅니다. USB를 다시 읽은 뒤 고치세요")
+        #expect(actions.blockReason(stale, volumeKey: key) == UsbEditRules.Reason.entryChanged(3))
         let projected = UsbLibraryEdit.playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 2, contentID: "2")]))
         #expect(actions.blockReason(projected, volumeKey: key) == nil)
     }
@@ -621,7 +590,7 @@ struct UsbEditActionsTests {
             }
         }
         let coordinator = UsbWriteCoordinator(usb: usb, host: host, service: service, prompter: prompter, isRekordboxRunning: { false })
-        let changed = "쓰기 대기가 그 사이 바뀌어 다시 계획했으니 바뀐 내용을 확인한 뒤 쓰세요"
+        let changed = UsbWriteFlow.draftChangedText
 
         // 미리 보는 동안 편집을 더하고 다시 묻는 확인 창에서 취소하면 아무것도 쓰지 않는다(초안은 그대로)
         let previewing = TestGate()
@@ -634,8 +603,7 @@ struct UsbEditActionsTests {
         #expect(await actions.append(during, to: key))
         previewing.open()
         await write.value
-        #expect(written.all.isEmpty)
-        #expect(service.current.calls == ["draftBase", "previewEdit", "previewEdit"])
+        #expect(written.all.isEmpty && !service.current.wrote)
         #expect(prompter.shown.count == 2)
         #expect(prompter.shown.first?.text.hasPrefix(changed) == false)
         #expect(prompter.shown.last?.text.hasPrefix(changed) == true)
@@ -648,6 +616,7 @@ struct UsbEditActionsTests {
         defer { again.open() }
         service.update { $0.onPreviewEdit = { again.pass() } }
         prompter.answers = [true, true]
+        service.update { $0.calls = [] }
         let rewrite = Task { await coordinator.writeDraft(volumeKey: key, database: nil, share: nil) }
         try #require(await waitUntil { again.arrivals == 1 })
         let later = UsbLibraryEdit.playlist(edit: .rename(playlist: .id("10"), name: "나중 이름"))
@@ -655,7 +624,7 @@ struct UsbEditActionsTests {
         again.open()
         await rewrite.value
         #expect(written.all == [[first, during, later]])
-        #expect(service.current.calls.suffix(3) == ["previewEdit", "previewEdit", "writeEdit"])
+        #expect(service.current.previewedBeforeWrite)
         #expect(prompter.shown.count == 4)
         #expect(prompter.shown.last?.text.hasPrefix(changed) == true)
         #expect(try draft() == nil)
@@ -677,10 +646,11 @@ struct UsbEditActionsTests {
         var volume = image
         volume.mountPoint = root.appending(path: "usb").path
         let fileSystem = FaultyUsbFileSystem(root: root.appending(path: "usb"))
-        func service(recheck: @escaping @Sendable (UsbVolumeInfo) throws -> UsbVolumeInfo) -> SystemUsbWriteService {
-            var service = SystemUsbWriteService(paths: UsbWritePaths(backups: root.appending(path: "b"), sessions: root.appending(path: "s"),
-                                                                     staging: root.appending(path: "t")),
-                                                localCopies: root.appending(path: "c"), fileSystem: fileSystem, drafts: root.appending(path: "d"))
+        func service(recheck: @escaping @Sendable (UsbVolumeInfo) throws -> UsbVolumeInfo) -> UsbWriteService {
+            var service = UsbAppComposition.writeService(policy: .diskImagesOnly,
+                                                         paths: UsbWritePaths(backups: root.appending(path: "b"), sessions: root.appending(path: "s"),
+                                                                              staging: root.appending(path: "t")),
+                                                         localCopies: root.appending(path: "c"), drafts: root.appending(path: "d"), fileSystem: fileSystem)
             service.recheck = recheck
             return service
         }

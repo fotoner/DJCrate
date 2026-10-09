@@ -1,5 +1,5 @@
 import DJCDomain
-import DJCTestSupport
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 

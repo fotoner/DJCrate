@@ -14,3 +14,10 @@ func waitForState(safetyNet: Duration = .seconds(300), giveUp: () -> Bool = { fa
     }
     return true
 }
+
+/// "일어나지 않음"을 볼 때 시간을 기다리지 않고, 메인 액터에 이미 쌓인 일(`Task {}`·이어 돌 계속)을 먼저 돌린 뒤 본다.
+/// 시간 예약(`Task.sleep`·타이머)은 기다리지 않는다. 그런 경로가 있는 곳은 그 일이 남기는 신호를 `waitForState`로 기다린다.
+@MainActor
+func drainMainActor(rounds: Int = 20) async {
+    for _ in 0..<rounds { await Task.yield() }
+}

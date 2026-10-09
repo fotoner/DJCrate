@@ -1,26 +1,7 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
-import RekordboxKit
-
-/// 사용자에게 보여 주는 창 한 개. `confirm`이 있으면 확인·취소, 없으면 알림.
-struct ReflectionPrompt: Equatable {
-    var title: String
-    var text: String
-    var confirm: String?
-    var critical = false
-    var destructive = false
-    var details: [String] = []
-    /// 세 갈래 창(`choose`)의 둘째 동작 단추
-    var alternate: String?
-    /// 취소 단추 이름(nil이면 "취소")
-    var cancel: String?
-}
-
-/// 세 갈래 창의 답
-enum ReflectionChoice: Equatable {
-    case confirm, alternate, cancel
-}
+import SwiftUI
 
 /// 창을 띄운다. 시험에서는 정해 둔 답을 돌려준다.
 @MainActor
@@ -53,7 +34,7 @@ struct AlertPrompter: ReflectionPrompter {
 
     /// 시트는 창을 모달로 막지 않고 `ContentView`(또는 곡 편집 창)가 `LibraryStore.recoverySheet`를 보고 띄운다.
     func review(_ model: RecoverySheetModel) async {
-        model.store.recoverySheet = model
+        model.present()
         await model.waitUntilClosed()
     }
 
@@ -122,264 +103,52 @@ struct AlertPrompter: ReflectionPrompter {
     }
 }
 
-/// 반영 흐름이 쓰는 라이브러리 쪽 기능(`LibraryStore`). 시험에서는 가짜로 바꾼다.
+/// 결과 보이기: 반영 세션이 알린 결과(`ReflectionOutcome`)를 토스트·결과 기록·심각 경고로 바꾼다(세션의 결과 포트).
 @MainActor
-protocol ReflectionHost: AnyObject {
-    var isWritingRekordbox: Bool { get }
-    var writeStage: WriteStage? { get set }
-    var toast: AppToast? { get set }
-    var resultHistory: WriteResultHistory { get }
-    func setWriteLock(_ locked: Bool)
-    func writeTargets(_ rows: [TrackRow]) -> [TrackRow]
-    /// 재생 목록 초안이 있는지(곡을 고르지 않아도 반영할 것이 있다)
-    var hasPlaylistDrafts: Bool { get }
-    func previewWrite(rows: [TrackRow], playlists: Bool) async throws -> LibraryStore.WritePreview
-    func writeToRekordbox(_ drafts: [CueDraft], grids: [GridDraft], gains: [String: Double], tags: [TagDraft], artworks: [ArtworkEdit],
-                          playlists: PlaylistDraft?, merges: [DuplicateMergeDraft]) async throws -> RekordboxWriter.Report
-    func libraryChangedSince(_ backup: RekordboxWriter.Backup) async -> Bool?
-    func restoreRekordbox(_ backup: RekordboxWriter.Backup) async throws -> URL
-    /// 쓰기·복원은 끝났지만 뒤따른 일(초안 정리·다시 읽기·복원 충돌)에 남은 경고(#175)
-    var writeFollowUp: [String] { get }
-    /// 쓰기 전 백업을 만들 수 있는지(백업 폴더에 쓸 수 있는지)
-    var canBackUpBeforeWrite: Bool { get }
-    /// 복원이 되살릴 백업 초안과 다른, 쓴 뒤 새로 만든 초안(확인 창에 보일 줄)
-    func restoreDraftConflictDetails(_ backup: RekordboxWriter.Backup) -> [String]
-    /// 이 백업 뒤에 뜬 백업 수(복원하면 그 쓰기·복원도 함께 되돌린다, #222)
-    func laterBackupCount(_ backup: RekordboxWriter.Backup) -> Int
-    /// 이 백업 뒤에 시점 스냅샷으로 복원해 이 백업으로는 되돌릴 수 없으면 그 이유(#225)
-    func pointRestoreRefusal(_ backup: RekordboxWriter.Backup) -> String?
-    /// - Parameter keepingCurrentDrafts: 쓴 뒤 새로 만든 초안을 남기고 그 곡의 백업 초안은 되살리지 않는다
-    func restoreRekordbox(_ backup: RekordboxWriter.Backup, keepingCurrentDrafts: Bool) async throws -> URL
-    // 곡 넣기·빼기
-    func trackAddTargets(_ rows: [TrackRow]) -> [TrackRow]
-    func previewTrackAdd(rows: [TrackRow]) async throws -> LibraryStore.TrackAddPreview
-    func addTracksToRekordbox(_ preview: LibraryStore.TrackAddPreview) async throws -> RekordboxTrackWriter.Report
-    func trackDeleteTargets(_ rows: [TrackRow]) -> [TrackRow]
-    func previewTrackDelete(rows: [TrackRow]) async throws -> LibraryStore.TrackDeletePreview
-    func deleteTracksFromRekordbox(_ preview: LibraryStore.TrackDeletePreview) async throws -> RekordboxTrackWriter.Report
-    /// 고른 곡 가운데 쓰기에서 빠지는 초안의 줄(`blockedOnly`면 막힌 것만)
-    func draftExclusions(for rows: [TrackRow], blockedOnly: Bool) -> [String]
-}
+final class ReflectionPresenter {
+    weak var store: LibraryStore?
+    let prompter: any ReflectionPrompter
 
-extension ReflectionHost {
-    var writeFollowUp: [String] { [] }
-    var canBackUpBeforeWrite: Bool { true }
-    func draftExclusions(for rows: [TrackRow], blockedOnly: Bool) -> [String] { [] }
-    func restoreDraftConflictDetails(_ backup: RekordboxWriter.Backup) -> [String] { [] }
-    func laterBackupCount(_ backup: RekordboxWriter.Backup) -> Int { 0 }
-    func pointRestoreRefusal(_ backup: RekordboxWriter.Backup) -> String? { nil }
-    func restoreRekordbox(_ backup: RekordboxWriter.Backup, keepingCurrentDrafts: Bool) async throws -> URL {
-        try await restoreRekordbox(backup)
-    }
-}
-
-/// rekordbox에 바로 쓰기: rekordbox 꺼짐 확인 → 사본으로 미리 보기 → (막힘·제외·손실이 있을 때만) 확인 창 → 쓸 수 있는 것만 쓰기 → 토스트.
-/// 되돌리기도 같은 순서(꺼짐 확인 → 그 뒤 바뀐 것 확인 → 확인 창 → 복원). 토스트에서 누른 복원은 그 뒤 변경·초안 충돌이 없으면 묻지 않는다.
-/// 쓰는 동안은 잠가서(`setWriteLock`) 덱이 재생을 멈추고 조작을 막는다.
-@MainActor
-struct ReflectionCoordinator {
-    let host: any ReflectionHost
-    var prompter: any ReflectionPrompter = AlertPrompter()
-    var isRekordboxRunning: () -> Bool = LibrarySnapshot.isRekordboxRunning
-
-    /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 곡 초안만 쓴다)
-    func write(rows: [TrackRow], playlists: Bool = true) async {
-        guard !host.isWritingRekordbox else { return }
-        guard !isRekordboxRunning() else {
-            notify(String(ui: "rekordbox가 켜져 있어 쓰지 않았습니다"), Self.quitRekordboxText)
-            return
-        }
-        let targets = host.writeTargets(rows)
-        let withPlaylists = playlists && host.hasPlaylistDrafts
-        guard !targets.isEmpty || withPlaylists else {
-            notify(String(ui: "쓸 초안이 없습니다"), String(ui: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 초안이 없습니다."),
-                   lines: host.draftExclusions(for: rows, blockedOnly: false))
-            return
-        }
-        host.setWriteLock(true)
-        defer { host.setWriteLock(false) }
-        do {
-            host.writeStage = WriteStage(String(ui: "바꿀 내용을 확인하는 중…"), completed: 0, total: targets.count, cancellable: true)
-            try Task.checkCancellation()
-            let preview = try await host.previewWrite(rows: rows, playlists: withPlaylists)
-            try Task.checkCancellation()
-            host.writeStage = nil
-            let report = preview.report
-            guard !report.written.isEmpty || !report.gridWritten.isEmpty || !report.analysisWritten.isEmpty || !report.gainWritten.isEmpty
-                    || !report.tagWritten.isEmpty || !report.artworkWritten.isEmpty || !report.playlistWritten.isEmpty
-                    || !report.mergeWritten.isEmpty else {
-                // 창 대신 결과에 제외한 초안까지 남긴다(#230).
-                var result = WriteResult.written(report, preview: report)
-                if !preview.exclusions.isEmpty {
-                    result.text = ([result.text, String(ui: "쓰지 않는 것:")].filter { !$0.isEmpty } + preview.exclusions).joined(separator: "\n")
-                    result.shortfall = result.shortfall ?? Self.summaryLine(preview.exclusions, prefix: String(ui: "쓰지 않는 것"))
-                }
-                publish(result)
-                // 쓸 수 없게 된 곡·재생 목록의 초안은 창을 줄줄이 띄우지 않고 한 시트에서 줄마다 고친다(#232).
-                if let store = host as? LibraryStore {
-                    let requests = Self.recoveryRequests(store: store, targets: targets, blocked: BlockedDrafts(report: report))
-                    if !requests.isEmpty {
-                        host.setWriteLock(false)
-                        await recover(store: store, requests: requests, staleOnly: true)
-                    }
-                }
-                // 고를 것이 없으면 창을 띄우지 않는다. 막힌 이유는 위 결과 토스트와 결과 보기에 있다(#230).
-                return
-            }
-            // 막힘·제외·손실이 없으면 묻지 않고 쓴다. 결과 토스트와 메뉴의 "쓰기 전으로 복원…"으로 되돌린다(#210).
-            let canBackUp = host.canBackUpBeforeWrite
-            if !WriteConfirmPolicy.reasons(report, exclusions: preview.exclusions, canBackUp: canBackUp).isEmpty {
-                guard prompter.show(Self.confirmation(report, exclusions: preview.exclusions, canBackUp: canBackUp)) else { return }
-            }
-            // 분석을 붙이는 곡도 그리드 초안으로 쓴다.
-            let cues = Set(report.written.map(\.trackUUID)), grids = Set((report.gridWritten + report.analysisWritten).map(\.trackUUID))
-            let gains = Set(report.gainWritten.map(\.trackUUID)), tags = Set(report.tagWritten.map(\.trackUUID))
-            let artworks = Set(report.artworkWritten.map(\.trackUUID))
-            try Task.checkCancellation()
-            let written = try await host.writeToRekordbox(preview.drafts.filter { cues.contains($0.trackUUID) },
-                                                grids: preview.grids.filter { grids.contains($0.trackUUID) },
-                                                gains: preview.gains.filter { gains.contains($0.key) },
-                                                tags: preview.tags.filter { tags.contains($0.trackUUID) },
-                                                artworks: preview.artworks.filter { artworks.contains($0.trackUUID) },
-                                                playlists: report.playlistWritten.isEmpty ? nil : preview.playlists,
-                                                merges: preview.merges.filter { draft in report.mergeWritten.contains { $0.trackUUID == draft.id } })
-            // 쓰기 결과와 뒤따른 일(초안 정리·다시 읽기)의 경고를 나눠 알린다(#175).
-            publish(WriteResult.written(written, preview: report).followedUp(host.writeFollowUp), undo: written.backup)
-        } catch is CancellationError {
-            host.writeStage = nil
-            publishCancelled()
-        } catch {
-            host.writeStage = nil
-            // 미리 보기에서 제외한 초안은 따로 창을 띄우지 않고 실패 알림에 합친다(#230).
-            fail(String(ui: "rekordbox에 쓰지 않았습니다"), error, exclusions: host.draftExclusions(for: rows, blockedOnly: true))
-        }
+    init(store: LibraryStore, prompter: any ReflectionPrompter) {
+        self.store = store
+        self.prompter = prompter
     }
 
-    /// 추가한 곡을 rekordbox 컬렉션에 넣는다(그리드·파형·오토게인까지). 흐름은 쓰기와 같다.
-    func addTracks(rows: [TrackRow]) async {
-        guard !host.isWritingRekordbox else { return }
-        guard !isRekordboxRunning() else {
-            notify(String(ui: "rekordbox가 켜져 있어 넣지 않았습니다"), Self.quitRekordboxText)
-            return
-        }
-        let targets = host.trackAddTargets(rows)
-        guard !targets.isEmpty else {
-            notify(String(ui: "rekordbox에 넣을 곡이 없습니다"), String(ui: "DJCrate에 추가한 곡만 rekordbox에 넣을 수 있습니다."))
-            return
-        }
-        host.setWriteLock(true)
-        defer { host.setWriteLock(false) }
-        do {
-            host.writeStage = WriteStage(String(ui: "넣을 곡을 확인하는 중…"), completed: 0, total: targets.count, cancellable: true)
-            try Task.checkCancellation()
-            let preview = try await host.previewTrackAdd(rows: targets)
-            try Task.checkCancellation()
-            host.writeStage = nil
-            guard preview.report.added.contains(where: \.written) else {
-                // 넣지 않은 이유는 결과 토스트와 결과 보기에 있다(#230).
-                publish(.tracks(preview.report, preview: preview.report, adding: true, withoutAnalysis: preview.withoutAnalysis, unreadable: preview.unreadable))
-                return
+    func publish(_ outcome: ReflectionOutcome) {
+        switch outcome {
+        case .busy, .declined: return
+        case let .notice(title, text, lines): notify(title, text, lines: lines)
+        case .cancelled: publishCancelled()
+        case let .written(report, preview, followUp):
+            publish(WriteResult.written(report, preview: preview).followedUp(followUp), undo: report.backup)
+        case let .nothingWritable(preview, _):
+            // 창 대신 결과에 제외한 초안까지 남긴다(#230).
+            var result = WriteResult.written(preview.report, preview: preview.report)
+            if !preview.exclusions.isEmpty {
+                result.text = ([result.text, String(ui: "쓰지 않는 것:")].filter { !$0.isEmpty } + preview.exclusions).joined(separator: "\n")
+                result.shortfall = result.shortfall ?? ReflectionPrompts.summaryLine(preview.exclusions, prefix: String(ui: "쓰지 않는 것"))
             }
-            let canBackUp = host.canBackUpBeforeWrite, writesArtwork = RekordboxTrackWriter.writesArtwork
-            if !WriteConfirmPolicy.addReasons(preview, writesArtwork: writesArtwork, canBackUp: canBackUp).isEmpty {
-                guard prompter.show(Self.addConfirmation(preview, writesArtwork: writesArtwork, canBackUp: canBackUp)) else { return }
-            }
-            try Task.checkCancellation()
-            let written = try await host.addTracksToRekordbox(preview)
+            publish(result)
+        case let .added(report, preview, followUp):
             // 넣기는 끝났지만 백업에 추가 목록·초안을 남기지 못했다는 경고는 결과와 나눠 덧붙인다(#202).
-            publish(.tracks(written, preview: preview.report, adding: true, withoutAnalysis: preview.withoutAnalysis, unreadable: preview.unreadable)
-                .followedUp(host.writeFollowUp), undo: written.backup)
-        } catch is CancellationError {
-            host.writeStage = nil
-            publishCancelled()
-        } catch {
-            host.writeStage = nil
-            fail(String(ui: "rekordbox에 넣지 않았습니다"), error)
-        }
-    }
-
-    /// rekordbox 컬렉션에서 곡을 뺀다(음원 파일은 그대로). 흐름은 쓰기와 같고 확인 창은 경고 모양이다.
-    func deleteTracks(rows: [TrackRow]) async {
-        guard !host.isWritingRekordbox else { return }
-        guard !isRekordboxRunning() else {
-            notify(String(ui: "rekordbox가 켜져 있어 빼지 않았습니다"), Self.quitRekordboxText)
-            return
-        }
-        let targets = host.trackDeleteTargets(rows)
-        guard !targets.isEmpty else {
-            notify(String(ui: "rekordbox에서 뺄 곡이 없습니다"), String(ui: "rekordbox 컬렉션의 로컬 곡만 뺄 수 있습니다(스트리밍·추가한 곡 제외)."))
-            return
-        }
-        host.setWriteLock(true)
-        defer { host.setWriteLock(false) }
-        do {
-            host.writeStage = WriteStage(String(ui: "뺄 곡을 확인하는 중…"), completed: 0, total: targets.count, cancellable: true)
-            try Task.checkCancellation()
-            let preview = try await host.previewTrackDelete(rows: targets)
-            try Task.checkCancellation()
-            host.writeStage = nil
-            guard preview.report.deleted.contains(where: \.written) else {
-                // 빼지 않은 이유는 결과 토스트와 결과 보기에 있다(#230).
-                publish(.tracks(preview.report, preview: preview.report, adding: false))
-                return
-            }
-            guard prompter.show(Self.deleteConfirmation(preview)) else { return }
-            try Task.checkCancellation()
-            let written = try await host.deleteTracksFromRekordbox(preview)
-            publish(.tracks(written, preview: preview.report, adding: false), undo: written.backup)
-        } catch is CancellationError {
-            host.writeStage = nil
-            publishCancelled()
-        } catch {
-            host.writeStage = nil
-            fail(String(ui: "rekordbox에서 빼지 않았습니다"), error)
-        }
-    }
-
-    /// - Parameter confirmed: 쓰기 결과 토스트의 복원 단추로 불렀는지(그 백업을 보고 누른 것이라 확인으로 본다)
-    func restore(_ backup: RekordboxWriter.Backup, confirmed: Bool = false) async {
-        guard !host.isWritingRekordbox else { return }
-        guard !isRekordboxRunning() else {
-            notify(String(ui: "rekordbox가 켜져 있어 복원하지 않았습니다"), String(ui: "rekordbox를 완전히 종료한 뒤 다시 누르세요."))
-            return
-        }
-        // 시점 복원 뒤의 옛 백업은 복원 직전 백업도 만들지 않고 이유와 할 일만 알린다(#225).
-        if let reason = host.pointRestoreRefusal(backup) {
-            notify(String(ui: "복원하지 않았습니다"), reason)
-            return
-        }
-        host.setWriteLock(true)
-        defer { host.setWriteLock(false) }
-        host.writeStage = WriteStage(String(ui: "백업 뒤 바뀐 것을 확인하는 중…"))
-        let changed = await host.libraryChangedSince(backup)
-        // 쓴 뒤 같은 곡에 새로 만든 초안은 말없이 덮지 않고 고르게 한다(#175).
-        let conflicts = host.restoreDraftConflictDetails(backup)
-        let later = host.laterBackupCount(backup)
-        host.writeStage = nil
-        let keepingCurrentDrafts: Bool
-        if conflicts.isEmpty {
-            // 토스트의 복원 단추를 누른 것이 곧 확인이다. 그 뒤 rekordbox 변경·뒤 쓰기를 잃을 수 있으면 다시 묻는다(#210).
-            if !(confirmed && changed == false && later == 0) {
-                guard prompter.show(Self.restoreConfirmation(backup, changedSince: changed, later: later)) else { return }
-            }
-            keepingCurrentDrafts = true
-        } else {
-            switch prompter.choose(Self.restoreConfirmation(backup, changedSince: changed, conflicts: conflicts, later: later)) {
-            case .confirm: keepingCurrentDrafts = true
-            case .alternate: keepingCurrentDrafts = false
-            case .cancel: return
-            }
-        }
-        do {
-            let saved = try await host.restoreRekordbox(backup, keepingCurrentDrafts: keepingCurrentDrafts)
-            publish(WriteResult.restored(backup, saved: saved).followedUp(host.writeFollowUp))
-        } catch {
-            host.writeStage = nil
-            host.toast = nil
+            publish(.tracks(report, preview: preview.report, adding: true, withoutAnalysis: preview.withoutAnalysis, unreadable: preview.unreadable)
+                .followedUp(followUp), undo: report.backup)
+        case let .nothingAdded(preview):
+            publish(.tracks(preview.report, preview: preview.report, adding: true, withoutAnalysis: preview.withoutAnalysis, unreadable: preview.unreadable))
+        case let .deleted(report, preview):
+            publish(.tracks(report, preview: preview.report, adding: false), undo: report.backup)
+        case let .nothingDeleted(preview):
+            publish(.tracks(preview.report, preview: preview.report, adding: false))
+        case let .restored(backup, saved, fileWarning, followUp):
+            publish(WriteResult.restored(backup, saved: saved, fileWarning: fileWarning).followedUp(followUp))
+        case let .failed(title, error, exclusions):
+            fail(title, error, exclusions: exclusions)
+        case let .restoreFailed(backup, error):
+            store?.toast = nil
             AppErrorMessage.log(error)
             let text = String(ui: "rekordbox 라이브러리 상태를 확인하지 못했으므로 rekordbox를 켜지 말고 백업 폴더의 위치와 접근 권한을 확인한 뒤 다시 복원하세요.")
             let title = String(ui: "복원하지 못했습니다")
-            host.resultHistory.record(WriteResult(kind: .failure, title: title, text: text, backups: [backup.url]))
+            store?.resultHistory.record(WriteResult(kind: .failure, title: title, text: text, backups: [backup.url]))
             _ = prompter.show(ReflectionPrompt(title: title, text: text, critical: true))
         }
     }
@@ -391,42 +160,36 @@ struct ReflectionCoordinator {
     }
 
     private func publish(_ result: WriteResult, undo: String? = nil, detail: String? = nil) {
-        host.resultHistory.record(result)
+        guard let store else { return }
+        store.resultHistory.record(result)
         var toast = result.toast
         if let detail { toast.detail = detail }
         toast.undoBackup = undo.map { URL(filePath: $0) }
-        if let error = host.resultHistory.storageError {
+        if let error = store.resultHistory.storageError {
             if toast.kind == .success { toast.kind = .warning }
             toast.detail = [toast.detail, error].compactMap { $0 }.joined(separator: "\n")
         }
-        host.toast = toast
+        store.toast = toast
     }
 
     /// 아무것도 쓰지 않은 안내(지금은 못 함·할 것 없음): 창을 띄우지 않고 닫을 때까지 남는 경고 토스트로 알린다(#230).
     /// 쓰기 결과가 아니라 결과 기록에 남기지 않고, 이유 줄은 앞 둘과 남은 수만 보인다.
     private func notify(_ title: String, _ text: String, lines: [String] = []) {
-        host.toast = .notice(title, ([text] + [Self.summaryLine(lines)].compactMap { $0 }).joined(separator: "\n"))
-    }
-
-    /// 이유 줄 목록을 토스트 한 줄로: 앞 둘과 "외 N건"
-    static func summaryLine(_ lines: [String], prefix: String? = nil, limit: Int = 2) -> String? {
-        guard !lines.isEmpty else { return nil }
-        var text = lines.prefix(limit).map { $0.hasPrefix("• ") ? String($0.dropFirst(2)) : $0 }.joined(separator: ", ")
-        if lines.count > limit { text += " " + String(ui: "외 \(lines.count - limit)건") }
-        return prefix.map { "\($0) \(lines.count): \(text)" } ?? text
+        store?.toast = .notice(title, ([text] + [ReflectionPrompts.summaryLine(lines)].compactMap { $0 }).joined(separator: "\n"))
     }
 
     /// 쓰기 실패 알림. 자동 복원까지 실패했으면 사라지는 토스트가 아니라 닫아야 하는 경고 창으로 알린다.
     /// - Parameter exclusions: 미리 보기에서 제외한 초안. 따로 창을 띄우지 않고 이 알림과 결과 기록에 합친다(#230).
     private func fail(_ title: String, _ error: any Error, exclusions: [String] = []) {
-        let excluded = Self.summaryLine(exclusions, prefix: String(ui: "미리 보기에서 제외한 초안"))
+        let excluded = ReflectionPrompts.summaryLine(exclusions, prefix: String(ui: "미리 보기에서 제외한 초안"))
         let excludedText = exclusions.isEmpty ? [] : [String(ui: "미리 보기에서 제외한 초안:")] + exclusions
-        if var alert = Self.restoreFailureAlert(error) {
-            host.toast = nil
+        if var alert = ReflectionPrompts.restoreFailureAlert(error) {
+            AppErrorMessage.log(error)
+            store?.toast = nil
             let backups: [URL]
             if case let DJCError.restoreFailed(_, _, backup, _) = error { backups = [URL(filePath: backup)] } else { backups = [] }
-            host.resultHistory.record(WriteResult(kind: .failure, title: alert.title,
-                                                  text: ([alert.text] + excludedText).joined(separator: "\n"), backups: backups))
+            store?.resultHistory.record(WriteResult(kind: .failure, title: alert.title,
+                                                    text: ([alert.text] + excludedText).joined(separator: "\n"), backups: backups))
             alert.details = excludedText
             _ = prompter.show(alert)
         } else {
@@ -435,194 +198,117 @@ struct ReflectionCoordinator {
                     detail: [message, excluded].compactMap { $0 }.joined(separator: "\n"))
         }
     }
+}
 
-    // MARK: - 창 문구
+/// rekordbox 쓰기의 화면 쪽: 버튼·메뉴·토스트의 입구(시작 가능 판정, 한 번에 작업 하나), 반영 세션 부르기, 막힌 초안 복구 시트.
+/// 흐름(대상·미리 보기·확인 정책·확인·쓰기·뒤처리·결과)은 DJCApplication `ReflectionSession`이 정하고, 결과는 `ReflectionPresenter`가 보인다.
+/// 조립 지점(`AppComposition.reflection`)이 하나 만들어 메뉴·목록·사이드바·창에 넣는다.
+@MainActor
+final class ReflectionCoordinator {
+    let session: ReflectionSession
+    /// 쓰기 상태·작업·복구 시트를 보이는 화면 모델
+    let store: LibraryStore
+    let prompter: any ReflectionPrompter
 
-    static var quitRekordboxText: String {
-        String(ui: "rekordbox를 완전히 종료한 뒤 다시 누르세요. DJCrate는 rekordbox가 켜져 있는 동안에는 rekordbox 라이브러리에 절대 쓰지 않습니다.")
+    init(session: ReflectionSession, store: LibraryStore, prompter: any ReflectionPrompter) {
+        self.session = session
+        self.store = store
+        self.prompter = prompter
     }
 
-    /// 확인 창이 쓰는 백업 안내(쓰기·넣기·빼기 공통)
-    private static var backupThenWriteText: String {
-        String(ui: "백업한 뒤 쓰고 다시 확인합니다. 끝날 때까지 rekordbox를 켜지 마세요.")
+    // MARK: - 입구(버튼·메뉴): 시작할 수 있으면 작업 하나로 돌린다
+
+    /// 막힌 초안 비교 창이 열려 있으면 알리고 시작하지 않는다(#232). 이미 쓰는 중이거나 다른 작업이 있으면 무시한다.
+    private func canStart(blocked: Bool = false) -> Bool {
+        if store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return false }
+        return !blocked && !store.isWritingRekordbox && store.writeTask == nil
     }
 
-    /// 쓰기 확인도 자동 복원도 실패했을 때의 경고(상태를 알 수 없음 + 할 일). 그 밖의 오류면 nil.
-    /// 반영·넣기·빼기 모두 '반영 대기' 목록의 '되돌리기…'(가장 최근 쓰기 백업으로 되돌림)를 안내한다.
-    /// 툴바의 '마지막 반영 되돌리기…'는 쓰기가 성공했을 때만 활성화된다.
-    static func restoreFailureAlert(_ error: any Error) -> ReflectionPrompt? {
-        guard case let DJCError.restoreFailed(_, _, backup, database) = error else { return nil }
-        AppErrorMessage.log(error)
-        let command = DJCError.restoreCommand(backup: backup, database: database)
-        let text = [
-            String(ui: "rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다. rekordbox를 켜지 말고, 사이드바에서 'rekordbox 쓰기 대기'를 고른 뒤 목록 위 '쓰기 전으로 복원…'으로 백업을 복원하세요."),
-            String(ui: "터미널에서는: \(command)"),
-        ]
-        return ReflectionPrompt(title: String(ui: "쓰기 확인에 실패했고 자동 복원도 하지 못했습니다"), text: text.joined(separator: "\n\n"), critical: true)
-    }
-
-    static func reasons(_ report: RekordboxWriter.Report) -> [String] {
-        (report.blocked + report.gridBlocked + report.analysisBlocked + report.gainBlocked + report.tagBlocked + report.artworkBlocked
-            + report.mergeBlocked).map { "• \($0.title): \($0.reason ?? "")" }
-            + report.playlistBlocked.map(PlaylistWriteText.reason)
-    }
-
-    /// 쓰기 전 확인 창(#210): 막힘·제외·손실이 있거나 백업을 만들 수 없을 때만 뜬다(`WriteConfirmPolicy`).
-    /// 제목에 종류별 곡 수를 두고, 목록에는 묻는 이유가 되는 항목(합치기·쓰지 않는 것·백업)만 보인다. 곡마다의 결과는 쓰기 결과 창에 남는다.
-    static func confirmation(_ report: RekordboxWriter.Report, exclusions: [String] = [], canBackUp: Bool = true) -> ReflectionPrompt {
-        var kinds: [String] = []
-        if !report.written.isEmpty { kinds.append(WriteResult.Part.cue.summary(report.written.count)) }
-        if !report.gridWritten.isEmpty { kinds.append(WriteResult.Part.grid.summary(report.gridWritten.count)) }
-        if !report.analysisWritten.isEmpty { kinds.append(WriteResult.Part.analysis.summary(report.analysisWritten.count)) }
-        if !report.gainWritten.isEmpty { kinds.append(WriteResult.Part.gain.summary(report.gainWritten.count)) }
-        if !report.tagWritten.isEmpty { kinds.append(WriteResult.Part.tag.summary(report.tagWritten.count)) }
-        if !report.artworkWritten.isEmpty { kinds.append(WriteResult.Part.artwork.summary(report.artworkWritten.count)) }
-        if !report.mergeWritten.isEmpty { kinds.append(String(ui: "합치기 \(report.mergeWritten.count)묶음")) }
-        if !report.playlistWritten.isEmpty { kinds.append(PlaylistWriteText.summary(report.playlistWritten.count)) }
-        var sections: [[String]] = []
-        if !report.mergeWritten.isEmpty {
-            sections.append(report.mergeWritten.map { String(ui: "• \($0.title) 유지 · 중복 \($0.removed)곡을 컬렉션에서 뺍니다") }
-                + report.mergeWritten.compactMap(\.reason) + ["", DuplicateMerge.lossNotice])
+    private func start(_ work: @escaping @MainActor () async -> Void) {
+        let store = store
+        store.writeTask = Task {
+            defer { store.writeTask = nil }
+            await work()
         }
-        let reasons = reasons(report) + exclusions
-        if !reasons.isEmpty { sections.append([String(ui: "쓰지 않는 것 \(reasons.count):")] + reasons) }
-        if !canBackUp { sections.append([noBackupText]) }
-        return ReflectionPrompt(title: String(ui: "\(kinds.joined(separator: " · "))을 rekordbox에 쓸까요?"),
-                                text: backupThenWriteText,
-                                confirm: String(ui: "rekordbox에 쓰기"), destructive: !report.mergeWritten.isEmpty,
-                                details: Array(sections.joined(separator: [""])))
     }
 
-    /// 쓰기 전 백업 폴더에 쓸 수 없을 때의 줄
-    static var noBackupText: String {
-        String(ui: "쓰기 전 백업을 만들 폴더에 쓸 수 없어 쓰기가 막힐 수 있으니 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요.")
+    /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 false)
+    func startWrite(rows: [TrackRow], playlists: Bool = true) {
+        guard canStart() else { return }
+        start { await self.write(rows: rows, playlists: playlists) }
     }
 
-    static func addReasons(_ preview: LibraryStore.TrackAddPreview) -> [String] {
-        preview.report.added.filter { !$0.written }.map { "• \($0.title): \($0.reason ?? "")" } + preview.unreadable.map { "• \($0)" }
+    /// 추가한 곡을 rekordbox 컬렉션에 바로 넣는다.
+    func startAddTracks(rows: [TrackRow]) {
+        guard canStart() else { return }
+        start { await self.addTracks(rows: rows) }
     }
 
-    /// 넣는 곡 가운데 빠지는 것이 있는 곡의 줄(분석 없이 넣음, 큐·키가 안 들어감)과 그 안내(#210).
-    /// 비어 있으면 넣기는 묻지 않는다. 아트워크는 분석까지 붙이는 곡에만 넣는다(rekordbox도 분석할 때 뽑는다, 2026-09-26 실험).
-    static func addShortfalls(_ preview: LibraryStore.TrackAddPreview, writesArtwork: Bool) -> [String] {
-        let written = preview.report.added.filter(\.written)
-        let artwork = Set(preview.plans.filter { $0.artwork != nil }.map(\.path))
-        let bare = written.filter { preview.withoutAnalysis[$0.path] != nil }
-        let analysedArtwork = written.filter { preview.withoutAnalysis[$0.path] == nil && artwork.contains($0.path) }
-        var body = written.filter { preview.withoutAnalysis[$0.path] != nil || $0.cueReason != nil || $0.keyReason != nil }.map { outcome -> String in
-            var parts = [preview.withoutAnalysis[outcome.path].map { String(ui: "분석 없이(\($0))") }
-                ?? String(ui: "그리드·파형·오토게인까지")]
-            if writesArtwork, analysedArtwork.contains(outcome) { parts.append(String(ui: "앨범아트")) }
-            if let count = outcome.cuesWritten, count > 0 { parts.append(String(ui: "큐 \(count)개")) }
-            if let reason = outcome.cueReason { parts.append(String(ui: "⚠︎ 큐는 안 들어감(\(reason))")) }
-            if let key = outcome.keyWritten { parts.append(String(ui: "키 \(key)")) }
-            if let reason = outcome.keyReason { parts.append(String(ui: "⚠︎ 키는 안 들어감(\(reason))")) }
-            return "• \(outcome.title) — " + parts.joined(separator: " · ")
-        }
-        if !bare.isEmpty {
-            body += ["", bare.contains { artwork.contains($0.path) }
-                ? String(ui: "분석 없이 넣는 곡은 rekordbox에서 분석해야 파형·그리드·앨범아트가 생깁니다.")
-                : String(ui: "분석 없이 넣는 곡은 rekordbox에서 분석해야 파형·그리드가 생깁니다.")]
-        }
-        if !writesArtwork, !analysedArtwork.isEmpty {
-            body += ["", Self.artworkClosedNote]
-        }
-        // 키를 쓰면 곡 정보 변경 횟수가 생겨, 분석 없이 넣은 곡에는 DJCrate가 나중에 분석을 붙이지 않는다(카운터 있는 분석 전 곡은 미확인).
-        if bare.contains(where: { $0.keyWritten != nil }) {
-            body += ["", Self.bareKeyNote]
-        }
-        return body.first == "" ? Array(body.dropFirst()) : body
+    /// rekordbox 컬렉션에서 곡을 뺀다(음원 파일은 그대로).
+    func startDeleteTracks(rows: [TrackRow]) {
+        guard canStart(blocked: store.isITunesSelection) else { return }
+        start { await self.deleteTracks(rows: rows) }
     }
 
-    /// 분석 없이 넣으며 키도 쓰는 곡의 안내
-    static var bareKeyNote: String {
-        String(ui: "분석 없이 넣으며 키를 함께 쓴 곡은 DJCrate가 나중에 분석을 붙이지 않으니 rekordbox에서 분석하세요.")
+    func startRestoreLatest() {
+        store.refreshWriteBackups()
+        guard let backup = session.writeBackups().first(where: \.isWrite) else {
+            // 메뉴는 백업이 있을 때만 열린다. 그 사이 백업이 정리됐으면 창 대신 토스트로 알린다(#230).
+            store.toast = .notice(String(ui: "복원할 쓰기 기록이 없습니다"), String(ui: "DJCrate가 rekordbox에 쓴 적이 없거나 백업이 정리됐습니다."))
+            return
+        }
+        guard canStart() else { return }
+        start { await self.restore(backup) }
     }
 
-    /// 아트워크 쓰기가 닫혀 있을 때(`RekordboxTrackWriter.writesArtwork`) 음원에 아트워크가 든 곡을 넣으면 보이는 안내
-    static var artworkClosedNote: String {
-        String(ui: "음원의 앨범아트는 아직 넣지 않으니, 필요하면 rekordbox 곡 정보 창에서 이미지를 끌어다 붙이세요.")
+    /// 쓰기 결과 토스트의 복원 단추. 누른 것이 확인이라 그 뒤 변경·초안 충돌이 없으면 묻지 않는다(#210).
+    /// 백업은 쓰기가 남긴 이 저장소의 백업 폴더(`backupDirectory`)에서 찾는다(최근 쓰기 복원과 같은 곳).
+    func startRestore(backupURL: URL) {
+        guard let backup = Self.backup(matching: backupURL, in: session.writeBackups()) else {
+            store.toast = .notice(String(ui: "백업을 찾지 못했습니다"), backupURL.path)
+            return
+        }
+        guard canStart() else { return }
+        start { await self.restore(backup, confirmed: true) }
     }
 
-    /// 넣기 전 확인 창(#210): 빠지는 것(`addShortfalls`)·넣지 않는 곡이 있거나 백업을 만들 수 없을 때만 뜨고, 그 줄만 보인다.
-    static func addConfirmation(_ preview: LibraryStore.TrackAddPreview,
-                                writesArtwork: Bool = RekordboxTrackWriter.writesArtwork, canBackUp: Bool = true) -> ReflectionPrompt {
-        let written = preview.report.added.filter(\.written)
-        var sections: [[String]] = []
-        let shortfalls = addShortfalls(preview, writesArtwork: writesArtwork)
-        if !shortfalls.isEmpty { sections.append(shortfalls) }
-        let reasons = addReasons(preview)
-        if !reasons.isEmpty { sections.append([String(ui: "넣지 않는 곡 \(reasons.count):")] + reasons) }
-        if !canBackUp { sections.append([noBackupText]) }
-        return ReflectionPrompt(title: String(ui: "\(written.count)곡을 rekordbox에 넣을까요?"),
-                                text: backupThenWriteText,
-                                confirm: String(ui: "rekordbox에 넣기"), details: Array(sections.joined(separator: [""])))
+    static func backup(matching url: URL, in backups: [RekordboxWriteBackup]) -> RekordboxWriteBackup? {
+        guard url.isFileURL else { return nil }
+        let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
+        // /tmp 별칭과 디렉터리 표기를 맞추되, 모호한 후보는 복원하지 않는다.
+        let matches = backups.filter { $0.url.isFileURL && $0.url.resolvingSymlinksInPath().standardizedFileURL.path == path }
+        return matches.count == 1 ? matches[0] : nil
     }
 
-    /// 빼기 전 확인 창(경고): 뺄 곡, 빼지 않는 곡과 이유, 함께 사라지는 것
-    static func deleteConfirmation(_ preview: LibraryStore.TrackDeletePreview) -> ReflectionPrompt {
-        let written = preview.report.deleted.filter(\.written), blocked = preview.report.deleted.filter { !$0.written }
-        var body = written.map { "• \($0.title)" }
-        if !blocked.isEmpty { body += ["", String(ui: "빼지 않는 곡 \(blocked.count):")] + blocked.map { "• \($0.title): \($0.reason ?? "")" } }
-        return ReflectionPrompt(title: String(ui: "\(written.count)곡을 rekordbox에서 뺄까요?"),
-                                text: String(ui: "음원 파일은 지우지 않습니다. rekordbox의 큐·재생 목록 항목·재생 기록·분석 파일·앨범아트가 함께 사라집니다.")
-                                    + "\n" + backupThenWriteText,
-                                confirm: String(ui: "rekordbox에서 빼기"), critical: true, details: body)
+    // MARK: - 흐름(기다릴 수 있다: 시험·자가 테스트)
+
+    /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 곡 초안만 쓴다)
+    func write(rows: [TrackRow], playlists: Bool = true) async {
+        let outcome = await session.write(rows: rows, playlists: playlists)
+        // 쓸 수 없게 된 곡·재생 목록의 초안은 창을 줄줄이 띄우지 않고 한 시트에서 줄마다 고친다(#232).
+        // 고를 것이 없으면 창을 띄우지 않는다. 막힌 이유는 결과 토스트와 결과 보기에 있다(#230).
+        guard case let .nothingWritable(preview, targets) = outcome else { return }
+        let requests = Self.recoveryRequests(store: store, targets: targets, blocked: BlockedDrafts(report: preview.report))
+        if !requests.isEmpty { await recover(requests: requests, staleOnly: true) }
     }
 
-    /// 되돌리기 확인 창. 백업 뒤 변경이 있거나 확인하지 못했으면 파괴적 경고로 띄운다.
-    /// - Parameter conflicts: 쓴 뒤 새로 만든 초안이 있는 곡. 있으면 지금 초안을 남길지(확인), 백업 초안으로 바꿀지(둘째 단추) 고른다.
-    /// - Parameter later: 이 백업 뒤에 뜬 백업 수. 그 쓰기·복원이 바꾼 분석 파일도 함께 되돌리므로 알린다(#222).
-    static func restoreConfirmation(_ backup: RekordboxWriter.Backup, changedSince changed: Bool?, conflicts: [String] = [],
-                                    later: Int = 0) -> ReflectionPrompt {
-        var lines = [String(ui: "백업: \(backup.createdAt.formatted(date: .abbreviated, time: .shortened))")]
-        var details = backup.titles.isEmpty ? [] : [String(ui: "그때 쓴 곡:")] + backup.titles.map { "• \($0)" }
-        if !conflicts.isEmpty { details += [String(ui: "쓴 뒤 새로 만든 초안:")] + conflicts }
-        if let tracks = backup.trackReport {
-            let added = tracks.added.filter(\.written).count, deleted = tracks.deleted.filter(\.written).count
-            // 문장마다 번역하고, 문장 뒤 빈칸은 원래 모양 그대로 둔다.
-            var sentences = [String(ui: "라이브러리 전체를 이 백업으로 복원합니다.")]
-            if added > 0 { sentences.append(String(ui: "넣었던 \(added)곡은 컬렉션에서 빠지고 DJCrate 추가 목록으로 돌아옵니다(분석·앨범아트 파일도 삭제).")) }
-            if deleted > 0 { sentences.append(String(ui: "뺐던 \(deleted)곡은 큐·재생 목록·분석 파일·앨범아트와 함께 복원됩니다.")) }
-            lines.append(sentences.map { $0 + " " }.joined())
-        } else {
-            lines.append(String(ui: "라이브러리 전체를 이 백업으로 복원합니다. 그때 쓴 초안(큐·그리드·게인·태그·앨범아트)도 DJCrate에 복원됩니다."))
-        }
-        if later > 0 {
-            lines.append(String(ui: "이 백업 뒤에 DJCrate가 쓰거나 복원한 \(later)번도 분석 파일까지 함께 되돌립니다. 그 쓰기의 초안은 되살리지 않습니다."))
-        }
-        switch changed {
-        case true?: lines.append(String(ui: "⚠︎ 이 백업 뒤에 rekordbox에서도 라이브러리가 바뀌었습니다(큐·재생 목록·곡 추가 등). 복원하면 그 변경도 함께 사라집니다."))
-        case nil: lines.append(String(ui: "백업 뒤 rekordbox에서 바뀐 것이 있는지 확인하지 못했습니다. 그 뒤 rekordbox에서 한 변경은 함께 사라집니다."))
-        case false?: break
-        }
-        if !conflicts.isEmpty {
-            lines.append(String(ui: "\(conflicts.count)곡은 쓴 뒤 새로 만든 초안이 백업의 초안과 다릅니다. 지금 초안을 남기면 그 곡의 백업 초안은 되살리지 않고, 백업 초안으로 바꾸면 지금 초안이 사라집니다."))
-        }
-        lines.append(String(ui: "백업한 뒤 복원하고 다시 확인합니다. 끝날 때까지 rekordbox를 켜지 마세요."))
-        return ReflectionPrompt(title: String(ui: "rekordbox를 쓰기 전으로 복원할까요?"),
-                                text: lines.joined(separator: "\n\n"),
-                                confirm: conflicts.isEmpty ? String(ui: "쓰기 전으로 복원") : String(ui: "복원하고 지금 초안 남기기"),
-                                critical: changed != false, destructive: changed != false, details: details,
-                                alternate: conflicts.isEmpty ? nil : String(ui: "복원하고 백업 초안으로 바꾸기"))
+    func addTracks(rows: [TrackRow]) async { _ = await session.addTracks(rows: rows) }
+
+    func deleteTracks(rows: [TrackRow]) async { _ = await session.deleteTracks(rows: rows) }
+
+    /// - Parameter confirmed: 쓰기 결과 토스트의 복원 단추로 불렀는지(그 백업을 보고 누른 것이라 확인으로 본다)
+    func restore(_ backup: RekordboxWriteBackup, confirmed: Bool = false) async { _ = await session.restore(backup, confirmed: confirmed) }
+
+    /// 시점 스냅샷 복원(#225): 대상은 쓰기와 같은 곳, 보관 일수는 설정
+    func restorePointSnapshot(_ entry: URL, snapshots: URL, changedTracks: Set<String>) async throws -> RekordboxPointRestoreReport {
+        try await session.restorePointSnapshot(entry, snapshots: snapshots, autoDays: Int(store.settings.value(SettingKeys.pointSnapshotAutoDays)),
+                                               now: .now, changedTracks: changedTracks, to: session.target)
     }
 }
 
-extension LibraryStore: ReflectionHost {
-    /// 백업 폴더(없으면 가장 가까운 있는 상위 폴더)에 쓸 수 있는지
-    var canBackUpBeforeWrite: Bool {
-        let fm = FileManager.default
-        var folder = backupDirectory
-        while !fm.fileExists(atPath: folder.path), folder.pathComponents.count > 1 { folder = folder.deletingLastPathComponent() }
-        return fm.isWritableFile(atPath: folder.path)
-    }
-
-    func draftExclusions(for rows: [TrackRow], blockedOnly: Bool) -> [String] {
-        draftExclusionReasons(for: rows, blockedOnly: blockedOnly)
-    }
-
-    func setWriteLock(_ locked: Bool) {
-        isWritingRekordbox = locked
-        onWriteLock?(locked)
-    }
+extension EnvironmentValues {
+    /// rekordbox 쓰기의 화면 쪽. 조립 지점이 주 창·곡 편집 창에 붙인다(붙이지 않은 화면(시험·미리 보기)에서는 nil이라 쓰기 단추가 아무것도 하지 않는다).
+    @Entry var reflection: ReflectionCoordinator? = nil
 }

@@ -1,3 +1,4 @@
+import DJCApplication
 @testable import DJCrate
 import Foundation
 import Testing
@@ -7,7 +8,7 @@ import Testing
 @Suite("덱 — 알림")
 struct DeckToastTests {
     private func deck(voiceOver: Bool) -> DeckModel {
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         deck.feedback = AppFeedback(announce: { _ in }, isVoiceOverEnabled: { voiceOver })
         return deck
     }

@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -34,8 +35,8 @@ enum UsbMigrateCapture {
                 let (events, continuation) = AsyncStream.makeStream(of: [UsbVolumeInfo].self)
                 defer { continuation.finish() }
                 let snapshots = DJCPaths.userData.appending(path: "usb-migrate-capture-\(UUID().uuidString)")
-                let host = SystemUsbHost(io: .reading(snapshots: snapshots), events: events, current: { [volume] })
-                let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, localLibrary: { nil })
+                let host = SystemUsbHost(io: UsbAppComposition.hostIO(snapshots: snapshots), events: events, current: { [volume] })
+                let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: UsbAppComposition.writeService(), localLibrary: { nil })
                 store.usb = usb
                 await usb.refresh()
                 guard usb.libraries[volume.usbKey]?.tracks.count == 3 else { throw UsbSelfTestScenario.Failure("합성 USB 읽기 실패") }

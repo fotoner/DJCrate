@@ -2,6 +2,7 @@
 import AppKit
 import DJCDomain
 import DJCStorage
+import DJCTestKit
 import Foundation
 import Testing
 
@@ -68,9 +69,9 @@ struct TrackListColumnLayoutTests {
     /// 앱과 같은 칸(`TrackColumn.all`)·제목을 단 표를 창 안 스크롤 뷰에 둔다. 사용자 배치처럼 갱신 상태 칸은 숨긴 채 맨 끝, 키 뒤에 평점·곡 색.
     private func makeTable(autosaveName: String? = nil) -> (NSWindow, NSTableView, TrackListCoordinator) {
         _ = NSApplication.shared
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.columns.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("columns"), persist: false),
                                  saveTagDrafts: { _ in })
-        let coordinator = TrackListCoordinator(store: store)
+        let coordinator = TrackListCoordinator(store: store, actions: .live(store: store))
         let table = NSTableView()
         table.headerView = RecordingHeaderView()
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle

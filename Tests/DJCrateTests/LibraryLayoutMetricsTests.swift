@@ -1,4 +1,5 @@
 @testable import DJCrate
+import DJCTestKit
 import Observation
 import DJCDomain
 import Foundation
@@ -59,8 +60,8 @@ struct LibraryLayoutMetricsTests {
     }
 
     @Test func 배율과_창_크기는_저장한_pt_요청값을_바꾸지_않는다() throws {
-        let domain = "waveform-height.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
+        let domain = TestDefaults.suiteName("waveform-height")
+        let defaults = TestDefaults.open(domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         defaults.set(80.0, forKey: SettingKeys.waveformHeight.name)
         let layout = LibraryLayoutMetrics()

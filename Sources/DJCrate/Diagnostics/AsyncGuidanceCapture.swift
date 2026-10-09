@@ -2,6 +2,7 @@
 import AppKit
 import DJCDomain
 import Foundation
+import RekordboxKit
 
 extension DevSelfTests {
     /// 같은 합성 조건을 앱 활성화 없이 띄워 이 PID의 창만 기록한다.

@@ -1,8 +1,9 @@
 import DJCAnalysis
 import DJCDomain
-import DJCTestSupport
+import DJCEnvironment
+import DJCTestKit
 import Foundation
-@testable import DJCrate
+import DJCStorage
 import Testing
 
 /// #195: 음량 캐시(`loudness.json`)도 `DJC_HOME`을 따른다. 사용자 폴더 자리에 임시 폴더를 넣어 아무것도 쓰이지 않는지 본다.

@@ -1,5 +1,5 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
 import Observation
 
@@ -126,13 +126,12 @@ final class RecoveryLine: Identifiable {
 @MainActor @Observable
 final class RecoverySheetModel: Identifiable {
     struct Dependencies {
-        var home: URL = DJCPaths.userData
         var readCurrent: ((RecoveryDraft) async throws -> RecoveryDraft)?
         var save: ((RecoveryDraft) throws -> Void)?
     }
 
-    /// 시트가 닫히면 `close()`가 `store.recoverySheet`를 비워 이 참조의 순환이 풀린다.
-    @ObservationIgnored let store: LibraryStore
+    /// 비교·적용 규칙과 시트를 띄울 자리를 가진 라이브러리 화면 모델. 시트가 닫히면 `close()`가 `host.recoverySheet`를 비워 이 참조의 순환이 풀린다.
+    @ObservationIgnored let host: LibraryStore
     @ObservationIgnored let anchor: RecoverySheetAnchor
     @ObservationIgnored private let dependencies: Dependencies
     private(set) var lines: [RecoveryLine]
@@ -144,15 +143,15 @@ final class RecoverySheetModel: Identifiable {
     @ObservationIgnored private var waiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var loadStarted = false
 
-    init(store: LibraryStore, requests: [RecoveryRequest], anchor: RecoverySheetAnchor = .library, dependencies: Dependencies = Dependencies()) {
-        self.store = store
+    init(host: LibraryStore, requests: [RecoveryRequest], anchor: RecoverySheetAnchor = .library, dependencies: Dependencies = Dependencies()) {
+        self.host = host
         self.anchor = anchor
         self.dependencies = dependencies
         // 같은 곡·종류가 두 번 들어와도 줄은 하나다(저장이 같은 초안을 두 번 적용하지 않게).
         var seen = Set<String>()
         lines = requests.filter { seen.insert($0.id).inserted }.map(RecoveryLine.init)
         // 비교를 마치기 전에도 재생 목록 줄에 이름이 보이게(비교 뒤에는 rekordbox의 현재 이름으로 바뀐다)
-        for line in lines { if case let .playlist(id) = line.request { line.title = store.playlistItem(id)?.name ?? "" } }
+        for line in lines { if case let .playlist(id) = line.request { line.title = host.playlistItem(id)?.name ?? "" } }
     }
 
     var canSave: Bool {
@@ -183,31 +182,31 @@ final class RecoverySheetModel: Identifiable {
     }
 
     /// 곡 줄의 현재값을 사본 하나로 읽는다. 읽지 못한 줄은 그 이유를 결과로 든다.
-    private func prefetchDrafts() async -> [String: Result<LibraryStore.RecoveryPrefetch, any Error>] {
+    private func prefetchDrafts() async -> [String: Result<RecoveryPrefetch, any Error>] {
         let inputs: [(id: String, original: RecoveryDraft)] = lines.compactMap { line in
             guard case let .draft(row, kind) = line.request,
-                  let original = store.recoveryInput(uuid: row.track.uuid, kind: kind, home: dependencies.home) else { return nil }
+                  let original = host.recoveryInput(uuid: row.track.uuid, kind: kind) else { return nil }
             return (line.id, original)
         }
         guard !inputs.isEmpty else { return [:] }
         do {
-            let results = try await store.readRecoveryPrefetches(inputs.map(\.original), readCurrent: dependencies.readCurrent)
+            let results = try await host.readRecoveryPrefetches(inputs.map(\.original), readCurrent: dependencies.readCurrent)
             return Dictionary(uniqueKeysWithValues: zip(inputs.map(\.id), results))
         } catch {
-            return Dictionary(uniqueKeysWithValues: inputs.map { ($0.id, Result<LibraryStore.RecoveryPrefetch, any Error>.failure(error)) })
+            return Dictionary(uniqueKeysWithValues: inputs.map { ($0.id, Result<RecoveryPrefetch, any Error>.failure(error)) })
         }
     }
 
     private func prefetchPlaylists() async -> Result<PlaylistRecoveryCurrent, any Error>? {
         guard lines.contains(where: \.isPlaylist) else { return nil }
-        do { return .success(try await store.readPlaylistRecoveryPrefetch()) } catch { return .failure(error) }
+        do { return .success(try await host.readPlaylistRecoveryPrefetch()) } catch { return .failure(error) }
     }
 
     private func loadDraft(_ line: RecoveryLine, row: TrackRow, kind: DraftRecoveryKind,
-                           prefetch: Result<LibraryStore.RecoveryPrefetch, any Error>?) async {
+                           prefetch: Result<RecoveryPrefetch, any Error>?) async {
         do {
             let prefetched = try prefetch?.get()
-            let review = try await store.prepareDraftRecovery(row: row, kind: kind, home: dependencies.home, readCurrent: dependencies.readCurrent,
+            let review = try await host.prepareDraftRecovery(row: row, kind: kind, readCurrent: dependencies.readCurrent,
                                                               prefetched: prefetched)
             line.title = review.title
             line.draftReview = review
@@ -238,7 +237,7 @@ final class RecoverySheetModel: Identifiable {
 
     private func loadPlaylist(_ line: RecoveryLine, id: String, current: Result<PlaylistRecoveryCurrent, any Error>?) async {
         do {
-            let review = try await store.preparePlaylistRecovery(playlist: id, prefetched: try current?.get())
+            let review = try await host.preparePlaylistRecovery(playlist: id, prefetched: try current?.get())
             line.title = RecoverySummary.playlistTitle(review)
             line.playlistReview = review
             line.canKeep = !review.recovery.reapplied.isEmpty
@@ -337,7 +336,7 @@ final class RecoverySheetModel: Identifiable {
         }
         if saved > 0 {
             hasSaved = true
-            store.toast = failed == 0
+            host.toast = failed == 0
                 ? AppToast(kind: .success, title: String(ui: "초안을 저장했습니다"),
                            detail: String(ui: "쓰기 미리 보기에서 지원 제한과 최신 상태를 다시 확인하세요."))
                 : AppToast(kind: .warning, title: String(ui: "초안 일부만 저장했습니다"),
@@ -350,29 +349,29 @@ final class RecoverySheetModel: Identifiable {
 
     /// 저장 직전의 현재값(곡 줄 전체 사본 하나, 재생 목록 줄 전체 사본 하나). 읽지 못하면 그 이유가 줄마다의 저장 실패가 된다.
     private func prefetchLatest(_ chosen: [RecoveryLine])
-        async -> (drafts: [String: Result<LibraryStore.RecoveryPrefetch, any Error>], playlists: Result<PlaylistRecoveryCurrent, any Error>?) {
+        async -> (drafts: [String: Result<RecoveryPrefetch, any Error>], playlists: Result<PlaylistRecoveryCurrent, any Error>?) {
         let inputs: [(id: String, original: RecoveryDraft)] = chosen.compactMap { line in
             line.draftReview.map { (line.id, $0.original) }
         }
-        var drafts: [String: Result<LibraryStore.RecoveryPrefetch, any Error>] = [:]
+        var drafts: [String: Result<RecoveryPrefetch, any Error>] = [:]
         if !inputs.isEmpty {
             do {
-                let results = try await store.readRecoveryPrefetches(inputs.map(\.original), readCurrent: dependencies.readCurrent)
+                let results = try await host.readRecoveryPrefetches(inputs.map(\.original), readCurrent: dependencies.readCurrent)
                 drafts = Dictionary(uniqueKeysWithValues: zip(inputs.map(\.id), results))
             } catch {
-                drafts = Dictionary(uniqueKeysWithValues: inputs.map { ($0.id, Result<LibraryStore.RecoveryPrefetch, any Error>.failure(error)) })
+                drafts = Dictionary(uniqueKeysWithValues: inputs.map { ($0.id, Result<RecoveryPrefetch, any Error>.failure(error)) })
             }
         }
         var playlists: Result<PlaylistRecoveryCurrent, any Error>?
         if chosen.contains(where: \.isPlaylist) {
-            do { playlists = .success(try await store.readPlaylistRecoveryPrefetch()) } catch { playlists = .failure(error) }
+            do { playlists = .success(try await host.readPlaylistRecoveryPrefetch()) } catch { playlists = .failure(error) }
         }
         return (drafts, playlists)
     }
 
-    private func saveDraft(_ line: RecoveryLine, latest: Result<LibraryStore.RecoveryPrefetch, any Error>?) async throws {
+    private func saveDraft(_ line: RecoveryLine, latest: Result<RecoveryPrefetch, any Error>?) async throws {
         guard let review = line.draftReview else { throw DJCError.writeRefused(String(ui: "복구할 초안을 확인하지 못했으니 편집을 저장하고 곡을 다시 선택하세요.")) }
-        try await store.applyDraftRecovery(review, choice: line.choice == .keep ? .keepEditing : .useCurrent, home: dependencies.home,
+        try await host.applyDraftRecovery(review, choice: line.choice == .keep ? .keepEditing : .useCurrent,
                                            readCurrent: dependencies.readCurrent, save: dependencies.save, latest: try latest?.get())
     }
 
@@ -381,19 +380,19 @@ final class RecoverySheetModel: Identifiable {
     private func savePlaylist(_ line: RecoveryLine, id: String, current: Result<PlaylistRecoveryCurrent, any Error>?) async throws {
         guard var review = line.playlistReview else { throw DJCError.writeRefused(String(ui: "복구할 초안을 확인하지 못했으니 편집을 저장하고 곡을 다시 선택하세요.")) }
         let latest = try current?.get()
-        if store.playlistDraft != review.original {
-            guard store.blockedPlaylistRecoveryIDs.contains(id) else {
+        if host.playlistDraft != review.original {
+            guard host.blockedPlaylistRecoveryIDs.contains(id) else {
                 // 이미 해결됐으니 줄은 저장한 것으로 보고 안내만 남긴다.
                 line.resultNote = String(ui: "앞에서 저장하면서 이미 해결됐습니다.")
                 return
             }
-            let fresh = try await store.preparePlaylistRecovery(playlist: id, prefetched: latest)
+            let fresh = try await host.preparePlaylistRecovery(playlist: id, prefetched: latest)
             guard Self.sameComparison(fresh, review, shownDetails: line.details) else {
                 throw DJCError.writeRefused(String(ui: "앞에서 저장하면서 이 목록의 비교 내용이 바뀌어 초안을 그대로 남겼으니 다시 열어 확인하세요."))
             }
             review = fresh
         }
-        try await store.applyPlaylistRecovery(review, reapply: line.choice == .keep && line.canKeep, latest: latest)
+        try await host.applyPlaylistRecovery(review, reapply: line.choice == .keep && line.canKeep, latest: latest)
     }
 
     /// 고를 때 본 비교와 같은지. 편집 번호는 앞 목록을 버리면 당겨지므로 번호가 아니라 편집 내용으로 견준다.
@@ -415,13 +414,16 @@ final class RecoverySheetModel: Identifiable {
 
     // MARK: - 닫기
 
+    /// 시트를 띄운다: 메인 창(또는 곡 편집 창)이 `host.recoverySheet`를 보고 띄운다.
+    func present() { host.recoverySheet = self }
+
     /// 아무것도 바꾸지 않고 닫는다(저장한 줄은 그대로 저장돼 있다).
     func cancel() { close() }
 
     func close() {
         guard !isClosed else { return }
         isClosed = true
-        if store.recoverySheet === self { store.recoverySheet = nil }
+        if host.recoverySheet === self { host.recoverySheet = nil }
         let pending = waiters
         waiters = []
         pending.forEach { $0.resume() }

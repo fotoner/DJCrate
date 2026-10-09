@@ -3,14 +3,7 @@ import DJCDomain
 import Darwin
 import Foundation
 
-/// USB 라이브러리의 맨 위 폴더(마운트 지점 또는 디스크 이미지·사본 폴더)
-public struct UsbRoot: Sendable, Hashable {
-    public let url: URL
-
-    public init(_ url: URL) {
-        self.url = url
-    }
-
+extension UsbRoot {
     /// 상대 경로 → URL. 열지 않는 경로·".."·절대 경로면 던진다.
     /// 심볼릭 링크를 거쳐 가는 경로(끝 성분이 링크인 경로 포함)도 던진다. 문자열 검사만으로는 링크를 통해
     /// 열지 않는 경로에 닿을 수 있어서다. 이미 있는 성분만 lstat으로 보고, 없는 성분부터는(새 파일 자리) 보지 않는다.
@@ -35,31 +28,6 @@ public struct UsbRoot: Sendable, Hashable {
 
     private func refused(_ path: String, _ reason: String) -> UsbError {
         .readFailed(detail: "refused relative path (\(reason)): \(path)")
-    }
-}
-
-public struct UsbTreeEntry: Hashable, Sendable {
-    /// NFC
-    public var relativePath: String
-    public var isDirectory: Bool
-    public var isSymlink: Bool
-    public var size: Int64
-
-    public init(relativePath: String, isDirectory: Bool, isSymlink: Bool, size: Int64) {
-        self.relativePath = relativePath
-        self.isDirectory = isDirectory
-        self.isSymlink = isSymlink
-        self.size = size
-    }
-}
-
-public struct UsbTreeStamp: Codable, Hashable, Sendable {
-    public var size: Int64
-    public var sha256: String?
-
-    public init(size: Int64, sha256: String?) {
-        self.size = size
-        self.sha256 = sha256
     }
 }
 

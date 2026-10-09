@@ -1,5 +1,5 @@
 @testable import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import Testing
 

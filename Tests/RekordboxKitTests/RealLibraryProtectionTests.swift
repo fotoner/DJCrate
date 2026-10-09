@@ -1,6 +1,7 @@
 import DJCDomain
-import DJCTestSupport
+import DJCEnvironment
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -35,7 +36,7 @@ struct RealLibraryProtectionTests {
         let spec = try fixture.add(TrackSpec())
         let source = try RekordboxFixture()
         try source.add(spec)
-        var draft = CueDraft(trackUUID: spec.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: spec.uuid)
         draft.place(EditableCue(kind: .memory, time: 4))
         _ = try RekordboxWriter.write(drafts: [draft], to: source.database, dryRun: false, backups: source.backups,
                                       shareRoot: source.shareRoot, guard: checked)
@@ -63,7 +64,7 @@ struct RealLibraryProtectionTests {
     @Test func 다른_라이브러리의_백업은_되돌리지_않는다() throws {
         let source = try RekordboxFixture()
         let spec = try source.add(TrackSpec())
-        var draft = CueDraft(trackUUID: spec.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: spec.uuid)
         draft.place(EditableCue(kind: .memory, time: 4))
         _ = try RekordboxWriter.write(drafts: [draft], to: source.database, dryRun: false, backups: source.backups,
                                       shareRoot: source.shareRoot, guard: checked)

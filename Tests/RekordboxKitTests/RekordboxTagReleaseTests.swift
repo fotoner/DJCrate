@@ -1,6 +1,6 @@
 import DJCDomain
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -77,7 +77,8 @@ extension RekordboxTagWriterTests {
     /// 아티스트·앨범 아티스트·앨범·작곡가는 아티스트 표와 앨범 표의 같은 행을 나눠 쓰고 서로 버리는 순서에 얽히므로(앨범 아티스트와 아티스트를 같은
     /// 새 이름으로, 앨범을 옮기며 앨범 아티스트 놓기 …) 둘 이상의 모든 조합을 본다. 장르는 자기 표만 쓰는 칸이라 얽히지 않는다: 앨범 행·아티스트 행
     /// 옆에서 변경 번호 순서가 어긋나지 않는지 앨범·아티스트와의 짝과 다섯 칸 모두만 본다. 칸마다 새 이름·있는 이름·비우기 × 상태 0·256.
-    /// 열 칸 전체 조합(156가지)은 `DJC_FULL_RELEASE_COMBINATIONS=1`로 돌린다(RekordboxKitTests가 약 80초 늘어 평소에는 줄여 둔다, #194).
+    /// 평소에는 칸 묶음 × 값 종류를 모두 보고 상태는 짝 조합(pairwise)으로 고른다: 칸 묶음마다 상태 0·256이 다 나오고, 값 종류마다도 두 상태가
+    /// 다 나온다(84 → 42가지, #167 CI 시간). 열 칸 전체 조합 × 값 종류 × 상태(156가지)는 `DJC_FULL_RELEASE_COMBINATIONS=1`로 돌린다(#194).
     /// 키·코멘트 비우기와의 조합은 `RekordboxTagKeyTests`의 키 짝과 `RekordboxTagSyncedTests`(코멘트 비우기)가 따로 본다.
     static let releaseCombinations: [ReleaseCombination] = {
         let fields: [TagFields.Key] = [.album, .albumArtist, .artist, .genre, .composer]
@@ -89,8 +90,21 @@ extension RekordboxTagWriterTests {
             let genrePair = keys.contains(.genre) && (keys.count == fields.count || (keys.count == 2 && (related == [.album] || related == [.artist])))
             if full || (related.count >= 2 && !keys.contains(.genre)) || genrePair { subsets.append(keys) }
         }
-        return subsets.flatMap { keys in ["new", "existing", "clear"].flatMap { kind in [0, 256].map { ReleaseCombination(keys: keys, kind: kind, state: $0) } } }
+        let kinds = ["new", "existing", "clear"]
+        return subsets.enumerated().flatMap { index, keys in
+            kinds.enumerated().flatMap { kindIndex, kind in
+                (full ? [0, 256] : [(index + kindIndex) % 2 == 0 ? 0 : 256]).map { ReleaseCombination(keys: keys, kind: kind, state: $0) }
+            }
+        }
     }()
+
+    @Test func 줄인_조합도_칸_묶음과_값_종류마다_두_상태를_모두_본다() {
+        let combinations = Self.releaseCombinations
+        let subsets = Set(combinations.map(\.keys))
+        for keys in subsets { #expect(Set(combinations.filter { $0.keys == keys }.map(\.state)) == [0, 256], "\(keys)") }
+        for kind in ["new", "existing", "clear"] { #expect(Set(combinations.filter { $0.kind == kind }.map(\.state)) == [0, 256]) }
+        #expect(Set(combinations.map { "\($0.keys) \($0.kind)" }).count == subsets.count * 3, "칸 묶음 × 값 종류는 모두")
+    }
 
     /// 곡 500(아티스트 11 = 앨범 31의 앨범 아티스트, 작곡가 14, 장르 21, 한 곡짜리 앨범 31)과 붙일 수 있는 있는 이름
     /// (아티스트 12, 장르 22, "있는 이름"일 때만 앨범 아티스트가 같은 앨범 32: 그 앨범이 아티스트 11을 계속 가리키므로 다른 값 종류에서는

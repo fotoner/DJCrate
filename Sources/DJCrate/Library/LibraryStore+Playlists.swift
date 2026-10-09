@@ -1,7 +1,6 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
-import RekordboxKit
 
 /// 재생 목록 초안(#39·#40): 곡 넣기·빼기·순서, 목록·폴더 만들기·이름·지우기·옮기기.
 /// rekordbox에는 바로 쓰지 않고 초안(`PlaylistDraft`)으로 쌓아, 반영(⇧⌘E) 때 큐·그리드 초안과 같은 확인 창·백업·되돌리기로 쓴다.
@@ -118,16 +117,13 @@ extension LibraryStore {
     @discardableResult
     func applyPlaylistEdits(_ edits: [PlaylistEdit], actionName: String) -> Bool {
         guard !isWritingRekordbox, !edits.isEmpty else { return false }
-        var draft = playlistDraft
         do {
-            for edit in edits { try draft.append(edit, rekordbox: rekordboxPlaylists) }
+            setPlaylistDraft(try EditPlaylists.appending(edits, to: playlistDraft, rekordbox: rekordboxPlaylists), actionName: actionName)
+            return true
         } catch {
-            let reason = (error as? PlaylistLayout.Blocked)?.reason ?? DJCError.reason(of: error)
-            playlistMessage = AppMessage(kind: .warning, text: String(ui: "재생 목록을 고치지 않았습니다: \(reason)"))
+            playlistMessage = AppMessage(kind: .warning, text: (error as? EditPlaylists.Refused)?.message ?? DJCError.reason(of: error))
             return false
         }
-        setPlaylistDraft(draft, actionName: actionName)
-        return true
     }
 
     /// 초안을 바꾸고 저장·화면 갱신·되돌리기(⌘Z)를 건다.
@@ -153,27 +149,14 @@ extension LibraryStore {
         let tracks = uniqueTracks(rows)
         let staged = tracks.filter(\.isStaged).count
         let split = item.split(adding: tracks.filter { !$0.isStaged }.map(\.track.id))
-        var lines: [String] = []
-        var kind = AppToast.Kind.success
         if !split.new.isEmpty {
             guard applyPlaylistEdits([.addTracks(playlist: PlaylistRef(id), contentIDs: split.new)], actionName: String(ui: "재생 목록에 넣기")) else { return }
             touchRecent(id)
-            lines.append(String(ui: "‘\(item.name)’에 \(split.new.count)곡을 넣었습니다(쓰기 대기)."))
         }
-        if !split.duplicates.isEmpty {
-            kind = .warning
-            lines.append(String(ui: "이미 들어 있는 \(split.duplicates.count)곡은 넣지 않았습니다."))
+        if let summary = EditPlaylists.addSummary(name: item.name, added: split.new.count, duplicates: split.duplicates.count,
+                                                  saveFailed: playlistDraftUnsaved, staged: staged, saveFailureText: Self.playlistSaveFailureText) {
+            playlistMessage = AppMessage(kind: summary.warning ? .warning : .success, text: summary.text)
         }
-        // 넣은 결과 안내가 저장 실패 경고를 덮지 않게 한다(#174).
-        if playlistDraftUnsaved {
-            kind = .warning
-            lines.append(Self.playlistSaveFailureText)
-        }
-        if staged > 0 {
-            kind = .warning
-            lines.append(String(ui: "추가한 곡 \(staged)곡은 rekordbox 컬렉션에 넣은 뒤 목록에 넣을 수 있습니다."))
-        }
-        if !lines.isEmpty { playlistMessage = AppMessage(kind: kind, text: lines.joined(separator: " ")) }
     }
 
     /// 보고 있는 목록에서 곡을 뺀다(같은 곡이 여러 번 들었으면 모두). 컬렉션에서는 빼지 않는다.
@@ -296,44 +279,33 @@ extension LibraryStore {
 
     // MARK: - 반영 뒤
 
-    /// 쓴 편집을 초안에서 뺀다(막힌 편집은 남겨 다음 반영에서 다시 본다). 새로 만든 목록의 `new:키`는 새 rekordbox ID로 바꿔 둔다.
-    func finishPlaylistWrite(_ written: PlaylistDraft, outcomes: [PlaylistOutcome]) {
-        var ids: [String: String] = [:]
-        for (step, outcome) in zip(written.steps, outcomes) {
-            if case let .create(key, _, _, _) = step.edit, outcome.status == .written, let id = outcome.playlistID {
-                ids[PlaylistRef.new(key).layoutID] = id
-            }
-        }
-        if playlistDraft == written {
-            var draft = written
-            draft.removeSteps(at: outcomes.indices.filter { outcomes[$0].status != .blocked })
+    /// 쓴 뒤: 반영 세션이 쓴 편집을 뺀 초안(막힌 편집은 남겨 다음 반영에서 다시 본다)과 새 목록 ID를 이은 연결 기록을 저장했다.
+    /// 메모리 초안·연결 기록을 맞추고, 새로 만든 목록의 `new:키`를 새 rekordbox ID로 바꿔 둔다(최근 목록·보고 있는 목록).
+    func applyPlaylistWrite(_ cleanup: EditPlaylists.WriteCleanup) {
+        let ids = cleanup.ids
+        if let draft = cleanup.draft {
             playlistDraft = draft
-            savePlaylistDraft()
+            applyPlaylistSave(cleanup.draftError)
         }
         if !ids.isEmpty {
-            var imports = playlistImports
-            imports.remapTargets(ids)
-            savePlaylistImports(imports)
+            if let imports = cleanup.imports { applyImportsChange(imports) }
             recentPlaylistIDs = recentPlaylistIDs.map { ids[$0] ?? $0 }
             if settings.persist { settings.defaults.set(recentPlaylistIDs, forKey: Self.recentPlaylistsKey) }
             if case let .playlist(id) = sidebar, let real = ids[id] { sidebar = .playlist(real) }
         }
     }
 
-    /// 되돌린 뒤: 그때 쓴 편집을 되돌린 rekordbox 상태에 다시 쌓고, 그 뒤 쌓은 초안을 이어 붙인다.
+    /// 되돌린 뒤: 그때 쓴 편집을 되돌린 rekordbox 상태에 다시 쌓고, 그 뒤 쌓은 초안을 이어 붙인다(저장은 유스케이스 `EditPlaylists.restore`).
     /// - Returns: 다시 쌓지 못한 편집 수
     @discardableResult
     func restorePlaylistEdits(_ edits: [PlaylistEdit]) -> Int {
         guard !edits.isEmpty else { return 0 }
-        let rebuilt = PlaylistDraft.rebuilt(edits + playlistDraft.edits, rekordbox: rekordboxPlaylists)
-        playlistDraft = rebuilt.draft
-        savePlaylistDraft()
+        let restored = useCases.playlists.restore(edits, onto: playlistDraft, rekordbox: rekordboxPlaylists, imports: playlistImports,
+                                                  importsLoadFailed: playlistImportsLoadFailed)
+        playlistDraft = restored.draft
+        applyPlaylistSave(restored.draftError)
         refreshPlaylists()
-        var imports = playlistImports
-        imports.restoreTargets(createdKeys: Set(edits.compactMap { edit in
-            if case let .create(key, _, _, _) = edit { key } else { nil }
-        }))
-        savePlaylistImports(imports)
-        return rebuilt.failed.count
+        applyImportsChange(restored.imports)
+        return restored.failed
     }
 }

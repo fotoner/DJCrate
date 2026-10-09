@@ -1,8 +1,10 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -36,22 +38,24 @@ struct HideStreamingTests {
         return fixture
     }
 
+    /// - Parameter filesMissing: 켜면 파일 확인이 모든 곡을 '파일 없음'으로 본다
     static func makeStore(_ fixture: RekordboxFixture, hideStreaming: Bool = false, persist: Bool = false,
-                          defaults: UserDefaults? = nil) async -> LibraryStore {
-        let defaults = defaults ?? UserDefaults(suiteName: "djc.test.hide-streaming.\(UUID())")!
+                          defaults: UserDefaults? = nil, filesMissing: TestSwitch? = nil) async -> LibraryStore {
+        let defaults = defaults ?? TestDefaults.make("hide-streaming")
         let settings = SettingsStore(defaults: defaults, persist: persist)
         if persist { defaults.set(hideStreaming, forKey: SettingKeys.hideStreaming.name) }
-        let store = LibraryStore(settings: settings, resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(settings: settings, resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
-                                 playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        let database = fixture.database
-        store.takeLiveSnapshot = { _ in database }
-        store.launchArguments = ["test"]
-        store.launchEnvironment = [:]
-        store.draftHome = fixture.root.appending(path: "drafts")
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+                                 playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                                 draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: fixture.database,
+                                 rekordboxShareRoot: fixture.shareRoot, arguments: ["test"], environment: [:],
+                                 takeLiveSnapshot: { [database = fixture.database] _ in database },
+                                 ports: { ports in
+                                     guard let filesMissing else { return }
+                                     let exists = ports.files.exists
+                                     ports.files.exists = { filesMissing.isOn ? false : exists($0) }
+                                 })
+        await store.load(snapshot: fixture.database)
         if !persist, hideStreaming { store.hideStreaming = true }
         return store
     }
@@ -62,7 +66,7 @@ struct HideStreamingTests {
 
     @Test func 기본은_꺼져_있고_켜면_저장해_다시_열어도_이어진다() async throws {
         let fixture = try Self.fixture()
-        let defaults = UserDefaults(suiteName: "djc.test.hide-streaming.save.\(UUID())")!
+        let defaults = TestDefaults.make("hide-streaming.save")
         let store = await Self.makeStore(fixture, persist: true, defaults: defaults)
         #expect(!store.hideStreaming)
         #expect(Self.ids(store).count == 6)
@@ -121,13 +125,14 @@ struct HideStreamingTests {
     }
 
     @Test func 코멘트_프리셋을_바꿔도_숨긴_곡은_곡_수에_다시_들어오지_않는다() async throws {
-        let store = await Self.makeStore(try Self.fixture(), hideStreaming: true)
+        let missing = TestSwitch()
+        let store = await Self.makeStore(try Self.fixture(), hideStreaming: true, filesMissing: missing)
         store.commentPreset = .anisong
         #expect(store.count(.all) == 4 && store.count(.emptyComment) == 4)
         store.commentPreset = .none
         #expect(store.count(.all) == 4)
         // 파일 확인 결과를 반영해도 마찬가지
-        store.fileExists = { _ in false }
+        missing.set(true)
         store.checkMissingFiles()
         for _ in 0..<500 where store.isCheckingFiles { try await Task.sleep(for: .milliseconds(10)) }
         #expect(!store.isCheckingFiles && store.count(.missingFile) == 4 && store.count(.all) == 4)
@@ -276,10 +281,10 @@ struct HideStreamingTests {
             store.removeSelectedFromPlaylist()
             store.addTracks([try #require(store.rowsByID["6"])], toPlaylist: "P")
             store.moveTracks(["1"], inPlaylist: "P", before: nil)
-            let preview = try await store.previewWrite(rows: [], playlists: true)
+            let preview = try await store.session.previewWrite(rows: [], playlists: true)
             let previewed = try #require(preview.report.playlistOutcomes)
             #expect(previewed.count == 3 && previewed.allSatisfy { $0.status == .written })
-            let report = try await store.writeToRekordbox([], playlists: preview.playlists)
+            let report = try await store.session.writeToRekordbox([], playlists: preview.batch.playlists)
             let written = try #require(report.playlistOutcomes)
             #expect(written == previewed)
             let rows = try fixture.rows("""

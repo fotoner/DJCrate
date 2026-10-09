@@ -1,6 +1,6 @@
 import DJCDomain
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -94,7 +94,7 @@ struct RekordboxWriterGoldenTests {
     @Test func 활성_루프는_ActiveLoop_1() throws {
         let fixture = try RekordboxFixture()
         let track = try fixture.add(TrackSpec())
-        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: track.uuid)
         var loop = EditableCue(kind: .hot(0), time: 1.024)
         loop.loop = EditableCue.Loop(end: 5.028, active: true, beats: 8)
         draft.place(loop)
@@ -106,7 +106,7 @@ struct RekordboxWriterGoldenTests {
     @Test func 반_박_루프의_BeatLoopSize() throws {
         let fixture = try RekordboxFixture()
         let track = try fixture.add(TrackSpec())
-        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: track.uuid)
         var loop = EditableCue(kind: .memory, time: 30)
         loop.loop = EditableCue.Loop(end: 30.25, active: false, beats: 0.5)
         draft.place(loop)
@@ -288,7 +288,7 @@ struct RekordboxWriterGoldenTests {
         var track = TrackSpec()
         track.bitRate = 0
         try fixture.add(track)
-        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: track.uuid)
         draft.place(EditableCue(kind: .memory, time: 10))
         #expect(try blockedReason(fixture, draft)?.contains("VBR") == true)
         #expect(try fixture.rows("SELECT * FROM djmdCue").isEmpty)
@@ -301,7 +301,7 @@ struct RekordboxWriterGoldenTests {
         track.bitRate = 0
         track.analysed = 0
         try fixture.add(track)
-        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: track.uuid)
         draft.place(EditableCue(kind: .memory, time: 0.5))
         let report = try write(fixture, drafts: [draft])
         #expect(report.blocked.isEmpty && report.written.first?.added == 1)
@@ -318,7 +318,7 @@ struct RekordboxWriterGoldenTests {
         let url = try TestResources.url("mp3-lame-vbr.mp3")
         vbr.folderPath = url.path
         try fixture.add(vbr)
-        var draft = CueDraft(trackUUID: vbr.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: vbr.uuid)
         draft.place(EditableCue(kind: .memory, time: 0.5))
         var loop = EditableCue(kind: .hot(1), time: 0.3)
         loop.loop = EditableCue.Loop(end: 0.7, active: false, beats: 0)
@@ -350,7 +350,7 @@ struct RekordboxWriterGoldenTests {
         var track = TrackSpec()
         track.folderPath = "/tmp/djc-없는-파일.mp3"
         try fixture.add(track)
-        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: track.uuid)
         draft.place(EditableCue(kind: .memory, time: 0.5))
         #expect(try blockedReason(fixture, draft)?.contains("음원 파일") == true)
     }
@@ -394,7 +394,7 @@ struct RekordboxWriterGoldenTests {
     @Test func 곡_길이를_넘는_큐는_막는다() throws {
         let fixture = try RekordboxFixture()
         let track = try fixture.add(TrackSpec())
-        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: track.uuid)
         draft.place(EditableCue(kind: .memory, time: 500))   // 곡은 200초
         #expect(try blockedReason(fixture, draft)?.contains("곡 길이") == true)
     }

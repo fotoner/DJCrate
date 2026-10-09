@@ -8,7 +8,7 @@ DJCrate 배포물에 포함되거나 옮겨 온 코드의 출처와 라이선스
 - 출처: [sqlcipher/SQLCipher.swift](https://github.com/sqlcipher/SQLCipher.swift/tree/39f212458aeb88e33bdac2200a793a3f0d55d32b)
 - 원문: [LICENSE.md](https://github.com/sqlcipher/SQLCipher.swift/blob/39f212458aeb88e33bdac2200a793a3f0d55d32b/LICENSE.md)
 - 가져오는 방법: 공식 4.19.0 `SQLCipher.xcframework.zip`을 `Package.swift`의 바이너리 타깃으로 직접 지정한다. 공식 패키지와 같은 URL·SHA-256 체크섬을 쓰며 프레임워크는 수정하지 않는다.
-- DJCrate에서 쓰는 곳: `Sources/RekordboxKit/CipherDatabase.swift`의 DB 접근과 앱에 포함하는 `SQLCipher.framework`.
+- DJCrate에서 쓰는 곳: `Sources/RekordboxKit/Database/CipherDatabase.swift`의 DB 접근과 앱에 포함하는 `SQLCipher.framework`.
 
 ````text
 ## Community Edition Open Source License
@@ -480,7 +480,7 @@ can send private email to the lead developer at drh at sqlite dot org.
 - 고지 기준 커밋: `f695541827cc488af267d6ca8a8e0052598d85a0`
 - 출처: [dylanljones/pyrekordbox](https://github.com/dylanljones/pyrekordbox/tree/f695541827cc488af267d6ca8a8e0052598d85a0)
 - 원문: [LICENSE](https://github.com/dylanljones/pyrekordbox/blob/f695541827cc488af267d6ca8a8e0052598d85a0/LICENSE)
-- DJCrate에서 쓰는 곳: `Sources/RekordboxKit/RekordboxKey.swift`의 키 복원 절차와 OneLibrary(`exportLibrary.db`) 키 복원(`devicelib_plus/database.py`의 상수), `AnlzPreviewWaveform.swift`의 PWV4 채널·밝기 해석.
+- DJCrate에서 쓰는 곳: `Sources/RekordboxKit/Database/RekordboxKey.swift`의 키 복원 절차와 OneLibrary(`exportLibrary.db`) 키 복원(`devicelib_plus/database.py`의 상수), `AnlzPreviewWaveform.swift`의 PWV4 채널·밝기 해석.
 - 외부 파서 대조(`scripts/usb-parser-compare.py`, #189)는 임시 폴더에 받은 pyrekordbox(커밋 `5feacbce470621711785b6cb8f21420ca14a135d`)를 실행할 때 불러 OneLibrary를 읽는다. 코드는 옮기지 않고 배포하지 않는다.
 - 인텔리전트 재생 목록(#68): `Sources/DJCDomain/Playlist/SmartPlaylist.swift`가 조건 칸(`djmdPlaylist.SmartList`)의 형식(커밋 `5feacbce470621711785b6cb8f21420ca14a135d`의 `pyrekordbox/masterdb/smartlist.py`와 `docs/source/formats/db6.md`)을 참고한다: NODE·CONDITION 칸 이름, 항목 이름(`PropertyName`) 목록, 연산자 번호 1~11, 결합 방식 번호 1·2. 파이썬 코드(SQLAlchemy 계산 포함)는 옮기지 않고 같은 형식을 Swift로 새로 썼다. 계산 의미는 이 자료를 따르지 않고 DJCrate가 정한다(`SmartPlaylistEvaluator`).
 
@@ -514,7 +514,7 @@ SOFTWARE.
 - 고지 기준 커밋: `eecb4f798c661ac3a285ab1894ad4257ee923621`
 - 출처: [M-Igashi/baken](https://github.com/M-Igashi/baken/tree/eecb4f798c661ac3a285ab1894ad4257ee923621)
 - 원문: [LICENSE](https://github.com/M-Igashi/baken/blob/eecb4f798c661ac3a285ab1894ad4257ee923621/LICENSE)
-- DJCrate에서 쓰는 곳: `Sources/RekordboxKit/AnlzWaveform.swift`의 파형 규칙, `Sources/RekordboxKit/Usb/DeviceLibrary/PdbString.swift`(`PdbStringEncoder.encoded`)의 127자 이상 순수 ASCII 문자열 모양 선택.
+- DJCrate에서 쓰는 곳: `Sources/RekordboxKit/Anlz/AnlzWaveform.swift`의 파형 규칙, `Sources/RekordboxKit/Usb/DeviceLibrary/PdbString.swift`(`PdbStringEncoder.encoded`)의 127자 이상 순수 ASCII 문자열 모양 선택.
 - 파형 규칙 출처: [PR #148](https://github.com/M-Igashi/baken/pull/148)
 - 문자열 규칙 참고: `crates/baken-export/src/pdb/string.rs`의 긴 문자열 처리(127자 이상 순수 ASCII 문자열을 UTF-16으로 쓰는 선택, 코드는 옮기지 않음)
 

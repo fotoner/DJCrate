@@ -1,7 +1,6 @@
 import AppKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import RekordboxKit
 import SwiftUI
 
 /// 목록은 #30 모양새 토큰, 항상 어두운 덱은 기존 3밴드 팔레트를 쓴다.
@@ -38,9 +37,8 @@ struct ColorWaveformRaster: Sendable {
     /// ANLZ는 이미 rekordbox 시간축, 자체 분석은 음원 시간축이다.
     let offset: Double
 
-    static func load(waveform: Waveform, datURL: URL?, mode: WaveformColorMode, audioOffset: Double) -> Self? {
-        let ext = datURL.flatMap { try? AnlzFile(url: $0.deletingPathExtension().appendingPathExtension("EXT")) }
-        let source = ext.flatMap { try? AnlzColorWaveform(file: $0, mode: mode) }
+    /// - Parameter source: rekordbox 분석 파일의 색 파형(없으면 자체 파형으로 그린다)
+    static func make(waveform: Waveform, source: ColorWaveformColumns?, mode: WaveformColorMode, audioOffset: Double) -> Self? {
         let columns = source?.columns ?? waveform.colorColumns
         let rate = source?.rate ?? waveform.rate
         guard !Task.isCancelled, !columns.isEmpty,
@@ -99,11 +97,13 @@ extension DeckModel {
         colorWaveformTask?.cancel()
         colorWaveform = nil
         guard waveformColorMode != .threeBand, let waveform else { return }
-        let mode = waveformColorMode, offset = timelineOffset
-        let url = row.flatMap { RekordboxShare.analysisURL($0.track.analysisDataPath) }
+        let mode = waveformColorMode, offset = timelineOffset, loader = loader
+        let request = row.map(loadRequest)
         colorWaveformTask = Task {
             let job = Task.detached(priority: .userInitiated) {
-                ColorWaveformRaster.load(waveform: waveform, datURL: url, mode: mode, audioOffset: offset)
+                var source: ColorWaveformColumns?
+                if let request { source = await loader.colorWaveform(request, mode: mode) }
+                return ColorWaveformRaster.make(waveform: waveform, source: source, mode: mode, audioOffset: offset)
             }
             let raster = await withTaskCancellationHandler { await job.value } onCancel: { job.cancel() }
             guard !Task.isCancelled else { return }

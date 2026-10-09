@@ -1,6 +1,6 @@
+import DJCApplication
 @testable import DJCrate
 import AppKit
-import DJCTestSupport
 import SwiftUI
 import Synchronization
 import Testing
@@ -57,7 +57,7 @@ struct DeckHeaderLayoutTests {
     /// 장면 하나를 돌려 바깥 크기 요청이 몇 번 늘었는지 돌려준다: 처음 배치(`initial`), 처음 바뀐 뒤(`first`), 그 뒤 `steps`번 바꿀 때마다(`steps`).
     private func sizeCallsPerUpdate<Content: View>(_ content: (DeckModel) -> Content, steps: Int = 20) async throws
         -> (initial: Int, first: Int, steps: [Int]) {
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()))
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()))
         deck.duration = 200
         let counter = CountingLayout.Counter()
         let view = host(content(deck), counter: counter)

@@ -1,7 +1,11 @@
+import DJCAdapters
+import DJCApplication
 @testable import DJCrate
+import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Synchronization
 import Testing
@@ -19,11 +23,11 @@ struct WriteReloadTests {
         let previous = try LibrarySnapshot.take(from: sourceDB, into: directory, force: true, now: stamp)
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "이전 목록")])
         try cached.save(for: previous)
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.write-reload.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("write-reload"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        await store.load(snapshot: previous, arguments: ["test"], environment: [:])
+                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, arguments: ["test"], environment: [:])
+        await store.load(snapshot: previous)
         try fixture.add(TrackSpec(id: "2"))
         // Music 조회를 막아 둔 채 쓰기 뒤 다시 읽기가 먼저 끝나는지 순서로 판정한다(걸린 시간이 아니라 끝난 순서라 부하에 상관없다).
         // 잘못 캡처하면 두 번째 행을 적용하지 못한 채 대기한다. 그때도 조회가 시작되는 즉시 풀어 준다.
@@ -39,7 +43,7 @@ struct WriteReloadTests {
                                          captureStarted.withLock { $0 = true }
                                          resume.wait()
                                          return ITunesLibrarySnapshot(status: .unavailable)
-                                     }, arguments: ["test"], environment: [:])
+                                     })
             finished.withLock { $0 = true }
         }
         // 다시 읽기가 끝나거나 Music 조회가 시작될 때까지 기다린다. 시간 제한은 없다(느린 실행은 오래 걸릴 뿐 판정은 같다).
@@ -63,7 +67,7 @@ struct WriteReloadTests {
         // 별도 새로고침은 Music을 다시 읽고, 성공한 빈 선택도 그대로 채택한다.
         await store.takeSnapshot(force: true, snapshotDirectory: directory, snapshotCopy: { force in
             try LibrarySnapshot.take(from: sourceDB, into: directory, force: force, now: stamp.addingTimeInterval(120))
-        }, captureITunes: { ITunesLibrarySnapshot() }, arguments: ["test"], environment: [:])
+        }, captureITunes: { ITunesLibrarySnapshot() })
         #expect(store.iTunesSnapshot.status == .ready)
         #expect(store.iTunesSnapshot.playlists.isEmpty)
         #expect(ITunesLibrarySnapshot.load(for: try #require(store.snapshotURL)).playlists.isEmpty)
@@ -76,6 +80,8 @@ struct WriteReloadTests {
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "보존할 목록")], status: status)
         let loaded = try LoadedLibrary.load(snapshot: fixture.database,
                                             previousITunesSnapshot: .init(source: previous, contents: cached),
+                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            drafts: .dataFolder(),
                                             captureITunes: { Issue.record("재사용 중 Music을 조회했습니다"); return .init() })
         #expect(loaded.iTunesSnapshot.status == status)
         #expect(ITunesLibrarySnapshot.load(for: fixture.database).status == status)
@@ -87,6 +93,8 @@ struct WriteReloadTests {
         let fixture = try RekordboxFixture()
         let stages = Mutex<[LoadedLibrary.Stage]>([])
         _ = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: refresh,
+                                    fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                    drafts: .dataFolder(),
                                     progress: { stage in stages.withLock { $0.append(stage) } }, captureITunes: {
                                         #expect(stages.withLock { $0.last } == .music)
                                         return ITunesLibrarySnapshot()
@@ -100,7 +108,8 @@ struct WriteReloadTests {
         try FileManager.default.createDirectory(at: sidecar, withIntermediateDirectories: false)
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "보존할 목록")])
         let loaded = try LoadedLibrary.load(snapshot: fixture.database, previousITunesSnapshot:
-            .init(source: fixture.root.appending(path: "previous.db"), contents: cached))
+            .init(source: fixture.root.appending(path: "previous.db"),
+                  contents: cached), fallbackDirectory: LibrarySnapshot.defaultDirectory, drafts: .dataFolder())
         #expect(loaded.iTunesSnapshot == cached)
         #expect(try FileManager.default.attributesOfItem(atPath: sidecar.path)[.type] as? FileAttributeType == .typeDirectory)
     }

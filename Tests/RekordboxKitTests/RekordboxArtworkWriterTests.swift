@@ -1,9 +1,10 @@
 import CoreGraphics
 import CryptoKit
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import ImageIO
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 import UniformTypeIdentifiers
@@ -21,9 +22,11 @@ struct RekordboxArtworkWriterTests {
     let now = Date(timeIntervalSince1970: 1_790_337_600)
     let stamp = "2026-09-25 12:00:00.000 +00:00"
     let names = ["artwork.jpg", "artwork_m.jpg", "artwork_s.jpg"]
-    /// 실험 그림과 같은 크기의 합성 그림
-    let square = ImageFixture.image(width: 1500, height: 1500, type: .jpeg)
-    let wide = ImageFixture.image(width: 1200, height: 675, type: .png, blue: 40)
+    /// 실험 그림과 같은 크기의 합성 그림. 시험마다 새 인스턴스를 만들므로 프로세스에서 한 번만 만든다(#167).
+    static let square = ImageFixture.image(width: 1500, height: 1500, type: .jpeg)
+    static let wide = ImageFixture.image(width: 1200, height: 675, type: .png, blue: 40)
+    var square: Data { Self.square }
+    var wide: Data { Self.wide }
 
     // MARK: 도움
 
@@ -326,7 +329,7 @@ struct RekordboxArtworkWriterTests {
         try fixture.execute("UPDATE djmdContent SET ImagePath = '' WHERE ID = ?", [.text(track.id)])
         var grid = GridDraft(trackUUID: track.uuid, grid: try BeatGrid.load(anlz: fixture.analysisURL(for: track)))
         grid.setBPM(130, at: 0)
-        var cues = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var cues = CueDraft(trackUUID: track.uuid)
         cues.place(EditableCue(kind: .memory, time: 30))
         let report = try write(fixture, [try edit(fixture, track, image: square)], drafts: [cues], grids: [grid])
         #expect(report.written.count == 1 && report.artworkWritten.count == 1 && report.gridWritten.count == 1)

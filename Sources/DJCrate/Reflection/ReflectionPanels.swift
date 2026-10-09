@@ -1,7 +1,4 @@
-import RekordboxKit
-import DJCAnalysis
 import DJCDomain
-import DJCStorage
 import AppKit
 import SwiftUI
 
@@ -20,18 +17,18 @@ enum ReflectionPanels {
         let exclusions = store.draftExclusionReasons(for: rows, xml: true, blockedOnly: true)
         let pending = store.pendingUUIDs
         do {
-            let url = try RekordboxLink.prepare()
+            let url = try RekordboxLink.prepare(store.linkedXMLFile)
             _ = try store.exportReflection(rows: rows, to: url)
         } catch {
             store.reflectionMessage = AppMessage(kind: .failure, text: String(ui: "XML을 만들지 못했습니다. 저장 위치와 권한을 확인하세요: \(error.localizedDescription)"))
             return
         }
         store.reflectionMessage = resultMessage(written: eligible.count, blocked: blocked.filter { pending.contains($0.uuid) }, exclusions: exclusions)
-        RekordboxLink.showSetupIfNeeded()
+        RekordboxLink.showSetupIfNeeded(store.linkedXMLFile)
     }
 
     /// XML을 만든 뒤의 목록 위 알림: 쓴 곡 수와 가져오는 순서, 막혀서 뺀 곡·XML에 넣지 않은 초안(앞 둘과 수)
-    static func resultMessage(written: Int, blocked: [Reflection.Plan], exclusions: [String]) -> AppMessage {
+    static func resultMessage(written: Int, blocked: [ReflectionXMLPlan], exclusions: [String]) -> AppMessage {
         // 재생 목록 이름 "DJCrate 반영"은 XML에 쓰는 이름 그대로다(번역하지 않음).
         var text = String(ui: "\(written)곡을 연동 XML에 썼습니다 · rekordbox: rekordbox xml 새로고침 › \"DJCrate 반영\" › 곡 모두 선택 › Import To Collection → DJCrate rekordbox와 동기화(⟳)")
         if !blocked.isEmpty {
@@ -49,7 +46,7 @@ enum ReflectionPanels {
     }
 
     /// XML로 만들 곡이 없을 때의 목록 위 알림: 막힌 곡은 결과 줄처럼 앞 둘과 수
-    static func blockedMessage(_ blocked: [Reflection.Plan]) -> AppMessage {
+    static func blockedMessage(_ blocked: [ReflectionXMLPlan]) -> AppMessage {
         let reason = blocked.isEmpty ? String(ui: "고른 곡에 rekordbox와 다른 큐·그리드 초안이 없습니다.")
             : String(ui: "막혀서 뺀 곡 \(blocked.count): \(blocked.prefix(2).map { "\($0.title)(\($0.blockers.first ?? ""))" }.joined(separator: ", "))")
         return AppMessage(kind: .warning, text: String(ui: "XML로 만들 곡이 없습니다") + " · " + reason)

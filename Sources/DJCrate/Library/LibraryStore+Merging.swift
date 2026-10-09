@@ -1,22 +1,18 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
-import RekordboxKit
 
 extension LibraryStore {
     func stageMerge(_ draft: DuplicateMergeDraft) throws {
         guard !isWritingRekordbox else { return }
-        guard Set(draft.members.map(\.trackUUID)).isDisjoint(with: pendingUUIDs), playlistDraft.isEmpty else {
-            throw DuplicateMerge.Blocked(String(ui: "같은 곡의 다른 초안이나 재생 목록 초안이 있습니다. 먼저 쓰거나 버린 뒤 합치세요"))
-        }
-        try setMergeDrafts(mergeDrafts + [draft])
+        try setMergeDrafts(MergeDuplicates.staging(draft, onto: mergeDrafts, pending: pendingUUIDs, playlistDraftEmpty: playlistDraft.isEmpty))
     }
 
     func setMergeDrafts(_ drafts: [DuplicateMergeDraft]) throws {
         let before = mergeDrafts
-        try mergeDraftSaver(drafts)
+        let moved = try useCases.merge.save(drafts, takingMovedFiles: location.movesDamagedDrafts)
         mergeDrafts = drafts
-        reportDraftFilesMovedBySave()
+        reportDraftFilesMovedBySave(moved)
         refreshBase()
         guard let undoManager else { return }
         undoManager.registerUndo(withTarget: self) { target in
@@ -27,13 +23,13 @@ extension LibraryStore {
         undoManager.setActionName(String(ui: "중복 곡 합치기 초안"))
     }
 
-    /// DB는 이미 반영·복원됐다. 초안 저장 오류를 쓰기 실패로 바꾸면 되돌리기 안내까지 잃는다.
-    func saveMergeDraftsAfterWrite(_ drafts: [DuplicateMergeDraft]) {
+    /// 쓴 뒤·복원 뒤: 반영 세션이 합치기 초안을 저장했다(`failure`면 저장하지 못했다). DB는 이미 반영·복원됐으니 저장 오류는 경고로만 알린다
+    /// (쓰기 실패로 바꾸면 되돌리기 안내까지 잃는다).
+    func applyMergeDraftsAfterWrite(_ drafts: [DuplicateMergeDraft], failure: (any Error)?, moved: [DamagedDraftFile]) {
         mergeDrafts = drafts
-        do {
-            try mergeDraftSaver(drafts)
-            reportDraftFilesMovedBySave()
-        } catch {
+        if failure == nil {
+            reportDraftFilesMovedBySave(moved)
+        } else {
             reflectionMessage = AppMessage(kind: .warning, text: String(ui: "라이브러리에는 썼지만 합치기 초안 파일을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요"))
         }
     }
@@ -41,17 +37,11 @@ extension LibraryStore {
     func prepareMerge(keeping id: String, removing: [String], prompter: any ReflectionPrompter = AlertPrompter()) async {
         guard let snapshotURL, !isWritingRekordbox else { return }
         do {
-            let draft = try await Task.detached(priority: .userInitiated) {
-                try RekordboxWriter.prepareMerge(keeping: id, removing: removing, snapshot: snapshotURL)
-            }.value
+            let draft = try await useCases.merge.draft(keeping: id, removing: removing, snapshot: snapshotURL)
             guard !isWritingRekordbox else { return }
-            let details = [String(ui: "남길 곡: \(draft.keeping.title)") + "\n" + (rowsByID[id]?.track.folderPath ?? "")]
-                + draft.removing.map { String(ui: "컬렉션에서 뺄 곡: \($0.title)") + "\n" + (rowsByID[$0.contentID]?.track.folderPath ?? "") }
             // 초안 단계는 같은 음원인지 비교만 한다. 잃는 정보는 rekordbox에 쓸 때 한 번 경고로 묻는다(#212).
-            let prompt = ReflectionPrompt(title: String(ui: "같은 음원인지 확인하고 합치기 초안을 만들까요?"),
-                                          text: String(ui: "직접 미리 들어 같은 음원인지 확인하세요. 인코더 지연만 보정하며, 곡 앞뒤의 편집 차이는 보정하지 않습니다. 초안은 ⇧⌘E로 쓰고, 쓸 때 옮기지 않는 정보를 알립니다."),
-                                          confirm: String(ui: "같은 음원 확인 · 초안 만들기"), details: details)
-            if prompter.show(prompt) { try stageMerge(draft) }
+            let paths = rowsByID.filter { ([id] + removing).contains($0.key) }.mapValues(\.track.folderPath)
+            if prompter.show(MergeDuplicates.confirmation(draft, paths: paths)) { try stageMerge(draft) }
         } catch {
             _ = prompter.show(ReflectionPrompt(title: String(ui: "합치기 초안을 만들지 않았습니다"),
                                               text: (error as? PlaylistLayout.Blocked)?.reason ?? error.localizedDescription))

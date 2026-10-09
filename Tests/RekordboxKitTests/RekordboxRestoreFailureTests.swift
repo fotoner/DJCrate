@@ -1,6 +1,7 @@
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -44,7 +45,7 @@ struct RekordboxRestoreFailureTests {
 
     func cueDraft(_ fixture: RekordboxFixture) throws -> CueDraft {
         let track = try fixture.add(TrackSpec())
-        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: track.uuid)
         draft.place(EditableCue(kind: .memory, time: 30))
         return draft
     }
@@ -99,7 +100,7 @@ struct RekordboxRestoreFailureTests {
         #expect(error.description.contains("djc rekordbox-restore --backup '\(backup)' --db '\(fixture.database.path)'"))
         #expect(try state(fixture) != before, "복원하지 못했으니 쓴 상태 그대로")
 
-        // 앱의 '되돌리기…'는 가장 최근 쓰기 백업을 고른다(`DirectWritePanels.restoreLatest`): 바로 이 백업이고,
+        // 앱의 '되돌리기…'는 가장 최근 쓰기 백업을 고른다(`ReflectionCoordinator.startRestoreLatest`): 바로 이 백업이고,
         // 보고서가 없어 그 뒤 바뀌었는지 모를 뿐 막히지 않는다. 되돌리면 쓰기 전으로 돌아온다.
         let writes = RekordboxWriter.backups(in: fixture.backups).filter(\.isWrite)
         let latest = try #require(writes.first)
@@ -258,7 +259,7 @@ struct RekordboxRestoreFailureTests {
         try fixture.execute("UPDATE djmdContent SET rb_data_status = 0 WHERE ID = ?", [.text(track.id)])
         try fixture.insert("djmdMixerParam", ["ID": .text("mp-\(track.id)"), "ContentID": .text(track.id), "GainHigh": .int(16256),
                                               "GainLow": .int(0), "rb_data_status": .int(256), "rb_local_deleted": .int(0), "rb_local_usn": .int(12)])
-        var cue = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var cue = CueDraft(trackUUID: track.uuid)
         cue.place(EditableCue(kind: .memory, time: 30))
         let db = try fixture.open()
         let base = try #require(try RekordboxWriter.currentTags(db: db, contentID: track.id))
@@ -282,7 +283,7 @@ struct RekordboxRestoreFailureTests {
         try fixture.execute("UPDATE djmdContent SET Commnt = '' WHERE ID = ?", [.text(track.id)])
         try fixture.insert("djmdMixerParam", ["ID": .text("mp-\(track.id)"), "ContentID": .text(track.id), "GainHigh": .int(16256),
                                               "GainLow": .int(0), "rb_data_status": .int(256), "rb_local_deleted": .int(0), "rb_local_usn": .int(12)])
-        var cue = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        var cue = CueDraft(trackUUID: track.uuid)
         cue.place(EditableCue(kind: .memory, time: 30))
         let tags = try syncedCommentDraft(fixture, track)
         let report = try RekordboxWriter.write(drafts: [cue], grids: [grid], gains: [track.uuid: -3], tags: [tags], analysisInputs: [:],

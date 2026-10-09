@@ -1,4 +1,5 @@
 import AVFoundation
+import DJCAdapters
 import DJCAnalysis
 import DJCDomain
 import Foundation

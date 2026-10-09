@@ -205,7 +205,7 @@ public extension TrackEdit {
     /// 큐(핫큐·메모리 큐·루프)를 출력 위치로 옮긴다. 같은 소리가 여러 번 나오면 처음 나오는 자리 하나에만 둔다
     /// (핫큐 슬롯이 겹치지 않고, 인트로를 늘려도 뒤 인트로에 같은 메모리 큐가 또 생기지 않는다).
     /// 루프는 끝까지 한 조각 안에 드는 첫 자리로 옮긴다.
-    func carry(_ cues: [EditableCue]) -> CueCarry { pieces.carry(cues) }
+    func carry(_ cues: [EditableCue], newID: () -> UUID) -> CueCarry { pieces.carry(cues, newID: newID) }
 }
 
 // MARK: - 프레임 계획

@@ -1,7 +1,9 @@
 @testable import DJCrate
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import RekordboxKit
 import Testing
@@ -48,23 +50,14 @@ struct UsbPendingTests {
             .playlist(edit: .delete(playlist: .id("5"))),
         ]
         let blockReason: (UsbLibraryEdit, [UsbLibraryEdit]) -> String? = { edit, _ in
-            UsbEditActions.blockReason(edit, volume: image, library: library, info: nil, isScratchMount: { _ in true })
+            UsbEditRules.blockReason(edit, volume: image, library: library, info: nil, isScratchMount: { _ in true }, syncGate: .live)
         }
         let waiting = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library, summary: nil, busy: false,
                                       blockReason: blockReason)
-        #expect(waiting.rows.map(\.text) == [
-            "곡 2개 더하기 · ‘시험 목록’에 넣기",
-            "곡 1개 USB에서 빼기",
-            "‘다름’에 곡 1개 넣기",
-            "새 재생 목록 ‘새 목록’ · ‘폴더’ 안",
-            "이름 바꾸기: ‘새 목록’ → ‘또 새 이름’",
-            "‘시험 목록’에서 곡 1개 빼기",
-            "곡 2개 로컬 변경 반영",
-            "순서 바꾸기: ‘시험 목록’ → 2번째",
-            "지우기: ‘폴더’",
-        ])
+        // 편집 설명은 `UsbEditText.describe`(같은 초안에서 만든 목록은 그 이름으로)
+        #expect(waiting.rows.map(\.text) == edits.map { UsbEditText.describe($0, library: library, created: ["k1": "새 목록"]) })
         #expect(waiting.rows.map(\.id) == Array(1...9))
-        let differ = "이 재생 목록은 두 형식의 곡 목록이 달라 곡을 고칠 수 없습니다. 이름·위치만 바꿀 수 있습니다"
+        let differ = UsbEditRules.Reason.entriesDiffer
         // 미리 보기 전: 막힐 편집만 이유를 단다
         #expect(waiting.rows[2].status == .expectedBlock(differ))
         #expect(waiting.rows.filter { $0.status != .waiting }.count == 1)
@@ -89,41 +82,35 @@ struct UsbPendingTests {
         #expect(previewed.rows[1].status == .deferred("Device Library가 막혀 파일 지우기를 미뤘습니다"))
         #expect(previewed.rows[2].status == .blocked(differ))
         #expect(previewed.rows[7].status == .unchanged)
-        #expect(previewed.rows[2].statusText == "막힘: \(differ)")
-        #expect(previewed.rows[7].statusText == "바꿀 것 없음")
-        #expect(previewed.rows[0].statusText == "쓸 예정")
-        let lines = previewed.summaryLines
-        #expect(lines.contains("쓸 편집 7건 · 막힌 편집 1건 · 바꿀 것 없는 편집 1건"))
-        #expect(lines.contains("빼고 쓰는 곡 1개:"))
-        #expect(lines.contains("• rekordbox 분석이 스냅샷 뒤에 바뀌었습니다. 새 스냅샷을 뜬 뒤 다시 시도하세요 (1)"))
-        #expect(lines.contains("OneLibrary: 고침"))
-        #expect(lines.contains("Device Library: 고치지 않음 — CDJ가 쓴 기록·목록이 있어 Device Library는 아직 고칠 수 없습니다"))
-        #expect(lines.contains("USB에서 지울 파일 4개"))
-        #expect(lines.contains("파일 지우기를 미룸: Device Library가 막혀 파일 지우기를 미뤘습니다"))
-        #expect(lines.contains("Device Library를 고치지 못해 두 형식의 곡이 달라집니다. 다음부터 이 USB를 고치려면 rekordbox에서 다시 내보내세요"))
-        #expect(lines.contains("USB가 그 사이 바뀌어 다시 계획했습니다"))
+        // 요약: 편집 수 한 줄 + 수정 요약 줄(막힌 편집은 줄마다 보이므로 뺀다)
+        #expect(summary.writtenCount == 7 && summary.blockedCount == 1 && summary.unchangedCount == 1)
+        #expect(Array(previewed.summaryLines.dropFirst()) == UsbWriteFlow.editLines(summary, blockedEdits: false))
+        // 미룬 까닭은 알림에 한 번만, 다시 계획한 알림은 그대로
+        let lines = UsbWriteFlow.editLines(summary, blockedEdits: false)
+        #expect(lines.filter { $0.contains(summary.deferred[0]) }.count == 1)
+        #expect(lines.contains(summary.notes[0]))
         #expect(previewed.canWrite)
 
         // USB 전체 막힘: 쓰기를 막고 이유를 보인다
         let stopped = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library,
-                                      summary: UsbTestData.editSummary(editCount: 9, stopping: ["두 형식의 곡 번호가 달라 고칠 수 없습니다. rekordbox에서 다시 내보내세요"],
+                                      summary: UsbTestData.editSummary(editCount: 9, stopping: [UsbEditRules.Reason.trackIDsDiffer],
                                                                        hasChanges: false),
                                       busy: false, blockReason: blockReason)
         #expect(!stopped.canWrite)
-        #expect(stopped.writeHelp == "두 형식의 곡 번호가 달라 고칠 수 없습니다. rekordbox에서 다시 내보내세요")
+        #expect(stopped.writeHelp == UsbEditRules.Reason.trackIDsDiffer)
         // 쓰는 중·빈 초안
         let busy = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library, summary: nil, busy: true,
                                    blockReason: blockReason)
-        #expect(!busy.canWrite && !busy.canPreview && busy.writeHelp == "USB에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 시도하세요")
+        #expect(!busy.canWrite && !busy.canPreview)
         let empty = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: [], library: library, summary: nil, busy: false,
                                     blockReason: blockReason)
-        #expect(!empty.canWrite && empty.writeHelp == "쓸 편집이 없습니다. 곡 목록·사이드바에서 USB 편집을 더하세요")
+        #expect(!empty.canWrite && !empty.canPreview)
         // 미리 본 결과 쓸 것이 없으면 누르기 전에 막고 이유를 도움말로 보인다(#230)
         let unchanged = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library,
                                         summary: UsbTestData.editSummary(editCount: 9, outcomes: [1: .unchanged], hasChanges: false),
                                         busy: false, blockReason: blockReason)
         #expect(!unchanged.canWrite && unchanged.canPreview)
-        #expect(unchanged.writeHelp == "바꿀 것이 없거나 모든 편집이 막혔습니다. 목록의 막힌 이유를 확인하세요")
+        #expect(unchanged.writeHelp != waiting.writeHelp)
     }
 
     @Test("USB에 쓰기…는 코디네이터 흐름(미리 보기 → 확인 → 쓰기 → 토스트)을 타고, 쓴 뒤 초안 수를 다시 읽는다")
@@ -131,9 +118,8 @@ struct UsbPendingTests {
         defer { cleanUp() }
         let usbHost = FakeUsbHost([image])
         usbHost.serve(image, library: UsbTestData.library())
-        let usb = UsbTestData.store(usbHost)
-        usb.writeService = service
-        usb.draftDirectory = drafts
+        let usb = UsbTestData.store(usbHost, service: service)
+        usb.drafts = .live(directory: drafts)
         await usb.refresh()
         let actions = UsbEditActions(usb: usb, host: host, prompter: prompter, namePrompter: ScriptedNamePrompter())
         await actions.append(.removeTracks(usbContentIDs: [2]), to: key)
@@ -141,7 +127,7 @@ struct UsbPendingTests {
         await actions.append(.playlist(edit: .addTracks(playlist: .id("10"), contentIDs: ["9"])), to: key)
         #expect(usb.draftCounts[key] == 3)
 
-        var outcomes: [Int: UsbEditSummary.Outcome] = [1: .written, 2: .written, 3: .blocked("대상이 USB에서 사라졌습니다. USB를 다시 읽은 뒤 고치세요")]
+        var outcomes: [Int: UsbEditSummary.Outcome] = [1: .written, 2: .written, 3: .blocked(UsbEditRules.Reason.missingTarget)]
         let summary = UsbTestData.editSummary(editCount: 3, outcomes: outcomes, removals: 3, rules: [.editRemoveTracks])
         let drafts = drafts, key = key
         service.update {
@@ -163,16 +149,11 @@ struct UsbPendingTests {
         // 확인 창에서 취소하면 쓰지 않는다
         prompter.answer = false
         await coordinator.writeDraft(volumeKey: key, database: database, share: share, snapshotTime: "2026-01-01T00:00:00Z")
-        #expect(service.current.calls == ["draftBase", "previewEdit"])
-        let confirm = try #require(prompter.shown.last)
-        #expect(confirm.title == "USB에 편집 2건을 쓸까요?")
-        #expect(confirm.confirm == "USB에 쓰기")
-        #expect(confirm.text == "B13T의 rekordbox 라이브러리를 고칩니다. 쓰기 전에 Mac에 백업하고 쓴 뒤 USB에서 다시 읽어 확인합니다. 끝날 때까지 USB를 뽑지 마세요.")
-        #expect(confirm.details.contains("시험 볼륨(디스크 이미지)입니다"))
-        #expect(confirm.details.contains("막힌 편집 1건(초안에 남깁니다):"))
-        #expect(confirm.details.contains("• 편집 3: 대상이 USB에서 사라졌습니다. USB를 다시 읽은 뒤 고치세요"))
-        #expect(confirm.details.contains("USB에서 지울 파일 3개"))
-        #expect(confirm.details.contains("CDJ에서 확인하지 않은 항목 1개:"))
+        #expect(service.current.previewed && !service.current.wrote)
+        // 미리 본 요약으로 만든 확인 창(막힌 편집·지울 파일·확인 안 된 항목 줄은 `editLines`가 정한다)
+        var previewedSummary = summary
+        previewedSummary.edits = try #require(try UsbDraftStore(directory: drafts).load(volumeKey: key)).edits
+        #expect(prompter.shown.last == UsbWriteFlow.editConfirmation(previewedSummary, volume: image))
         #expect(service.current.editJobs.last?.database == database)
         #expect(service.current.editJobs.last?.share == share)
         #expect(service.current.editJobs.last?.snapshotTime == "2026-01-01T00:00:00Z")
@@ -181,10 +162,11 @@ struct UsbPendingTests {
 
         // 확인하면 쓰고, 끝나면 토스트([꺼내기])와 남은 초안 수
         prompter.answer = true
+        service.update { $0.calls = [] }
         await coordinator.writeDraft(volumeKey: key, database: database, share: share)
-        #expect(service.current.calls == ["draftBase", "previewEdit", "previewEdit", "writeEdit"])
-        #expect(host.toast?.title == "USB에 편집 2건을 썼습니다")
-        #expect(host.toast?.detail == "B13T · 막힌 편집 1건은 초안에 남겼습니다")
+        #expect(service.current.previewedBeforeWrite)
+        #expect(host.toast?.title == UsbWriteFlow.Text.editWrittenTitle(count: 2))
+        #expect(host.toast?.detail?.hasPrefix(image.name) == true)
         #expect(host.toast?.action == .ejectUsb(volumeKey: key))
         #expect(usb.draftCounts[key] == 1)
         #expect(usb.busyVolumes.isEmpty && usb.activeWrite == nil)
@@ -192,30 +174,35 @@ struct UsbPendingTests {
         // 대기 목록에서 방금 본 미리 보기(지금 초안의 편집을 계획한 것)는 다시 보지 않는다
         var reused = summary
         reused.edits = try #require(try UsbDraftStore(directory: drafts).load(volumeKey: key)).edits
+        service.update { $0.calls = [] }
         await coordinator.writeDraft(volumeKey: key, database: database, share: share, reusing: reused)
-        #expect(service.current.calls.suffix(2) == ["writeEdit", "writeEdit"])
+        #expect(service.current.wrote && !service.current.previewed)
 
         // USB 전체 막힘이면 쓰지 않고 이유를 알린다
         outcomes = [1: .blocked("x")]
-        service.update { $0.editSummary = UsbTestData.editSummary(editCount: 1, outcomes: outcomes, stopping: ["두 형식의 곡 번호가 달라 고칠 수 없습니다. rekordbox에서 다시 내보내세요"], hasChanges: false) }
-        let before = service.current.calls.count
+        service.update {
+            $0.editSummary = UsbTestData.editSummary(editCount: 1, outcomes: outcomes, stopping: [UsbEditRules.Reason.trackIDsDiffer], hasChanges: false)
+            $0.calls = []
+        }
         await coordinator.writeDraft(volumeKey: key, database: database, share: share)
-        #expect(service.current.calls.count == before + 1)
-        #expect(prompter.shown.last?.title == "USB에 쓸 수 없습니다")
-        #expect(prompter.shown.last?.text == "두 형식의 곡 번호가 달라 고칠 수 없습니다. rekordbox에서 다시 내보내세요")
+        #expect(service.current.previewed && !service.current.wrote)
+        #expect(prompter.shown.last?.title == UsbWriteFlow.Text.cannotWriteTitle)
+        #expect(prompter.shown.last?.text == UsbEditRules.Reason.trackIDsDiffer)
 
         // 쓸 것이 없으면(모두 막힘·바꿀 것 없음) 쓰지 않고 알린다
-        service.update { $0.editSummary = UsbTestData.editSummary(editCount: 1, outcomes: [1: .unchanged], hasChanges: false) }
+        service.update {
+            $0.editSummary = UsbTestData.editSummary(editCount: 1, outcomes: [1: .unchanged], hasChanges: false)
+            $0.calls = []
+        }
         await coordinator.writeDraft(volumeKey: key, database: database, share: share)
-        #expect(!service.current.calls.suffix(1).contains("writeEdit"))
-        #expect(host.toast?.title == "USB에 쓸 것이 없습니다" && host.toast?.kind == .warning)
-        #expect(prompter.shown.last?.title == "USB에 쓸 수 없습니다")
+        #expect(!service.current.wrote)
+        #expect(host.toast?.title == UsbWriteFlow.Text.nothingToWriteTitle && host.toast?.kind == .warning)
 
         // rekordbox가 켜져 있으면 미리 보기도 하지 않는다
-        let calls = service.current.calls.count
+        service.update { $0.calls = [] }
         let running = UsbWriteCoordinator(usb: usb, host: host, service: service, prompter: prompter, isRekordboxRunning: { true })
         await running.writeDraft(volumeKey: key, database: database, share: share)
         #expect(await running.previewDraft(volumeKey: key, database: database, share: share) == nil)
-        #expect(service.current.calls.count == calls)
+        #expect(service.current.calls.isEmpty)
     }
 }

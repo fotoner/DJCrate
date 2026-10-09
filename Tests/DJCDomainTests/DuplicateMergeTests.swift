@@ -10,7 +10,7 @@ struct DuplicateMergeTests {
 
     @Test func 인코더_지연만_보정하고_원본_큐_ID를_옮기지_않는다() throws {
         let source = EditableCue(sourceID: "old", kind: .memory, time: 1.05, name: "시작", loop: .init(end: 3.05, beats: 4))
-        let draft = try DuplicateMerge.cues(keeping: member("a"), removing: [member("b", offset: 0.05, cues: [source])])
+        let draft = try DuplicateMerge.cues(keeping: member("a"), removing: [member("b", offset: 0.05, cues: [source])], newID: { UUID() })
         #expect(abs(draft.cues[0].time - 1) < 0.000001)
         #expect(abs(draft.cues[0].loop!.end - 3) < 0.000001)
         #expect(draft.cues[0].sourceID == nil && draft.cues[0].id != source.id)
@@ -20,10 +20,10 @@ struct DuplicateMergeTests {
         let hot = EditableCue(kind: .hot(0), time: 1, name: "A")
         let memory = EditableCue(kind: .memory, time: 2)
         let target = member("a", cues: [hot, memory])
-        let same = try DuplicateMerge.cues(keeping: target, removing: [member("b", cues: [hot, memory])])
+        let same = try DuplicateMerge.cues(keeping: target, removing: [member("b", cues: [hot, memory])], newID: { UUID() })
         #expect(same.cues.count == 2 && !same.hasChanges)
         #expect(throws: DuplicateMerge.Blocked.self) {
-            try DuplicateMerge.cues(keeping: target, removing: [member("b", cues: [.init(kind: .hot(0), time: 3)])])
+            try DuplicateMerge.cues(keeping: target, removing: [member("b", cues: [.init(kind: .hot(0), time: 3)])], newID: { UUID() })
         }
     }
 
@@ -31,14 +31,16 @@ struct DuplicateMergeTests {
         for bad in [member("b", duration: 30.021), member("b", offset: .nan),
                     member("b", cues: [.init(kind: .memory, time: 31)]),
                     member("b", offset: 0.1, cues: [.init(kind: .memory, time: 0)])] {
-            #expect(throws: DuplicateMerge.Blocked.self) { try DuplicateMerge.cues(keeping: member("a"), removing: [bad]) }
+            #expect(throws: DuplicateMerge.Blocked.self) { try DuplicateMerge.cues(keeping: member("a"), removing: [bad], newID: { UUID() }) }
         }
         let target = member("a", cues: [.init(kind: .memory, time: 1, loop: .init(end: 2, active: true))])
         #expect(throws: DuplicateMerge.Blocked.self) {
-            try DuplicateMerge.cues(keeping: target, removing: [member("b", cues: [.init(kind: .memory, time: 3, loop: .init(end: 4, active: true))])])
+            try DuplicateMerge.cues(keeping: target, removing: [member("b", cues: [.init(kind: .memory, time: 3, loop: .init(end: 4, active: true))])],
+                                    newID: { UUID() })
         }
         #expect(throws: DuplicateMerge.Blocked.self) {
-            try DuplicateMerge.cues(keeping: member("a"), removing: [member("b", cues: (0..<11).map { .init(kind: .memory, time: Double($0)) })])
+            try DuplicateMerge.cues(keeping: member("a"), removing: [member("b", cues: (0..<11).map { .init(kind: .memory, time: Double($0)) })],
+                                    newID: { UUID() })
         }
     }
 

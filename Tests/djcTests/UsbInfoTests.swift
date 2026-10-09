@@ -1,7 +1,9 @@
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 @testable import djc
@@ -30,7 +32,7 @@ struct UsbInfoTests {
     func info(_ tree: UsbTreeFixture, volume: UsbVolumeInfo? = nil, appVersion: String? = "7.2.18") throws -> UsbInfo {
         let scratch = Self.scratch()
         defer { try? FileManager.default.removeItem(at: scratch) }
-        let result = try UsbRead.info(root: tree.base, scratch: scratch, volume: volume, appVersion: { appVersion })
+        let result = try UsbRead.testing(appVersion: appVersion).info(root: tree.base, scratch: scratch, volume: volume)
         // 읽은 뒤 사본을 남기지 않는다
         #expect(!FileManager.default.fileExists(atPath: scratch.path))
         return result
@@ -77,18 +79,17 @@ struct UsbInfoTests {
             defer { try? FileManager.default.removeItem(at: scratch) }
             let before = tree.tree()
             let detail = readFailure {
-                try UsbRead.info(root: tree.base, scratch: scratch, volume: nil, mountedOn: { _ in "/Volumes/DJCPHYS" },
-                                 appVersion: { nil })
+                try UsbRead.testing(appVersion: nil, mountedOn: { _ in "/Volumes/DJCPHYS" }).info(root: tree.base, scratch: scratch, volume: nil)
             }
             #expect(detail == "volumeNotChecked")
             #expect(readFailure {
-                try UsbRead.info(root: tree.base, scratch: scratch, volume: nil, mountedOn: { _ in nil }, appVersion: { nil })
+                try UsbRead.testing(appVersion: nil, mountedOn: { _ in nil }).info(root: tree.base, scratch: scratch, volume: nil)
             } == "volumeNotChecked")
             #expect(!FileManager.default.fileExists(atPath: scratch.path))
             #expect(tree.tree() == before)
             // Mac 데이터 볼륨의 폴더는 읽는다
-            let read = try UsbRead.info(root: tree.base, scratch: scratch, volume: nil,
-                                        mountedOn: { _ in "/System/Volumes/Data" }, appVersion: { nil })
+            let read = try UsbRead.testing(appVersion: nil, mountedOn: { _ in "/System/Volumes/Data" })
+                .info(root: tree.base, scratch: scratch, volume: nil)
             #expect(read.oneLibrary?.tracks == 3)
         }
     }
@@ -102,21 +103,21 @@ struct UsbInfoTests {
             try FileManager.default.createDirectory(at: keep.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data("synthetic".utf8).write(to: keep)
             #expect(readFailure {
-                try UsbRead.info(root: tree.base, scratch: scratch, volume: nil, appVersion: { nil })
+                try UsbRead.testing(appVersion: nil).info(root: tree.base, scratch: scratch, volume: nil)
             } == "scratch not empty")
             #expect(FileManager.default.fileExists(atPath: keep.path))
             // USB 루트를 사본 폴더로 주어도 USB 안을 지우지 않는다
             tree.write("db/keep", "synthetic")
             let before = tree.tree()
             #expect(readFailure {
-                try UsbRead.info(root: tree.base, scratch: tree.base, volume: nil, appVersion: { nil })
+                try UsbRead.testing(appVersion: nil).info(root: tree.base, scratch: tree.base, volume: nil)
             } == "scratch not empty")
             #expect(tree.tree() == before)
             // 빈 사본 폴더는 받고, 폴더는 남긴 채 이 호출이 뜬 사본만 지운다
             let emptyScratch = Self.scratch()
             try FileManager.default.createDirectory(at: emptyScratch, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: emptyScratch) }
-            _ = try UsbRead.info(root: tree.base, scratch: emptyScratch, volume: nil, appVersion: { nil })
+            _ = try UsbRead.testing(appVersion: nil).info(root: tree.base, scratch: emptyScratch, volume: nil)
             #expect((try FileManager.default.contentsOfDirectory(atPath: emptyScratch.path)).isEmpty)
         }
     }
@@ -124,27 +125,29 @@ struct UsbInfoTests {
     @Test func subfolderOfPhysicalVolumeChecked() throws {
         try withUsb { tree in
             // 실물 볼륨 안 하위 폴더: statfs가 그 볼륨 마운트 지점을 돌려준다
-            let volume = try #require(try UsbRead.volume(for: tree.base, mountedOn: { _ in "/Volumes/DJCPHYS" },
-                                                         volumeInfo: { _ in FakeUsbVolume.notMountPoint() }))
+            let volume = try #require(try UsbRead.testing(mountedOn: { _ in "/Volumes/DJCPHYS" }, volumeInfo: { _ in FakeUsbVolume.notMountPoint() })
+                .volume(for: tree.base))
             let read = try info(tree, volume: volume)
             #expect(read.volume?.problems.contains("notMountPoint") == true)
             #expect(read.volume?.writableForExport == false)
             // 폴더 대상(Mac 데이터 볼륨)은 볼륨 정보를 보지 않는다
             for mount in ["/System/Volumes/Data", "/"] {
-                let folder = try UsbRead.volume(for: tree.base, mountedOn: { _ in mount }, volumeInfo: { _ in
+                let folder = try UsbRead.testing(mountedOn: { _ in mount }, volumeInfo: { _ in
                     Issue.record("폴더 대상에서 볼륨 정보를 읽었다")
                     return FakeUsbVolume.physicalFAT32()
-                })
+                }).volume(for: tree.base)
                 #expect(folder == nil)
             }
             // 마운트 지점을 모르면 읽지 않는다
-            #expect(throws: UsbError.self) { try UsbRead.volume(for: tree.base, mountedOn: { _ in nil }, volumeInfo: { _ in FakeUsbVolume.physicalFAT32() }) }
+            #expect(throws: UsbError.self) {
+                try UsbRead.testing(mountedOn: { _ in nil }, volumeInfo: { _ in FakeUsbVolume.physicalFAT32() }).volume(for: tree.base)
+            }
         }
     }
 
     @Test func folderTargetHasNoVolume() throws {
         try withUsb { (tree: UsbTreeFixture) in
-            let volume = try UsbRead.volume(for: tree.base)
+            let volume = try UsbRead.testing().volume(for: tree.base)
             #expect(volume == nil)
             let read = try info(tree)
             #expect(read.volume == nil && read.oneLibrary?.tracks == 3)

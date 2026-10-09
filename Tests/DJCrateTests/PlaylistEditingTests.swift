@@ -1,6 +1,8 @@
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
+import DJCTestKit
 import Foundation
 @testable import RekordboxKit
 import Testing
@@ -18,7 +20,7 @@ struct PlaylistEditingTests {
 
     /// 추가한 곡(아직 rekordbox에 없음)은 ID가 djc-로 시작한다.
     static func row(_ id: String, staged: Bool = false) -> TrackRow {
-        ReflectionCoordinatorTests.row(staged ? "djc-\(id)" : id)
+        ReflectionPresenterTests.row(staged ? "djc-\(id)" : id)
     }
 
     static func item(_ id: String, _ name: String, parent: String = PlaylistLayout.root, folder: Bool = false, tracks: [String] = []) -> Item {
@@ -33,7 +35,7 @@ struct PlaylistEditingTests {
 
     init() {
         let saved = saved
-        store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.playlists.\(UUID())")!, persist: false),
+        store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("playlists"), persist: false),
                              resultHistory: WriteResultHistory(), saveTagDrafts: { _ in }, playlistDraftSaver: { saved.last = $0 })
         store.undoManager = undo
         store.phase = .loaded

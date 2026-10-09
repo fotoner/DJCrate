@@ -1,6 +1,7 @@
 @testable import DJCrate
 import AppKit
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Testing
 
@@ -47,9 +48,9 @@ struct TrackListKeyEditTests {
 
     /// 덱 제안 줄의 [적용]으로 생긴 키 초안도 목록 칸에 초안으로 보인다.
     @Test func 덱_제안_적용으로_생긴_키_초안도_목록에_보인다() throws {
-        let suite = "djc.test.list-key-suggestion.\(UUID())"
+        let suite = TestDefaults.suiteName("list-key-suggestion")
         defer { UserDefaults().removePersistentDomain(forName: suite) }
-        let store = LibraryStore(settings: SettingsStore(defaults: try #require(UserDefaults(suiteName: suite))), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.open(suite), persist: false), saveTagDrafts: { _ in })
         let row = MusicalKeyEditingTests.row("1")
         let h = ListHarness(rows: [row], selection: [row.id], store: store, showKey: true)
         defer { h.close() }
@@ -294,21 +295,6 @@ struct TrackListKeyEditTests {
         h.table.noteClick(at: try center(row: 1, column: "key"))
         h.table.noteClick(at: NSPoint(x: 10, y: 5000))
         #expect(h.coordinator.clickedCell == nil)
-    }
-
-    @Test func Return과_Tab의_글자_칸_흐름은_키_칸을_건너뛴다() {
-        let order = ["index", "title", "artist", "key", "comment"]
-        #expect(TrackListTagEditing.firstColumn(in: ["index", "key", "title"]) == "title")
-        #expect(TrackListTagEditing.firstColumn(in: order, clicked: "key") == "key")
-        #expect(TrackListTagEditing.firstColumn(in: order, clicked: "artist") == "title")
-        #expect(TrackListTagEditing.firstColumn(in: ["title"], clicked: "key") == "title")
-        // 글자 칸이 하나도 보이지 않으면 키 칸을 누르기 전에는 고칠 칸이 없다(Return이 키 메뉴를 열지 않는다)
-        #expect(TrackListTagEditing.firstColumn(in: ["index", "bpm", "key"]) == nil)
-        #expect(TrackListTagEditing.firstColumn(in: ["index", "bpm", "key"], clicked: "key") == "key")
-        #expect(TrackListTagEditing.firstColumn(in: ["index", "bpm"], clicked: "key") == nil)
-        #expect(TrackListTagEditing.column(after: "artist", forward: true, in: order) == "comment")
-        #expect(TrackListTagEditing.column(after: "comment", forward: false, in: order) == "artist")
-        #expect(TrackListTagEditing.column(after: "key", forward: true, in: order) == nil)
     }
 
     @Test func Tab은_키_칸에서_메뉴를_열지_않고_다음_글자_칸으로_간다() {

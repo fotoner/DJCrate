@@ -172,6 +172,8 @@ enum GridLab {
     static func gridWriteTest(_ args: [String]) async throws {
         guard args.count > 4, let bpm = Double(args[4]) else { return }
         let db = URL(filePath: args[1]), root = URL(filePath: args[2]), uuid = args[3]
+        try CLIGuards.refuseLiveDatabase(db)
+        try CLIGuards.refuseLiveShare(root)
         let library = try RekordboxLibrary.load(snapshot: db)
         guard let track = library.tracks.first(where: { $0.uuid == uuid }),
               let path = track.analysisDataPath else { print("곡 없음"); return }

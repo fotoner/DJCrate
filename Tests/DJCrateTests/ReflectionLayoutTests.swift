@@ -1,8 +1,10 @@
 @testable import DJCrate
 import AppKit
+import DJCApplication
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import SwiftUI
 import Testing
 
@@ -13,7 +15,7 @@ struct ReflectionLayoutTests {
         _ = NSApplication.shared
         // 시험 프로세스 공용 defaults(swiftpm-testing-helper)에는 이전 실행·다른 워크트리가 남긴 창 배치 값(사이드바·툴바)이 있다.
         // 화면이 그 값에 따라 달라지지 않게 배치 값을 시험 전용 저장소로 고정하고, 공용 툴바 설정은 시험 동안 비웠다 되돌린다.
-        let defaults = UserDefaults(suiteName: "djc.test.reflection-layout.\(UUID())")!
+        let defaults = TestDefaults.make("reflection-layout")
         defaults.set(false, forKey: SettingKeys.sidebarVisible.name)
         let toolbarKey = "NSToolbar Configuration main"
         let savedToolbar = UserDefaults.standard.object(forKey: toolbarKey)
@@ -27,12 +29,11 @@ struct ReflectionLayoutTests {
             track.title = "합성 곡 \(index)"
             try fixture.add(track)
         }
-        let store = LibraryStore(settings: SettingsStore(defaults: defaults, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }))
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
+                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
+        await store.load(snapshot: fixture.database)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         store.toast = AppToast(kind: .warning, title: "배치 시험 결과", detail: "합성 데이터로 확인합니다")
         let toastID = try #require(store.toast?.id)
         let toastKey = "toast.\(toastID)", contentKey = "reflectionLayout.\(toastID)"
@@ -40,7 +41,7 @@ struct ReflectionLayoutTests {
             SelfTestFrames.frames.removeValue(forKey: toastKey)
             SelfTestFrames.frames.removeValue(forKey: contentKey)
         }
-        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck)
+        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: AppComposition(store: store, deck: deck))
             .defaultAppStorage(defaults).selfTestFrame(contentKey))
         let window = NSWindow(contentViewController: controller)
         window.isReleasedWhenClosed = false

@@ -1,6 +1,6 @@
 import AppKit
+import DJCApplication
 import DJCDomain
-import RekordboxKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -113,8 +113,8 @@ private struct ArtworkWell: View {
             image = data.flatMap(NSImage.init(data:))
             return
         }
-        let path = row.track.imagePath
-        let box = await Task.detached(priority: .userInitiated) { ArtworkCache.downsampled(imagePath: path, maxPixels: 240) }.value
+        let path = row.track.imagePath, artwork = store.useCases.artwork
+        let box = await Task.detached(priority: .userInitiated) { Thumbnails.downsampled(artwork, imagePath: path, maxPixels: 240) }.value
         guard !Task.isCancelled else { return }
         image = box.map { NSImage(cgImage: $0.image, size: NSSize(width: $0.image.width, height: $0.image.height)) }
     }

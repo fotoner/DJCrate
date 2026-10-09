@@ -1,15 +1,14 @@
 import AVFoundation
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
 import Observation
 
 /// Flip 결과 창: 덱에서 기록한 Flip(`FlipRecording`)을 편집본으로 보여 주고 → 들어 보고 → 렌더해 추가한 곡에 넣는다.
 ///
-/// 원곡의 그리드·큐·길이는 창을 열 때 덱에서 읽어 둔다(덱과 같은 rekordbox 시간축). 결과 시간표는 `FlipEdit`(순수)이 정하고,
+/// 원곡의 그리드·큐·길이는 창을 열 때 덱에서 읽어 둔 값(`EditSource`)이다(덱과 같은 rekordbox 시간축). 결과 시간표는 `FlipEdit`(순수)이 정하고,
 /// 재생은 곡 편집 창과 같은 창 전용 재생기(`EditAudio`, 덱과 따로)가 원곡을 메모리에 풀어 렌더하지 않고 바로 낸다.
-/// 렌더는 `EditRenderer`, 넣기는 `EditStaging`이 한다. 원본 음원·rekordbox에는 쓰지 않는다.
+/// 렌더·넣기는 `RenderEdit`가 메인 밖에서 한다. 원본 음원·rekordbox에는 쓰지 않는다.
 @MainActor
 @Observable
 final class FlipModel {
@@ -25,10 +24,9 @@ final class FlipModel {
     let timelineOffset: Double
     let sourceDuration: Double
     let waveform: Waveform?
-    let home: URL
-    let editsDirectory: URL
-    @ObservationIgnored weak var deck: DeckModel?
+    @ObservationIgnored let deck: EditDeckControl
     @ObservationIgnored let audio: any EditAudio
+    @ObservationIgnored let writer: RenderEdit
 
     /// 새 곡 제목(태그 초안)이자 파일 이름
     var title: String
@@ -53,43 +51,31 @@ final class FlipModel {
     @ObservationIgnored private var renderTask: Task<Void, Never>?
     @ObservationIgnored var onStaged: ((StagedTrack) -> Void)?
 
-    /// - Parameter edits: 렌더한 편집본을 둘 폴더. 없으면 `home` 아래 `edits`(테스트용). 앱은 `DJCPaths.editOutput`을 준다.
-    /// - Throws: 결과를 만들 수 없을 때(점프가 없음·곡 정보 없음) 이유와 할 일(`DJCError.editRefused`)
-    init(deck: DeckModel, recording: FlipRecording, audio: any EditAudio = EditAudioPlayer(),
-         home: URL = DJCPaths.userData, edits: URL? = nil) throws {
-        guard let row = deck.row else {
-            throw DJCError.editRefused(String(ui: "덱에 곡이 없습니다. 곡을 불러온 뒤 Flip을 기록하세요"))
-        }
-        let source = URL(filePath: row.track.folderPath)
-        guard !row.track.isStreaming, FileManager.default.fileExists(atPath: source.path) else {
-            throw DJCError.editRefused(String(ui: "음원 파일이 없습니다. 외장 드라이브가 연결됐는지 확인하세요"))
-        }
-        let flip = try FlipEdit(recording, sourceDuration: deck.duration)
-        self.row = row
-        self.source = source
+    /// - Parameters:
+    ///   - deck: 창에서 재생할 때 덱을 멈추고 덱 음량을 따른다.
+    ///   - writer: 렌더한 편집본을 쓰고 추가한 곡에 넣는다(앱은 음악 폴더의 DJCrate 편집본).
+    /// - Throws: 결과를 만들 수 없을 때(점프가 없음·음원 없음) 이유와 할 일(`DJCError.editRefused`)
+    init(source: EditSource, recording: FlipRecording, audio: any EditAudio,
+         deck: EditDeckControl = .standalone, writer: RenderEdit) throws {
+        if let reason = source.state.flipBlockedReason { throw DJCError.editRefused(reason) }
+        let flip = try FlipEdit(recording, sourceDuration: source.duration)
+        row = source.row
+        self.source = source.url
         self.flip = flip
         self.deck = deck
         self.audio = audio
-        self.home = home
-        editsDirectory = edits ?? home.appending(path: "edits")
+        self.writer = writer
         jumpCount = flip.pieces.count - 1
-        timelineOffset = deck.timelineOffset
-        sourceDuration = deck.duration
-        waveform = deck.waveform
+        timelineOffset = source.timelineOffset
+        sourceDuration = source.duration
+        waveform = source.waveform
         title = "\(row.title) (Flip)"
-        carry = flip.carry(deck.draft?.cues ?? [])
-        let segments = deck.gridDraft?.segments ?? []
-        if segments.isEmpty {
-            grid = []
-            gridNotice = String(ui: "원곡에 그리드가 없어 그리드 없이 넣습니다. 추가한 곡에서 그리드를 추정하세요")
-        } else if deck.gridEditBlockedReason != nil {
-            grid = []
-            gridNotice = String(ui: "원곡 그리드를 정확히 옮길 수 없어(다이내믹 그리드 등) 그리드 없이 넣습니다. 추가한 곡에서 그리드를 추정하세요")
-        } else {
-            grid = flip.outputGrid(segments)
-            gridNotice = nil
-        }
-        audio.prepare(url: source) { [weak self] ready in
+        // 옮긴 큐는 새 곡(편집본)의 큐라 새 ID를 붙인다
+        carry = flip.carry(source.cues, newID: { UUID() })
+        let moved = source.state.flipGrid(flip)
+        grid = moved.grid
+        gridNotice = moved.notice
+        audio.prepare(url: self.source) { [weak self] ready in
             self?.isAudioReady = ready
             if !ready {
                 self?.message = AppMessage(kind: .warning, text: String(ui: "원곡을 메모리에 풀지 못해 창에서 재생할 수 없습니다(20분 넘는 곡 등). 렌더한 뒤 덱에서 들어 보세요"))
@@ -125,11 +111,11 @@ final class FlipModel {
     private func start(at time: Double) {
         stopAudio()
         // 덱과 겹쳐 들리지 않게 덱을 멈춘다.
-        if let deck, deck.isPlaying { deck.togglePlay() }
+        deck.pause()
         let rate = audio.sampleRate
         let items = TrackEdit.playbackItems(flip.frames(sampleRate: rate, sourceOffset: timelineOffset))
         playhead = min(max(time, 0), duration)
-        guard audio.play(items, from: Int64((playhead * rate).rounded()), volume: Float(deck?.volume ?? 0.9)) else {
+        guard audio.play(items, from: Int64((playhead * rate).rounded()), volume: Float(deck.volume())) else {
             message = AppMessage(kind: .failure, text: String(ui: "재생하지 못했습니다. 소리 출력 장치를 확인하세요"))
             return
         }
@@ -190,14 +176,14 @@ final class FlipModel {
 
     // MARK: - 렌더 → 추가한 곡
 
-    /// 백그라운드에서 렌더하고(진행·취소) 추가한 곡에 넣는다. 파일은 `editsDirectory`(앱은 음악 폴더의 DJCrate 편집본)에 둔다.
+    /// 백그라운드에서 렌더하고(진행·취소) 추가한 곡에 넣는다. 파일 이름 고르기·렌더·넣기는 `RenderEdit`가 메인 밖에서 한다.
     func render() {
         guard canRender else { return }
         pause()
         message = nil
-        let output = TrackEditModel.availableURL(in: editsDirectory, name: TrackEditModel.fileName(for: title))
-        let flip = flip, grid = grid, cues = carry.placed, source = source, offset = timelineOffset
-        let home = home, track = row.track, title = title
+        let request = EditOutputRequest(job: EditRenderJob(plan: .flip(flip), source: source, sourceOffset: timelineOffset),
+                                        title: title, grid: grid, cues: carry.placed, sourceTrack: row.track)
+        let writer = writer, duration = flip.duration
         renderProgress = 0
         renderTask = Task { [self] in
             defer {
@@ -205,22 +191,14 @@ final class FlipModel {
                 renderProgress = nil
             }
             do {
-                try Task.checkCancellation()
-                _ = try await Self.renderFile(flip, source: source, offset: offset, to: output) { [weak self] value in
+                let staged = try await writer.write(request) { [weak self] value in
                     Task { @MainActor in
                         // 끝난 뒤 늦게 온 진행은 버린다.
                         if self?.renderProgress != nil { self?.renderProgress = value }
                     }
                 }
-                let staged: StagedTrack
-                do {
-                    staged = try await EditStaging.stage(fileAt: output, grid: grid, cues: cues, source: track, title: title, home: home)
-                } catch {
-                    try? FileManager.default.removeItem(at: output)
-                    throw error
-                }
                 self.staged = staged
-                message = AppMessage(kind: .success, text: String(ui: "Flip 편집본을 추가한 곡에 넣었습니다: \(title) · \(flip.duration.clockText) · 큐 \(cues.count)개"))
+                message = AppMessage(kind: .success, text: String(ui: "Flip 편집본을 추가한 곡에 넣었습니다: \(request.title) · \(duration.clockText) · 큐 \(request.cues.count)개"))
                 onStaged?(staged)
             } catch is CancellationError {
                 message = AppMessage(kind: .warning, text: String(ui: "렌더를 취소했습니다. 만들던 파일은 지웠습니다."))
@@ -249,15 +227,5 @@ final class FlipModel {
         stopAudio()
         audio.close()
         renderTask?.cancel()
-    }
-
-    /// 원본 읽기·파일 쓰기는 메인 액터 밖에서 한다. 부른 작업을 취소하면 렌더도 멈추고 임시 파일을 지운다.
-    nonisolated static func renderFile(_ flip: FlipEdit, source: URL, offset: Double, to output: URL,
-                                       progress: EditRenderer.Progress? = nil) async throws -> EditRenderer.Result {
-        let job = Task.detached(priority: .userInitiated) {
-            try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-            return try EditRenderer.render(flip, source: source, sourceOffset: offset, to: output, progress: progress)
-        }
-        return try await withTaskCancellationHandler { try await job.value } onCancel: { job.cancel() }
     }
 }

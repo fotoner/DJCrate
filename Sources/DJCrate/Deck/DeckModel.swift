@@ -1,10 +1,8 @@
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
 import Observation
 import Foundation
-import RekordboxKit
 
 /// 위쪽 덱: 선택한 곡의 파형·그리드·분석·재생·큐/그리드 초안.
 @MainActor
@@ -32,12 +30,14 @@ final class DeckModel {
     var audioSourceState: AudioSourceState = .none
     var analysis: PartAnalysis?
     var analysisError: String?
+    /// rekordbox 분석 파일 상태(분석 전·파형 없음). 곡을 불러올 때 읽기 포트가 쓰기 대상 share에서 함께 읽는다(덱 머리 경고).
+    var analysisState: RekordboxAnalysisState?
     /// 섹션(MU) 분석이 끝나기를 기다리는 중(섹션 칸에 로딩 막대)
     var isAnalyzingSections = false
     var artwork: NSImage?
     var draft: CueDraft?
     var hasUncommittedCueEdits = false
-    var draftSaveFailures: [DraftWriter.Failure] = []
+    var draftSaveFailures: [DraftSaveFailure] = []
     @ObservationIgnored var draftSaveRevisions: [String: UInt64] = [:]
     var selectedCueID: EditableCue.ID?
     var playhead: Double = 0 {
@@ -151,12 +151,12 @@ final class DeckModel {
     }
 
     /// 곡 안의 조표 구간(rekordbox 시간축). 주 조표는 rekordbox 키에 맞춘다.
-    var keySegments: [KeyAnalyzer.Segment] = []
+    var keySegments: [KeySegment] = []
 
     /// 장·단(A/B)은 rekordbox 키를 따른다(없으면 크로마로 정한다).
     var keyMinor = false
 
-    @ObservationIgnored var keyChroma: KeyAnalyzer.Chroma?
+    @ObservationIgnored var keyChroma: KeyChroma?
 
     /// 키가 빈 rekordbox 곡에서 덱이 구한 주 조성. 덱 제안 줄의 키 제안이 곡 UUID로 맞춰 본 뒤 쓴다.
     var keyEstimate: KeyEstimate?
@@ -185,6 +185,12 @@ final class DeckModel {
     /// 넣지 않은 Flip 결과 창이 열려 있다(새로 기록하면 그 결과를 버린다: 메뉴·단추가 확인 창을 연다).
     var hasPendingFlipResult = false
     @ObservationIgnored var flipRecording: FlipRecording?
+    /// 기록을 마치고 결과 창을 열려고 음원 파일 확인을 기다리는 기록(그동안 곡을 바꾸면 버릴지 묻는다)
+    @ObservationIgnored var awaitingFlipResult: FlipRecording?
+    /// 결과 창을 기다리는 기록의 차례. 기다리는 중 기록을 버리면 올라가 진행 중인 열기가 조용히 끝난다.
+    @ObservationIgnored var flipResultTurn = 0
+    /// 기록을 버릴지 묻는 창이 떠 있는 동안만 nil이 아니다. 그동안 음원 확인을 마친 결과 창 열기가 여기서 답을 기다린다.
+    @ObservationIgnored var flipDecisionWaiters: [CheckedContinuation<Void, Never>]?
     /// 되돌릴 수 없는 일(Flip 기록 버리기) 전에 묻는 창. 시험은 정해 둔 답을 준다.
     @ObservationIgnored var prompter: any ReflectionPrompter = AlertPrompter()
 
@@ -222,7 +228,7 @@ final class DeckModel {
     /// 음원 재생·파형·MU 분석만 이만큼 밀어 맞춘다(압축 음원의 인코더 지연을 rekordbox처럼 남긴다).
     var timelineOffset: Double = 0
     /// DJCrate가 추정한 그리드(DJCrate 시간축)
-    var gridSuggestion: GridEstimator.Estimate?
+    var gridSuggestion: GridEstimate?
     /// 덱 제안 줄의 그리드 제안(현재 그리드와 사실상 같으면 nil)
     var gridSuggestionItem: DeckSuggestion?
     /// 그리드가 없는 곡에서 파형 위에 미리 보여 줄 추정 박(적용 전)
@@ -268,10 +274,18 @@ final class DeckModel {
 
     /// 메모리 큐 제안과 섹션 에너지는 분석·큐·그리드가 바뀔 때만 다시 계산한다.
     var suggestions: [Double] = []
-    var sectionEnergies: [PartLabeler.SectionEnergy] = []
+    var sectionEnergies: [SectionEnergy] = []
 
     let audio: any DeckAudioEngine
     let storage: DeckStorage
+    /// 곡을 올릴 때 메인 스레드 밖에서 읽는 일(초안·그리드·그림·캐시)
+    let loader: LoadDeckTrack
+    /// 음원을 연 뒤의 분석(파형·음악 분석·그리드 추정·조성 흐름·메모리 큐 제안)과 디코딩이 잰 값 기억
+    let analyzer: AnalyzeDeckTrack
+    /// 분석 파일·그림을 찾을 rekordbox share 뿌리. 앱은 쓰기 대상(`LibraryStore.rekordboxShareRoot`)과 맞춘다(nil이면 기본 rekordbox 폴더).
+    @ObservationIgnored var shareRoot: () -> URL? = { nil }
+    /// 곡을 바꿀 때마다 오른다. 백그라운드 읽기는 시작할 때의 값과 같을 때만 적용한다.
+    @ObservationIgnored var loadGeneration = 0
     /// 곡을 올린 뒤 파형·음악 분석·그리드 추정을 돌릴지(시험에서는 끈다: 캐시 폴더에 쓰지 않게)
     let runsAnalysis: Bool
     @ObservationIgnored lazy var ticker = DisplayTicker { [weak self] in self?.tick() }
@@ -282,9 +296,16 @@ final class DeckModel {
     @ObservationIgnored var scrubAnchor: ScrubAnchor?
     var seekRestartTask: Task<Void, Never>?
 
-    init(audio: any DeckAudioEngine = DeckAudio(), storage: DeckStorage = .live, runsAnalysis: Bool = true) {
+    /// 앱은 조립 지점(`AppComposition.live`)이 실제 오디오·저장소·읽기·분석을 준다.
+    /// - Parameters:
+    ///   - assets: 곡을 올릴 때 읽는 것(음원·분석 파일·그림·`storage`의 초안)
+    ///   - analysis: 분석과 분석 캐시(불러올 때 크로마·음량 캐시도 여기서 읽는다)
+    init(audio: any DeckAudioEngine, storage: DeckStorage, assets: TrackAssetReader, analysis: AnalyzeDeckTrack,
+         runsAnalysis: Bool = true) {
         self.audio = audio
         self.storage = storage
+        loader = LoadDeckTrack(assets: assets, cache: analysis.cache)
+        analyzer = analysis
         self.runsAnalysis = runsAnalysis
         // 설정은 저장소에서 읽는다.
         let settings = storage.settings
@@ -312,13 +333,13 @@ final class DeckModel {
         audio.idleSeconds = idleSeconds
         audio.onChroma = { [weak self] chroma in
             guard let self, let row = self.row, !row.track.isStreaming else { return }
-            AnalysisCache.store(chroma, key: row.track.uuid, file: URL(filePath: row.track.folderPath))
+            self.analyzer.remember(chroma: chroma, key: row.track.uuid, file: URL(filePath: row.track.folderPath))
             self.keyChroma = chroma
             self.refreshKeySegments()
         }
         audio.onLoudness = { [weak self] measured in
             guard let self, let row = self.row, !row.track.isStreaming else { return }
-            LoudnessCache.shared.store(measured, for: URL(filePath: row.track.folderPath))
+            self.analyzer.remember(loudness: measured, file: URL(filePath: row.track.folderPath))
             self.loudness = measured
             self.applyGain()
         }
@@ -345,212 +366,6 @@ final class DeckModel {
         setZoom(zoomSeconds * factor)
     }
 
-    // MARK: - 로드
-
-    /// 지금 곡을 처음부터 다시 읽는다(분석 파일·초안이 밖에서 바뀌었을 때).
-    func reload() {
-        let current = row
-        load(nil)
-        load(current)
-    }
-
-    /// rekordbox에 쓰거나 되돌린 뒤: 소리·파형·분석은 그대로 두고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다.
-    func refreshAfterWrite(_ newRow: TrackRow?) {
-        guard let current = row else { return }
-        let target = newRow ?? current
-        guard target.id == current.id else { return }
-        softReload(target)
-    }
-
-    /// 같은 곡·같은 파일인데 내용(큐·그리드·게인·메타데이터)만 바뀌었을 때.
-    func softReload(_ newRow: TrackRow) {
-        clearDraftUndo()
-        row = newRow
-        gainDraft = storage.loadGain(newRow.track.uuid)
-        applyGain()
-        // rekordbox 키가 바뀌었을 수 있다(장·단 기준과 키 제안을 새 값으로 맞춘다).
-        refreshKeySegments()
-        let selected = cue(selectedCueID), engaged = cue(engagedLoopID)
-        let track = newRow.track, cues = newRow.cues, id = newRow.id, length = duration, storage = storage
-        softReloadTask?.cancel()
-        softReloadTask = Task {
-            let payload = await Task.detached(priority: .userInitiated) {
-                DeckPayload.load(track: track, cues: cues, duration: length, storage: storage)
-            }.value
-            guard !Task.isCancelled, self.row?.id == id, self.row?.track.uuid == track.uuid else { return }
-            self.clearDraftUndo()
-            self.draft = payload.draft
-            self.originalGrid = payload.originalGrid
-            self.gridDraft = payload.gridDraft
-            self.gridEditBlockedReason = payload.gridBlockedReason
-            self.gridSourceNotice = payload.gridSourceNotice
-            self.hasRekordboxGrid = payload.originalGrid != nil
-            self.refreshGrid()
-            self.refreshSuggestions()
-            self.refreshSuggestionNote()
-            // 고른 큐·걸린 루프는 같은 자리·종류의 새 큐로 잇는다(반영하면 rekordbox 큐로 바뀌어 ID가 새로 생긴다).
-            func match(_ old: EditableCue?) -> EditableCue.ID? {
-                old.flatMap { o in payload.draft.cues.first { $0.kind == o.kind && abs($0.time - o.time) < 0.002 }?.id }
-            }
-            self.selectedCueID = match(selected)
-            if self.engagedLoopID != nil { self.engagedLoopID = match(engaged) }
-            // rekordbox 그림을 넣거나 바꾸거나 지웠을 수 있다(#66). 그림이 없어지면 처음 불러올 때처럼 음원 내장 그림을 보인다.
-            if let image = payload.artwork?.image {
-                self.artwork = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-            } else if !track.isStreaming {
-                let embedded = await ArtworkCache.embeddedArtwork(url: URL(filePath: track.folderPath))
-                guard !Task.isCancelled, self.row?.id == id else { return }
-                self.artwork = embedded
-            }
-        }
-    }
-
-    /// 곡 ID가 같아도 내용(새 스냅샷의 큐·메타데이터)이 다르면 다시 불러온다.
-    /// 같은 파일이고 이미 소리를 불러 둔 상태면 처음부터 다시 부르지 않고 초안·그리드만 맞춘다.
-    func load(_ row: TrackRow?) {
-        guard row != self.row else { return }
-        clearDraftUndo()
-        hasUncommittedCueEdits = false
-        let sameTrack = row != nil && row?.id == self.row?.id
-        if sameTrack, let row, let current = self.row, canPlay,
-           row.track.folderPath == current.track.folderPath, row.track.imagePath == current.track.imagePath {
-            softReload(row)
-            return
-        }
-        stopPlayback()
-        // 기록은 이 곡의 시각이라 다른 곡(다른 파일)으로 이어 가지 않는다.
-        if isFlipRecording {
-            cancelFlipRecording()
-            if row != nil { showToast(String(ui: "곡을 바꿔 Flip 기록을 버렸습니다. 새 곡에서 Flip을 다시 누르세요")) }
-        }
-        loadTask?.cancel()
-        softReloadTask?.cancel()
-        waveformTask?.cancel()
-        seekRestartTask?.cancel()
-        audio.unload()
-        self.row = row
-        waveform = nil; waveformError = nil; analysis = nil; analysisError = nil; artwork = nil
-        isAnalyzingSections = row.map { !$0.track.isStreaming } ?? false
-        suggestions = []; sectionEnergies = []; draft = nil; loudness = nil; keySegments = []; keyChroma = nil; keyEstimate = nil; gainDraft = nil
-        engagedLoopID = nil; instantLoop = nil
-        originalGrid = nil; gridDraft = nil; grid = nil; gridBPM = nil; gridEditBlockedReason = nil; gridSourceNotice = nil
-        hasRekordboxGrid = false; timelineOffset = 0; gridSuggestion = nil; gridSuggestionItem = nil; suggestedGrid = nil
-        suggestionTask?.cancel()
-        gridDragBase = nil; tapBPM = nil; taps = []; resumeAfterScrub = false; scrubAnchor = nil; isCuePreviewing = false
-        if !sameTrack { selectedCueID = nil; playhead = 0; cuePoint = 0; placeAtFirstMemoryCue = true }
-        duration = Double(row?.track.lengthSeconds ?? 0)
-        canPlay = false
-        audioSourceState = row == nil ? .none : .preparing
-        guard let row else { return }
-
-        let url = URL(filePath: row.track.folderPath)
-        let exists = !row.track.isStreaming && FileManager.default.fileExists(atPath: url.path)
-        if exists {
-            // 인코더 지연은 rekordbox 쪽에 맞춘다: 덱의 모든 시각은 rekordbox 시간축이다.
-            timelineOffset = RekordboxTimeline.predictedOffset(url: url)
-            // 조성 크로마 캐시가 있으면 디코딩 때 다시 계산하지 않는다(불러오기 전에 정해야 한다).
-            let cachedChroma = AnalysisCache.chroma(key: row.track.uuid, file: url)
-            audio.needsChroma = cachedChroma == nil
-            do {
-                try audio.load(url: url, timelineOffset: timelineOffset)
-                audioSourceState = audio.isLoaded ? .ready : .preparing
-            } catch {
-                audioSourceState = AudioSourceFailure.state(for: error)
-                waveformError = audioSourceState.unavailableReason
-            }
-            // 전에 잰 곡이면 디코딩을 기다리지 않고 바로 오토게인을 건다.
-            loudness = LoudnessCache.shared.value(for: url)
-            gainDraft = storage.loadGain(row.track.uuid)
-            applyGain()
-            canPlay = audio.isLoaded
-            if canPlay { duration = audio.duration }
-            if let cachedChroma {
-                keyChroma = cachedChroma
-                refreshKeySegments()
-            }
-        } else if !row.track.isStreaming {
-            audioSourceState = .missing
-            waveformError = audioSourceState.unavailableReason
-        } else {
-            audioSourceState = .streaming
-        }
-        playhead = min(playhead, duration)
-
-        let track = row.track, cues = row.cues, id = row.id, key = track.uuid, length = duration, storage = storage
-        loadTask = Task {
-            // 1) 초안·그리드·아트워크는 백그라운드에서 읽고, 아직 이 곡일 때만 적용한다.
-            let payload = await Task.detached(priority: .userInitiated) {
-                DeckPayload.load(track: track, cues: cues, duration: length, storage: storage)
-            }.value
-            guard !Task.isCancelled, self.row?.id == id, self.row?.track.uuid == track.uuid else { return }
-            self.apply(payload)
-            if self.artwork == nil, exists, self.runsAnalysis {
-                let embedded = await ArtworkCache.embeddedArtwork(url: url)
-                guard !Task.isCancelled, self.row?.id == id, self.row?.track.uuid == track.uuid, self.artwork == nil else { return }
-                self.artwork = embedded
-            }
-
-            // 2) 파형: 곡을 넘기면 바로 취소된다(조각 단위로 취소를 확인한다).
-            guard self.canPlay, self.runsAnalysis else { self.isAnalyzingSections = false; return }
-            let job = Task.detached(priority: .userInitiated) { try WaveformCache.load(fileAt: url, key: key) }
-            self.waveformTask = job
-            do {
-                let waveform = try await job.value
-                guard !Task.isCancelled, self.row?.id == id, self.row?.track.uuid == track.uuid else { return }
-                self.waveform = waveform
-            } catch {
-                guard !Task.isCancelled, self.row?.id == id, self.row?.track.uuid == track.uuid else { return }
-                self.waveformError = String(ui: "파형을 만들지 못했습니다: \(error.localizedDescription)")
-            }
-            #if DEBUG
-            self.applyLaunchFlags()
-            #endif
-
-            // 3) 음악 분석(약 5초): 같은 곡에 1초 머문 뒤에만 시작하고, 곡을 넘기면 취소된다.
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled, self.row?.id == id, self.row?.track.uuid == track.uuid else { return }
-            do {
-                let analysis = try await PartAnalyzer.analyze(fileAt: url, cacheKey: key)
-                guard !Task.isCancelled, self.row?.id == id, self.row?.track.uuid == track.uuid else { return }
-                let shifted = analysis.shifted(by: self.timelineOffset)
-                self.analysis = shifted
-                self.analysisError = nil
-                self.isAnalyzingSections = false
-                self.sectionEnergies = PartLabeler.energies(shifted)
-                self.refreshSuggestions()
-                self.startGridSuggestion(analysis: analysis, url: url, id: id)
-            } catch {
-                guard !Task.isCancelled, self.row?.id == id, self.row?.track.uuid == track.uuid else { return }
-                self.analysisError = String(describing: error)
-                self.isAnalyzingSections = false
-            }
-        }
-    }
-
-    func apply(_ payload: DeckPayload) {
-        draft = payload.draft
-        originalGrid = payload.originalGrid
-        gridDraft = payload.gridDraft
-        gridEditBlockedReason = payload.gridBlockedReason
-        gridSourceNotice = payload.gridSourceNotice
-        hasRekordboxGrid = payload.originalGrid != nil
-        if let image = payload.artwork?.image {
-            artwork = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
-        }
-        refreshGrid()
-        // CDJ처럼 첫 메모리 큐에서 대기한다. 그사이 사용자가 위치를 옮겼으면 건드리지 않는다.
-        if placeAtFirstMemoryCue {
-            placeAtFirstMemoryCue = false
-            let first = draft?.cues.filter { $0.kind == .memory }.map(\.time).min() ?? 0
-            if !isPlaying, playhead == cuePoint {
-                cuePoint = min(max(first, 0), duration)
-                playhead = cuePoint
-                audio.seekWhilePaused(cuePoint)
-                updateGridBPM()
-            }
-        }
-    }
-
     func refreshGrid() {
         if let gridDraft, gridDraft.hasChanges {
             grid = gridDraft.grid(duration: max(duration, Double(row?.track.lengthSeconds ?? 0)))
@@ -566,17 +381,11 @@ final class DeckModel {
             if !suggestions.isEmpty { suggestions = [] }
             return
         }
-        let raw = MemoryCueSuggester.suggestions(analysis, existing: draft.cues.map(\.time))
-        suggestions = raw.map { grid?.snap($0) ?? $0 }
+        suggestions = analyzer.memoryCueSuggestions(analysis, existing: draft.cues.map(\.time), grid: grid)
     }
 
     func updateGridBPM() {
-        guard let grid, !grid.beats.isEmpty else {
-            if gridBPM != nil { gridBPM = nil }
-            return
-        }
-        let index = grid.firstIndex(atOrAfter: playhead + 0.001)
-        let bpm = index > 0 ? grid.beats[index - 1].bpm : grid.beats[0].bpm
+        let bpm = grid?.bpm(at: playhead)
         if bpm != gridBPM { gridBPM = bpm }
     }
 

@@ -1,6 +1,7 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import Observation
 import RekordboxKit
@@ -37,13 +38,9 @@ struct UsbMigrateTests {
         prompter.answer = false
         await c.migrate(image)
         let prompt = try #require(prompter.shown.last)
-        #expect(prompt.title == "OneLibrary를 더할까요?")
-        #expect(prompt.confirm == "OneLibrary 더하기")
-        #expect(prompt.details.contains("곡 3개 · 재생 목록 1개 · 새 앨범아트 파일 6개"))
-        #expect(prompt.details.contains("시험 볼륨(디스크 이미지)입니다"))
+        #expect(prompt == UsbWriteFlow.migrationConfirmation(summary, volume: image))
         #expect(prompt.details.contains { $0.contains(UsbProvisionalRule.deviceLibraryMigration.summary) })
-        #expect(prompt.text.contains("Mac에 백업") && prompt.text.contains("다시 읽어 확인"))
-        #expect(service.current.calls == ["previewMigration", "previewMigration"])
+        #expect(service.current.previewed && !service.current.wrote)
         #expect(service.current.fileOperations == 0 && usb.busyVolumes.isEmpty && usb.activeWrite == nil)
     }
 
@@ -53,17 +50,17 @@ struct UsbMigrateTests {
         let c = coordinator(usb)
         let backup = URL(filePath: "/tmp/djc-fixture/usb-backups/B/m1")
         await c.migrate(image)
-        #expect(service.current.calls == ["previewMigration", "writeMigration"])
+        #expect(service.current.previewedBeforeWrite)
         #expect(service.current.migrationOnMain == [false, false])
         #expect(usbHost.libraryCalls.count == 2)
-        #expect(host.toast?.title == "USB에 OneLibrary를 더했습니다")
+        #expect(host.toast?.title == UsbWriteFlow.Text.migratedTitle)
         #expect(host.toast?.action == .ejectUsb(volumeKey: image.usbKey))
         #expect(usb.migrationBackups[image.usbKey] == backup)
         #expect(usb.busyVolumes.isEmpty && usb.activeWrite == nil)
         await c.restoreMigration(image)
         #expect(service.current.restoredBackups == [backup])
-        #expect(service.current.calls == ["previewMigration", "writeMigration", "restore"])
-        #expect(host.toast?.title == "USB를 쓰기 전으로 되돌렸습니다")
+        #expect(service.current.called("writeMigration", before: "restore"))
+        #expect(host.toast?.title == UsbWriteFlow.Text.restoredTitle)
         #expect(usb.migrationBackups[image.usbKey] == nil && usbHost.libraryCalls.count == 3)
     }
 
@@ -76,9 +73,9 @@ struct UsbMigrateTests {
         let (usb, _) = await store()
         service.update { $0.migrationSummary.blocks = [block] }
         await coordinator(usb).migrate(image)
-        #expect(service.current.calls == ["previewMigration"])
+        #expect(service.current.previewed && !service.current.wrote)
         #expect(service.current.fileOperations == 0)
-        #expect(prompter.shown.last?.title == "OneLibrary를 더할 수 없습니다")
+        #expect(prompter.shown.last?.title == UsbWriteFlow.Text.cannotMigrateTitle)
         #expect(prompter.shown.last?.text == block.message)
         let row = try #require(UsbSidebarModel.volumes(usb).first)
         #expect(row.showsMigration && !row.canMigrate && row.migrationHelp == block.message)
@@ -91,21 +88,21 @@ struct UsbMigrateTests {
         let (usb, _) = await store()
         await coordinator(usb, running: true).migrate(image)
         #expect(service.current.calls.isEmpty)
-        #expect(prompter.shown.isEmpty && host.toast?.title == "rekordbox가 켜져 있어 USB에 쓰지 않았습니다")
+        #expect(prompter.shown.isEmpty && host.toast?.title == UsbWriteFlow.Text.rekordboxRunningTitle)
         _ = usb.beginWrite(image, title: "시험")
         await coordinator(usb).migrate(image)
         #expect(service.current.calls.isEmpty)
-        #expect(prompter.shown.isEmpty && host.toast?.title == "이 USB에 쓰는 중입니다")
+        #expect(prompter.shown.isEmpty && host.toast?.title == UsbWriteFlow.Text.busyTitle)
         usb.endWrite(image.usbKey)
         service.update { $0.journal = .state(.filesWritten) }
         prompter.choices = [.cancel]
         await coordinator(usb).migrate(image)
         #expect(service.current.calls.isEmpty)
-        #expect(prompter.shown.last?.title == "지난 USB 쓰기가 끝나지 않았습니다")
+        #expect(prompter.shown.last == UsbWriteFlow.pendingPrompt(image))
         service.update { $0.journal = .unreadable }
         await coordinator(usb).migrate(image)
         #expect(service.current.calls.isEmpty)
-        #expect(prompter.shown.last?.text == UsbWriteCoordinator.journalUnreadableText)
+        #expect(prompter.shown.last?.text == UsbWriteFlow.journalUnreadableText)
     }
 
     @Test("확인 뒤 저널이 열리면 쓰기 대신 회복을 알린다")
@@ -114,8 +111,8 @@ struct UsbMigrateTests {
         service.update { $0.journalAfterPreview = .state(.committing) }
         prompter.choices = [.cancel]
         await coordinator(usb).migrate(image)
-        #expect(service.current.calls == ["previewMigration"])
-        #expect(prompter.shown.last?.title == "지난 USB 쓰기가 끝나지 않았습니다")
+        #expect(service.current.previewed && !service.current.wrote)
+        #expect(prompter.shown.last == UsbWriteFlow.pendingPrompt(image))
         #expect(usb.busyVolumes.isEmpty)
     }
 
@@ -144,7 +141,7 @@ struct UsbMigrateTests {
         release.signal()
         await task.value
         #expect(service.current.fileOperations == (cancel ? 0 : 1))
-        #expect(host.toast?.title == (cancel ? "USB 쓰기를 취소했습니다" : "USB에 OneLibrary를 더했습니다"))
+        #expect(host.toast?.title == (cancel ? UsbWriteFlow.Text.cancelledTitle : UsbWriteFlow.Text.migratedTitle))
         #expect(usb.busyVolumes.isEmpty && usb.activeWrite == nil)
     }
 
@@ -154,12 +151,11 @@ struct UsbMigrateTests {
         service.update { $0.migrationWriteResult = .failure(.volumeLost(volumeName: "DJC191")) }
         prompter.answers = [true, false]
         await coordinator(usb).migrate(image)
-        #expect(prompter.shown.last?.title == "USB 연결이 끊겼습니다")
-        #expect(prompter.shown.last?.text.contains("기기에 꽂지 말고 다시 연결") == true)
+        #expect(prompter.shown.last == UsbWriteFlow.interruptedPrompt(.volumeLost(volumeName: "DJC191")))
         #expect(usb.busyVolumes.isEmpty)
         service.update { $0.migrationPreviewError = .formatUnsupported(detail: "fixture") }
         #expect(await coordinator(usb).previewMigration(image) == nil)
-        #expect(prompter.shown.last?.title == "USB 미리 보기를 하지 못했습니다")
+        #expect(prompter.shown.last?.title == UsbWriteFlow.Text.previewFailedTitle)
         #expect(usb.busyVolumes.isEmpty)
     }
 
@@ -181,9 +177,11 @@ struct UsbMigrateTests {
         }
         prompter.choices = [.confirm]
         prompter.answers = [true, false]
+        service.update { $0.calls = [] }
         await c.offerRecovery(image)
-        #expect(service.current.calls == ["previewMigration", "writeMigration", "recover", "previewMigration"])
-        #expect(prompter.shown.last?.confirm == "OneLibrary 더하기")
+        // 회복 뒤 옮기기를 다시 미리 보고 확인 창에서 멈춘다(쓰지 않음)
+        #expect(service.current.called("recover", before: "previewMigration") && !service.current.wrote)
+        #expect(prompter.shown.last == UsbWriteFlow.migrationConfirmation(service.current.migrationSummary, volume: image))
         #expect(usb.exportSheet == nil)
     }
 
@@ -209,7 +207,8 @@ struct UsbMigrateTests {
         prompter.answers = [true, false]
         service.update { $0.deviceChanged = true }
         await c.restoreMigration(image)
-        #expect(service.current.calls.last == "restore")
+        // 기기 변경을 버리지 않았다(되돌리기는 한 번 막히고 끝남)
+        #expect(service.current.restored && !service.current.calls.contains("restore(discard)"))
         #expect(usb.migrationBackups[image.usbKey] == backup && usb.busyVolumes.isEmpty)
     }
 }

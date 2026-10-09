@@ -6,12 +6,7 @@ import Foundation
 /// 파일은 흘려 읽는다(`XMLParser` + 입력 흐름): 수만 곡짜리 파일도 문서 전체를 트리로 들고 있지 않고 곡 모델만 남긴다.
 /// 모르는 요소·값은 막지 않고 건너뛰며 `XMLLibrary.skipped`에 센다. 문서가 깨졌거나 rekordbox XML이 아닐 때만 던진다.
 public enum RekordboxXMLReader {
-    public struct ReadError: Error, LocalizedError, CustomStringConvertible, Equatable {
-        public var reason: String
-        public init(reason: String) { self.reason = reason }
-        public var errorDescription: String? { reason }
-        public var description: String { reason }
-    }
+    public typealias ReadError = XMLReadError
 
     public static func read(url: URL) throws -> XMLLibrary {
         guard let stream = InputStream(url: url) else {

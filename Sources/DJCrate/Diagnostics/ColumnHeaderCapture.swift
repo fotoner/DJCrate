@@ -47,9 +47,9 @@ enum ColumnHeaderCapture {
         guard volume.isDiskImage else { throw Failure(description: "합성 디스크 이미지가 아님") }
         let (events, continuation) = AsyncStream.makeStream(of: [UsbVolumeInfo].self)
         defer { continuation.finish() }
-        let host = SystemUsbHost(io: .reading(snapshots: DJCPaths.userData.appending(path: "column-header-usb-snapshots")), events: events,
+        let host = SystemUsbHost(io: UsbAppComposition.hostIO(snapshots: DJCPaths.userData.appending(path: "column-header-usb-snapshots")), events: events,
                                  current: { [volume] })
-        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, localLibrary: { nil })
+        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: UsbAppComposition.writeService(), localLibrary: { nil })
         store.usb = usb
         await usb.refresh()
         NSApp.appearance = NSAppearance(named: .aqua)

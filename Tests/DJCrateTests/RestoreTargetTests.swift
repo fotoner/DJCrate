@@ -1,8 +1,10 @@
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -11,18 +13,14 @@ import Testing
 @Suite("복원 대상", .serialized)
 struct RestoreTargetTests {
     func makeStore(_ fixture: RekordboxFixture) async -> LibraryStore {
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.restore-target.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("restore-target"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
-                                 saveTagDrafts: { DraftWriter.save($0) }, backupDirectory: fixture.backups,
-                                 playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        let database = fixture.database
-        store.takeLiveSnapshot = { _ in database }
-        store.launchArguments = ["test"]
-        store.launchEnvironment = [:]
-        store.draftHome = FileManager.default.temporaryDirectory.appending(path: "djc-restore-target-\(UUID())")
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+                                 backupDirectory: fixture.backups,
+                                 playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                                 draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: fixture.database,
+                                 rekordboxShareRoot: fixture.shareRoot, arguments: ["test"], environment: [:],
+                                 takeLiveSnapshot: { [database = fixture.database] _ in database })
+        await store.load(snapshot: fixture.database)
         return store
     }
 
@@ -34,18 +32,18 @@ struct RestoreTargetTests {
         let fixture = try RekordboxFixture()
         let spec = try fixture.add(TrackSpec())
         let store = await makeStore(fixture)
-        var draft = CueDraft(trackUUID: spec.uuid, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: spec.uuid)
         draft.place(EditableCue(kind: .memory, time: 4))
-        DraftWriter.save(draft)
-        DraftWriter.flush()
+        store.testDrafts.saveCue(draft)
+        store.testDrafts.flush()
         defer {
-            DraftWriter.removeCue(trackUUID: spec.uuid)
-            DraftWriter.flush()
+            store.testDrafts.removeCue(spec.uuid)
+            store.testDrafts.flush()
         }
-        _ = try await store.writeToRekordbox([draft])
+        _ = try await store.session.writeToRekordbox([draft])
         #expect(try cueCount(fixture) == 1)
         let backup = try #require(RekordboxWriter.backups(in: fixture.backups).first(where: { $0.isWrite }))
-        try await store.restoreRekordbox(backup, keepingCurrentDrafts: true)
+        try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         #expect(try cueCount(fixture) == 0)
         #expect(!FileManager.default.fileExists(atPath: RekordboxWriter.liveDatabase.path))
     }

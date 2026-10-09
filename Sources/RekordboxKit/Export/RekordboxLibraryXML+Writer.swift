@@ -1,16 +1,12 @@
 import DJCDomain
+import DJCEnvironment
 import Foundation
 
 extension RekordboxLibraryXML {
     // MARK: - 출력 경로
 
     /// 출력 파일을 쓸 수 없는 이유. 무엇을 하면 되는지까지 한 문장이다.
-    public struct OutputError: Error, LocalizedError, CustomStringConvertible, Equatable {
-        public var reason: String
-        public init(reason: String) { self.reason = reason }
-        public var errorDescription: String? { reason }
-        public var description: String { reason }
-    }
+    public typealias OutputError = LibraryXMLOutputError
 
     /// 보호된 자리를 거부할 때의 이유
     public static var protectedOutputReason: String {

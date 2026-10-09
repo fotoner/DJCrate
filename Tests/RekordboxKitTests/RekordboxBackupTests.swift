@@ -1,6 +1,6 @@
 import DJCDomain
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -32,7 +32,7 @@ struct RekordboxBackupTests {
         var cueTrack = TrackSpec()
         cueTrack.gain = (high: 16256, low: 0)   // 선형 1.0
         try fixture.add(cueTrack)
-        var cue = CueDraft(trackUUID: cueTrack.uuid, rekordboxCues: [])
+        var cue = CueDraft(trackUUID: cueTrack.uuid)
         cue.place(EditableCue(kind: .memory, time: 30))
         let report = try RekordboxWriter.write(drafts: [cue], grids: [grid], gains: [cueTrack.uuid: -3], to: fixture.database,
                                                dryRun: false, now: now, backups: fixture.backups, shareRoot: fixture.shareRoot)

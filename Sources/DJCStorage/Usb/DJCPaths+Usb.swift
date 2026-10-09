@@ -18,11 +18,24 @@ extension DJCPaths {
 }
 
 extension UsbWritePaths {
+    /// DJC_HOME 아래 세 폴더(만들지 않는다). 앱은 USB에 쓸 때 `makeFolders`로 만든다(저널을 보기만 할 때는 만들지 않는다)
+    public static var djcHome: UsbWritePaths {
+        UsbWritePaths(backups: DJCPaths.usbBackups, sessions: DJCPaths.usbSessions, staging: DJCPaths.usbStaging)
+    }
+
     /// DJC_HOME 아래 세 폴더(없으면 만든다)
     public static var `default`: UsbWritePaths {
-        for url in [DJCPaths.usbBackups, DJCPaths.usbSessions, DJCPaths.usbStaging] {
-            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        }
-        return UsbWritePaths(backups: DJCPaths.usbBackups, sessions: DJCPaths.usbSessions, staging: DJCPaths.usbStaging)
+        let paths = djcHome
+        for url in [paths.backups, paths.sessions, paths.staging] { try? paths.makeFolder(url) }
+        return paths
+    }
+
+    /// 세 폴더와 `extra`(세션 사본 폴더 등)를 주인만 읽는 폴더로 만든다(있으면 그대로)
+    public func makeFolders(_ extra: [URL] = []) throws {
+        for url in [backups, sessions, staging] + extra { try makeFolder(url) }
+    }
+
+    private func makeFolder(_ url: URL) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     }
 }

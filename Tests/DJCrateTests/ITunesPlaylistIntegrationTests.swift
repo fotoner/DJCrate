@@ -1,8 +1,11 @@
+import DJCAdapters
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
+import DJCTestKit
 import Foundation
-import DJCTestSupport
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -14,28 +17,21 @@ struct ITunesPlaylistIntegrationTests {
         let fixture = try RekordboxFixture()
         let database = fixture.database
         try ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "이전 목록")]).save(for: database)
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.itunes.refresh.\(UUID())")!, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
-                                 playlistImportURL: nil, stagingSaver: { _ in })
+        let arguments = environmentOverride ? ["DJCrate"] : ["DJCrate", "--db", database.path]
+        let environment = environmentOverride ? ["DJC_DB": database.path] : [String: String]()
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes.refresh"), persist: false),
+                                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                                      playlistImportURL: nil, stagingSaver: { _ in }, arguments: arguments, environment: environment,
+                                      ports: { $0.source = .withoutDatabase })
         await store.load(snapshot: database)
         #expect(store.iTunesLibrary.index["itunes:A"]?.name == "이전 목록")
         let dbBefore = try Data(contentsOf: database)
         try ITunesLibrarySnapshot(playlists: [.init(id: "B", name: "새 목록")]).save(for: database)
-        let arguments = environmentOverride ? ["DJCrate"] : ["DJCrate", "--db", database.path]
-        let environment = environmentOverride ? ["DJC_DB": database.path] : [String: String]()
-        await store.refreshITunesPlaylists(arguments: arguments, environment: environment)
+        await store.refreshITunesPlaylists()
         #expect(store.snapshotURL == database)
         #expect(store.iTunesLibrary.index["itunes:B"]?.name == "새 목록")
         #expect(store.iTunesLibrary.index["itunes:A"] == nil)
         #expect(try Data(contentsOf: database) == dbBefore)
-    }
-
-    @Test func iTunes_새로고침의_출처_선택은_명시_DB만_현재_사본으로_제한한다() {
-        #expect(LibraryStore.explicitDatabaseRequested(arguments: ["DJCrate", "--db", "/copy.db"], environment: [:]))
-        #expect(LibraryStore.explicitDatabaseRequested(arguments: ["DJCrate"], environment: ["DJC_DB": "/copy.db"]))
-        #expect(LibraryStore.explicitDatabaseRequested(arguments: ["DJCrate"], environment: ["DJC_DB": ""]))
-        #expect(!LibraryStore.explicitDatabaseRequested(arguments: ["DJCrate"], environment: [:]))
-        #expect(!LibraryStore.explicitDatabaseRequested(arguments: ["DJCrate"], environment: ["DJC_REKORDBOX_DIR": "/copy"]))
     }
 
     @Test func 실패한_갱신은_기존_정상_사본을_보존하고_새_스냅샷은_낡음을_알린다() throws {
@@ -44,6 +40,8 @@ struct ITunesPlaylistIntegrationTests {
         try good.save(for: fixture.database)
         let original = try Data(contentsOf: ITunesLibrarySnapshot.url(for: fixture.database))
         let same = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: true,
+                                          fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                          drafts: .dataFolder(), source: .withoutDatabase,
                                           captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(same.iTunesLibrary.status == .stale)
         #expect(same.iTunesLibrary.index["itunes:A"]?.name == "마지막 정상 목록")
@@ -58,6 +56,8 @@ struct ITunesPlaylistIntegrationTests {
         #expect(ITunesLibrarySnapshot.load(for: fresh).status == .notCaptured)
         let new = try LoadedLibrary.load(snapshot: fresh, refreshITunes: true,
                                          previousITunesSnapshot: previous,
+                                         fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                         drafts: .dataFolder(), source: .withoutDatabase,
                                          captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(new.iTunesLibrary.status == .stale)
         #expect(new.iTunesLibrary.index["itunes:A"]?.name == "마지막 정상 목록")
@@ -69,6 +69,8 @@ struct ITunesPlaylistIntegrationTests {
         #expect(repeated == fresh)
         let recovered = try LoadedLibrary.load(snapshot: repeated, refreshITunes: true,
                                                previousITunesSnapshot: reused,
+                                               fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                               drafts: .dataFolder(), source: .withoutDatabase,
                                                captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(recovered.iTunesLibrary.index["itunes:A"]?.name == "마지막 정상 목록")
         #expect(recovered.iTunesLibrary.status == .stale)
@@ -77,6 +79,8 @@ struct ITunesPlaylistIntegrationTests {
         try FileManager.default.removeItem(at: ITunesLibrarySnapshot.url(for: repeated))
         let unrelated = try LoadedLibrary.load(snapshot: repeated, refreshITunes: true,
                                                previousITunesSnapshot: foreign,
+                                               fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                               drafts: .dataFolder(), source: .withoutDatabase,
                                                captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(unrelated.iTunesLibrary.status == .unavailable)
     }
@@ -86,6 +90,8 @@ struct ITunesPlaylistIntegrationTests {
         let good = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "이전 목록")])
         try good.save(for: fixture.database)
         let empty = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: true,
+                                           fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                           drafts: .dataFolder(), source: .withoutDatabase,
                                            captureITunes: { ITunesLibrarySnapshot() })
         #expect(empty.iTunesLibrary.status == .ready)
         #expect(empty.iTunesLibrary.tree.isEmpty)
@@ -97,6 +103,8 @@ struct ITunesPlaylistIntegrationTests {
         let previous = LoadedLibrary.ITunesFallback(source: fixture.root.appending(path: "previous.db"), contents: good)
         let failed = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: true,
                                             previousITunesSnapshot: previous,
+                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            drafts: .dataFolder(), source: .withoutDatabase,
                                             captureITunes: { ITunesLibrarySnapshot(playlists: [.init(id: "B", name: "새 목록")]) })
         #expect(failed.iTunesLibrary.status == .stale)
         #expect(failed.iTunesLibrary.index["itunes:A"]?.name == "이전 목록")
@@ -104,10 +112,10 @@ struct ITunesPlaylistIntegrationTests {
     }
 
     @Test func 순서와_곡_ID를_유지하고_목록은_잠그되_태그는_초안으로_고친다() {
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.itunes.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                                  playlistImportURL: nil, stagingSaver: { _ in })
-        let a = ReflectionCoordinatorTests.row("a"), b = ReflectionCoordinatorTests.row("b")
+        let a = ReflectionPresenterTests.row("a"), b = ReflectionPresenterTests.row("b")
         store.rowsByID = [a.id: a, b.id: b]
         store.rowsByUUID = [a.track.uuid: a, b.track.uuid: b]
         store.phase = .loaded
@@ -135,7 +143,7 @@ struct ITunesPlaylistIntegrationTests {
         #expect(store.sidebarTitle == "동기화 목록")
         #expect(store.editablePlaylistID == nil && !store.canReorderDisplayedTracks)
         #expect(!LibraryMenuAction.removeTracks.isEnabled(in: store))
-        #expect(store.trackDeleteTargets([a]).isEmpty)
+        #expect(store.deleteTargets([a]).isEmpty)
         store.removeSelectedFromPlaylist()
         store.addTracks([a], toPlaylist: "itunes:A")
         store.renamePlaylist("itunes:A", to: "바꿀 수 없음")
@@ -145,6 +153,6 @@ struct ITunesPlaylistIntegrationTests {
         #expect(store.tagDrafts[a.track.uuid]?.fields.comment == "메모 초안")
         #expect(store.displayRows.map(\.track.id) == [a.id, b.id, b.id])
         store.sidebar = .filter(.all)
-        #expect(store.trackDeleteTargets([a]).map(\.id) == [a.id])
+        #expect(store.deleteTargets([a]).map(\.id) == [a.id])
     }
 }

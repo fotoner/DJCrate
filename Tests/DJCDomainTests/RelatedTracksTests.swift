@@ -1,4 +1,5 @@
 import DJCDomain
+import Foundation
 import Testing
 
 @Suite("관련 곡 점수")

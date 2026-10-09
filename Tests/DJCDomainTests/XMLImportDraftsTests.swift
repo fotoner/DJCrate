@@ -48,7 +48,8 @@ struct XMLImportDraftsTests {
         let change = cueChange(library: [Mark(kind: .hot(0), start: 20, name: "A"), Mark(kind: .memory, start: 40, end: 44, name: "루프")],
                                xml: [Mark(kind: .hot(1), start: 25, name: "B"), Mark(kind: .memory, start: 40, end: 44, name: "루프")])
         let plan = XMLImportDrafts.plan(diff: diff(cues: change), selection: .all,
-                                        sources: ["101": source(track(), cues: cues)], layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        sources: ["101": source(track(),
+                                                                cues: cues)], layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         let draft = try #require(plan.cueDrafts.first)
         #expect(draft.trackUUID == "uuid-101")
         #expect(draft.base.compactMap(\.sourceID).sorted() == ["c1", "c2"])
@@ -69,7 +70,8 @@ struct XMLImportDraftsTests {
                                xml: [Mark(kind: .hot(0), start: 24, name: "새 A"), Mark(kind: .memory, start: 40, end: 48, name: "루프")])
         #expect(change.added.isEmpty && change.removed.isEmpty && change.modified.count == 2)
         let plan = XMLImportDrafts.plan(diff: diff(cues: change), selection: .all,
-                                        sources: ["101": source(track(), cues: cues)], layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        sources: ["101": source(track(),
+                                                                cues: cues)], layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         let draft = try #require(plan.cueDrafts.first)
         let hot = try #require(draft.cues.first { $0.sourceID == "c1" })
         #expect(hot.time == 24 && hot.name == "새 A" && hot.kind == .hot(0))
@@ -84,7 +86,8 @@ struct XMLImportDraftsTests {
         let change = cueChange(library: [Mark(kind: .memory, start: 0.5, name: "CUE(Auto)"), Mark(kind: .hot(0), start: 20, name: "")],
                                xml: [Mark(kind: .hot(0), start: 20, name: ""), Mark(kind: .hot(1), start: 30, name: "")])
         let plan = XMLImportDrafts.plan(diff: diff(cues: change), selection: .all,
-                                        sources: ["101": source(track(), cues: cues)], layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        sources: ["101": source(track(),
+                                                                cues: cues)], layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         let draft = try #require(plan.cueDrafts.first)
         #expect(draft.cues.compactMap(\.sourceID).sorted() == ["auto", "c1"])
         #expect(draft.cues.contains { $0.kind == .hot(1) && $0.time == 30 })
@@ -94,7 +97,8 @@ struct XMLImportDraftsTests {
         let xml = (0..<12).map { Mark(kind: .memory, start: Double($0 + 1), name: "") }
             + [Mark(kind: .hot(0), start: 50, name: ""), Mark(kind: .hot(0), start: 60, name: ""), Mark(kind: .hot(2), start: 900, name: "")]
         let plan = XMLImportDrafts.plan(diff: diff(cues: cueChange(library: [], xml: xml)), selection: .all,
-                                        sources: ["101": source(track())], layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        sources: ["101": source(track())], layout: PlaylistLayout(), playlistDraft: PlaylistDraft(),
+                                        newKey: { UUID().uuidString })
         let draft = try #require(plan.cueDrafts.first)
         #expect(draft.cues.filter { $0.kind == .memory }.count == 10)
         #expect(draft.cues.filter { $0.kind == .hot(0) }.map(\.time) == [50])
@@ -110,7 +114,7 @@ struct XMLImportDraftsTests {
         let xml = [GridSegment(start: 0.52, bpm: 120, firstBeatNumber: 1)]
         let plan = XMLImportDrafts.plan(diff: diff(grid: .init(library: [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)], xml: xml)),
                                         selection: .all, sources: ["101": source(track(), grid: original)],
-                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         let draft = try #require(plan.gridDrafts.first)
         #expect(draft.base == GridDraft(trackUUID: "uuid-101", grid: original).base)
         #expect(draft.segments == xml && draft.hasChanges)
@@ -122,7 +126,7 @@ struct XMLImportDraftsTests {
                                                                  GridSegment(start: 10.7, bpm: 128, firstBeatNumber: 1),
                                                                  GridSegment(start: 10.9, bpm: 130, firstBeatNumber: 1)])
         let plan = XMLImportDrafts.plan(diff: diff(grid: close), selection: .all, sources: ["101": source(track(), grid: grid())],
-                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(plan.gridDrafts.isEmpty && plan.losses.map(\.kind) == [.grid])
         #expect(plan.losses.first?.reason.contains("반 박") == true)
     }
@@ -130,11 +134,11 @@ struct XMLImportDraftsTests {
     @Test func 분석_파일이_없거나_BPM이_범위_밖이면_그리드는_손실() {
         let change = XMLLibraryDiff.GridChange(library: [], xml: [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)])
         let none = XMLImportDrafts.plan(diff: diff(grid: change), selection: .all, sources: ["101": source(track())],
-                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(none.gridDrafts.isEmpty && none.losses.map(\.kind) == [.grid])
         let fast = XMLLibraryDiff.GridChange(library: [], xml: [GridSegment(start: 0.5, bpm: 900, firstBeatNumber: 1)])
         let range = XMLImportDrafts.plan(diff: diff(grid: fast), selection: .all, sources: ["101": source(track(), grid: grid())],
-                                         layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                         layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(range.gridDrafts.isEmpty && range.losses.map(\.kind) == [.grid])
     }
 
@@ -143,7 +147,7 @@ struct XMLImportDraftsTests {
     @Test func 태그_초안은_지금_태그를_base로_바뀐_칸만() throws {
         let tags: [XMLLibraryDiff.TagChange] = [.init(key: .title, library: "제목", xml: "새 제목"), .init(key: .musicalKey, library: "8A", xml: "9A")]
         let plan = XMLImportDrafts.plan(diff: diff(tags: tags), selection: .all, sources: ["101": source(track())],
-                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         let draft = try #require(plan.tagDrafts.first)
         #expect(draft.base == TagFields(track: track()))
         #expect(draft.changedKeys == [.title, .musicalKey] && draft.fields.title == "새 제목" && draft.fields.musicalKey == "9A")
@@ -156,11 +160,11 @@ struct XMLImportDraftsTests {
                                                 .init(key: .title, library: "제목", xml: "")]
         // 쓰기 규칙을 확인하지 않은 상태(258)의 곡은 평점을 뺀다. 재생 목록에 든 곡은 R65(2026-10-09)로 열어 넣는다.
         let plan = XMLImportDrafts.plan(diff: diff(tags: tags), selection: .all, sources: ["101": source(track(status: 258), inPlaylist: true)],
-                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         let draft = try #require(plan.tagDrafts.first)
         #expect(draft.changedKeys == [.artist])
         let listed = XMLImportDrafts.plan(diff: diff(tags: tags), selection: .all, sources: ["101": source(track(), inPlaylist: true)],
-                                          layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                          layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(listed.tagDrafts.first?.changedKeys == [.artist, .rating] && listed.losses.count == 2)
         #expect(plan.losses.count == 3 && plan.losses.allSatisfy { $0.kind == .tag })
     }
@@ -171,7 +175,8 @@ struct XMLImportDraftsTests {
         let change = cueChange(library: [], xml: [Mark(kind: .memory, start: 1, name: "")])
         let tags: [XMLLibraryDiff.TagChange] = [.init(key: .artist, library: "A", xml: "B")]
         let plan = XMLImportDrafts.plan(diff: diff(cues: change, tags: tags), selection: .all,
-                                        sources: ["101": source(track(), existing: [.cue])], layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        sources: ["101": source(track(),
+                                                                existing: [.cue])], layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(plan.cueDrafts.isEmpty && plan.tagDrafts.count == 1)
         #expect(plan.skipped.count == 1 && plan.skipped[0].kind == .cue && plan.skipped[0].reason.contains("초안"))
     }
@@ -182,16 +187,17 @@ struct XMLImportDraftsTests {
         var selection = XMLImportDrafts.Selection.all
         selection.kinds = [.tag]
         let plan = XMLImportDrafts.plan(diff: diff(cues: change, tags: tags), selection: selection, sources: ["101": source(track())],
-                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(plan.cueDrafts.isEmpty && plan.tagDrafts.count == 1)
         selection = .all
         selection.trackKeys = ["999"]
         let none = XMLImportDrafts.plan(diff: diff(cues: change, tags: tags), selection: selection, sources: ["101": source(track())],
-                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(none.isEmpty)
         // 종류별로 고른 곡: 태그 탭에서 모두 빼면 큐만 만든다
         let perKind = XMLImportDrafts.plan(diff: diff(cues: change, tags: tags), selection: .init(tracksByKind: [.tag: []]),
-                                           sources: ["101": source(track())], layout: PlaylistLayout(), playlistDraft: PlaylistDraft())
+                                           sources: ["101": source(track())], layout: PlaylistLayout(), playlistDraft: PlaylistDraft(),
+                                           newKey: { UUID().uuidString })
         #expect(perKind.cueDrafts.count == 1 && perKind.tagDrafts.isEmpty)
     }
 
@@ -208,7 +214,8 @@ struct XMLImportDraftsTests {
                                                      libraryEntries: [], unmatchedEntries: 0),
                        XMLLibraryDiff.PlaylistChange(kind: .missing, path: ["새 목록"], libraryID: nil, xmlEntries: [],
                                                      libraryEntries: [], unmatchedEntries: 0)]
-        let plan = XMLImportDrafts.plan(diff: diff(playlists: missing), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft())
+        let plan = XMLImportDrafts.plan(diff: diff(playlists: missing), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft(),
+                                        newKey: { UUID().uuidString })
         let draft = try #require(plan.playlistDraft)
         let projected = draft.project(onto: layout).layout
         let folder = try #require(projected.children(of: "f1").first)
@@ -223,7 +230,8 @@ struct XMLImportDraftsTests {
         let layout = PlaylistLayout([(item("p1", "A", tracks: ["101", "102", "103"]), 1)])
         let changed = [XMLLibraryDiff.PlaylistChange(kind: .changed, path: ["A"], libraryID: "p1", xmlEntries: ["102", "101"],
                                                      libraryEntries: ["101", "102", "103"], unmatchedEntries: 0)]
-        let plan = XMLImportDrafts.plan(diff: diff(playlists: changed), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft())
+        let plan = XMLImportDrafts.plan(diff: diff(playlists: changed), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft(),
+                                        newKey: { UUID().uuidString })
         let draft = try #require(plan.playlistDraft)
         #expect(draft.project(onto: layout).layout.item("p1")?.trackIDs == ["102", "101"])
     }
@@ -233,7 +241,8 @@ struct XMLImportDraftsTests {
         let layout = PlaylistLayout([(item("p1", "A", tracks: ["101", "102"]), 1)])
         let changed = [XMLLibraryDiff.PlaylistChange(kind: .changed, path: ["A"], libraryID: "p1", xmlEntries: ["102"],
                                                      libraryEntries: ["101", "102"], unmatchedEntries: 1)]
-        let plan = XMLImportDrafts.plan(diff: diff(playlists: changed), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft())
+        let plan = XMLImportDrafts.plan(diff: diff(playlists: changed), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft(),
+                                        newKey: { UUID().uuidString })
         #expect(plan.playlistDraft == nil)
         #expect(plan.losses.count == 1 && plan.losses[0].reason.contains("1"))
     }
@@ -242,7 +251,7 @@ struct XMLImportDraftsTests {
         let missing = [XMLLibraryDiff.PlaylistChange(kind: .missing, path: ["새"], libraryID: nil, xmlEntries: ["101"],
                                                      libraryEntries: [], unmatchedEntries: 2)]
         let plan = XMLImportDrafts.plan(diff: diff(playlists: missing), selection: .all, sources: [:], layout: PlaylistLayout(),
-                                        playlistDraft: PlaylistDraft())
+                                        playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(plan.playlistLists == 1)
         #expect(plan.losses.count == 1 && plan.losses[0].kind == .playlist && plan.losses[0].reason.contains("2"))
     }
@@ -251,7 +260,8 @@ struct XMLImportDraftsTests {
         let layout = PlaylistLayout([(item("p1", "A", tracks: ["101", "102"]), 1)])
         let changed = [XMLLibraryDiff.PlaylistChange(kind: .changed, path: ["A"], libraryID: "p1", xmlEntries: ["101", "102", "103"],
                                                      libraryEntries: ["101", "102"], unmatchedEntries: 0)]
-        let plan = XMLImportDrafts.plan(diff: diff(playlists: changed), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft())
+        let plan = XMLImportDrafts.plan(diff: diff(playlists: changed), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft(),
+                                        newKey: { UUID().uuidString })
         let draft = try #require(plan.playlistDraft)
         #expect(draft.steps.map(\.edit) == [.addTracks(playlist: .id("p1"), contentIDs: ["103"])])
         #expect(draft.project(onto: layout).layout.item("p1")?.trackIDs == ["101", "102", "103"])
@@ -261,7 +271,8 @@ struct XMLImportDraftsTests {
         let layout = PlaylistLayout([(PlaylistLayout.Item(id: "s1", name: "스마트", isSmart: true), 1)])
         let missing = [XMLLibraryDiff.PlaylistChange(kind: .missing, path: ["스마트"], libraryID: nil, xmlEntries: ["101"],
                                                      libraryEntries: [], unmatchedEntries: 0)]
-        let plan = XMLImportDrafts.plan(diff: diff(playlists: missing), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft())
+        let plan = XMLImportDrafts.plan(diff: diff(playlists: missing), selection: .all, sources: [:], layout: layout, playlistDraft: PlaylistDraft(),
+                                        newKey: { UUID().uuidString })
         #expect(plan.playlistDraft == nil)
         #expect((plan.losses + plan.skipped).map(\.reason) == [XMLImportDrafts.smartListReason])
     }
@@ -275,7 +286,8 @@ struct XMLImportDraftsTests {
                                                      unmatchedEntries: 0),
                        XMLLibraryDiff.PlaylistChange(kind: .changed, path: ["B"], libraryID: "p2", xmlEntries: [], libraryEntries: ["101"],
                                                      unmatchedEntries: 0)]
-        let plan = XMLImportDrafts.plan(diff: diff(playlists: changes), selection: .all, sources: [:], layout: layout, playlistDraft: existing)
+        let plan = XMLImportDrafts.plan(diff: diff(playlists: changes), selection: .all, sources: [:], layout: layout, playlistDraft: existing,
+                                        newKey: { UUID().uuidString })
         #expect(plan.playlistDraft == nil)
         #expect(plan.losses.map(\.kind) == [.playlist] && plan.skipped.map(\.kind) == [.playlist])
     }

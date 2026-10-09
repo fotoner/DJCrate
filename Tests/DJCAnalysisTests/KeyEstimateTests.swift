@@ -1,6 +1,6 @@
 import AVFoundation
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 @testable import DJCAnalysis
 import Testing

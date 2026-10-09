@@ -132,9 +132,7 @@ enum PlaylistLab {
         guard let old = value(after: "--old", in: args), let new = value(after: "--new", in: args),
               let editsPath = value(after: "--edits", in: args), let work = value(after: "--work", in: args) else { throw UsageError() }
         let fm = FileManager.default
-        let folder = URL(filePath: work)
-        try? fm.removeItem(at: folder)
-        try fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let folder = try LabWorkFolder.reset(work, attributes: [.posixPermissions: 0o700])
         let copy = folder.appending(path: "master.db")
         try fm.copyItem(at: URL(filePath: old), to: copy)
         if let xml = value(after: "--old-xml", in: args) { try fm.copyItem(at: URL(filePath: xml), to: folder.appending(path: "masterPlaylists6.xml")) }

@@ -1,6 +1,6 @@
 import DJCDomain
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -142,7 +142,7 @@ extension RekordboxTagWriterTests {
     @Test func 막힌_태그와_변경_없는_큐의_결과를_함께_남긴다() throws {
         let (fixture, track) = try library()
         let tags = try draft(fixture, track) { $0.albumArtist = "공유 앨범 변경" }
-        let cue = CueDraft(trackUUID: track.uuid, rekordboxCues: [])
+        let cue = CueDraft(trackUUID: track.uuid)
         let report = try write(fixture, tags: [tags], drafts: [cue])
         #expect(report.tagBlocked.count == 1 && report.outcomes.first?.status == .unchanged)
         #expect(report.backup == nil)

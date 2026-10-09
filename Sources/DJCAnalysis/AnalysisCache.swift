@@ -1,4 +1,5 @@
 import DJCDomain
+import DJCEnvironment
 import Foundation
 
 /// 곡마다 한 번 계산하면 되는 분석 결과(그리드 추정·크로마) 캐시. 파일이 바뀌면(크기·수정 시각) 다시 계산한다.

@@ -1,25 +1,14 @@
 import CryptoKit
 import Darwin
+import DJCDomain
 import Foundation
 import RekordboxKit
 
 /// 원문·경로를 오류에 담지 않는다. 스냅샷에는 클라우드 토큰이 들어 있다.
 public enum UsbSyncSnapshotError: Error { case unavailable, changed, unsafePath }
 
-/// 목록을 읽기 전후와 작업 사본을 만들 때 같은 파일인지 확인하는 값이다.
-public struct UsbSyncSnapshotProvenance: Sendable, Equatable {
-    public let sourceURL: URL
-    public let snapshotTime: String
-    private let fingerprint: Fingerprint
-
-    private struct Fingerprint: Sendable, Equatable {
-        let device: Int32
-        let inode: UInt64
-        let size: Int64
-        let modified: Date
-        let digest: Data
-    }
-
+/// 출처 값(`UsbSyncSnapshotProvenance`)은 DJCDomain. 여기서는 파일을 읽어 지문을 뜨고 같은 파일인지 확인한다.
+extension UsbSyncSnapshotProvenance {
     public static func capture(_ source: URL) throws -> Self {
         try refuseLive(source)
         let fingerprint = try readFingerprint(source)
@@ -30,16 +19,16 @@ public struct UsbSyncSnapshotProvenance: Sendable, Equatable {
         return Self(sourceURL: source, snapshotTime: time, fingerprint: fingerprint)
     }
 
-    fileprivate func matches(_ source: URL) throws -> Bool {
+    func matches(_ source: URL) throws -> Bool {
         try Self.readFingerprint(source, expected: fingerprint) == fingerprint
     }
 
-    fileprivate func matchesCopy(_ copy: URL) throws -> Bool {
+    func matchesCopy(_ copy: URL) throws -> Bool {
         let copied = try Self.readFingerprint(copy)
         return copied.size == fingerprint.size && copied.digest == fingerprint.digest
     }
 
-    fileprivate func copy(to destination: URL) throws {
+    func copy(to destination: URL) throws {
         let fd = open(sourceURL.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
         guard fd >= 0 else { throw UsbSyncSnapshotError.unavailable }
         let input = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
@@ -127,23 +116,12 @@ public struct UsbSyncSnapshotProvenance: Sendable, Equatable {
     }
 }
 
-/// 작업·시트가 강하게 소유하는 사본. 캐시된 job의 약한 참조만으로는 파일을 남기지 않는다.
-public final class UsbSyncSnapshotLease: Sendable, Equatable {
-    public let database: URL
-    public let provenance: UsbSyncSnapshotProvenance
-    private let directory: URL
-    private let id = UUID()
-
+/// 사본 소유권(`UsbSyncSnapshotLease`)은 DJCDomain. 여기서는 사본을 뜨고, 놓으면 그 폴더를 지운다.
+extension UsbSyncSnapshotLease {
     public static var defaultDirectory: URL {
         let environment = ProcessInfo.processInfo.environment
         if let home = environment["DJC_HOME"], !home.isEmpty { return URL(filePath: home).appending(path: "usb-sync-snapshots") }
         return FileManager.default.temporaryDirectory.appending(path: "djc-usb-sync-snapshots")
-    }
-
-    private init(database: URL, provenance: UsbSyncSnapshotProvenance, directory: URL) {
-        self.database = database
-        self.provenance = provenance
-        self.directory = directory
     }
 
     public static func capture(_ provenance: UsbSyncSnapshotProvenance, directory: URL = defaultDirectory) throws -> UsbSyncSnapshotLease {
@@ -170,7 +148,7 @@ public final class UsbSyncSnapshotLease: Sendable, Equatable {
         try fm.setAttributes([.posixPermissions: 0o400], ofItemAtPath: copy.path)
         try Task.checkCancellation()
         keep = true
-        return UsbSyncSnapshotLease(database: copy, provenance: provenance, directory: root)
+        return UsbSyncSnapshotLease(database: copy, provenance: provenance, id: UUID(), release: { try? FileManager.default.removeItem(at: root) })
     }
 
     private static func checkDirectory(_ directory: URL) throws {
@@ -190,25 +168,4 @@ public final class UsbSyncSnapshotLease: Sendable, Equatable {
         try fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     }
 
-    public var reference: UsbSyncSnapshotReference { UsbSyncSnapshotReference(self, id: id) }
-    public static func == (lhs: UsbSyncSnapshotLease, rhs: UsbSyncSnapshotLease) -> Bool { lhs.id == rhs.id }
-    deinit { try? FileManager.default.removeItem(at: directory) }
-}
-
-/// 초안·lastExports에 남겨도 사본을 붙잡지 않는 출처 참조다.
-public final class UsbSyncSnapshotReference: @unchecked Sendable, Equatable {
-    public let database: URL
-    public let provenance: UsbSyncSnapshotProvenance
-    private let id: UUID
-    private let lock = NSLock()
-    private weak var owner: UsbSyncSnapshotLease?
-
-    fileprivate init(_ lease: UsbSyncSnapshotLease, id: UUID) {
-        database = lease.database
-        provenance = lease.provenance
-        self.id = id
-        owner = lease
-    }
-    public var lease: UsbSyncSnapshotLease? { lock.withLock { owner } }
-    public static func == (lhs: UsbSyncSnapshotReference, rhs: UsbSyncSnapshotReference) -> Bool { lhs.id == rhs.id }
 }

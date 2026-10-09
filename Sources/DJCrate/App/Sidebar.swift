@@ -1,7 +1,5 @@
-import RekordboxKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
 import SwiftUI
 
@@ -214,14 +212,15 @@ extension View {
 /// 목록 위 작업 줄: 추가한 곡(추가·빼기·XML 내보내기), BPM 없는 곡(일괄 추정).
 struct ListActionBar: View {
     let store: LibraryStore
+    @Environment(\.reflection) private var reflection
 
     var body: some View {
         switch store.sidebar {
         case .staged:
             bar {
-                let selectedStaged = store.selectedRows.filter(\.isStaged)
+                let selectedStaged = ReflectionTargets.add(store.selectedRows)
                 let addTargets = selectedStaged.isEmpty ? store.stagedRows : selectedStaged
-                Button { DirectWritePanels.addTracks(store: store, rows: addTargets) } label: {
+                Button { reflection?.startAddTracks(rows: addTargets) } label: {
                     Label(store.isWritingRekordbox ? LocalizedStringResource.ui("rekordbox에 쓰는 중…") : .ui("rekordbox에 바로 넣기 (\(addTargets.count)곡)"),
                           systemImage: "tray.and.arrow.down")
                 }
@@ -245,7 +244,7 @@ struct ListActionBar: View {
             bar {
                 let targets = store.selection.isEmpty ? store.displayRows : store.selectedRows
                 let playlistEdits = store.playlistDraft.steps.count
-                Button { DirectWritePanels.write(store: store, rows: targets) } label: {
+                Button { reflection?.startWrite(rows: targets) } label: {
                     Label(playlistEdits > 0 ? LocalizedStringResource.ui("rekordbox에 쓰기 (\(targets.count)곡 · 재생 목록 \(playlistEdits)건)")
                             : .ui("rekordbox에 쓰기 (\(targets.count)곡)"),
                           systemImage: "square.and.arrow.up.on.square")
@@ -265,7 +264,7 @@ struct ListActionBar: View {
                 }
                 .disabled(targets.isEmpty)
                 .help(.ui("큐·그리드 초안을 rekordbox에서 가져올 XML로 만듭니다."))
-                Button { DirectWritePanels.restoreLatest(store: store) } label: {
+                Button { reflection?.startRestoreLatest() } label: {
                     Label(.ui("쓰기 전으로 복원…"), systemImage: "arrow.uturn.backward")
                 }
                 .disabled(store.isWritingRekordbox || !store.hasWriteBackup || store.writesBlockedBySheet)
@@ -306,7 +305,7 @@ struct ListActionBar: View {
                             .foregroundStyle(UIColors.draft.color)
                     }
                     if node.blockedReason != nil {
-                        Button(.ui("현재 목록 비교…")) { DraftRecoveryPanels.recoverPlaylists(store: store, playlist: id) }
+                        Button(.ui("현재 목록 비교…")) { reflection?.startPlaylistRecovery(playlist: id) }
                             .fixedSize()
                             .disabled(store.isWritingRekordbox || store.isRecoveringDraft || store.writeTask != nil)
                     } else {

@@ -4,6 +4,8 @@ import SwiftUI
 /// 메뉴 '재생 목록'(#39·#40). 바꾼 것은 모두 초안이고 반영(⇧⌘E) 때 rekordbox에 쓴다.
 struct PlaylistCommands: View {
     let store: LibraryStore?
+    /// 막힌 재생 목록 비교 시트를 여는 rekordbox 쓰기 화면 쪽
+    var reflection: ReflectionCoordinator?
 
     private var enabled: Bool {
         guard let store, case .loaded = store.phase else { return false }
@@ -41,7 +43,7 @@ struct PlaylistCommands: View {
         Button(.ui("재생 목록 초안 버리기")) { if let store { PlaylistPanels.discardAll(store: store) } }
             .disabled(!enabled || store?.hasPlaylistDrafts != true)
         if let store, store.blockedPlaylistEditCount > 0 {
-            Button(.ui("재생 목록 현재값 가져오기…")) { DraftRecoveryPanels.recoverPlaylists(store: store) }
+            Button(.ui("재생 목록 현재값 가져오기…")) { reflection?.startPlaylistRecovery() }
                 .disabled(!enabled)
         }
     }

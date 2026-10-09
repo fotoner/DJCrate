@@ -1,7 +1,10 @@
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 @testable import djc
@@ -23,8 +26,8 @@ struct UsbEditCommandTests {
     func parsesSyncPlaylistAndRequiresLocal() throws {
         let edits = try UsbCommands.editList(Data(#"[{"syncPlaylist":{"playlist":"new:sync","localContentIDs":["103","101","103"]}}]"#.utf8))
         #expect(edits == [.syncPlaylist(playlist: .new("sync"), localContentIDs: ["103", "101", "103"])])
-        #expect(UsbCommands.needsLocal(edits))
-        #expect(UsbCommands.needsLocal([.syncPlaylist(playlist: .id("1"), localContentIDs: [])]))
+        #expect(UsbEditSession.needsLocal(edits))
+        #expect(UsbEditSession.needsLocal([.syncPlaylist(playlist: .id("1"), localContentIDs: [])]))
     }
 
     @Test("편집 파일: UsbLibraryEdit 배열(재생 목록은 {\"playlist\":{\"edit\":…}})")
@@ -40,8 +43,8 @@ struct UsbEditCommandTests {
         ])
         #expect(try UsbCommands.editList(Data(#"[{"addTracks":{"localContentIDs":["101"],"playlist":"1"}}]"#.utf8))
             == [.addTracks(localContentIDs: ["101"], playlist: .id("1"))])
-        #expect(UsbCommands.needsLocal(edits))
-        #expect(!UsbCommands.needsLocal(Array(edits.prefix(5))))
+        #expect(UsbEditSession.needsLocal(edits))
+        #expect(!UsbEditSession.needsLocal(Array(edits.prefix(5))))
         do {
             _ = try UsbCommands.editList(Data(#"[{"playlist":{"_0":{"rename":{"playlist":"1","name":"x"}}}}]"#.utf8))
             Issue.record("받아들임")
@@ -94,8 +97,9 @@ struct UsbEditCommandTests {
         try env.export(tracks: ["101", "102"])
         env.usb.volume = FakeUsbVolume.physicalFAT32()
         let session = UsbEditSession(root: env.usb.usbURL, database: nil, share: nil, guard: env.usb.writeGuard(), paths: env.usb.paths,
-                                     fileSystem: env.usb.fileSystem(), localCopies: env.usb.home.appending(path: "usb-snapshots"),
-                                     drafts: UsbDraftStore(directory: env.usb.home.appending(path: "usb-drafts")), appVersion: { "7.2.18" })
+                                     engine: .live(fileSystem: env.usb.fileSystem()), device: .testing(),
+                                     localCopies: env.usb.home.appending(path: "usb-snapshots"),
+                                     drafts: .live(directory: env.usb.home.appending(path: "usb-drafts")), now: { Date() })
         do {
             _ = try session.write([.removeTracks(usbContentIDs: [2])], options: UsbWriteOptions(), progress: { _ in }, isCancelled: { false })
             Issue.record("막히지 않음")

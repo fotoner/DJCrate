@@ -1,16 +1,15 @@
+import DJCApplication
 import DJCDomain
 import Foundation
 
 extension DeckModel {
-    var currentDraftSaveFailures: [DraftWriter.Failure] {
+    var currentDraftSaveFailures: [DraftSaveFailure] {
         guard let uuid = row?.track.uuid else { return [] }
-        // 목록에서 복구하거나 되돌려 덱 밖에서 해소된 실패는 남기지 않는다.
-        let reported = draftSaveFailures.filter { $0.trackUUID == uuid && !storage.draftSaveResolved($0) }
-        let known = storage.draftSaveFailures(uuid)
-        return reported + known.filter { failure in !reported.contains { $0.kind == failure.kind } }
+        // 목록에서 복구하거나 되돌려 덱 밖에서 해소된 실패는 남기지 않는다(유스케이스).
+        return storage.drafts.currentFailures(uuid, reported: draftSaveFailures)
     }
 
-    func draftSaveCompletion(_ kind: DraftWriter.Kind, uuid: String) -> @Sendable (DraftWriter.Failure?) -> Void {
+    func draftSaveCompletion(_ kind: DraftSaveKind, uuid: String) -> @Sendable (DraftSaveFailure?) -> Void {
         let key = "\(kind):\(uuid)"
         let revision = (draftSaveRevisions[key] ?? 0) + 1
         draftSaveRevisions[key] = revision
@@ -24,15 +23,15 @@ extension DeckModel {
     }
 
     func persistGrid(_ draft: GridDraft) {
-        storage.saveGridDraft(draft, draftSaveCompletion(.grid, uuid: draft.trackUUID))
+        storage.drafts.saveGrid(draft, completion: draftSaveCompletion(.grid, uuid: draft.trackUUID))
     }
 
     func removeGridDraft(_ uuid: String) {
-        storage.removeGridDraft(uuid, draftSaveCompletion(.grid, uuid: uuid))
+        storage.drafts.removeGrid(uuid, completion: draftSaveCompletion(.grid, uuid: uuid))
     }
 
     func persistGain(_ gain: Double?, uuid: String) {
-        storage.saveGain(gain, uuid, draftSaveCompletion(.gain, uuid: uuid))
+        storage.drafts.saveGain(gain, trackUUID: uuid, completion: draftSaveCompletion(.gain, uuid: uuid))
     }
 
     func retryDraftSaves() {
@@ -42,11 +41,11 @@ extension DeckModel {
         // 실패한 마지막 입력(저장이든 지우기든)을 그대로 다시 저장한다.
         if failures.contains(where: { $0.kind == .cue }) {
             if let draft, draft.trackUUID == uuid { persist(draft) }
-            else { storage.retryDraftSave(.cue, uuid, draftSaveCompletion(.cue, uuid: uuid)) }
+            else { storage.drafts.retry(.cue, trackUUID: uuid, completion: draftSaveCompletion(.cue, uuid: uuid)) }
         }
         if failures.contains(where: { $0.kind == .grid }) {
             if let gridDraft, gridDraft.trackUUID == uuid { persistGrid(gridDraft) }
-            else { storage.retryDraftSave(.grid, uuid, draftSaveCompletion(.grid, uuid: uuid)) }
+            else { storage.drafts.retry(.grid, trackUUID: uuid, completion: draftSaveCompletion(.grid, uuid: uuid)) }
         }
         // 게인은 곡을 고를 때 바로 읽으므로(`loadGain`) 덱의 값이 마지막 입력이다.
         if failures.contains(where: { $0.kind == .gain }) { persistGain(gainDraft, uuid: uuid) }

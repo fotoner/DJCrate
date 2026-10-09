@@ -48,6 +48,19 @@ struct StateWaitingTests {
         #expect(checks == 6, "포기 조건이 참이 된 다음 한 번만 더 본다")
     }
 
+    /// "일어나지 않음"을 보기 전에 메인 액터에 이미 쌓인 일(이어 띄운 일까지)을 돌린다.
+    @Test func 메인_액터에_쌓인_일을_돌린_뒤_돌아온다() async {
+        @MainActor final class Steps { var all: [Int] = [] }
+        let steps = Steps()
+        Task { @MainActor in
+            steps.all.append(1)
+            Task { @MainActor in steps.all.append(2) }
+        }
+        #expect(steps.all.isEmpty)
+        await drainMainActor()
+        #expect(steps.all == [1, 2])
+    }
+
     /// 판정이 영영 오지 않는 잘못된 구현에서도 시험이 멈춰 있지 않게 안전망 시간이 지나면 거짓을 돌려준다.
     @Test func 안전망_시간이_지나면_거짓을_돌려준다() async {
         #expect(!(await waitForState(safetyNet: .milliseconds(100), until: { false })))

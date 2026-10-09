@@ -1,9 +1,9 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
-import RekordboxKit
 
-/// USB 라이브러리 명령(읽기·계획·내보내기·고치기·회복)
+/// USB 라이브러리 명령(읽기·계획·내보내기·고치기·회복). 흐름은 앱과 같은 유스케이스(`UsbWriteService`·`UsbRead`, `CLIComposition`)가 하고
+/// 여기서는 인자를 풀고 결과를 찍는다
 enum UsbCommands {
     static let all: [Command] = [
         Command("usb-info", String(ui: "<볼륨|폴더> [--json]"),
@@ -56,19 +56,20 @@ enum UsbCommands {
                               allowPhysical: args.contains("--allow-physical"))
     }
 
-    static func restore(_ args: [String], paths: @autoclosure () -> UsbWritePaths = .default) async throws {
+    static func restore(_ args: [String], paths: @autoclosure () -> UsbWritePaths = CLIComposition.usbWritePaths) async throws {
         let request = try restoreRequest(args)
-        let report = try UsbWriter.restore(root: UsbRoot(URL(filePath: request.volume)), paths: paths(),
-                                           backup: request.backup.map { URL(filePath: $0) }, guard: .system(physicalWrite: request.allowPhysical),
-                                           discardDeviceChanges: request.discardDeviceChanges, confirmName: request.confirmName,
-                                           dryRun: request.dryRun)
+        let report = try CLIComposition.usb(allowPhysical: request.allowPhysical, paths: paths())
+            .restore(root: URL(filePath: request.volume), backup: request.backup.map { URL(filePath: $0) },
+                     discardDeviceChanges: request.discardDeviceChanges, confirmName: request.confirmName, dryRun: request.dryRun,
+                     expectedVolumeUUID: nil)
         printReport(report)
     }
 
-    static func recover(_ args: [String], paths: @autoclosure () -> UsbWritePaths = .default) async throws {
+    static func recover(_ args: [String], paths: @autoclosure () -> UsbWritePaths = CLIComposition.usbWritePaths) async throws {
         let request = try recoverRequest(args)
-        let report = try UsbWriter.recover(root: UsbRoot(URL(filePath: request.volume)), paths: paths(), guard: .system(physicalWrite: request.allowPhysical),
-                                           discardTemp: request.discardTemp, confirmName: request.confirmName)
+        let report = try CLIComposition.usb(allowPhysical: request.allowPhysical, paths: paths())
+            .recover(root: URL(filePath: request.volume), discardTemp: request.discardTemp, confirmName: request.confirmName,
+                     expectedVolumeUUID: nil)
         printReport(report)
     }
 
@@ -89,9 +90,9 @@ enum UsbCommands {
     /// rekordbox 라이브러리·DJCrate 데이터 폴더(또는 그 아래)면 거부한다
     static func rejectLiveLibrary(_ volume: String) throws {
         let absolute = volume.hasPrefix("/") ? volume : FileManager.default.currentDirectoryPath + "/" + volume
-        let live = [NSHomeDirectory() + "/Library/Pioneer", LibrarySnapshot.rekordboxDirectory.path, DJCIdentity.supportDirectory.path]
+        let live = CLIComposition.liveLibraryFolders
         let candidates = [(absolute as NSString).standardizingPath]
-            + (live.contains { absolute.hasPrefix($0) } ? [] : [UsbScratchPath.realPath(absolute)].compactMap { $0 })
+            + (live.contains { absolute.hasPrefix($0) } ? [] : [CLIComposition.realPath(absolute)].compactMap { $0 })
         for path in candidates where live.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) {
             throw UsbError.writeRefused([UsbBlock(code: "liveLibrary", scope: .volume,
                                                   message: String(ui: "rekordbox 라이브러리나 DJCrate 데이터 폴더는 USB가 아닙니다. USB 볼륨의 맨 위 폴더를 주세요"))])
@@ -169,22 +170,18 @@ enum UsbCommands {
     }
 
     /// 빈 USB에 내보낸다. 진행은 표준 오류로, 요약은 표준 출력으로(첫 줄은 스냅샷 시각). 곡 제목·경로는 찍지 않는다
-    static func export(_ args: [String], paths: @autoclosure () -> UsbWritePaths = .default) async throws {
+    static func export(_ args: [String], paths: @autoclosure () -> UsbWritePaths = CLIComposition.usbWritePaths) async throws {
         let request = try exportRequest(args)
         // --db를 주지 않으면 가장 최근 스냅샷(읽기만 한다. 새로 뜨거나 정리하지 않는다)
-        let database = try request.database.map { URL(filePath: $0) } ?? LibrarySnapshot.latest()
-        let share = request.share.map { URL(filePath: $0) } ?? LibrarySnapshot.rekordboxDirectory.appending(path: "share")
-        var options = UsbExportOptions()
-        options.formats = request.formats
-        options.dryRun = request.dryRun
-        options.confirmName = request.confirmName
-        options.verifyAudio = request.verifyAudio
-        options.settingsFolder = request.settingsFolder.map { URL(filePath: $0) }
-        options.snapshotTime = request.snapshotTime
+        let database = try request.database.map { URL(filePath: $0) } ?? CLIComposition.latestSnapshot()
+        let share = request.share.map { URL(filePath: $0) } ?? CLIComposition.liveShare
+        let options = UsbExportOptions(formats: request.formats, dryRun: request.dryRun, confirmName: request.confirmName,
+                                       verifyAudio: request.verifyAudio, settingsFolder: request.settingsFolder.map { URL(filePath: $0) },
+                                       snapshotTime: request.snapshotTime)
         let selection: UsbSelection = request.playlists.isEmpty ? .tracks(request.tracks)
             : (request.tracks.isEmpty ? .playlists(request.playlists) : .both(playlists: request.playlists, tracks: request.tracks))
-        let session = UsbExportSession(database: database, share: share, root: URL(filePath: request.volume),
-                                       guard: .system(physicalWrite: request.allowPhysical), paths: paths())
+        let session = CLIComposition.usb(allowPhysical: request.allowPhysical, paths: paths())
+            .exportSession(database: database, share: share, root: URL(filePath: request.volume))
         let printer = ProgressPrinter()
         let report: UsbWriteReport
         do {
@@ -325,17 +322,8 @@ enum UsbCommands {
         }
     }
 
-    static func needsLocal(_ edits: [UsbLibraryEdit]) -> Bool {
-        edits.contains {
-            switch $0 {
-            case .addTracks, .refreshTracks, .syncPlaylist, .syncSelection: true
-            case .removeTracks, .playlist: false
-            }
-        }
-    }
-
     /// USB 안을 고친다. 요약은 표준 출력(첫 줄 스냅샷 시각), 진행은 표준 오류. 곡 제목·경로는 찍지 않는다
-    static func edit(_ args: [String], paths: @autoclosure () -> UsbWritePaths = .default) async throws {
+    static func edit(_ args: [String], paths: @autoclosure () -> UsbWritePaths = CLIComposition.usbWritePaths) async throws {
         let request = try editRequest(args)
         let root = URL(filePath: request.volume)
         let edits: [UsbLibraryEdit]
@@ -343,16 +331,15 @@ enum UsbCommands {
             edits = try editList(Data(contentsOf: URL(filePath: file)))
         } else {
             // 초안에 곡 더하기·갱신·동기화가 있는지 보려고 볼륨 번호로 초안만 읽는다(USB 파일은 열지 않는다)
-            let key = try UsbEditSession.volumeKey(try UsbVolumes.info(root: root))
-            edits = try UsbDraftStore().load(volumeKey: key)?.edits ?? []
+            let key = try UsbEditSession.volumeKey(try CLIComposition.usbDevice.volumeInfo(root))
+            edits = try CLIComposition.usbDrafts.load(key)?.edits ?? []
         }
         // --db를 주지 않으면 곡 더하기·갱신·동기화가 있을 때만 가장 최근 스냅샷을 읽기만 한다(새로 뜨거나 정리하지 않는다)
-        let local = needsLocal(edits)
-        let database = try request.database.map { URL(filePath: $0) } ?? (local ? LibrarySnapshot.latest() : nil)
-        let share = request.share.map { URL(filePath: $0) } ?? (local ? LibrarySnapshot.rekordboxDirectory.appending(path: "share") : nil)
+        let local = UsbEditSession.needsLocal(edits)
+        let database = try request.database.map { URL(filePath: $0) } ?? (local ? CLIComposition.latestSnapshot() : nil)
+        let share = request.share.map { URL(filePath: $0) } ?? (local ? CLIComposition.liveShare : nil)
         let options = UsbWriteOptions(dryRun: request.dryRun, confirmName: request.confirmName)
-        let session = UsbEditSession(root: root, database: database, share: share, guard: .system(physicalWrite: request.allowPhysical),
-                                     paths: paths())
+        let session = CLIComposition.usb(allowPhysical: request.allowPhysical, paths: paths()).editSession(root: root, database: database, share: share)
         let printer = ProgressPrinter()
         let written: (UsbEditResult, UsbWriteReport?)
         do {
@@ -449,10 +436,10 @@ enum UsbCommands {
     }
 
     /// Device Library만 있는 USB에 OneLibrary를 더한다. 요약은 표준 출력, 진행은 표준 오류. 곡 제목·경로는 찍지 않는다
-    static func migrate(_ args: [String], paths: @autoclosure () -> UsbWritePaths = .default) async throws {
+    static func migrate(_ args: [String], paths: @autoclosure () -> UsbWritePaths = CLIComposition.usbWritePaths) async throws {
         let request = try migrateRequest(args)
         let options = UsbWriteOptions(dryRun: request.dryRun, confirmName: request.confirmName)
-        let session = UsbMigrateSession(root: URL(filePath: request.volume), guard: .system(physicalWrite: request.allowPhysical), paths: paths())
+        let session = CLIComposition.usb(allowPhysical: request.allowPhysical, paths: paths()).migrateSession(root: URL(filePath: request.volume))
         let printer = ProgressPrinter()
         do {
             let (result, report) = try session.write(options: options, progress: { printer.show($0) }, isCancelled: { false })
@@ -497,9 +484,10 @@ enum UsbCommands {
             guard FileManager.default.fileExists(atPath: target, isDirectory: &directory), directory.boolValue else {
                 throw ReadFailure("not_found", String(ui: "USB 폴더를 찾지 못했습니다. 볼륨이나 폴더 경로를 확인하세요"))
             }
-            let volume = try UsbRead.volume(for: root)
-            let scratch = DJCPaths.usbSnapshots.appending(path: "info-\(UUID().uuidString)")
-            result = try UsbRead.info(root: root, scratch: scratch, volume: volume)
+            let reader = CLIComposition.usbRead
+            let volume = try reader.volume(for: root)
+            let scratch = CLIComposition.usbSnapshots.appending(path: "info-\(UUID().uuidString)")
+            result = try reader.info(root: root, scratch: scratch, volume: volume)
         } catch let UsbError.writeRefused(blocks) {
             throw ReadFailure(blocks.first?.code ?? "read_failed", blocks.map(\.message).joined(separator: "\n"))
         }

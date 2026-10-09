@@ -2,9 +2,10 @@
 import AppKit
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import Testing
+import UniformTypeIdentifiers
 
 /// 목록 한 번 클릭은 선택만, 덱에 올리기는 불러오기 명령(더블클릭·⌘→·오른쪽 클릭·끌어다 놓기)으로만 한다(#93).
 @Suite("목록 선택과 덱 불러오기")
@@ -17,15 +18,16 @@ struct DeckLoadTests {
     }
 
     func loadedStore(_ fixture: RekordboxFixture) async -> (LibraryStore, LoadLog) {
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
         let log = LoadLog()
         store.onLoadToDeck = { log.rows.append($0) }
         await store.load(snapshot: fixture.database)
         return (store, log)
     }
 
-    /// 선택 뒤 덱이 따라오던 지연(150ms)보다 넉넉히 기다린다.
-    func settle() async { try? await Task.sleep(for: .milliseconds(300)) }
+    /// 선택이 덱에 닿는 길은 없다(덱은 불러오기 명령으로만, #93). 그래도 선택 변경이 메인 액터에 일을 남겼다면 그 일까지 돌린 뒤 본다.
+    /// 시간을 기다리지 않는다: 메인 액터 큐를 여러 번 양보해 비운다.
+    func settle() async { await drainMainActor() }
 
     // MARK: - 스토어
 
@@ -111,14 +113,13 @@ struct DeckLoadTests {
         store.loadToDeck(store.rowsByID["101"])
         store.selection = ["102"]
         try fixture.execute("UPDATE djmdContent SET Title = '고친 제목' WHERE ID = '101'")
+        // 덱 맞추기는 다시 읽기(`load`) 안에서 끝난다(`refreshDeckTrack`)
         await store.load(snapshot: fixture.database, quiet: true)
-        await settle()
         #expect(log.ids == ["101", "101"])
         #expect(log.rows.last??.title == "고친 제목")
         // rekordbox에서 덱의 곡을 지우면 덱에서 내린다(지워진 곡을 붙들지 않게)
         try fixture.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '101'")
         await store.load(snapshot: fixture.database, quiet: true)
-        await settle()
         #expect(log.ids == ["101", "101", nil])
         #expect(store.deckTrackID == nil)
         #expect(store.selection == ["102"])
@@ -169,7 +170,7 @@ struct TrackListDeckLoadTests {
         return (h, log)
     }
 
-    func settle() async { try? await Task.sleep(for: .milliseconds(300)) }
+    func settle() async { await drainMainActor() }
 
     @Test func 한_번_클릭은_고르기만_하고_덱은_그대로다() async {
         let (h, log) = harness([a, b], selection: [a.id])
@@ -331,7 +332,7 @@ struct TrackListDeckLoadTests {
 @MainActor
 struct TagSheetDeckLoadTests {
     @Test func 커서를_옮겨도_덱은_그대로고_명령_오른쪽_화살표와_메뉴로_올린다() async throws {
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         let log = DeckLoadTests.LoadLog()
         store.onLoadToDeck = { log.rows.append($0) }
         let coordinator = SheetCoordinator(store: store)
@@ -343,7 +344,7 @@ struct TagSheetDeckLoadTests {
         coordinator.update(rows: [TrackListTagEditTests.row("1"), TrackListTagEditTests.row("2")], revision: 0)
         coordinator.select(CellPosition(row: 1, column: 1), extend: false)
         #expect(store.selection == ["2"])
-        try? await Task.sleep(for: .milliseconds(300))
+        await drainMainActor()
         #expect(log.rows.isEmpty)
         let arrow = String(UnicodeScalar(NSRightArrowFunctionKey)!)
         func press(_ modifiers: NSEvent.ModifierFlags) {

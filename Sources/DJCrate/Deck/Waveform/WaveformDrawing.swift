@@ -1,7 +1,4 @@
-import RekordboxKit
-import DJCAnalysis
 import DJCDomain
-import DJCStorage
 import AppKit
 import SwiftUI
 
@@ -76,7 +73,7 @@ struct DrawState {
     var colorWaveform: ColorWaveformRaster?
     var waveformColorMode: WaveformColorMode
     var sections: [PartAnalysis.Span]
-    var energies: [PartLabeler.SectionEnergy]
+    var energies: [SectionEnergy]
     var suggestions: [Double]
     var cues: [EditableCue]
     var selected: EditableCue.ID?

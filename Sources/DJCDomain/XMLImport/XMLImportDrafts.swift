@@ -94,8 +94,11 @@ public enum XMLImportDrafts {
         public var isEmpty: Bool { cueDrafts.isEmpty && gridDrafts.isEmpty && tagDrafts.isEmpty && playlistDraft == nil }
     }
 
+    /// - Parameters:
+    ///   - newKey: 새 재생 목록 초안 키(부르는 쪽이 준다)
+    ///   - newID: 큐 초안의 새 큐 ID(부르는 쪽이 준다)
     public static func plan(diff: XMLLibraryDiff.Result, selection: Selection, sources: [String: TrackSource],
-                            layout: PlaylistLayout, playlistDraft: PlaylistDraft) -> Plan {
+                            layout: PlaylistLayout, playlistDraft: PlaylistDraft, newKey: () -> String, newID: () -> UUID) -> Plan {
         var plan = Plan()
         for change in diff.tracks {
             let wanted = Kind.allCases.filter { kind in
@@ -125,7 +128,7 @@ public enum XMLImportDrafts {
                     plan.losses.append(Note(kind: kind, libraryKey: change.libraryKey, subject: change.title, reason: reason))
                 }
                 switch kind {
-                case .cue: if let cues = change.cues, let draft = cueDraft(cues, source: source, loss: loss) { plan.cueDrafts.append(draft) }
+                case .cue: if let cues = change.cues, let draft = cueDraft(cues, source: source, newID: newID, loss: loss) { plan.cueDrafts.append(draft) }
                 case .grid: if let grid = change.grid, let draft = gridDraft(grid, source: source, loss: loss) { plan.gridDrafts.append(draft) }
                 case .tag: if let draft = tagDraft(change.tags, source: source, loss: loss) { plan.tagDrafts.append(draft) }
                 case .playlist: break
@@ -134,7 +137,7 @@ public enum XMLImportDrafts {
         }
         if selection.kinds.contains(.playlist) {
             let changes = diff.playlists.filter { selection.playlistPaths?.contains($0.path) ?? true }
-            playlists(changes, layout: layout, draft: playlistDraft, into: &plan)
+            playlists(changes, layout: layout, draft: playlistDraft, newKey: newKey, into: &plan)
         }
         return plan
     }
@@ -165,8 +168,8 @@ public enum XMLImportDrafts {
         XMLLibrary.Mark(kind: cue.kind, start: cue.time, end: cue.loop?.end, name: cue.name)
     }
 
-    static func cueDraft(_ change: XMLLibraryDiff.CueChange, source: TrackSource, loss: (String) -> Void) -> CueDraft? {
-        var draft = CueDraft(trackUUID: source.track.uuid, rekordboxCues: source.cues)
+    static func cueDraft(_ change: XMLLibraryDiff.CueChange, source: TrackSource, newID: () -> UUID, loss: (String) -> Void) -> CueDraft? {
+        var draft = CueDraft(trackUUID: source.track.uuid, rekordboxCues: source.cues, newID: newID)
         let base = draft.base
         let pairs = XMLLibraryDiff.pairCues(xml: change.xml, library: base.map(mark(of:)))
         let duration = Double(source.track.lengthSeconds)
@@ -212,7 +215,7 @@ public enum XMLImportDrafts {
                     continue
                 }
             }
-            cues.append(EditableCue(kind: mark.kind, time: mark.start, name: mark.name, loop: mark.end.map { EditableCue.Loop(end: $0) }))
+            cues.append(EditableCue(id: newID(), kind: mark.kind, time: mark.start, name: mark.name, loop: mark.end.map { EditableCue.Loop(end: $0) }))
         }
         draft.cues = cues.sorted { $0.time < $1.time }
         return draft.hasChanges ? draft : nil
@@ -302,7 +305,7 @@ public enum XMLImportDrafts {
     }
 
     static func playlists(_ changes: [XMLLibraryDiff.PlaylistChange], layout: PlaylistLayout, draft initial: PlaylistDraft,
-                          into plan: inout Plan) {
+                          newKey: () -> String, into plan: inout Plan) {
         var draft = initial
         var edited = 0
         // 새 목록·폴더는 부모 맨 위에 생기므로, 뒤 목록부터 만들어 XML 순서를 지킨다.
@@ -348,7 +351,7 @@ public enum XMLImportDrafts {
                         if same.count == 1, same[0].isFolder {
                             parent = same[0].id
                         } else if same.isEmpty {
-                            let key = UUID().uuidString
+                            let key = newKey()
                             projected = try trial.append(.create(key: key, name: name, isFolder: true, parent: ref(parent)), rekordbox: layout)
                             parent = PlaylistRef.new(key).layoutID
                         } else {
@@ -370,7 +373,7 @@ public enum XMLImportDrafts {
                                                  reason: String(ui: "같은 이름의 목록이 재생 목록 초안에 이미 있어 덮지 않았습니다")))
                         continue
                     }
-                    let key = UUID().uuidString
+                    let key = newKey()
                     try trial.append(.create(key: key, name: name, isFolder: false, parent: ref(parent)), rekordbox: layout)
                     if !change.xmlEntries.isEmpty { try trial.append(.addTracks(playlist: .new(key), contentIDs: change.xmlEntries), rekordbox: layout) }
                 }

@@ -6,9 +6,7 @@ extension DeckModel {
         guard !canPlay else { return nil }
         guard let row else { return String(ui: "목록에서 곡을 골라 덱에 불러오세요") }
         if row.track.isStreaming { return String(ui: "스트리밍 곡은 재생할 수 없으니 로컬 음원 파일이 있는 곡을 고르세요") }
-        if !FileManager.default.fileExists(atPath: row.track.folderPath) {
-            return String(ui: "음원 파일이 없으니 외장 드라이브를 연결하거나 rekordbox에서 파일 위치를 확인하세요")
-        }
+        // 음원 파일이 있는지는 불러올 때 메인 밖에서 본 값(`audioSourceState`의 `.missing`)을 쓴다. 화면이 읽을 때마다 파일을 보지 않는다.
         return (audioSourceState == .ready ? AudioSourceState.preparing : audioSourceState).unavailableReason
     }
 

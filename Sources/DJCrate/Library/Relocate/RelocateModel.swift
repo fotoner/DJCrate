@@ -1,15 +1,16 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
 import Observation
 
 /// '폴더에서 찾기…'(#62): 파일 없는 곡의 새 위치 후보를 폴더에서 맞춰 미리 보는 화면의 상태.
 /// 읽기만 한다. rekordbox·음원에는 쓰지 않고, 고른 결과도 어디에 저장하지 않는다(경로 바꾸기 쓰기 규칙은 아직 막혀 있다).
+/// 찾기(파일 크기·훑기·볼륨)는 유스케이스 `RelocateTracks`가 한다.
 @MainActor
 @Observable
 final class RelocateModel: Identifiable {
     enum Phase: Equatable {
-        case scanning(RelocateScanner.Progress)
+        case scanning(RelocateProgress)
         case reviewing
         case failed(String)
     }
@@ -17,24 +18,6 @@ final class RelocateModel: Identifiable {
     /// 목록에서 보여 줄 분류
     enum Filter: CaseIterable, Hashable {
         case all, confident, ambiguous, noCandidate
-    }
-
-    /// 입출력을 가짜로 바꿔 끼울 수 있게 모은다.
-    struct Dependencies: Sendable {
-        var loadTargets: @Sendable ([Track], URL?) async throws -> [RelocateTarget]
-        var scan: @Sendable ([RelocateTarget], URL, @escaping @Sendable (RelocateScanner.Progress) -> Void) async throws -> RelocateScanner.Output
-        /// 지금 연결된 볼륨 경로("/", "/Volumes/X" …). 훑을 때마다 다시 읽는다(창을 연 뒤 디스크를 꽂을 수 있다).
-        var mountedVolumes: @Sendable () -> [String] = { RelocateModel.liveMountedVolumes() }
-
-        static let live = Dependencies(
-            loadTargets: { tracks, snapshot in
-                guard let snapshot else { throw DJCError.snapshotNotFound }
-                // 곡 행의 파일 크기를 사본 DB에서 읽는다(메인 스레드 밖).
-                return try await Task.detached(priority: .userInitiated) { try RelocateScanner.targets(for: tracks, snapshot: snapshot) }.value
-            },
-            scan: { targets, folder, progress in
-                try await RelocateScanner.scan(targets: targets, folder: folder, progress: progress)
-            })
     }
 
     nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
@@ -46,11 +29,11 @@ final class RelocateModel: Identifiable {
 
     let tracks: [Track]
     let snapshot: URL?
-    private let dependencies: Dependencies
+    private let relocate: RelocateTracks
     private(set) var folder: URL
-    private(set) var phase: Phase = .scanning(RelocateScanner.Progress(phase: .listing, audioFiles: 0, filesToRead: 0, filesRead: 0))
+    private(set) var phase: Phase = .scanning(RelocateProgress(phase: .listing, audioFiles: 0, filesToRead: 0, filesRead: 0))
     private(set) var selection = RelocateSelection(report: RelocateReport(results: []))
-    private(set) var summary: RelocateScanner.Summary?
+    private(set) var summary: RelocateSummary?
     /// 곡마다 왜 없는지(외장 디스크가 연결되지 않았는지). 대상에서 빼지 않고 표시만 한다.
     private(set) var absences: [String: RelocateAbsence] = [:]
     var filter: Filter = .all
@@ -58,11 +41,11 @@ final class RelocateModel: Identifiable {
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
 
-    init(tracks: [Track], snapshot: URL?, folder: URL, dependencies: Dependencies = .live) {
+    init(tracks: [Track], snapshot: URL?, folder: URL, relocate: RelocateTracks) {
         self.tracks = tracks
         self.snapshot = snapshot
         self.folder = folder
-        self.dependencies = dependencies
+        self.relocate = relocate
     }
 
     var isScanning: Bool {
@@ -77,24 +60,21 @@ final class RelocateModel: Identifiable {
         task?.cancel()
         generation += 1
         let generation = generation
-        let tracks = tracks, snapshot = snapshot, folder = folder, dependencies = dependencies
-        phase = .scanning(RelocateScanner.Progress(phase: .listing, audioFiles: 0, filesToRead: 0, filesRead: 0))
+        let tracks = tracks, snapshot = snapshot, folder = folder, relocate = relocate
+        phase = .scanning(RelocateProgress(phase: .listing, audioFiles: 0, filesToRead: 0, filesRead: 0))
         selection = RelocateSelection(report: RelocateReport(results: []))
         summary = nil
         absences = [:]
         // 훑는 동안만 모델을 붙들고(끝나면 놓인다), 창을 닫으면 `cancel()`이 멈춘다.
         task = Task {
             do {
-                let targets = try await dependencies.loadTargets(tracks, snapshot)
-                let output = try await dependencies.scan(targets, folder) { progress in
+                let found = try await relocate.find(tracks, snapshot: snapshot, folder: folder) { progress in
                     Task { @MainActor [weak self] in self?.apply(progress: progress, generation: generation) }
                 }
-                // 볼륨 목록은 멈춘 네트워크 디스크에서 오래 걸릴 수 있어 메인 스레드 밖에서 읽는다.
-                let mounted = await Task.detached(priority: .userInitiated) { dependencies.mountedVolumes() }.value
                 guard generation == self.generation, !Task.isCancelled else { return }
-                self.absences = RelocateAbsence.classify(targets, mountedVolumes: mounted)
-                self.selection = RelocateSelection(report: output.report)
-                self.summary = output.summary
+                self.absences = found.absences
+                self.selection = RelocateSelection(report: found.output.report)
+                self.summary = found.output.summary
                 self.phase = .reviewing
             } catch is CancellationError {
                 // 취소·다시 시작: 새 훑기가 상태를 이어받는다. 취소만 했으면 `cancel()`이 상태를 정한다.
@@ -146,18 +126,6 @@ final class RelocateModel: Identifiable {
     /// 외장 디스크가 연결되지 않아 없는 곡 수
     var unmountedVolumeCount: Int { absences.values.lazy.filter { $0.unmountedVolumeName != nil }.count }
 
-    /// 연결된 볼륨 경로. 시동 디스크는 `/Volumes` 아래에 "/"로 가는 링크로도 있어, 연결된 볼륨으로 가는 링크도 더한다.
-    nonisolated static func liveMountedVolumes() -> [String] {
-        let files = FileManager.default
-        var paths = Set((files.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []).map(\.standardizedFileURL.path))
-        for name in (try? files.contentsOfDirectory(atPath: "/Volumes")) ?? [] {
-            let link = "/Volumes/" + name
-            guard (try? files.destinationOfSymbolicLink(atPath: link)) != nil else { continue }
-            if paths.contains(URL(filePath: link).resolvingSymlinksInPath().path) { paths.insert(link) }
-        }
-        return paths.sorted()
-    }
-
     /// 화면에 보일 후보 경로: 훑은 폴더 기준 상대 경로(폴더 밖이면 그대로). 링크를 푼 폴더 경로로 훑었을 수도 있어 둘 다 본다.
     func displayPath(_ path: String) -> String {
         for root in [folder.resolvingSymlinksInPath().path, folder.path] {
@@ -166,7 +134,7 @@ final class RelocateModel: Identifiable {
         return path
     }
 
-    private func apply(progress: RelocateScanner.Progress, generation: Int) {
+    private func apply(progress: RelocateProgress, generation: Int) {
         guard generation == self.generation, isScanning else { return }
         phase = .scanning(progress)
     }

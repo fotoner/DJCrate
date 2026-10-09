@@ -9,12 +9,7 @@ import Foundation
 /// → DB·`masterPlaylists6.xml`·`playlists3.sync` 바꾸기 → 폴더 이름 바꿔 끼우기 → 다시 읽어 검증(무결성·라이브러리 ID·폴더 목록).
 /// 바꾸는 도중 실패하면 DB·파일·폴더를 복원 전으로 돌리고, 그것도 못 하면 복원 직전 스냅샷으로 되돌릴 명령을 알린다.
 extension RekordboxWriter {
-    public struct PointRestoreReport: Sendable {
-        /// 되돌린 스냅샷
-        public var restored: RekordboxPointSnapshot.Entry
-        /// 복원 직전 상태를 남긴 스냅샷(이것으로 다시 복원하면 복원 전으로 돌아간다)
-        public var beforeRestore: RekordboxPointSnapshot.Entry
-    }
+    public typealias PointRestoreReport = RekordboxPointRestoreReport
 
     /// 쓰기 전 백업 폴더에 남기는 복원 표시(이 시점보다 옛 쓰기 전 백업은 연쇄로 분석 파일을 맞출 수 없다)
     static let pointRestoreMarkerName = "point-restore.json"

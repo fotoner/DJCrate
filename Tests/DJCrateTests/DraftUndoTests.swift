@@ -1,3 +1,4 @@
+import DJCApplication
 @testable import DJCrate
 import AppKit
 import DJCAnalysis
@@ -39,7 +40,8 @@ struct DraftUndoTests {
         #expect(h.deck.draft == moved)
         undo.redo()
         #expect(h.deck.draft == deleted)
-        #expect(h.drafts.cue("track-1") == deleted)
+        // 고친 것이 없는 초안 저장은 지우기다(실제 저장소와 같다).
+        #expect(deleted?.hasChanges == false && h.drafts.cue("track-1") == nil)
     }
 
     @Test func 큐_끌기는_한_단계이며_무변경은_등록하지_않는다() async throws {
@@ -134,7 +136,7 @@ struct DraftUndoTests {
         try await h.loaded()
         let undo = manager(h.deck)
         var saved: [TagDraft] = []
-        let store = LibraryStore(saveTagDrafts: { saved = $0 })
+        let store = LibraryStore.test(saveTagDrafts: { saved = $0 })
         store.undoManager = undo
         let row = try #require(h.deck.row)
         store.rowsByUUID[row.track.uuid] = row
@@ -204,7 +206,7 @@ struct DraftUndoTests {
         let h = try DeckHarness()
         try await h.loaded()
         let undo = manager(h.deck)
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         store.undoManager = undo
         let row = try #require(h.deck.row)
         store.rowsByUUID[row.track.uuid] = row
@@ -223,7 +225,7 @@ struct DraftUndoTests {
         let h = try DeckHarness()
         try await h.loaded()
         let undo = manager(h.deck)
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         store.undoManager = undo
         let row = try #require(h.deck.row)
         let coordinator = SheetCoordinator(store: store)

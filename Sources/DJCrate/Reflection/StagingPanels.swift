@@ -1,9 +1,7 @@
-import RekordboxKit
-import DJCAnalysis
 import DJCDomain
-import DJCStorage
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 파일 선택·저장 창.
 @MainActor
@@ -24,7 +22,7 @@ enum StagingPanels {
     static func exportXML(store: LibraryStore) {
         let selected = store.selection.filter { $0.hasPrefix("djc-") }
         do {
-            let url = try RekordboxLink.prepare()
+            let url = try RekordboxLink.prepare(store.linkedXMLFile)
             let result = try store.exportStaged(to: url, only: selected.isEmpty ? nil : selected)
             // 키 초안이 있어 뺀 곡만 있으면 아무것도 쓰지 않았다: 이유를 알리고 연동 안내는 띄우지 않는다.
             guard result.count > 0 || result.skipped.isEmpty else {
@@ -36,7 +34,7 @@ enum StagingPanels {
             if result.withoutGrid > 0 { text += " · " + String(ui: "\(result.withoutGrid)곡은 그리드 없이(rekordbox가 분석)") }
             if !result.skipped.isEmpty { text += "\n" + result.skipped.joined(separator: "\n") }
             store.stagingMessage = AppMessage(kind: result.withoutGrid > 0 || !result.skipped.isEmpty ? .warning : .success, text: text)
-            RekordboxLink.showSetupIfNeeded()
+            RekordboxLink.showSetupIfNeeded(store.linkedXMLFile)
         } catch {
             store.stagingMessage = AppMessage(kind: .failure, text: String(ui: "내보내지 못했습니다. 저장 위치와 권한을 확인하세요: \(error.localizedDescription)"))
         }

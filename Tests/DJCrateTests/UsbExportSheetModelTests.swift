@@ -1,7 +1,8 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import Testing
 
@@ -112,13 +113,13 @@ struct UsbExportSheetModelTests {
         ]
         let summary = UsbTestData.summary(blocks: blocks)
         #expect(summary.stopping == ["공간 모자람"])
-        #expect(UsbWriteCoordinator.blockLines(summary) == [
+        #expect(UsbWriteFlow.blockLines(summary) == [
             "빼고 쓰는 곡 2개:", "• 분석 먼저 (2)",
             "빼고 쓰는 재생 목록 1개:", "• 스마트 목록 (1)",
         ])
         // 곡 막힘이 없으면 재생 목록 막힘만
         let playlistsOnly = UsbTestData.summary(blocks: [blocks[1]])
-        #expect(UsbWriteCoordinator.blockLines(playlistsOnly) == ["빼고 쓰는 재생 목록 1개:", "• 스마트 목록 (1)"])
+        #expect(UsbWriteFlow.blockLines(playlistsOnly) == ["빼고 쓰는 재생 목록 1개:", "• 스마트 목록 (1)"])
     }
 
     @Test("용량이 모자라면 표시하고 쓰기를 막는다")

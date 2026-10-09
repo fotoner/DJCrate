@@ -1,11 +1,12 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import Testing
 
-/// Flip 결과 창 모델: 렌더 → 추가한 곡에 넣기, 버리기 전 확인. 덱은 가짜 오디오·메모리 저장소(`EditHarness`, 20.5초 120 BPM).
+/// Flip 결과 창 모델: 렌더 → 추가한 곡에 넣기, 버리기 전 확인. 원곡은 덱에서 읽어 둘 값(`EditHarness`, 20.5초 120 BPM).
 @MainActor
 @Suite("Flip 결과 창 모델")
 struct FlipModelTests {
@@ -18,15 +19,14 @@ struct FlipModelTests {
         return recording
     }
 
-    func model(_ h: EditHarness) async throws -> FlipModel {
-        for _ in 0..<200 where h.deck.draft == nil { try await Task.sleep(for: .milliseconds(10)) }
-        return try FlipModel(deck: h.deck, recording: recording(), audio: h.player, home: h.home)
+    func model(_ h: EditHarness, writer: RenderEdit? = nil) throws -> FlipModel {
+        try FlipModel(source: h.editSource, recording: recording(), audio: h.player, deck: h.deck, writer: writer ?? h.writer)
     }
 
     @Test func 렌더해서_그리드·큐·태그_초안과_함께_추가한_곡에_넣는다() async throws {
-        let h = try EditHarness(cues: [EditableCue(kind: .hot(0), time: 6.5, name: "드롭")])
+        let h = try EditHarness(cues: [EditableCue(kind: .hot(0), time: 6.5, name: "드롭")], audioFile: true)
         defer { h.remove() }
-        let model = try await model(h)
+        let model = try model(h)
         // 박 줄·번호가 이어지는 점프라 원곡 그리드 한 구간(곡 처음 0초 = 4박)
         #expect(model.grid == [GridSegment(start: 0, bpm: 120, firstBeatNumber: 4)] && model.gridNotice == nil)
         var reported: [StagedTrack] = []
@@ -40,7 +40,7 @@ struct FlipModelTests {
         let output = h.home.appending(path: "edits/시험 곡 (Flip).wav")
         #expect(staged.path == output.path.precomposedStringWithCanonicalMapping)
         #expect(try frames(output) == Int64((24.5 * 44_100).rounded()))
-        #expect(StagingStore.load(url: h.home.appending(path: "staged.json")).map(\.uuid) == [staged.uuid])
+        #expect(StagedTrackFile.load(url: h.home.appending(path: "staged.json")).map(\.uuid) == [staged.uuid])
         #expect(staged.bpm == 120 && staged.gridConfident == true)
         let grid = try #require(GridDraftStore.load(trackUUID: staged.uuid, directory: h.home.appending(path: "grid-drafts")))
         #expect(grid.segments == model.grid)
@@ -52,22 +52,21 @@ struct FlipModelTests {
     }
 
     @Test func 원곡에_그리드가_없으면_그리드_초안_없이_넣는다() async throws {
-        let h = try EditHarness(grid: nil)
+        let h = try EditHarness(grid: [])
         defer { h.remove() }
-        let model = try await model(h)
-        #expect(model.grid.isEmpty && model.gridNotice != nil)
+        let probe = StagingProbe()
+        let model = try model(h, writer: .fake(probe))
+        #expect(model.grid.isEmpty && model.gridNotice == EditSourceState.flipNoGridNotice)
         model.render()
         try await until { model.staged != nil }
-        let staged = try #require(model.staged)
-        #expect(staged.gridConfident != true)
-        #expect(GridDraftStore.load(trackUUID: staged.uuid, directory: h.home.appending(path: "grid-drafts")) == nil)
-        #expect(StagingStore.load(url: h.home.appending(path: "staged.json")).map(\.uuid) == [staged.uuid])
+        // 빈 그리드로 넣으면 넣기가 그리드 초안을 두지 않는다(DJCDomainTests `StagedEditDraftsTests`).
+        #expect(probe.grids == [[]])
     }
 
     @Test func 넣기_전에_버리면_묻고_넣은_뒤에는_묻지_않는다() async throws {
         let h = try EditHarness()
         defer { h.remove() }
-        let model = try await model(h)
+        let model = try model(h, writer: .fake(StagingProbe()))
         let prompter = ScriptedPrompter()
         prompter.answer = false
         #expect(!model.confirmDiscard(prompter))
@@ -88,11 +87,11 @@ struct FlipModelTests {
 @Suite("편집본 보여 주기")
 struct ShowStagedEditTests {
     func store(home: URL) -> LibraryStore {
-        let stagedURL = home.appending(path: StagingStore.fileName)
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let stagedURL = home.appending(path: StagedTrackFile.fileName)
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: home.appending(path: "backups"), playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { try StagingStore.save($0, url: stagedURL) })
-        store.draftHome = home
+                                 mergeDraftSaver: { _ in }, playlistImportURL: nil,
+                                 stagingSaver: { try StagedTrackFile.save($0, url: stagedURL) }, draftHome: home)
         return store
     }
 
@@ -100,11 +99,10 @@ struct ShowStagedEditTests {
         let home = FileManager.default.temporaryDirectory.appending(path: "djc-show-staged-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: home) }
-        let plain = try await EditStaging.stage(fileAt: try AudioFixture.wav(seconds: 2, in: home, name: "그리드 없음.wav"), grid: [],
-                                                cues: [], source: nil, title: "그리드 없음", home: home)
-        let gridded = try await EditStaging.stage(fileAt: try AudioFixture.wav(seconds: 2, in: home, name: "그리드 있음.wav"),
-                                                  grid: [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)],
-                                                  cues: [], source: nil, title: "그리드 있음", home: home)
+        let plain = try await StageEdit.put(try AudioFixture.wav(seconds: 2, in: home, name: "그리드 없음.wav"), grid: [],
+                                            title: "그리드 없음", home: home)
+        let gridded = try await StageEdit.put(try AudioFixture.wav(seconds: 2, in: home, name: "그리드 있음.wav"),
+                                              grid: [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)], title: "그리드 있음", home: home)
         let store = store(home: home)
         var loaded: [String?] = []
         store.onLoadToDeck = { loaded.append($0?.id) }

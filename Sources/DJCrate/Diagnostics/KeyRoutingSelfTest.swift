@@ -11,7 +11,7 @@ extension DevSelfTests {
     }
 
     /// 앱 큐에만 키를 넣는다. active 모드는 사용자 직접 클릭을 기다리며 OS 키 입력은 보내지 않는다.
-    static func runKeyRoutingSelfTestIfRequested(store: LibraryStore, deck: DeckModel) {
+    static func runKeyRoutingSelfTestIfRequested(store: LibraryStore, deck: DeckModel, windows: AppWindows) {
         guard ProcessInfo.processInfo.arguments.contains("--key-routing-selftest"),
               ProcessInfo.processInfo.environment["DJC_HOME"] != nil,
               ProcessInfo.processInfo.environment["DJC_REKORDBOX_DIR"] != nil else { return }
@@ -271,8 +271,8 @@ extension DevSelfTests {
             }
 
             // 제품의 곡 편집 창에 온 확대 키는 편집 창만 바꾼다.
-            TrackEditWindow.shared.open()
-            if let editWindow = TrackEditWindow.shared.window, let model = TrackEditWindow.shared.model {
+            await windows.trackEdit.open()
+            if let editWindow = windows.trackEdit.window, let model = windows.trackEdit.model {
                 editWindow.makeFirstResponder(nil)
                 let before = model.sourceView, deckZoom = deck.zoomSeconds
                 capture(editWindow, "edit-before")

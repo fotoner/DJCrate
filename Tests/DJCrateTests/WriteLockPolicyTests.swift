@@ -5,7 +5,7 @@ import Testing
 @Suite("쓰기 잠금 — 키·종료·편집")
 struct WriteLockPolicyTests {
     @MainActor @Test func 종료_입구는_잠금을_읽고_거절_이유를_알린다() {
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: nil))
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil))
         let delegate = AppDelegate()
         delegate.store = store
         var messages: [String] = []

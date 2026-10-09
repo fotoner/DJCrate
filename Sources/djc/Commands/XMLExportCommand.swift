@@ -1,10 +1,9 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
-import RekordboxKit
 
 /// `djc xml-export`: 스냅샷 사본의 라이브러리 전체를 rekordbox XML 한 파일로 내보낸다(#72). rekordbox 라이브러리에는 쓰지 않고
-/// 지정한 출력 파일만 쓴다. 쓰지 않은 초안은 넣지 않는다(rekordbox에 있는 그대로).
+/// 지정한 출력 파일만 쓴다. 쓰지 않은 초안은 넣지 않는다(rekordbox에 있는 그대로). 앱의 "라이브러리 XML 내보내기…"와 같은 유스케이스(`ExportXML`)다.
 enum XMLExportCommand {
     static let command = Command("xml-export", "--db <사본.db> --out <파일.xml> [--share <폴더> | --no-analysis] [--overwrite] [--dry-run]",
                                  String(ui: "라이브러리 전체를 rekordbox XML 한 파일로 내보낸다(읽기만, 지정한 파일만 씀)")) { args in
@@ -49,33 +48,22 @@ enum XMLExportCommand {
 
     /// 출력 자리를 먼저 확인하고(DB를 열기 전) 내보낸다. 돌려주는 것은 출력할 줄이다.
     static func execute(_ request: Request) throws -> [String] {
-        try RekordboxLibraryXML.checkOutput(request.out)
-        if !request.dryRun, !request.overwrite, FileManager.default.fileExists(atPath: request.out.path) {
-            throw RekordboxLibraryXML.OutputError(reason: String(ui: "같은 이름의 파일이 이미 있습니다. 덮어쓰려면 --overwrite를 주거나 다른 이름을 고르세요"))
-        }
-        let snapshot = try LibraryRead.resolve(database: request.database)
-        let collection = try RekordboxLibraryXML.load(snapshot: snapshot, shareRoot: try shareRoot(request, snapshot: snapshot))
-        if !request.dryRun { try RekordboxLibraryXML.write(collection, to: request.out) }
-        return summaryLines(collection.summary, out: request.out, dryRun: request.dryRun)
+        let library = CLIComposition.live.library()
+        let export = library.exportXML
+        try export.checkOutput(request.out, overwrite: request.overwrite, dryRun: request.dryRun)
+        let snapshot = try library.queries.resolveCopy(request.database)
+        let summary = try export.exportLibrary(snapshot: snapshot, share: try shareRoot(request, snapshot: snapshot), to: request.out,
+                                               dryRun: request.dryRun)
+        return summaryLines(summary, out: request.out, dryRun: request.dryRun)
     }
 
     /// 분석 파일 뿌리. `djc snapshot` 사본 옆에는 `share`가 없어서, 없는 폴더를 그대로 쓰면 모든 곡의 TEMPO가 조용히 빠진다.
     /// 그래서 폴더가 없으면 막고, 분석 없이 내보내는 것은 `--no-analysis`로 명시할 때만 한다(nil).
     static func shareRoot(_ request: Request, snapshot: URL) throws -> URL? {
-        try shareRoot(share: request.share, noAnalysis: request.noAnalysis, snapshot: snapshot)
+        try CLIComposition.live.library().exportXML.analysisRoot(share: request.share, noAnalysis: request.noAnalysis, snapshot: snapshot)
     }
 
-    static func shareRoot(share: URL?, noAnalysis: Bool, snapshot: URL) throws -> URL? {
-        if noAnalysis { return nil }
-        let share = share ?? snapshot.deletingLastPathComponent().appending(path: "share")
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: share.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            throw ReadFailure("missing_share", String(ui: "분석 파일 폴더가 없습니다: \(share.path). --share <rekordbox 폴더>/share를 주거나, 그리드 없이 내보내려면 --no-analysis를 주세요"))
-        }
-        return share
-    }
-
-    static func summaryLines(_ summary: RekordboxLibraryXML.Summary, out: URL, dryRun: Bool) -> [String] {
+    static func summaryLines(_ summary: LibraryXMLSummary, out: URL, dryRun: Bool) -> [String] {
         var lines = [dryRun ? String(ui: "미리 보기(파일을 쓰지 않음): \(out.path)") : String(ui: "라이브러리 XML을 썼습니다: \(out.path)")]
         lines.append(String(ui: "곡 \(summary.tracks) · 큐·루프 \(summary.marks) · 그리드 있는 곡 \(summary.tracksWithGrid) · 분석 파일이 없거나 읽지 못한 곡 \(summary.tracksWithoutGrid)"))
         lines.append(String(ui: "재생 목록 \(summary.playlists) · 폴더 \(summary.folders) · 목록 항목 \(summary.playlistEntries)"))
