@@ -215,7 +215,8 @@ extension RekordboxTagWriterTests {
             + "<CONDITION PropertyName=\"\(property)\" Operator=\"\(op)\" ValueUnit=\"\" ValueLeft=\"\(left)\" ValueRight=\"\"/></NODE>"
     }
 
-    @Test(arguments: [condition("rating", 3), condition("color"), "<NODE/>", "", nil])
+    /// 태그 쓰기는 `SmartList`를 읽지 않는다(읽는 곳은 재생 목록 쓰기뿐). 막을 이유가 될 만한 평점·곡 색 조건 둘만 본다.
+    @Test(arguments: [condition("rating", 3), condition("color")])
     func 평점이나_곡_색_조건의_인텔리전트_목록이_있어도_평점과_곡_색을_쓴다(smart: String?) throws {
         // rekordbox가 그 목록의 Timestamp·결과를 고치는지는 보지 못했지만 막지 않는다(사용자가 rekordbox에서 목록을 다시 정렬한다)
         let (fixture, track) = try ratingLibrary()

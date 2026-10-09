@@ -34,8 +34,9 @@ extension RekordboxTagWriterTests {
         .title: "DJC 173 제목", .artist: "DJC 173 아티스트", .album: "DJC 173 앨범", .albumArtist: "DJC 173 앨범 아티스트",
         .genre: "DJC 173 장르", .composer: "DJC 173 작곡가", .year: "2020", .trackNumber: "99", .comment: "DJC 173 코멘트",
     ]
-    /// 아홉 칸 × 곡 상태(0·256·257을 돌려 가며)
-    static let xmlCases: [(Int, TagFields.Key)] = infoPanelKeys.enumerated().map { ([0, 256, 257][$0.offset % 3], $0.element) }
+    /// 곡 상태 셋(0·256·257)과 고치는 표가 다른 칸 넷(곡 행·아티스트 표·앨범 표·앨범 아티스트). 아홉 칸이 모두 XML을 고치는지는
+    /// `곡_정보_아홉_칸_모두_XML_Timestamp를_고친다`가 본다(XML을 고칠지는 칸 집합 `playlistXMLTagKeys` 한 곳에서 정한다).
+    static let xmlCases: [(Int, TagFields.Key)] = [(0, .title), (256, .artist), (257, .album), (0, .albumArtist)]
 
     @Test(arguments: xmlCases)
     func 곡_정보를_쓰면_곡이_든_재생_목록의_Timestamp만_쓴_시각으로_고친다(state: Int, key: TagFields.Key) throws {

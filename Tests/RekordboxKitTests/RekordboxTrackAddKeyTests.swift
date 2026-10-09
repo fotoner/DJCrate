@@ -211,7 +211,8 @@ struct RekordboxTrackAddKeyTests {
 
     /// 키 줄이 없거나(12B) 살아 있는 줄이 둘이거나(8A 하나 더) 삭제 표시 줄뿐이거나(7A) Camelot이 아닌 이름(Am)이면 키만 막는다.
     /// 따로 썼을 때도 곡 넣기는 되고 키 쓰기만 막히므로(같은 `resolveKeyID`), 한 번에 쓴 DB는 키 없이 넣은 DB와 같아야 한다.
-    @Test(arguments: ["12B", "8A", "7A", "Am"]) func 키를_쓸_수_없으면_키만_막고_곡은_넣는다(key: String) async throws {
+    /// 막는 이유마다의 판정은 `RekordboxTagKeyTests`가 본다. 여기는 DB에서 막는 경우(12B)와 이름에서 막는 경우(Am)로 되돌림만 본다.
+    @Test(arguments: ["12B", "Am"]) func 키를_쓸_수_없으면_키만_막고_곡은_넣는다(key: String) async throws {
         let extra: [(id: String, name: String, deleted: Int)] = [("2000000008", "8A", 0), ("2000000007", "7A", 1)]
         let plain = try library(extraKeys: extra), batch = try library(extraKeys: extra)
         let p = try await plan(in: plain)

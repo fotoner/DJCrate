@@ -151,8 +151,8 @@ extension RekordboxTagWriterTests {
     }
 
     /// DB 행 상태가 특별한 이름만 쓰기로 본다. 이름 규칙(소문자·범위 밖·다른 글자)은 위 시험과 `MusicalKeyTagTests`가 본다(#167).
-    @Test(arguments: ["Am", "Em", "Gm"]) func Camelot_스물네_이름이_아니면_막는다(name: String) throws {
-        // "Am"·"Gm": 삭제 표시 줄, "Em": 살아 있는 옛 표기 줄(화면 표기와 같은 이름도 살아 있는 줄도 아니라 고르지 않는다)
+    @Test(arguments: ["Am", "Em"]) func Camelot_스물네_이름이_아니면_막는다(name: String) throws {
+        // "Am": 삭제 표시 줄, "Em": 살아 있는 옛 표기 줄(화면 표기와 같은 이름도 살아 있는 줄도 아니라 고르지 않는다)
         let (fixture, track) = try keyLibrary(state: 256, key: "2B")
         let before = try content(fixture), keys = try otherTables(fixture)
         let report = try write(fixture, tags: [try draft(fixture, track) { $0.musicalKey = name }])
@@ -269,7 +269,8 @@ extension RekordboxTagWriterTests {
         return try JSONDecoder().decode(TagDraft.self, from: Data(json.utf8))
     }
 
-    @Test(arguments: [0, 256, 257]) func 키_칸이_없던_옛_초안은_키가_있는_곡에서도_막히지_않고_키를_그대로_둔다(state: Int) throws {
+    /// 상태는 동기화 안 됨(0)과 됨(256) 둘. 257도 같은 확인(`verifiedTagStates`)을 지난다.
+    @Test(arguments: [0, 256]) func 키_칸이_없던_옛_초안은_키가_있는_곡에서도_막히지_않고_키를_그대로_둔다(state: Int) throws {
         let (fixture, _) = try keyLibrary(state: state, key: "5A")
         let tags = try legacyDraft()
         #expect(tags.base.musicalKey == "" && tags.changedKeys == [.title])
@@ -345,9 +346,10 @@ extension RekordboxTagWriterTests {
 
     // MARK: 여러 칸 = 하나씩 (키가 든 조합 몇 개만)
 
-    @Test(arguments: [(TagFields.Key.title, 0), (.comment, 256), (.genre, 0), (.artist, 256), (.year, 257)])
+    @Test(arguments: [(TagFields.Key.title, 0), (.artist, 256), (.year, 257)])
     func 키와_다른_칸을_한_번에_쓴_결과는_하나씩_쓴_결과와_같다(other: TagFields.Key, state: Int) throws {
-        // 열 칸 조합 전체(156가지)는 시간이 길어 늘리지 않는다. 키는 곡 행의 한 칸이라 이름 행에 닿지 않는 대표 조합만 본다.
+        // 열 칸 조합 전체(156가지)는 시간이 길어 늘리지 않는다. 키는 곡 행의 한 칸이라 이름 행에 닿지 않는 대표 조합만 본다:
+        // 곡 행 칸(제목·연도)과 이름 표 칸(아티스트) × 상태 셋. 이름 표 칸끼리의 조합은 `RekordboxTagReleaseTests`가 본다.
         let values: [TagFields.Key: String] = [.title: "새 제목", .comment: "새 코멘트", .genre: "새 장르", .artist: "새 아티스트", .year: "2020"]
         let edit: (inout TagFields) -> Void = { $0[other] = values[other] ?? ""; $0.musicalKey = "5A" }
         let (together, track) = try keyLibrary(state: state, key: "2B")

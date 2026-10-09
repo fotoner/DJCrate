@@ -106,7 +106,8 @@ extension RekordboxTagWriterTests {
 
     // MARK: 막기
 
-    @Test(arguments: [1, 2, 258, 512]) func 확인하지_않은_동기화_상태는_막는다(state: Int) throws {
+    /// 확인한 상태(0·256·257) 바로 밖의 두 값. 판정은 `verifiedTagStates` 한 곳이다.
+    @Test(arguments: [1, 258]) func 확인하지_않은_동기화_상태는_막는다(state: Int) throws {
         let (fixture, track) = try syncedLibrary(state: state)
         let before = try content(fixture)
         for edit in [{ (f: inout TagFields) in f.comment = "새 코멘트" }, { (f: inout TagFields) in f.title = "새 제목" }] {
