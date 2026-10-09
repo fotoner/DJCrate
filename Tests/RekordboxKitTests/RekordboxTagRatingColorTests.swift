@@ -271,16 +271,7 @@ extension RekordboxTagWriterTests {
         #expect(row["Rating"] == "3" && row["TrackInfoUpdated"] == "3" && row["rb_data_status"] == "257")
     }
 
-    /// 쓰기는 초안 문제(`TagDraft.issues`)로 막는다. 대표 하나 말고는 DB 없이 본다(#167).
-    @Test func 여덟_색_밖_색과_1에서_5_밖_평점은_초안_문제다() {
-        for (key, value, word) in [(TagFields.Key.color, "0", "곡 색"), (.color, "Red", "곡 색"), (.rating, "-1", "평점"), (.rating, "★", "평점")] {
-            var draft = TagDraft(trackUUID: "u", base: TagFields())
-            draft.fields[key] = value
-            #expect(draft.issues.contains { $0.contains(word) }, "\(value)")
-        }
-    }
-
-    /// 쓰기 입구가 막는지 대표 하나. 값 규칙(여덟 색 번호·이름)은 위 시험과 `RatingColorTagTests`가 본다(#167).
+    /// 쓰기는 초안 문제(`TagDraft.issues`)로 막는다. 쓰기 입구가 막는지 대표 하나. 값 규칙(여덟 색 번호·이름)은 `RatingColorTagTests`가 본다(#167).
     @Test(arguments: ["9"]) func 색_번호가_여덟_색이_아니면_막는다(value: String) throws {
         let (fixture, track) = try ratingLibrary()
         let before = try content(fixture)

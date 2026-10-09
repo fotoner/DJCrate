@@ -142,15 +142,7 @@ extension RekordboxTagWriterTests {
     // MARK: 막기
 
     /// 쓰기는 초안 문제(`TagDraft.issues`)로 막는다. DB와 상관없는 이름은 DB 없이 본다(#167).
-    @Test func Camelot_이름이_아닌_키는_초안_문제다() {
-        for name in ["C", "8a", "13A", "0A", "키"] {
-            var draft = TagDraft(trackUUID: "u", base: TagFields())
-            draft.fields.musicalKey = name
-            #expect(draft.issues.contains { $0.contains("1A~12B") }, "\(name)")
-        }
-    }
-
-    /// DB 행 상태가 특별한 이름만 쓰기로 본다. 이름 규칙(소문자·범위 밖·다른 글자)은 위 시험과 `MusicalKeyTagTests`가 본다(#167).
+    /// DB 행 상태가 특별한 이름만 쓰기로 본다. 이름 규칙(소문자·범위 밖·다른 글자)은 `MusicalKeyTagTests`가 본다(#167).
     @Test(arguments: ["Am", "Em"]) func Camelot_스물네_이름이_아니면_막는다(name: String) throws {
         // "Am": 삭제 표시 줄, "Em": 살아 있는 옛 표기 줄(화면 표기와 같은 이름도 살아 있는 줄도 아니라 고르지 않는다)
         let (fixture, track) = try keyLibrary(state: 256, key: "2B")
