@@ -20,8 +20,9 @@ struct RekordboxTrackArtworkTests {
     let names = ["artwork.jpg", "artwork_m.jpg", "artwork_s.jpg"]
     let analysis = RekordboxTrackWriter.Analysis(segments: [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)], loudness: -8, peak: 0.9)
 
-    /// 앞표지가 든 MP3의 곡 넣기 계획(기본은 실험 곡처럼 1200×900, 새 아티스트·앨범)
-    func plan(_ fixture: RekordboxFixture, name: String = "artwork.mp3", width: Int = 1200, height: Int = 900) async throws -> TrackAddPlan {
+    /// 앞표지가 든 MP3의 곡 넣기 계획(새 아티스트·앨범). 기본은 작은 4:3 그림이고, 크기 줄이기를 보는 골든 시험만 실험 곡의 1200×900을 준다
+    /// (디버그 빌드의 JPEG 인코딩이 큰 그림 하나에 1초 가까이 든다).
+    func plan(_ fixture: RekordboxFixture, name: String = "artwork.mp3", width: Int = 64, height: Int = 48) async throws -> TrackAddPlan {
         let url = try AudioFixture.mp3(try TestResources.url("mp3-notag-cbr.mp3"), artwork: ImageFixture.image(width: width, height: height),
                                        in: fixture.audio, name: name)
         var tags = try await AudioTags.read(url: url)
@@ -69,7 +70,7 @@ struct RekordboxTrackArtworkTests {
         // DJC 실험 아트를 rekordbox가 분석했을 때(2026-09-26): artwork.jpg 행 → 오토게인 → 곡 행 → .2EX → .DAT → .EXT(.3EX는 만들지 못함)
         let fixture = try RekordboxFixture(localUpdateCount: 4000)
         try fixture.add(TrackSpec())
-        let report = try add(fixture, [try await plan(fixture)])
+        let report = try add(fixture, [try await plan(fixture, width: 1200, height: 900)])
         let r = try content(fixture, report)
         let uuid = try #require(r["UUID"]), id = try #require(r["ID"])
         let path = "/PIONEER/Artwork/\(uuid.prefix(3))/\(uuid.dropFirst(3))/artwork.jpg"

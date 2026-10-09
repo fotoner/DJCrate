@@ -23,10 +23,18 @@ struct RekordboxArtworkWriterTests {
     let stamp = "2026-09-25 12:00:00.000 +00:00"
     let names = ["artwork.jpg", "artwork_m.jpg", "artwork_s.jpg"]
     /// 실험 그림과 같은 크기의 합성 그림. 시험마다 새 인스턴스를 만들므로 프로세스에서 한 번만 만든다(#167).
+    /// 크기 줄이기·여백까지 보는 골든 시험(묶음 2 S1·S2)만 쓴다. 디버그 빌드의 JPEG 인코딩이 그림 하나에 1초 가까이 든다.
     static let square = ImageFixture.image(width: 1500, height: 1500, type: .jpeg)
     static let wide = ImageFixture.image(width: 1200, height: 675, type: .png, blue: 40)
     var square: Data { Self.square }
     var wide: Data { Self.wide }
+    /// 행·상태·복원을 보는 시험의 그림(같은 JPEG·PNG 형식, 작은 크기). 크기 규칙은 `TrackArtworkTests`가 본다.
+    static let small = ImageFixture.image(width: 48, height: 48, type: .jpeg)
+    static let smallWide = ImageFixture.image(width: 64, height: 36, type: .png, blue: 40)
+    var small: Data { Self.small }
+    var smallWide: Data { Self.smallWide }
+    /// `putArtwork`가 기본으로 두는 rekordbox 그림 셋(프로세스에서 한 번만 만든다)
+    static let existing = TrackArtwork.make(ImageFixture.image(width: 600, height: 600, blue: 200))
 
     // MARK: 도움
 
@@ -54,7 +62,7 @@ struct RekordboxArtworkWriterTests {
     @discardableResult
     func putArtwork(_ fixture: RekordboxFixture, _ track: TrackSpec, status: Int = 0, deleted: Bool = false, image: Data? = nil,
                     imagePath: String? = nil) throws -> TrackArtwork.Files {
-        let files = try #require(TrackArtwork.make(image ?? ImageFixture.image(width: 600, height: 600, blue: 200)))
+        let files = try #require(image.map { TrackArtwork.make($0) } ?? Self.existing)
         let directory = folder(fixture, track)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if !deleted {
@@ -145,7 +153,7 @@ struct RekordboxArtworkWriterTests {
         // #173 S3 V04: 곡 행 `ImagePath`·256 → 257, 파일 행 INSERT(상태 0, `fileRow`와 같은 모양), TIU·XML 그대로.
         let (fixture, track) = try library(state: 256)
         let before = try content(fixture, track)
-        let report = try write(fixture, [try edit(fixture, track, image: square)])
+        let report = try write(fixture, [try edit(fixture, track, image: small)])
         #expect(report.artworkWritten.first?.artwork == .add)
         let after = try content(fixture, track)
         #expect(changed(before, after) == ["ImagePath", "rb_data_status", "rb_local_usn", "updated_at"])
@@ -161,7 +169,7 @@ struct RekordboxArtworkWriterTests {
         try putArtwork(fixture, track, status: 262, deleted: true)
         try fixture.execute("UPDATE contentFile SET rb_local_synced = 0, rb_priority = 50, usn = 283121 WHERE ID = ?", [.text(fileID(track))])
         let old = try #require(try fileRows(fixture, track).first)
-        let report = try write(fixture, [try edit(fixture, track, image: square)])
+        let report = try write(fixture, [try edit(fixture, track, image: small)])
         #expect(report.artworkWritten.first?.artwork == .add && report.artworkBlocked.isEmpty)
         let rows = try fileRows(fixture, track)
         let row = try #require(rows.first)
@@ -180,7 +188,7 @@ struct RekordboxArtworkWriterTests {
         let (fixture, track) = try library(state: 257)
         try putArtwork(fixture, track, status: 258, deleted: true)
         let old = try #require(try fileRows(fixture, track).first)
-        let report = try write(fixture, [try edit(fixture, track, image: square)])
+        let report = try write(fixture, [try edit(fixture, track, image: small)])
         #expect(report.artworkWritten.first?.artwork == .add && report.artworkBlocked.isEmpty)
         let row = try #require(try fileRows(fixture, track).first)
         #expect(changed(old, row) == ["Hash", "Size", "rb_data_status", "rb_local_deleted", "rb_local_usn", "updated_at"])
@@ -224,7 +232,7 @@ struct RekordboxArtworkWriterTests {
         let (fixture, track) = try library(state: trackState)
         try putArtwork(fixture, track, status: 256)
         let before = try content(fixture, track), oldRow = try #require(try fileRows(fixture, track).first)
-        let report = try write(fixture, [try edit(fixture, track, image: square)])
+        let report = try write(fixture, [try edit(fixture, track, image: small)])
         #expect(report.artworkWritten.first?.artwork == .replace)
         #expect(try content(fixture, track) == before)
         let row = try #require(try fileRows(fixture, track).first)
@@ -274,7 +282,7 @@ struct RekordboxArtworkWriterTests {
         // #173 S5 W2a → W2b: 바꾸기로 257이 된 파일 행(Hash·Size는 바꾼 그림 값)을 지우면 256과 같은 네 칸으로 258·삭제 1. Hash·Size 그대로.
         let (fixture, track) = try library(state: 256)
         try putArtwork(fixture, track, status: 256)
-        _ = try write(fixture, [try edit(fixture, track, image: square)])
+        _ = try write(fixture, [try edit(fixture, track, image: small)])
         let replaced = try #require(try fileRows(fixture, track).first)
         #expect(replaced["rb_data_status"] == "257")
         let report = try write(fixture, [try edit(fixture, track, image: nil)], at: now.addingTimeInterval(60))
@@ -331,7 +339,7 @@ struct RekordboxArtworkWriterTests {
         grid.setBPM(130, at: 0)
         var cues = CueDraft(trackUUID: track.uuid)
         cues.place(EditableCue(kind: .memory, time: 30))
-        let report = try write(fixture, [try edit(fixture, track, image: square)], drafts: [cues], grids: [grid])
+        let report = try write(fixture, [try edit(fixture, track, image: small)], drafts: [cues], grids: [grid])
         #expect(report.written.count == 1 && report.artworkWritten.count == 1 && report.gridWritten.count == 1)
         let content = try content(fixture, track)
         #expect(content["ImagePath"] == path(track) && content["BPM"] == "13000" && content["rb_data_status"] == "257")
@@ -345,7 +353,7 @@ struct RekordboxArtworkWriterTests {
         try putArtwork(fixture, track)
         let before = try fixture.rows("SELECT * FROM contentFile"), content = try content(fixture, track)
         let files = try names.map { try Data(contentsOf: folder(fixture, track).appending(path: $0)) }
-        let report = try write(fixture, [try edit(fixture, track, image: wide)], dryRun: true)
+        let report = try write(fixture, [try edit(fixture, track, image: smallWide)], dryRun: true)
         #expect(report.artworkWritten.first?.artwork == .replace && report.backup == nil)
         #expect(try fixture.rows("SELECT * FROM contentFile") == before && self.content(fixture, track) == content)
         #expect(try names.map { try Data(contentsOf: folder(fixture, track).appending(path: $0)) } == files)
@@ -354,7 +362,7 @@ struct RekordboxArtworkWriterTests {
     @Test func 넣은_그림은_쓰기_전으로_복원하면_지워진다() throws {
         let (fixture, track) = try library()
         let before = try content(fixture, track)
-        let report = try write(fixture, [try edit(fixture, track, image: square)])
+        let report = try write(fixture, [try edit(fixture, track, image: small)])
         let backup = try #require(report.backup.map { URL(filePath: $0) })
         try RekordboxWriter.restore(backup, to: fixture.database, backups: fixture.backups, shareRoot: fixture.shareRoot)
         #expect(try content(fixture, track) == before && fileRows(fixture, track).isEmpty)
@@ -363,7 +371,7 @@ struct RekordboxArtworkWriterTests {
 
     @Test func 쓴_그림_초안과_그림_사본을_백업에_둔다() throws {
         let (fixture, track) = try library()
-        let edit = try edit(fixture, track, image: square)
+        let edit = try edit(fixture, track, image: small)
         let report = try write(fixture, [edit])
         let backup = try #require(report.backup.map { URL(filePath: $0) })
         #expect(RekordboxWriter.artworkDrafts(in: backup) == [edit])
@@ -383,7 +391,7 @@ struct RekordboxArtworkWriterTests {
         let url = fixture.root.appending(path: "masterPlaylists6.xml")
         try document.text.write(to: url, atomically: true, encoding: .utf8)
         let before = try Data(contentsOf: url)
-        let report = try write(fixture, [try edit(fixture, track, image: kind == .delete ? nil : wide)])
+        let report = try write(fixture, [try edit(fixture, track, image: kind == .delete ? nil : smallWide)])
         #expect(report.artworkWritten.first?.artwork == kind)
         #expect(try Data(contentsOf: url) == before)
     }
@@ -393,25 +401,25 @@ struct RekordboxArtworkWriterTests {
     @Test func 막는_곡은_이유와_할_일을_알리고_바꾸지_않는다() throws {
         typealias Case = (name: String, setUp: (RekordboxFixture, TrackSpec) throws -> Void, image: Data?)
         let cases: [Case] = [
-            ("곡 상태 0·256·257 밖", { f, t in try f.execute("UPDATE djmdContent SET rb_data_status = 262 WHERE ID = ?", [.text(t.id)]) }, square),
-            ("분석 전 곡", { f, t in try f.execute("UPDATE djmdContent SET AnalysisDataPath = '' WHERE ID = ?", [.text(t.id)]) }, square),
-            ("지운 곡", { f, t in try f.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", [.text(t.id)]) }, square),
-            ("ImagePath는 있는데 파일 행 없음", { f, t in try f.execute("UPDATE djmdContent SET ImagePath = ? WHERE ID = ?", [.text(path(t)), .text(t.id)]) }, square),
-            ("곡 폴더가 아닌 ImagePath", { f, t in try putArtwork(f, t, imagePath: "/PIONEER/Artwork/000/other/artwork.jpg") }, square),
+            ("곡 상태 0·256·257 밖", { f, t in try f.execute("UPDATE djmdContent SET rb_data_status = 262 WHERE ID = ?", [.text(t.id)]) }, small),
+            ("분석 전 곡", { f, t in try f.execute("UPDATE djmdContent SET AnalysisDataPath = '' WHERE ID = ?", [.text(t.id)]) }, small),
+            ("지운 곡", { f, t in try f.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", [.text(t.id)]) }, small),
+            ("ImagePath는 있는데 파일 행 없음", { f, t in try f.execute("UPDATE djmdContent SET ImagePath = ? WHERE ID = ?", [.text(path(t)), .text(t.id)]) }, small),
+            ("곡 폴더가 아닌 ImagePath", { f, t in try putArtwork(f, t, imagePath: "/PIONEER/Artwork/000/other/artwork.jpg") }, small),
             ("파일 행이 여럿", { f, t in
                 try putArtwork(f, t)
                 try f.insert("contentFile", ["ID": .text("dup"), "ContentID": .text(t.id), "Path": .text(path(t)), "rb_local_deleted": .int(0),
                                               "rb_data_status": .int(0)])
-            }, square),
-            ("확인하지 않은 파일 행 상태", { f, t in try putArtwork(f, t, status: 2) }, square),
+            }, small),
+            ("확인하지 않은 파일 행 상태", { f, t in try putArtwork(f, t, status: 2) }, small),
             ("그림 없이 ImagePath만 빈 곡에 남은 파일 행", { f, t in
                 try putArtwork(f, t)
                 try f.execute("UPDATE djmdContent SET ImagePath = '' WHERE ID = ?", [.text(t.id)])
-            }, square),
+            }, small),
             ("그림 폴더에 파일이 이미 있음", { f, t in
                 try FileManager.default.createDirectory(at: folder(f, t), withIntermediateDirectories: true)
                 try Data("x".utf8).write(to: folder(f, t).appending(path: "artwork.jpg"))
-            }, square),
+            }, small),
             ("JPEG·PNG가 아닌 그림", { _, _ in }, ImageFixture.image(width: 300, height: 300, type: .gif)),
             ("풀지 못하는 그림", { _, _ in }, Data([0xFF, 0xD8, 0xFF, 0xE0, 0, 0])),
             ("지울 그림이 없음", { _, _ in }, nil),
@@ -437,7 +445,7 @@ struct RekordboxArtworkWriterTests {
         // 바꾸기는 곡 행을 건드리지 않으므로 파일 행 Hash로 알아챈다.
         let (fixture, track) = try library(state: 256)
         try putArtwork(fixture, track, status: 256)
-        let edit = try edit(fixture, track, image: wide)
+        let edit = try edit(fixture, track, image: smallWide)
         try fixture.execute("UPDATE contentFile SET Hash = 'rekordbox-changed', rb_data_status = 257 WHERE ID = ?", [.text(fileID(track))])
         let report = try write(fixture, [edit])
         #expect(report.artworkWritten.isEmpty && report.artworkBlocked.first?.reason?.contains("초안을 만든 뒤") == true)
@@ -445,9 +453,9 @@ struct RekordboxArtworkWriterTests {
 
     @Test func 그림_사본이_없거나_초안과_다르면_막는다() throws {
         let (fixture, track) = try library()
-        var missing = try edit(fixture, track, image: square)
+        var missing = try edit(fixture, track, image: small)
         missing.image = nil
-        var other = try edit(fixture, track, image: square)
+        var other = try edit(fixture, track, image: small)
         other.draft.imageSHA256 = String(repeating: "0", count: 64)
         for item in [missing, other] {
             let report = try write(fixture, [item])
@@ -457,7 +465,7 @@ struct RekordboxArtworkWriterTests {
 
     @Test func 사본_DB에_share를_주지_않으면_막는다() throws {
         let (fixture, track) = try library()
-        let report = try write(fixture, [try edit(fixture, track, image: square)], shareRoot: .some(nil))
+        let report = try write(fixture, [try edit(fixture, track, image: small)], shareRoot: .some(nil))
         #expect(report.artworkWritten.isEmpty && report.artworkBlocked.first?.reason?.contains("share") == true)
     }
 
@@ -478,7 +486,7 @@ struct RekordboxArtworkWriterTests {
         let before = try fixture.rows("SELECT * FROM contentFile ORDER BY 1"), content = try content(fixture, track)
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder(fixture, track).path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder(fixture, track).path) }
-        let error = try #require(throws: DJCError.self) { try write(fixture, [try edit(fixture, track, image: wide)]) }
+        let error = try #require(throws: DJCError.self) { try write(fixture, [try edit(fixture, track, image: smallWide)]) }
         guard case .writeRolledBack = error else { Issue.record("되돌림 오류가 아님: \(error)"); return }
         #expect(try fixture.rows("SELECT * FROM contentFile ORDER BY 1") == before && self.content(fixture, track) == content)
         #expect(try names.map { try Data(contentsOf: folder(fixture, track).appending(path: $0)) } == [oldFiles.full, oldFiles.medium, oldFiles.small])
@@ -491,7 +499,7 @@ struct RekordboxArtworkWriterTests {
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: parent.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path) }
         let content = try content(fixture, track)
-        let error = try #require(throws: DJCError.self) { try write(fixture, [try edit(fixture, track, image: square)]) }
+        let error = try #require(throws: DJCError.self) { try write(fixture, [try edit(fixture, track, image: small)]) }
         guard case .writeRolledBack = error else { Issue.record("되돌림 오류가 아님: \(error)"); return }
         #expect(try self.content(fixture, track) == content && fileRows(fixture, track).isEmpty)
     }

@@ -22,8 +22,8 @@ struct RekordboxAnalysisArtworkTests {
     let segments = [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)]
     let names = ["artwork.jpg", "artwork_m.jpg", "artwork_s.jpg"]
 
-    /// 실험 곡처럼 1200×900 앞표지가 든 MP3(새 아티스트·앨범)의 곡 넣기 계획
-    func plan(_ fixture: RekordboxFixture, folder: String = "bare", width: Int = 1200, height: Int = 900) async throws -> TrackAddPlan {
+    /// 앞표지가 든 MP3(새 아티스트·앨범)의 곡 넣기 계획. 기본은 작은 4:3 그림이고, 크기 줄이기를 보는 골든 시험만 실험 곡의 1200×900을 준다.
+    func plan(_ fixture: RekordboxFixture, folder: String = "bare", width: Int = 64, height: Int = 48) async throws -> TrackAddPlan {
         let directory = fixture.audio.appending(path: folder)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = try AudioFixture.mp3(try TestResources.url("mp3-notag-cbr.mp3"), artwork: ImageFixture.image(width: width, height: height),
@@ -71,7 +71,7 @@ struct RekordboxAnalysisArtworkTests {
         // 실험 곡을 넣은 직후 카운터(1003994 → 아티스트·앨범·곡 행 → 1003997)부터 시작한다
         let fixture = try RekordboxFixture(localUpdateCount: 1_003_994)
         try fixture.add(TrackSpec())   // 라이브러리 공통값
-        let p = try await plan(fixture)
+        let p = try await plan(fixture, width: 1200, height: 900)
         let (id, uuid) = try addBare(fixture, p)
         let bare = try content(fixture, id)
         #expect(bare["ImagePath"] == "" && bare["Analysed"] == "0" && bare["rb_local_usn"] == "1003997")
