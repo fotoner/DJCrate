@@ -7,7 +7,7 @@
     <key>NSAppleMusicUsageDescription</key><string>iTunes 동기화 목록을 선택하고 곡 순서를 읽으려면 Music 보관함 접근이 필요합니다.</string>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleLocalizations</key><array><string>ko</string><string>en</string><string>ja</string></array>
-    <!-- AppKit 페이스트보드와 SwiftUI 드롭이 같은 형식으로 곡 ID를 주고받게 한다. -->
+    <!-- AppKit 페이스트보드와 SwiftUI 드롭이 같은 형식으로 곡 ID를 주고받게 한다(덱·재생 목록·USB 곡). -->
     <key>UTExportedTypeDeclarations</key>
     <array>
         <dict>
@@ -16,6 +16,22 @@
             <key>UTTypeTagSpecification</key>
             <dict>
                 <key>com.apple.nspboard-type</key><array><string>com.djcrate.deck-track</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.djcrate.track-ids</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>com.apple.nspboard-type</key><array><string>com.djcrate.track-ids</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.djcrate.usb-track-ids</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>com.apple.nspboard-type</key><array><string>com.djcrate.usb-track-ids</string></array>
             </dict>
         </dict>
     </array>

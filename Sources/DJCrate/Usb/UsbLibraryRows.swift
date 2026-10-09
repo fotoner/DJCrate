@@ -15,16 +15,20 @@ enum UsbLibraryRows {
         return library.tracks.map { row($0, names: names, volumeKey: volumeKey, mountPoint: mountPoint, badge: badges[$0.id]) }
     }
 
-    /// 재생 목록: 항목 순서 그대로. 같은 곡이 여러 번 들어 있어도 줄마다 따로 고르게 줄 ID를 항목 자리로 짓는다
+    /// 재생 목록: 항목 순서 그대로. 같은 곡이 여러 번 들어 있어도 줄마다 따로 고르게 줄 ID를 곡과 그 곡의 몇 번째 출현으로 짓는다
+    /// (로컬 목록과 같다). 자리로 지으면 순서를 바꿔도 ID가 그대로라 선택이 옮긴 곡을 따라가지 않고 표가 줄을 다시 놓지 않는다(#240)
     static func playlist(_ id: Int, library: UsbLibrary, volumeKey: String, mountPoint: String,
                          badges: [Int: UsbSyncStatus]) -> [TrackRow] {
         guard let playlist = library.playlists.first(where: { $0.id == id }) else { return [] }
         let names = Names(library)
         let tracks = Dictionary(library.tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var occurrences: [Int: Int] = [:]
         return entries(of: playlist).enumerated().compactMap { position, contentID in
             guard let track = tracks[contentID] else { return nil }
+            let occurrence = occurrences[contentID, default: 0]
+            occurrences[contentID] = occurrence + 1
             var row = row(track, names: names, volumeKey: volumeKey, mountPoint: mountPoint, badge: badges[contentID])
-            row.playlistOccurrence = .init(id: "\(idPrefix)\(volumeKey):pl\(id):\(position)", number: position + 1)
+            row.playlistOccurrence = .init(id: "\(idPrefix)\(volumeKey):pl\(id):\(contentID):\(occurrence)", number: position + 1)
             return row
         }
     }

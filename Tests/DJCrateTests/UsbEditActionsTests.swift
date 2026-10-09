@@ -344,7 +344,7 @@ struct UsbEditActionsTests {
         #expect(prompter.shown.isEmpty && host.toast?.title == UsbWriteFlow.Text.notWrittenTitle
             && host.toast?.detail == UsbWriteFlow.Text.connectFirstDetail)
         let model = UsbPendingModel(volumeName: "B13T", isConnected: false, edits: try #require(try draft()).edits,
-                                    library: usb.editLibrary(key), summary: nil, busy: false, blockReason: { _ in nil })
+                                    library: usb.editLibrary(key), summary: nil, busy: false, blockReason: { _, _ in nil })
         #expect(!model.canWrite)
         #expect(model.writeHelp == UsbWriteFlow.Text.connectFirstDetail)
 
@@ -507,9 +507,11 @@ struct UsbEditActionsTests {
         #expect(try draft()?.edits == [.playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 2, contentID: "1")]))])
         let removal = try #require(try draft()?.edits.first)
         #expect(host.toast?.detail == "\(image.name) · " + UsbEditText.describe(removal, library: library))
-        // 고를 때의 자리와 곡이 USB와 다르면(다시 읽기 전 줄) 더하지 않는다
-        let stale = UsbLibraryEdit.playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 2, contentID: "2")]))
-        #expect(actions.blockReason(stale, volumeKey: key) == UsbEditRules.Reason.entryChanged(2))
+        // 고를 때의 자리와 곡이 USB와 다르면(다시 읽기 전 줄) 더하지 않는다. 자리는 앞 초안을 얹은 목록([2, 2])으로 본다(#240)
+        let stale = UsbLibraryEdit.playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 3, contentID: "2")]))
+        #expect(actions.blockReason(stale, volumeKey: key) == UsbEditRules.Reason.entryChanged(3))
+        let projected = UsbLibraryEdit.playlist(edit: .removeTracks(playlist: .id("10"), entries: [PlaylistEntry(trackNo: 2, contentID: "2")]))
+        #expect(actions.blockReason(projected, volumeKey: key) == nil)
     }
 
     // MARK: - 초안 한 줄로

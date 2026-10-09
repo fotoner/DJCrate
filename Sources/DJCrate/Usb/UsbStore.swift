@@ -386,6 +386,11 @@ import Observation
     /// 편집 대상 라이브러리(빠진 볼륨은 마지막으로 읽은 것)
     func editLibrary(_ key: String) -> UsbLibrary? { libraries[key] ?? absentDrafts[key]?.library }
 
+    /// 편집 대상 라이브러리에 쓰기 전 초안의 목록 항목 편집을 얹은 것(#240). 목록 줄·끌어 놓을 자리·막힘 판정이 이 순서를 본다
+    func projectedLibrary(_ key: String) -> UsbLibrary? {
+        editLibrary(key).map { UsbDraftProjection.library($0, edits: draftEdits[key] ?? []) }
+    }
+
     /// 그 볼륨의 초안 고치기를 한 줄로 세운다: 앞서 넣은 일이 끝난 뒤에 body를 돌린다(볼륨마다 따로).
     /// 초안 파일을 읽고 고쳐 쓰는 일(편집 더하기·빼기·버리기, 초안 쓰기)과 편집 수 다시 읽기는 모두 이 줄로 한다.
     /// body 안에서 같은 볼륨의 줄을 다시 기다리지 않는다(스스로를 기다려 멈춘다)
@@ -424,9 +429,9 @@ import Observation
         draftRevisions[key, default: 0] += 1
         if count == 0, absentDrafts[key] != nil {
             absentDrafts[key] = nil
-            // 그 볼륨의 쓰기 대기 목록을 보던 중이면 라이브러리로 돌아간다
-            onChange?()
         }
+        // 목록은 초안을 얹은 순서로 보인다. 빠진 볼륨의 쓰기 대기 목록을 보던 중에 초안이 비면 라이브러리로 돌아간다
+        onChange?()
     }
 
     /// 빠지는 볼륨에 초안이 있으면 기억한다(읽은 볼륨만)
@@ -473,9 +478,10 @@ import Observation
         return physicalGate.blocks(judged, confirmName: volume.name).first?.message
     }
 
-    /// 사이드바 대상의 곡 줄(읽기 전용)
+    /// 사이드바 대상의 곡 줄(읽기 전용). 재생 목록은 쓰기 전 초안을 얹은 차례다(`UsbDraftProjection`)
     func rows(for target: UsbSidebarTarget) -> [TrackRow] {
-        guard let volume = volume(target.volumeKey), let library = libraries[target.volumeKey] else { return [] }
+        guard let volume = volume(target.volumeKey), let read = libraries[target.volumeKey] else { return [] }
+        let library = UsbDraftProjection.library(read, edits: draftEdits[target.volumeKey] ?? [])
         let badges = syncBadges[target.volumeKey] ?? [:]
         switch target {
         case .collection:

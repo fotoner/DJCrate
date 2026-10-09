@@ -5809,6 +5809,22 @@
         }
       }
     },
+    "USB 곡 순서 바꾸기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reorder USB Tracks"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "USBの曲の並べ替え"
+          }
+        }
+      }
+    },
     "USB 곡은 이 라이브러리의 초안 쓰기를 지원하지 않으니 라이브러리에서 곡을 고르세요" : {
       "localizations" : {
         "en" : {
@@ -6871,6 +6887,22 @@
         }
       }
     },
+    "USB 재생 목록에 넣기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add to USB Playlist"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "USBプレイリストに追加"
+          }
+        }
+      }
+    },
     "USB 재생 목록을 아직 읽지 못했습니다. 새로고침하세요" : {
       "localizations" : {
         "en" : {
@@ -6947,6 +6979,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "USBの下書きを更新できませんでした"
+          }
+        }
+      }
+    },
+    "USB 컬렉션에 더하기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add to USB Collection"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "USBコレクションに追加"
           }
         }
       }
@@ -17281,6 +17329,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "形式の調査に使う実験コマンド（一覧: djc lab）"
+          }
+        }
+      }
+    },
+    "그 뒤에 USB 쓰기 대기가 바뀌었습니다. USB 쓰기 대기에서 편집을 빼세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending USB Changes changed after this edit. Remove the edit in Pending USB Changes instead."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その後USB書き込み待ちが変わりました。USB書き込み待ちで編集を外してください"
           }
         }
       }
@@ -29567,6 +29631,22 @@
         }
       }
     },
+    "실행 취소하지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not undone"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取り消しませんでした"
+          }
+        }
+      }
+    },
     "실험실" : {
       "localizations" : {
         "en" : {
@@ -35509,6 +35589,34 @@
         }
       }
     },
+    "이미 들어 있는 %lld곡은 넣지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Skipped %lld track already in the playlist"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Skipped %lld tracks already in the playlist"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すでに入っている%lld曲は追加しませんでした"
+          }
+        }
+      }
+    },
     "이미 들어 있는 %lld곡은 넣지 않았습니다." : {
       "localizations" : {
         "en" : {
@@ -35533,6 +35641,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "すでに入っている%lld曲は追加しませんでした。"
+          }
+        }
+      }
+    },
+    "이미 들어 있는 곡이라 넣지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These tracks are already in the playlist, so nothing was added"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すでに入っている曲なので追加しませんでした"
           }
         }
       }

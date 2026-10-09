@@ -220,6 +220,32 @@ public enum UsbEditRules {
         return result
     }
 
+    /// 끈 USB 곡(content_id, 끈 차례) → 목록에 넣을 곡(같은 곡은 한 번)과 이미 든 곡 수(#240).
+    /// 로컬 재생 목록에 넣기처럼 이미 든 곡은 넣지 않는다
+    public static func tracksToAdd(_ dragged: [Int], current: [Int]) -> (ids: [Int], duplicates: Int) {
+        let present = Set(current)
+        var seen: Set<Int> = [], duplicates: Set<Int> = []
+        var ids: [Int] = []
+        for id in dragged where seen.insert(id).inserted {
+            if present.contains(id) { duplicates.insert(id) } else { ids.append(id) }
+        }
+        return (ids, duplicates.count)
+    }
+
+    /// 옮길 항목(자리·곡)과 놓은 자리 아래에서 옮기지 않는 첫 항목의 자리(없으면 맨 끝) → 순서 바꾸기 편집. 그대로면 nil(#240).
+    /// `to`는 로컬 재생 목록과 같게 옮기는 곡을 뺀 목록 기준의 자리다
+    public static func moveEntriesEdit(_ moving: [PlaylistEntry], before: Int?, entries: [Int], playlist: Int) -> UsbLibraryEdit? {
+        let positions = Set(moving.map(\.trackNo))
+        guard !moving.isEmpty, moving.allSatisfy({ entries.indices.contains($0.trackNo - 1) && String(entries[$0.trackNo - 1]) == $0.contentID })
+        else { return nil }
+        let remaining = Array(1...entries.count).filter { !positions.contains($0) }
+        let to = before.flatMap { remaining.firstIndex(of: $0) }.map { $0 + 1 } ?? remaining.count + 1
+        var order = remaining
+        order.insert(contentsOf: moving.map(\.trackNo).sorted(), at: to - 1)
+        guard order != Array(1...entries.count) else { return nil }
+        return .playlist(edit: .moveTracks(playlist: .id(String(playlist)), entries: moving.sorted { $0.trackNo < $1.trackNo }, to: to))
+    }
+
     /// 초안의 목록 편집(만들기·옮기기·순서 바꾸기·지우기)을 읽은 라이브러리에 차례로 대 본 그 목록의 형제 순서(없거나 지웠으면 nil).
     /// 계획(`UsbEditPlanner`)과 같은 규칙: 순서 바꾸기는 나머지 사이 그 자리에 끼우고, 만들기·옮기기는 새 부모 끝에 붙인다.
     /// 읽은 순서는 사이드바와 같다(OneLibrary 순번 → Device Library 순번 → 번호)

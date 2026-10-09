@@ -1946,6 +1946,20 @@ USB에 이미 있는 기기 행을 새 파일로 옮기는 일은 아직 하지 
 - `djc lab usb-rebuild`와 `djc lab usb-diff --ignore-ids`로 본다. 차이는 0이다.
 - 시험은 `UsbEditInvariantTests`다.
 
+앱의 **초안 화면과 끌어 놓기**(#240)는 아래와 같다.
+
+- USB 재생 목록 줄은 쓰기 전 초안의 항목 편집을 계획처럼 차례로 적용한 순서로 보인다(`UsbDraftProjection`). 항목 편집은 목록에 곡 넣기·빼기·옮기기와 USB에서 곡 빼기다.
+- 쓰기 전에는 곡 번호와 결과를 모르는 편집이 있다. 로컬 곡 넣기와 목록 동기화다. 이 편집이나 목록 지우기가 닿은 목록은 읽은 그대로 보인다. 그 목록은 끌어서 순서를 바꾸지 않는다.
+- 목록에서 빼기와 끌어 옮기기의 `trackNo`는 이 순서로 정한다. 미리 막힘 판정(`UsbEditRules.blockReason`)도 이 순서를 본다. 쓰기 대기 목록은 편집마다 그 앞 편집까지 얹은 목록으로 판정한다.
+- 줄 ID는 곡과 그 곡의 몇 번째 출현이다. 그래서 순서를 바꿔도 선택이 곡을 따라간다.
+- 곡 목록은 USB 곡을 `com.djcrate.usb-track-ids` 형식으로만 싣는다. 값은 볼륨키·content_id·목록 자리의 JSON이고, 줄마다 한 항목이다. 이 형식은 덱·로컬 목록·앱 밖에 놓이지 않는다.
+- 같은 USB의 일반 목록에 놓으면 `playlist.addTracks`가 된다. 초안을 얹은 목록에 이미 든 곡은 뺀다(`UsbEditRules.tracksToAdd`).
+- 보고 있는 목록 안에 놓으면 `playlist.moveTracks`가 된다(`UsbEditRules.moveEntriesEdit`).
+- 로컬 곡은 `com.djcrate.track-ids` 형식으로 USB 컬렉션·일반 목록에 놓는다. 놓으면 `addTracks`가 된다.
+- 두 형식은 `Info.plist`에 선언한다. 곡 목록 표는 AppKit이고 사이드바는 SwiftUI다. 표가 실은 형식을 사이드바가 받으려면 LaunchServices에 등록된 형식이어야 한다. 선언 전에는 로컬 곡이 파일 URL로만 들어가 USB 줄에 놓이지 않았다.
+- 끌어 놓아 더한 편집은 편집 › 실행 취소로 뺀다. 초안 끝의 그 편집만 뺀다. 뒤에 다른 편집이 쌓였으면 빼지 않고 알린다.
+- 쓰기는 늘 쓰기 대기의 미리 보기 → 확인 → `UsbWriter.write`다.
+
 앱의 **USB 동기화**는 위 편집 경로를 재사용한다. `UsbSyncPlan`이 선택한 로컬 트리를 보고 다음 일을 초안으로 만든다.
 
 - 폴더와 목록 만들기.

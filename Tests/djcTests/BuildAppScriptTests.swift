@@ -30,6 +30,9 @@ struct BuildAppScriptTests {
         let result = try run(identity: "none", install: false)
         #expect(result.status == 0, "\(result.output)")
         #expect(result.exportedTypes.contains("com.djcrate.deck-track"))
+        // 곡 목록 → 사이드바 재생 목록·USB 줄 끌어 놓기 형식(#240)
+        #expect(result.exportedTypes.contains("com.djcrate.track-ids"))
+        #expect(result.exportedTypes.contains("com.djcrate.usb-track-ids"))
     }
 
     @Test func 레이어_아이콘을_컴파일하고_번들에_연결한다() throws {

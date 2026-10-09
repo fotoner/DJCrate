@@ -81,7 +81,7 @@ private struct TrackListView: NSViewRepresentable {
         }
         table.menu = context.coordinator.makeMenu()
         // 앱 안에서는 재생 목록에 넣거나 순서를 바꾸고, 앱 밖에는 음원 파일을 복사한다.
-        table.registerForDraggedTypes([PlaylistDragType.pasteboardTracks])
+        table.registerForDraggedTypes([PlaylistDragType.pasteboardTracks, PlaylistDragType.pasteboardUsbTracks])
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.draggingDestinationFeedbackStyle = .gap

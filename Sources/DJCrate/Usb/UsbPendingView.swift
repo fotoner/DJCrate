@@ -51,9 +51,10 @@ struct UsbPendingModel: Equatable {
     /// "USB에 쓰기…" 도움말(막혔으면 그 까닭과 할 일)
     var writeHelp: String
 
-    /// - blockReason: 미리 보기 전의 가벼운 막힘 판정(`UsbEditRules.blockReason`)
+    /// - blockReason: 미리 보기 전의 가벼운 막힘 판정(`UsbEditRules.blockReason`). 편집과 그 앞 편집들을 받는다
+    ///   (계획이 차례로 적용하므로 목록 항목 자리는 앞 편집까지 얹은 목록으로 본다, #240)
     init(volumeName: String, isConnected: Bool, edits: [UsbLibraryEdit], library: UsbLibrary?, summary: UsbEditSummary?, busy: Bool,
-         blockReason: (UsbLibraryEdit) -> String?) {
+         blockReason: (UsbLibraryEdit, [UsbLibraryEdit]) -> String?) {
         self.volumeName = volumeName
         self.isConnected = isConnected
         let created = UsbEditText.createdNames(edits)
@@ -65,7 +66,7 @@ struct UsbPendingModel: Equatable {
             case .unchanged?: status = .unchanged
             case let .blocked(reason)?: status = .blocked(reason)
             case let .deferred(reason)?: status = .deferred(reason)
-            case nil: status = blockReason(edit).map(Status.expectedBlock) ?? .waiting
+            case nil: status = blockReason(edit, Array(edits.prefix(offset))).map(Status.expectedBlock) ?? .waiting
             }
             return Row(id: number, text: UsbEditText.describe(edit, library: library, created: created), status: status)
         }
@@ -130,7 +131,7 @@ struct UsbPendingView: View {
         return UsbPendingModel(volumeName: usb.editName(volumeKey) ?? "USB", isConnected: usb.volume(volumeKey) != nil, edits: edits,
                                library: usb.editLibrary(volumeKey), summary: summary,
                                busy: usb.busyVolumes.contains(volumeKey) || usb.activeWrite != nil,
-                               blockReason: { actions?.blockReason($0, volumeKey: volumeKey) })
+                               blockReason: { actions?.blockReason($0, volumeKey: volumeKey, after: $1) })
     }
 
     var body: some View {

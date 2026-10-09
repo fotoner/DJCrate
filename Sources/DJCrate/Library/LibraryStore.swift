@@ -179,6 +179,8 @@ final class LibraryStore {
     /// USB 쓰기·초안 편집 흐름. `usb`를 붙이거나 뗄 때만 바뀐다
     private(set) var usbCoordinator: UsbWriteCoordinator?
     private(set) var usbEdits: UsbEditActions?
+    /// 곡 목록에서 USB 곡을 끄는 동안 그 볼륨키(#240). 사이드바 USB 줄이 같은 USB의 목록만 받으려고 본다(놓기 판정은 끈 내용을 미리 읽지 못한다)
+    @ObservationIgnored var usbDragVolume: String?
     /// 새 항목의 부모만 펼치고 다른 폴더의 펼침 상태는 유지한다.
     var expandedPlaylistIDs: Set<String> = []
     var playlistIndex: [String: PlaylistOutlineNode] = [:] { didSet { playlistCount = playlistIndex.values.filter { !$0.isFolder }.count } }

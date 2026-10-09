@@ -23,18 +23,36 @@ final class TrackListTableView: NSTableView {
         }
     }
 
+    #if DEBUG
+    /// 자가 시험(`UsbDragCapture`)이 창 서버 끌기 세션 대신 표가 만든 끌 항목을 받는다(사용자 커서를 쓰지 않게)
+    var dragSessionInterceptor: (([NSDraggingItem]) -> NSDraggingSession)?
+
+    override func beginDraggingSession(with items: [NSDraggingItem], event: NSEvent, source: any NSDraggingSource) -> NSDraggingSession {
+        if let intercept = dragSessionInterceptor { return intercept(items) }
+        return super.beginDraggingSession(with: items, event: event, source: source)
+    }
+    #endif
+
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let (row, column) = noteClick(at: point)
         let slowEdit = TrackListTagEditing.startsSlowEdit(clickCount: event.clickCount, row: row, selected: selectedRowIndexes,
                                                           modifiers: event.modifierFlags)
         coordinator?.cancelPendingEdit()
+        prepareDragFeedback()
         let drags = coordinator?.dragGeneration
         super.mouseDown(with: event)
+        // 간격 표시로 숨긴 줄은 끌기가 끝날 때 돌아온다. 끌기가 시작되지 않았는데 남아 있으면 지금 보인다(#240)
+        if coordinator?.dragGeneration == drags, !hiddenRowIndexes.isEmpty { unhideRows(at: hiddenRowIndexes, withAnimation: []) }
         // 누른 채 끌어 놓았으면(끌기가 마우스를 놓기 전에 시작됨) 고치지 않는다.
         if slowEdit, coordinator?.dragGeneration == drags, tableColumns.indices.contains(column) {
             coordinator?.scheduleEdit(row: row, column: tableColumns[column].identifier.rawValue)
         }
+    }
+
+    /// 끌기를 시작하기 전에 강조 모양을 정한다(끌기를 시작하려 할 때 간격 표시가 끄는 줄을 숨기므로 그보다 먼저)
+    func prepareDragFeedback() {
+        if let style = coordinator?.dragFeedbackStyle, draggingDestinationFeedbackStyle != style { draggingDestinationFeedbackStyle = style }
     }
 
     /// 누른 자리를 조정자에 기억시키고 (줄 번호, 칸 번호)를 돌려준다. 숨긴 칸·옮긴 칸이 있어도 칸 번호가 아니라 이름으로 잇는다.

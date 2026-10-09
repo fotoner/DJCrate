@@ -116,7 +116,8 @@ enum UsbSidebarModel {
                 if let library = store.libraries[key] {
                     row.collection = .collection(volumeKey: key)
                     row.collectionCount = library.tracks.count
-                    row.playlists = UsbPlaylistTree.build(library)
+                    // 곡 수는 목록 줄과 같게 초안을 얹은 항목으로 센다
+                    row.playlists = UsbPlaylistTree.build(UsbDraftProjection.library(library, edits: store.draftEdits[key] ?? []))
                 }
                 if (store.infos[key]?.consistency.playlistMismatches ?? 0) > 0 { row.mismatchHelp = UsbPlaylistTree.mismatchHelp }
             case let .unsupported(reason):
@@ -311,27 +312,68 @@ struct UsbSidebarSection: View {
     }
 }
 
-/// 로컬 곡을 놓을 수 있는 USB 줄(컬렉션·일반 재생 목록). 놓으면 곡 더하기 초안이 된다
+/// 곡을 놓을 수 있는 USB 줄. 로컬 곡은 컬렉션·일반 재생 목록에 놓아 곡 더하기, USB 곡은 같은 USB의 일반 재생 목록에 놓아 넣기 초안이 된다(#240)
 private struct UsbDropRow<Content: View>: View {
     let store: LibraryStore
     let target: UsbSidebarTarget
     @ViewBuilder var content: Content
-    @State private var isTargeted = false
+    @State private var highlight = DropHighlight()
 
     var body: some View {
         content
-            .onDrop(of: [PlaylistDragType.tracks], isTargeted: $isTargeted) { providers in
-                UsbDrop.perform(providers, on: target, store: store)
-            }
-            .background(isTargeted ? Color.accentColor.opacity(0.25) : .clear, in: RoundedRectangle(cornerRadius: 4))
+            .onDrop(of: [PlaylistDragType.tracks, PlaylistDragType.usbTracks], delegate: UsbDropDelegate(store: store, target: target, highlight: $highlight))
+            .background(highlight.isTargeted ? Color.accentColor.opacity(0.25) : .clear, in: RoundedRectangle(cornerRadius: 4))
+    }
+}
+
+/// 끄는 곡의 종류(로컬·USB)와 끄는 USB를 보고 받을 줄만 강조한다
+private struct UsbDropDelegate: DropDelegate {
+    let store: LibraryStore
+    let target: UsbSidebarTarget
+    @Binding var highlight: DropHighlight
+
+    func validateDrop(info: DropInfo) -> Bool {
+        UsbDrop.accepts(local: info.hasItemsConforming(to: [PlaylistDragType.tracks]), usb: info.hasItemsConforming(to: [PlaylistDragType.usbTracks]),
+                        on: target, store: store)
+    }
+
+    func dropEntered(info: DropInfo) { highlight.enter(accepted: validateDrop(info: info)) }
+    func dropExited(info: DropInfo) { highlight.exit() }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        let accepted = validateDrop(info: info)
+        highlight.update(accepted: accepted)
+        return DropProposal(operation: accepted ? .copy : .cancel)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        highlight.drop()
+        guard validateDrop(info: info) else { return false }
+        return UsbDrop.perform(info.itemProviders(for: [PlaylistDragType.usbTracks, PlaylistDragType.tracks]), on: target, store: store)
     }
 }
 
 /// 사이드바 USB 줄에 놓은 곡
 @MainActor
 enum UsbDrop {
+    /// 놓을 수 있는지: 로컬 곡은 컬렉션·일반 재생 목록, USB 곡은 끄는 USB와 같은 USB의 일반 재생 목록
+    static func accepts(local: Bool, usb: Bool, on target: UsbSidebarTarget, store: LibraryStore) -> Bool {
+        guard store.writeLockPolicy.allowsLibraryInteraction, let actions = store.usbEdits else { return false }
+        if usb { return actions.acceptsUsbDrop(from: store.usbDragVolume, on: target) }
+        return local && actions.acceptsDrop(on: target)
+    }
+
     static func perform(_ providers: [NSItemProvider], on target: UsbSidebarTarget, store: LibraryStore) -> Bool {
-        guard store.writeLockPolicy.allowsLibraryInteraction, let actions = store.usbEdits, actions.acceptsDrop(on: target) else { return false }
+        guard store.writeLockPolicy.allowsLibraryInteraction, let actions = store.usbEdits else { return false }
+        let usbTracks = providers.filter { $0.hasItemConformingToTypeIdentifier(PlaylistDragType.usbTracks.identifier) }
+        if !usbTracks.isEmpty {
+            guard actions.acceptsUsbDrop(from: store.usbDragVolume, on: target) else { return false }
+            PlaylistDrop.loadStrings(usbTracks, type: PlaylistDragType.usbTracks) { strings in
+                actions.startDropUsbTracks(strings.compactMap(UsbTrackDrag.init(pasteboardString:)), on: target)
+            }
+            return true
+        }
+        guard actions.acceptsDrop(on: target) else { return false }
         let tracks = providers.filter { $0.hasItemConformingToTypeIdentifier(PlaylistDragType.tracks.identifier) }
         guard !tracks.isEmpty else { return false }
         PlaylistDrop.loadStrings(tracks, type: PlaylistDragType.tracks) { ids in

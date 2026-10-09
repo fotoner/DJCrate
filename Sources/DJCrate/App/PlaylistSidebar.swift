@@ -4,10 +4,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// 끌어다 놓기 형식: 곡 목록의 곡(ContentID)과 사이드바의 재생 목록(ID). 앱 안에서만 쓴다.
+/// 곡 형식은 표(AppKit)가 싣고 사이드바(SwiftUI)가 받으므로 Info.plist에 선언한다(선언이 없으면 SwiftUI가 받지 못한다, #240).
 enum PlaylistDragType {
     static let tracks = UTType(exportedAs: "com.djcrate.track-ids", conformingTo: .data)
     static let playlist = UTType(exportedAs: "com.djcrate.playlist-id", conformingTo: .data)
     static let pasteboardTracks = NSPasteboard.PasteboardType(tracks.identifier)
+    /// USB 곡(`UsbTrackDrag`). 로컬 곡 형식과 따로 두어 로컬 재생 목록·덱·앱 밖에는 놓이지 않는다
+    static let usbTracks = UTType(exportedAs: "com.djcrate.usb-track-ids", conformingTo: .data)
+    static let pasteboardUsbTracks = NSPasteboard.PasteboardType(usbTracks.identifier)
 
     static func provider(for node: PlaylistOutlineNode) -> NSItemProvider {
         let provider = NSItemProvider()
