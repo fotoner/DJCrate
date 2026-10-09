@@ -20,9 +20,13 @@ struct StagedEditRaceTests {
         let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
                                       saveTagDrafts: { _ in }, backupDirectory: home.appending(path: "backups"), playlistDraftSaver: { _ in },
                                       mergeDraftSaver: { _ in }, playlistImportURL: nil, draftHome: home)
-        // 이미 추가한 곡 하나(그리드 추정·키 찾기가 끝나 목록 저장이 일어날 곡)
-        let earlier = StagedTrack(uuid: "earlier", path: try AudioFixture.wav(seconds: 1, in: home, name: "앞 곡.wav").path, title: "앞 곡",
+        // 이미 추가한 곡 하나(그리드 추정·키 찾기가 끝나 목록 저장이 일어날 곡). 시험이 그 저장을 직접 일으키므로 BPM·키를 미리 채워
+        // 다시 읽을 때 진짜 추정이 돌지 않게 한다: 돌면 추정이 시험이 넣은 키를 늦게 덮어 간헐 실패한다(`loadStaged`가 이어서 하는 추정).
+        var earlier = StagedTrack(uuid: "earlier", path: try AudioFixture.wav(seconds: 1, in: home, name: "앞 곡.wav").path, title: "앞 곡",
                                   duration: 1, addedOn: "2026-10-09")
+        earlier.bpm = 120
+        earlier.key = "1A"
+        earlier.keySource = .tag
         try store.testPorts.staging.save([earlier])
         store.loadStaged()
         return (store, earlier)

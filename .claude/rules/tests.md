@@ -61,7 +61,7 @@ paths:
 
 - 덱: `FakeDeckAudio`, `DeckStorage.memory`, `TrackAssetReader.memory`, `DeckModel.test`. `FakeDeckAudio`는 덱 조작 기록을 `events`에 남긴다.
 - 덱 저장을 바꿔 넣을 때는 `DraftStore`를 먼저 고친다. 그 저장소를 `DeckStorage.memory(store)`로 준다. 덱은 초안 저장소 대신 `SaveDeckDrafts`를 든다.
-- 라이브러리: `LibraryStore.test`. `settings`를 주지 않으면 저장소마다 새 `TestDefaults` 영역을 쓴다. 저장소의 포트는 `store.testPorts`·`testDrafts`로만 본다.
+- 라이브러리: `LibraryStore.test`. `settings`를 주지 않으면 저장소마다 새 `TestDefaults` 영역을 쓴다. `draftHome`·`backupDirectory`를 주지 않으면 저장소마다 새 임시 폴더를 쓴다. 앱 기본 폴더(`DJCPaths`)를 나눠 쓸 시험은 그 값을 명시한다. 저장소의 포트는 `store.testPorts`·`testDrafts`로만 본다.
 - 확인 창: `ScriptedPrompter`
 - 화면 시험: `PreviewWaveformCell(cache:)`, `StorageSettingsModel(paths:files:)`, `SettingsStore(sharedFile: .live(file:))`
 

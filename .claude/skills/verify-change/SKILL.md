@@ -26,6 +26,7 @@ description: 작업이 끝났다고 말하기 전에 바꾼 것을 확인하고 
 1. 파트 워크트리처럼 `dev`와의 merge-base가 작업 시작점이 아니면, 작업 전에 `git write-tree`로 시작 트리를 뜬다.
 2. 무거운 실행이 다른 작업과 겹칠 수 있으면 명령을 `lockf /tmp/djc-heavy.lock`으로 감싼다. 예: `lockf /tmp/djc-heavy.lock scripts/check.sh --changed`.
 3. `scripts/check.sh --changed`를 돌린다. 1에서 뜬 트리가 있으면 `--base <트리 해시>`를 준다.
+   - 이 명령과 `scripts/test-check.py`는 2분을 넘기 쉽다. Bash 도구 기본 timeout은 120초다. 그래서 배경으로 돌린다. 앞에서 돌릴 때는 timeout을 600초로 준다.
 4. 출력 끝의 `── 검사 요약 ──` 블록을 읽는다. 읽는 법은 아래 "끝 요약 읽기"에 있다.
 5. 종료 코드 3이나 4가 나오면 바로 멈춘다. 그 사실을 사용자에게 알린다.
 6. 요약 끝에 `⚠ 남은 필수 검사: …`가 있으면 그 검사를 돌린다. 돌리지 않으면 돌리지 않았다고 보고한다.

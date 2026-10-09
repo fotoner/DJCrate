@@ -859,7 +859,7 @@ AFFECTED_CASES = {
     # 하네스 자신(훅·검사 스크립트·.claude)만 바꾸면 넓히지 않고 두 검사만 돈다
     "affected-harness-self": (["scripts/test-harness.py", "scripts/check-docs.py", "scripts/hooks/stop.py",
                                "scripts/check-prose.py", "scripts/prose-baseline.txt", "scripts/prose-terms.txt",
-                               ".claude/rules/x.md", ".claude/settings.json", ".claude/skills/v/SKILL.md"], "none",
+                               "scripts/worker-lock.sh", ".claude/rules/x.md", ".claude/settings.json", ".claude/skills/v/SKILL.md"], "none",
                               [], [], [], ["docs", "harness"], "test-harness.py"),
     "affected-map-none": ([".gitignore"], "none", [], [], [], [], "no-tests"),
     "affected-translations": (["Sources/DJCrate/Resources/Localizable.xcstrings"], "tests",

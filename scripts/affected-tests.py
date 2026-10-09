@@ -4,7 +4,7 @@
 규칙(위에서부터 먼저 맞는 것):
 - Package.swift·Package.resolved·scripts/check.sh·.github/** → 전체 검사로 넓힌다.
 - 하네스(scripts/hooks/**·.claude/**·scripts/test-harness.py·scripts/check-docs.py·scripts/check-prose.py·
-  scripts/prose-*.txt) → 시험 없음(scripts/test-harness.py·scripts/check-docs.py 중 있는 것, 문서 검사는 check-prose.py와 함께).
+  scripts/prose-*.txt·scripts/worker-lock.sh) → 시험 없음(scripts/test-harness.py·scripts/check-docs.py 중 있는 것, 문서 검사는 check-prose.py와 함께).
 - 문서(*.md·docs/**·skills/**) → 시험 없음(scripts/check-docs.py가 있으면 그것).
 - 검사 스크립트·모듈 경계 빚 목록·번역 카탈로그 → 해당 가벼운 검사.
 - Tests/Support/<재료>/** → 그 재료 타깃을 쓰는 시험 타깃 전체.
@@ -41,7 +41,7 @@ WIDEN = ["Package.swift", "Package.resolved", "scripts/check.sh", ".github/**"]
 DOCS = ["*.md", "**/*.md", "docs/**", "skills/**", "LICENSE*"]
 # 훅·지침·하네스 검사 자신: 앱 코드에 닿지 않으므로 넓히지 않고 두 검사만 돈다
 HARNESS = ["scripts/hooks/**", ".claude/**", "scripts/test-harness.py", "scripts/check-docs.py", "scripts/check-prose.py",
-           "scripts/prose-*.txt"]
+           "scripts/prose-*.txt", "scripts/worker-lock.sh"]
 IMPORT_FILES = ["scripts/check-imports.py", "scripts/import-debt.txt"]
 SCRIPT_FILES = ["scripts/test-check.py", "scripts/affected-tests.py", "scripts/test-map.txt"]
 TRANSLATION_FILES = ["scripts/i18n.swift", "**/*.xcstrings"]
