@@ -9,14 +9,17 @@ import RekordboxKit
 import Synchronization
 
 extension LibraryStore {
-    /// 시험 저장소(조립 지점 대신). 주지 않은 값은 옛 기본값과 같다: 설정은 저장소마다 새 시험 영역(`TestDefaults`, 사용자 계정의 표준 영역을 쓰지 않는다),
-    /// 초안 폴더는 데이터 폴더(시험은 `DJC_HOME` 또는 임시 폴더), 쓰기 대상·스냅샷은 이 프로세스의 rekordbox 폴더(시험 프로세스는 임시 폴더, #182),
+    /// 시험 저장소(조립 지점 대신). 주지 않은 값: 설정은 저장소마다 새 시험 영역(`TestDefaults`, 사용자 계정의 표준 영역을 쓰지 않는다),
+    /// 초안·백업 폴더는 저장소마다 새 임시 폴더(공용 데이터 폴더를 쓰면 병렬로 도는 시험끼리 초안·백업이 섞인다),
+    /// 쓰기 대상·스냅샷은 이 프로세스의 rekordbox 폴더(시험 프로세스는 임시 폴더, #182),
     /// 쓰기 관문은 실제 관문(`testReflection`으로 바꾼다).
     /// 저장 큐(`DraftWriter`)는 저장소마다 새로 만든다(다른 시험의 저장을 기다리지 않게). 같은 큐를 덱·시험과 나누려면 `writer`를 준다.
     /// - Parameters:
     ///   - arguments: 위치 값을 풀 실행 인자(명시 사본 `--db`)
     ///   - environment: 위치 값을 풀 환경(`DJC_REKORDBOX_DIR`·`DJC_DB`). 쓰기 대상·백업·초안 폴더는 따로 준 값(또는 이 프로세스의 값)이다
-    ///   - draftHome: 초안 폴더. 주면 손상된 초안 파일도 옮긴다(앱처럼, `movesDamagedDrafts`로 바꿀 수 있다)
+    ///   - backupDirectory: rekordbox 쓰기 백업 폴더. 앱 기본 폴더(`DJCPaths.rekordboxBackups`)를 볼 시험은 그 값을 준다
+    ///   - draftHome: 초안 폴더. 주면 손상된 초안 파일도 옮긴다(앱처럼, `movesDamagedDrafts`로 바꿀 수 있다).
+    ///     앱 데이터 폴더(`DJCPaths.userData`)를 나눠 쓸 시험은 그 값을 준다
     ///   - location: 실행 인자·환경 대신 직접 만든 위치(쓰기 대상·백업·초안 폴더는 위 인자가 덮는다)
     ///   - takeLiveSnapshot: 스냅샷 뜨기(주지 않으면 이 프로세스의 rekordbox 폴더에서 뜬다)
     ///   - ports: 라이브러리 포트(실제 구현)를 바꾼다(메모리 라이브러리·가짜 Music 등)
@@ -42,11 +45,11 @@ extension LibraryStore {
                      writer: DraftWriter = DraftWriter(),
                      launch: LibraryLaunchOptions = LibraryLaunchOptions(),
                      ports: ((inout LibraryPorts) -> Void)? = nil) -> LibraryStore {
-        let home = draftHome ?? DJCPaths.userData
+        let home = draftHome ?? freshTestFolder("drafts")
         var location = location ?? LibraryLocation.resolve(arguments: arguments, environment: environment)
         location.database = rekordboxDatabase ?? RekordboxWriter.liveDatabase
         location.shareRoot = rekordboxShareRoot
-        location.backupDirectory = backupDirectory ?? DJCPaths.rekordboxBackups
+        location.backupDirectory = backupDirectory ?? freshTestFolder("backups")
         location.draftHome = home
         location.movesDamagedDrafts = movesDamagedDrafts ?? (draftHome != nil)
         var drafts = DraftStore.live(writer: writer, home: home)
@@ -72,6 +75,11 @@ extension LibraryStore {
         _ = store.reflection
         return store
     }
+}
+
+/// 저장소마다 새 임시 폴더 자리(만들지는 않는다. 초안 저장·백업이 쓸 때 만든다)
+private func freshTestFolder(_ name: String) -> URL {
+    FileManager.default.temporaryDirectory.appending(path: "djc-test-library-store-\(UUID().uuidString)").appending(path: name)
 }
 
 /// 시험 저장소를 만들 때 쓴 라이브러리 포트(저장소는 포트를 들지 않는다. 시험만 이 표로 찾는다)
