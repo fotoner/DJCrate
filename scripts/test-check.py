@@ -1317,7 +1317,7 @@ def check_changed(case, arguments, changed, mode, expected, expected_calls, note
             failure_part = summary
             assert "통과한_시험" not in failure_part, "요약에 통과한 시험까지 넣음"
         if case == "changed-write":
-            assert "목표 60%" not in output and "코어" not in output, "부분 검사에서 코어 커버리지까지 판정함"
+            assert "목표 60%" not in output and "코어" not in output, f"부분 검사에서 코어 커버리지까지 판정함\n{output}"
             assert "남은 필수 검사" in summary, "필수 검사 안내를 요약에 다시 내지 않음"
         if expected_calls and expected_calls[-1].startswith("test"):
             homes = {line.split("\t")[0] for line in (root / "env.txt").read_text().splitlines()}
