@@ -1,5 +1,7 @@
 #if DEBUG
 import AppKit
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -41,7 +43,7 @@ enum HistorySelfTest {
         return checked
     }
 
-    static func runIfRequested(store: LibraryStore) {
+    static func runIfRequested(store: LibraryStore, reflection: ReflectionCoordinator) {
         let args = ProcessInfo.processInfo.arguments
         guard args.contains("--history-selftest") else { return }
         func log(_ message: String) { FileHandle.standardError.write(Data("[히스토리 시험] \(message)\n".utf8)) }
@@ -54,9 +56,11 @@ enum HistorySelfTest {
         guard let database = try? checkedDatabase(URL(filePath: root).appending(path: "master.db")) else {
             log("미검증: 쓰기 대상은 라이브 DB에 이어지지 않은 합성 사본이어야 합니다"); exit(2)
         }
-        // 다시 읽기도 합성 사본으로만 한다. DJC_HOME은 일반 스냅샷 위치를 옮기지 않는다.
-        let reading = URL(filePath: home).appending(path: "history-reading")
-        store.takeLiveSnapshot = { _ in try LibrarySnapshot.take(from: database, into: reading, force: true) }
+        // 쓰기·복원 대상과 쓴 뒤 다시 읽기의 출처는 위치 값이 정한다(`DJC_REKORDBOX_DIR`의 master.db, 스냅샷은 그 안 djc-snapshots/).
+        let session = reflection.session
+        guard session.target.database.standardizedFileURL == database.standardizedFileURL, store.location.allowsSnapshot else {
+            log("미검증: 쓰기 대상이 합성 사본이 아닙니다"); exit(2)
+        }
         Task {
             for _ in 0..<300 {
                 if case .loaded = store.phase { break }
@@ -70,7 +74,7 @@ enum HistorySelfTest {
             do {
                 _ = try checkedDatabase(database, snapshot: snapshot)
                 let before = try Data(contentsOf: database)
-                let keys = try await Task.detached { try LocalLibraryKeys.load(snapshot: snapshot) }.value
+                let keys = try await Task.detached { try LocalLibraryKeysReader.load(snapshot: snapshot) }.value
                 guard let key = keys.tracks.first(where: { $0.contentID == row.track.id }) else { exit(2) }
                 let archive = ArchivedHistory(id: "usbhistory-selftest", name: "HISTORY 2026-10-09", importedAt: Date(timeIntervalSince1970: 1_791_524_834),
                     sequence: 1, source: .init(volumeKey: "SELFTEST", volumeName: "합성 USB", format: "deviceLibrary", historyID: 1, historyName: "HISTORY 001"),
@@ -80,8 +84,9 @@ enum HistorySelfTest {
                                     fileName: UsbPathRules.audioFileName(sourcePath: key.folderPath, fileNameL: key.fileNameL))])
                 let archiveStore = UsbHistoryStore(directory: URL(filePath: home).appending(path: "usb-histories"), home: URL(filePath: home))
                 try await Task.detached { try archiveStore.save([archive]) }.value
-                store.usbHistoryStore = archiveStore
-                store.loadArchivedHistories()
+                store.usbHistories = ArchiveUsbHistories(files: .live(directory: archiveStore.directory, home: URL(filePath: home)),
+                                                         now: { Date() }, newID: { UUID().uuidString })
+                await store.loadArchivedHistories()
                 store.writesHistories = true
                 store.sidebar = .history(archive.id)
                 guard store.pendingHistoryIDs == [archive.id], store.displayRows.count == 1 else {
@@ -102,19 +107,19 @@ enum HistorySelfTest {
                 }
                 try await capture("pending")
                 store.setWriteLock(true)
-                let preview = try await store.previewWrite(rows: [], playlists: true)
+                let preview = try await session.previewWrite(rows: [], playlists: true)
                 guard preview.report.historyWritten.count == 1, try Data(contentsOf: database) == before else {
                     log("실패: 미리 보기·DB 불변"); exit(1)
                 }
-                let report = try await store.writeToRekordbox([], histories: preview.histories, to: database, shareRoot: nil)
+                let report = try await session.writeDrafts(preview.writableBatch, to: session.target)
                 guard report.historyWritten.count == 1, store.pendingHistories.isEmpty,
                       let id = report.historyWritten.first?.historyID, store.histories.contains(where: { $0.id == id }),
-                      let backup = RekordboxWriter.backups(in: store.backupDirectory).first(where: \.isWrite) else {
+                      let backup = session.writeBackups().first(where: \.isWrite) else {
                     log("실패: 쓰기·다시 읽기·보존 표시"); exit(1)
                 }
                 store.sidebar = .history(id)
                 try await capture("written")
-                try await store.restoreRekordbox(backup)
+                _ = try await session.restoreBackup(backup, to: session.target)
                 store.setWriteLock(false)
                 guard store.pendingHistoryIDs == [archive.id], try Data(contentsOf: database) == before,
                       archiveStore.load().histories.count == 1 else {

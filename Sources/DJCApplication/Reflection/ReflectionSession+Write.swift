@@ -1,11 +1,11 @@
 import DJCDomain
 import Foundation
 
-/// 초안 쓰기: 큐·그리드·게인·태그·앨범아트·재생 목록·합치기 초안을 rekordbox DB에 직접 쓴다(rekordbox가 꺼져 있을 때만).
+/// 초안 쓰기: 큐·그리드·게인·태그·앨범아트·재생 목록·합치기 초안과 USB에서 보존한 재생 기록(#43)을 rekordbox DB에 직접 쓴다(rekordbox가 꺼져 있을 때만).
 /// 분석 전 곡(분석 파일 없음)의 그리드 초안은 분석 파일(파형·그리드·오토게인)을 만들어 붙인다(`Options.attachesAnalysis`).
 extension ReflectionSession {
     /// 화면 흐름: 꺼짐 확인 → 대상 → 미리 보기 → (막힘·제외·손실이 있을 때만) 확인 → 쓸 수 있는 것만 쓰기 → 쓴 뒤 처리 → 결과.
-    /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 곡 초안만 쓴다)
+    /// - Parameter playlists: 곡이 아닌 초안(재생 목록 초안·쓰기 대기 재생 기록)도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 곡 초안만 쓴다)
     public func write(rows: [TrackRow], playlists: Bool = true) async -> ReflectionOutcome {
         guard !ports.lock.isLocked() else { return .busy }
         guard !ports.runningApps.isRekordboxRunning() else {
@@ -13,7 +13,8 @@ extension ReflectionSession {
         }
         let chosen = writeTargets(rows)
         let withPlaylists = playlists && !ports.library.state().playlistDraft.isEmpty
-        guard !chosen.isEmpty || withPlaylists else {
+        let withHistories = playlists && !ports.library.state().pendingHistories.isEmpty
+        guard !chosen.isEmpty || withPlaylists || withHistories else {
             return publish(.notice(title: String(ui: "쓸 초안이 없습니다"), text: String(ui: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 초안이 없습니다."),
                                    lines: exclusions(for: rows, blockedOnly: false)))
         }
@@ -22,7 +23,7 @@ extension ReflectionSession {
         do {
             stage(WriteStage(String(ui: "바꿀 내용을 확인하는 중…"), completed: 0, total: chosen.count, cancellable: true))
             try Task.checkCancellation()
-            let preview = try await previewWrite(rows: rows, playlists: withPlaylists)
+            let preview = try await previewWrite(rows: rows, playlists: withPlaylists || withHistories)
             try Task.checkCancellation()
             stage(nil)
             // 창 대신 결과에 제외한 초안까지 남긴다(#230). 막힌 초안은 화면이 복구 시트로 고치게 한다(#232).
@@ -48,7 +49,8 @@ extension ReflectionSession {
     }
 
     /// 미리 보기(단계): 초안을 확인해 묶고, 위치의 rekordbox에서 새 사본을 떠 끝까지 써 본다(rekordbox는 건드리지 않는다).
-    /// - Parameter playlists: 재생 목록 초안도 함께 볼지(곡 초안과 달리 곡을 골라 나누지 않는다)
+    /// 최신 사본에 이미 있는 재생 기록은 실제로 쓰지 않고 보존본 연결만 갱신한다(쓰기 대기에서 빠진다).
+    /// - Parameter playlists: 곡이 아닌 초안(재생 목록 초안·쓰기 대기 재생 기록)도 함께 볼지(곡 초안과 달리 곡을 골라 나누지 않는다)
     public func previewWrite(rows: [TrackRow], playlists: Bool) async throws -> WritePreview {
         ports.drafts.flush()
         ports.library.retryTagSaves()
@@ -76,6 +78,10 @@ extension ReflectionSession {
             task.cancel()
         }
         try Task.checkCancellation()
+        let present = (report.historyOutcomes ?? []).filter { $0.status == .unchanged }
+        if !present.isEmpty, let warning = await ports.library.recordHistories(present) {
+            apply(.historyMarkFailed(warning))
+        }
         return WritePreview(report: report, batch: batch, exclusions: exclusions(for: rows, blockedOnly: true))
     }
 
@@ -142,7 +148,9 @@ extension ReflectionSession {
             }
         }
         let playlistDraft = playlists && !state.playlistDraft.isEmpty ? state.playlistDraft : nil
-        return DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges)
+        // 쓰기 대기 재생 기록(#43)도 재생 목록 초안처럼 곡을 고르지 않고 모두 본다. 관문이 막으면 막힘(이유)으로 돌아온다
+        return DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges,
+                               histories: playlists ? state.pendingHistories : [])
     }
 
     /// 분석 전 곡(분석 파일 없음)의 그리드 초안에 붙일 음원 길이·음량·내장 그림(곡 UUID별). 분석 붙이기가 닫혀 있으면 비운다.
@@ -174,6 +182,7 @@ extension ReflectionSession {
     // MARK: - 쓴 뒤
 
     /// 쓴 뒤: 쓴 초안을 정리하고(백업 폴더에 남는다) 새 스냅샷을 조용히 다시 읽어 덱에 알린다. 태그는 반영한 값이 새 base가 된다.
+    /// 쓴 재생 기록(#43)은 다시 읽기 전에 보존본에 rekordbox 기록 ID를 남겨 쓰기 대기에서 뺀다(보존본은 지우지 않는다).
     /// - Returns: 쓰기 결과와 나눠 알릴 경고(#175)
     func finishWrite(_ report: RekordboxWriteReport, batch: DraftWriteBatch) async -> [String] {
         let uuids = batch.trackUUIDs
@@ -213,6 +222,8 @@ extension ReflectionSession {
             }
             apply(.artworkCleared(artworks, failed: failed))
         }
+        // 다시 읽지 못해도 같은 기록을 또 쓰지 않게 다시 읽기 전에 남긴다.
+        let historyWarning = (report.historyOutcomes ?? []).isEmpty ? nil : await ports.library.recordHistories(report.historyOutcomes ?? [])
         let saveWarning = draftSaveWarning(for: uuids, restoring: false)
         // 쓴 재생 목록 편집을 초안에서 빼지 못하면 다음에 같은 편집을 또 쓸 수 있으니 따로 알린다(#174·#175).
         let playlistWarning = batch.playlists != nil && ports.library.state().playlistDraftUnsaved
@@ -225,7 +236,7 @@ extension ReflectionSession {
             .union(batch.merges.filter { merged.contains($0.id) }.flatMap { $0.members.map(\.trackUUID) })
         let reloaded = await ports.reload.reload(written, [])
         apply(.lastWriteBackup(report.backup.map { URL(filePath: $0) }))
-        return finishFollowUp([saveWarning, playlistWarning] + (report.warnings ?? []), reloaded: reloaded, restoring: false)
+        return finishFollowUp([saveWarning, playlistWarning, historyWarning] + (report.warnings ?? []), reloaded: reloaded, restoring: false)
     }
 
     // MARK: - 재생 목록 편집(CLI)

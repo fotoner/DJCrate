@@ -36,6 +36,8 @@ struct PortContractTests {
 
     @Test func 추가_목록() throws { try stagingStoreContract(MemoryStaging().store) }
 
+    @Test func USB_재생_기록_보존_파일() throws { try usbHistoryFilesContract(MemoryUsbHistoryFiles().files) }
+
     @Test func 초안_파일() throws { try draftFilesContract(MemoryDraftFiles().files) }
 
     @Test func 연결_기록_없음() throws { try playlistImportsContract(.none, remembers: false) }

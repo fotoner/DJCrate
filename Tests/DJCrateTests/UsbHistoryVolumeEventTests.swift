@@ -1,7 +1,8 @@
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
+import RekordboxFixtures
 import Foundation
 import RekordboxKit
 import Testing
@@ -64,8 +65,8 @@ struct UsbHistoryVolumeEventTests {
         let host = UsbHistoryEventHost([volume])
         host.base.serve(volume, library: UsbHistoryAppTests.usbLibrary())
         let local = UsbHistoryAppTests.localKeys()
-        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, localLibrary: { local })
-        UsbHistoryAppTests.connect(store, usb, scratch: scratch)
+        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: FakeUsbWriteService(), localLibrary: { local })
+        await UsbHistoryAppTests.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
         #expect(store.archivedHistories.count == 1)
@@ -97,8 +98,8 @@ struct UsbHistoryVolumeEventTests {
         host.base.serve(first, library: UsbHistoryAppTests.usbLibrary())
         host.base.serve(second, library: UsbTestData.library(formats: [.oneLibrary]))
         let local = UsbHistoryAppTests.localKeys()
-        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, localLibrary: { local })
-        UsbHistoryAppTests.connect(store, usb, scratch: scratch)
+        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: FakeUsbWriteService(), localLibrary: { local })
+        await UsbHistoryAppTests.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
         host.base.mounted = [first, second]

@@ -10,7 +10,7 @@ extension RekordboxWriteGate {
             write: { batch, inputs, target, dryRun in
                 try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags, artworks: batch.artworks,
                                           analysisInputs: inputs, playlistDraft: batch.playlists, merges: batch.merges,
-                                          to: target.database, dryRun: dryRun, backups: target.backups, shareRoot: target.shareRoot,
+                                          histories: batch.histories, to: target.database, dryRun: dryRun, backups: target.backups, shareRoot: target.shareRoot,
                                           guard: writeGuard)
             },
             preview: { batch, inputs, source, copied in
@@ -21,7 +21,7 @@ extension RekordboxWriteGate {
                     try Task.checkCancellation()
                     return try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags,
                                                      artworks: batch.artworks, analysisInputs: inputs, playlistDraft: batch.playlists,
-                                                     merges: batch.merges, to: snapshot, dryRun: true,
+                                                     merges: batch.merges, histories: batch.histories, to: snapshot, dryRun: true,
                                                      backups: snapshot.deletingLastPathComponent().appending(path: "backups"), shareRoot: share,
                                                      guard: writeGuard)
                 }

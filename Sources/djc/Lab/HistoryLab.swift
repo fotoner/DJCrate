@@ -41,17 +41,14 @@ enum HistoryLab {
     static func repro(_ args: [String]) async throws {
         guard let oldPath = value(after: "--old", in: args), let newPath = value(after: "--new", in: args),
               let workPath = value(after: "--work", in: args) else { throw UsageError() }
-        let old = URL(filePath: oldPath), new = URL(filePath: newPath), folder = URL(filePath: workPath)
+        let old = URL(filePath: oldPath), new = URL(filePath: newPath), requested = URL(filePath: workPath)
         try CLIGuards.refuseLiveDatabase(old)
         try CLIGuards.refuseLiveDatabase(new)
         // 실제 라이브 DB로 이어지는 하드 링크도 사본으로 받지 않는다.
         _ = try LibraryRead.resolve(database: old)
         _ = try LibraryRead.resolve(database: new)
-        try refuseLibraryFolder(folder)
         let fm = FileManager.default
-        if let items = try? fm.contentsOfDirectory(atPath: folder.path), !items.isEmpty {
-            throw CLIGuards.Refusal("작업 폴더가 비어 있지 않습니다. 새 폴더를 주세요")
-        }
+        let folder = try refuseLibraryFolder(requested)
         try fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         // 쓸 사본(master.db)과 비교용 사본 둘(실험 전·뒤). 스냅샷 폴더의 원본은 복사만 한다.
         let target = folder.appending(path: "master.db")
@@ -322,15 +319,15 @@ enum HistoryLab {
         }
     }
 
-    /// 임시 폴더의 빈 폴더만 받고, 사본 환경 변수로 고른 rekordbox 폴더도 거부한다.
-    static func refuseLibraryFolder(_ folder: URL) throws {
-        // 재현 도구도 실물 USB·사용자 폴더에는 쓰지 않는다.
-        _ = try UsbScratchPath.check(folder.path, as: .outputDirectory)
-        let path = CLIGuards.normalized(folder)
-        let roots = [LibrarySnapshot.rekordboxDirectory, LibrarySnapshot.realRekordboxDirectory,
-                     FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Pioneer")].map(CLIGuards.normalized)
-        for root in roots where path == root || path.hasPrefix(root + "/") {
-            throw CLIGuards.Refusal("rekordbox 라이브러리 폴더 안에는 작업 폴더를 두지 않습니다. 임시 폴더를 주세요")
+    /// 임시 폴더 아래의 빈(또는 없는) 폴더만 받는다. 실험 작업 폴더 관문(`LabWorkFolder.check`)이 임시 폴더 밖과
+    /// rekordbox·DJCrate 데이터 폴더와 겹치는 폴더를 거부한다. 이 도구는 폴더를 지우지 않으므로 비어 있지 않은 폴더는 받지 않는다.
+    /// 통과하면 링크를 푼 실제 경로를 돌려준다
+    @discardableResult
+    static func refuseLibraryFolder(_ folder: URL) throws -> URL {
+        let checked = try LabWorkFolder.check(folder.path)
+        if let items = try? FileManager.default.contentsOfDirectory(atPath: checked.path), !items.isEmpty {
+            throw CLIGuards.Refusal("작업 폴더가 비어 있지 않습니다. --work에 mktemp -d로 만든 폴더 아래 새 경로를 주세요")
         }
+        return checked
     }
 }

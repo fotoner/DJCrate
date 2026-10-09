@@ -59,9 +59,9 @@ extension ReflectionSession {
     @discardableResult
     func writeToRekordbox(_ drafts: [CueDraft], grids: [GridDraft] = [], gains: [String: Double] = [:], tags: [TagDraft] = [],
                           artworks: [ArtworkEdit] = [], playlists: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [],
-                          to database: URL? = nil, shareRoot: URL? = nil) async throws -> RekordboxWriteReport {
+                          histories: [HistoryImport] = [], to database: URL? = nil, shareRoot: URL? = nil) async throws -> RekordboxWriteReport {
         try await writeDrafts(DraftWriteBatch(drafts: drafts, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlists,
-                                              merges: merges), to: target(database, shareRoot))
+                                              merges: merges, histories: histories), to: target(database, shareRoot))
     }
 
     /// 시험: 이 세션의 대상을 백업으로 복원한다(지금 초안 남기기·되살리기까지)

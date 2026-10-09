@@ -139,15 +139,21 @@ public struct ReflectionLibrary {
     public var preserveDamagedDrafts: @MainActor () -> [DamagedDraftFile]
     /// 쓰기 전에: 저장하지 못한 재생 목록 초안을 다시 저장해 본다. 됐으면(또는 저장할 것이 없으면) true
     public var savePlaylistDraft: @MainActor () -> Bool
+    /// 미리 보기·쓰기 뒤에: rekordbox에 쓴(또는 최신 대상에 이미 있던) USB 재생 기록의 보존본에 rekordbox 기록 ID를 남긴다(#43).
+    /// 보존본의 저장은 USB 가져오기와 한 줄로 서야 해서(같은 파일을 겹쳐 쓰지 않게) 보존본을 든 화면 쪽이 그 줄에 세운다.
+    /// 표시를 저장하지 못하면 알릴 문장을 돌려준다(rekordbox 쓰기는 끝났다)
+    public var recordHistories: @MainActor ([RekordboxHistoryOutcome]) async -> String?
 
     public init(state: @escaping @MainActor () -> ReflectionLibraryState, apply: @escaping @MainActor (ReflectionLibraryChange) -> Void,
                 retryTagSaves: @escaping @MainActor () -> Void, preserveDamagedDrafts: @escaping @MainActor () -> [DamagedDraftFile],
-                savePlaylistDraft: @escaping @MainActor () -> Bool) {
+                savePlaylistDraft: @escaping @MainActor () -> Bool,
+                recordHistories: @escaping @MainActor ([RekordboxHistoryOutcome]) async -> String? = { _ in nil }) {
         self.state = state
         self.apply = apply
         self.retryTagSaves = retryTagSaves
         self.preserveDamagedDrafts = preserveDamagedDrafts
         self.savePlaylistDraft = savePlaylistDraft
+        self.recordHistories = recordHistories
     }
 
     /// 화면이 없는 곳(CLI): 메모리 초안이 없고 바꿀 표시도 없다

@@ -1,6 +1,7 @@
 #if DEBUG
 @testable import DJCrate
-import DJCTestSupport
+import DJCTestKit
+import RekordboxFixtures
 import DJCStorage
 import Foundation
 import Testing
@@ -22,6 +23,8 @@ struct HistorySelfTestTests {
 
     @Test func 읽은_합성_사본과_다른_쓰기_대상을_거부한다() throws {
         let source = try RekordboxFixture(), other = try RekordboxFixture()
+        // 픽스처는 한 틀을 복사해 처음엔 바이트가 같다. 다른 합성 DB가 되게 곡 하나를 더한다
+        try other.add(TrackSpec())
         #expect(try HistorySelfTest.checkedDatabase(source.database, snapshot: source.database).path == UsbScratchPath.check(source.database.path, as: .existingFile))
         let snapshot = source.root.appending(path: "read.db")
         try FileManager.default.copyItem(at: source.database, to: snapshot)

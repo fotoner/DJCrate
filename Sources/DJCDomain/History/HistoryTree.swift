@@ -103,4 +103,26 @@ public struct HistoryTree: Sendable, Equatable {
         func pad(_ value: Int?, _ width: Int) -> String { HistoryNaming.pad(value ?? 0, width) }
         return "\(pad(parts.year, 4))-\(pad(parts.month, 2))-\(pad(parts.day, 2)) \(pad(parts.hour, 2)):\(pad(parts.minute, 2)):\(pad(parts.second, 2))"
     }
+
+    /// 트리 줄 이름: 기록 이름, 없으면 날짜(앞 10자), 그것도 없으면 "날짜 없음"
+    public static func rowName(_ history: RekordboxHistory) -> String {
+        if !history.name.isEmpty { return history.name }
+        if let date = history.dateCreated, !date.isEmpty { return String(date.prefix(10)) }
+        return String(ui: "날짜 없음")
+    }
+
+    /// rekordbox 기록과 보존 기록을 한 트리로. 보존 기록의 연·월·정렬 키는 가져온 시각을 `calendar`(앱은 이 Mac의 달력)로 본 값이다
+    public static func make(histories: [RekordboxHistory], archived: [ArchivedHistory], calendar: Calendar) -> HistoryTree {
+        let rekordbox = histories.map { history -> Item in
+            let yearMonth = yearMonth(folderNames: history.folderNames, dateCreated: history.dateCreated)
+            return Item(id: history.id, name: rowName(history), year: yearMonth?.year, month: yearMonth?.month,
+                        sortKey: history.dateCreated ?? "", sequence: history.seq)
+        }
+        let usb = archived.map { history -> Item in
+            let parts = calendar.dateComponents([.year, .month], from: history.importedAt)
+            return Item(id: history.id, name: history.name, year: parts.year, month: parts.month,
+                        sortKey: sortKey(history.importedAt, calendar: calendar), sequence: history.sequence)
+        }
+        return build(rekordbox + usb)
+    }
 }

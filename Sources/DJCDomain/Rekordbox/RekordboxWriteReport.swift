@@ -68,12 +68,14 @@ public struct RekordboxWriteReport: Codable, Sendable {
     /// 쓰기는 끝났지만 알릴 것(보고서를 백업에 저장하지 못함 등). 옛 보고서에는 없다.
     public var warnings: [String]?
     public var iTunesSyncWritten: Bool?
+    /// USB 재생 기록 가져오기 결과(#43, 넘긴 순서대로). 옛 보고서에는 없다.
+    public var historyOutcomes: [RekordboxHistoryOutcome]?
 
     public init(outcomes: [Outcome], backup: String? = nil, dryRun: Bool, createdAt: String, finalUpdateCount: Int? = nil,
                 gridOutcomes: [Outcome]? = nil, gainOutcomes: [Outcome]? = nil, analysisOutcomes: [Outcome]? = nil,
                 createdFiles: [String]? = nil, playlistOutcomes: [PlaylistOutcome]? = nil, artworkAdded: [String]? = nil,
                 tagOutcomes: [Outcome]? = nil, mergeOutcomes: [Outcome]? = nil, artworkOutcomes: [Outcome]? = nil,
-                warnings: [String]? = nil, iTunesSyncWritten: Bool? = nil) {
+                warnings: [String]? = nil, iTunesSyncWritten: Bool? = nil, historyOutcomes: [RekordboxHistoryOutcome]? = nil) {
         self.outcomes = outcomes
         self.backup = backup
         self.dryRun = dryRun
@@ -90,7 +92,11 @@ public struct RekordboxWriteReport: Codable, Sendable {
         self.artworkOutcomes = artworkOutcomes
         self.warnings = warnings
         self.iTunesSyncWritten = iTunesSyncWritten
+        self.historyOutcomes = historyOutcomes
     }
+
+    public var historyWritten: [RekordboxHistoryOutcome] { (historyOutcomes ?? []).filter { $0.status == .written } }
+    public var historyBlocked: [RekordboxHistoryOutcome] { (historyOutcomes ?? []).filter { $0.status == .blocked } }
 
     public var mergeWritten: [Outcome] { (mergeOutcomes ?? []).filter { $0.status == .written } }
     public var mergeBlocked: [Outcome] { (mergeOutcomes ?? []).filter { $0.status == .blocked } }

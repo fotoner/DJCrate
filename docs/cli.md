@@ -391,6 +391,8 @@ djc lab sql <사본.db> "SELECT …"                                         # �
 - rekordbox 폴더나 DJCrate 데이터 폴더를 품은 폴더
 - rekordbox 폴더나 DJCrate 데이터 폴더 안에 있는 폴더
 
+재생 기록 재현(`lab history-repro`, #43)도 같은 판정(`LabWorkFolder.check`)을 지난다. 이 명령은 폴더를 지우지 않는다. 그래서 비어 있지 않은 `--work` 폴더는 받지 않는다.
+
 ## 캐시 보기·비우기(`cache`)
 
 ```sh

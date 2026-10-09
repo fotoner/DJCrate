@@ -1,14 +1,18 @@
 @testable import DJCrate
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
+import RekordboxFixtures
 import Foundation
 @testable import RekordboxKit
 import Testing
 
 /// USB에서 보존한 재생 기록(#43)을 "rekordbox 쓰기 대기"에 올려 rekordbox에 쓰기(⇧⌘E) 때 rekordbox Histories에 넣는다.
-/// 대기 고르기·빼기와 다시 넣기·쓰기 흐름(미리 보기 → 막힘이 있을 때만 확인 → 쓰기 → 다시 읽기 → 결과)·쓰기 전으로 복원 뒤 다시 대기를 본다.
-/// 보존 저장소·rekordbox 사본은 임시 폴더다(사용자 폴더를 쓰지 않는다). 실제로 쓰는 시험은 `DJC_HOME`이 있을 때만 돈다.
+/// 대기 고르기·빼기와 다시 넣기, 합성 사본에 쓰는 흐름(미리 보기 → 쓰기 → 다시 읽기 → 결과)·쓰기 전으로 복원 뒤 다시 대기를 본다.
+/// 가짜 관문으로 보는 반영 흐름(막힘이 있을 때만 확인 등)은 `DJCApplicationTests/ReflectionSessionHistoryTests`에 있다.
+/// 보존 파일·rekordbox 사본은 임시 폴더다(사용자 폴더를 쓰지 않는다). 실제로 쓰는 시험은 `DJC_HOME`이 있을 때만 돈다.
 @MainActor
 @Suite("USB 재생 기록 rekordbox 쓰기 대기(앱)", .serialized)
 struct UsbHistoryWriteTests {
@@ -83,33 +87,38 @@ struct UsbHistoryWriteTests {
         #expect(input.skippedBeforeMatching == 2)
     }
 
-    /// 합성 rekordbox 사본에 쓰고 다시 읽는 저장소(라이브 스냅샷 대신 사본 DB를 그대로 읽는다). 아직 읽지 않았다
+    /// 합성 rekordbox 사본에 쓰고 다시 읽는 저장소(라이브 스냅샷 대신 사본 DB를 그대로 읽는다). 쓰기·복원 대상도 그 사본이다. 아직 읽지 않았다
     static func newStore(_ fixture: RekordboxFixture) throws -> LibraryStore {
         try fixture.execute("UPDATE djmdContent SET MasterSongID = ID, FileNameL = 'history-' || ID || '.mp3', MasterDBID = (SELECT DBID FROM djmdProperty LIMIT 1) WHERE ID IN ('101', '102')")
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.historywrite.\(UUID())")!, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
-                                 saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
         let database = fixture.database
-        store.takeLiveSnapshot = { _ in database }
-        store.launchArguments = ["test"]
-        store.launchEnvironment = [:]
-        store.draftHome = fixture.root.appending(path: "drafts")
-        store.rekordboxDatabase = database
-        store.rekordboxShareRoot = fixture.shareRoot
-        // 쓰기 대기·쓰기 흐름을 보려고 관문을 연다(앱은 사본 재현 전이라 닫혀 있다, `closedGateKeepsQueueEmpty`)
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("historywrite"), persist: false),
+                                      resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                      saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
+                                      mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                                      draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: database,
+                                      rekordboxShareRoot: fixture.shareRoot, arguments: ["test"], environment: [:],
+                                      takeLiveSnapshot: { _ in database })
+        // 쓰기 대기·쓰기 흐름을 보려고 관문을 연다(시험 저장소의 기본은 닫힘이다, `closedGateKeepsQueueEmpty`)
         store.writesHistories = true
         return store
     }
 
-    /// 사본을 읽고, 임시 폴더의 보존 저장소에 `archived`를 저장해 앱처럼 읽어 들인 저장소
+    /// 임시 폴더의 보존 유스케이스(조립 지점과 같은 실제 파일 구현). `fileSystem`으로 저장 실패를 만든다
+    static func histories(_ scratch: URL, home: URL? = nil, fileSystem: any UsbFileSystem = PosixUsbFileSystem()) -> ArchiveUsbHistories {
+        let fixed = now
+        return ArchiveUsbHistories(files: .live(directory: scratch.appending(path: "usb-histories"), home: home ?? scratch.appending(path: "home"),
+                                                fileSystem: fileSystem),
+                                   now: { fixed }, newID: { UUID().uuidString })
+    }
+
+    /// 사본을 읽고, 임시 폴더의 보존 파일에 `archived`를 저장해 앱처럼 읽어 들인 저장소
     static func makeStore(_ fixture: RekordboxFixture, scratch: URL, archived: [ArchivedHistory]) async throws -> (LibraryStore, UsbHistoryStore) {
         let store = try newStore(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         let historyStore = UsbHistoryStore(directory: scratch.appending(path: "usb-histories"), home: scratch.appending(path: "home"))
         try historyStore.save(archived)
-        store.usbHistoryStore = historyStore
-        store.loadArchivedHistories()
+        store.usbHistories = histories(scratch)
+        await store.loadArchivedHistories()
         return (store, historyStore)
     }
 
@@ -145,9 +154,9 @@ struct UsbHistoryWriteTests {
         #expect(input.first?.trackIdentities.first?.contentID == "101" && input.first?.expectedLibraryID == "1")
         try fixture.execute("UPDATE djmdContent SET MasterSongID = '999', FileNameL = 'other.mp3', FolderPath = '/synthetic/other.mp3' WHERE ID = '101'")
         let before = try Data(contentsOf: fixture.database)
-        let preview = try await store.previewWrite(rows: [], playlists: true)
+        let preview = try await store.session.previewWrite(rows: [], playlists: true)
         #expect(preview.report.historyBlocked.first?.reason?.contains("원본") == true)
-        let report = try await store.writeToRekordbox([], histories: input, to: fixture.database, shareRoot: nil)
+        let report = try await store.session.writeToRekordbox([], histories: input, to: fixture.database)
         #expect(report.historyBlocked.first?.reason?.contains("원본") == true && report.backup == nil)
         #expect(try Data(contentsOf: fixture.database) == before)
     }
@@ -168,7 +177,7 @@ struct UsbHistoryWriteTests {
                                               "TrackNo": .int(1), "rb_local_deleted": .int(0)])
         try fixture.execute("UPDATE djmdContent SET DJPlayCount = 7 WHERE ID = '101'")
         let before = try Data(contentsOf: fixture.database)
-        let preview = try await store.previewWrite(rows: [], playlists: true)
+        let preview = try await store.session.previewWrite(rows: [], playlists: true)
         #expect(preview.report.historyOutcomes?.first?.status == .unchanged)
         #expect(store.pendingHistories.isEmpty)
         #expect(Self.savedHistory(archiveStore, target.id)?.rekordboxHistoryID == "9876543")
@@ -192,7 +201,7 @@ struct UsbHistoryWriteTests {
         // 읽기 전에는 rekordbox에 이미 쓴 기록인지 몰라 올리지 않는다
         #expect(store.pendingHistories.isEmpty && !store.hasHistoryDrafts)
 
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         #expect(store.pendingHistories.map(\.id) == [pending.id, restored.id, shadowed.id])
 
         // rekordbox도 같은 USB 기록을 가져왔으면(짝 곡 순서가 같은 "HISTORY …" 기록) 숨기고 대기에서도 뺀다
@@ -280,7 +289,7 @@ struct UsbHistoryWriteTests {
         #expect(Self.savedHistory(saved, target.id)?.rekordboxLibraryID == "1")
 
         // 사본에는 그 기록이 없다(복원으로 사라진 것과 같다): 새로 읽으면 다시 쓰기 대기
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         #expect(store.pendingHistoryIDs == [target.id])
 
         // 표시를 저장하지 못하면 알릴 문장을 돌려주고, 이번 실행 동안은 쓴 것으로 둔다
@@ -309,7 +318,7 @@ struct UsbHistoryWriteTests {
         let fileSystem = FaultyUsbFileSystem(root: scratch)
         fileSystem.failAt = (.syncDirectory, 1, .error)
         let saved = UsbHistoryStore(directory: scratch.appending(path: "usb-histories"), home: scratch, fileSystem: fileSystem)
-        store.usbHistoryStore = saved
+        store.usbHistories = Self.histories(scratch, home: scratch, fileSystem: fileSystem)
         store.setHistoriesExcluded([target.id], excluded: true)
         await store.waitForHistoryImports()
         try #require(await waitUntil(timeout: .seconds(5)) { store.toast?.kind == .warning })
@@ -320,78 +329,13 @@ struct UsbHistoryWriteTests {
         #expect(store.toast?.title == "재생 기록의 쓰기 대기 상태를 저장하지 못했습니다")
     }
 
-    // MARK: - 반영 흐름(가짜 저장소)
+    // MARK: - 결과 문장
 
     static func historyOutcome(_ key: String, _ status: RekordboxWriter.HistoryOutcome.Status, reason: String? = nil,
                                entries: Int = 2, skipped: Int = 0) -> RekordboxWriter.HistoryOutcome {
         RekordboxWriter.HistoryOutcome(id: ArchivedHistory.idPrefix + key, name: "HISTORY \(key)",
                                        historyID: status == .written ? "rb-\(key)" : nil, status: status, reason: reason,
                                        entries: status == .written ? entries : 0, skipped: skipped)
-    }
-
-    static func historyPreview(_ outcomes: [RekordboxWriter.HistoryOutcome],
-                               cues: [RekordboxWriter.Outcome] = []) -> LibraryStore.WritePreview {
-        var preview = ReflectionCoordinatorTests.preview(cues: cues)
-        preview.report.historyOutcomes = outcomes
-        preview.histories = outcomes.map { HistoryImport(id: $0.id, name: $0.name, dateCreated: now, contentIDs: ["1", "2"]) }
-        return preview
-    }
-
-    @Test("곡 초안이 없어도 쓰기 대기 재생 기록만 묻지 않고 쓰고, 결과에 기록마다 한 줄을 남긴다")
-    func writesHistoriesOnly() async {
-        let host = FakeReflectionHost(), prompter = ScriptedPrompter()
-        host.targets = []
-        host.hasHistoryDrafts = true
-        host.preview = .success(Self.historyPreview([Self.historyOutcome("a", .written)]))
-        await ReflectionCoordinator(host: host, prompter: prompter, isRekordboxRunning: { false }).write(rows: [])
-        #expect(host.previewedPlaylists == true)
-        #expect(prompter.shown.isEmpty)
-        #expect(host.wroteHistories == [ArchivedHistory.idPrefix + "a"])
-        #expect(host.toast?.title == "rekordbox에 썼습니다 · 재생 기록 1건" && host.toast?.kind == .success)
-        #expect(host.resultHistory.latest?.text == "• HISTORY a — 재생 기록 쓰기 완료: 2곡")
-        #expect(host.locks == [true, false])
-    }
-
-    @Test("막힌 재생 기록(쓰기 관문 닫힘 등)이 있으면 확인 창에 이유를 보이고, 쓸 수 있는 것만 쓴다")
-    func blockedHistoryAsks() async throws {
-        let host = FakeReflectionHost(), prompter = ScriptedPrompter()
-        host.preview = .success(Self.historyPreview([Self.historyOutcome("b", .blocked, reason: "재생 기록 쓰기를 아직 열지 않았습니다")],
-                                                    cues: [ReflectionCoordinatorTests.outcome("x", .written)]))
-        host.hasHistoryDrafts = true
-        await ReflectionCoordinator(host: host, prompter: prompter, isRekordboxRunning: { false })
-            .write(rows: [ReflectionCoordinatorTests.row("x")])
-        let prompt = try #require(prompter.shown.first)
-        #expect(prompt.title == "큐 1곡을 rekordbox에 쓸까요?")
-        #expect(prompt.details == ["쓰지 않는 것 1:", "• HISTORY b: 재생 기록 쓰기를 아직 열지 않았습니다"])
-        #expect(host.wrote?.drafts == ["x"] && host.wroteHistories == [])
-        #expect(host.toast?.kind == .warning)
-        #expect(host.toast?.detail == "재생 기록 1건은 쓰지 않았습니다 — 재생 기록 쓰기를 아직 열지 않았습니다")
-        // 함께 쓸 수 있으면 제목에 함께 센다
-        var both = Self.historyPreview([Self.historyOutcome("a", .written)], cues: [ReflectionCoordinatorTests.outcome("x", .written)])
-        both.report.historyOutcomes?.append(Self.historyOutcome("b", .blocked, reason: "이유"))
-        #expect(ReflectionCoordinator.confirmation(both.report).title == "큐 1곡 · 재생 기록 1건을 rekordbox에 쓸까요?")
-    }
-
-    @Test("재생 기록이 모두 막히면 창 없이 결과 토스트로 이유를 남기고 쓰지 않는다")
-    func allBlockedNoPrompt() async {
-        let host = FakeReflectionHost(), prompter = ScriptedPrompter()
-        host.targets = []
-        host.hasHistoryDrafts = true
-        host.preview = .success(Self.historyPreview([Self.historyOutcome("b", .blocked, reason: "닫힘")]))
-        await ReflectionCoordinator(host: host, prompter: prompter, isRekordboxRunning: { false }).write(rows: [])
-        #expect(prompter.shown.isEmpty && host.wrote == nil)
-        #expect(host.toast?.title == "rekordbox에 쓴 것이 없습니다" && host.toast?.kind == .warning)
-        #expect(host.resultHistory.latest?.text == "• HISTORY b — 재생 기록 쓰지 않음: 닫힘")
-    }
-
-    @Test("곡을 골라 쓰는 메뉴(곡 초안만)는 재생 기록을 넣지 않는다")
-    func selectedTracksSkipHistories() async {
-        let host = FakeReflectionHost(), prompter = ScriptedPrompter()
-        host.targets = []
-        host.hasHistoryDrafts = true
-        await ReflectionCoordinator(host: host, prompter: prompter, isRekordboxRunning: { false })
-            .write(rows: [ReflectionCoordinatorTests.row("a")], playlists: false)
-        #expect(host.toast?.title == "쓸 초안이 없습니다" && host.previewedPlaylists == nil)
     }
 
     @Test("결과: 실제로 쓴 기록과 미리 보기에서 막힌 기록을 합치고, 컬렉션에 없어 뺀 곡을 적는다")
@@ -407,6 +351,23 @@ struct UsbHistoryWriteTests {
             "• HISTORY b — 재생 기록 쓰지 않음: 이유",
         ])
         #expect(result.shortfall == "재생 기록 1건은 쓰지 않았습니다 — 이유")
+
+        // 재생 기록만 썼으면 성공으로 알리고 기록마다 한 줄을 남긴다
+        var only = RekordboxWriter.Report(outcomes: [], backup: "/tmp/b", dryRun: false, createdAt: "", finalUpdateCount: 1)
+        only.historyOutcomes = [Self.historyOutcome("a", .written)]
+        let written = WriteResult.written(only, preview: only)
+        #expect(written.kind == .success && written.title == "rekordbox에 썼습니다 · 재생 기록 1건")
+        #expect(written.text == "• HISTORY a — 재생 기록 쓰기 완료: 2곡")
+        // 모두 막히면 쓴 것이 없다고 경고하고 이유를 남긴다
+        var blocked = RekordboxWriter.Report(outcomes: [], backup: nil, dryRun: true, createdAt: "", finalUpdateCount: nil)
+        blocked.historyOutcomes = [Self.historyOutcome("b", .blocked, reason: "닫힘")]
+        let nothing = WriteResult.written(blocked, preview: blocked)
+        #expect(nothing.kind == .warning && nothing.title == "rekordbox에 쓴 것이 없습니다")
+        #expect(nothing.text == "• HISTORY b — 재생 기록 쓰지 않음: 닫힘")
+        // 막힌 곡 초안과 함께면 확인 창 뒤 결과의 부족분에 재생 기록 이유를 적는다
+        var mixedPreview = RekordboxWriter.Report(outcomes: [], backup: nil, dryRun: true, createdAt: "", finalUpdateCount: nil)
+        mixedPreview.historyOutcomes = [Self.historyOutcome("b", .blocked, reason: "재생 기록 쓰기를 아직 열지 않았습니다")]
+        #expect(WriteResult.written(only, preview: mixedPreview).shortfall == "재생 기록 1건은 쓰지 않았습니다 — 재생 기록 쓰기를 아직 열지 않았습니다")
     }
 
     // MARK: - 합성 사본에 쓰기
@@ -427,7 +388,7 @@ struct UsbHistoryWriteTests {
         let counter = try fixture.localUpdateCount()
 
         let prompter = ScriptedPrompter()
-        await ReflectionCoordinator(host: store, prompter: prompter, isRekordboxRunning: { false }).write(rows: [])
+        await ReflectionCoordinator.test(store: store, prompter: prompter).write(rows: [])
         #expect(prompter.shown.isEmpty)
         #expect(try fixture.rows("SELECT ID FROM djmdHistory ORDER BY ID") == histories)
         #expect(try fixture.rows("SELECT ID FROM djmdSongHistory ORDER BY ID") == songs)
@@ -450,11 +411,11 @@ struct UsbHistoryWriteTests {
         store.writesHistories = true
         #expect(store.pendingHistoryIDs == [target.id])
         let plays = (store.rowsByID["101"]?.playCount ?? 0, store.rowsByID["102"]?.playCount ?? 0)
-        let preview = try await store.previewWrite(rows: [], playlists: true)
+        let preview = try await store.session.previewWrite(rows: [], playlists: true)
         #expect(preview.report.historyWritten.first?.skipped == 1)
 
         let prompter = ScriptedPrompter()
-        await ReflectionCoordinator(host: store, prompter: prompter, isRekordboxRunning: { false }).write(rows: [])
+        await ReflectionCoordinator.test(store: store, prompter: prompter).write(rows: [])
         // 막힘·제외·손실이 없으니 묻지 않고 쓴다(#210)
         #expect(prompter.shown.isEmpty)
         let result = try #require(store.resultHistory.latest)
@@ -483,7 +444,7 @@ struct UsbHistoryWriteTests {
         // 쓰기 전으로 복원하면 rekordbox에서 그 기록이 사라져 보존본이 다시 보이고 쓰기 대기에 오른다(따로 할 일 없음)
         let backup = try #require(RekordboxWriter.backups(in: fixture.backups).first { $0.isWrite })
         #expect(WriteResult.restored(backup, saved: backup.url).text.contains("• \(target.name)"))
-        try await store.restoreRekordbox(backup, keepingCurrentDrafts: true)
+        try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         #expect(store.historyIndex[historyID] == nil)
         #expect(try fixture.rows("SELECT ID FROM djmdHistory WHERE ID = ?", [.text(historyID)]).isEmpty)
         #expect(store.shadowedArchiveIDs.isEmpty && Self.treeIDs(store.historyTree).contains(target.id))

@@ -11,6 +11,9 @@ package func runDJCrate() {
 struct DJCrateApp: App {
     /// 문구 카탈로그(이 타깃 번들)를 가장 먼저 정한다. 하위 모듈의 문구(막힘 이유 등)도 이 카탈로그로 찾는다.
     private let strings: Void = UIStrings.useAppCatalog()
+    /// 재생 기록 자가 테스트(`--history-selftest`)는 저장소를 만들기 전에 합성 사본·임시 폴더인지 본다(사용자 초안·라이브러리를 읽지 않게).
+    /// 저장소는 아래 `app` 속성이 `init`보다 먼저 만들므로 속성으로 둔다.
+    private let selfTestStartup: Void = DJCrateApp.checkHistorySelfTestStartup()
     /// 옛 이름(anicue) 데이터·설정 옮기기. 목록·덱이 설정을 읽기 전에 돌아야 해서 첫 속성으로 둔다.
     private let migrated: Void = AppComposition.migrateLegacyData()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -19,20 +22,6 @@ struct DJCrateApp: App {
     private var store: LibraryStore { app.store }
     private var deck: DeckModel { app.deck }
     @State private var windowFrameRestored = false
-
-    private static func makeLibraryStore() -> LibraryStore {
-        #if DEBUG
-        if CommandLine.arguments.contains("--history-selftest") {
-            do {
-                _ = try HistorySelfTest.startupDatabase(arguments: CommandLine.arguments, environment: ProcessInfo.processInfo.environment)
-            } catch {
-                FileHandle.standardError.write(Data("[히스토리 시험] 미검증: 같은 합성 DB와 임시 DJC_HOME·DJC_REKORDBOX_DIR을 지정하세요\n".utf8))
-                exit(2)
-            }
-        }
-        #endif
-        return LibraryStore(draftHome: DJCPaths.userData)
-    }
 
     init() {
         // SwiftPM 실행 파일은 번들이 없어서 Dock·메뉴 막대에 올리려면 직접 지정해야 한다.
@@ -65,6 +54,18 @@ struct DJCrateApp: App {
         #endif
     }
 
+    private static func checkHistorySelfTestStartup() {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("--history-selftest") else { return }
+        do {
+            _ = try HistorySelfTest.startupDatabase(arguments: ProcessInfo.processInfo.arguments, environment: ProcessInfo.processInfo.environment)
+        } catch {
+            FileHandle.standardError.write(Data("[히스토리 시험] 미검증: 같은 합성 DB와 임시 DJC_HOME·DJC_REKORDBOX_DIR을 지정하세요\n".utf8))
+            exit(2)
+        }
+        #endif
+    }
+
     var body: some Scene {
         // 단일 창: ⌘N 새 창이 같은 상태를 공유하며 라이브러리를 다시 읽는 문제를 막는다.
         Window(Text(verbatim: "DJCrate"), id: "main") {
@@ -78,7 +79,7 @@ struct DJCrateApp: App {
                     // 쓰기 시험(`--write-selftest`)도 키 입력 없이 스토어로만 돌아 사용 중인 앱의 포커스를 가져오지 않는다
                     if !ResizePerfSelfTest.isRequested,
                        !ProcessInfo.processInfo.arguments.contains("--playlist-recovery-selftest"),
-                       !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--write-selftest" }) {
+                       !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--write-selftest" || $0 == "--history-selftest" }) {
                         NSApplication.shared.activate()
                     }
                     #else

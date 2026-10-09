@@ -1,13 +1,16 @@
 @testable import DJCrate
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
+import RekordboxFixtures
 import Foundation
 import RekordboxKit
 import Testing
 
 /// USB 기기 재생 기록 보존(#43): USB를 읽으면 새 기록을 보존하고 사이드바 트리·곡 목록에 rekordbox 기록과 섞는다.
-/// 보존 저장소는 임시 폴더로 주입하고(사용자 폴더를 쓰지 않는다), 시계는 고정한다. USB는 가짜 호스트의 합성 라이브러리다.
+/// 보존 유스케이스(`ArchiveUsbHistories`)의 파일은 임시 폴더로 주입하고(사용자 폴더를 쓰지 않는다), 시계는 고정한다. USB는 가짜 호스트의 합성 라이브러리다.
 @MainActor
 @Suite("USB 재생 기록 보존과 재생 기록 트리(앱)")
 struct UsbHistoryAppTests {
@@ -45,27 +48,42 @@ struct UsbHistoryAppTests {
         return String(format: "HISTORY %04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
+    /// 읽지 않은 시험 저장소(설정·초안 폴더는 저장소마다 새 시험 영역)
+    static func newStore(_ fixture: RekordboxFixture) -> LibraryStore {
+        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbhistory"), persist: false),
+                          resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                          saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
+                          mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
+    }
+
     static func libraryStore(_ fixture: RekordboxFixture) async throws -> LibraryStore {
         // 보존본은 주입한 짝만 믿지 않고 실제로 연 사본의 키로 다시 검증한다.
         try fixture.execute("UPDATE djmdProperty SET DBID = '424242'")
         try fixture.execute("UPDATE djmdContent SET MasterDBID = '424242' WHERE ID IN ('101', '102')")
         try fixture.execute("UPDATE djmdContent SET MasterSongID = '501', FileNameL = 'test1.mp3' WHERE ID = '101'")
         try fixture.execute("UPDATE djmdContent SET MasterSongID = '502', FileNameL = 'test2.mp3' WHERE ID = '102'")
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.usbhistory.\(UUID())")!, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
-                                 saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        let fixed = now
-        store.historyClock = { fixed }
+        let store = newStore(fixture)
         await store.load(snapshot: fixture.database)
         return store
     }
 
-    /// 앱과 같은 연결(`UsbAppSetup.connectHistories`)에 임시 폴더의 보존 저장소를 붙인다
-    static func connect(_ store: LibraryStore, _ usb: UsbStore, scratch: URL) {
+    /// 임시 폴더의 보존 유스케이스(조립 지점과 같은 실제 파일 구현, 고정 시계). `fileSystem`으로 저장 실패를 만든다
+    static func histories(_ scratch: URL, home: URL? = nil, fileSystem: any UsbFileSystem = PosixUsbFileSystem()) -> ArchiveUsbHistories {
+        let fixed = now
+        return ArchiveUsbHistories(files: .live(directory: historiesFolder(scratch), home: home ?? scratch.appending(path: "home"),
+                                                fileSystem: fileSystem),
+                                   now: { fixed }, newID: { UUID().uuidString })
+    }
+
+    /// 앱과 같은 연결(`UsbAppSetup.connectHistories`)에 임시 폴더의 보존 유스케이스를 붙이고, 보존한 기록을 다 읽을 때까지 기다린다
+    static func connect(_ store: LibraryStore, _ usb: UsbStore, histories: ArchiveUsbHistories?) async {
         store.usb = usb
-        UsbAppSetup.connectHistories(store: store, usb: usb,
-                                     historyStore: UsbHistoryStore(directory: historiesFolder(scratch), home: scratch.appending(path: "home")))
+        UsbAppSetup.connectHistories(store: store, usb: usb, histories: histories)
+        await store.waitForHistoryImports()
+    }
+
+    static func connect(_ store: LibraryStore, _ usb: UsbStore, scratch: URL) async {
+        await connect(store, usb, histories: histories(scratch))
     }
 
     /// 기록 하나가 든 USB를 읽을 수 있게 둔 가짜 호스트
@@ -84,7 +102,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, volume) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
 
@@ -147,7 +165,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, _) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
         let first = store.archivedHistories
@@ -164,7 +182,7 @@ struct UsbHistoryAppTests {
         // 앱을 다시 켠 것처럼: 새 스토어가 보존 폴더에서 읽고, 같은 USB를 읽어도 더하지 않는다
         let reopened = try await Self.libraryStore(fixture)
         let usbAgain = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(reopened, usbAgain, scratch: scratch)
+        await Self.connect(reopened, usbAgain, scratch: scratch)
         #expect(reopened.archivedHistories == first)
         await usbAgain.refresh()
         await reopened.waitForHistoryImports()
@@ -179,16 +197,12 @@ struct UsbHistoryAppTests {
         let scratch = Self.scratch()
         defer { try? FileManager.default.removeItem(at: scratch) }
         let fixture = try historyFixture()
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.earlyhistory.\(UUID())")!, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
-                                 saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        store.historyClock = { Self.now }
+        let store = Self.newStore(fixture)
         let (host, volume) = Self.host()
         let keys = LocalLibraryKeysCache()
-        let usb = UsbStore(host: host, readPolicy: .all, localLibrary: { keys.current })
+        let usb = UsbStore(host: host, readPolicy: .all, writeService: FakeUsbWriteService(), localLibrary: { keys.current })
         usb.isScratchMount = { _ in true }
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
         #expect(usb.libraries[volume.usbKey] != nil)
@@ -232,7 +246,7 @@ struct UsbHistoryAppTests {
         library.histories[0].entries = [2, 1, 1]
         host.serve(volume, library: library)
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
 
@@ -257,7 +271,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, _) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
         let id = try #require(store.archivedHistories.first?.id)
@@ -293,7 +307,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, _) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
         let id = try #require(store.archivedHistories.first?.id)
@@ -321,7 +335,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, volume) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         var library = Self.usbLibrary()
         library.histories[0].entries = [2, 1]
         host.serve(volume, library: library)
@@ -355,7 +369,7 @@ struct UsbHistoryAppTests {
                              .init(format: .oneLibrary, id: 2, name: "HISTORY 002", entries: [2, 1])]
         host.serve(volume, library: library)
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         store.histories.append(.init(id: "rb-one", name: Self.expectedName(),
                                     dateCreated: String(Self.expectedName().dropFirst(8)) + " 12:00:00", entries: [
                                         .init(id: "rb-1", contentID: "102", trackNumber: 1),
@@ -379,7 +393,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, _) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         #expect(store.toast?.kind == .warning)
         #expect(store.unreadableHistoryFiles == [blocked.lastPathComponent])
         await usb.refresh()
@@ -400,8 +414,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, volume) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        store.usb = usb
-        UsbAppSetup.connectHistories(store: store, usb: usb, historyStore: nil)
+        await Self.connect(store, usb, histories: nil)
         await usb.refresh()
         await store.waitForHistoryImports()
         #expect(store.archivedHistories.isEmpty)
@@ -423,7 +436,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, _) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         await usb.refresh()
         await store.waitForHistoryImports()
         #expect(store.archivedHistories.isEmpty)
@@ -444,8 +457,7 @@ struct UsbHistoryAppTests {
         let fileSystem = FaultyUsbFileSystem(root: scratch)
         fileSystem.failWhen = { actual, _ in actual == operation }
         let saved = UsbHistoryStore(directory: Self.historiesFolder(scratch), home: scratch, fileSystem: fileSystem)
-        store.usb = usb
-        UsbAppSetup.connectHistories(store: store, usb: usb, historyStore: saved)
+        await Self.connect(store, usb, histories: Self.histories(scratch, home: scratch, fileSystem: fileSystem))
         await usb.refresh()
         await store.waitForHistoryImports()
         #expect(store.archivedHistories.isEmpty && saved.load().histories.isEmpty)
@@ -464,8 +476,7 @@ struct UsbHistoryAppTests {
         let fileSystem = FaultyUsbFileSystem(root: scratch)
         fileSystem.failAt = (.syncDirectory, 1, .error)
         let historyStore = UsbHistoryStore(directory: Self.historiesFolder(scratch), home: scratch, fileSystem: fileSystem)
-        store.usb = usb
-        UsbAppSetup.connectHistories(store: store, usb: usb, historyStore: historyStore)
+        await Self.connect(store, usb, histories: Self.histories(scratch, home: scratch, fileSystem: fileSystem))
         await usb.refresh()
         await store.waitForHistoryImports()
         let archived = try #require(store.archivedHistories.first)
@@ -493,7 +504,7 @@ struct UsbHistoryAppTests {
         let store = try await Self.libraryStore(fixture)
         let (host, _) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())
-        Self.connect(store, usb, scratch: scratch)
+        await Self.connect(store, usb, scratch: scratch)
         #expect(store.archivedHistories.isEmpty)
         #expect(store.toast?.kind == .warning)
         #expect(store.toast?.detail == broken.lastPathComponent)
@@ -526,7 +537,7 @@ struct UsbHistoryAppTests {
         #expect(store.historyCount("new-a") == 3)
         #expect(store.sidebarTitle.contains("2025-02-03"))
         // 이름 없는 rekordbox 기록은 날짜, 날짜도 없으면 "날짜 없음"
-        #expect(LibraryStore.historyRowName(RekordboxHistory(id: "x", name: "", dateCreated: "2026-08-01 23:12:27", entries: [])) == "2026-08-01")
-        #expect(LibraryStore.historyRowName(RekordboxHistory(id: "y", name: "", dateCreated: nil, entries: [])) == "날짜 없음")
+        #expect(HistoryTree.rowName(RekordboxHistory(id: "x", name: "", dateCreated: "2026-08-01 23:12:27", entries: [])) == "2026-08-01")
+        #expect(HistoryTree.rowName(RekordboxHistory(id: "y", name: "", dateCreated: nil, entries: [])) == "날짜 없음")
     }
 }

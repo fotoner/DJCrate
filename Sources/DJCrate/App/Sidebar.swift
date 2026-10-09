@@ -167,10 +167,7 @@ struct SidebarHistoryYearRow: View {
     var body: some View {
         DisclosureGroup(isExpanded: Binding(
             get: { store.expandedHistoryFolders.contains(year.id) },
-            set: { expanded in
-                if expanded { store.expandedHistoryFolders.insert(year.id) }
-                else { store.expandedHistoryFolders.remove(year.id) }
-            }
+            set: { store.setHistoryFolder(year.id, expanded: $0) }
         )) {
             ForEach(year.months) { month in
                 SidebarHistoryMonthRow(store: store, month: month)
@@ -189,10 +186,7 @@ struct SidebarHistoryMonthRow: View {
     var body: some View {
         DisclosureGroup(isExpanded: Binding(
             get: { store.expandedHistoryFolders.contains(month.id) },
-            set: { expanded in
-                if expanded { store.expandedHistoryFolders.insert(month.id) }
-                else { store.expandedHistoryFolders.remove(month.id) }
-            }
+            set: { store.setHistoryFolder(month.id, expanded: $0) }
         )) {
             ForEach(month.items) { item in
                 SidebarHistoryRow(store: store, item: item)

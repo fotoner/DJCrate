@@ -1,5 +1,3 @@
-import DJCDomain
-
 /// 보존한 USB 원본 키를 현재 스냅샷과 다시 견준다. USB가 빠져도 오래된 ContentID를 그대로 믿지 않는다.
 public enum UsbHistoryMatches {
     /// 로컬 키를 아직 모르거나 검증하지 못했으면 짝을 비운다. 제목·경로·재생 순서·쓴 표시는 그대로 남긴다.

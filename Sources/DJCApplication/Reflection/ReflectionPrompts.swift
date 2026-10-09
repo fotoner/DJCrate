@@ -5,11 +5,14 @@ import Foundation
 public enum WriteCount: Equatable, Sendable {
     case part(WritePart, Int)
     case playlists(Int)
+    /// 쓰기 대기 재생 기록(#43)
+    case histories(Int)
 
     public var summary: String {
         switch self {
         case let .part(part, count): part.summary(count)
         case let .playlists(count): PlaylistWriteText.summary(count)
+        case let .histories(count): HistoryWriteText.summary(count)
         }
     }
 }
@@ -157,6 +160,7 @@ public enum ReflectionPrompts {
         (report.blocked + report.gridBlocked + report.analysisBlocked + report.gainBlocked + report.tagBlocked + report.artworkBlocked
             + report.mergeBlocked).map { "• \($0.title): \($0.reason ?? "")" }
             + report.playlistBlocked.map(PlaylistWriteText.reason)
+            + report.historyBlocked.map(HistoryWriteText.reason)
     }
 
     /// 쓰는 종류별 곡 수(확인 창 제목의 순서)
@@ -167,6 +171,7 @@ public enum ReflectionPrompts {
         ]
         return parts.filter { !$0.1.isEmpty }.map { .part($0.0, $0.1.count) }
             + (report.playlistWritten.isEmpty ? [] : [.playlists(report.playlistWritten.count)])
+            + (report.historyWritten.isEmpty ? [] : [.histories(report.historyWritten.count)])
     }
 
     /// 쓰기 전 확인 창(#210): 막힘·제외·손실이 있거나 백업을 만들 수 없을 때만 뜬다(`WriteConfirmPolicy`).

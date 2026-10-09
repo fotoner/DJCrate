@@ -53,6 +53,9 @@ final class ReflectionHarness {
     var failingMergeSave = false
     /// 세션이 저장한 재생 목록 연결 기록(차례대로)
     var importsSaved: [PlaylistImports] = []
+    /// 세션이 화면에 넘긴 재생 기록 결과(쓴 기록·이미 있던 기록, #43, 차례대로)와 그때 돌려줄 표시 저장 경고
+    var recordedHistories: [[RekordboxHistoryOutcome]] = []
+    var historyMarkWarning: String?
     var loudness: Loudness? = Loudness(integrated: -9, peak: -6, clippedRuns: 0)
     var unsupported: [String: String] = [:]
     var location = ReflectionHarness.location()
@@ -75,7 +78,12 @@ final class ReflectionHarness {
                         library: ReflectionLibrary(state: { self.libraryState }, apply: { self.apply($0) },
                                                    retryTagSaves: { self.log.record("retry tag saves") },
                                                    preserveDamagedDrafts: { self.log.record("preserve damaged"); return self.preserved },
-                                                   savePlaylistDraft: { self.log.record("save playlist"); return self.playlistSaves }),
+                                                   savePlaylistDraft: { self.log.record("save playlist"); return self.playlistSaves },
+                                                   recordHistories: { outcomes in
+                                                       self.log.record("record histories")
+                                                       self.recordedHistories.append(outcomes)
+                                                       return self.historyMarkWarning
+                                                   }),
                         reload: LibraryReloader { written, edits in
                             self.log.record("reload")
                             self.reloads.append((written, edits))
@@ -252,6 +260,7 @@ final class ReflectionHarness {
             case let .lastWriteBackup(url): "last backup \(url?.lastPathComponent ?? "-")"
             case let .followUp(notes): "follow-up \(notes.count)"
             case .writeBackupsChanged: "backups changed"
+            case let .historyMarkFailed(text): "history mark failed \(text)"
             }
         }
     }

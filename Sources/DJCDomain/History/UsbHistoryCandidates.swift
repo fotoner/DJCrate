@@ -1,6 +1,4 @@
-import DJCDomain
 import Foundation
-import RekordboxKit
 
 /// USB 라이브러리(두 형식을 합친 `UsbLibrary`)의 기기 재생 기록 → 보존 후보(`UsbHistoryImport.Candidate`). 읽기만 한다.
 public enum UsbHistoryCandidates {
