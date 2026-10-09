@@ -1100,8 +1100,10 @@ def check_real_safety(case, path, required):
 
 
 def check_env(root, case="ok", **extra):
+    # GitHub macOS 러너의 로캘(en_US.UTF-8)로 돈다. 이 로캘에서 macOS awk는 한글 문자열을 strcoll로 비교해 모두 같다고 본다
     env = dict(os.environ, PATH=str(root / "bin") + ":" + os.environ["PATH"], CASE=case, HOME=str(root / "home"),
-               LEAKS=json.dumps(LEAKS), PREFERENCE_LEAKS=json.dumps(PREFERENCE_LEAKS), **extra)
+               LEAKS=json.dumps(LEAKS), PREFERENCE_LEAKS=json.dumps(PREFERENCE_LEAKS),
+               **{"LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8", **extra})
     for name in ("DJC_TEST_DEFAULTS_PREFIX", "DJC_CHECK_LOG_ROOT", "DJC_CIPHER_STRESS", "DJC_CHECK_VERBOSE",
                  "DJC_HOME", "DJC_REKORDBOX_DIR", "DJC_LAYOUT_RECOMPUTE_TESTS"):
         if name not in extra:
