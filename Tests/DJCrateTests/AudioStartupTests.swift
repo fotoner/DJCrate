@@ -1,6 +1,8 @@
+import DJCAdapters
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import Testing
 
@@ -70,7 +72,7 @@ struct AudioStartupTests {
         // 엔진 만들기는 시험이 풀어 줄 때까지 나오지 않는다. 덱이 그것을 기다렸다면 초기화가 멈췄다 안전망(valve)이 지나서야 돌아온다.
         let gate = Gate(valve: 300)
         defer { gate.release() }
-        let deck = DeckModel(audio: DeckAudio(makeGraph: { gate.wait(); return nil }), storage: .memory(MemoryDrafts()),
+        let deck = DeckModel.test(audio: DeckAudio(makeGraph: { gate.wait(); return nil }), storage: .memory(MemoryDrafts()),
                              runsAnalysis: false)
         await gate.entered()
         #expect(!gate.hasFinished, "덱 준비가 출력 장치를 기다렸다(엔진 만들기가 끝난 뒤에야 초기화가 돌아옴)")
@@ -84,9 +86,10 @@ struct AudioStartupTests {
         let root = try Self.temporaryFolder()
         defer { try? FileManager.default.removeItem(at: root) }
         let audio = DeckAudio(makeGraph: { gate.wait(); return nil })
-        let deck = DeckModel(audio: audio, storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let deck = DeckModel.test(audio: audio, storage: .memory(MemoryDrafts()), runsAnalysis: false)
         // 출력이 준비되기 전에도 곡은 불러 둔다(파형·큐 편집은 그대로 쓴다).
         deck.load(try Self.row(in: root))
+        await deck.loadTask?.value
         #expect(deck.canPlay)
         #expect(abs(deck.duration - 1) < 0.01)
 
@@ -107,8 +110,9 @@ struct AudioStartupTests {
         for _ in 0..<400 where audio.isPreparingOutput { try await Task.sleep(for: .milliseconds(5)) }
         #expect(counter.calls == 1)
         #expect(!audio.isPreparingOutput && audio.isOutputUnavailable)
-        let deck = DeckModel(audio: audio, storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let deck = DeckModel.test(audio: audio, storage: .memory(MemoryDrafts()), runsAnalysis: false)
         deck.load(try Self.row(in: root))
+        await deck.loadTask?.value
         deck.togglePlay()
         #expect(!deck.isPlaying)
         #expect(audio.isPreparingOutput)

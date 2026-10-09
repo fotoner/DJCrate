@@ -4885,6 +4885,22 @@
         }
       }
     },
+    "Flip 결과 창을 여는 중입니다. 창이 열린 뒤 다시 기록하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Flip result window is opening. Record again after it opens."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flipの結果ウィンドウを開いています。ウィンドウが開いてから記録し直してください。"
+          }
+        }
+      }
+    },
     "Flip 결과를 버릴까요?" : {
       "localizations" : {
         "en" : {
@@ -16707,6 +16723,22 @@
         }
       }
     },
+    "곡을 바꾸면 방금 마친 기록(점프·루프 %lld개)으로 결과 창을 열지 않고 버립니다. 버린 기록은 다시 만들 수 없으니, 남기려면 취소하고 결과 창이 열릴 때까지 기다리세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changing the track discards the recording you just finished (%lld jumps and loops) without opening its result window. A discarded recording can't be made again; to keep it, cancel and wait for the result window to open."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曲を変えると、終えたばかりの記録(ジャンプ・ループ%lld個)を結果ウィンドウを開かずに破棄します。破棄した記録は作り直せません。残すには、キャンセルして結果ウィンドウが開くまで待ってください。"
+          }
+        }
+      }
+    },
     "곡을 바꾸면 지금까지 기록한 점프·루프 %lld개를 버립니다. 버린 기록은 다시 만들 수 없으니, 남기려면 취소하고 Flip을 눌러 기록을 마치세요" : {
       "localizations" : {
         "en" : {
@@ -18191,6 +18223,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "履歴の曲を再生順に表示"
+          }
+        }
+      }
+    },
+    "기록한 곡이 덱에서 바뀌어 Flip 결과를 만들지 않았습니다. 그 곡을 다시 불러와 Flip을 기록하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The recorded track changed in the deck, so no Flip result was made. Load that track again and record a Flip."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録した曲がデッキで変わったため、Flipの結果を作りませんでした。その曲を読み込み直してFlipを記録してください。"
           }
         }
       }
@@ -34289,28 +34337,6 @@
         }
       }
     },
-    "이 곡의 그리드는 템포 구간 %lld개로 복잡해 정확히 재현되지 않습니다(최대 %.0fms). 편집을 막았습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This track’s grid has %lld tempo sections and is too complex to reproduce exactly (off by up to %.0f ms). Grid editing is disabled."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "この曲のグリッドはテンポ区間が%lld個あり複雑なため、正確に再現できません（最大%.0fmsのずれ）。編集を止めました。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "이 곡의 그리드는 템포 구간 %1$lld개로 복잡해 정확히 재현되지 않습니다(최대 %2$.0fms). 편집을 막았습니다."
-          }
-        }
-      }
-    },
     "이 곡의 그리드는 템포 구간 %lld개로 정확히 재현되지 않으니(최대 %.0fms) 추정 그리드를 적용하거나 rekordbox에서 직접 편집하세요" : {
       "localizations" : {
         "en" : {
@@ -43731,6 +43757,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "編集のタイムラインがつながっていません（フレーム%lld）"
+          }
+        }
+      }
+    },
+    "편집 창을 여는 사이 덱의 곡이 바뀌어 열지 않았습니다. 편집할 곡을 덱에 올린 뒤 다시 여세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The deck track changed while the track editor was opening, so it was not opened. Load the track you want to edit into the deck and open it again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曲編集ウインドウを開く間にデッキの曲が変わったため、開きませんでした。編集する曲をデッキに読み込んでから開き直してください"
           }
         }
       }

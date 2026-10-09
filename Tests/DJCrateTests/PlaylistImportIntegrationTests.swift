@@ -1,9 +1,10 @@
 @testable import DJCrate
 import AppKit
+import DJCApplication
 import DJCDomain
 import UniformTypeIdentifiers
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 @testable import RekordboxKit
 import Foundation
 import Testing
@@ -12,7 +13,7 @@ import Testing
 @Suite("곡 추가와 목록 초안 연결")
 struct PlaylistImportIntegrationTests {
     func store(saver: @escaping (PlaylistDraft) throws -> Void = { _ in }) -> LibraryStore {
-        LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.imports.\(UUID())")!, persist: false),
+        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("imports"), persist: false),
                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: saver,
                      playlistImportURL: nil, stagingSaver: { _ in })
     }
@@ -67,7 +68,7 @@ struct PlaylistImportIntegrationTests {
         let store = store()
         store.rekordboxPlaylists = PlaylistLayout([(.init(id: "P", name: "세트"), 1)])
         store.refreshPlaylists()
-        store.staged = [StagedTrack(path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
+        store.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
         let provider = NSItemProvider(object: file as NSURL)
         let node = try #require(store.playlistIndex["P"])
         #expect(PlaylistDrop.perform([provider], on: node, store: store))
@@ -84,12 +85,12 @@ struct PlaylistImportIntegrationTests {
         defer { try? FileManager.default.removeItem(at: home) }
         let file = try AudioFixture.wav(seconds: 0.1, in: home)
         let destination = home.appending(path: "blocked")
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                                  playlistDraftSaver: { _ in }, playlistImportURL: destination, stagingSaver: { _ in })
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         store.rekordboxPlaylists = PlaylistLayout([(.init(id: "P", name: "세트"), 1)])
         store.refreshPlaylists()
-        store.staged = [StagedTrack(path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
+        store.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
         await store.addFiles([file], toPlaylist: "P")
         #expect(store.stagingMessage?.kind == .failure)
         #expect(store.playlistImports.requests.isEmpty)
@@ -113,7 +114,7 @@ struct PlaylistImportIntegrationTests {
         store.phase = .loaded
         store.rekordboxPlaylists = PlaylistLayout([(.init(id: "P", name: "세트"), 1)])
         store.refreshPlaylists()
-        store.staged = [StagedTrack(path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
+        store.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
         await store.addFiles([file], toPlaylist: "P")
         #expect(store.playlistDraft.isEmpty && store.playlistImports.pendingCount == 1)
         #expect(store.staged.count == 1)
@@ -139,7 +140,7 @@ struct PlaylistImportIntegrationTests {
         defer { try? FileManager.default.removeItem(at: home) }
         let file = try AudioFixture.wav(seconds: 0.1, in: home)
         let store = store()
-        store.staged = [StagedTrack(path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
+        store.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
         let origin = AppleMusicOrigin(libraryID: "L", trackID: 1, playlists: [.init(id: "P", name: "세트", parentID: nil, position: 0)])
         await store.addFiles([file], appleMusicOrigins: [PlaylistImports.pathKey(file.path): [origin]])
         #expect(store.staged.first?.appleMusicOrigins == [origin])

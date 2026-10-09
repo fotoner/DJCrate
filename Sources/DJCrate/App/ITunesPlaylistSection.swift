@@ -1,6 +1,4 @@
 import DJCDomain
-import DJCStorage
-import RekordboxKit
 import SwiftUI
 
 /// iTunes 목록은 구성 편집·드롭 메뉴를 달지 않는다. 반복 곡의 행은 구분하고 편집은 기존 곡에 연결한다.

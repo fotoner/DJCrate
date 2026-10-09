@@ -1,40 +1,56 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
-import RekordboxKit
 
 extension LibraryStore {
+    struct ITunesSyncCatalogCache {
+        let snapshot: URL
+        let revision: Int
+        let epoch: UInt64
+        let sourceDirectory: URL
+        let contents: ITunesLibrarySnapshot
+    }
+    struct ITunesSyncCapture {
+        let id: UUID
+        let snapshot: URL
+        let revision: Int
+        let epoch: UInt64
+        let sourceDirectory: URL
+        let task: Task<ITunesLibrarySnapshot, Never>
+    }
+
+    /// 선택 창을 처음 열 때의 선택(동기화 원문에서 맨 위를 골랐는지 유스케이스가 본다)
+    func iTunesInitialSelection(of source: ITunesLibrarySnapshot) -> ITunesSyncSelection {
+        useCases.load.initialSelection(of: source)
+    }
+
     func presentITunesSync() {
         iTunesSync = ITunesSyncModel()
         showingITunesSync = true
     }
 
     /// 사본 실행에서는 Music에 접근하지 않고 함께 캡처한 전체 목록만 쓴다.
+    /// - Parameter captureITunes: Music 조회(주지 않으면 유스케이스의 Music 포트). 시험이 바꿔 넣는다
     func iTunesSyncSource(forceRefresh: Bool = false,
-                          arguments: [String] = ProcessInfo.processInfo.arguments,
-                          environment: [String: String] = ProcessInfo.processInfo.environment,
-                          captureITunes: @escaping @Sendable () -> ITunesLibrarySnapshot = {
-                              RekordboxITunesReader.capture()
-                          }) async -> ITunesLibrarySnapshot {
-        if Self.explicitDatabaseRequested(arguments: arguments, environment: environment)
-            || LibrarySnapshot.hasRekordboxDirectoryOverride(in: environment) {
+                          captureITunes: (@Sendable () -> ITunesLibrarySnapshot)? = nil) async -> ITunesLibrarySnapshot {
+        if location.opensExplicitCopy || !location.mayCaptureMusic {
             return iTunesSnapshot
         }
         guard let snapshot = snapshotURL else { return ITunesLibrarySnapshot(status: .unavailable) }
         let revision = previewRevision
         let epoch = iTunesSyncCatalogEpoch
-        let sourceDirectory = LibrarySnapshot.sameDirectory(snapshot.deletingLastPathComponent(),
-                                                             LibrarySnapshot.defaultDirectory(in: environment))
-            ? LibrarySnapshot.rekordboxDirectory(in: environment) : snapshot.deletingLastPathComponent()
+        let sourceDirectory = snapshot.deletingLastPathComponent().isSameDirectory(as: location.snapshotDirectory)
+            ? location.rekordboxDirectory : snapshot.deletingLastPathComponent()
+        let loader = useCases.load
 
         if !forceRefresh {
             if let cached = iTunesSyncCatalogCache, cached.snapshot == snapshot, cached.revision == revision,
                cached.epoch == epoch,
                cached.sourceDirectory == sourceDirectory,
-               Self.isCurrentITunesCatalog(cached.contents, directory: sourceDirectory) {
+               loader.isCurrentCatalog(cached.contents, directory: sourceDirectory) {
                 return cached.contents
             }
-            if Self.isCurrentITunesCatalog(iTunesSnapshot, directory: sourceDirectory) {
+            if loader.isCurrentCatalog(iTunesSnapshot, directory: sourceDirectory) {
                 return iTunesSnapshot
             }
         }
@@ -58,7 +74,7 @@ extension LibraryStore {
 
         let id = UUID()
         let task = Task(priority: .userInitiated) {
-            (try? await Self.runBlockingLibraryWork(captureITunes)) ?? ITunesLibrarySnapshot(status: .unavailable)
+            (try? await LoadLibrary.background { loader.captureCatalog(captureITunes) }) ?? ITunesLibrarySnapshot(status: .unavailable)
         }
         iTunesSyncCapture = .init(id: id, snapshot: snapshot, revision: revision, epoch: epoch,
                                   sourceDirectory: sourceDirectory, task: task)
@@ -69,7 +85,7 @@ extension LibraryStore {
             return current
         }
         if snapshotURL == snapshot, previewRevision == revision, iTunesSyncCatalogEpoch == epoch,
-           Self.isCurrentITunesCatalog(captured, directory: sourceDirectory) {
+           loader.isCurrentCatalog(captured, directory: sourceDirectory) {
             iTunesSyncCatalogCache = .init(snapshot: snapshot, revision: revision, epoch: epoch,
                                             sourceDirectory: sourceDirectory, contents: captured)
         }
@@ -80,20 +96,13 @@ extension LibraryStore {
                                                    directory: URL) -> ITunesLibrarySnapshot? {
         guard snapshotURL != snapshot || previewRevision != revision || iTunesSyncCatalogEpoch != epoch else { return nil }
         guard snapshotURL == snapshot, previewRevision == revision,
-              Self.isCurrentITunesCatalog(iTunesSnapshot, directory: directory) else {
+              useCases.load.isCurrentCatalog(iTunesSnapshot, directory: directory) else {
             return ITunesLibrarySnapshot(status: .unavailable)
         }
         return iTunesSnapshot
     }
 
-    private static func isCurrentITunesCatalog(_ value: ITunesLibrarySnapshot, directory: URL) -> Bool {
-        value.status == .ready && value.sourcePlaylists != nil
-            && !RekordboxITunesReader.selectionChanged(since: value.syncData, directory: directory)
-    }
-
-    func syncITunesPlaylists(_ selection: ITunesSyncSelection, source: ITunesLibrarySnapshot, database: URL,
-                             arguments: [String] = ProcessInfo.processInfo.arguments,
-                             environment: [String: String] = ProcessInfo.processInfo.environment) async throws {
+    func syncITunesPlaylists(_ selection: ITunesSyncSelection, source: ITunesLibrarySnapshot, database: URL) async throws {
         guard !isLoading, !isWritingRekordbox, snapshotURL == database, source.status == .ready else {
             throw DJCError.writeRefused(String(ui: "라이브러리가 바뀌었거나 목록을 읽지 못했습니다. 동기화 창을 다시 여세요."))
         }
@@ -104,35 +113,16 @@ extension LibraryStore {
         guard let base = source.syncData else {
             throw DJCError.writeRefused(String(ui: "rekordbox 동기화 파일 사본이 없습니다. rekordbox에서 한 번 동기화한 뒤 새로고침하세요."))
         }
-        let target = Self.explicitDatabaseRequested(arguments: arguments, environment: environment)
-            ? database : LibrarySnapshot.rekordboxDirectory(in: environment).appending(path: "master.db")
-        let change = RekordboxITunesSyncChange(base: base, source: source.selectionNodes, selection: selection)
-        let backups = backupDirectory
+        guard let syncITunesWrite else { throw DJCError.writeRefused(String(ui: "라이브러리가 바뀌었거나 목록을 읽지 못했습니다. 동기화 창을 다시 여세요.")) }
         invalidatePendingLoads()
-        isWritingRekordbox = true
-        defer { invalidatePendingLoads(); isWritingRekordbox = false }
-        let data = try await Task.detached(priority: .userInitiated) {
-            _ = try RekordboxWriter.write(drafts: [], iTunesSync: change, to: target, dryRun: false, backups: backups)
-            return try Data(contentsOf: target.deletingLastPathComponent().appending(path: "playlists3.sync"))
-        }.value
-        let selected = try source.applyingRekordboxSelection(data)
-        let active = snapshotURL
-        let sameSource = !Self.explicitDatabaseRequested(arguments: arguments, environment: environment)
-            && active.map { LibrarySnapshot.sameDirectory($0.deletingLastPathComponent(),
-                                                           LibrarySnapshot.defaultDirectory(in: environment)) } == true
-        let sourceDirectory = LibrarySnapshot.rekordboxDirectory(in: environment)
-        let mayCacheDatabase = LibrarySnapshot.hasRekordboxDirectoryOverride(in: environment)
-            || !LibrarySnapshot.sameDirectory(database.deletingLastPathComponent(), sourceDirectory)
-        let destinations = Set((mayCacheDatabase ? [database] : []) + (sameSource ? [active].compactMap { $0 } : []))
-        let invalidatedSources = Set(Array(destinations) + [target, database])
-        var saveFailed = false
-        ITunesRefreshCoordinator.shared.publish(sources: Array(invalidatedSources)) {
-            for destination in destinations {
-                do { try selected.save(for: destination) }
-                catch { saveFailed = true }
-            }
-        }
-        if saveFailed {
+        defer { invalidatePendingLoads() }
+        // 쓰기는 반영 세션이 한다: 명시한 사본으로 열었으면 그 사본에, 아니면 라이브 라이브러리에(판단은 위치 값), 덱은 잠그지 않는다.
+        let written = try await syncITunesWrite(ITunesSyncWrite(base: base, source: source.selectionNodes, selection: selection), database)
+        // 쓴 선택을 목록에 적용하고 동기화한 DB·지금 보는 사본 옆에 목록 사본을 남긴다(규칙은 유스케이스).
+        let synced = try useCases.load.publishSync(source: source, syncData: written.syncData, database: database, target: written.target,
+                                                   active: snapshotURL, location: location)
+        let selected = synced.selected, sameSource = synced.sameSource
+        if synced.saveFailed {
             reportLibraryError(String(ui: "rekordbox 동기화는 완료했지만 사본을 저장하지 못했습니다. 저장 폴더를 확인한 뒤 새로고침하세요."))
         }
         guard snapshotURL == database || sameSource else { return }

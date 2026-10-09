@@ -1,5 +1,5 @@
+import DJCApplication
 import DJCDomain
-import RekordboxKit
 
 extension DeckModel {
     func inputForDraftRecovery(uuid: String, kind: DraftRecoveryKind) -> RecoveryDraft? {
@@ -15,14 +15,14 @@ extension DeckModel {
     func applyDraftRecovery(_ recovered: RecoveryDraft, currentRow: TrackRow?, currentGrid: BeatGrid?) {
         guard row?.track.uuid == recovered.uuid else { return }
         clearDraftUndo()
-        let kind: DraftWriter.Kind?
+        let kind: DraftSaveKind?
         switch recovered { case .tags: kind = nil; case .cues: kind = .cue; case .grid: kind = .grid }
         if let kind {
             let key = "\(kind):\(recovered.uuid)"
             draftSaveRevisions[key] = (draftSaveRevisions[key] ?? 0) + 1
             draftSaveFailures.removeAll { $0.kind == kind && $0.trackUUID == recovered.uuid }
         }
-        if let currentRow { row = currentRow }
+        if let currentRow { replaceRow(currentRow) }
         switch recovered {
         case .tags: break
         case let .cues(recovered):
@@ -35,10 +35,12 @@ extension DeckModel {
             gridDraft = recovered
             originalGrid = currentGrid
             hasRekordboxGrid = currentGrid?.beats.isEmpty == false
-            // 기존 원본 검증을 다시 사용한다. 지원하지 않는 원형은 현재값을 가져와도 계속 막는다.
-            if let row {
-                let payload = DeckPayload.load(track: row.track, cues: row.cues, duration: duration, storage: storage)
-                gridEditBlockedReason = payload.gridBlockedReason
+            // 곡을 불러올 때와 같은 규칙으로 다시 판정한다. 지원하지 않는 원형은 현재값을 가져와도 계속 막는다.
+            // 원본은 복구가 읽은 현재 그리드다(분석 경로가 없으면 nil, 박이 없으면 빈 그리드).
+            if row != nil {
+                let read: AnalysisGridRead = currentGrid.map { $0.beats.isEmpty ? .noBeats : .grid($0) } ?? .missing
+                gridEditBlockedReason = DeckGridGate(trackUUID: recovered.trackUUID, read: read, savedDraft: recovered,
+                                                     duration: duration).blockedReason
             }
             refreshGrid()
             refreshSuggestionNote()

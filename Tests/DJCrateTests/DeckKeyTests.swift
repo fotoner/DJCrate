@@ -1,6 +1,7 @@
 @testable import DJCrate
 import DJCAnalysis
-import DJCTestSupport
+import DJCDomain
+import DJCTestKit
 import Foundation
 import Testing
 

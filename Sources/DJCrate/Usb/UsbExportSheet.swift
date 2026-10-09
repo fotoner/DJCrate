@@ -1,108 +1,6 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
-import RekordboxKit
 import SwiftUI
-
-/// 미리 보기 요약(시트·확인 창이 보인다). 곡 제목·경로는 담지 않는다
-struct UsbExportSummary: Equatable, Sendable {
-    /// 막힘 code 하나와 그 대상 수(같은 곡·목록은 한 번)
-    struct BlockCount: Equatable, Sendable {
-        /// 무엇을 막는지: 곡·재생 목록은 빼고 쓰고, 그 밖(볼륨·형식·파일)은 쓰기를 멈춘다
-        enum Kind: Equatable, Sendable { case track, playlist, stopping }
-
-        var code: String
-        var message: String
-        var count: Int
-        var kind: Kind
-    }
-
-    struct RuleCount: Equatable, Sendable {
-        var rule: UsbProvisionalRule
-        /// 규칙이 걸린 곡 수(곡 단위가 아니면 0)
-        var count: Int
-    }
-
-    var trackCount: Int
-    var playlistCount: Int
-    /// 빼고 쓰는 곡 수(같은 곡은 한 번)
-    var blockedTrackCount: Int
-    /// 빼고 쓰는 재생 목록 수(같은 목록은 한 번)
-    var blockedPlaylistCount: Int
-    /// 막힘 code별 수(처음 나온 순서)
-    var blockCounts: [BlockCount]
-    /// 쓰기를 멈추는 막힘(볼륨·형식·파일 단위)의 문구
-    var stopping: [String]
-    var stoppingCodes: [String]
-    /// CDJ에서 확인하지 않은 항목(`UsbProvisionalRule.needsDeviceCheck`, 이름 순). 쓰기를 막지 않고 알리기만 한다
-    var rules: [RuleCount]
-    /// 그 항목이 하나라도 걸린 곡 수(같은 곡은 한 번)
-    var unverifiedTrackCount: Int
-    var requiredBytes: Int64
-    var availableBytes: Int64
-    /// 준비한 변경 묶음이 있는지(막는 것이 없을 때만 있다)
-    var hasChanges: Bool
-    /// 디스크 이미지(시험 볼륨)
-    var isTestVolume: Bool
-
-    init(trackCount: Int, playlistCount: Int, blocks: [UsbBlock], ruleCounts: [UsbProvisionalRule: Int], requiredRules: Set<UsbProvisionalRule>,
-         requiredBytes: Int64, availableBytes: Int64, hasChanges: Bool, isTestVolume: Bool, unverifiedTrackCount: Int = 0) {
-        self.trackCount = trackCount
-        self.playlistCount = playlistCount
-        var order: [String] = [], targets: [String: Set<UsbBlock.Scope>] = [:], messages: [String: String] = [:]
-        var tracks: Set<String> = [], playlists: Set<String> = [], stopping: [String] = [], codes: [String] = []
-        for block in blocks {
-            if targets[block.code] == nil { order.append(block.code) }
-            targets[block.code, default: []].insert(block.scope)
-            if messages[block.code] == nil { messages[block.code] = block.message }
-            switch block.scope {
-            case let .track(id): tracks.insert(id)
-            case let .playlist(id): playlists.insert(id)
-            case .volume, .format, .file:
-                if !stopping.contains(block.message) { stopping.append(block.message) }
-                if !codes.contains(block.code) { codes.append(block.code) }
-            }
-        }
-        blockCounts = order.map { code in
-            let scopes = targets[code] ?? []
-            // 한 code가 여러 단위에 걸리면 곡 → 재생 목록 → 멈춤 순으로 본다
-            let kind: BlockCount.Kind = if scopes.contains(where: { if case .track = $0 { true } else { false } }) {
-                .track
-            } else if scopes.contains(where: { if case .playlist = $0 { true } else { false } }) {
-                .playlist
-            } else {
-                .stopping
-            }
-            return BlockCount(code: code, message: messages[code] ?? "", count: scopes.count, kind: kind)
-        }
-        blockedTrackCount = tracks.count
-        blockedPlaylistCount = playlists.count
-        self.stopping = stopping
-        stoppingCodes = codes
-        rules = UsbProvisionalRule.deviceCheckRules(requiredRules).map { RuleCount(rule: $0, count: ruleCounts[$0] ?? 0) }
-        self.unverifiedTrackCount = unverifiedTrackCount
-        self.requiredBytes = requiredBytes
-        self.availableBytes = availableBytes
-        self.hasChanges = hasChanges
-        self.isTestVolume = isTestVolume
-    }
-
-    init(preview: UsbExportPreview, volume: UsbVolumeInfo) {
-        self.init(trackCount: preview.plan.tracks.count, playlistCount: preview.plan.playlists.count, blocks: preview.blocks,
-                  ruleCounts: preview.ruleCounts, requiredRules: preview.requiredRules, requiredBytes: preview.requiredBytes,
-                  availableBytes: preview.availableBytes, hasChanges: preview.changes != nil, isTestVolume: volume.isDiskImage,
-                  unverifiedTrackCount: preview.plan.tracks.filter { $0.rules.contains(where: \.needsDeviceCheck) }.count)
-    }
-
-    var isShortOfSpace: Bool { stoppingCodes.contains("insufficientSpace") || requiredBytes > availableBytes }
-    var isPhysicalDisabled: Bool { stoppingCodes.contains("physicalDisabled") }
-    var canWrite: Bool { stopping.isEmpty && hasChanges && trackCount > 0 && !isShortOfSpace }
-
-    /// "필요 공간 N MB · 여유 M MB"(필요는 올림, 여유는 내림 — 쓰기 절차의 용량 확인과 같은 쪽으로)
-    var spaceText: String {
-        let megabyte: Int64 = 1024 * 1024
-        return String(ui: "필요 공간 \((requiredBytes + megabyte - 1) / megabyte)MB · 여유 \(availableBytes / megabyte)MB")
-    }
-}
 
 /// 내보내기 시트에서 고르는 것(순수): 형식·원본(목록 트리·고른 곡)·미리 보기. 고르는 것이 바뀌면 앞의 미리 보기를 버린다
 struct UsbExportSheetModel: Equatable {
@@ -312,7 +210,7 @@ struct UsbExportSheet: View {
             .foregroundStyle(.secondary)
             // 쓰기 확인 창 대신 여기서 어느 볼륨에 쓰는지 보인다(실물 USB 쓰기 동의, #212)
             if !model.isTestVolume {
-                ForEach(UsbWriteCoordinator.volumeLines(model.volume, isTestVolume: false), id: \.self) { line in
+                ForEach(UsbWriteFlow.volumeLines(model.volume, isTestVolume: false), id: \.self) { line in
                     Text(verbatim: line).font(.callout)
                 }
             }
@@ -384,7 +282,7 @@ struct UsbExportSheet: View {
                     Label { Text(verbatim: message) } icon: { Image(systemName: WarningMark.symbol) }
                         .foregroundStyle(UIColors.warning.color)
                 }
-                ForEach(UsbWriteCoordinator.blockLines(summary), id: \.self) { line in
+                ForEach(UsbWriteFlow.blockLines(summary), id: \.self) { line in
                     Text(verbatim: line).font(.caption).foregroundStyle(.secondary)
                 }
             } else {
@@ -397,7 +295,7 @@ struct UsbExportSheet: View {
     private func job() -> UsbExportJob? {
         guard let snapshot = store.snapshotURL, sourceIsCurrent else { return nil }
         let volume = usb.volume(request.volumeKey) ?? model.volume
-        return model.job(database: snapshot, share: store.rekordboxShareRoot ?? RekordboxShare.directory,
+        return model.job(database: snapshot, share: store.shareRoot,
                          volume: volume, layout: layout,
                          syncSource: UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.iTunesLibrary),
                          catalogRevision: store.previewRevision, readEpoch: store.snapshotReadEpoch)

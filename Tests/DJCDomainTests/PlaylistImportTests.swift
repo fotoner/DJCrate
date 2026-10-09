@@ -28,7 +28,8 @@ struct PlaylistImportTests {
 
     @Test func 컬렉션에_있는_곡만_초안에_넣고_같은_이름은_새로_만든다() throws {
         var imports = PlaylistImports()
-        imports.addAppleMusic(origins("/a", position: 0).merging(origins("/b", position: 1)) { $0 + $1 })
+        imports.addAppleMusic(origins("/a", position: 0).merging(origins("/b", position: 1)) { $0 + $1 }, unidentifiedLibraryID: UUID().uuidString,
+                              newKey: { UUID().uuidString.lowercased() })
         let rb = PlaylistLayout([(.init(id: "old", name: "세트"), 1), (.init(id: "folder", name: "세트 (2)", isFolder: true), 2)])
         var draft = PlaylistDraft()
         #expect(imports.reconcile(contentIDsByPath: [:], draft: &draft, rekordbox: rb).isEmpty)
@@ -43,14 +44,15 @@ struct PlaylistImportTests {
         #expect(draft.project(onto: rb).layout.item("old")?.trackIDs == [])
         #expect(imports.pendingCount == 0)
         let before = draft
-        imports.addAppleMusic(origins("/a", position: 0))
+        imports.addAppleMusic(origins("/a", position: 0), unidentifiedLibraryID: UUID().uuidString, newKey: { UUID().uuidString.lowercased() })
         _ = imports.reconcile(contentIDsByPath: ["/a": "1", "/b": "2"], draft: &draft, rekordbox: rb)
         #expect(draft == before && imports.requests.count == 1)
     }
 
     @Test func 다른_출처의_같은_이름과_한_곡의_여러_목록을_구분한다() {
         var imports = PlaylistImports()
-        imports.addAppleMusic(origins("/a", position: 0).merging(origins("/a", position: 0, playlist: "Q")) { $0 + $1 })
+        imports.addAppleMusic(origins("/a", position: 0).merging(origins("/a", position: 0, playlist: "Q")) { $0 + $1 },
+                              unidentifiedLibraryID: UUID().uuidString, newKey: { UUID().uuidString.lowercased() })
         var draft = PlaylistDraft()
         _ = imports.reconcile(contentIDsByPath: ["/a": "1"], draft: &draft, rekordbox: PlaylistLayout())
         let items = draft.project(onto: PlaylistLayout()).layout.items.values

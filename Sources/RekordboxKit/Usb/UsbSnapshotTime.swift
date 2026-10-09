@@ -3,7 +3,7 @@ import Foundation
 
 /// 로컬 스냅샷 사본을 뜬 시각. USB 계획·쓰기가 "이 시각 뒤에 로컬에서 바뀐 곡"을 가리는 기준이다.
 public enum UsbSnapshotTime {
-    public enum Source: String, Sendable { case explicit, fileName, modificationDate }
+    public typealias Source = UsbSnapshotTimeSource
 
     /// 순서: explicit(ISO 8601, 예 "2026-09-27T11:41:08Z") → 파일 이름(`LibrarySnapshot.takenAt`, UTC) → 파일 mtime.
     /// explicit이 있는데 못 풀면 던진다. 셋 다 없으면 던진다(추측하지 않음).

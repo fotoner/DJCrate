@@ -1,8 +1,5 @@
-import RekordboxKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
-import AVFoundation
 import Foundation
 
 /// 늘 쓰는 명령: 스냅샷·현황·파싱·분석, rekordbox 쓰기·되돌리기, 테스트 픽스처.
@@ -29,7 +26,7 @@ enum MainCommands {
     ] + ReadCommands.all + UsbCommands.all
 
     static func snapshot(_ args: [String]) async throws {
-        let url = try LibrarySnapshot.take(force: args.contains("--force"))
+        let url = try CLIComposition.live.library().load.takeSnapshot(force: args.contains("--force"))
         print(url.path)
     }
 
@@ -41,10 +38,11 @@ enum MainCommands {
             }
             preset = selected
         } else { preset = .none }
-        let snapshot = try LibraryRead.resolve(database: value(after: "--db", in: args).map { URL(filePath: $0) })
-        let library = try RekordboxLibrary.load(snapshot: snapshot)
+        // 사본 정하기·읽기는 JSON(`ReadCommands`)과 같은 유스케이스(`QueryLibrary`)
+        let (snapshot, read) = try CLIComposition.live.library().queries
+            .openCopy(database: value(after: "--db", in: args).map { URL(filePath: $0) }, commentPreset: preset)
         print(String(ui: "스냅샷: \(snapshot.path)\n"))
-        print(LibraryReport(library: library, checkFiles: args.contains("--files"), commentRule: preset.rule).render())
+        print(read.report(args.contains("--files")).render())
     }
 
     static func analyze(_ args: [String]) async throws {
@@ -58,33 +56,31 @@ enum MainCommands {
         if let out = value(after: "--out", in: args) {
             try CLIGuards.refuseExistingOutput(URL(filePath: out), overwrite: args.contains("--overwrite"))
         }
-        let library = try RekordboxLibrary.load(snapshot: LibrarySnapshot.latest())
-        let uuids = CueDraftStore.uuids().union(GridDraftStore.uuids())
-        var plans: [Reflection.Plan] = []
-        for track in library.tracks where uuids.contains(track.uuid) {
-            let plan = Reflection.plan(track: track, rawCues: library.cues(for: track),
-                                       cueDraft: CueDraftStore.load(trackUUID: track.uuid),
-                                       gridDraft: GridDraftStore.load(trackUUID: track.uuid))
-            plans.append(plan)
-            let draft = CueDraftStore.load(trackUUID: track.uuid)
-            print(String(ui: "• \(track.title.prefix(30)) · 큐 변경 \(draft?.changes.count ?? 0) · 그리드 변경 \(String(plan.gridChanged)) · 표시 \(plan.beforeMarks.count)→\(plan.marks.count) · ") +
+        // 초안 저장소·XML 형식은 앱의 반영 XML과 같은 유스케이스(`ExportXML`)
+        let composition = CLIComposition.live
+        let export = composition.library().exportXML
+        let plans = try export.dryRunPlans(snapshotDirectory: composition.location.snapshotDirectory)
+        for (plan, cueChanges) in plans.map({ ($0.plan, $0.cueChanges) }) {
+            print(String(ui: "• \(plan.title.prefix(30)) · 큐 변경 \(cueChanges) · 그리드 변경 \(String(plan.gridChanged)) · 표시 \(plan.beforeMarks.count)→\(plan.marks.count) · ") +
                   (plan.isEligible ? String(ui: "반영 가능") : plan.blockers.isEmpty ? String(ui: "변경 없음") : String(ui: "막힘: \(plan.blockers.joined(separator: " / "))")))
         }
         if let out = value(after: "--out", in: args) {
-            try Reflection.document(plans: plans.filter(\.isEligible), playlistName: "DJCrate 반영 시험").write(toFile: out, atomically: true, encoding: .utf8)
+            try export.writeDryRun(plans.map(\.plan), to: URL(filePath: out))
             print("XML: \(out)")
         }
     }
 
     /// 큐 초안을 rekordbox DB에 직접 쓴다. 기본은 --db 사본. 라이브 DB는 --live를 줘야 하고 rekordbox가 꺼져 있어야 한다.
+    @MainActor
     static func cueWrite(_ args: [String]) async throws {
-        let live = args.contains("--live")
-        guard live || value(after: "--db", in: args) != nil else { throw UsageError() }
-        let database = live ? RekordboxWriter.liveDatabase : URL(filePath: value(after: "--db", in: args)!)
-        let uuids = value(after: "--uuid", in: args).map { $0.components(separatedBy: ",") } ?? CueDraftStore.uuids().sorted()
-        let drafts = uuids.compactMap(CueDraftStore.load(trackUUID:))
-        let backups = live ? DJCPaths.rekordboxBackups : database.deletingLastPathComponent().appending(path: "backups")
-        let report = try RekordboxWriter.write(drafts: drafts, to: database, dryRun: args.contains("--dry-run"), backups: backups)
+        // cue-write는 --share를 받지 않는다(분석 파일 뿌리는 쓰기 관문이 정한다).
+        guard var target = RekordboxWriteTarget.cli(args) else { throw UsageError() }
+        target.shareRoot = nil
+        let composition = CLIComposition.live
+        let uuids = value(after: "--uuid", in: args).map { $0.components(separatedBy: ",") } ?? composition.drafts.cueDraftUUIDs().sorted()
+        let drafts = uuids.compactMap(composition.drafts.cueDraft)
+        // 앱과 같은 반영 세션. 쓴 초안은 지우지 않는다(앱과 다름, 사용자 결정 대기: 세션 옵션 `liveCLI`가 끈다).
+        let report = try await composition.reflection().writeDrafts(DraftWriteBatch(drafts: drafts), to: target, dryRun: args.contains("--dry-run"))
         for outcome in report.outcomes {
             let mark = switch outcome.status { case .written: "✓"; case .blocked: "✗"; case .unchanged: "·" }
             print(String(ui: "\(mark) \(outcome.title.prefix(34)) — 지움 \(outcome.removed) · 넣음 \(outcome.added)\(outcome.reason.map { " · \($0)" } ?? "")"))
@@ -105,54 +101,41 @@ enum MainCommands {
     }
 
     /// 음원을 컬렉션에 넣는다(분석 전). 기본은 --db 사본, 라이브 DB는 --live(rekordbox가 꺼져 있어야 한다).
+    @MainActor
     static func trackAdd(_ args: [String]) async throws {
-        let live = args.contains("--live")
-        guard live || value(after: "--db", in: args) != nil else { throw UsageError() }
-        let database = live ? RekordboxWriter.liveDatabase : URL(filePath: value(after: "--db", in: args)!)
+        guard let target = RekordboxWriteTarget.cli(args) else { throw UsageError() }
         let files = operands(args, valued: ["--db", "--share"])
         guard !files.isEmpty else { throw UsageError() }
-        var plans: [TrackAddPlan] = []
-        var analyses: [String: RekordboxTrackWriter.Analysis] = [:]
-        for file in files {
-            let url = URL(filePath: file)
-            do {
-                let plan = try TrackAddPlan.make(url: url, tags: try await AudioTags.read(url: url))
-                plans.append(plan)
-                guard args.contains("--analyze") else { continue }
-                // 그리드: 음원 시간축 추정을 rekordbox 시간축으로 옮긴다. 음량: 오토게인(−10 LUFS 목표)
-                guard var estimate = try await GridSuggestion.estimate(fileAt: url, cacheKey: "add-\(plan.fileID)") else {
-                    print(String(ui: "· \(plan.fileName): 그리드를 추정하지 못해 분석 없이 넣습니다")); continue
-                }
-                let offset = RekordboxTimeline.predictedOffset(url: url)
-                for i in estimate.segments.indices { estimate.segments[i].start += offset }
-                let loudness = try Loudness.measure(fileAt: url)
-                analyses[plan.path] = .init(segments: estimate.segments, loudness: loudness.integrated, peak: pow(10, loudness.peak / 20))
-                print(String(format: "· %@: %.2f BPM · %.1f LUFS", plan.fileName, estimate.bpm, loudness.integrated ?? .nan))
-            } catch { print("✗ \(url.lastPathComponent) — \(error)") }
+        // 파일마다 태그 → 넣기 계획, --analyze면 그리드(rekordbox 시간축으로 옮김)·음량(오토게인 −10 LUFS 목표)
+        let prepared = await CLIComposition.trackAddPreparation().prepare(files.map { URL(filePath: $0) }, analyze: args.contains("--analyze")) { line in
+            // 파일마다 바로 찍는다(여러 곡을 분석하는 동안 진행이 보이게)
+            switch line {
+            case let .withoutAnalysis(fileName): print(String(ui: "· \(fileName): 그리드를 추정하지 못해 분석 없이 넣습니다"))
+            case let .analyzed(fileName, bpm, integrated): print(String(format: "· %@: %.2f BPM · %.1f LUFS", fileName, bpm, integrated ?? .nan))
+            case let .failed(file, error): print("✗ \(file) — \(error)")
+            }
         }
-        let backups = live ? DJCPaths.rekordboxBackups : database.deletingLastPathComponent().appending(path: "backups")
-        let report = try RekordboxTrackWriter.add(plans, analyses: analyses, to: database, shareRoot: value(after: "--share", in: args).map { URL(filePath: $0) },
-                                                  dryRun: args.contains("--dry-run"), backups: backups)
+        // 앱의 곡 넣기와 같은 반영 세션(추가 목록 없이 받은 계획으로 바로 넣는 단계)
+        let report = try CLIComposition.live.reflection().addTracks(TrackAddBatch(plans: prepared.plans, analyses: prepared.analyses), to: target,
+                                                                    dryRun: args.contains("--dry-run"))
         for o in report.added { print("\(o.written ? "✓" : "✗") \(o.title.prefix(40))\(o.contentID.map { " · ID \($0)" } ?? "")\(o.reason.map { " · \($0)" } ?? "")") }
         print(String(ui: "\(report.dryRun ? String(ui: "미리 보기(되돌림)") : String(ui: "넣음")) · \(report.added.filter(\.written).count)곡 · 만든 파일(분석·앨범아트) \(report.createdFiles.count)개 · 백업 \(report.backup ?? String(ui: "없음"))"))
     }
 
     /// 곡을 컬렉션에서 뺀다. 분석 파일은 백업으로 옮긴다. 기본은 --db 사본(분석 파일은 --share를 줄 때만), 라이브는 --live.
+    @MainActor
     static func trackDelete(_ args: [String]) async throws {
-        let live = args.contains("--live")
-        guard live || value(after: "--db", in: args) != nil else { throw UsageError() }
-        let database = live ? RekordboxWriter.liveDatabase : URL(filePath: value(after: "--db", in: args)!)
+        guard let target = RekordboxWriteTarget.cli(args) else { throw UsageError() }
         let ids = operands(args, valued: ["--db", "--share"])
         guard !ids.isEmpty else { throw UsageError() }
-        let backups = live ? DJCPaths.rekordboxBackups : database.deletingLastPathComponent().appending(path: "backups")
-        let report = try RekordboxTrackWriter.delete(contentIDs: ids, from: database, shareRoot: value(after: "--share", in: args).map { URL(filePath: $0) },
-                                                     dryRun: args.contains("--dry-run"), backups: backups)
+        let report = try CLIComposition.live.reflection().deleteTracks(ids, from: target, dryRun: args.contains("--dry-run"))
         for o in report.deleted { print("\(o.written ? "✓" : "✗") \(o.title.prefix(40)) · ID \(o.contentID ?? "")\(o.reason.map { " · \($0)" } ?? "")") }
         print(String(ui: "\(report.dryRun ? String(ui: "미리 보기(되돌림)") : String(ui: "뺌")) · \(report.deleted.filter(\.written).count)곡 · 지운 파일(분석·앨범아트) \(report.removedFiles.count)개 · 백업 \(report.backup ?? String(ui: "없음"))"))
     }
 
     /// 재생 목록 편집을 사본에 쓴다. 편집 JSON 예: `[{"create":{"key":"f","name":"새 폴더","isFolder":true,"parent":"root"}},
     /// {"addTracks":{"playlist":"new:f","contentIDs":["123"]}}]`. 라이브 라이브러리는 앱의 반영으로만 쓴다.
+    @MainActor
     static func playlistWrite(_ args: [String]) async throws {
         guard let path = value(after: "--db", in: args), let file = operands(args, valued: ["--db"]).first else { throw UsageError() }
         let database = URL(filePath: path)
@@ -161,8 +144,9 @@ enum MainCommands {
             throw DJCError.writeRefused(String(ui: "playlist-write는 사본에만 씁니다. rekordbox 라이브러리는 앱의 반영으로 쓰세요"))
         }
         let edits = try JSONDecoder().decode([PlaylistEdit].self, from: Data(contentsOf: URL(filePath: file)))
-        let report = try RekordboxWriter.write(drafts: [], playlists: edits, to: database, dryRun: args.contains("--dry-run"),
-                                               backups: database.deletingLastPathComponent().appending(path: "backups"))
+        // 반영 세션의 재생 목록 편집 쓰기(관문 묶음). 백업은 사본 옆 `backups/`
+        let report = try CLIComposition.live.reflection().writePlaylistEdits(edits, to: .copy(database: database, shareRoot: nil),
+                                                                             dryRun: args.contains("--dry-run"))
         for o in report.playlistOutcomes ?? [] {
             let mark = switch o.status { case .written: "✓"; case .blocked: "✗"; case .unchanged: "·" }
             print("\(mark) \(o.name.prefix(34))\(o.playlistID.map { " · ID \($0)" } ?? "")\(o.reason.map { " · \($0)" } ?? "")")
@@ -171,18 +155,18 @@ enum MainCommands {
     }
 
     /// 백업으로 되돌린다. 기본은 --db 사본. 라이브 DB는 --live(rekordbox가 꺼져 있어야 한다). 백업 목록은 인자 없이.
+    @MainActor
     static func rekordboxRestore(_ args: [String]) async throws {
-        let live = args.contains("--live")
-        guard let folder = value(after: "--backup", in: args), live || value(after: "--db", in: args) != nil else {
-            for backup in RekordboxWriter.backups(in: DJCPaths.rekordboxBackups) {
+        guard let folder = value(after: "--backup", in: args), let target = RekordboxWriteTarget.cli(args) else {
+            let composition = CLIComposition.live
+            for backup in composition.library().writeBackups(in: composition.location.backupDirectory) {
                 print(backup.url.lastPathComponent, "·", backup.titles.prefix(5).joined(separator: ", "), String(ui: "· 카운터"), backup.report?.finalUpdateCount ?? -1)
             }
             throw UsageError()
         }
-        let database = live ? RekordboxWriter.liveDatabase : URL(filePath: value(after: "--db", in: args)!)
-        let saved = try RekordboxWriter.restore(URL(filePath: folder), to: database,
-                                                backups: live ? DJCPaths.rekordboxBackups : database.deletingLastPathComponent().appending(path: "backups"),
-                                                shareRoot: value(after: "--share", in: args).map { URL(filePath: $0) })
+        // 앱과 같은 반영 세션. 초안은 되살리지 않는다(앱과 다름, 사용자 결정 대기: 세션 옵션 `liveCLI`가 끈다). 백업은 폴더만 안다.
+        let backup = RekordboxWriteBackup(url: URL(filePath: folder), createdAt: .distantPast, isWrite: true)
+        let saved = try await CLIComposition.live.reflection().restoreBackup(backup, to: target)
         print(String(ui: "되돌림 완료 · 되돌리기 전 상태 백업: \(saved.path)"))
     }
 
@@ -192,14 +176,7 @@ enum MainCommands {
         let args = args.filter { $0 != "--overwrite" }
         guard args.count > 2 else { throw UsageError() }
         try CLIGuards.refuseExistingOutput(URL(filePath: args[2]), overwrite: overwrite)
-        let db = try CipherDatabase(path: args[1], key: RekordboxKey.derive())
-        var statements: [String] = []
-        try db.query("""
-            SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
-            ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
-            """) { statements.append(($0.string(0) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) }
-        var version = "?"
-        try? db.query("SELECT DBVersion FROM djmdProperty LIMIT 1") { version = $0.string(0) ?? "?" }
+        let (statements, version) = try CLIComposition.schema(of: args[1])
         let text = "-- rekordbox master.db 구조(데이터 없음). DBVersion \(version)\n-- DJCrate schema-dump로 뽑음\n\n"
             + statements.map { $0 + ";" }.joined(separator: "\n\n") + "\n"
         try text.write(toFile: args[2], atomically: true, encoding: .utf8)
@@ -208,9 +185,9 @@ enum MainCommands {
 
     /// 제목으로 파일 경로 찾기(개발용)
     static func path(_ args: [String]) async throws {
-        let library = try RekordboxLibrary.load(snapshot: LibraryRead.resolve(database: value(after: "--db", in: args).map { URL(filePath: $0) }))
+        let read = try CLIComposition.live.library().queries.open(database: value(after: "--db", in: args).map { URL(filePath: $0) })
         guard args.count > 1 else { return }
-        for track in library.tracks where track.title.contains(args[1]) && !track.isStreaming { print(track.folderPath) }
+        for path in read.titlePaths(args[1]) { print(path) }
     }
 
     static func parse(_ args: [String]) async throws {
@@ -223,7 +200,7 @@ enum MainCommands {
         }
     }
 
-    private static func partName(_ label: PartLabeler.Label) -> String {
+    private static func partName(_ label: PartLabel) -> String {
         switch label {
         case .firstChorus: String(ui: "1사비")
         case .secondChorus: String(ui: "2사비")
@@ -235,22 +212,16 @@ enum MainCommands {
     // MARK: - 도움
 
     static func analyzeTrack(_ target: String, snapshotPath: String?) async throws {
-        var url = URL(filePath: target)
-        var track: Track?
-        var cues: [Cue] = []
-        if !FileManager.default.fileExists(atPath: target) {
-            let snapshot = try snapshotPath.map { URL(filePath: $0) } ?? LibrarySnapshot.latest()
-            let library = try RekordboxLibrary.load(snapshot: snapshot)
-            guard let found = library.tracks.first(where: { $0.id == target }) else {
-                print(String(ui: "트랙을 찾지 못했습니다: \(target)")); return
-            }
-            track = found
-            cues = library.cues(for: found)
-            url = URL(filePath: found.folderPath)
+        // 파일이 없으면 사본(--db, 없으면 최신 스냅샷)의 ContentID로 곡을 찾는다
+        let parts = CLIComposition.live.analyzeParts()
+        guard let found = try parts.target(target, database: snapshotPath.map { URL(filePath: $0) }) else {
+            print(String(ui: "트랙을 찾지 못했습니다: \(target)")); return
         }
+        let track = found.track, cues = found.cues
 
         let started = Date()
-        let analysis = try await PartAnalyzer.analyze(fileAt: url, cacheKey: track?.uuid)
+        let result = try await parts.analyze(found)
+        let analysis = result.analysis
 
         if let track { print(String(ui: "\(track.title) — \(track.artist ?? "")\n코멘트: \(track.comment)")) }
         print(String(ui: "길이 \(clock(analysis.duration)) · BPM \(analysis.bpm.map { String(format: "%.1f", $0) } ?? "-") · 분석 \(Date().timeIntervalSince(started), specifier: "%.1f")초 · 통합 음량 \(analysis.integratedLoudness.map { String(format: "%.1f", $0) } ?? "-") LUFS"))
@@ -258,13 +229,13 @@ enum MainCommands {
         print(String(ui: "마디 \(analysis.bars.count) · 섹션 \(analysis.sections.count) · 세그먼트 \(analysis.segments.count) · 프레이즈 \(analysis.phrases.count)\n"))
 
         print(String(ui: "섹션별 에너지 (음량 LUFS / 보컬 / 드럼 / 점수)"))
-        for e in PartLabeler.energies(analysis) {
+        for e in result.energies {
             print(String(format: "  %@–%@  %6.1f  %.2f  %.2f  %.2f",
                          clock(e.span.start), clock(e.span.end), e.loudness, e.vocal, e.drum, e.score))
         }
 
         print(String(ui: "\n파트 추정 v0"))
-        for m in PartLabeler.label(analysis) {
+        for m in result.parts {
             print(String(ui: "  \(partName(m.label))\t\(clock(m.time))\t\(m.bar.map { String(ui: "\($0)마디") } ?? "")\t신뢰도 \(String(m.confidence))"))
         }
 

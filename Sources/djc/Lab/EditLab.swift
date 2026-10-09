@@ -1,5 +1,7 @@
 import AVFoundation
+import DJCAdapters
 import DJCAnalysis
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -55,7 +57,7 @@ enum EditLab {
         let grid = edit.outputGrid
         print(String(format: "출력: 길이 %@ · 그리드 %.3f BPM, %.3f초 %d박에서", clock(edit.duration), grid.bpm, grid.start, grid.firstBeatNumber))
 
-        let carried = edit.carry(source.cues)
+        let carried = edit.carry(source.cues, newID: { UUID() })
         let outputBars = try BarLayout(grid: [grid], duration: edit.duration)
         for cue in carried.placed {
             print("  큐 \(label(cue))\t→ 출력 \(clock(cue.time)) (\(outputBars.bar(at: cue.time))마디)\(cue.loop.map { String(format: " · 루프 %.2f초", $0.end - cue.time) } ?? "")")
@@ -78,8 +80,10 @@ enum EditLab {
         if args.contains("--check-grid") { try await checkGrid(source, output: output, grid: grid, duration: edit.duration) }
 
         if args.contains("--stage") {
-            let staged = try await EditStaging.stage(fileAt: output, edit: edit, cues: carried.placed, source: source.track,
-                                                     title: value(after: "--title", in: args))
+            let title = value(after: "--title", in: args) ?? source.track.map { "\($0.title) (Edit)" }
+                ?? output.deletingPathExtension().lastPathComponent
+            let staged = try await StageEdit.files(home: DJCPaths.userData).stage(
+                EditStagingRequest(file: output, grid: [edit.outputGrid], cues: carried.placed, source: source.track, title: title))
             print("✓ 추가한 곡에 넣음: \(staged.uuid) · 그리드 초안 · 큐 초안 \(carried.placed.count)개 · 데이터 폴더 \(DJCPaths.userData.path)")
         }
         if let into, let share {
@@ -240,7 +244,7 @@ enum EditLab {
         }
         plan.title = title ?? source.map { "\($0.title) (Edit)" } ?? plan.title
         let loudness = try Loudness.measure(fileAt: output)
-        let analysis = RekordboxTrackWriter.Analysis(segments: [grid], loudness: loudness.integrated, peak: pow(10, loudness.peak / 20))
+        let analysis = RekordboxTrackWriter.Analysis(segments: [grid], loudness: loudness)
         let report = try RekordboxTrackWriter.add([plan], analyses: [plan.path: analysis], cues: [plan.path: cues], to: database,
                                                   shareRoot: share, dryRun: dryRun, backups: database.deletingLastPathComponent().appending(path: "backups"))
         for o in report.added {

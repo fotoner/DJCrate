@@ -1,3 +1,4 @@
+import DJCApplication
 @testable import DJCrate
 import AppKit
 import DJCDomain

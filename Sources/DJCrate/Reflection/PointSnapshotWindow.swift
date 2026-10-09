@@ -1,8 +1,7 @@
 import AppKit
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Observation
-import RekordboxKit
 import SwiftUI
 
 /// 시점 스냅샷 창(#224·#225): 지금 상태를 이름 붙여 남기고, 시점 스냅샷과 쓰기 전 백업을 한 목록에서 보고, 스냅샷을 고정한다.
@@ -10,17 +9,22 @@ import SwiftUI
 /// 쓰기 전 백업은 따로 정리되고 '쓰기 전으로 복원…'으로 되돌리므로 여기서는 보기만 한다(#223 결정).
 @MainActor
 final class PointSnapshotWindow: NSObject, NSWindowDelegate {
-    static let shared = PointSnapshotWindow()
     private var window: NSWindow?
     private var model: PointSnapshotModel?
+    /// 저장소의 대상(쓰기·복원과 같은 곳)으로 시점 스냅샷 유스케이스를 만든다(조립 지점이 실제 구현을 고른다)
+    private let points: @MainActor (LibraryStore) -> PointSnapshots
 
-    func open(store: LibraryStore) {
+    init(points: @escaping @MainActor (LibraryStore) -> PointSnapshots) {
+        self.points = points
+    }
+
+    func open(store: LibraryStore, reflection: ReflectionCoordinator) {
         if let window, window.isVisible {
             window.makeKeyAndOrderFront(nil)
             Task { await model?.refresh() }
             return
         }
-        let model = PointSnapshotModel(store: store)
+        let model = PointSnapshotModel(store: store, reflection: reflection, points: points(store))
         let window = NSWindow(contentViewController: NSHostingController(rootView: PointSnapshotView(model: model)))
         window.title = String(ui: "시점 스냅샷")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -35,34 +39,6 @@ final class PointSnapshotWindow: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool { model?.isWorking != true }
-}
-
-/// 시점 스냅샷 목록 한 줄. 쓰기 전 백업도 같은 줄 모양으로 함께 보인다.
-struct PointSnapshotRow: Identifiable, Hashable {
-    enum Source: Hashable {
-        case point(RekordboxPointSnapshot.Entry)
-        /// 쓰기 전 백업(`isWrite`가 거짓이면 복원 직전 백업)
-        case backup(URL, isWrite: Bool)
-    }
-
-    var source: Source
-    var date: Date
-    var name: String
-    var kind: String
-    var bytes: Int64?
-    var id: String {
-        switch source {
-        case let .point(entry): "point:" + entry.id
-        case let .backup(url, _): "backup:" + url.lastPathComponent
-        }
-    }
-
-    var entry: RekordboxPointSnapshot.Entry? {
-        if case let .point(entry) = source { return entry }
-        return nil
-    }
-
-    var pinned: Bool { entry?.metadata.pinned == true }
 }
 
 @MainActor @Observable
@@ -80,52 +56,37 @@ final class PointSnapshotModel {
     private(set) var comparison: RekordboxPointSnapshotDiff?
     private(set) var comparedID: PointSnapshotRow.ID?
 
-    let database: URL
-    let shareRoot: URL?
-    let snapshots: URL
-    let backups: URL
-    @ObservationIgnored private let writeGuard: RekordboxWriteGuard
+    /// 시점 스냅샷 유스케이스(대상 라이브러리·스냅샷 폴더·쓰기 전 백업 폴더는 조립 지점이 정한다)
+    let points: PointSnapshots
     @ObservationIgnored private let autoDays: () -> Int
     @ObservationIgnored private let busy: () -> String?
     @ObservationIgnored private let prompter: any ReflectionPrompter
     @ObservationIgnored private let now: () -> Date
-    /// 복원(앱은 `LibraryStore.restorePointSnapshot`: 쓰기 잠금·다시 읽기까지)
-    @ObservationIgnored private let restoreAction: (RekordboxPointSnapshot.Entry, Set<String>) async throws -> RekordboxWriter.PointRestoreReport
+    /// 복원(앱은 반영 세션 `restorePointSnapshot`: 쓰기 잠금·다시 읽기까지, 대상은 쓰기와 같은 곳)
+    @ObservationIgnored private let restoreAction: @MainActor (RekordboxPointSnapshotEntry, Set<String>) async throws -> RekordboxPointRestoreReport
 
-    init(database: URL, shareRoot: URL?, snapshots: URL, backups: URL, guard writeGuard: RekordboxWriteGuard = .system,
-         autoDays: @escaping () -> Int = { Int(SettingKeys.pointSnapshotAutoDays.defaultValue) },
+    /// - Parameter restore: 시점 스냅샷으로 되돌린다(바뀌는 곡을 받는다)
+    init(points: PointSnapshots, autoDays: @escaping () -> Int = { Int(SettingKeys.pointSnapshotAutoDays.defaultValue) },
          busyReason: @escaping () -> String? = { nil }, prompter: any ReflectionPrompter = AlertPrompter(), now: @escaping () -> Date = { .now },
-         restore: ((RekordboxPointSnapshot.Entry, Set<String>) async throws -> RekordboxWriter.PointRestoreReport)? = nil) {
-        self.database = database
-        self.shareRoot = shareRoot
-        self.snapshots = snapshots
-        self.backups = backups
-        self.writeGuard = writeGuard
+         restore: @escaping @MainActor (RekordboxPointSnapshotEntry, Set<String>) async throws -> RekordboxPointRestoreReport) {
+        self.points = points
         self.autoDays = autoDays
         self.busy = busyReason
         self.prompter = prompter
         self.now = now
-        let days = autoDays
-        restoreAction = restore ?? { entry, _ in
-            let time = now(), count = days()
-            return try await Task.detached(priority: .userInitiated) {
-                try RekordboxWriter.restore(pointSnapshot: entry.url, to: database, shareRoot: shareRoot, snapshots: snapshots, backups: backups,
-                                            autoDays: count, now: time, guard: writeGuard)
-            }.value
-        }
+        restoreAction = restore
     }
 
-    /// 앱 창이 쓰는 모델: 쓰기·복원 대상은 `LibraryStore.rekordboxDatabase` 한 곳에서 정한다.
-    convenience init(store: LibraryStore) {
-        let settings = store.settings
-        self.init(database: store.rekordboxDatabase, shareRoot: store.rekordboxShareRoot, snapshots: DJCPaths.pointSnapshots,
-                  backups: store.backupDirectory, autoDays: { Int(settings.value(SettingKeys.pointSnapshotAutoDays)) },
+    /// 앱 창이 쓰는 모델: 쓰기·복원 대상은 반영 세션의 위치(`LibraryStore.rekordboxDatabase`와 같은 곳)로 조립 지점이 만든 유스케이스다.
+    convenience init(store: LibraryStore, reflection: ReflectionCoordinator, points: PointSnapshots) {
+        let settings = store.settings, snapshots = points.directory
+        self.init(points: points, autoDays: { Int(settings.value(SettingKeys.pointSnapshotAutoDays)) },
                   busyReason: { [weak store] in
                       store?.isWritingRekordbox == true ? String(ui: "rekordbox에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 누르세요") : nil
                   },
-                  restore: { [weak store] entry, changed in
-                      guard let store else { throw CancellationError() }
-                      return try await store.restorePointSnapshot(entry, snapshots: DJCPaths.pointSnapshots, changedTracks: changed)
+                  restore: { [weak reflection] entry, changed in
+                      guard let reflection else { throw CancellationError() }
+                      return try await reflection.restorePointSnapshot(entry.url, snapshots: snapshots, changedTracks: changed)
                   })
     }
 
@@ -135,41 +96,10 @@ final class PointSnapshotModel {
     var blockReason: String? { busy() }
 
     func refresh() async {
-        let snapshots = snapshots, backups = backups, source = database.deletingLastPathComponent()
-        let result = await Task.detached(priority: .userInitiated) {
-            (Self.rows(snapshots: snapshots, backups: backups), RekordboxPointSnapshot.canClone(from: source, to: snapshots))
-        }.value
-        rows = result.0
+        let result = await points.load()
+        rows = result.rows
         if let selection, !rows.contains(where: { $0.id == selection }) { self.selection = nil }
-        cloneNote = result.1 ? nil : String(ui: "DJCrate 데이터 폴더가 rekordbox와 다른 디스크라 스냅샷마다 라이브러리 전체를 복사합니다.")
-    }
-
-    /// 시점 스냅샷과 쓰기 전 백업을 최근 것부터 한 목록으로. 크기는 논리 크기다(클론이면 실제 사용은 더 작다).
-    nonisolated static func rows(snapshots: URL, backups: URL) -> [PointSnapshotRow] {
-        let points = RekordboxPointSnapshot.list(in: snapshots).map { entry in
-            PointSnapshotRow(source: .point(entry), date: entry.metadata.createdAt, name: rowName(entry.metadata), kind: entry.metadata.kind.title,
-                             bytes: RekordboxPointSnapshot.size(of: entry.url))
-        }
-        let writes = RekordboxWriter.backups(in: backups).map { backup in
-            PointSnapshotRow(source: .backup(backup.url, isWrite: backup.isWrite), date: backup.createdAt,
-                             name: backupTitles(backup).prefix(3).joined(separator: ", "),
-                             kind: backup.isWrite ? String(ui: "쓰기 전 백업") : String(ui: "복원 직전 백업"),
-                             bytes: RekordboxPointSnapshot.size(of: backup.url))
-        }
-        return (points + writes).sorted { $0.date > $1.date }
-    }
-
-    /// 복원 직전 스냅샷은 이름 대신 무엇으로 되돌리기 전인지 보인다
-    nonisolated static func rowName(_ metadata: RekordboxPointSnapshot.Metadata) -> String {
-        guard metadata.name.isEmpty, let target = metadata.restoredFrom else { return metadata.name }
-        return String(ui: "‘\(target)’ 복원 전")
-    }
-
-    /// 쓰기 전 백업 줄의 이름: 그때 쓴 곡(그리드·게인만 쓴 곡도, 곡마다 한 번)
-    nonisolated static func backupTitles(_ backup: RekordboxWriter.Backup) -> [String] {
-        let extra = backup.report.map { ($0.gridWritten + $0.gainWritten).map(\.title) } ?? []
-        var seen = Set<String>()
-        return (backup.titles + extra).filter { seen.insert($0).inserted }
+        cloneNote = result.canClone ? nil : String(ui: "DJCrate 데이터 폴더가 rekordbox와 다른 디스크라 스냅샷마다 라이브러리 전체를 복사합니다.")
     }
 
     func create() async {
@@ -177,15 +107,11 @@ final class PointSnapshotModel {
         if let reason = blockReason { show(reason, error: true); return }
         isWorking = true
         defer { isWorking = false }
-        let name = newName, database = database, share = shareRoot, snapshots = snapshots, days = autoDays(), now = now(), writeGuard = writeGuard
         do {
-            let entry = try await Task.detached(priority: .userInitiated) {
-                try RekordboxPointSnapshot.create(name: name, database: database, shareRoot: share, in: snapshots, autoDays: days, now: now,
-                                                  guard: writeGuard)
-            }.value
+            let entry = try await points.create(name: newName, autoDays: autoDays(), now: now())
             newName = ""
             await refresh()
-            selection = "point:" + entry.id
+            selection = PointSnapshotRow.pointID(entry)
             show(String(ui: "시점 스냅샷을 남겼습니다."), error: false)
         } catch {
             AppErrorMessage.log(error)
@@ -196,7 +122,7 @@ final class PointSnapshotModel {
     func setPinned(_ pinned: Bool, _ row: PointSnapshotRow) async {
         guard let entry = row.entry, !isWorking else { return }
         do {
-            try RekordboxPointSnapshot.setPinned(pinned, entry.url, in: snapshots)
+            try points.setPinned(pinned, entry)
             await refresh()
             show(pinned ? String(ui: "고정했습니다. 자동 정리에서 지우지 않습니다.") : String(ui: "고정을 풀었습니다."), error: false)
         } catch {
@@ -204,22 +130,16 @@ final class PointSnapshotModel {
         }
     }
 
-    /// 지운 스냅샷은 되살릴 수 없어 한 번 묻는다.
+    /// 지운 스냅샷은 되살릴 수 없어 한 번 묻는다(고정한 것은 묻지 않고 이유를 보인다).
     func delete(_ row: PointSnapshotRow) async {
         guard let entry = row.entry, !isWorking else { return }
-        guard !entry.metadata.pinned else { show(String(ui: "고정한 시점 스냅샷은 지우지 않습니다. 고정을 푼 뒤 지우세요"), error: true); return }
-        let title = entry.metadata.name.isEmpty ? row.date.formatted(date: .abbreviated, time: .shortened) : entry.metadata.name
-        guard prompter.show(ReflectionPrompt(title: String(ui: "시점 스냅샷 ‘\(title)’을 지울까요?"),
-                                             text: String(ui: "지운 스냅샷은 되살릴 수 없습니다. rekordbox 라이브러리는 그대로입니다."),
-                                             confirm: String(ui: "지우기"), destructive: true)) else { return }
-        isWorking = true
-        defer { isWorking = false }
-        let url = entry.url, snapshots = snapshots
-        do {
-            try await Task.detached(priority: .userInitiated) { try RekordboxPointSnapshot.delete(url, in: snapshots) }.value
+        switch await points.delete(entry, confirmation: prompter.confirmation, working: { [weak self] in self?.isWorking = $0 }) {
+        case let .refused(refusal): show(refusal.message, error: true)
+        case .cancelled: break
+        case .deleted:
             await refresh()
             show(String(ui: "시점 스냅샷을 지웠습니다."), error: false)
-        } catch {
+        case let .failed(error):
             show(AppErrorMessage.message(for: error), error: true)
         }
     }
@@ -230,14 +150,9 @@ final class PointSnapshotModel {
         guard let entry = row.entry, !isWorking else { return nil }
         isWorking = true
         defer { isWorking = false }
-        let database = database, share = shareRoot, writeGuard = writeGuard
         do {
-            let diff = try await Task.detached(priority: .userInitiated) {
-                try RekordboxPointSnapshotDiff.compare(entry, database: database, shareRoot: share, guard: writeGuard)
-            }.value
-            comparison = diff
-            comparedID = row.id
-            message = nil
+            let diff = try await points.compare(entry)
+            showComparison(diff, of: row)
             return diff
         } catch {
             AppErrorMessage.log(error)
@@ -246,27 +161,28 @@ final class PointSnapshotModel {
         }
     }
 
-    /// 비교한 뒤 확인 창 하나로 묻고 그 시점으로 되돌린다. 복원 직전 상태는 시점 스냅샷으로 남는다.
+    /// 비교한 뒤 확인 창 하나로 묻고 그 시점으로 되돌린다(순서는 유스케이스). 복원 직전 상태는 시점 스냅샷으로 남는다.
     func restore(_ row: PointSnapshotRow) async {
         guard let entry = row.entry, !isWorking else { return }
-        if let reason = blockReason { show(reason, error: true); return }
-        if writeGuard.isLive(database), writeGuard.isRekordboxRunning() {
-            show(String(ui: "rekordbox가 켜져 있어 복원하지 않았습니다. rekordbox를 완전히 종료한 뒤 다시 누르세요"), error: true)
-            return
-        }
-        guard let diff = await compare(row) else { return }
-        guard prompter.show(Self.restoreConfirmation(entry, diff: diff)) else { return }
-        isWorking = true
-        defer { isWorking = false }
-        do {
-            let report = try await restoreAction(entry, diff.changedTrackUUIDs)
+        let outcome = await points.restore(entry, blockReason: blockReason, confirmation: prompter.confirmation,
+                                           compared: { [weak self] in self?.showComparison($0, of: row) },
+                                           working: { [weak self] in self?.isWorking = $0 }, perform: restoreAction)
+        switch outcome {
+        case let .refused(refusal):
+            show(refusal.message, error: true)
+        case let .compareFailed(error):
+            AppErrorMessage.log(error)
+            show(AppErrorMessage.message(for: error), error: true)
+        case .cancelled:
+            break
+        case let .restored(report):
             comparison = nil
             comparedID = nil
             await refresh()
             selection = row.id
             show(String(ui: "‘\(entry.displayName)’ 시점으로 복원했습니다. 복원 전 상태는 ‘복원 직전’ 스냅샷(\(report.beforeRestore.metadata.createdAt.formatted(date: .omitted, time: .shortened)))으로 남겼습니다."),
                  error: false)
-        } catch {
+        case let .failed(error):
             AppErrorMessage.log(error)
             let text = AppErrorMessage.message(for: error)
             show(text, error: true)
@@ -277,18 +193,15 @@ final class PointSnapshotModel {
         }
     }
 
-    /// 복원 확인 창(하나). 무엇이 바뀌는지는 펼쳐 보기에, 클라우드 동기화 흔적은 한 줄로(#229 확인 전, 막지 않는다).
-    static func restoreConfirmation(_ entry: RekordboxPointSnapshot.Entry, diff: RekordboxPointSnapshotDiff) -> ReflectionPrompt {
-        let when = entry.metadata.createdAt.formatted(date: .abbreviated, time: .shortened)
-        var lines = [String(ui: "rekordbox 라이브러리 전체(DB·재생 목록·분석 파일·앨범아트)를 \(when) 시점으로 되돌립니다. 그 뒤 rekordbox와 DJCrate에서 바꾼 것은 사라집니다."),
-                     String(ui: "지금 상태는 ‘복원 직전’ 스냅샷으로 남겨 다시 되돌릴 수 있습니다. DJCrate 초안은 그대로 둡니다.")]
-        if diff.isEmpty { lines.append(String(ui: "지금 라이브러리와 다른 곳이 없습니다.")) }
-        if diff.cloudSyncedSince(entry) { lines.append("⚠︎ " + RekordboxPointSnapshotDiff.cloudSyncNote) }
-        lines.append(String(ui: "끝날 때까지 rekordbox를 켜지 마세요."))
-        var details = diff.summary
-        for group in diff.details(limit: 20) { details += ["", group.title + ":"] + group.items.map { "• " + $0 } }
-        return ReflectionPrompt(title: String(ui: "rekordbox를 ‘\(entry.displayName)’ 시점으로 복원할까요?"), text: lines.joined(separator: "\n\n"),
-                                confirm: String(ui: "이 시점으로 복원"), destructive: true, details: details)
+    /// 복원 확인 창(`PointSnapshots.restoreConfirmation`)
+    static func restoreConfirmation(_ entry: RekordboxPointSnapshotEntry, diff: RekordboxPointSnapshotDiff) -> ReflectionPrompt {
+        PointSnapshots.restoreConfirmation(entry, diff: diff)
+    }
+
+    private func showComparison(_ diff: RekordboxPointSnapshotDiff, of row: PointSnapshotRow) {
+        comparison = diff
+        comparedID = row.id
+        message = nil
     }
 
     private func show(_ text: String, error: Bool) {

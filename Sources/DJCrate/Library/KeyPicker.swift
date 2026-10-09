@@ -48,8 +48,5 @@ enum KeyPicker {
     // MARK: 시트·붙여넣기 입력
 
     /// 시트 붙여넣기·채우기에서 키 칸이 받는 값. 비웠으면 "", Camelot 이름이면 정확한 이름, 아니면 nil(건너뛴다).
-    static func accepted(_ text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "" : KeyNotation.normalizedCamelotName(trimmed)
-    }
+    static func accepted(_ text: String) -> String? { TagChoice.acceptedKey(text) }
 }

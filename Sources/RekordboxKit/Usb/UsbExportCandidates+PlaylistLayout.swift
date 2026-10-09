@@ -1,4 +1,5 @@
 import DJCDomain
+import Foundation
 
 public extension UsbExportCandidates {
     /// 로컬 DB 밖의 목록(iTunes 포함)을 기존 내보내기 입력으로 바꾼다. 곡 ID는 스냅샷의 ContentID여야 한다.

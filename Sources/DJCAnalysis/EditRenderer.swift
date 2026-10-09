@@ -19,8 +19,8 @@ public enum EditRenderer {
 
     public static let outputExtensions: Set<String> = ["wav", "aif", "aiff"]
 
-    /// 쓴 비율(0~1). 렌더하는 스레드에서 부른다.
-    public typealias Progress = @Sendable (Double) -> Void
+    /// 쓴 비율(0~1). 렌더하는 스레드에서 부른다(모양은 DJCDomain `EditRenderProgress`, #167).
+    public typealias Progress = EditRenderProgress
 
     /// - Parameter sourceOffset: 원본의 rekordbox 시간축 − 음원 시간축(초, `RekordboxTimeline.predictedOffset`)
     public static func render(_ edit: TrackEdit, source: URL, sourceOffset: Double, to output: URL, bitDepth: Int = 16,

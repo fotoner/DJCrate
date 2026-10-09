@@ -1,5 +1,5 @@
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 @testable import DJCAnalysis
 import Testing
@@ -103,8 +103,8 @@ struct MemoryCueSuggesterTests {
 @Suite("파형·어택")
 struct WaveformOnsetTests {
     @Test func 파형은_초당_150칸_3밴드() throws {
-        let fixture = try RekordboxFixture()
-        let url = try AudioFixture.flac(seconds: 2, in: fixture.audio)
+        let folder = try TemporaryFolder()
+        let url = try AudioFixture.flac(seconds: 2, in: folder.url)
         let waveform = try WaveformAnalyzer.analyze(fileAt: url)
         #expect(abs(Double(waveform.count) - 300) <= 2)
         #expect(waveform.low.count == waveform.count && waveform.high.count == waveform.count)
@@ -114,9 +114,9 @@ struct WaveformOnsetTests {
     }
 
     @Test func 어택_곡선은_클릭_자리에서_솟는다() throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder()
         let times = [0.5, 1.0, 1.5, 2.0, 2.5]
-        let envelope = try OnsetEnvelope.compute(url: try AudioFixture.clicks(at: times, seconds: 3, in: fixture.audio))
+        let envelope = try OnsetEnvelope.compute(url: try AudioFixture.clicks(at: times, seconds: 3, in: folder.url))
         #expect(abs(envelope.duration - 3) < 0.01)
         for t in times {
             #expect(envelope.value(at: t + 0.001) > envelope.value(at: t + 0.25) * 3, "\(t)초")

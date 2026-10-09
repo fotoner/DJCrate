@@ -1,18 +1,5 @@
+import DJCDomain
 import Foundation
-
-/// 스냅샷의 재생 기록. 반복 재생은 서로 다른 기록 행으로 보존한다.
-public struct RekordboxHistory: Sendable, Hashable, Identifiable {
-    public let id: String
-    public let name: String
-    public let dateCreated: String?
-    public let entries: [Entry]
-
-    public struct Entry: Sendable, Hashable, Identifiable {
-        public let id: String
-        public let contentID: String
-        public let trackNumber: Int
-    }
-}
 
 extension RekordboxLibrary {
     static func loadHistories(_ db: CipherDatabase) throws -> [RekordboxHistory] {

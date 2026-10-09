@@ -1,6 +1,6 @@
+import DJCApplication
 import DJCDomain
 import Foundation
-import RekordboxKit
 
 /// 복구 시트(#232)의 줄에 보이는 글: 한 줄 차이 요약, 경고, 접어 둔 자세히 보기(기준·현재·내 편집).
 /// 판정·적용 규칙(`DraftRecoveryReview`·`PlaylistRecoveryReview`)은 그대로 쓰고 여기서는 보여 줄 글만 만든다.

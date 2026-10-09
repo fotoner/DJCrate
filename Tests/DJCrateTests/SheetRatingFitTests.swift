@@ -26,7 +26,7 @@ struct SheetRatingFitTests {
 
         init(scale: Double = 1, ratingWidth: CGFloat? = nil, colorWidth: CGFloat? = nil) {
             _ = NSApplication.shared
-            let store = LibraryStore(saveTagDrafts: { _ in })
+            let store = LibraryStore.test(saveTagDrafts: { _ in })
             coordinator = SheetCoordinator(store: store)
             window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1900, height: 400),
                               styleMask: [.titled], backing: .buffered, defer: false)
@@ -101,24 +101,12 @@ struct SheetRatingFitTests {
         }
     }
 
-    // MARK: 기본 폭
-
-    @Test(arguments: scales)
-    func 기본_폭에서_평점_다섯_값이_서로_다르게_읽힌다(_ scale: Double) {
-        let h = Harness(scale: scale)
-        defer { h.close() }
-        let texts = h.ratingTexts
-        #expect(h.rating.width == SheetColumn.spec(id: "rating")?.width)
-        #expect(Set(texts).count == 5, "배율 \(scale): \(texts)")
-        #expect(zip(texts, zip(Self.stars, Self.compact)).allSatisfy { $0 == $1.0 || $0 == $1.1 }, "배율 \(scale): \(texts)")
-        #expect((0..<5).allSatisfy { h.fits(row: $0, column: "rating") }, "배율 \(scale) 잘리면 안 된다: \(texts)")
-    }
-
-    // MARK: 어떤 폭·글자 배율에서도
+    // MARK: 어떤 폭에서도
 
     /// 열 폭을 최소 폭부터 기본 폭을 한참 넘을 때까지 한 칸씩 바꿔 가며, 다섯 평점이 늘 서로 다르게 읽히고 잘리지 않는지 본다.
-    @Test(arguments: scales)
-    func 열_폭이_어떻든_평점_다섯_값이_서로_다르게_읽힌다(_ scale: Double) {
+    /// 글자 배율마다의 규칙은 `FittingTextTests`가 창 없이 보고, 여기서는 가장 큰 배율로 열이 규칙에 맞는 자리를 넘기는지 본다.
+    @Test func 열_폭이_어떻든_평점_다섯_값이_서로_다르게_읽힌다() {
+        let scale = 1.5
         let h = Harness(scale: scale)
         defer { h.close() }
         var shownStars = 0, shownCompact = 0
@@ -136,18 +124,6 @@ struct SheetRatingFitTests {
         #expect(broken.isEmpty, "배율 \(scale) 폭을 줄이면 별이 잘리거나 값이 같아진다(\(broken.count)개 폭): \(broken.prefix(3)) … \(broken.suffix(1))")
         // 좁을 때는 숫자, 넉넉하면 별(두 모양 모두 쓰인다)
         #expect(shownStars > 0 && shownCompact > 0, "배율 \(scale): 별 \(shownStars)개 폭, 숫자 \(shownCompact)개 폭")
-    }
-
-    /// 열을 가장 좁게 끌어도(최소 폭) 숫자 표기는 모든 글자 배율에서 들어간다.
-    @Test(arguments: scales)
-    func 최소_폭에서도_숫자_표기가_들어간다(_ scale: Double) {
-        let h = Harness(scale: scale)
-        defer { h.close() }
-        h.rating.width = 0   // 최소 폭으로 눌린다
-        h.relayout()
-        #expect(h.rating.width == h.rating.minWidth)
-        #expect(h.ratingTexts == Self.compact, "배율 \(scale) 최소 폭 \(h.rating.minWidth): \(h.ratingTexts)")
-        #expect((0..<5).allSatisfy { h.fits(row: $0, column: "rating") }, "배율 \(scale) 최소 폭 \(h.rating.minWidth)에서 잘림")
     }
 
     @Test func 열을_넓히면_별로_돌아오고_다시_좁히면_숫자가_된다() {

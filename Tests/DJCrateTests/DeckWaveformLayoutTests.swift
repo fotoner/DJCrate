@@ -1,7 +1,7 @@
 @testable import DJCrate
 import AppKit
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import SwiftUI
 import Testing
@@ -16,10 +16,10 @@ struct DeckWaveformLayoutTests {
         let harness = try DeckHarness()
         try await harness.loaded()
         let deck = harness.deck
-        let domain = "deck-waveform-layout.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: domain))
+        let domain = TestDefaults.suiteName("deck-waveform-layout")
+        let defaults = TestDefaults.open(domain)
         defer { defaults.removePersistentDomain(forName: domain) }
-        let store = LibraryStore(settings: SettingsStore(defaults: defaults, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
                                  resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }))
         let key = String(describing: ObjectIdentifier(deck))
         let zoomKey = "deck.zoom.\(key)", groupKey = "deck.waveGroup.\(key)"

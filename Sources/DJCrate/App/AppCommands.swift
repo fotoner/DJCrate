@@ -4,6 +4,8 @@ import SwiftUI
 struct AppCommandContext {
     var store: LibraryStore
     var deck: DeckModel
+    var windows: AppWindows
+    var reflection: ReflectionCoordinator
     var showTagEditor: Binding<Bool>
 }
 
@@ -84,7 +86,7 @@ struct AppCommands: Commands {
         CommandMenu(Text(verbatim: "rekordbox")) {
             ForEach(LibraryMenuAction.rekordboxActions, id: \.self) { libraryButton($0) }
         }
-        CommandMenu(.ui("재생 목록")) { PlaylistCommands(store: context?.store) }
+        CommandMenu(.ui("재생 목록")) { PlaylistCommands(store: context?.store, reflection: context?.reflection) }
         CommandMenu(.ui("덱")) {
             // 키는 곡 목록·태그 시트가 받는다(글자 입력 중 ⌘→는 커서 이동이라 메뉴에 걸지 않는다).
             let loadTitle = "\(String(ui: "고른 곡 덱에 불러오기"))    ⌘→"
@@ -113,12 +115,12 @@ struct AppCommands: Commands {
                 }
             }
             Divider()
-            Button(.ui("곡 편집…")) { TrackEditWindow.shared.open() }
-                .disabled(context.map { !TrackEditModel.canOpen($0.deck) } ?? true)
-                .help(context.flatMap { TrackEditModel.openingUnavailableReason($0.deck) } ?? String(ui: "덱에 올린 곡으로 편집 창을 엽니다"))
+            Button(.ui("곡 편집…")) { Task { await context?.windows.trackEdit.open() } }
+                .disabled(context.map { !$0.deck.canOpenTrackEdit } ?? true)
+                .help(context.flatMap { $0.deck.trackEditUnavailableReason } ?? String(ui: "덱에 올린 곡으로 편집 창을 엽니다"))
             Button(context?.deck.isFlipRecording == true ? String(ui: "Flip 기록 마치기…")
                    : context?.deck.hasPendingFlipResult == true ? String(ui: "Flip 다시 기록…") : String(ui: "Flip 기록 시작")) {
-                FlipWindow.shared.toggleRecording()
+                context?.windows.flip.toggleRecording()
             }
             .disabled(context.map { $0.deck.flipUnavailableReason != nil } ?? true)
             .help(context.flatMap { $0.deck.flipUnavailableReason }
@@ -137,7 +139,7 @@ struct AppCommands: Commands {
 
     private func libraryButton(_ action: LibraryMenuAction) -> some View {
         Button(context.map { action.menuTitle(in: $0.store) } ?? action.title) {
-            if let store = context?.store { action.perform(in: store) }
+            if let context { action.perform(in: context.store, windows: context.windows, reflection: context.reflection) }
         }
         .keyboardShortcut(action.shortcut)
         .disabled(context.map { !action.isEnabled(in: $0.store) } ?? true)

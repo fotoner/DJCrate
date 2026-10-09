@@ -1,11 +1,12 @@
+import DJCApplication
 @testable import DJCrate
 import AppKit
 import DJCDomain
 import DJCAnalysis
 import DJCStorage
-import DJCTestSupport
 import Foundation
 import QuartzCore
+import RekordboxFixtures
 import SwiftUI
 import Testing
 
@@ -16,7 +17,7 @@ import Testing
 /// 계산 횟수는 `PerfProbe.body`가 센다. 다른 UI 시험의 전역 계측이 섞이지 않게 단독 실행한다.
 /// `DJC_LAYOUT_RECOMPUTE_TESTS=1 swift test --filter LayoutRecomputeTests`
 @MainActor
-@Suite("창 크기·여닫기 — 본문 다시 계산", .serialized,
+@Suite("창 크기·여닫기 — 본문 다시 계산", .serialized, .tags(.perfContract),
        .enabled(if: ProcessInfo.processInfo.environment["DJC_LAYOUT_RECOMPUTE_TESTS"] != nil
                 || ProcessInfo.processInfo.environment["DJC_LAYOUT_BENCHMARK_DB"] != nil))
 struct LayoutRecomputeTests {
@@ -39,14 +40,13 @@ struct LayoutRecomputeTests {
         UserDefaults.standard.set(CueListFilter.all.rawValue, forKey: SettingKeys.cueListFilter.name)
         let fixture = try historyFixture()
         let snapshot = ProcessInfo.processInfo.environment["DJC_LAYOUT_BENCHMARK_DB"].map { URL(filePath: $0) } ?? fixture.database
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }))
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                      rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
         await store.load(snapshot: snapshot)
         prepareStore(store)
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
-        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, windowFrameRestored: false))
-        let window = MemoryCueLimitCapture.UnconstrainedWindow(contentViewController: controller)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: AppComposition(store: store, deck: deck), windowFrameRestored: false))
+        let window = UnconstrainedWindow(contentViewController: controller)
         window.isReleasedWhenClosed = false
         cleanup = { window.close(); restoreSettings() }
         window.setContentSize(NSSize(width: width, height: 900))
@@ -319,3 +319,8 @@ struct LayoutRecomputeTests {
 }
 
 #endif
+
+/// 화면보다 큰 창 크기도 그대로 둔다(시험 기계의 화면 크기와 관계없이 같은 폭·높이로 잰다).
+final class UnconstrainedWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}

@@ -56,4 +56,15 @@ struct LoudnessTests {
         let overs = Loudness(integrated: -12, peak: 1.28, clippedRuns: 0)   // AAC 디코딩 오버
         #expect(overs.autoGain(target: -10, peakProtection: true) == 0, "조용한 곡을 피크 때문에 깎지는 않는다")
     }
+
+    /// 음량 캐시(`loudness.json`)를 옛 파일 그대로 읽게: DJCDomain으로 옮긴 뒤에도(#167) JSON이 옮기기 전과 같다.
+    @Test func 음량_JSON은_옮기기_전과_같다() throws {
+        let fixed = #"[{"clippedRuns":3,"integrated":-7.25,"peak":0.5},{"clippedRuns":0,"peak":-120}]"#
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let values = [Loudness(integrated: -7.25, peak: 0.5, clippedRuns: 3), Loudness(integrated: nil, peak: -120, clippedRuns: 0)]
+        #expect(String(decoding: try encoder.encode(values), as: UTF8.self) == fixed)
+        let decoded = try JSONDecoder().decode([Loudness].self, from: Data(fixed.utf8))
+        #expect(decoded == values)
+    }
 }

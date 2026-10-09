@@ -17,6 +17,9 @@ enum UsbReadPolicy: Equatable, Sendable {
         return .all
     }
 
+    /// 실물 쓰기 동의: 앱의 쓰기 확인 창. 디스크 이미지만 읽는 실행(자가 테스트·DJC_HOME 시험 실행)은 실물에 쓰지 않는다
+    var physicalWriteConsent: Bool { self == .all }
+
     /// 시작 줄·시험에 쓰는 이름(번역하지 않는다)
     var name: String {
         switch self {

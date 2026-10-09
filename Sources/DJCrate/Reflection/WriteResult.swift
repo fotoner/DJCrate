@@ -1,7 +1,7 @@
+import DJCApplication
 import DJCDomain
 import Foundation
 import Observation
-import RekordboxKit
 import SwiftUI
 
 /// 토스트가 닫힌 뒤에도 읽을 마지막 결과. 전체 문구와 백업 위치만 DJCrate 데이터 폴더에 보관한다.
@@ -28,62 +28,8 @@ struct WriteResult: Codable, Equatable {
         return String(ui: "\(what) — 이유와 할 일은 ‘결과 보기’에서 확인하세요")
     }
 
-    /// 한 번에 쓰는 것의 종류. 종류 이름이 문장 안에서 어순·조사가 달라지므로 종류마다 문장 전체를 번역한다.
-    enum Part: Hashable {
-        case cue, grid, analysis, gain, tag, artwork, merge
-
-        /// "큐 3곡" — 확인 창 제목과 결과 제목에 쓴다.
-        func summary(_ count: Int) -> String {
-            switch self {
-            case .cue: String(ui: "큐 \(count)곡")
-            case .grid: String(ui: "그리드 \(count)곡")
-            case .analysis: String(ui: "분석 \(count)곡")
-            case .gain: String(ui: "게인 \(count)곡")
-            case .tag: String(ui: "태그 \(count)곡")
-            case .artwork: String(ui: "앨범아트 \(count)곡")
-            case .merge: String(ui: "합치기 \(count)묶음")
-            }
-        }
-
-        var written: String {
-            switch self {
-            case .cue: String(ui: "큐 쓰기 완료")
-            case .grid: String(ui: "그리드 쓰기 완료")
-            case .analysis: String(ui: "분석 쓰기 완료")
-            case .gain: String(ui: "게인 쓰기 완료")
-            case .tag: String(ui: "태그 쓰기 완료")
-            case .artwork: String(ui: "앨범아트 쓰기 완료")
-            case .merge: String(ui: "합치기 쓰기 완료")
-            }
-        }
-
-        func blocked(_ reason: String) -> String {
-            switch self {
-            case .cue: String(ui: "큐 쓰지 않음: \(reason)")
-            case .grid: String(ui: "그리드 쓰지 않음: \(reason)")
-            case .analysis: String(ui: "분석 쓰지 않음: \(reason)")
-            case .gain: String(ui: "게인 쓰지 않음: \(reason)")
-            case .tag: String(ui: "태그 쓰지 않음: \(reason)")
-            case .artwork: String(ui: "앨범아트 쓰지 않음: \(reason)")
-            case .merge: String(ui: "합치지 않음: \(reason)")
-            }
-        }
-
-        var unchanged: String {
-            switch self {
-            case .cue: String(ui: "큐 변경 없음")
-            case .grid: String(ui: "그리드 변경 없음")
-            case .analysis: String(ui: "분석 변경 없음")
-            case .gain: String(ui: "게인 변경 없음")
-            case .tag: String(ui: "태그 변경 없음")
-            case .artwork: String(ui: "앨범아트 변경 없음")
-            case .merge: String(ui: "합치기 변경 없음")
-            }
-        }
-    }
-
-    static func written(_ report: RekordboxWriter.Report, preview: RekordboxWriter.Report) -> Self {
-        let groups: [(Part, [RekordboxWriter.Outcome], [RekordboxWriter.Outcome])] = [
+    static func written(_ report: RekordboxWriteReport, preview: RekordboxWriteReport) -> Self {
+        let groups: [(WritePart, [RekordboxWriteOutcome], [RekordboxWriteOutcome])] = [
             (.cue, report.outcomes, preview.outcomes),
             (.grid, report.gridOutcomes ?? [], preview.gridOutcomes ?? []),
             (.analysis, report.analysisOutcomes ?? [], preview.analysisOutcomes ?? []),
@@ -143,7 +89,7 @@ struct WriteResult: Codable, Equatable {
         return result
     }
 
-    static func tracks(_ report: RekordboxTrackWriter.Report, preview: RekordboxTrackWriter.Report,
+    static func tracks(_ report: RekordboxTrackWriteReport, preview: RekordboxTrackWriteReport,
                        adding: Bool, withoutAnalysis: [String: String] = [:], unreadable: [String] = []) -> Self {
         let actual = adding ? report.added : report.deleted
         let predicted = adding ? preview.added : preview.deleted
@@ -197,9 +143,10 @@ struct WriteResult: Codable, Equatable {
                     backups: report.backup.map { [URL(filePath: $0)] } ?? [])
     }
 
-    static func restored(_ backup: RekordboxWriter.Backup, saved: URL) -> Self {
+    /// - Parameter fileWarning: 복원 직전 백업에 남은 참고 경고(반영 세션이 백업 폴더에서 읽는다)
+    static func restored(_ backup: RekordboxWriteBackup, saved: URL, fileWarning: String? = nil) -> Self {
         let report = backup.report
-        let outcomes: [RekordboxWriter.Outcome] = (report?.written ?? []) + (report?.gridWritten ?? []) + (report?.gainWritten ?? [])
+        let outcomes: [RekordboxWriteOutcome] = (report?.written ?? []) + (report?.gridWritten ?? []) + (report?.gainWritten ?? [])
             + (report?.analysisWritten ?? []) + (report?.tagWritten ?? []) + (report?.artworkWritten ?? []) + (report?.mergeWritten ?? [])
         let names: [String] = (report?.playlistWritten ?? []).map(\.name) + (backup.trackReport?.titles ?? [])
         let titles = Set(outcomes.map(\.title) + names)
@@ -207,7 +154,7 @@ struct WriteResult: Codable, Equatable {
                      String(ui: "그때 쓴 초안과 추가 목록도 복원했습니다. 복원 직전 상태는 아래 두 번째 백업에 남아 있습니다.")]
         lines += titles.sorted().map { "• \($0)" }
         // 경로가 예상과 달라 남긴 분석 파일은 참고로 적는다(복원은 끝났다).
-        if let fileWarning = RekordboxWriter.fileWarning(in: saved) { lines.append(fileWarning) }
+        if let fileWarning { lines.append(fileWarning) }
         return Self(kind: .success, title: String(ui: "rekordbox를 쓰기 전으로 복원했습니다"), text: lines.joined(separator: "\n"), backups: [backup.url, saved])
     }
 }

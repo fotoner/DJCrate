@@ -1,9 +1,11 @@
 @testable import DJCrate
 import AppKit
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -11,7 +13,7 @@ import Testing
 @Suite("USB 사이드바와 읽기 전용 목록")
 struct UsbSidebarTests {
     private func libraryStore() -> LibraryStore {
-        LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.usb.\(UUID())")!, persist: false),
+        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usb"), persist: false),
                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                      mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
     }
@@ -23,7 +25,7 @@ struct UsbSidebarTests {
         try UsbLibraryFixture().write(to: tree)
         let snapshots = FileManager.default.temporaryDirectory.appending(path: "djc-usbsidebar-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: snapshots) }
-        return try UsbRead.library(root: tree.base, snapshots: snapshots, volumeKey: "FIXTURE", volume: nil).library
+        return try UsbRead.live.library(root: tree.base, snapshots: snapshots, volumeKey: "FIXTURE", volume: nil, now: Date()).library
     }
 
     private func physical(_ volume: UsbVolumeInfo, uuid: String) -> UsbVolumeInfo {
@@ -69,7 +71,7 @@ struct UsbSidebarTests {
         #expect(row.showsMigration && row.canMigrate)
         #expect(row.migrationHelp == "Device Library를 읽어 OneLibrary를 더합니다. 확인 창에서 CDJ에서 확인하지 않은 항목을 확인하세요")
         #expect(store.physicalWriteBlock(volume) == nil)
-        #expect(UsbStore(host: host, readPolicy: .diskImagesOnly, localLibrary: { nil }).physicalWriteBlock(volume)
+        #expect(UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: FakeUsbWriteService(), localLibrary: { nil }).physicalWriteBlock(volume)
             == UsbTestData.physicalBlock.message)
     }
 
@@ -149,7 +151,7 @@ struct UsbSidebarTests {
         #expect(!LibraryMenuAction.removeTracks.isEnabled(in: store))
 
         _ = NSApplication.shared
-        let coordinator = TrackListCoordinator(store: store)
+        let coordinator = TrackListCoordinator(store: store, actions: .live(store: store))
         let table = NSTableView()
         table.allowsMultipleSelection = true
         table.dataSource = coordinator

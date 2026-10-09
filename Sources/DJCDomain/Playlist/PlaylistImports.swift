@@ -29,7 +29,10 @@ public struct PlaylistImports: Codable, Hashable, Sendable {
     public static func pathKey(_ path: String) -> String { path.precomposedStringWithCanonicalMapping }
 
     /// Apple Music의 폴더 정보는 이름이 없으므로 목록은 맨 위에 만든다. 같은 출처는 이름이 바뀌어도 같은 대상이다.
-    public mutating func addAppleMusic(_ origins: [String: [AppleMusicOrigin]], unidentifiedLibraryID: String = UUID().uuidString) {
+    /// - Parameters:
+    ///   - unidentifiedLibraryID: 보관함 ID가 없는 출처를 묶을 ID(부르는 쪽이 새로 만든다)
+    ///   - newKey: 새로 만들 목록의 초안 키
+    public mutating func addAppleMusic(_ origins: [String: [AppleMusicOrigin]], unidentifiedLibraryID: String, newKey: () -> String) {
         for path in origins.keys.sorted() {
             for origin in origins[path] ?? [] {
                 for playlist in origin.playlists {
@@ -38,7 +41,7 @@ public struct PlaylistImports: Codable, Hashable, Sendable {
                     if let existing = requests.firstIndex(where: { $0.source == source }) {
                         index = existing
                     } else {
-                        let key = UUID().uuidString.lowercased()
+                        let key = newKey()
                         index = requests.count
                         requests.append(Request(source: source, target: .new(key), draftKey: key, name: playlist.name))
                     }

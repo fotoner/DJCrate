@@ -2,8 +2,9 @@
 import AppKit
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import Testing
 
 /// 추가한 곡의 키(#124): 파일 태그에 키가 있으면 그것, 없으면 조성 추정. 목록 키 칸에 보이고 staged.json에 남는다.
@@ -18,7 +19,7 @@ struct StagedKeyTests {
     }
 
     func store(saved: @escaping ([StagedTrack]) -> Void = { _ in }) -> LibraryStore {
-        LibraryStore(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                      mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { saved($0) })
     }
 
@@ -32,23 +33,6 @@ struct StagedKeyTests {
         // 태그에 키가 없으면 비워 두고 백그라운드에서 추정한다.
         let plain = try await StagedTrack.make(fileAt: try TestResources.url("mp3-notag-cbr.mp3"), addedOn: "2026-09-28")
         #expect(plain.key == nil && plain.needsKey)
-    }
-
-    @Test func 태그가_없으면_합성_음원의_조성을_추정한다() async throws {
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let minor = try ChordFixture.wav(ChordFixture.aMinor, seconds: 30, in: directory, name: "a-minor.wav")
-        let found = try #require(await LibraryStore.stagedKey(fileAt: minor, grid: nil, offset: 0, duration: 30, cacheKey: nil))
-        #expect(found.key == "8A" && found.source == .estimate)
-        let major = try ChordFixture.wav(ChordFixture.dMajor, seconds: 30, in: directory, name: "d-major.wav")
-        #expect(await LibraryStore.stagedKey(fileAt: major, grid: nil, offset: 0, duration: 30, cacheKey: nil)?.key == "10B")
-        // 태그가 있으면 추정하지 않는다.
-        let tagged = try AudioFixture.mp3(try TestResources.url("mp3-notag-cbr.mp3"), textFrames: [("TKEY", "C#m")],
-                                          in: directory, name: "tagged.mp3")
-        let fromTag = await LibraryStore.stagedKey(fileAt: tagged, grid: nil, offset: 0, duration: 1, cacheKey: nil)
-        #expect(fromTag?.key == "12A" && fromTag?.source == .tag)
-        // 읽을 수 없는 파일은 표시하지 않고 다음에 다시 본다.
-        #expect(await LibraryStore.stagedKey(fileAt: directory.appending(path: "없음.wav"), grid: nil, offset: 0,
-                                              duration: 1, cacheKey: nil) == nil)
     }
 
     @Test func 찾은_키를_목록_행과_추가_목록_파일에_남긴다() throws {

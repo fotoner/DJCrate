@@ -1,5 +1,7 @@
 #if DEBUG
 import AppKit
+import DJCApplication
+import DJCDomain
 
 extension DevSelfTests {
     /// #108: 같은 합성 곡에서 버튼·숫자키로 저장된 핫큐를 불러 실제 오디오의 정지→재생을 확인한다.

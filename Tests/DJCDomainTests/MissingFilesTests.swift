@@ -1,4 +1,5 @@
 import DJCDomain
+import Foundation
 import Testing
 
 /// 파일이 없는 곡 모아 보기(#126): 로컬 곡만 보고, 연결되지 않은 외장 디스크는 볼륨째 묶는다.

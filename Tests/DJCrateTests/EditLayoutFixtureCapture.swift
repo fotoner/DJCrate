@@ -1,6 +1,6 @@
 import AVFoundation
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import Testing
 
 /// 편집 창 화면 확인용 합성 라이브러리(`--edit-layout=light|dark`): 128 BPM 3분짜리 합성 곡 하나(구간마다 악기가 달라

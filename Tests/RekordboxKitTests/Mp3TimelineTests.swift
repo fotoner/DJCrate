@@ -1,5 +1,6 @@
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -46,11 +47,11 @@ struct Mp3TimelineTests {
 struct Mp3AudioFactsTests {
     @Test func 끝이_잘린_CBR_프레임은_PVBR_샘플에_세지_않는다() throws {
         // #14 곡 A(2026-09-26): 끝 프레임의 헤더만 남으면 rekordbox는 완전한 프레임까지만 센다.
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder()
         let source = try TestResources.url("mp3-lame-cbr.mp3")
         let original = try #require(SeekInfo.mp3Frames(url: source))
         let last = try #require(original.offsets.last)
-        let url = fixture.audio.appending(path: "truncated.mp3")
+        let url = folder.url.appending(path: "truncated.mp3")
         try Data(contentsOf: source).prefix(last + 4).write(to: url)
         let frames = try #require(SeekInfo.mp3Frames(url: url))
         #expect(frames.offsets == Array(original.offsets.dropLast()))

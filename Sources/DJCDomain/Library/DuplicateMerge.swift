@@ -38,7 +38,9 @@ public enum DuplicateMerge {
         String(ui: "뺄 곡의 재생 기록·재생 횟수·평점·색·마이 태그·그리드·게인·자동 큐·큐 색은 옮기지 않습니다. 음원 파일은 남습니다.")
     }
 
-    public static func cues(keeping: DuplicateMergeDraft.Member, removing: [DuplicateMergeDraft.Member]) throws -> CueDraft {
+    /// - Parameter newID: 옮긴 큐의 새 ID(부르는 쪽이 준다)
+    public static func cues(keeping: DuplicateMergeDraft.Member, removing: [DuplicateMergeDraft.Member],
+                            newID: () -> UUID) throws -> CueDraft {
         let members = [keeping] + removing
         guard !removing.isEmpty, Set(members.map(\.contentID)).count == members.count,
               Set(members.map(\.trackUUID)).count == members.count else {
@@ -48,7 +50,7 @@ public enum DuplicateMerge {
             && abs($0.duration - keeping.duration) <= 0.020000001 }) else {
             throw Blocked(String(ui: "음원 길이 차이가 20ms를 넘거나 시간축을 확인할 수 없습니다. 같은 음원인지 확인하세요"))
         }
-        var draft = CueDraft(trackUUID: keeping.trackUUID, rekordboxCues: [])
+        var draft = CueDraft(trackUUID: keeping.trackUUID)
         draft.base = keeping.cues; draft.cues = keeping.cues
         for member in removing {
             for original in member.cues {
@@ -69,7 +71,7 @@ public enum DuplicateMerge {
                 if cue.loop?.active == true, draft.cues.contains(where: { $0.loop?.active == true }) {
                     throw Blocked(String(ui: "서로 다른 활성 루프가 있습니다. 활성 루프를 하나로 정한 뒤 다시 합치세요"))
                 }
-                cue.id = UUID(); cue.sourceID = nil
+                cue.id = newID(); cue.sourceID = nil
                 draft.cues.append(cue)
             }
         }

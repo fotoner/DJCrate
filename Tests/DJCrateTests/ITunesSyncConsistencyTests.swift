@@ -1,8 +1,11 @@
+import DJCAdapters
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -63,28 +66,32 @@ struct ITunesSyncConsistencyTests {
             .applyingRekordboxSelection(base)
     }
 
-    @MainActor func store(_ fixture: RekordboxFixture) -> LibraryStore {
-        LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.itunes.consistency.\(UUID())")!, persist: false),
-                     resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
-                     playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
+    /// 위치(실행 인자·환경)를 주지 않으면 이 프로세스의 것
+    @MainActor func store(_ fixture: RekordboxFixture, arguments: [String]? = nil, environment: [String: String]? = nil,
+                          location: LibraryLocation? = nil) -> LibraryStore {
+        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes.consistency"), persist: false),
+                          resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+                          playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                          arguments: arguments ?? ProcessInfo.processInfo.arguments,
+                          environment: environment ?? ProcessInfo.processInfo.environment, location: location)
     }
 
     @MainActor @Test func 늦은_읽기는_저장한_선택을_되돌리지_않는다() async throws {
         let fixture = try RekordboxFixture(), source = try original(), database = fixture.database
         try base.write(to: fixture.root.appending(path: "playlists3.sync"))
         try source.save(for: database)
-        let store = store(fixture)
+        let store = store(fixture, arguments: ["test", "--db", database.path], environment: [:])
         await store.load(snapshot: database)
         let gate = ITunesSyncCaptureGate()
         let first = iTunesBlockingTask {
-            try LoadedLibrary.load(snapshot: database, refreshITunes: true, captureITunes: {
+            try LoadedLibrary.load(snapshot: database, refreshITunes: true, fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                   drafts: .dataFolder(), captureITunes: {
                 gate.pause()
                 return source
             })
         }
         let late = try await gate.finish(first) {
-            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database,
-                                               arguments: ["test", "--db", database.path], environment: [:])
+            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database)
         }
         #expect(late.iTunesSnapshot.selectedIDs == ["B"])
         #expect(ITunesLibrarySnapshot.load(for: database).selectedIDs == ["B"])
@@ -95,7 +102,7 @@ struct ITunesSyncConsistencyTests {
         let fixture = try RekordboxFixture(), source = try original(), database = fixture.database
         try base.write(to: fixture.root.appending(path: "playlists3.sync"))
         try source.save(for: database)
-        let store = store(fixture)
+        let store = store(fixture, arguments: ["test", "--db", database.path], environment: [:])
         await store.load(snapshot: database)
         let gate = ITunesSyncCaptureGate()
         let loading = Task {
@@ -105,8 +112,7 @@ struct ITunesSyncConsistencyTests {
             })
         }
         try await gate.finish(loading) {
-            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database,
-                                               arguments: ["test", "--db", database.path], environment: [:])
+            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database)
         }
         #expect(store.iTunesSnapshot.selectedIDs == ["B"])
         #expect(store.iTunesLibrary.index["itunes:B"] != nil)
@@ -118,12 +124,11 @@ struct ITunesSyncConsistencyTests {
         let sync = fixture.root.appending(path: "playlists3.sync")
         try base.write(to: sync)
         try source.save(for: database)
-        let store = store(fixture)
+        let store = store(fixture, arguments: ["test", "--db", database.path], environment: [:])
         await store.load(snapshot: database)
         try (base + Data("\n".utf8)).write(to: sync)
         await #expect(throws: (any Error).self) {
-            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database,
-                                               arguments: ["test", "--db", database.path], environment: [:])
+            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database)
         }
         #expect(store.iTunesSnapshot.selectedIDs == ["A"])
         #expect(store.iTunesLibrary.index["itunes:A"] != nil)
@@ -144,12 +149,12 @@ struct ITunesSyncConsistencyTests {
         let fresh = try LibrarySnapshot.take(from: fixture.database, into: snapshots, force: true,
                                              now: Date(timeIntervalSince1970: 1_800_000_060))
         let environment = ["DJC_REKORDBOX_DIR": fixture.root.path]
-        let explicit = self.store(fixture)
-        await explicit.load(snapshot: fresh, arguments: ["test", "--db", fresh.path], environment: environment)
+        let explicit = self.store(fixture, arguments: ["test", "--db", fresh.path], environment: environment)
+        await explicit.load(snapshot: fresh)
         #expect(explicit.iTunesSnapshot.selectedIDs == ["A"])
         #expect(explicit.iTunesLibrary.index["itunes:B"] == nil)
-        let store = store(fixture)
-        await store.load(snapshot: fresh, arguments: ["test"], environment: environment)
+        let store = store(fixture, arguments: ["test"], environment: environment)
+        await store.load(snapshot: fresh)
         #expect(store.iTunesSnapshot.selectedIDs == ["B"])
         #expect(store.iTunesLibrary.index["itunes:B"] != nil)
     }
@@ -164,23 +169,26 @@ struct ITunesSyncConsistencyTests {
                                               now: Date(timeIntervalSince1970: 1_800_000_000))
         let gate = ITunesSyncCaptureGate()
         let pending = iTunesBlockingTask {
-            try LoadedLibrary.load(snapshot: before, refreshITunes: true, sourceDatabase: rootDB, captureITunes: {
+            try LoadedLibrary.load(snapshot: before, refreshITunes: true, fallbackDirectory: LibrarySnapshot.defaultDirectory, sourceDatabase: rootDB,
+                                   drafts: .dataFolder(), captureITunes: {
                 gate.pause()
                 return source
             })
         }
         var replaced: URL?
         let late = try await gate.finish(pending) {
-            _ = try RekordboxWriter.write(drafts: [], iTunesSync: .init(base: base, source: source.selectionNodes,
-                                                                       selection: .init(selectedIDs: ["B"])),
+            _ = try RekordboxWriter.write(drafts: [], iTunesSync: .init(base: base, source: source.selectionNodes, selection: .init(selectedIDs: ["B"])),
                                           to: rootDB, dryRun: false, backups: fixture.backups)
             try source.applyingRekordboxSelection(Data(contentsOf: sync)).save(for: rootDB)
             let stamp = Date(timeIntervalSince1970: 1_800_000_060)
             let fresh = try LibrarySnapshot.take(from: rootDB, into: directory, force: true, now: stamp)
-            let newest = try LoadedLibrary.load(snapshot: fresh, sourceDatabase: rootDB)
+            let newest = try LoadedLibrary.load(snapshot: fresh, fallbackDirectory: LibrarySnapshot.defaultDirectory, sourceDatabase: rootDB,
+                                                drafts: .dataFolder())
             ITunesRefreshCoordinator.shared.invalidateSnapshots([fresh])
             let replacement = try LibrarySnapshot.take(from: rootDB, into: directory, force: true, now: stamp)
-            let sameSecond = try LoadedLibrary.load(snapshot: replacement, sourceDatabase: rootDB)
+            let sameSecond = try LoadedLibrary.load(snapshot: replacement, fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                                    sourceDatabase: rootDB,
+                                                    drafts: .dataFolder())
             #expect(newest.iTunesSnapshot.selectedIDs == ["B"])
             #expect(sameSecond.iTunesSnapshot.selectedIDs == ["B"])
             replaced = replacement
@@ -200,7 +208,7 @@ struct ITunesSyncConsistencyTests {
         let originalData = try Data(contentsOf: ITunesLibrarySnapshot.url(for: database))
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
-        let loaded = try LoadedLibrary.load(snapshot: database)
+        let loaded = try LoadedLibrary.load(snapshot: database, fallbackDirectory: LibrarySnapshot.defaultDirectory, drafts: .dataFolder())
         #expect(loaded.iTunesSnapshot.status == .ready)
         #expect(loaded.iTunesSnapshot.selectedIDs == ["A"])
         #expect(try Data(contentsOf: ITunesLibrarySnapshot.url(for: database)) == originalData)
@@ -219,7 +227,8 @@ struct ITunesSyncConsistencyTests {
                                                         selection: .init(selectedIDs: ["B"])).render()
         try updatedSync.write(to: fixture.root.appending(path: "playlists3.sync"))
         try source.applyingRekordboxSelection(updatedSync).save(for: snapshot)
-        let loaded = try LoadedLibrary.load(snapshot: snapshot, sourceDatabase: fixture.database)
+        let loaded = try LoadedLibrary.load(snapshot: snapshot, fallbackDirectory: LibrarySnapshot.defaultDirectory, sourceDatabase: fixture.database,
+                                            drafts: .dataFolder())
         #expect(loaded.iTunesLibrary.index["itunes:B"] != nil)
     }
 
@@ -227,16 +236,17 @@ struct ITunesSyncConsistencyTests {
         let fixture = try RekordboxFixture(), source = try original(), database = fixture.database
         try base.write(to: fixture.root.appending(path: "playlists3.sync"))
         try source.save(for: database)
-        let store = store(fixture)
+        let store = store(fixture, arguments: ["test", "--db", database.path], environment: [:])
         await store.load(snapshot: database)
         let previous = LoadedLibrary.ITunesFallback(source: database, contents: store.iTunesSnapshot)
-        try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database,
-                                           arguments: ["test", "--db", database.path], environment: [:])
+        try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database)
         // 같은 초의 스냅샷 교체는 같은 sidecar를 지울 수 있고, 라이브 루트에는 별도 캐시가 없다.
         try FileManager.default.removeItem(at: ITunesLibrarySnapshot.url(for: database))
         let newest = store.latestITunesFallback(previous)
         let loaded = try LoadedLibrary.load(snapshot: database, refreshITunes: true,
                                             previousITunesSnapshot: newest,
+                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            drafts: .dataFolder(),
                                             captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(newest?.contents.selectedIDs == ["B"])
         #expect(loaded.iTunesSnapshot.status == .stale)
@@ -251,9 +261,16 @@ struct ITunesSyncConsistencyTests {
         let stamp = Date(timeIntervalSince1970: 1_800_000_000)
         let database = try LibrarySnapshot.take(from: fixture.database, into: directory, force: true, now: stamp)
         try base.write(to: directory.appending(path: "playlists3.sync"))
+        try base.write(to: fixture.root.appending(path: "playlists3.sync"))
         try source.save(for: database)
-        let store = store(fixture)
-        await store.load(snapshot: database, arguments: ["test", "--db", database.path], environment: [:])
+        // 앱의 보통 실행: 라이브 rekordbox 폴더(여기서는 합성 사본 폴더)에 동기화를 쓰고, 조용한 다시 뜨기는 위치의 스냅샷 폴더에 같은 이름으로
+        // 사본을 바꾼다. 사본 rekordbox 폴더로 띄운 실행이 아니라 Music을 조회한다(CI의 사본 경로 설정과 무관하게 같은 위치).
+        // (옛 시험은 스냅샷 뜨기는 보통 실행, 동기화는 명시한 사본으로 따로 불러 앱에 없는 조합이었다.)
+        var location = LibraryLocation.resolve(arguments: ["test"], environment: [:])
+        location.rekordboxDirectory = fixture.root
+        location.snapshotDirectory = directory
+        let store = store(fixture, location: location)
+        await store.load(snapshot: database)
         #expect(store.rows.count == 1)
         let gate = ITunesSyncCaptureGate(), sourceDB = fixture.database
         let pending = Task {
@@ -262,13 +279,11 @@ struct ITunesSyncConsistencyTests {
                                      snapshotCopy: { force in
                                          gate.pause()
                                          return try LibrarySnapshot.take(from: sourceDB, into: directory, force: force, now: stamp)
-                                     }, captureITunes: { ITunesLibrarySnapshot(status: .unavailable) },
-                                     arguments: ["test"], environment: [:])
+                                     }, captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         }
         try await gate.finish(pending) {
             #expect(!store.isLoading)
-            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database,
-                                               arguments: ["test", "--db", database.path], environment: [:])
+            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database)
         }
         #expect(store.iTunesSnapshot.status == .stale)
         #expect(store.iTunesSnapshot.selectedIDs == ["B"])
@@ -287,8 +302,8 @@ struct ITunesSyncConsistencyTests {
         try base.write(to: fixture.root.appending(path: "playlists3.sync"))
         try source.save(for: database)
         #expect(ITunesLibrarySnapshot.load(for: fixture.database).status == .notCaptured)
-        let store = store(fixture)
-        await store.load(snapshot: database, arguments: arguments, environment: environment)
+        let store = store(fixture, arguments: arguments, environment: environment)
+        await store.load(snapshot: database)
         #expect(store.rows.count == 1)
         let gate = ITunesSyncCaptureGate(), sourceDB = fixture.database
         let pending = Task {
@@ -296,13 +311,11 @@ struct ITunesSyncConsistencyTests {
                                      snapshotCopy: { force in
                                          gate.pause()
                                          return try LibrarySnapshot.take(from: sourceDB, into: directory, force: force, now: stamp)
-                                     }, captureITunes: { ITunesLibrarySnapshot(status: .unavailable) },
-                                     arguments: arguments, environment: environment)
+                                     }, captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         }
         try await gate.finish(pending) {
             #expect(!store.isLoading)
-            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database,
-                                               arguments: arguments, environment: environment)
+            try await store.syncITunesPlaylists(.init(selectedIDs: ["B"]), source: source, database: database)
             #expect(ITunesLibrarySnapshot.load(for: fixture.database).status == .notCaptured)
         }
         #expect(store.iTunesSnapshot.status == .ready)
@@ -322,7 +335,8 @@ struct ITunesSyncConsistencyTests {
         let previous = LoadedLibrary.ITunesFallback(source: previousURL, contents: selected,
                                                     preferOverCurrent: true, sourceDatabase: unrelated.database)
         let loaded = try LoadedLibrary.load(snapshot: fresh, previousITunesSnapshot: previous,
-                                            sourceDatabase: fixture.database)
+                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            sourceDatabase: fixture.database, drafts: .dataFolder())
         #expect(loaded.iTunesSnapshot.status == .notCaptured)
         #expect(loaded.iTunesLibrary.index["itunes:B"] == nil)
     }
@@ -342,16 +356,15 @@ struct ITunesSyncConsistencyTests {
                                               now: Date(timeIntervalSince1970: 1_800_000_000))
         try source.applyingRekordboxSelection(currentSync).save(for: active)
         let environment = ["DJC_REKORDBOX_DIR": fixture.root.path]
-        let store = store(fixture)
-        await store.load(snapshot: active, arguments: ["test"], environment: environment)
+        let store = store(fixture, arguments: ["test"], environment: environment)
+        await store.load(snapshot: active)
         #expect(store.iTunesLibrary.index["itunes:B"] != nil)
         let fresh = directory.appending(path: "master-2027-01-15T080100.db")
         await store.takeSnapshot(force: true, quiet: true, snapshotDirectory: directory,
                                  snapshotCopy: { force in
                                      try LibrarySnapshot.take(from: root, into: directory, force: force,
                                                               now: Date(timeIntervalSince1970: 1_800_000_060))
-                                 }, captureITunes: { ITunesLibrarySnapshot(status: .unavailable) },
-                                 arguments: ["test"], environment: environment)
+                                 }, captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(store.snapshotURL?.standardizedFileURL.path == fresh.standardizedFileURL.path)
         #expect(store.iTunesSnapshot.selectedIDs == ["B"])
         #expect(store.iTunesLibrary.index["itunes:B"] != nil)
@@ -374,7 +387,9 @@ struct ITunesSyncConsistencyTests {
         let fallback = LoadedLibrary.ITunesFallback(source: database, contents: oldMemory,
                                                     sourceDatabase: fixture.database)
         let loaded = try LoadedLibrary.load(snapshot: database, refreshITunes: true,
-                                            previousITunesSnapshot: fallback, sourceDatabase: fixture.database,
+                                            previousITunesSnapshot: fallback, fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            sourceDatabase: fixture.database, 
+                                            drafts: .dataFolder(),
                                             captureITunes: { captured })
         #expect(loaded.iTunesSnapshot.status == .ready)
         #expect(loaded.iTunesSnapshot.selectedIDs == ["B"])
@@ -393,7 +408,7 @@ struct ITunesSyncConsistencyTests {
         let firstGate = ITunesSyncCaptureGate(), secondGate = ITunesSyncCaptureGate()
         let first = iTunesBlockingTask {
             try LoadedLibrary.load(snapshot: firstURL, refreshITunes: true, fallbackDirectory: directory,
-                                   sourceDatabase: sourceDatabase, captureITunes: {
+                                   sourceDatabase: sourceDatabase, drafts: .dataFolder(), captureITunes: {
                                        firstGate.pause()
                                        return source
                                    })
@@ -401,7 +416,7 @@ struct ITunesSyncConsistencyTests {
         let good = try await firstGate.finish(first) {
             let second = iTunesBlockingTask {
                 try LoadedLibrary.load(snapshot: secondURL, refreshITunes: true, fallbackDirectory: directory,
-                                       sourceDatabase: sourceDatabase, captureITunes: {
+                                       sourceDatabase: sourceDatabase, drafts: .dataFolder(), captureITunes: {
                                            secondGate.pause()
                                            return ITunesLibrarySnapshot(status: .unavailable)
                                        })
@@ -425,9 +440,9 @@ struct ITunesSyncConsistencyTests {
         try source.save(for: database)
         let environment = ["DJC_REKORDBOX_DIR": fixture.root.path]
         let arguments = ["test", "--db", database.path]
-        let store = store(fixture)
-        await store.load(snapshot: database, arguments: arguments, environment: environment)
-        await store.refreshIfRekordboxChanged(arguments: arguments, environment: environment)
+        let store = store(fixture, arguments: arguments, environment: environment)
+        await store.load(snapshot: database)
+        await store.refreshIfRekordboxChanged()
         #expect(store.snapshotURL == database)
         #expect(store.iTunesSnapshot.selectedIDs == ["A"])
         #expect(store.lastError == nil)

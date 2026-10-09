@@ -1,6 +1,7 @@
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -242,7 +243,7 @@ struct RekordboxAnalysisAttachTests {
         try fixture.add(TrackSpec())
         let p = try await plan(try AudioFixture.wav(seconds: 20, in: fixture.audio))
         let (id, uuid) = try addBare(fixture, p)
-        var cues = CueDraft(trackUUID: uuid, rekordboxCues: [])
+        var cues = CueDraft(trackUUID: uuid)
         cues.place(EditableCue(kind: .memory, time: 1.373))
         cues.place(EditableCue(kind: .hot(0), time: 10.973))
         let report = try attach(fixture, [GridDraft(trackUUID: uuid, base: [], segments: segments)],

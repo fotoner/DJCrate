@@ -1,7 +1,4 @@
-import RekordboxKit
-import DJCAnalysis
 import DJCDomain
-import DJCStorage
 import Foundation
 import SwiftUI
 
@@ -350,18 +347,8 @@ struct DeckInfoHeader: View {
         }
     }
 
-    /// 분석 파일이 없는 곡과 파형 파일이 빠진 곡은 그리드 쓰기 조건이 다르다.
-    private var analysisNote: (title: String, help: String)? {
-        let path = row.track.analysisDataPath
-        if RekordboxWriter.needsAnalysis(path) {
-            return (String(ui: "rekordbox 분석 전"), RekordboxWriter.attachesAnalysis
-                ? String(ui: "그리드 초안을 쓰면 이 미분석 곡에 파형·그리드·오토게인 분석 파일을 붙입니다.")
-                : String(ui: "rekordbox가 이 곡을 아직 분석하지 않았습니다. rekordbox에서 트랙 분석을 먼저 해야 그리드를 쓸 수 있습니다"))
-        }
-        guard !RekordboxShare.hasWaveformAnalysis(path) else { return nil }
-        return (String(ui: "rekordbox 분석 전 · 파형 없음"),
-                String(ui: "rekordbox 분석이 끝나지 않은 곡입니다(파형 파일 없음). rekordbox에서 트랙 분석을 다시 해야 그리드를 쓸 수 있습니다"))
-    }
+    /// 분석 파일이 없는 곡과 파형 파일이 빠진 곡은 그리드 쓰기 조건이 다르다(곡을 불러올 때 읽은 값).
+    private var analysisNote: (title: String, help: String)? { deck.analysisState?.note }
 }
 
 /// 재생 틱보다 느린 표시 시각으로 남은 시간·현재 시각만 갱신한다.

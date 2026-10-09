@@ -175,7 +175,7 @@ struct MenuCommandTests {
     }
 
     @Test func 빈_라이브러리와_쓰기_잠금에서_명령의_활성_조건을_지킨다() {
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString))
         #expect(LibraryMenuAction.snapshot.isEnabled(in: store))
         #expect(!LibraryMenuAction.addFiles.isEnabled(in: store))

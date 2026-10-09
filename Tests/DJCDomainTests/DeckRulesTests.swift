@@ -42,7 +42,7 @@ struct LoopRulesTests {
 @Suite("큐 편집 규칙")
 struct CueEditingRulesTests {
     func draft(_ cues: [EditableCue] = []) -> CueDraft {
-        var draft = CueDraft(trackUUID: "t", rekordboxCues: [])
+        var draft = CueDraft(trackUUID: "t")
         for cue in cues { draft.place(cue) }
         return draft
     }

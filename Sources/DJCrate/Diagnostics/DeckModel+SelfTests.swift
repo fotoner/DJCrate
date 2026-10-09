@@ -1,4 +1,6 @@
+import DJCAdapters
 import DJCAnalysis
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import AppKit

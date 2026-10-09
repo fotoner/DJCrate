@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import DJCApplication
 import DJCDomain
 import DJCStorage
 
@@ -19,8 +20,8 @@ extension DevSelfTests {
             NSApp.appearance = NSAppearance(named: argument.hasSuffix("dark") ? .darkAqua : .aqua)
             window.setContentSize(NSSize(width: 1100, height: 700))
             window.center()
-            var draft = CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues)
-            draft.cues.append(EditableCue(kind: .memory, time: 10, name: "레이아웃 시험"))
+            var draft = CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues, newID: { UUID() })
+            draft.cues.append(EditableCue(id: UUID(), kind: .memory, time: 10, name: "레이아웃 시험"))
             try? CueDraftStore.save(draft)
             store.cueDraftChanged(draft)
             store.selection = [row.id]

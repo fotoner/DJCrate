@@ -1,9 +1,11 @@
 @testable import DJCrate
+import DJCAdapters
+import DJCApplication
 import AppKit
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import SwiftUI
 import Testing
@@ -33,8 +35,8 @@ struct RecoverySheetTests {
     }
 
     func model(_ scenario: RecoveryScenario, _ targets: [Target] = RecoveryScenario.allTargets) -> RecoverySheetModel {
-        RecoverySheetModel(store: scenario.store, requests: targets.map { Self.request(scenario, $0) },
-                           dependencies: .init(home: scenario.home))
+        RecoverySheetModel(host: scenario.store, requests: targets.map { Self.request(scenario, $0) },
+                           dependencies: .init())
     }
 
     static func request(_ scenario: RecoveryScenario, _ target: Target) -> RecoveryRequest {
@@ -77,8 +79,7 @@ struct RecoverySheetTests {
             guard case let .draft(name, kind) = target else { continue }
             try await LegacyRecoveryFlow.recoverDraft(legacy, row: name, kind: kind, choice: try #require(plan.choices[target]))
         }
-        try await LegacyRecoveryFlow.recoverPlaylists(legacy, choices: [("P1", try #require(plan.choices[.playlist("P1")])),
-                                                                         ("P2", try #require(plan.choices[.playlist("P2")]))])
+        try await LegacyRecoveryFlow.recoverPlaylists(legacy, choices: [("P1", try #require(plan.choices[.playlist("P1")])), ("P2", try #require(plan.choices[.playlist("P2")]))])
 
         let model = model(sheet)
         await model.load()
@@ -108,7 +109,7 @@ struct RecoverySheetTests {
         await model.load()
         #expect(model.lines.count == 1)
         let line = try line(model, scenario, .draft("A", .tags))
-        #expect(line.title == "합성 곡 A" && line.kindLabel == "태그" && line.phase == .ready)
+        #expect(line.title == scenario.rows["A"]?.title && line.kindLabel == DraftRecoveryKind.tags.label && line.phase == .ready)
     }
 
     @Test func 합칠_수_있는_줄은_내_편집_유지가_처음_골라져_있고_합칠_수_없는_줄은_나중에다() async throws {
@@ -191,7 +192,7 @@ struct RecoverySheetTests {
             Issue.record("실패한 줄이 실패로 보이지 않음"); return
         }
         // 저장 실패 이유는 무엇을 하면 되는지까지 한 문장이고, 일반 안내가 겹쳐 붙지 않는다.
-        #expect(reason == "비교 중 입력이나 현재값이 바뀌어 초안을 그대로 남겼으니 현재값을 다시 가져오세요.")
+        if case let .writeRefused(refusal) = scenario.store.recoveryChangedError() { #expect(reason == refusal) }
         #expect(scenario.store.tagDrafts[RecoveryScenario.uuid("A")] == before)
         #expect(try line(model, scenario, targets[1]).phase == .saved)
         #expect(scenario.outcome().grids["B"] != nil, "다른 줄은 저장했다")
@@ -217,7 +218,7 @@ struct RecoverySheetTests {
             _ = await model.save()
         }
         let requests = RecoveryScenario.allTargets.map { Self.request(scenario, $0) }
-        await ReflectionCoordinator(host: scenario.store, prompter: prompter).recover(store: scenario.store, requests: requests)
+        await ReflectionCoordinator.test(store: scenario.store, prompter: prompter).recover(requests: requests)
         #expect(prompter.shown.isEmpty, "연속 창이 뜨면 안 된다")
         #expect(prompter.reviewed.count == 1 && prompter.reviewed[0].lines.count == 7)
         #expect(scenario.store.toast?.kind == .success)
@@ -249,7 +250,7 @@ struct RecoverySheetTests {
         defer { scenario.removeDraftFiles() }
         let rows = ["A", "B", "C", "D"].compactMap { scenario.rows[$0] }
         let prompter = ScriptedPrompter()
-        await ReflectionCoordinator(host: scenario.store, prompter: prompter, isRekordboxRunning: { false }).write(rows: rows, playlists: false)
+        await ReflectionCoordinator.test(store: scenario.store, prompter: prompter).write(rows: rows, playlists: false)
         #expect(prompter.shown.isEmpty, "연속 창이 뜨면 안 된다")
         // D의 그리드는 기준이 지금과 같고 반쪽 분석이라 막힌 것이다. 시트에는 rekordbox가 바뀌어 막힌 줄만 든다.
         let expected: [Target] = [.draft("A", .tags), .draft("A", .cues), .draft("B", .tags), .draft("B", .grid), .draft("C", .cues)]
@@ -265,7 +266,7 @@ struct RecoverySheetTests {
         try scenario.saveDraftFiles()
         defer { scenario.removeDraftFiles() }
         let prompter = ScriptedPrompter()
-        await ReflectionCoordinator(host: scenario.store, prompter: prompter, isRekordboxRunning: { false })
+        await ReflectionCoordinator.test(store: scenario.store, prompter: prompter)
             .write(rows: [try #require(scenario.rows["D"])], playlists: false)
         #expect(prompter.reviewed.isEmpty && prompter.shown.isEmpty && scenario.store.recoverySheet == nil)
         let result = try #require(scenario.store.resultHistory.latest)
@@ -275,14 +276,14 @@ struct RecoverySheetTests {
     @Test func 기준이_지금과_같은_줄은_바뀌었다고_알리지_않고_나중에가_처음_골라져_있다() async throws {
         let scenario = try await RecoveryScenario.make(withHalfAnalysedTrack: true)
         let target = Target.draft("D", .grid)
-        let model = RecoverySheetModel(store: scenario.store, requests: [Self.request(scenario, target)], dependencies: .init(home: scenario.home))
+        let model = RecoverySheetModel(host: scenario.store, requests: [Self.request(scenario, target)], dependencies: .init())
         await model.load()
         let line = try #require(model.lines.first)
         #expect(line.phase == .ready && !line.isStale)
         #expect(!line.summary.contains("바뀌"), "바뀌지 않았는데 바뀌었다고 알림: \(line.summary)")
         #expect(line.choice == .later && line.options == [.useCurrent, .later] && line.keepBlockedReason != nil)
         // 바뀐 줄은 그대로 바뀐 줄이다.
-        let stale = RecoverySheetModel(store: scenario.store, requests: [Self.request(scenario, .draft("B", .grid))], dependencies: .init(home: scenario.home))
+        let stale = RecoverySheetModel(host: scenario.store, requests: [Self.request(scenario, .draft("B", .grid))], dependencies: .init())
         await stale.load()
         #expect(stale.lines.first?.isStale == true)
     }
@@ -294,7 +295,7 @@ struct RecoverySheetTests {
         let a = try #require(scenario.rows["A"])
         let ids = ReflectionCoordinator.recoveryRequests(store: scenario.store, targets: [a, a], blocked: .init(kinds: [a.track.uuid: [.tags, .cues]], playlists: false)).map(\.id)
         #expect(ids == [Self.request(scenario, .draft("A", .tags)).id, Self.request(scenario, .draft("A", .cues)).id])
-        let model = RecoverySheetModel(store: scenario.store, requests: [.draft(a, .tags), .draft(a, .tags)], dependencies: .init(home: scenario.home))
+        let model = RecoverySheetModel(host: scenario.store, requests: [.draft(a, .tags), .draft(a, .tags)], dependencies: .init())
         #expect(model.lines.count == 1)
     }
 
@@ -302,8 +303,8 @@ struct RecoverySheetTests {
         let scenario = try await RecoveryScenario.make()
         let tags = Target.draft("A", .tags), first = Target.playlist("P1"), second = Target.playlist("P2")
         // A 태그는 저장에 실패하고(저장 폴더 권한), P1만 저장한다(P2는 나중에). 합성 사본의 곡 정보는 그대로 둔다(재생 목록 비교가 곡 정보를 읽는다).
-        let model = RecoverySheetModel(store: scenario.store, requests: [tags, first, second].map { Self.request(scenario, $0) },
-                                       dependencies: .init(home: scenario.home, save: { draft in
+        let model = RecoverySheetModel(host: scenario.store, requests: [tags, first, second].map { Self.request(scenario, $0) },
+                                       dependencies: .init(save: { draft in
                                            if case .tags = draft { throw CocoaError(.fileWriteNoPermission) }
                                        }))
         await model.load()
@@ -376,22 +377,23 @@ struct RecoverySheetTests {
         store.selection = [a.id]
         let reflect = LibraryMenuAction.reflect, remove = LibraryMenuAction.removeTracks
         #expect(reflect.isEnabled(in: store) && remove.isEnabled(in: store), "시트가 없으면 열려 있어야 한다")
-        let sheet = RecoverySheetModel(store: store, requests: [Self.request(scenario, .draft("A", .tags))], anchor: .editWindow,
-                                       dependencies: .init(home: scenario.home))
+        let sheet = RecoverySheetModel(host: store, requests: [Self.request(scenario, .draft("A", .tags))], anchor: .editWindow,
+                                       dependencies: .init())
         store.recoverySheet = sheet
         #expect(!reflect.isEnabled(in: store) && !remove.isEnabled(in: store) && !LibraryMenuAction.restore.isEnabled(in: store))
         #expect(reflect.disabledReason(in: store) == LibraryStore.writesBlockedBySheetReason)
-        for entry in [{ DirectWritePanels.write(store: store, rows: [a]) }, { DirectWritePanels.addTracks(store: store, rows: [a]) },
-                      { DirectWritePanels.deleteTracks(store: store, rows: [a]) }, { reflect.perform(in: store) }] {
+        let reflection = ReflectionCoordinator.test(store: store)
+        for entry in [{ reflection.startWrite(rows: [a]) }, { reflection.startAddTracks(rows: [a]) },
+                      { reflection.startDeleteTracks(rows: [a]) }, { reflect.perform(in: store, reflection: reflection) }] {
             store.toast = nil
             entry()
-            #expect(store.toast?.isNotice == true && store.toast?.title == "막힌 초안 비교가 열려 있어 쓰지 않았습니다")
+            #expect(store.toast?.isNotice == true, "쓰지 않은 까닭을 안내한다")
             #expect(store.writeTask == nil && !store.isWritingRekordbox)
         }
         // 비교 창을 또 열려 해도 안내한다.
         store.toast = nil
-        DraftRecoveryPanels.recover(store: store, row: a, kind: .tags)
-        #expect(store.toast?.title == "막힌 초안 비교가 이미 열려 있습니다" && store.writeTask == nil)
+        reflection.startRecovery(row: a, kind: .tags)
+        #expect(store.toast?.isNotice == true && store.writeTask == nil)
         sheet.cancel()
         #expect(reflect.isEnabled(in: store) && reflect.disabledReason(in: store) == nil)
     }
@@ -400,9 +402,10 @@ struct RecoverySheetTests {
         let scenario = try await RecoveryScenario.make()
         let store = scenario.store
         let window = TrackEditWindow()
-        window.attach(deck: DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false), store: store)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        window.attach(EditWindowLinks(deck: deck, store: store, writer: .live(home: scenario.home), makeAudio: { EditAudioPlayer() }, showStaged: { _, _ in }))
         func sheet(_ anchor: RecoverySheetAnchor) -> RecoverySheetModel {
-            RecoverySheetModel(store: store, requests: [Self.request(scenario, .draft("A", .tags))], anchor: anchor, dependencies: .init(home: scenario.home))
+            RecoverySheetModel(host: store, requests: [Self.request(scenario, .draft("A", .tags))], anchor: anchor, dependencies: .init())
         }
         let closing = Notification(name: NSWindow.willCloseNotification)
         let main = sheet(.library)
@@ -427,7 +430,7 @@ struct RecoverySheetTests {
         let model = model(scenario, [.draft("C", .cues), .playlist("P1")])
         await model.load()
         #expect(oneSentence(try line(model, scenario, .draft("C", .cues)).keepBlockedReason))
-        let d = RecoverySheetModel(store: scenario.store, requests: [Self.request(scenario, .draft("D", .grid))], dependencies: .init(home: scenario.home))
+        let d = RecoverySheetModel(host: scenario.store, requests: [Self.request(scenario, .draft("D", .grid))], dependencies: .init())
         await d.load()
         #expect(oneSentence(d.lines.first?.keepBlockedReason))
         #expect(oneSentence(RecoverySheetModel.message(for: CancellationError())))
@@ -440,13 +443,12 @@ struct RecoverySheetTests {
             func show(_ prompt: ReflectionPrompt) -> Bool { false }
         }
         let scenario = try await RecoveryScenario.make()
-        let headless = RecoverySheetModel(store: scenario.store, requests: [Self.request(scenario, .draft("A", .tags))], dependencies: .init(home: scenario.home))
+        let headless = RecoverySheetModel(host: scenario.store, requests: [Self.request(scenario, .draft("A", .tags))], dependencies: .init())
         await Headless().review(headless)
         #expect(headless.isClosed)
         // 시트가 열리면 안 되는 시험용 프롬프터는 끝없이 기다리지 않고 시험을 실패시킨다.
-        let url = FileManager.default.temporaryDirectory.appending(path: "djc-no-sheet-\(UUID()).png")
-        let model = RecoverySheetModel(store: scenario.store, requests: [Self.request(scenario, .draft("A", .tags))], dependencies: .init(home: scenario.home))
-        await withKnownIssue { await SceneCapturingPrompter(url: url).review(model) }
+        let model = RecoverySheetModel(host: scenario.store, requests: [Self.request(scenario, .draft("A", .tags))], dependencies: .init())
+        await withKnownIssue { await CancellingPrompter().review(model) }
         #expect(model.isClosed)
     }
 
@@ -473,7 +475,7 @@ enum LegacyRecoveryFlow {
         let prompter = ScriptedPrompter()
         prompter.choices = remap ? [.confirm, .confirm, .confirm] : choice == .keep ? [.confirm] : [.alternate]
         let store = scenario.store, row = scenario.rows[name]!
-        var review = try await store.prepareDraftRecovery(row: row, kind: kind, home: scenario.home)
+        var review = try await store.prepareDraftRecovery(row: row, kind: kind)
         let refusal = review.keepRefusal
         let keep = refusal == nil ? try? review.original.resolved(onto: review.current, choice: .keepEditing) : nil
         let missing = missingCueMappings(review)
@@ -493,7 +495,7 @@ enum LegacyRecoveryFlow {
         } else {
             action = keep != nil && answer == .confirm ? .keepEditing : .useCurrent
         }
-        try await store.applyDraftRecovery(review, choice: action, home: scenario.home)
+        try await store.applyDraftRecovery(review, choice: action)
         #expect(prompter.choices.isEmpty, "예전 흐름이 고른 답을 다 쓰지 않음: \(name) \(kind)")
     }
 
@@ -549,4 +551,11 @@ enum LegacyRecoveryFlow {
             }
         }
     }
+}
+
+/// 확인 창마다 취소하는 프롬프터. 복구 시트가 열리면 시험을 실패시킨다(`NoRecoverySheetPrompter`).
+@MainActor
+private final class CancellingPrompter: NoRecoverySheetPrompter {
+    func show(_ prompt: ReflectionPrompt) -> Bool { false }
+    func choose(_ prompt: ReflectionPrompt) -> ReflectionChoice { .cancel }
 }

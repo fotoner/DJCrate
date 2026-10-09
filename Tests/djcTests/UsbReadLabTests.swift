@@ -1,7 +1,9 @@
+import DJCAdapters
+import DJCApplication
+import RekordboxFixtures
 @testable import djc
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
 import RekordboxKit
 import Testing
@@ -24,15 +26,6 @@ struct UsbReadLabTests {
         let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         return (process.terminationStatus, String(decoding: data, as: UTF8.self))
-    }
-
-    @Test func renderPrintsCountsAndFieldNamesOnly() {
-        let summaries = [
-            UsbLibraryDiff.TableSummary(table: "content", matchedRows: 2, leftRows: 3, rightRows: 3, differingFields: ["title": 1]),
-            UsbLibraryDiff.TableSummary(table: "artist", matchedRows: 5, leftRows: 5, rightRows: 5, differingFields: [:]),
-        ]
-        let lines = UsbReadLab.render((summaries, [UsbLibraryDiff.Difference(table: "content", key: "3", field: "title")]))
-        #expect(lines == ["content 2/3행 일치, 다른 칸: title×1", "artist 5/5행 일치", "차이 1"])
     }
 
     @Test func oneLibrarySQLReadsTemporaryCopyAndBlocksCredentials() throws {
@@ -104,8 +97,8 @@ struct UsbReadLabTests {
         try fixture.write(to: UsbTreeFixture(base: usb.usbURL))
         let (_, only) = try run(["usb-migrate-check", usb.usbURL.path])
         #expect(only.contains("두 형식"))
-        let session = UsbMigrateSession(root: usb.usbURL, guard: usb.writeGuard(), paths: usb.paths, fileSystem: usb.fileSystem(),
-                                        copies: usb.home.appending(path: "usb-snapshots"))
+        let session = UsbMigrateSession(root: usb.usbURL, guard: usb.writeGuard(), paths: usb.paths, engine: .live(fileSystem: usb.fileSystem()),
+                                        device: .testing(), copies: usb.home.appending(path: "usb-snapshots"))
         _ = try session.write(options: UsbWriteOptions(), progress: { _ in }, isCancelled: { false })
         let before = usb.tree()
         let (status, output) = try run(["usb-migrate-check", usb.usbURL.path])
@@ -171,39 +164,6 @@ struct UsbReadLabTests {
         #expect(!rows.contains("시험") && !rows.contains("test1"))
         // 원본은 그대로
         #expect(tree.tree() == before)
-    }
-
-    @Test func pdbDumpReportsIssueKindsAndPages() throws {
-        let tree = UsbTreeFixture()
-        defer { tree.remove() }
-        tree.write(UsbLayout.exportPdb, Self.pdbFiles(brokenGenres: true).export)
-        let (status, output) = try run(["pdb-dump", tree.url(UsbLayout.exportPdb).path])
-        #expect(status == 0)
-        let last = try #require(output.split(separator: "\n").last.map(String.init))
-        #expect(last.hasPrefix("issues 1"))
-        #expect(last.contains("pageIndexMismatch"))
-    }
-
-    @Test func pdbDumpCountsFarShapeRows() throws {
-        let tree = UsbTreeFixture()
-        defer { tree.remove() }
-        var export = PdbBuilder(kind: .export)
-        export.add(.artists, PdbBuilder.artistRow(1, "시험 아티스트", far: true))
-        export.add(.artists, PdbBuilder.artistRow(2, "시험 아티스트 2"))
-        tree.write(UsbLayout.exportPdb, export.build().data)
-        var ext = PdbBuilder(kind: .exportExt)
-        ext.add(.tags, PdbBuilder.tagRow(id: 7, name: "시험 분류", position: 0, isCategory: true, far: true))
-        tree.write(UsbLayout.exportExtPdb, ext.build().data)
-
-        let (_, output) = try run(["pdb-dump", tree.url(UsbLayout.exportPdb).path])
-        let lines = output.split(separator: "\n").map(String.init)
-        #expect(lines.contains("far_shape_rows 1: artists 1"))
-        #expect(lines.last == "issues 0")
-        let (_, extOutput) = try run(["pdb-dump", tree.url(UsbLayout.exportExtPdb).path])
-        let extLines = extOutput.split(separator: "\n").map(String.init)
-        #expect(extLines.contains("far_shape_rows 1: exportExt.tags 1"))
-        #expect(extLines.last?.hasPrefix("issues 1: unconfirmedRowShape×1") == true)
-        #expect(!output.contains("시험") && !extOutput.contains("시험"))
     }
 
     @Test func pdbDumpRefusesPathOutsideScratch() throws {

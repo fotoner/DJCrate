@@ -1,6 +1,8 @@
+import DJCApplication
 @testable import DJCrate
 import AppKit
 import DJCDomain
+import DJCTestKit
 import Foundation
 import SwiftUI
 import Testing
@@ -45,7 +47,7 @@ struct TrackListDragTests {
 
     /// 순서를 바꿀 수 있는 재생 목록(# 순)
     static func playlistStore(count: Int) -> LibraryStore {
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.drag.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("drag"), persist: false),
                                  resultHistory: WriteResultHistory(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
         store.phase = .loaded
         let ids = (1...count).map(String.init)
@@ -60,7 +62,7 @@ struct TrackListDragTests {
     @Test func 끌기가_끝나면_표_높이를_줄_끝까지_다시_잰다() async throws {
         _ = NSApplication.shared
         let store = Self.playlistStore(count: 60)
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         let host = NSHostingView(rootView: TrackTable(store: store, deck: deck))
         let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 900, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

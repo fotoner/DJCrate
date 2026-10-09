@@ -1,5 +1,6 @@
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import Testing
 
 struct AsyncGuidanceFixtureCapture {

@@ -1,7 +1,10 @@
+import DJCApplication
 @testable import DJCrate
+import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Synchronization
 import Testing
@@ -9,11 +12,14 @@ import Testing
 @MainActor
 @Suite("iTunes 선택창 소스 캐시", .serialized)
 struct ITunesSyncSourceCacheTests {
-    private func store(_ fixture: RekordboxFixture) -> LibraryStore {
-        LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.itunes-sync-source.\(UUID())")!, persist: false),
-                     resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
-                     backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                     mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
+    /// 이 묶음은 사본 옆 iTunes 파일(목록 사본·`playlists3.sync`)만 본다. 라이브러리 읽기는 DB를 열지 않는 원본(`withoutDatabase`)으로 한다.
+    private func store(_ fixture: RekordboxFixture, arguments: [String] = ["test"]) -> LibraryStore {
+        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes-sync-source"), persist: false),
+                          resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                          backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
+                          mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                          arguments: arguments, environment: [:],
+                          ports: { $0.source = .withoutDatabase })
     }
 
     private var syncA: Data {
@@ -33,9 +39,9 @@ struct ITunesSyncSourceCacheTests {
         ]).applyingRekordboxSelection(syncA)
         try cached.save(for: fixture.database)
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         let calls = Mutex(0)
-        let source = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+        let source = await store.iTunesSyncSource(captureITunes: {
             calls.withLock { $0 += 1 }
             return .init(status: .unavailable)
         })
@@ -52,10 +58,10 @@ struct ITunesSyncSourceCacheTests {
             .applyingRekordboxSelection(syncA)
         try cached.save(for: fixture.database)
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         let calls = Mutex(0)
         let newer = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "새 내용")])
-        let refreshed = await store.iTunesSyncSource(forceRefresh: true, arguments: ["test"], environment: [:], captureITunes: {
+        let refreshed = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
             calls.withLock { $0 += 1 }
             return newer
         })
@@ -63,7 +69,7 @@ struct ITunesSyncSourceCacheTests {
         #expect(calls.withLock { $0 } == 1)
 
         try (syncA + Data("\n".utf8)).write(to: fixture.root.appending(path: "playlists3.sync"))
-        let changed = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+        let changed = await store.iTunesSyncSource(captureITunes: {
             calls.withLock { $0 += 1 }
             return newer
         })
@@ -75,11 +81,11 @@ struct ITunesSyncSourceCacheTests {
         let fixture = try RekordboxFixture()
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "사본 목록")])
         try cached.save(for: fixture.database)
-        let store = store(fixture)
         let arguments = ["test", "--db", fixture.database.path]
-        await store.load(snapshot: fixture.database, arguments: arguments, environment: [:])
+        let store = store(fixture, arguments: arguments)
+        await store.load(snapshot: fixture.database)
         let calls = Mutex(0)
-        let source = await store.iTunesSyncSource(forceRefresh: true, arguments: arguments, environment: [:], captureITunes: {
+        let source = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
             calls.withLock { $0 += 1 }
             return .init(status: .unavailable)
         })
@@ -90,14 +96,14 @@ struct ITunesSyncSourceCacheTests {
     @Test func 겹친_선택창은_진행중인_캡처_하나를_공유한다() async throws {
         let fixture = try RekordboxFixture()
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         let calls = Mutex(0)
         let started = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let captured = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "새 목록")])
         let firstReturned = Mutex(false)
         let first = Task {
-            let value = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+            let value = await store.iTunesSyncSource(captureITunes: {
                 calls.withLock { $0 += 1 }
                 started.withLock { $0 = true }
                 resume.wait()
@@ -114,7 +120,7 @@ struct ITunesSyncSourceCacheTests {
             return
         }
         let second = Task {
-            await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+            await store.iTunesSyncSource(captureITunes: {
                 calls.withLock { $0 += 1 }
                 return .init(status: .unavailable)
             })
@@ -135,12 +141,12 @@ struct ITunesSyncSourceCacheTests {
             .applyingRekordboxSelection(syncA)
         try cached.save(for: fixture.database)
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         let started = Mutex(false)
         let refreshReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let refresh = Task {
-            let value = await store.iTunesSyncSource(forceRefresh: true, arguments: ["test"], environment: [:], captureITunes: {
+            let value = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
                 started.withLock { $0 = true }
                 resume.wait()
                 return cached
@@ -156,7 +162,7 @@ struct ITunesSyncSourceCacheTests {
         }
         let completed = Mutex(false)
         let reopen = Task {
-            let value = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+            let value = await store.iTunesSyncSource(captureITunes: {
                 Issue.record("유효한 캐시 대신 Music을 읽었습니다")
                 return .init(status: .unavailable)
             })
@@ -177,14 +183,14 @@ struct ITunesSyncSourceCacheTests {
         let fixture = try RekordboxFixture()
         try syncA.write(to: fixture.root.appending(path: "playlists3.sync"))
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         let old = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "옛 목록")])
             .applyingRekordboxSelection(syncA)
-        _ = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: { old })
+        _ = await store.iTunesSyncSource(captureITunes: { old })
         let newer = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "새 목록")])
             .applyingRekordboxSelection(syncA)
         store.iTunesSnapshot = newer
-        let result = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+        let result = await store.iTunesSyncSource(captureITunes: {
             Issue.record("새 store 카탈로그 대신 Music을 읽었습니다")
             return .init(status: .unavailable)
         })
@@ -195,7 +201,7 @@ struct ITunesSyncSourceCacheTests {
         let fixture = try RekordboxFixture()
         try syncA.write(to: fixture.root.appending(path: "playlists3.sync"))
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         let old = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "옛 목록")])
             .applyingRekordboxSelection(syncA)
         let newer = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "최신 목록")])
@@ -204,7 +210,7 @@ struct ITunesSyncSourceCacheTests {
         let loadingReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let loading = Task {
-            let value = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+            let value = await store.iTunesSyncSource(captureITunes: {
                 started.withLock { $0 = true }
                 resume.wait()
                 return old
@@ -222,7 +228,7 @@ struct ITunesSyncSourceCacheTests {
         resume.signal()
         let lateResult = await loading.value
         #expect(lateResult.sourcePlaylists?.first?.name == "최신 목록")
-        let reopened = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+        let reopened = await store.iTunesSyncSource(captureITunes: {
             Issue.record("최신 Store 캐시 대신 Music을 읽었습니다")
             return .init(status: .unavailable)
         })
@@ -239,10 +245,10 @@ struct ITunesSyncSourceCacheTests {
         let old = try ITunesLibrarySnapshot(sourcePlaylists: catalog).applyingRekordboxSelection(syncA)
         try old.save(for: fixture.database)
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         store.presentITunesSync()
         let model = store.iTunesSync
-        await model.load(store: store, arguments: ["test"], environment: [:], captureITunes: {
+        await model.load(store: store, captureITunes: {
             Issue.record("정상 캐시에서 Music을 다시 읽었습니다")
             return .init(status: .unavailable)
         })
@@ -250,19 +256,19 @@ struct ITunesSyncSourceCacheTests {
         model.selection = .init(selectedIDs: ["B"])
         let fresh = try ITunesLibrarySnapshot(sourcePlaylists: catalog + [.init(id: "C", name: "새 목록")])
             .applyingRekordboxSelection(syncA)
-        await model.load(store: store, forceRefresh: true, arguments: ["test"], environment: [:],
+        await model.load(store: store, forceRefresh: true,
                          captureITunes: { fresh })
         #expect(model.selection.selectedIDs == ["B"])
         #expect(model.source.sourcePlaylists?.map(\.id) == ["A", "B", "C"])
 
         store.presentITunesSync()
         let untouched = store.iTunesSync
-        await untouched.load(store: store, arguments: ["test"], environment: [:], captureITunes: { fresh })
+        await untouched.load(store: store, captureITunes: { fresh })
         #expect(untouched.selection.selectedIDs == ["A"])
         let syncB = Data(String(decoding: syncA, as: UTF8.self).replacingOccurrences(of: "Id=\"A\"", with: "Id=\"B\"").utf8)
         try syncB.write(to: sync)
         let externallyChanged = try ITunesLibrarySnapshot(sourcePlaylists: catalog).applyingRekordboxSelection(syncB)
-        await untouched.load(store: store, forceRefresh: true, arguments: ["test"], environment: [:],
+        await untouched.load(store: store, forceRefresh: true,
                              captureITunes: { externallyChanged })
         #expect(untouched.selection.selectedIDs == ["B"])
     }
@@ -276,15 +282,15 @@ struct ITunesSyncSourceCacheTests {
         let cached = try ITunesLibrarySnapshot(sourcePlaylists: catalog).applyingRekordboxSelection(syncA)
         try cached.save(for: fixture.database)
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         store.presentITunesSync()
         let model = store.iTunesSync
-        await model.load(store: store, arguments: ["test"], environment: [:], captureITunes: {
+        await model.load(store: store, captureITunes: {
             Issue.record("기존 카탈로그를 다시 읽었습니다")
             return .init(status: .unavailable)
         })
         model.selection = .init(selectedIDs: ["B"])
-        await model.load(store: store, forceRefresh: true, arguments: ["test"], environment: [:],
+        await model.load(store: store, forceRefresh: true,
                          captureITunes: { .init(status: .unavailable) })
         #expect(model.source.status == .stale)
         #expect(model.source.sourcePlaylists?.map(\.id) == ["A", "B"])
@@ -292,7 +298,7 @@ struct ITunesSyncSourceCacheTests {
         #expect(!model.canSync)
         let recovered = try ITunesLibrarySnapshot(sourcePlaylists: catalog + [.init(id: "C", name: "셋째 목록")])
             .applyingRekordboxSelection(syncA)
-        await model.load(store: store, forceRefresh: true, arguments: ["test"], environment: [:],
+        await model.load(store: store, forceRefresh: true,
                          captureITunes: { recovered })
         #expect(model.source.status == .ready)
         #expect(model.selection.selectedIDs == ["B"])
@@ -301,14 +307,14 @@ struct ITunesSyncSourceCacheTests {
     @Test func 열린_선택창의_DB가_바뀌면_늦은_결과를_버리고_로딩을_끝낸다() async throws {
         let fixture = try RekordboxFixture()
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         store.presentITunesSync()
         let model = store.iTunesSync
         let started = Mutex(false)
         let loadingReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let loading = Task {
-            await model.load(store: store, arguments: ["test"], environment: [:], captureITunes: {
+            await model.load(store: store, captureITunes: {
                 started.withLock { $0 = true }
                 resume.wait()
                 return ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "늦은 목록")])
@@ -321,7 +327,7 @@ struct ITunesSyncSourceCacheTests {
             Issue.record("Music 캡처가 시작되지 않았습니다")
             return
         }
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         resume.signal()
         await loading.value
         #expect(!model.isLoading)
@@ -333,14 +339,14 @@ struct ITunesSyncSourceCacheTests {
     @Test func 닫은_선택창의_늦은_캡처는_새_선택창을_바꾸지_않는다() async throws {
         let fixture = try RekordboxFixture()
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: fixture.database)
         store.presentITunesSync()
         let old = store.iTunesSync
         let started = Mutex(false)
         let loadingReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let loading = Task {
-            await old.load(store: store, arguments: ["test"], environment: [:], captureITunes: {
+            await old.load(store: store, captureITunes: {
                 started.withLock { $0 = true }
                 resume.wait()
                 return ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "늦은 목록")])

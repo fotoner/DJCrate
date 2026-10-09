@@ -1,6 +1,7 @@
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -83,7 +84,8 @@ struct SyncedTrackRemovalTests {
     }
 
     /// 지우는 앨범·아티스트 행이 동기화 상태이면(상태 0 곡이 동기화된 기존 아티스트·앨범을 쓰는 건 흔하다) 곡도 막는다.
-    @Test(arguments: [("djmdAlbum", "10"), ("djmdArtist", "1"), ("djmdArtist", "3")], [256, 257])
+    /// 256·257은 같은 갈래(0이 아니면 동기화 행)라 행마다 한 상태만 쓴다(조합 6 → 3).
+    @Test(arguments: [((table: "djmdAlbum", id: "10"), 256), ((table: "djmdArtist", id: "1"), 257), ((table: "djmdArtist", id: "3"), 256)])
     func 이_곡만_쓰던_앨범_아티스트_행이_동기화_상태면_막는다(_ row: (table: String, id: String), _ status: Int) throws {
         let (fixture, a, _) = try writer.deleteFixture()
         try setStatus(fixture, row.table, "ID", row.id, status)
@@ -117,7 +119,9 @@ struct SyncedTrackRemovalTests {
 
     /// 곡을 빼면 같은 목록·이력의 뒤 항목 순번을 당긴다. 동기화 항목(256)을 고치면 플레이리스트 편집(`touchEntry`)처럼 257로 올린다.
     /// 0·257은 그대로다(사용자 정책: 동기화 데이터를 DJCrate가 고친 행은 257).
-    @Test(arguments: ["djmdSongPlaylist", "djmdSongHistory"], [(before: 0, after: 0), (before: 256, after: 257), (before: 257, after: 257)])
+    /// 목록·이력은 같은 당기기를 지나 상태 셋을 두 표에 나눠 쓴다(조합 6 → 3).
+    @Test(arguments: [("djmdSongPlaylist", (before: 0, after: 0)), ("djmdSongHistory", (before: 256, after: 257)),
+                      ("djmdSongPlaylist", (before: 257, after: 257))])
     func 순번을_당기는_뒤_항목은_256만_257로_올린다(_ table: String, _ status: (before: Int, after: Int)) throws {
         let (fixture, a, b) = try writer.deleteFixture()
         try setStatus(fixture, table, "ContentID", b.id, status.before)
@@ -129,7 +133,7 @@ struct SyncedTrackRemovalTests {
 
     /// 쓰기 트랜잭션 안 검증이 끝난 뒤(변경 카운터를 올리는 순간) 당긴 행을 어긋나게 한다. 커밋 뒤 다시 읽어 순번·상태를 기대와 비교하므로
     /// 백업으로 되돌리고 되돌렸다고 알려야 한다(곡 행·딸린 행·파일 모두 쓰기 전).
-    @Test(arguments: ["djmdSongPlaylist", "djmdSongHistory"], ["TrackNo = TrackNo + 5", "rb_data_status = 256"])
+    @Test(arguments: zip(["djmdSongPlaylist", "djmdSongHistory"], ["TrackNo = TrackNo + 5", "rb_data_status = 256"]))
     func 커밋_뒤_당긴_행의_순번이나_상태가_기대와_다르면_백업으로_되돌리고_그렇게_알린다(_ table: String, _ tamper: String) throws {
         let (fixture, a, b) = try writer.deleteFixture()
         try setStatus(fixture, table, "ContentID", b.id, 256)
@@ -341,7 +345,7 @@ struct SyncedTrackRemovalTests {
         expectBlockedDraft(fixture, reason: sourceReason(RekordboxTrackWriter.syncedRowsReason))
     }
 
-    @Test(arguments: ["djmdSongPlaylist", "djmdSongHistory"], [256, 257])
+    @Test(arguments: zip(["djmdSongPlaylist", "djmdSongHistory"], [256, 257]))
     func 초안을_만든_뒤_원본의_항목이_동기화되면_쓰기_전에_막고_아무것도_바꾸지_않는다(_ table: String, _ status: Int) throws {
         let fixture = try namedFixture()
         if table == "djmdSongHistory" { try insertHistory(fixture, id: "h1", contentID: "200", trackNo: 1) }

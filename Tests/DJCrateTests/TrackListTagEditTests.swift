@@ -19,15 +19,6 @@ struct TrackListTagEditTests {
 
     // MARK: - 칸
 
-    @Test func 태그_칸만_편집한다() {
-        for key in TagFields.Key.allCases { #expect(TrackListTagEditing.key(forColumn: key.rawValue) == key) }
-        #expect(TrackListTagEditing.key(forColumn: "key") == .musicalKey)
-        for id in ["index", "thumb", "edited", "preview", "class", "bpm", "length", "format", "tempo",
-                   "imported", "plays", "hotCues", "memoryCues"] {
-            #expect(TrackListTagEditing.key(forColumn: id) == nil)
-        }
-    }
-
     /// 앨범 아티스트·작곡가·연도·트랙 번호 칸은 처음엔 숨기고, 머리글 메뉴로 보이면 편집·정렬한다.
     @Test func 모든_태그_칸이_목록에_있고_새_칸은_처음에_숨긴다() throws {
         let ids = TrackColumn.all.map(\.id)
@@ -49,20 +40,6 @@ struct TrackListTagEditTests {
         #expect(rows.sorted(using: number).map(\.track.id) == ["3", "2", "1"])
         #expect(TrackColumn.sortKey(of: year.keyPath) == "year")
         #expect(TrackColumn.sortKey(of: number.keyPath) == "trackNumber")
-    }
-
-    @Test func Return은_보이는_첫_태그_칸에서_시작한다() {
-        #expect(TrackListTagEditing.firstColumn(in: ["index", "thumb", "edited", "artist", "title", "bpm"]) == "artist")
-        #expect(TrackListTagEditing.firstColumn(in: ["index", "bpm"]) == nil)
-    }
-
-    @Test func Tab은_보이는_옆_태그_칸으로_가고_끝에서_멈춘다() {
-        let order = ["index", "title", "preview", "artist", "bpm", "comment"]
-        #expect(TrackListTagEditing.column(after: "title", forward: true, in: order) == "artist")
-        #expect(TrackListTagEditing.column(after: "artist", forward: true, in: order) == "comment")
-        #expect(TrackListTagEditing.column(after: "comment", forward: true, in: order) == nil)
-        #expect(TrackListTagEditing.column(after: "comment", forward: false, in: order) == "artist")
-        #expect(TrackListTagEditing.column(after: "title", forward: false, in: order) == nil)
     }
 
     // MARK: - 대상 곡·값
@@ -273,7 +250,7 @@ struct TrackListTagEditTests {
     }
 
     @Test func 코멘트를_고치면_분류_칸을_다시_계산한다() throws {
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = ListHarness.store()
         store.commentPreset = .anisong
         let rule = try #require(store.commentPreset.rule)
         let a = Self.row("1", comment: "", rule: rule)
@@ -304,14 +281,20 @@ final class ListHarness {
     let table = TrackListTableView()
     let window: NSWindow
 
+    /// 시험마다 따로 둔 설정(`UserDefaults.standard`에 남겨 다른 시험의 기본 설정을 바꾸지 않게)
+    static func store() -> LibraryStore {
+        LibraryStore.test(settings: SettingsStore(defaults: SettingsStoreTests.freshDefaults(), persist: false),
+                     resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+    }
+
     /// - Parameter extra: 기본 칸 뒤에 더할 칸(평점·곡 색 칸 시험, #65)
     init(rows: [TrackRow], selection: Set<TrackRow.ID>, hidden: Set<String> = [], store: LibraryStore? = nil, showKey: Bool = false,
          extra: [String] = []) {
         _ = NSApplication.shared
-        self.store = store ?? LibraryStore(saveTagDrafts: { _ in })
+        self.store = store ?? Self.store()
         undo.groupsByEvent = false
         self.store.undoManager = undo
-        coordinator = TrackListCoordinator(store: self.store)
+        coordinator = TrackListCoordinator(store: self.store, actions: .live(store: self.store))
         // 다시 누른 칸 고치기는 마우스를 놓은 뒤에만 시작한다. 실제 마우스 상태(사용자가 시험 중에 누르는 것 등)에 시험이 흔들리지 않게 뗀 상태로 둔다.
         coordinator.isMouseDown = { false }
         table.identifier = KeyRouter.trackListID

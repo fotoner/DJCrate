@@ -1,24 +1,21 @@
-import RekordboxKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
 import SwiftUI
 
-/// DJCrate ↔ rekordbox 연동 XML. 저장 창 없이 늘 같은 파일에 쓴다.
+/// DJCrate ↔ rekordbox 연동 XML. 저장 창 없이 늘 같은 파일(조립 지점이 정한 `LibraryStore.linkedXMLFile`)에 쓴다.
 /// rekordbox 환경설정 › 고급 › 데이터베이스 › rekordbox xml에 이 파일을 한 번만 지정하면,
 /// 이후에는 rekordbox에서 트리 새로고침 → 재생 목록 → Import To Collection만 하면 된다.
 @MainActor
 enum RekordboxLink {
-    static var url: URL { DJCIdentity.linkedXMLFile }
-
-    static func prepare() throws -> URL {
+    /// 연동 파일의 폴더를 만들고 그 파일 자리를 돌려준다
+    static func prepare(_ url: URL) throws -> URL {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         return url
     }
 
     /// 처음 한 번만 rekordbox 설정 방법을 알려 주고 경로를 클립보드에 복사한다.
-    static func showSetupIfNeeded() {
+    static func showSetupIfNeeded(_ url: URL) {
         let key = "rekordboxLinkSetupShown"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         NSPasteboard.general.clearContents()

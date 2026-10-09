@@ -9,23 +9,11 @@ import Foundation
 /// 3. 바꾸는 데 벌점을 준 비터비로 흐름을 고르고, 짧은 구간(기본 8마디 미만)은 옆 구간에 합친다.
 /// 흐름은 장·단(A/B)을 가리지 않고 조표만 본다. 표시할 때 장·단은 rekordbox 키를 따르고, 키가 없으면 `isMinor`로 정한다.
 public enum KeyAnalyzer {
-    public struct Chroma: Sendable {
-        /// 프레임 간격(초)
-        public var hop: Double
-        /// 프레임 × 12(C부터). 무음 프레임은 0.
-        public var frames: [[Float]]
+    /// 크로마 값은 DJCDomain에 있다(#167, 덱이 캐시에서 받아 넘긴다)
+    public typealias Chroma = KeyChroma
 
-        public init(hop: Double, frames: [[Float]]) { self.hop = hop; self.frames = frames }
-    }
-
-    public struct Segment: Sendable, Hashable {
-        public var start: Double
-        public var end: Double
-        /// 조표 = 장조 으뜸음 음이름(0 = C … 11 = B). 나란한 단조와 같은 조표다.
-        public var signature: Int
-
-        public init(start: Double, end: Double, signature: Int) { self.start = start; self.end = end; self.signature = signature }
-    }
+    /// 조표 구간 값은 DJCDomain에 있다(#167, 덱이 들고 있다)
+    public typealias Segment = KeySegment
 
     // MARK: - 크로마
 
@@ -266,13 +254,8 @@ public enum KeyAnalyzer {
 
     public static func camelot(signature: Int, minor: Bool) -> String { "\(camelotNumber(signature: signature))\(minor ? "A" : "B")" }
 
-    /// Camelot("10B" 등) → (조표, 단조인가)
-    public static func signature(camelot: String) -> (signature: Int, minor: Bool)? {
-        let text = camelot.trimmingCharacters(in: .whitespaces).uppercased()
-        guard let letter = text.last, letter == "A" || letter == "B", let number = Int(text.dropLast()), (1...12).contains(number) else { return nil }
-        guard let signature = (0..<12).first(where: { camelotNumber(signature: $0) == number }) else { return nil }
-        return (signature, letter == "A")
-    }
+    /// Camelot("10B" 등) → (조표, 단조인가). 규칙은 `KeyNotation.signature(camelot:)`
+    public static func signature(camelot: String) -> (signature: Int, minor: Bool)? { KeyNotation.signature(camelot: camelot) }
 }
 
 import AVFoundation

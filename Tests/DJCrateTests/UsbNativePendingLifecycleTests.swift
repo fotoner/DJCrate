@@ -1,7 +1,9 @@
 @testable import DJCrate
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import Observation
 import RekordboxKit
@@ -68,6 +70,8 @@ private final class NativePendingFixture {
     let live: FakeUsbLiveVolumeReader
     let job: UsbEditJob
     let edits: [UsbLibraryEdit]
+    /// USB 초안 폴더(`usb.drafts`가 쓰는 곳)
+    let drafts: URL
     var lease: UsbSyncSnapshotLease?
 
     /// physical이면 실물 FAT32로 보이는 볼륨(쓰기 확인 창이 볼륨 줄과 "실물 USB입니다"를 보여야 한다)
@@ -87,8 +91,9 @@ private final class NativePendingFixture {
         live = FakeUsbLiveVolumeReader(volume)
         usbHost = FakeUsbHost([volume])
         usbHost.serve(volume, library: UsbTestData.library(formats: [.oneLibrary]))
-        usb = UsbStore(host: usbHost, readPolicy: .all, localLibrary: { nil })
-        usb.draftDirectory = root.appending(path: "drafts")
+        usb = UsbStore(host: usbHost, readPolicy: .all, writeService: service, localLibrary: { nil })
+        drafts = root.appending(path: "drafts")
+        usb.drafts = .live(directory: drafts)
         let owner = lease!
         job = UsbEditJob(database: owner.database, share: host.share, volume: volume, snapshotTime: owner.provenance.snapshotTime,
                          syncSourceContext: .init(source: host.source, catalogRevision: host.revision, readEpoch: host.epoch,
@@ -96,9 +101,9 @@ private final class NativePendingFixture {
         edits = [.syncSelection(draft: .init(localDBID: 42, sourceNodes: host.source.nativeNodes,
                                              selection: .init(selectedIDs: ["10"]), enabled: true,
                                              playlistRefs: ["10": .id("10")], baseFiles: [:]))]
-        try UsbDraftStore(directory: usb.draftDirectory!).save(.init(volumeKey: volume.usbKey, base: .init(files: [:]), edits: edits))
-        usb.writeService = service
-        let live = live, directory = usb.draftDirectory!
+        try UsbDraftStore(directory: drafts).save(.init(volumeKey: volume.usbKey, base: .init(files: [:]), edits: edits,
+                                                                     createdAt: Date()))
+        let live = live, directory = drafts
         service.update {
             $0.liveVolumeReader = { try live.read($0) }
             $0.liveSyncFilesReader = { _, _ in [:] }
@@ -142,11 +147,11 @@ struct UsbNativePendingLifecycleTests {
                                          database: f.host.database, share: f.host.share)
         let summary = try #require(await pending.preview())
         #expect(f.copyExists && summary.edits == f.edits)
-        let directory = f.usb.draftDirectory!, key = f.volume.usbKey
+        let directory = f.drafts, key = f.volume.usbKey
         f.service.update { $0.onWriteEdit = { try? UsbDraftStore(directory: directory).discard(volumeKey: key) } }
         #expect(await pending.write(reusing: summary))
         #expect(f.service.current.calls.filter { $0 == "writeEdit" }.count == 1 && f.service.current.fileOperations == 1)
-        #expect(f.service.current.editJobs.allSatisfy { $0.database == f.job.database })
+        #expect(f.service.current.editJobs.allSatisfy { $0 == f.job.input })
         #expect(f.usb.syncDraftSources[key] == nil && !f.copyExists)
         #expect(FileManager.default.fileExists(atPath: f.host.database.path))
     }
@@ -167,7 +172,7 @@ struct UsbNativePendingLifecycleTests {
         model = nil
 
         let accepted = ScriptedPrompter(); accepted.answers = [true]
-        let directory = f.usb.draftDirectory!, key = f.volume.usbKey
+        let directory = f.drafts, key = f.volume.usbKey
         f.service.update { $0.onWriteEdit = { try? UsbDraftStore(directory: directory).discard(volumeKey: key) } }
         #expect(await f.coordinator(accepted).writeDraft(volumeKey: key, database: f.host.database, share: f.host.share))
         #expect(accepted.shown.count == 1 && accepted.shown[0].details.first?.hasPrefix("실물 USB입니다: ") == true)
@@ -194,7 +199,7 @@ struct UsbNativePendingLifecycleTests {
         #expect(f.service.current.calls.isEmpty && f.service.current.fileOperations == 0)
         #expect(!f.copyExists && f.usb.syncDraftSources[f.volume.usbKey] == nil)
         let ordinary: [UsbLibraryEdit] = [.playlist(edit: .rename(playlist: .id("10"), name: "일반"))]
-        try UsbDraftStore(directory: f.usb.draftDirectory!).save(.init(volumeKey: f.volume.usbKey, base: .init(files: [:]), edits: ordinary))
+        try UsbDraftStore(directory: f.drafts).save(.init(volumeKey: f.volume.usbKey, base: .init(files: [:]), edits: ordinary, createdAt: Date()))
         await f.usb.reloadDraft(f.volume.usbKey)
         f.service.update { $0.editSummary.edits = ordinary }
         #expect(await f.coordinator().writeDraft(volumeKey: f.volume.usbKey, database: f.host.database, share: f.host.share))
@@ -254,9 +259,30 @@ struct UsbNativePendingLifecycleTests {
         }
         try #require(await waitUntil { f.usb.syncDraftSources[f.volume.usbKey] == nil })
         #expect(!f.copyExists && f.usb.draftEdits[f.volume.usbKey] == f.edits)
-        #expect(try UsbDraftStore(directory: f.usb.draftDirectory!).load(volumeKey: f.volume.usbKey)?.edits == f.edits)
+        #expect(try UsbDraftStore(directory: f.drafts).load(volumeKey: f.volume.usbKey)?.edits == f.edits)
         #expect(await f.coordinator().writeDraft(volumeKey: f.volume.usbKey, database: f.host.database, share: f.host.share) == false)
         #expect(f.service.current.fileOperations == 0 && FileManager.default.fileExists(atPath: f.host.database.path))
+    }
+
+    /// UsbStore를 사이드바 상태와 쓰기 세션(`UsbWriteSession`)으로 나눈 뒤에도 native 초안 관찰(`withObservationTracking`)은
+    /// 원본(라이브러리 쪽 값)이 바뀔 때만 사본을 놓는다: 잠금·진행·지난 쓰기를 바꿔도 놓지 않고, 원본이 바뀌면 다음 차례에 놓는다
+    @Test("쓰기 세션 상태를 바꿔도 native 초안을 놓지 않고, 원본이 바뀌면 바로 놓는다")
+    func sessionChangesKeepNativeDraft() async throws {
+        let f = try NativePendingFixture()
+        await f.prepare(); f.remember()
+        let key = f.volume.usbKey
+        let flag = f.usb.beginWrite(f.volume, title: "합성 미리 보기", cancellable: true)
+        f.usb.setWriteTitle("합성 쓰기", for: key)
+        f.usb.report(UsbProgress(phase: .files, cancellable: true), for: key)
+        f.usb.migrationBackups[key] = f.root
+        f.usb.migrationBlockReasons[key] = "합성 막힘"
+        f.usb.endWrite(key)
+        for _ in 0..<20 { await Task.yield() }
+        #expect(flag != nil && f.usb.session.busyVolumes.isEmpty && f.usb.activeWrite == nil)
+        #expect(f.usb.syncDraftSources[key] != nil && f.copyExists)
+        f.host.epoch += 1
+        try #require(await waitUntil { f.usb.syncDraftSources[key] == nil })
+        #expect(!f.copyExists && f.usb.draftEdits[key] == f.edits)
     }
 
     @Test("native 원문이 바뀌면 쓰기 대기 미리 보기에서 사본을 해제한다")
@@ -326,9 +352,9 @@ struct UsbNativePendingLifecycleTests {
         try #require(await waitUntil { gate.arrivals == 1 })
         let task = Task { await f.coordinator().writeDraft(volumeKey: f.volume.usbKey, database: f.host.database, share: f.host.share) }
         try #require(await waitUntil { f.usb.draftQueueLength(f.volume.usbKey) == 2 })
-        var changed = try #require(try UsbDraftStore(directory: f.usb.draftDirectory!).load(volumeKey: f.volume.usbKey))
+        var changed = try #require(try UsbDraftStore(directory: f.drafts).load(volumeKey: f.volume.usbKey))
         changed.edits.append(.playlist(edit: .rename(playlist: .id("10"), name: "별도 변경")))
-        try UsbDraftStore(directory: f.usb.draftDirectory!).save(changed)
+        try UsbDraftStore(directory: f.drafts).save(changed)
         gate.open(); await blocker.value
         #expect(await task.value == false)
         #expect(!f.service.current.calls.contains("writeEdit") && !f.copyExists)
@@ -392,11 +418,11 @@ final class NativeFinalPreflightCounter: @unchecked Sendable {
 }
 
 /// 현재 마운트·원문 API는 의도적으로 생략하여 protocol의 안전 기본값을 시험한다.
-private struct LegacyUsbWriteService: UsbWriteService {
+private struct LegacyUsbWriteService: UsbWriting {
     let base: FakeUsbWriteService
     func journal(volumeKey: String) -> UsbJournalInfo { base.journal(volumeKey: volumeKey) }
-    func preview(_ job: UsbExportJob) throws -> UsbExportSummary { try base.preview(job) }
-    func write(_ job: UsbExportJob, progress: @escaping @Sendable (UsbProgress) -> Void,
+    func preview(_ job: UsbExportInput) throws -> UsbExportSummary { try base.preview(job) }
+    func write(_ job: UsbExportInput, progress: @escaping @Sendable (UsbProgress) -> Void,
                isCancelled: @escaping @Sendable () -> Bool) throws -> UsbWriteReport {
         try base.write(job, progress: progress, isCancelled: isCancelled)
     }
@@ -411,9 +437,16 @@ private struct LegacyUsbWriteService: UsbWriteService {
     }
     func latestBackup(volumeKey: String) -> URL? { base.latestBackup(volumeKey: volumeKey) }
     func draftBase(_ volume: UsbVolumeInfo) throws -> UsbFingerprint { try base.draftBase(volume) }
-    func previewEdit(_ job: UsbEditJob) throws -> UsbEditSummary { try base.previewEdit(job) }
-    func writeEdit(_ job: UsbEditJob, progress: @escaping @Sendable (UsbProgress) -> Void,
+    func previewEdit(_ job: UsbEditInput) throws -> UsbEditSummary { try base.previewEdit(job) }
+    func writeEdit(_ job: UsbEditInput, progress: @escaping @Sendable (UsbProgress) -> Void,
                    isCancelled: @escaping @Sendable () -> Bool) throws -> UsbEditWritten {
         try base.writeEdit(job, progress: progress, isCancelled: isCancelled)
+    }
+    func isScratchMount(_ mountPoint: String) -> Bool { base.isScratchMount(mountPoint) }
+    var syncGate: UsbSyncSelectionGate { base.syncGate }
+    func isRekordboxRunning() -> Bool { base.isRekordboxRunning() }
+    func planCueGridImport(volume: UsbVolumeInfo, snapshot: URL, share: URL, scratch: URL,
+                           rows: [String: UsbCueGridImportTrack]) throws -> UsbCueGridImportPlan {
+        try base.planCueGridImport(volume: volume, snapshot: snapshot, share: share, scratch: scratch, rows: rows)
     }
 }

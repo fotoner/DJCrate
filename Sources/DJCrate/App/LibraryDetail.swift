@@ -1,5 +1,6 @@
 import DJCDomain
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 주 창 본문: (위) 덱 · (아래) 라이브러리 표.
 /// 덱과 목록이 잰 원시 크기는 `LibraryLayoutMetrics`가 들고, 실제 적용 높이는 작은 뷰만 읽는다.

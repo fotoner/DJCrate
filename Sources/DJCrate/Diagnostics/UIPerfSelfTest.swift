@@ -1,4 +1,5 @@
 import AppKit
+import DJCApplication
 import DJCDomain
 import Foundation
 import OSLog
@@ -28,7 +29,7 @@ enum UIPerfSelfTest {
 
     static func log(_ text: String) { FileHandle.standardError.write(Data("[화면 성능] \(text)\n".utf8)) }
 
-    static func runIfRequested(store: LibraryStore, deck: DeckModel) {
+    static func runIfRequested(store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator) {
         guard let names = requested else { return }
         // 실행 인자로 준 값(`-NSWindow Frame …`)이 아니라 저장된 값을 되돌린다.
         let stored = UserDefaults.standard.persistentDomain(forName: ProcessInfo.processInfo.processName) ?? [:]
@@ -48,7 +49,7 @@ enum UIPerfSelfTest {
                 try? await Task.sleep(for: .seconds(seconds))
             }
             let recorder = UIPerfRecorder()
-            let runner = UIPerfRunner(store: store, deck: deck, recorder: recorder)
+            let runner = UIPerfRunner(store: store, deck: deck, windows: windows, reflection: reflection, recorder: recorder)
             var load = [0.0, 0.0, 0.0]
             getloadavg(&load, 3)
             log(String(format: "부하(1·5·15분) %.1f %.1f %.1f · 코어 %d", load[0], load[1], load[2], ProcessInfo.processInfo.activeProcessorCount))
@@ -154,6 +155,8 @@ struct UIPerfSample {
 final class UIPerfRunner {
     let store: LibraryStore
     let deck: DeckModel
+    let windows: AppWindows
+    let reflection: ReflectionCoordinator
     let recorder: UIPerfRecorder
     private(set) var window: NSWindow?
     private(set) var originalFrame: NSRect?
@@ -161,9 +164,11 @@ final class UIPerfRunner {
     private var failed = false
     private let signposter = OSSignposter(subsystem: "DJCrate.uiperf", category: .pointsOfInterest)
 
-    init(store: LibraryStore, deck: DeckModel, recorder: UIPerfRecorder) {
+    init(store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator, recorder: UIPerfRecorder) {
         self.store = store
         self.deck = deck
+        self.windows = windows
+        self.reflection = reflection
         self.recorder = recorder
     }
 
@@ -526,12 +531,12 @@ final class UIPerfRunner {
 
     private func edit() async {
         await ensureDeck()
-        guard TrackEditModel.canOpen(deck) else { log("곡 편집 창: 열 수 없는 곡"); return }
+        guard deck.canOpenTrackEdit else { log("곡 편집 창: 열 수 없는 곡"); return }
         await measure("곡 편집 창 열기", repeats: 3, window: 1.5, rest: 0.5, prepare: { _ in
-            TrackEditWindow.shared.window?.close()
+            self.windows.trackEdit.window?.close()
             await self.wait(0.3)
-        }) { _ in TrackEditWindow.shared.open() }
-        TrackEditWindow.shared.window?.close()
+        }) { _ in Task { await self.windows.trackEdit.open() } }
+        windows.trackEdit.window?.close()
         window?.makeKeyAndOrderFront(nil)
         await wait(0.5)
     }
@@ -608,7 +613,7 @@ final class UIPerfRunner {
         let start = CACurrentMediaTime()
         store.setWriteLock(true)
         do {
-            let preview = try await store.previewWrite(rows: [], playlists: true)
+            let preview = try await reflection.session.previewWrite(rows: [], playlists: true)
             let whole = recorder.result(from: start, to: CACurrentMediaTime(), sync: 0)
             log(String(format: "쓰기 미리 보기(재생 목록 초안 1건): 걸린 시간 %.0fms · 메인 일한 합 %.0fms · 한 번 최대 %.1fms · 프레임 최대 간격 %.1fms · 재생 목록 %d건",
                        (CACurrentMediaTime() - start) * 1000, whole.busy, whole.longest, whole.maxFrameGap, preview.report.playlistWritten.count))

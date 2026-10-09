@@ -64,7 +64,7 @@ public struct FlipEdit: Sendable, Equatable {
     public func sourceTime(atOutput time: Double) -> Double? { pieces.sourceTime(atOutput: time) }
 
     /// 큐를 출력 위치로 옮긴다(마디 편집과 같은 규칙: 처음 나오는 자리 하나, 루프는 한 조각 안에 들어야 한다).
-    public func carry(_ cues: [EditableCue]) -> CueCarry { pieces.carry(cues) }
+    public func carry(_ cues: [EditableCue], newID: () -> UUID) -> CueCarry { pieces.carry(cues, newID: newID) }
 
     /// 조각마다 읽고 쓸 프레임(렌더·창 재생).
     public func frames(sampleRate: Double, sourceOffset: Double, crossfade: Double = TrackEdit.crossfadeSeconds) -> [EditFrameSpan] {

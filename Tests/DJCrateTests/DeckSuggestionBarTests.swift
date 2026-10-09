@@ -1,9 +1,11 @@
+import DJCApplication
 @testable import DJCrate
 import AppKit
 import DJCAnalysis
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import SwiftUI
 import Testing
 
@@ -22,19 +24,19 @@ struct DeckSuggestionBarTests {
         private let suites: [String]
 
         init() {
-            let deckSuite = "djc.test.suggestion-bar.deck.\(UUID())", storeSuite = "djc.test.suggestion-bar.store.\(UUID())"
+            let deckSuite = TestDefaults.suiteName("suggestion-bar.deck"), storeSuite = TestDefaults.suiteName("suggestion-bar.store")
             suites = [deckSuite, storeSuite]
-            deckSettings = SettingsStore(defaults: UserDefaults(suiteName: deckSuite)!, persist: true)
-            storeSettings = SettingsStore(defaults: UserDefaults(suiteName: storeSuite)!, persist: true)
-            deck = DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts(), settings: deckSettings), runsAnalysis: false)
-            store = LibraryStore(settings: storeSettings, saveTagDrafts: { _ in })
+            deckSettings = SettingsStore(defaults: TestDefaults.open(deckSuite), persist: true)
+            storeSettings = SettingsStore(defaults: TestDefaults.open(storeSuite), persist: true)
+            deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts(), settings: deckSettings), runsAnalysis: false)
+            store = LibraryStore.test(settings: storeSettings, saveTagDrafts: { _ in })
             undo.groupsByEvent = false
             deck.undoManager = undo
             store.undoManager = undo
         }
 
         deinit {
-            for suite in suites { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+            for suite in suites { TestDefaults.open(suite).removePersistentDomain(forName: suite) }
         }
 
         var bar: DeckSuggestions { DeckSuggestions(deck: deck, store: store) }
@@ -213,7 +215,7 @@ struct DeckSuggestionBarTests {
         let other = Self.row("other")
         h.deckSettings.setStrings(SettingKeys.dismissedGridSuggestions, [other.track.uuid])
         h.storeSettings.setStrings(SettingKeys.dismissedKeySuggestions, [other.track.uuid])
-        let reopened = LibraryStore(settings: h.storeSettings, saveTagDrafts: { _ in })
+        let reopened = LibraryStore.test(settings: h.storeSettings, saveTagDrafts: { _ in })
         let row = Self.row("mine", key: "8B", staged: true)
         try await h.load(row)
         let bar = DeckSuggestions(deck: h.deck, store: reopened)
@@ -337,7 +339,7 @@ struct MusicalKeyFieldSuggestionTests {
     }
 
     @Test func 추가한_곡의_음원_태그_키도_인스펙터에는_제안으로_나오지_않는다() {
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         // 예전에는 추가한 곡의 키(음원 태그)가 곧바로 "DJCrate 제안" 줄로 나왔다.
         let staged = DeckSuggestionBarTests.row("inspector-staged", key: "8B", staged: true)
         let keyed = DeckSuggestionBarTests.row("inspector-keyed", key: "5A")

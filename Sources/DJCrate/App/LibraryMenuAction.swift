@@ -1,5 +1,4 @@
 import DJCDomain
-import RekordboxKit
 import SwiftUI
 
 enum LibraryMenuAction: CaseIterable {
@@ -60,11 +59,14 @@ enum LibraryMenuAction: CaseIterable {
         case .pending, .writeResult: return true
         case .restore: return store.hasWriteBackup
         case .pointSnapshots: return true
-        case .removeTracks: return !store.isITunesSelection && store.selectedRows.contains { !$0.isStaged && !$0.track.isStreaming }
+        case .removeTracks: return !store.deleteTargets(store.selectedRows).isEmpty
         }
     }
 
-    @MainActor func perform(in store: LibraryStore) {
+    /// - Parameters:
+    ///   - windows: 창을 여는 항목(Apple Music 가져오기·시점 스냅샷)이 쓸 앱 창. 메뉴 막대는 늘 준다.
+    ///   - reflection: rekordbox 쓰기 항목(쓰기·복원·빼기·시점 스냅샷)이 부를 화면 쪽. 없으면(조립 지점 없이 띄운 화면) 그 항목은 아무것도 하지 않는다.
+    @MainActor func perform(in store: LibraryStore, windows: AppWindows? = nil, reflection: ReflectionCoordinator? = nil) {
         if writesLibrary, store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return }
         guard isEnabled(in: store) else {
             if let reason = disabledReason(in: store) { store.stagingMessage = AppMessage(kind: .warning, text: reason) }
@@ -72,20 +74,19 @@ enum LibraryMenuAction: CaseIterable {
         }
         switch self {
         case .addFiles: StagingPanels.chooseFiles(store: store)
-        case .importAppleMusic: AppleMusicImportWindow.shared.open(store: store)
+        case .importAppleMusic: windows?.appleMusicImport.open(store: store)
         case .snapshot: Task { await store.synchronizeLibrary() }
         case .exportXML:
             if store.sidebar == .staged { StagingPanels.exportXML(store: store) }
             else { ReflectionPanels.export(store: store, rows: store.reflectionPreviewRows) }
         case .exportLibraryXML: LibraryXMLPanels.export(store: store)
         case .importRekordboxXML: LibraryXMLPanels.importXML(store: store)
-        case .reflect: DirectWritePanels.write(store: store, rows: store.reflectionPreviewRows)
+        case .reflect: reflection?.startWrite(rows: store.reflectionPreviewRows)
         case .pending: store.sidebar = .pending
         case .writeResult: store.showingWriteResult = true
-        case .restore: DirectWritePanels.restoreLatest(store: store)
-        case .pointSnapshots: PointSnapshotWindow.shared.open(store: store)
-        case .removeTracks:
-            DirectWritePanels.deleteTracks(store: store, rows: store.selectedRows.filter { !$0.isStaged && !$0.track.isStreaming })
+        case .restore: reflection?.startRestoreLatest()
+        case .pointSnapshots: if let reflection { windows?.pointSnapshots.open(store: store, reflection: reflection) }
+        case .removeTracks: reflection?.startDeleteTracks(rows: store.selectedRows)
         }
     }
 

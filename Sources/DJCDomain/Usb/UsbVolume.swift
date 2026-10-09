@@ -159,3 +159,11 @@ public enum UsbVolumePolicy {
         problems(volume, purpose: purpose).map { UsbBlock(code: $0.code, scope: .volume, message: $0.message) }
     }
 }
+
+extension UsbVolumeInfo {
+    /// 볼륨키: 볼륨 UUID(대문자, 쓰기·백업 폴더와 같은 키). UUID가 없으면 마운트 지점으로 만든다(사본 폴더 이름 한 성분이 되게 "/"를 뺀다)
+    public var usbKey: String {
+        if let uuid = volumeUUID?.uppercased(), !uuid.isEmpty { return uuid }
+        return "mount" + mountPoint.replacingOccurrences(of: "/", with: "_")
+    }
+}

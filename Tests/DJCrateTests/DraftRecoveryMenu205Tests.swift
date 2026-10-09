@@ -1,5 +1,6 @@
 @testable import DJCrate
 import AppKit
+import DJCApplication
 import DJCDomain
 import Foundation
 import Testing
@@ -14,10 +15,10 @@ struct DraftRecoveryMenu205Tests {
 
     private func list(_ rows: [TrackRow], selected: IndexSet, clicked: Int = -1) -> (LibraryStore, TrackListCoordinator, MenuTable) {
         _ = NSApplication.shared
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         store.rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.track.id, $0) })
         store.rowsByUUID = Dictionary(uniqueKeysWithValues: rows.map { ($0.track.uuid, $0) })
-        let coordinator = TrackListCoordinator(store: store), table = MenuTable()
+        let coordinator = TrackListCoordinator(store: store, actions: .live(store: store)), table = MenuTable()
         table.allowsMultipleSelection = true
         table.dataSource = coordinator; table.delegate = coordinator
         table.addTableColumn(NSTableColumn(identifier: .init("title")))
@@ -83,9 +84,8 @@ struct DraftRecoveryMenu205Tests {
         store.isRecoveringDraft = state == 1
         store.isWritingRekordbox = state == 2
         store.allowsLibrarySync = { state != 3 }
-        let recovery = DraftRecoveryMenu(store: store), menu = NSMenu()
         var opened: [(String, DraftRecoveryKind)] = []
-        recovery.recover = { _, row, kind in opened.append((row.track.uuid, kind)) }
+        let recovery = DraftRecoveryMenu(store: store) { row, kind in opened.append((row.track.uuid, kind)) }, menu = NSMenu()
         recovery.append(to: menu, rows: [row])
         let item = try #require(menu.items.first { $0.title == DraftRecoveryKind.tags.recoveryButtonTitle })
         let target = try #require(item.representedObject as? DraftRecoveryMenu.Target)

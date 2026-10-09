@@ -1,14 +1,12 @@
 import AppKit
-import AVFoundation
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Observation
 import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
 final class AppleMusicImportWindow: NSObject, NSWindowDelegate {
-    static let shared = AppleMusicImportWindow()
     private var window: NSWindow?
     private var model: AppleMusicImportModel?
 
@@ -72,12 +70,7 @@ final class AppleMusicImportModel {
         playlistID = ""
         defer { isBusy = false }
         do {
-            var library = try await Task.detached(priority: .userInitiated) {
-                try AppleMusicLibrary.parse(Data(contentsOf: url))
-            }.value
-            // 보관함 ID가 없는 재생 목록 XML도 같은 파일을 다시 열면 같은 출처로 잇는다.
-            if library.id == nil { library.id = "xml:\(url.standardizedFileURL.path)" }
-            self.library = library
+            self.library = try await store.useCases.appleMusic.open(url)
         } catch {
             message = String(ui: "XML을 열지 못했습니다. Music에서 보관함을 XML로 다시 내보내고 파일 접근 권한을 확인하세요.")
         }
@@ -100,16 +93,8 @@ final class AppleMusicImportModel {
         var rejected = 0
         for track in candidates {
             guard let url = track.fileURL else { continue }
-            var reason: AppleMusicLibrary.Exclusion?
             // XML을 내보낸 뒤 파일이 바뀌었거나 보호 표시가 빠진 경우도 실제 파일에서 막는다.
-            if !AppleMusicLibrary.isReadableFile(url) {
-                reason = .unavailableFile
-            } else {
-                do {
-                    if try await AVURLAsset(url: url).load(.hasProtectedContent) { reason = .protectedContent }
-                } catch { reason = .unavailableFile }
-            }
-            if let reason {
+            if let reason = await store.useCases.appleMusic.exclusion(for: url) {
                 if let index = self.library?.tracks.firstIndex(where: { $0.id == track.id }) {
                     self.library?.tracks[index].exclusion = reason
                 }

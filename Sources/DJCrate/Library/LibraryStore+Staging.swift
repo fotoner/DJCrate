@@ -1,18 +1,6 @@
-import RekordboxKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
-
-/// 백그라운드 그리드 추정 한 건.
-struct GridJobItem: Sendable, Hashable {
-    var uuid: String
-    var path: String
-    /// 추가한 곡이면 추정 BPM을 목록에도 적어 두고, 키도 찾는다.
-    var staged: Bool
-    /// 그리드도 추정할지(추가한 곡의 키만 남았으면 false)
-    var grid = true
-}
 
 struct GridJob: Sendable {
     var done: Int
@@ -20,12 +8,19 @@ struct GridJob: Sendable {
 }
 
 /// 곡 추가(아직 rekordbox에 없는 곡) · 그리드 일괄 추정 · rekordbox XML 내보내기.
+/// 넣기·넣기 결과 저장·재생 목록 연결·다시 읽을 때 가져온 뒤 확인·추정 규칙과 저장 순서는 유스케이스 `StageTracks`이고, 추가 목록 파일은
+/// `StagingStore` 한 길로 쓴다. 여기서는 지금 목록(`staged`)을 들고 돌려받은 목록·결과를 목록·선택·진행 표시·안내에 맞춘다.
 extension LibraryStore {
     // MARK: - 추가한 곡
 
     func loadStaged() {
-        staged = StagingStore.load(url: stagedListURL)
-        verifyImports()
+        // 새 스냅샷에 추가한 곡과 같은 경로의 곡이 있으면(= rekordbox로 가져옴) 유스케이스가 그리드를 비교해 적어 저장한다.
+        let reload = useCases.stage.reloadList(rows: rows, shareRoot: shareRoot, takingMovedFiles: location.movesDamagedDrafts)
+        staged = reload.list
+        if reload.saveError != nil { reportStagedSaveFailure(reload.saveError) } else { reportDraftFilesMovedBySave(reload.moved) }
+        if let summary = reload.summary, stagingMessage?.kind != .failure {
+            stagingMessage = AppMessage(kind: summary.allMatched ? .success : .warning, text: summary.text)
+        }
         resolvePlaylistImports()
         rebuildStagedRows()
         // 지난번에 추정을 마치지 못한 곡(그리드·키)을 이어서 한다.
@@ -45,11 +40,23 @@ extension LibraryStore {
         if case .staged = sidebar { refreshBase() }
     }
 
+    /// 추가 목록 전체를 바꿔 저장한다(편집본 넣기가 `StagingStore`로 부른다: 화면이 든 목록과 디스크를 한 번에 맞춘다).
+    /// 저장하지 못하면 목록은 그대로 두고 던진다. 저장이 손상된 옛 파일을 옮겼으면 넣은 뒤 `showStagedEdit`이 알린다.
+    func saveStaged(_ tracks: [StagedTrack]) throws {
+        _ = try useCases.stage.saveList(tracks, takingMovedFiles: false)
+        staged = tracks
+        rebuildStagedRows()
+    }
+
     private func persistStaged() {
         do {
-            try stagingSaver(staged)
-            reportDraftFilesMovedBySave()
-        } catch { stagingMessage = AppMessage(kind: .failure, text: String(ui: "추가한 곡 목록을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)")) }
+            reportDraftFilesMovedBySave(try useCases.stage.saveList(staged, takingMovedFiles: location.movesDamagedDrafts))
+        } catch { reportStagedSaveFailure(error) }
+    }
+
+    private func reportStagedSaveFailure(_ error: (any Error)?) {
+        guard let error else { return }
+        stagingMessage = AppMessage(kind: .failure, text: String(ui: "추가한 곡 목록을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"))
     }
 
     /// 파일·폴더를 추가한다. 이미 rekordbox 컬렉션에 있는 파일은 건너뛴다
@@ -58,84 +65,50 @@ extension LibraryStore {
                   createPlaylists: Bool = false, toPlaylist playlistID: String? = nil) async {
         guard writeLockPolicy.allowsLibraryInteraction,
               playlistID.map({ canEditTracks(of: $0) }) ?? true else { return }
-        let files = StagedTrack.audioFiles(in: urls)
+        let stage = useCases.stage
+        let files = stage.audioFiles(in: urls)
         guard !files.isEmpty else {
             stagingMessage = AppMessage(kind: .warning, text: String(ui: "추가할 음원이 없습니다. MP3·M4A·WAV·AIFF·FLAC 파일을 고르세요."))
             return
         }
-        func key(_ path: String) -> String { path.precomposedStringWithCanonicalMapping }
-        let inLibrary = Dictionary(rows.map { (key($0.track.folderPath), $0) }, uniquingKeysWith: { first, _ in first })
-        let stagedByPath = Dictionary(staged.map { (key($0.path), $0.id) }, uniquingKeysWith: { first, _ in first })
-        var known = Set(stagedByPath.keys)
-        let today = String(ISO8601DateFormatter().string(from: .now).prefix(10))
-        var added: [StagedTrack] = [], libraryRows: [TrackRow] = [], stagedIDs: [String] = [], failed = 0
-        var originsChanged = false
-        for url in files {
-            let path = key(url.path)
-            // 이미 rekordbox에 있는 곡은 추가하지 않고 그 곡을 바로 연다(XML로 다시 가져오면 기존 큐를 덮을 수 있다).
-            if let row = inLibrary[path] { libraryRows.append(row); continue }
-            if let id = stagedByPath[path] {
-                stagedIDs.append(id)
-                if let origins = appleMusicOrigins[path], let index = staged.firstIndex(where: { $0.id == id }) {
-                    staged[index].rememberAppleMusicOrigins(origins)
-                    originsChanged = true
-                }
-                continue
-            }
-            if known.contains(path) { continue }
-            do {
-                var track = try await StagedTrack.make(fileAt: url, addedOn: today)
-                track.rememberAppleMusicOrigins(appleMusicOrigins[path] ?? [])
-                added.append(track)
-                known.insert(path)
-            } catch {
-                failed += 1
-            }
-        }
+        let addition = await stage.add(files, current: staged, library: rows, origins: appleMusicOrigins)
         // 태그를 읽는 동안 반영이 시작되면 추가 목록도 바꾸지 않는다.
         guard writeLockPolicy.allowsLibraryInteraction else { return }
         stagingMessage = nil
-        staged += added
-        if !added.isEmpty || originsChanged {
-            persistStaged()
+        // 읽는 동안 다른 곳(그리드 추정·편집본 넣기)이 고친 줄은 그대로 두고 결과만 얹어 저장하고, 재생 목록에 이으면 연결 기록을 더해 저장한다(유스케이스).
+        let linksPlaylists = createPlaylists || playlistID != nil
+        let commit = useCases.stage.commit(addition, onto: staged,
+                                           link: linksPlaylists ? StageTracks.PlaylistLink(createPlaylists: createPlaylists, playlistID: playlistID,
+                                                                                          origins: appleMusicOrigins) : nil,
+                                           imports: playlistImports, importsLoadFailed: playlistImportsLoadFailed,
+                                           takingMovedFiles: location.movesDamagedDrafts)
+        if let list = commit.list {
+            staged = list
+            if commit.listSaveError != nil { reportStagedSaveFailure(commit.listSaveError) } else { reportDraftFilesMovedBySave(commit.moved) }
             rebuildStagedRows()
         }
-        if createPlaylists || playlistID != nil {
-            let paths = added.map(\.path) + staged.filter { stagedIDs.contains($0.id) }.map(\.path) + libraryRows.map(\.track.folderPath)
-            var imports = playlistImports
-            if createPlaylists {
-                let accepted = Set(paths.map(key))
-                imports.addAppleMusic(appleMusicOrigins.filter { accepted.contains($0.key) })
-            }
-            if let playlistID { imports.addFiles(paths, to: PlaylistRef(playlistID)) }
-            if savePlaylistImports(imports) {
+        if let link = commit.link {
+            if applyImportsChange(link) {
                 resolvePlaylistImports()
             } else {
                 stagingMessage = AppMessage(kind: .failure, text: playlistMessage?.text ?? String(ui: "재생 목록 연결을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하고 다시 시도하세요."))
             }
         }
-        var parts: [String] = []
-        if !added.isEmpty { parts.append(String(ui: "\(added.count)곡 추가")) }
-        if !libraryRows.isEmpty { parts.append(String(ui: "rekordbox에 이미 있는 \(libraryRows.count)곡을 골랐습니다")) }
-        if !stagedIDs.isEmpty { parts.append(String(ui: "이미 추가한 \(stagedIDs.count)곡을 골랐습니다")) }
-        if failed > 0 { parts.append(String(ui: "\(failed)곡은 읽지 못함")) }
-        if createPlaylists || playlistID != nil {
-            parts.append(String(ui: "컬렉션에 들어간 곡은 재생 목록 초안에 연결합니다. 목록은 ‘rekordbox에 쓰기’로 만듭니다."))
-        }
+        let summary = addition.summary(linksPlaylists: linksPlaylists)
         if stagingMessage?.kind != .failure {
-            stagingMessage = AppMessage(kind: failed > 0 ? .warning : .success, text: parts.joined(separator: " · "))
+            stagingMessage = AppMessage(kind: summary.warning ? .warning : .success, text: summary.text)
         }
         // 넣은 곡은 목록에서 골라 보여 주기만 한다. 덱은 그대로 둔다(덱에 올리기는 더블클릭·⌘→, #93).
-        if !added.isEmpty || (!stagedIDs.isEmpty && libraryRows.isEmpty) {
+        if !addition.added.isEmpty || (!addition.stagedIDs.isEmpty && addition.libraryRows.isEmpty) {
             // 새 곡(또는 이미 추가한 곡)은 "추가한 곡"에서 고른다.
             sidebar = .staged
-            selection = Set(added.map(\.id) + stagedIDs)
-        } else if let first = libraryRows.first {
+            selection = Set(addition.added.map(\.id) + addition.stagedIDs)
+        } else if let first = addition.libraryRows.first {
             // rekordbox 곡: 지금 목록에 없으면 "전체"로 바꿔 고른다.
             if !displayRows.contains(where: { $0.id == first.id }) { sidebar = .filter(.all); search = "" }
-            selection = Set(libraryRows.map(\.id))
+            selection = Set(addition.libraryRows.map(\.id))
         }
-        enqueueGrid(added.map { GridJobItem(uuid: $0.uuid, path: $0.path, staged: true) })
+        enqueueGrid(addition.added.map { GridJobItem(uuid: $0.uuid, path: $0.path, staged: true) })
     }
 
     func removeStaged(_ ids: Set<TrackRow.ID>) {
@@ -182,41 +155,6 @@ extension LibraryStore {
 
     // MARK: - 가져오기 뒤 확인
 
-    /// 새 스냅샷에 추가한 곡과 같은 경로의 곡이 있으면(= rekordbox로 가져옴) 그리드를 비교해 적어 둔다.
-    /// 둘 다 rekordbox 시간축이라 그대로 비교한다. 어긋나면 인코더 지연 규칙이 그 파일에서 틀린 것이다.
-    func verifyImports() {
-        func key(_ path: String) -> String { path.precomposedStringWithCanonicalMapping }
-        let byPath = Dictionary(rows.map { (key($0.track.folderPath), $0) }, uniquingKeysWith: { first, _ in first })
-        let today = String(ISO8601DateFormatter().string(from: .now).prefix(10))
-        var changed = false
-        for index in staged.indices {
-            guard let row = byPath[key(staged[index].path)] else { continue }
-            let check = Self.compareImported(staged[index], with: row.track, today: today)
-            if staged[index].importCheck != check {
-                staged[index].importCheck = check
-                changed = true
-            }
-        }
-        if changed { persistStaged() }
-        let checked = staged.compactMap(\.importCheck)
-        guard !checked.isEmpty else { return }
-        let counts = Dictionary(grouping: checked, by: \.result).mapValues(\.count)
-        var parts = [String(ui: "rekordbox 가져오기 확인 \(checked.count)곡")]
-        if let n = counts[.matched] { parts.append(String(ui: "그리드 일치 \(n)")) }
-        if let n = counts[.shifted] { parts.append(String(ui: "박 어긋남 \(n)")) }
-        if let n = counts[.reanalyzed] { parts.append(String(ui: "rekordbox가 재분석 \(n)")) }
-        if let n = counts[.pending] { parts.append(String(ui: "분석 대기 \(n)")) }
-        if let n = counts[.noGrid] { parts.append(String(ui: "그리드 없이 보냄 \(n)")) }
-        guard stagingMessage?.kind != .failure else { return }
-        stagingMessage = AppMessage(kind: checked.allSatisfy { $0.result == .matched } ? .success : .warning, text: parts.joined(separator: " · "))
-    }
-
-    nonisolated static func compareImported(_ staged: StagedTrack, with track: Track, today: String) -> StagedTrack.ImportCheck {
-        let imported = RekordboxShare.analysisURL(track.analysisDataPath).flatMap { try? BeatGrid.load(anlz: $0) }
-        return .compare(sent: GridDraftStore.load(trackUUID: staged.uuid)?.segments ?? [], imported: imported,
-                        duration: Double(track.lengthSeconds), checkedOn: today)
-    }
-
     /// rekordbox로 가져온 게 확인된 곡을 추가 목록에서 뺀다(초안은 그대로 둔다).
     func removeImportedStaged() {
         let ids = Set(staged.filter { $0.importCheck != nil && $0.importCheck?.result != .pending }.map(\.id))
@@ -257,33 +195,19 @@ extension LibraryStore {
         gridTask = nil
     }
 
-    /// 지금의 그리드 초안. 저장에 실패해 DraftWriter에만 남은 입력이 디스크보다 최신이다.
-    private func currentGridDraft(_ uuid: String) -> GridDraft? {
-        if let pending = DraftWriter.pendingGrid(trackUUID: uuid) { return pending.hasChanges ? pending : nil }
-        return GridDraftStore.load(trackUUID: uuid)
-    }
-
     private func estimateGrid(_ item: GridJobItem) async {
-        let url = URL(filePath: item.path)
-        if let existing = currentGridDraft(item.uuid) {
+        switch await useCases.stage.estimateGrid(item) {
+        case let .existing(bpm):
             // 덱에서 이미 적용했거나 편집한 곡: 목록 BPM만 맞춘다.
-            if item.staged { updateStaged(item.uuid, bpm: existing.segments.first?.bpm, confident: nil) }
-            return
+            if item.staged { updateStaged(item.uuid, bpm: bpm, confident: nil) }
+        case .skipped:
+            break
+        case let .saved(bpm, confident, failure):
+            if let failure { reportLibraryError(failure.message) }
+            draftChanged(trackUUID: item.uuid, kind: .grid, exists: true)
+            if item.staged { updateStaged(item.uuid, bpm: bpm, confident: confident) }
+            onGridDraftSaved?(item.uuid)
         }
-        guard FileManager.default.fileExists(atPath: item.path),
-              let estimate = try? await gridEstimator(url, item.uuid) else { return }
-        // 추정하는 동안 덱에서 초안을 만들었으면 덮지 않는다.
-        guard currentGridDraft(item.uuid) == nil else { return }
-        let offset = RekordboxTimeline.predictedOffset(url: url)
-        let draft = GridDraft(trackUUID: item.uuid, base: [], segments: estimate.segments).shifted(by: offset)
-        // 바로 뒤 키 찾기·덱이 디스크의 초안을 읽으니 저장을 끝낸다. 실패해도 입력은 DraftWriter에 남는다.
-        DraftWriter.save(draft)
-        if let failure = DraftWriter.flush().first(where: { $0.kind == .grid && $0.trackUUID == item.uuid }) {
-            reportLibraryError(failure.message)
-        }
-        draftChanged(trackUUID: item.uuid, kind: .grid, exists: true)
-        if item.staged { updateStaged(item.uuid, bpm: estimate.bpm, confident: estimate.isConfident) }
-        onGridDraftSaved?(item.uuid)
     }
 
     private func updateStaged(_ uuid: String, bpm: Double?, confident: Bool?) {
@@ -298,33 +222,9 @@ extension LibraryStore {
 
     /// 태그에 키가 없던 곡은 조성을 추정해 staged.json에 적어 둔다(다음 실행 때 다시 계산하지 않는다).
     private func findKey(_ item: GridJobItem) async {
-        guard let track = staged.first(where: { $0.uuid == item.uuid }), track.needsKey,
-              FileManager.default.fileExists(atPath: item.path) else { return }
-        let url = URL(filePath: item.path)
-        let grid = GridDraftStore.load(trackUUID: item.uuid)?.grid(duration: track.duration)
-        guard let found = await Self.stagedKey(fileAt: url, grid: grid, offset: RekordboxTimeline.predictedOffset(url: url),
-                                               duration: track.duration, cacheKey: item.uuid) else { return }
+        guard let track = staged.first(where: { $0.uuid == item.uuid }),
+              let found = await useCases.stage.findKey(track) else { return }
         setStagedKey(uuid: item.uuid, key: found.key, source: found.source)
-    }
-
-    /// 태그의 키, 없으면 곡 전체의 주 조성 추정(덱과 같은 크로마·마디 창). 파일을 읽지 못하면 nil(다음에 다시 본다).
-    /// `grid`는 rekordbox 시간축이라 `offset`만큼 당겨 크로마(음원 시간축)에 맞춘다. 크로마는 덱과 같은 캐시를 쓴다.
-    nonisolated static func stagedKey(fileAt url: URL, grid: BeatGrid?, offset: Double, duration: Double,
-                                      cacheKey: String?) async -> (key: String?, source: StagedTrack.KeySource)? {
-        if let tag = await StagedTrack.tagKey(fileAt: url) { return (tag, .tag) }
-        return await Task.detached(priority: .utility) { () -> (key: String?, source: StagedTrack.KeySource)? in
-            let chroma: KeyAnalyzer.Chroma
-            if let cacheKey, let cached = AnalysisCache.chroma(key: cacheKey, file: url) {
-                chroma = cached
-            } else {
-                guard let computed = try? KeyAnalyzer.chroma(fileAt: url) else { return nil }
-                if let cacheKey { AnalysisCache.store(computed, key: cacheKey, file: url) }
-                chroma = computed
-            }
-            let windows = KeyAnalyzer.windows(grid: grid, duration: duration).map { ($0.0 - offset, $0.1 - offset) }
-            // 소리가 없어 조성을 못 찾아도 추정한 것으로 적어 두어 되풀이하지 않는다.
-            return (KeyAnalyzer.mainKey(chroma: chroma, windows: windows)?.camelot, .estimate)
-        }.value
     }
 
     func setStagedKey(uuid: String, key: String?, source: StagedTrack.KeySource) {
@@ -348,74 +248,38 @@ extension LibraryStore {
     /// 개발용: `--add-files <경로,…>`로 곡을 추가하고, 그리드 추정이 끝나면 `--export-staged <파일>`로 내보낸다.
     /// `DJC_HOME`과 함께 써서 사용자 초안과 섞이지 않게 한다.
     func runLaunchStagingTest() {
-        let args = ProcessInfo.processInfo.arguments
-        guard let i = args.firstIndex(of: "--add-files"), args.indices.contains(i + 1) else { return }
-        let urls = args[i + 1].split(separator: ",").map { URL(filePath: String($0)) }
-        let export = args.firstIndex(of: "--export-staged").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
+        guard !launch.addFiles.isEmpty else { return }
+        let urls = launch.addFiles, export = launch.exportStaged
+        let useCases = useCases
+        let log: @Sendable (String) -> Void = { useCases.log($0) }
         Task {
             await addFiles(urls)
-            log("추가: \(stagingMessage?.text ?? "")")
+            log("[staging] 추가: \(stagingMessage?.text ?? "")")
             while gridJob != nil { try? await Task.sleep(for: .milliseconds(300)) }
             for track in staged {
-                let draft = GridDraftStore.load(trackUUID: track.uuid)
-                log("추가한 곡 \(track.title) · BPM \(track.bpm.map { String(format: "%.2f", $0) } ?? "-") · 자신 \(track.gridConfident.map(String.init) ?? "-") · 키 \(track.key ?? "-")\(track.keySource.map { "(\($0.rawValue))" } ?? "") · 구간 \(draft?.segments.count ?? 0) · 첫 구간 \(draft?.segments.first.map { String(format: "%.3f초 %d박", $0.start, $0.firstBeatNumber) } ?? "-")")
+                let draft = useCases.stage.gridDraft(track.uuid)
+                log("[staging] 추가한 곡 \(track.title) · BPM \(track.bpm.map { String(format: "%.2f", $0) } ?? "-") · 자신 \(track.gridConfident.map(String.init) ?? "-") · 키 \(track.key ?? "-")\(track.keySource.map { "(\($0.rawValue))" } ?? "") · 구간 \(draft?.segments.count ?? 0) · 첫 구간 \(draft?.segments.first.map { String(format: "%.3f초 %d박", $0.start, $0.firstBeatNumber) } ?? "-")")
             }
             if let export {
                 do {
-                    let result = try exportStaged(to: URL(filePath: export))
-                    log("내보내기: \(result.count)곡 · 그리드 없음 \(result.withoutGrid) → \(export)")
+                    let result = try exportStaged(to: export)
+                    log("[staging] 내보내기: \(result.count)곡 · 그리드 없음 \(result.withoutGrid) → \(export.path)")
                 } catch {
-                    log("내보내기 실패: \(error)")
+                    log("[staging] 내보내기 실패: \(error)")
                 }
             }
         }
-        func log(_ text: String) { FileHandle.standardError.write(Data("[staging] \(text)\n".utf8)) }
     }
 
     // MARK: - rekordbox XML
 
-    /// 키 초안이 있는 추가한 곡을 XML 내보내기에서 뺄 때 알리는 이유. rekordbox XML의 키(`Tonality`)를 가져오는 규칙은 확인하지 않아 키 초안을
-    /// 담지 않는다. 고른 키가 조용히 사라지지 않게 그 곡만 빼고 이유를 알린다. ‘rekordbox에 넣기’는 키를 함께 쓴다(#5).
-    static func stagedKeyDraftBlock(title: String) -> String {
-        String(ui: "\(title): XML로 키를 넘기는 방법은 확인하지 않았으니 ‘rekordbox에 넣기’로 키까지 넣거나 태그 초안(키)을 버린 뒤 내보내세요")
-    }
+    /// 키 초안이 있는 추가한 곡을 XML 내보내기에서 뺄 때 알리는 이유(유스케이스 `ExportXML`)
+    static func stagedKeyDraftBlock(title: String) -> String { ExportXML.stagedKeyDraftBlock(title: title) }
 
-    /// 추가한 곡을 rekordbox XML로 쓴다. 태그 초안(시트·인스펙터에서 고친 값)과 그리드·큐 초안을 넣는다.
-    /// 키 초안이 있는 곡은 XML에 담지 않고 이유(`skipped`)를 돌려준다. 담을 곡이 하나도 없고 뺀 곡이 있으면 파일을 쓰지 않는다.
+    /// 추가한 곡을 rekordbox XML로 쓴다(유스케이스 `ExportXML.exportStaged`). 태그 초안과 그리드·큐 초안을 넣고, 키 초안이 있는 곡은 빼고 이유를 돌려준다.
     /// 반환: 내보낸 곡 수, 그리드가 없는 곡 수, 뺀 곡의 이유.
     func exportStaged(to url: URL, only ids: Set<TrackRow.ID>? = nil) throws -> (count: Int, withoutGrid: Int, skipped: [String]) {
-        let candidates = staged.filter { ids?.contains($0.id) ?? true }
-        // 저장에 실패한 큐·그리드 초안이 있으면 디스크의 옛 초안을 XML로 내보내지 않는다(#170).
-        try requireDraftSaves(for: Set(candidates.map(\.uuid)))
-        var skipped: [String] = []
-        let tracks = candidates.filter { track in
-            guard confirmedStagedKey(uuid: track.uuid) != nil else { return true }
-            skipped.append(Self.stagedKeyDraftBlock(title: track.title))
-            return false
-        }
-        if tracks.isEmpty, !skipped.isEmpty { return (0, 0, skipped) }
-        var withoutGrid = 0
-        let entries = tracks.map { original -> RekordboxXML.Entry in
-            var track = original
-            if let fields = tagDrafts[original.uuid]?.fields {
-                track.title = fields.title.isEmpty ? original.title : fields.title
-                track.artist = fields.artist
-                track.album = fields.album
-                track.genre = fields.genre
-                track.composer = fields.composer
-                track.year = Int(fields.year)
-                track.trackNumber = Int(fields.trackNumber)
-                track.comment = fields.comment
-            }
-            let tempos = GridDraftStore.load(trackUUID: original.uuid)?.segments ?? []
-            if tempos.isEmpty { withoutGrid += 1 }
-            let cues = CueDraftStore.load(trackUUID: original.uuid)?.cues ?? []
-            return RekordboxXML.Entry(track: track, tempos: tempos, cues: cues)
-        }
-        let today = String(ISO8601DateFormatter().string(from: .now).prefix(10))
-        _ = today
-        let xml = RekordboxXML.document(entries: entries, playlistName: "DJCrate 추가")
-        try xml.write(to: url, atomically: true, encoding: .utf8)
-        return (entries.count, withoutGrid, skipped)
+        let exported = try useCases.exportXML.exportStaged(staged.filter { ids?.contains($0.id) ?? true }, tagDrafts: tagDrafts, to: url)
+        return (exported.count, exported.withoutGrid, exported.skipped)
     }
 }

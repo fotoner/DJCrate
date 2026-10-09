@@ -1,5 +1,4 @@
 import DJCDomain
-import DJCStorage
 import Foundation
 
 /// 후보 맞추기 결과를 사람이 읽는 문구로(#62). 판정은 `DJCDomain`의 `RelocateMatcher`가 하고, 여기는 글자만 만든다.
@@ -49,7 +48,7 @@ enum RelocateText {
         }
     }
 
-    static func progress(_ progress: RelocateScanner.Progress) -> String {
+    static func progress(_ progress: RelocateProgress) -> String {
         switch progress.phase {
         case .listing: String(ui: "폴더의 음원 파일을 찾는 중… \(progress.audioFiles)개")
         case .reading: String(ui: "이름이나 크기가 맞는 파일의 길이와 태그를 읽는 중… \(progress.filesRead)/\(progress.filesToRead)")

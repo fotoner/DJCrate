@@ -1,6 +1,6 @@
 import DJCDomain
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -49,24 +49,50 @@ struct WriteTargetGuardTests {
     enum WriteKind: CaseIterable { case cues, grid, analysis, gain, tags, playlist, add, delete }
     enum ShareKind: CaseIterable { case direct, symbolic, descendant, symbolicDescendant, missingDescendant }
 
-    @Test(arguments: WriteKind.allCases, ShareKind.allCases)
-    func 사본_DB와_라이브_share를_섞으면_모든_쓰기에서_거부한다(kind: WriteKind, shareKind: ShareKind) async throws {
-        let live = try RekordboxFixture(), copy = try RekordboxFixture()
-        let track = try copy.add(TrackSpec())
-        let child = live.shareRoot.appending(path: "PIONEER/USBANLZ")
+    /// 라이브 share(`PIONEER/USBANLZ/marker`)와 사본 폴더 안의 링크(`share-alias` → 라이브 share)를 두고 `shareKind` 표기의 share를 돌려준다.
+    func mixedShare(live: URL, copy: URL, _ shareKind: ShareKind) throws -> (share: URL, marker: URL) {
+        let liveShare = live.appending(path: "share")
+        let child = liveShare.appending(path: "PIONEER/USBANLZ")
         try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
         let marker = child.appending(path: "marker")
         try Data([1, 2, 3]).write(to: marker)
-        let alias = copy.root.appending(path: "share-alias")
-        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: live.shareRoot)
-        let share: URL
-        switch shareKind {
-        case .direct: share = live.shareRoot
-        case .symbolic: share = alias
-        case .descendant: share = child
-        case .symbolicDescendant: share = alias.appending(path: "PIONEER/USBANLZ")
-        case .missingDescendant: share = alias.appending(path: "not-created/child")
+        let alias = copy.appending(path: "share-alias")
+        try FileManager.default.createDirectory(at: copy, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: liveShare)
+        let share: URL = switch shareKind {
+        case .direct: liveShare
+        case .symbolic: alias
+        case .descendant: child
+        case .symbolicDescendant: alias.appending(path: "PIONEER/USBANLZ")
+        case .missingDescendant: alias.appending(path: "not-created/child")
         }
+        return (share, marker)
+    }
+
+    /// share 표기 판정은 DB 없이 관문에서 본다. 쓰기 입구가 모두 이 판정(`checkTargets`·`resolveShareRoot`)을 지나는 것은 아래 입구별 시험이 본다.
+    @Test(arguments: ShareKind.allCases)
+    func 사본_DB와_라이브_share의_어느_표기도_관문이_거부한다(shareKind: ShareKind) throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "djc-share-guard-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let live = folder.appending(path: "live"), copy = folder.appending(path: "copy")
+        let (share, marker) = try mixedShare(live: live, copy: copy, shareKind)
+        let writeGuard = RekordboxWriteGuard(isRekordboxRunning: { false }, appVersion: { "7.2.18" }, liveDirectories: [live])
+        let database = copy.appending(path: "master.db")
+        for dryRun in [false, true] {
+            let reason = WriteGuardTests().refusal { _ = try writeGuard.checkTargets(database, shareRoot: share, dryRun: dryRun) }
+            #expect(reason?.contains("share") == true, "\(dryRun)")
+        }
+        #expect(WriteGuardTests().refusal { _ = try writeGuard.resolveShareRoot(database, shareRoot: share) }?.contains("share") == true)
+        #expect(try Data(contentsOf: marker) == Data([1, 2, 3]))
+    }
+
+    /// 쓰기 입구마다 대표 하나: 입구가 관문을 지나 백업·쓰기 전에 거부하는지. share 표기는 입구마다 돌려 다섯 표기가 모두 한 번 이상 쓰인다.
+    @Test(arguments: WriteKind.allCases)
+    func 사본_DB와_라이브_share를_섞으면_모든_쓰기에서_거부한다(kind: WriteKind) async throws {
+        let shareKind = ShareKind.allCases[WriteKind.allCases.firstIndex(of: kind)! % ShareKind.allCases.count]
+        let live = try RekordboxFixture(), copy = try RekordboxFixture()
+        let track = try copy.add(TrackSpec())
+        let (share, marker) = try mixedShare(live: live.root, copy: copy.root, shareKind)
         let writeGuard = guardFor(live)
         var plan: TrackAddPlan?
         if kind == .add {

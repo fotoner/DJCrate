@@ -7,27 +7,12 @@ import Foundation
 /// 사비 후보를 고르고, 순서로 1사비·2사비·라사비·간주를 붙인다.
 /// 정확도 게이트(1사비·라사비 ±1마디 ≥ 70%)를 통과하기 전까지는 큐 시트 제안용이다.
 public enum PartLabeler {
-    public enum Label: String, Codable, Sendable, CaseIterable {
-        case firstChorus = "1사비"
-        case secondChorus = "2사비"
-        case lastChorus = "라사비"
-        case interlude = "간주"
-    }
+    /// 라벨·자리 값은 DJCDomain에 있다(#167, CLI가 값만 보인다)
+    public typealias Label = PartLabel
+    public typealias Marker = PartMarker
 
-    public struct Marker: Codable, Sendable, Hashable {
-        public var label: Label
-        public var time: Double
-        public var bar: Int?
-        public var confidence: Double
-    }
-
-    public struct SectionEnergy: Sendable {
-        public var span: PartAnalysis.Span
-        public var loudness: Double
-        public var vocal: Double
-        public var drum: Double
-        public var score: Double
-    }
+    /// 섹션 에너지 값은 DJCDomain에 있다(#167, 덱 화면이 그린다)
+    public typealias SectionEnergy = DJCDomain.SectionEnergy
 
     public static func energies(_ analysis: PartAnalysis) -> [SectionEnergy] {
         let raw = analysis.sections.map { span in

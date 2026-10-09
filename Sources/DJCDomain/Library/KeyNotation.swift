@@ -26,6 +26,14 @@ public enum KeyNotation {
         return "\(number)\(minor ? "A" : "B")"
     }
 
+    /// Camelot("10B" 등) → (조표, 단조인가). `camelot(signature:minor:)`의 반대
+    public static func signature(camelot: String) -> (signature: Int, minor: Bool)? {
+        let text = camelot.trimmingCharacters(in: .whitespaces).uppercased()
+        guard let letter = text.last, letter == "A" || letter == "B", let number = Int(text.dropLast()), (1...12).contains(number) else { return nil }
+        guard let signature = (0..<12).first(where: { self.camelot(signature: $0, minor: false) == "\(number)B" }) else { return nil }
+        return (signature, letter == "A")
+    }
+
     /// 음원 태그의 키(ID3 TKEY 등) → Camelot. 음이름("Am"·"F# major"·"B♭")·Camelot("8A")·Open Key("1m")를 읽는다.
     /// "8A - Am"처럼 두 표기를 함께 적었으면 앞쪽 조각부터 본다. 읽지 못하면 nil.
     public static func camelot(from text: String) -> String? {

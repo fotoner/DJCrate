@@ -1,9 +1,8 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
-import RekordboxKit
 
-/// 인자와 출력만 맡고, 조회·JSON 계약은 DJCStorage에서 검증한다.
+/// 인자와 출력만 맡는다. 조회는 유스케이스 `QueryLibrary`(사본 정하기·라이브 DB 거부), JSON 계약 값은 `LibraryRecords`다.
 enum ReadCommands {
     static let names: Set<String> = ["search", "track", "playlists", "playlist", "histories", "history", "drafts", "duplicates"]
     static let jsonNames = names.union(["report", "path", "parse", "compat", "usb-info"])
@@ -27,26 +26,24 @@ enum ReadCommands {
         if args.first == "usb-info" { try await UsbCommands.info(args); return }
         let options = try Options(args)
         let name = args[0]
+        let queries = CLIComposition.live.library().queries
         if name == "parse" {
-            try output(LibraryRead.parse(comment: options.operands[0]), name: name, json: true) { _ in "" }
+            try output(queries.parse(comment: options.operands[0]), name: name, json: true) { _ in "" }
             return
         }
         let explicit = options.values["--db"].map { URL(filePath: $0) }
-        let snapshot = try LibraryRead.resolve(database: explicit)
         if name == "compat" {
-            try output(LibraryRead.compatibility(snapshot: snapshot, version: RekordboxCompatibility.installedAppVersion()),
-                       name: name, json: true) { _ in "" }
+            try output(queries.compatibility(database: explicit), name: name, json: true) { _ in "" }
             return
         }
-        let read = try LibraryRead(snapshot: snapshot, shareRoot: explicit == nil ? RekordboxShare.directory : nil, commentPreset: options.commentPreset)
+        let read = try queries.open(database: explicit, commentPreset: options.commentPreset)
         let json = options.flags.contains("--json")
         switch name {
         case "search":
-            let result = try read.search(query: options.operands[0], bpm: options.bpm, key: options.values["--key"],
-                                         playlistID: options.values["--playlist"], filter: options.filter)
+            let result = try read.search(options.operands[0], options.bpm, options.values["--key"], options.values["--playlist"], options.filter)
             try output(result, name: name, json: json) { tracksText($0.tracks) }
         case "track":
-            try output(read.track(id: options.operands[0]), name: name, json: json, text: trackText)
+            try output(read.track(options.operands[0]), name: name, json: json, text: trackText)
         case "duplicates":
             try output(read.duplicates(), name: name, json: json) { result in
                 result.groups.isEmpty ? String(ui: "중복 후보가 없습니다") : result.groups.map { group in
@@ -59,11 +56,11 @@ enum ReadCommands {
                 }.joined(separator: "\n\n")
             }
         case "playlists":
-            try output(read.playlists(tree: options.flags.contains("--tree")), name: name, json: json) {
+            try output(read.playlists(options.flags.contains("--tree")), name: name, json: json) {
                 playlistsText($0.playlists)
             }
         case "playlist":
-            try output(read.playlist(id: options.operands[0]), name: name, json: json) {
+            try output(read.playlist(options.operands[0]), name: name, json: json) {
                 "\($0.playlist.name) · \($0.playlist.id)\n" + tracksText($0.tracks)
             }
         case "histories":
@@ -73,7 +70,7 @@ enum ReadCommands {
                 }.joined(separator: "\n")
             }
         case "history":
-            try output(read.history(id: options.operands[0]), name: name, json: json) {
+            try output(read.history(options.operands[0]), name: name, json: json) {
                 "\($0.history.dateCreated ?? String(ui: "날짜 없음")) · \($0.history.name)\n"
                     + ($0.entries.isEmpty ? String(ui: "곡이 없습니다") : $0.entries.map {
                         "\($0.trackNumber). " + tracksText([$0.track])
@@ -86,9 +83,9 @@ enum ReadCommands {
                 }.joined(separator: "\n")
             }
         case "report":
-            try output(read.report(checkFiles: options.flags.contains("--files")), name: name, json: true) { _ in "" }
+            try output(LibraryRecords.Report(read.report(options.flags.contains("--files"))), name: name, json: true) { _ in "" }
         case "path":
-            try output(read.paths(query: options.operands[0]), name: name, json: true) { _ in "" }
+            try output(read.paths(options.operands[0]), name: name, json: true) { _ in "" }
         default: throw ReadFailure("invalid_arguments", String(ui: "알 수 없는 명령입니다. djc로 명령 목록을 확인하세요"))
         }
     }
@@ -98,13 +95,13 @@ enum ReadCommands {
         else { print(text(result)) }
     }
 
-    private static func tracksText(_ tracks: [LibraryRead.TrackRecord]) -> String {
+    private static func tracksText(_ tracks: [LibraryRecords.TrackRecord]) -> String {
         tracks.isEmpty ? String(ui: "곡이 없습니다") : tracks.map {
             "\($0.id) · \($0.title) · \($0.artist ?? String(ui: "아티스트 없음")) · \($0.bpm.map { String(format: "%.2f BPM", $0) } ?? String(ui: "BPM 없음")) · \($0.key ?? String(ui: "키 없음"))"
         }.joined(separator: "\n")
     }
 
-    private static func playlistsText(_ playlists: [LibraryRead.PlaylistRecord], depth: Int = 0) -> String {
+    private static func playlistsText(_ playlists: [LibraryRecords.PlaylistRecord], depth: Int = 0) -> String {
         playlists.map {
             String(repeating: "  ", count: depth) + String(ui: "\($0.id) · \($0.name) · \($0.isFolder ? String(ui: "폴더") : String(ui: "재생 목록")) · \($0.trackCount)곡")
                 + ($0.children.map { $0.isEmpty ? "" : "\n" + playlistsText($0, depth: depth + 1) } ?? "")
@@ -115,7 +112,7 @@ enum ReadCommands {
         kinds.map { ["cue": String(ui: "큐"), "grid": String(ui: "그리드"), "gain": String(ui: "게인"), "tag": String(ui: "태그")][$0] ?? $0 }.joined(separator: ", ")
     }
 
-    private static func trackText(_ result: LibraryRead.TrackInfo) -> String {
+    private static func trackText(_ result: LibraryRecords.TrackInfo) -> String {
         let track = result.track
         var lines = [tracksText([track]), "UUID: \(track.uuid)", String(ui: "파일: \(track.path)"), String(ui: "길이: \(track.lengthSeconds)초"),
                      String(ui: "앨범: \(track.album ?? String(ui: "없음")) · 앨범 아티스트: \(track.albumArtist ?? String(ui: "없음"))"),

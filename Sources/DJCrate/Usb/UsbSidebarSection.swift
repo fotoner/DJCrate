@@ -1,7 +1,7 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
-import RekordboxKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 사이드바 USB 재생 목록 줄
 struct UsbPlaylistNode: Identifiable, Hashable {
@@ -152,16 +152,6 @@ enum UsbSidebarModel {
                                     status: String(ui: "연결 안 됨"), help: String(ui: "USB를 연결하면 쓰기 대기의 초안을 쓸 수 있습니다"),
                                     showsExport: false, canExport: false, collection: nil, collectionCount: 0, playlists: [], mismatchHelp: nil,
                                     canEject: false, pending: .pending(volumeKey: key), pendingCount: store.draftCounts[key] ?? 0)
-        }
-    }
-}
-
-extension UsbFormat {
-    /// 형식 이름(고유 이름이라 번역하지 않는다)
-    var displayName: String {
-        switch self {
-        case .oneLibrary: "OneLibrary"
-        case .deviceLibrary: "Device Library"
         }
     }
 }
@@ -388,7 +378,7 @@ struct UsbSidebarMenu: View {
             case .pending:
                 Button(.ui("USB에 쓰기…")) {
                     Task {
-                        await store.usbCoordinator?.writeDraft(volumeKey: key, database: store.snapshotURL, share: RekordboxShare.directory)
+                        await store.usbCoordinator?.writeDraft(volumeKey: key, database: store.snapshotURL, share: store.shareRoot)
                     }
                 }
                 .disabled(actions.usb.volume(key) == nil || (actions.usb.draftCounts[key] ?? 0) == 0)

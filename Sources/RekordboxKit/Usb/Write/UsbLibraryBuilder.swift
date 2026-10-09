@@ -186,20 +186,8 @@ public enum UsbLibraryBuilder {
         text?.lowercased() == "on"
     }
 
-    /// SQLite `CAST(x AS INTEGER)`처럼 앞 공백 뒤의 부호·숫자만 읽는다(숫자가 없으면 0, NULL이면 nil)
-    public static func sqliteInteger(_ text: String?) -> Int64? {
-        guard let text else { return nil }
-        var scalars = Substring(text).drop { $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\r" }
-        var negative = false
-        if let sign = scalars.first, sign == "-" || sign == "+" {
-            negative = sign == "-"
-            scalars = scalars.dropFirst()
-        }
-        let digits = scalars.prefix { $0.isASCII && $0.isNumber }
-        guard !digits.isEmpty else { return 0 }
-        guard let value = Int64(digits) else { return negative ? Int64.min : Int64.max }
-        return negative ? -value : value
-    }
+    /// SQLite `CAST(x AS INTEGER)`처럼 읽는다(`UsbSQLiteCast.integer`)
+    public static func sqliteInteger(_ text: String?) -> Int64? { UsbSQLiteCast.integer(text) }
 
     // MARK: - 파일 작업
 

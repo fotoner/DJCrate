@@ -1,3 +1,4 @@
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import Foundation
@@ -119,7 +120,7 @@ struct DeckCueTests {
         let h = try DeckHarness(cues: auto)
         try await h.loaded()
         let row = try #require(h.deck.row)
-        var old = CueDraft(trackUUID: row.track.uuid, rekordboxCues: [])
+        var old = CueDraft(trackUUID: row.track.uuid)
         for time in [5.0, 15, 25, 70, 95, 105] { old.place(EditableCue(kind: .memory, time: time)) }
         h.drafts.save(old)
         h.deck.load(nil)

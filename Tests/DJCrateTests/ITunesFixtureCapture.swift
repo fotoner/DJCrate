@@ -1,7 +1,8 @@
 import DJCStorage
 import DJCDomain
+import RekordboxFixtures
 import RekordboxKit
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import Testing
 

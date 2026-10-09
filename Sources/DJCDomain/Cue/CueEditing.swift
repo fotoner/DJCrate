@@ -32,13 +32,13 @@ public extension CueDraft {
         case limitReached
     }
 
-    /// 메모리 큐(또는 `loop`이 있으면 메모리 루프)를 더한다.
-    mutating func addMemory(at time: Double, loop: EditableCue.Loop? = nil) -> MemoryAddResult {
+    /// 메모리 큐(또는 `loop`이 있으면 메모리 루프)를 더한다. 새 큐의 ID는 더할 때만 `newID`로 받는다.
+    mutating func addMemory(at time: Double, loop: EditableCue.Loop? = nil, newID: () -> UUID) -> MemoryAddResult {
         if let existing = cues.first(where: { $0.kind == .memory && abs($0.time - time) <= 0.03 && (loop == nil || $0.loop != nil) }) {
             return .existing(existing.id)
         }
         guard memoryCount < Self.memoryLimit else { return .limitReached }
-        var cue = EditableCue(kind: .memory, time: time)
+        var cue = EditableCue(id: newID(), kind: .memory, time: time)
         cue.loop = loop
         place(cue)
         return .added(cue.id)

@@ -1,8 +1,9 @@
+import DJCEnvironment
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -29,14 +30,14 @@ struct LibraryXMLExportTests {
     }
 
     func loadedStore(_ fixture: RekordboxFixture) async -> LibraryStore {
-        let store = LibraryStore(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
         await store.load(snapshot: fixture.database)
         return store
     }
 
     @Test func 불러온_라이브러리에서만_메뉴가_켜지고_내보내는_동안은_꺼진다() async throws {
         let fixture = try library()
-        let empty = LibraryStore(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        let empty = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
         #expect(!LibraryMenuAction.exportLibraryXML.isEnabled(in: empty))
         #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: empty)?.contains("불러온") == true)
         let store = await loadedStore(fixture)

@@ -1,4 +1,6 @@
 import AppKit
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -108,17 +110,18 @@ struct UsbSelfTestScenario {
 
     /// 앱이 쓰는 창구와 같다. 다만 자가 테스트는 DJC_HOME 아래에 이미지를 붙이므로, 보호 폴더에서 DJC_HOME 전체 대신
     /// DJC_HOME 안의 USB 쓰기 폴더(백업·저널·준비·세션 사본)와 합성 라이브러리만 막는다(실물 관문·임시 폴더 뿌리 확인은 그대로)
-    func makeService(fileSystem: any UsbFileSystem = PosixUsbFileSystem()) -> SystemUsbWriteService {
+    func makeService(fileSystem: any UsbFileSystem = PosixUsbFileSystem()) -> UsbWriteService {
         let paths = UsbWritePaths(backups: home.appending(path: "usb-backups"), sessions: home.appending(path: "usb-sessions"),
                                   staging: home.appending(path: "usb-staging"))
         let copies = home.appending(path: "usb-snapshots")
         let homeReal = UsbScratchRoots.realPath(home.path) ?? home.path
         let ours = [paths.backups, paths.sessions, paths.staging, copies, drafts, base.appending(path: "local")]
-        return SystemUsbWriteService(paths: paths, localCopies: copies, writeGuard: {
+        return UsbAppComposition.writeService(policy: .diskImagesOnly, paths: paths, localCopies: copies, drafts: drafts, fileSystem: fileSystem,
+                                              writeGuard: {
             var writeGuard = UsbWriteGuard.system
             writeGuard.protectedRoots = writeGuard.protectedRoots.filter { (UsbScratchRoots.realPath($0.path) ?? $0.path) != homeReal } + ours
             return writeGuard
-        }, fileSystem: fileSystem, drafts: drafts)
+        })
     }
 
     /// 통과하면 마지막 줄("USB 시험 통과 …")
@@ -156,7 +159,7 @@ struct UsbSelfTestScenario {
         let prompter = UsbSelfTestPrompter(log: log)
         let coordinator = UsbWriteCoordinator(usb: usb, host: host, service: service, prompter: prompter)
         // 편집 단계의 초안은 DJC_HOME 아래 이 시험 폴더에만
-        usb.draftDirectory = drafts
+        usb.drafts = .live(directory: drafts)
         var volume = try await waitForVolume(usb)
         guard volume.isDiskImage else { throw Failure("시험 볼륨이 디스크 이미지로 보이지 않습니다") }
         let root = UsbRoot(URL(filePath: volume.mountPoint))
@@ -171,12 +174,12 @@ struct UsbSelfTestScenario {
             throw Failure("미리 보기를 하지 못했습니다(\(prompter.lastText))")
         }
         log("USB 시험 미리 보기: 곡 \(first.trackCount) · 재생 목록 \(first.playlistCount) · 막힘 \(first.blockCounts.count) · CDJ 확인 항목 \(first.rules.count) · 두 번째 같음 \(first == second)")
-        guard first.canWrite, first == second else { throw Failure("미리 보기로 쓸 수 없습니다(\(UsbWriteCoordinator.stoppingText(first)))") }
+        guard first.canWrite, first == second else { throw Failure("미리 보기로 쓸 수 없습니다(\(UsbWriteFlow.stoppingText(first)))") }
         let journal = await detached { service.journal(volumeKey: job.volumeKey) }
         log("USB 시험 미리 보기 뒤 저널: \(Self.journalText(journal)) · 끝나지 않은 쓰기 \(journal.isPending)")
         await coordinator.export(job)
         guard let report = service.lastWrite, report.outcome == .written else { throw Failure("쓰지 못했습니다(\(prompter.lastText))") }
-        guard prompter.titles.allSatisfy({ $0 != UsbWriteCoordinator.pendingPrompt(volume).title }) else {
+        guard prompter.titles.allSatisfy({ $0 != UsbWriteFlow.pendingPrompt(volume).title }) else {
             throw Failure("드라이 런 저널이 끝나지 않은 쓰기로 보였습니다")
         }
         guard let toast = host.toast, toast.action == .ejectUsb(volumeKey: job.volumeKey) else { throw Failure("쓰기 토스트가 없습니다") }
@@ -203,7 +206,7 @@ struct UsbSelfTestScenario {
         let reattached = volume
         let scratch = base.appending(path: "info-\(UUID().uuidString)")
         let info = try await detached {
-            try UsbRead.info(root: URL(filePath: reattached.mountPoint), scratch: scratch, volume: reattached)
+            try UsbRead.live.info(root: URL(filePath: reattached.mountPoint), scratch: scratch, volume: reattached)
         }
         let formats = Set(info.formats)
         let oneLibrary = info.oneLibrary, deviceLibrary = info.deviceLibrary
@@ -306,14 +309,14 @@ struct UsbSelfTestScenario {
         let formats = preview.formats.filter(\.written).map(\.format.displayName).joined(separator: "·")
         log("USB 시험 편집 미리 보기: 편집 \(preview.editCount) · 쓸 편집 \(preview.writtenCount) · 막힌 편집 \(preview.blockedCount) · 지울 파일 \(preview.removals) · 형식 \(formats)")
         guard preview.canWrite, preview.writtenCount == 3 else {
-            throw Failure("편집 미리 보기로 쓸 수 없습니다(\((preview.stopping + UsbWriteCoordinator.editLines(preview)).joined(separator: " / ")))")
+            throw Failure("편집 미리 보기로 쓸 수 없습니다(\((preview.stopping + UsbWriteFlow.editLines(preview)).joined(separator: " / ")))")
         }
         let journal = await detached { service.journal(volumeKey: key) }
         log("USB 시험 편집 미리 보기 뒤 저널: \(Self.journalText(journal)) · 끝나지 않은 쓰기 \(journal.isPending)")
         await coordinator.writeDraft(volumeKey: key, database: library.database, share: library.share, snapshotTime: snapshotTime,
                                      reusing: preview)
         guard let report = service.lastEdit, report.outcome == .written else { throw Failure("편집을 쓰지 못했습니다(\(prompter.lastText))") }
-        guard prompter.titles.allSatisfy({ $0 != UsbWriteCoordinator.pendingPrompt(volume).title }) else {
+        guard prompter.titles.allSatisfy({ $0 != UsbWriteFlow.pendingPrompt(volume).title }) else {
             throw Failure("미리 보기 뒤 저널이 끝나지 않은 쓰기로 보였습니다")
         }
         guard let toast = host.toast, toast.action == .ejectUsb(volumeKey: key), toast.title == String(ui: "USB에 편집 \(preview.writtenCount)건을 썼습니다") else {
@@ -325,7 +328,7 @@ struct UsbSelfTestScenario {
         // 다시 읽기: 두 형식 곡 2 · 목록 2, 새 이름
         let scratch = base.appending(path: "info-\(UUID().uuidString)")
         let info = try await detached {
-            try UsbRead.info(root: URL(filePath: volume.mountPoint), scratch: scratch, volume: volume)
+            try UsbRead.live.info(root: URL(filePath: volume.mountPoint), scratch: scratch, volume: volume)
         }
         let oneLibrary = info.oneLibrary, deviceLibrary = info.deviceLibrary
         let playlistNames = Set(usb.libraries[key]?.playlists.map(\.name) ?? [])
@@ -409,14 +412,14 @@ struct UsbSelfTestScenario {
 }
 
 /// 실제 창구를 그대로 부르고 마지막 쓰기 보고서만 남긴다(provenance 줄·편집 되돌리기에 쓴다)
-final class UsbSelfTestRecordingService: UsbWriteService, @unchecked Sendable {
-    let base: SystemUsbWriteService
+final class UsbSelfTestRecordingService: UsbWriting, @unchecked Sendable {
+    let base: UsbWriteService
     private let lock = NSLock()
     private var written: UsbWriteReport?
     private var edited: UsbWriteReport?
     private var migrated: UsbWriteReport?
 
-    init(base: SystemUsbWriteService) { self.base = base }
+    init(base: UsbWriteService) { self.base = base }
 
     var lastWrite: UsbWriteReport? { lock.withLock { written } }
     /// 마지막 수정 쓰기 보고서(쓸 것이 없었으면 nil)
@@ -424,10 +427,10 @@ final class UsbSelfTestRecordingService: UsbWriteService, @unchecked Sendable {
     var lastMigration: UsbWriteReport? { lock.withLock { migrated } }
 
     func journal(volumeKey: String) -> UsbJournalInfo { base.journal(volumeKey: volumeKey) }
-    func preview(_ job: UsbExportJob) throws -> UsbExportSummary { try base.preview(job) }
-    func write(_ job: UsbExportJob, progress: @escaping @Sendable (UsbProgress) -> Void,
+    func preview(_ input: UsbExportInput) throws -> UsbExportSummary { try base.preview(input) }
+    func write(_ input: UsbExportInput, progress: @escaping @Sendable (UsbProgress) -> Void,
                isCancelled: @escaping @Sendable () -> Bool) throws -> UsbWriteReport {
-        let report = try base.write(job, progress: progress, isCancelled: isCancelled)
+        let report = try base.write(input, progress: progress, isCancelled: isCancelled)
         lock.withLock { written = report }
         return report
     }
@@ -444,12 +447,19 @@ final class UsbSelfTestRecordingService: UsbWriteService, @unchecked Sendable {
     }
     func latestBackup(volumeKey: String) -> URL? { base.latestBackup(volumeKey: volumeKey) }
     func draftBase(_ volume: UsbVolumeInfo) throws -> UsbFingerprint { try base.draftBase(volume) }
-    func previewEdit(_ job: UsbEditJob) throws -> UsbEditSummary { try base.previewEdit(job) }
-    func writeEdit(_ job: UsbEditJob, progress: @escaping @Sendable (UsbProgress) -> Void,
+    func previewEdit(_ input: UsbEditInput) throws -> UsbEditSummary { try base.previewEdit(input) }
+    func writeEdit(_ input: UsbEditInput, progress: @escaping @Sendable (UsbProgress) -> Void,
                    isCancelled: @escaping @Sendable () -> Bool) throws -> UsbEditWritten {
-        let written = try base.writeEdit(job, progress: progress, isCancelled: isCancelled)
+        let written = try base.writeEdit(input, progress: progress, isCancelled: isCancelled)
         lock.withLock { edited = written.report }
         return written
+    }
+    func isScratchMount(_ mountPoint: String) -> Bool { base.isScratchMount(mountPoint) }
+    var syncGate: UsbSyncSelectionGate { base.syncGate }
+    func isRekordboxRunning() -> Bool { base.isRekordboxRunning() }
+    func planCueGridImport(volume: UsbVolumeInfo, snapshot: URL, share: URL, scratch: URL,
+                           rows: [String: UsbCueGridImportTrack]) throws -> UsbCueGridImportPlan {
+        try base.planCueGridImport(volume: volume, snapshot: snapshot, share: share, scratch: scratch, rows: rows)
     }
 }
 

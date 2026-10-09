@@ -1,7 +1,8 @@
 @testable import DJCrate
 import AppKit
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -62,7 +63,7 @@ struct CommentPresetAppTests {
         try fixture.add(TrackSpec(id: "2"))
         try fixture.execute("UPDATE djmdContent SET Commnt = 'TVA 시험 OP 1' WHERE ID = '1'")
         let settings = SettingsStore(defaults: SettingsStoreTests.freshDefaults(), persist: true)
-        let store = LibraryStore(settings: settings, saveTagDrafts: { _ in })
+        let store = LibraryStore.test(settings: settings, saveTagDrafts: { _ in })
         await store.load(snapshot: fixture.database)
         #expect(store.rows.allSatisfy { $0.commentEvaluation == nil })
         #expect(store.report?.hasCommentRule == false)
@@ -87,8 +88,8 @@ struct CommentPresetAppTests {
     }
 
     @Test func 꺼진_분류_열은_메뉴에도_없고_모두_보이기로_살아나지_않는다() {
-        let store = LibraryStore(settings: SettingsStore(defaults: SettingsStoreTests.freshDefaults()), saveTagDrafts: { _ in })
-        let coordinator = TrackListCoordinator(store: store)
+        let store = LibraryStore.test(settings: SettingsStore(defaults: SettingsStoreTests.freshDefaults(), persist: false), saveTagDrafts: { _ in })
+        let coordinator = TrackListCoordinator(store: store, actions: .live(store: store))
         let table = NSTableView()
         for id in ["title", "class", "comment"] { table.addTableColumn(NSTableColumn(identifier: .init(id))) }
         coordinator.table = table
@@ -113,7 +114,7 @@ struct CommentPresetAppTests {
         let fixture = try historyFixture()
         try fixture.execute("UPDATE djmdContent SET Commnt = 'TVA 시험 OP' WHERE ID = '101'")
         let settings = SettingsStore(defaults: SettingsStoreTests.freshDefaults(), persist: true)
-        let store = LibraryStore(settings: settings, saveTagDrafts: { _ in })
+        let store = LibraryStore.test(settings: settings, saveTagDrafts: { _ in })
         await store.load(snapshot: fixture.database)
         store.sidebar = .history("new-a")
         store.selection = ["history:entry-3"]

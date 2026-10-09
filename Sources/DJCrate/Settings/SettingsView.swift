@@ -7,11 +7,14 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var store: LibraryStore
     @Bindable var deck: DeckModel
+    /// 저장 공간 탭의 모델(조립 지점이 캐시 자리·캐시 폴더를 붙여 만든다)
+    let storage: () -> StorageSettingsModel
     @State private var tab: SettingsTab
 
-    init(store: LibraryStore, deck: DeckModel, tab: SettingsTab = .general) {
+    init(store: LibraryStore, deck: DeckModel, storage: @escaping () -> StorageSettingsModel, tab: SettingsTab = .general) {
         self.store = store
         self.deck = deck
+        self.storage = storage
         _tab = State(initialValue: tab)
     }
 
@@ -38,7 +41,7 @@ struct SettingsView: View {
                 .frame(width: 520, height: 180)
             }
             Tab(.ui("저장 공간"), systemImage: "internaldrive", value: SettingsTab.storage) {
-                StorageSettingsView(model: StorageSettingsModel(store: store))
+                StorageSettingsView(model: storage())
             }
             Tab(.ui("실험실"), systemImage: "testtube.2", value: SettingsTab.lab) {
                 LabSettingsView(store: store)

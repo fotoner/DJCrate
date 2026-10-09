@@ -1,7 +1,9 @@
 @testable import DJCrate
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
+import DJCDomain
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Synchronization
 import Testing
@@ -36,18 +38,17 @@ struct WriteReloadQueueRegressionTests {
         let sourceDB = fixture.database
         let stamp = Date(timeIntervalSince1970: 1_800_000_000)
         let previous = try LibrarySnapshot.take(from: sourceDB, into: directory, force: true, now: stamp)
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.music-selection.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("music-selection"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        await store.load(snapshot: previous, arguments: ["test"], environment: [:])
+                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, arguments: ["test"], environment: [:])
+        await store.load(snapshot: previous)
         store.selection = ["1"]
         store.search = "존재하지 않는 검색어"
         #expect(store.displayRows.isEmpty)
         await store.takeSnapshot(force: true, snapshotDirectory: directory, snapshotCopy: { force in
             try LibrarySnapshot.take(from: sourceDB, into: directory, force: force, now: stamp.addingTimeInterval(60))
-        }, captureITunes: { ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "합성 목록")]) },
-                                 arguments: ["test"], environment: [:])
+        }, captureITunes: { ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "합성 목록")]) })
         #expect(store.selection == ["1"])
     }
 
@@ -113,11 +114,11 @@ struct WriteReloadQueueRegressionTests {
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "합성 목록")])
         let late = ITunesLibrarySnapshot(playlists: [.init(id: "B", name: "늦게 도착한 목록")])
         try cached.save(for: previous)
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.write-reload-queue.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("write-reload-queue"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        await store.load(snapshot: previous, arguments: ["test"], environment: [:])
+                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, arguments: ["test"], environment: [:])
+        await store.load(snapshot: previous)
 
         let musicStarted = Mutex(false)
         let writeCopyStarted = Mutex(false)
@@ -130,7 +131,7 @@ struct WriteReloadQueueRegressionTests {
                 musicStarted.withLock { $0 = true }
                 resume.wait()
                 return late
-            }, arguments: ["test"], environment: [:])
+            })
             backgroundReturned.withLock { $0 = true }
         }
         // Music 조회가 시작될 때까지 기다린다. 시간 제한은 없다. 시작하지 않고 끝난 구현이면 더 기다릴 것이 없다.
@@ -157,12 +158,10 @@ struct WriteReloadQueueRegressionTests {
             await store.takeSnapshot(force: true, quiet: true, refreshITunes: false, snapshotDirectory: directory,
                                      snapshotCopy: { force in
                                          writeCopyStarted.withLock { $0 = true }
-                                         let url = try LibrarySnapshot.take(from: sourceDB, into: directory, force: force,
-                                                                            now: stamp.addingTimeInterval(sameSecond ? 60 : 120))
+                                         let url = try LibrarySnapshot.take(from: sourceDB, into: directory, force: force, now: stamp.addingTimeInterval(sameSecond ? 60 : 120))
                                          copiedURL.withLock { $0 = url }
                                          return url
-                                     }, captureITunes: { Issue.record("쓰기 뒤 Music을 조회했습니다"); return cached },
-                                     arguments: ["test"], environment: [:])
+                                     }, captureITunes: { Issue.record("쓰기 뒤 Music을 조회했습니다"); return cached })
             postWriteCompleted.withLock { $0 = true }
         }
         // Music은 막혀 있다. 그 채로 쓰기 뒤 다시 읽기가 끝나야 한다(끝나지 않는 구현은 안전망 시간 뒤에 실패로 끝난다).

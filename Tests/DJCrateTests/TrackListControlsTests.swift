@@ -1,8 +1,8 @@
 @testable import DJCrate
 import AppKit
 import DJCDomain
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import Testing
 import UniformTypeIdentifiers
 
@@ -19,7 +19,8 @@ struct TrackListControlsTests {
 
     private func list(_ rows: [TrackRow], selection: Set<String> = [], store: LibraryStore? = nil) -> (TrackListCoordinator, NSTableView) {
         _ = NSApplication.shared
-        let coordinator = TrackListCoordinator(store: store ?? LibraryStore(saveTagDrafts: { _ in }))
+        let store = store ?? LibraryStore.test(saveTagDrafts: { _ in })
+        let coordinator = TrackListCoordinator(store: store, actions: .live(store: store))
         let table = NSTableView()
         table.allowsMultipleSelection = true
         table.dataSource = coordinator
@@ -98,7 +99,7 @@ struct TrackListControlsTests {
     @Test(arguments: [false, true])
     func 재생_목록과_추가한_곡_메뉴를_함께_보여도_구분선이_겹치지_않는다(pending: Bool) async throws {
         let fixture = try historyFixture()
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         await store.load(snapshot: fixture.database)
         let library = try #require(store.rowsByID["101"])
         let staged = row("djc-1", path: "/missing.wav")

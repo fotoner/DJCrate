@@ -1,8 +1,9 @@
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Synchronization
 import Testing
@@ -36,11 +37,13 @@ struct InitialITunesCacheLoadingTests {
             """.utf8)
     }
 
-    private func store(_ fixture: RekordboxFixture) -> LibraryStore {
-        LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.initial-itunes-cache.\(UUID())")!, persist: false),
-                     resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
-                     backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                     mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
+    /// 위치는 CI의 사본 경로 설정과 무관하게 정한다(기본은 명시 사본도 사본 rekordbox 폴더도 없는 실행).
+    private func store(_ fixture: RekordboxFixture, arguments: [String] = ["test"], environment: [String: String] = [:]) -> LibraryStore {
+        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("initial-itunes-cache"), persist: false),
+                          resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                          backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
+                          mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                          arguments: arguments, environment: environment)
     }
 
     private func snapshot(_ fixture: RekordboxFixture, directory: URL) throws -> URL {
@@ -65,7 +68,7 @@ struct InitialITunesCacheLoadingTests {
         let completed = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let loading = Task {
-            await store.loadInitial(snapshotDirectory: directory, arguments: ["test"], environment: [:], captureITunes: {
+            await store.loadInitial(snapshotDirectory: directory, captureITunes: {
                 started.withLock { $0 = true }
                 resume.wait()
                 return newer
@@ -89,7 +92,7 @@ struct InitialITunesCacheLoadingTests {
         let returnedBeforeMusic = completed.withLock { $0 }
         // 이미 Music을 기다린 것으로 드러났다면, 아래 선택창 확인이 막힌 Music에 걸려 멈추지 않게 먼저 풀어 준다(실패로 끝낸다).
         if !(loadedBeforeMusic && returnedBeforeMusic) { resume.signal() }
-        let available = await store.iTunesSyncSource(arguments: ["test"], environment: [:], captureITunes: {
+        let available = await store.iTunesSyncSource(captureITunes: {
             Issue.record("선택창이 정상 캐시 대신 Music을 다시 읽었습니다")
             return .init(status: .unavailable)
         })
@@ -113,7 +116,7 @@ struct InitialITunesCacheLoadingTests {
         let resume = DispatchSemaphore(value: 0)
         let completed = Mutex(false)
         let loading = Task {
-            await store.loadInitial(snapshotDirectory: directory, arguments: ["test"], environment: [:], captureITunes: {
+            await store.loadInitial(snapshotDirectory: directory, captureITunes: {
                 started.withLock { $0 = true }
                 resume.wait()
                 return ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "늦은 목록")])
@@ -137,7 +140,7 @@ struct InitialITunesCacheLoadingTests {
             Issue.record("Music 최신화를 기다리느라 초기 로드가 끝나지 않았습니다")
             return
         }
-        await store.load(snapshot: database, arguments: ["test"], environment: [:])
+        await store.load(snapshot: database)
         resume.signal()
         await loading.value
         await store.iTunesRefresh?.task.value
@@ -148,7 +151,7 @@ struct InitialITunesCacheLoadingTests {
     private func openWithStalledMusic(_ store: LibraryStore, directory: URL, music: StalledMusic) async -> Bool {
         let opened = Mutex(false)
         let loading = Task {
-            await store.loadInitial(snapshotDirectory: directory, arguments: ["test"], environment: [:],
+            await store.loadInitial(snapshotDirectory: directory,
                                     captureITunes: { music.capture() })
             opened.withLock { $0 = true }
         }
@@ -186,7 +189,7 @@ struct InitialITunesCacheLoadingTests {
                                      snapshotCopy: { force in
                                          try LibrarySnapshot.take(from: sourceDB, into: directory, force: force,
                                                                   now: Date(timeIntervalSince1970: 1_800_000_060))
-                                     }, captureITunes: { music.capture() }, arguments: ["test"], environment: [:])
+                                     }, captureITunes: { music.capture() })
             reloaded.withLock { $0 = true }
         }
         // Music은 막혀 있다. 그 채로 다시 읽기가 끝나야 한다(끝나지 않는 구현은 안전망 시간 뒤에 실패로 끝난다).
@@ -221,7 +224,7 @@ struct InitialITunesCacheLoadingTests {
         store.presentITunesSync()
         let model = store.iTunesSync
         let opening = Task {
-            await model.load(store: store, arguments: ["test"], environment: [:], captureITunes: {
+            await model.load(store: store, captureITunes: {
                 Issue.record("선택창이 진행 중인 최신화 대신 Music을 다시 읽었습니다")
                 return .init(status: .unavailable)
             })
@@ -234,8 +237,7 @@ struct InitialITunesCacheLoadingTests {
         var refused: String?
         let opened = try #require(store.snapshotURL)
         do {
-            try await store.syncITunesPlaylists(model.selection, source: model.source, database: opened,
-                                                arguments: ["test", "--db", opened.path], environment: [:])
+            try await store.syncITunesPlaylists(model.selection, source: model.source, database: opened)
         } catch DJCError.writeRefused(let reason) {
             refused = reason
         } catch {
@@ -269,7 +271,7 @@ struct InitialITunesCacheLoadingTests {
         let initialReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let initial = Task {
-            await store.loadInitial(snapshotDirectory: directory, arguments: ["test"], environment: [:], captureITunes: {
+            await store.loadInitial(snapshotDirectory: directory, captureITunes: {
                 calls.withLock { $0 += 1 }
                 started.withLock { $0 = true }
                 resume.wait()
@@ -286,7 +288,7 @@ struct InitialITunesCacheLoadingTests {
             return
         }
         let forced = Task {
-            await store.iTunesSyncSource(forceRefresh: true, arguments: ["test"], environment: [:], captureITunes: {
+            await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
                 calls.withLock { $0 += 1 }
                 return ITunesLibrarySnapshot(status: .unavailable)
             })
@@ -309,7 +311,7 @@ struct InitialITunesCacheLoadingTests {
         let returned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let loading = Task {
-            await store.loadInitial(snapshotDirectory: directory, arguments: ["test"], environment: [:], captureITunes: {
+            await store.loadInitial(snapshotDirectory: directory, captureITunes: {
                 started.withLock { $0 = true }
                 resume.wait()
                 return ITunesLibrarySnapshot()
@@ -329,16 +331,14 @@ struct InitialITunesCacheLoadingTests {
         let fixture = try RekordboxFixture()
         let directory = fixture.root.appending(path: "djc-snapshots")
         _ = try snapshot(fixture, directory: directory)
-        let explicit = store(fixture)
-        await explicit.loadInitial(snapshotDirectory: directory, arguments: ["test", "--db", fixture.database.path],
-                                   environment: [:], captureITunes: {
+        let explicit = store(fixture, arguments: ["test", "--db", fixture.database.path])
+        await explicit.loadInitial(snapshotDirectory: directory, captureITunes: {
             Issue.record("명시 DB에서 Music을 읽었습니다")
             return .init(status: .unavailable)
         })
         #expect(explicit.snapshotURL == fixture.database)
-        let copy = store(fixture)
-        await copy.loadInitial(snapshotDirectory: directory, arguments: ["test"],
-                               environment: ["DJC_REKORDBOX_DIR": fixture.root.path], captureITunes: {
+        let copy = store(fixture, environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
+        await copy.loadInitial(snapshotDirectory: directory, captureITunes: {
             Issue.record("사본 모드에서 Music을 읽었습니다")
             return .init(status: .unavailable)
         })

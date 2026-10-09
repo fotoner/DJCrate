@@ -1,5 +1,6 @@
 @testable import DJCrate
 import CoreGraphics
+import DJCApplication
 import DJCDomain
 import Foundation
 import RekordboxKit

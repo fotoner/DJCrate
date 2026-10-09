@@ -1,5 +1,6 @@
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -19,8 +20,8 @@ struct SeekDiagnosticsTests {
     }
 
     @Test func PVB2는_샘플과_블록까지_같아야_바이트_위치만_다르다고_한다() throws {
-        let fixture = try RekordboxFixture()
-        let facts = AudioFacts.read(url: try AudioFixture.flac(seconds: 1, in: fixture.audio))
+        let folder = try TemporaryFolder()
+        let facts = AudioFacts.read(url: try AudioFixture.flac(seconds: 1, in: folder.url))
         let current = try #require(TrackAnalysisFiles.pvb2(facts))
         var stored = current
         stored[32 + 20 + 15] ^= 1

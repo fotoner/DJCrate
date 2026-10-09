@@ -1,4 +1,5 @@
 import DJCDomain
+import DJCEnvironment
 import Foundation
 
 /// 파형·분석 캐시는 곡당 약 0.6MB다(전곡이면 4GB대). 합계가 상한을 넘으면 오래 안 쓴 파일부터 지운다.

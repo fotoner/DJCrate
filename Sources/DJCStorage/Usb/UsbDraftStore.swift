@@ -2,26 +2,8 @@ import DJCDomain
 import Foundation
 import RekordboxKit
 
-/// 한 USB에 쌓은 편집 초안. 반영(`djc usb-edit --draft`) 때 한 번에 쓴다
-public struct UsbDraft: Codable, Sendable, Equatable {
-    /// 볼륨 UUID(대문자)
-    public var volumeKey: String
-    /// 초안을 만든 때의 USB DB 지문. 쓸 때 지금 지문과 다르면 지금 USB 상태로 다시 계획한다
-    public var base: UsbFingerprint
-    /// 적힌 순서대로 쓴다
-    public var edits: [UsbLibraryEdit]
-    public var createdAt: Date
-
-    public init(volumeKey: String, base: UsbFingerprint, edits: [UsbLibraryEdit], createdAt: Date = Date()) {
-        self.volumeKey = volumeKey
-        self.base = base
-        self.edits = edits
-        self.createdAt = createdAt
-    }
-}
-
 /// USB 초안 파일(`usb-drafts/<볼륨키>.json`). 쓰기는 모두 내구 쓰기(임시 파일 → fsync → rename)라 끊겨도 옛것 또는 새것만 남는다
-public final class UsbDraftStore {
+public final class UsbDraftStore: Sendable {
     let directory: URL
     let fileSystem: any UsbFileSystem
 
@@ -48,7 +30,7 @@ public final class UsbDraftStore {
 
     /// 편집 하나를 끝에 더한다. 초안이 없으면 이 base로 새로 만든다(있으면 처음 base를 그대로 둔다)
     public func append(_ edit: UsbLibraryEdit, volumeKey: String, base: UsbFingerprint) throws {
-        var draft = try load(volumeKey: volumeKey) ?? UsbDraft(volumeKey: volumeKey, base: base, edits: [])
+        var draft = try load(volumeKey: volumeKey) ?? UsbDraft(volumeKey: volumeKey, base: base, edits: [], createdAt: Date())
         draft.edits.append(edit)
         try save(draft)
     }

@@ -1,3 +1,5 @@
+import Foundation
+
 /// 프리셋마다 다른 문법을 공통 분류·표시 결과로 바꾼다.
 public protocol CommentRule: Sendable {
     func evaluate(normalized text: String) -> CommentEvaluation

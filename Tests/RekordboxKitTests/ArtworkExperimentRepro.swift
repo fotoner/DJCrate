@@ -1,4 +1,4 @@
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 @testable import RekordboxKit
 import Testing

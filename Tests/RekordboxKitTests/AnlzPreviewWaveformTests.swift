@@ -1,6 +1,7 @@
+import DJCDomain
 import Foundation
+import RekordboxFixtures
 import Testing
-import DJCTestSupport
 @testable import RekordboxKit
 
 struct AnlzPreviewWaveformTests {

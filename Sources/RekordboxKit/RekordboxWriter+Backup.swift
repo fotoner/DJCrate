@@ -5,36 +5,8 @@ import Foundation
 extension RekordboxWriter {
     // MARK: - 백업·되돌리기
 
-    public struct Backup: Sendable, Identifiable {
-        public var id: String { url.path }
-        public var url: URL
-        public var createdAt: Date
-        /// DJCrate가 쓰기 직전에 뜬 백업이면 true(큐·그리드·게인 쓰기, 곡 추가·삭제). 되돌리기 직전 상태를 떠 둔 백업은 false.
-        public var isWrite: Bool
-        public var report: Report?
-        /// 곡 추가·삭제 보고서
-        public var trackReport: RekordboxTrackWriter.Report?
-
-        public var titles: [String] {
-            // 한 곡에 큐·태그를 함께 썼으면 한 번만
-            var seen: Set<String> = []
-            let written = report.map { $0.written + $0.analysisWritten + $0.tagWritten + $0.artworkWritten + $0.mergeWritten } ?? []
-            return written.filter { seen.insert($0.trackUUID).inserted }.map(\.title) + (report?.playlistWritten.map(\.name) ?? [])
-                + (trackReport?.titles ?? [])
-                + (report?.iTunesSyncWritten == true ? [String(ui: "iTunes 동기화 목록")] : [])
-        }
-        /// 쓴 직후 rekordbox 변경 카운터(옛 백업에는 없다)
-        public var finalUpdateCount: Int? { report?.finalUpdateCount ?? trackReport?.finalUpdateCount }
-
-        /// 쓰기 직전 백업의 이름 끝(`makeBackup`의 label)
-        static let writeLabels = ["-write", "-add", "-delete"]
-
-        /// 쓰기 직전 백업 이름인지. 같은 초에 뜬 백업은 끝에 `-2`·`-3`…이 붙는다.
-        static func isWriteName(_ name: String) -> Bool {
-            let base = name.replacingOccurrences(of: #"-\d+$"#, with: "", options: .regularExpression)
-            return writeLabels.contains { base.hasSuffix($0) }
-        }
-    }
+    // 백업 값은 DJCDomain에 있다(#167). 옛 이름을 남긴다.
+    public typealias Backup = RekordboxWriteBackup
 
     /// DB 파일(+WAL·SHM)을 통째로 복사한다. 복사하는 동안 원본이 바뀌면 실패한다.
     static func makeBackup(of database: URL, in directory: URL, now: Date, label: String) throws -> URL {
@@ -266,4 +238,16 @@ extension RekordboxWriter {
 
     /// 백업에 들어 있는 쓰기 보고서와 초안.
     /// 백업에 들어 있는 그리드 초안
+}
+
+/// 쓰기 전 백업 이름 규칙
+extension RekordboxWriteBackup {
+    /// 쓰기 직전 백업의 이름 끝(`makeBackup`의 label)
+    static let writeLabels = ["-write", "-add", "-delete"]
+
+    /// 쓰기 직전 백업 이름인지. 같은 초에 뜬 백업은 끝에 `-2`·`-3`…이 붙는다.
+    static func isWriteName(_ name: String) -> Bool {
+        let base = name.replacingOccurrences(of: #"-\d+$"#, with: "", options: .regularExpression)
+        return writeLabels.contains { base.hasSuffix($0) }
+    }
 }

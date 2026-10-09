@@ -1,4 +1,5 @@
 import AppKit
+import DJCAdapters
 import DJCDomain
 import Foundation
 import QuartzCore

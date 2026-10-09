@@ -42,7 +42,7 @@ struct RatingColorTagTests {
 
     @Test func 곡은_동기화_상태를_든다() {
         #expect(track(dataStatus: 256).dataStatus == 256)
-        let staged = StagedTrack(path: "/x.mp3", title: "x", duration: 1, addedOn: "2026-10-06").track
+        let staged = StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/x.mp3", title: "x", duration: 1, addedOn: "2026-10-06").track
         #expect(staged.dataStatus == nil && staged.rating == 0 && staged.colorID == nil)
     }
 

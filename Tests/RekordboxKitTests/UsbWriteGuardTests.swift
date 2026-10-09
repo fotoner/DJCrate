@@ -1,7 +1,9 @@
 import DJCDomain
-import DJCTestSupport
+import DJCEnvironment
+import DJCTestKit
 import Darwin
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -96,7 +98,9 @@ struct UsbWriteGuardTests {
         expectUntouched(fixture, before: before)
     }
 
-    @Test("볼륨 모양 막힘", arguments: ["notMountPoint", "apfs", "hfsPlus", "fat16", "apm", "internal", "network", "readOnly"])
+    /// 쓰기 입구가 볼륨 정책을 지나는지 대표 하나씩(막힘 하나·허용 하나). 모양마다의 판정(막힘 여덟·허용 넷)은 `UsbVolumePolicyTests`가
+    /// 모두 본다(#167: 같은 판정을 쓰기 전 과정으로 되풀이하지 않는다).
+    @Test("볼륨 모양 막힘", arguments: ["apfs"])
     func volumeShapeBlocks(shape: String) {
         let fixture = UsbChangeSetFixture()
         defer { fixture.remove() }
@@ -118,7 +122,7 @@ struct UsbWriteGuardTests {
         expectUntouched(fixture, before: [:])
     }
 
-    @Test("exFAT·GPT·두 번째 파티션·4096바이트 섹터 볼륨에도 쓴다", arguments: ["exfat", "gpt", "secondPartition", "sector4096"])
+    @Test("exFAT 볼륨에도 쓴다", arguments: ["exfat"])
     func widerVolumeShapesWrite(shape: String) throws {
         let fixture = UsbChangeSetFixture()
         defer { fixture.remove() }

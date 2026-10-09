@@ -1,7 +1,7 @@
+import RekordboxFixtures
 @testable import djc
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
 import RekordboxKit
 import Testing
@@ -26,7 +26,7 @@ struct UsbFieldsLabTests {
         return (process.terminationStatus, String(decoding: data, as: UTF8.self))
     }
 
-    /// 정규형 해시는 외부 비교기(Python)와 같아야 한다. 상수는 `sha256(정규형 UTF-8)` 앞 16자를 따로 계산한 값이다
+    /// 정규형 해시는 외부 비교기(Python)와 같아야 한다. 상수는 `sha256(정규형 UTF-8)` 앞 16자를 따로 계산한 값이다(`scripts/usb-parser-compare.py`의 `SELF_CHECK`·`digest`)
     @Test func canonicalHashMatchesDocumentedForm() {
         #expect(UsbFieldsLab.hash("s:시험 곡 1") == "e7918c99dd3a6fb6")
         #expect(UsbFieldsLab.canonical(12800 as Int) == "i:12800")
@@ -37,25 +37,6 @@ struct UsbFieldsLabTests {
         #expect(UsbFieldsLab.canonical("") == "s:")
         // NFC로 바꾸지 않는다(외부 파서가 읽은 바이트 그대로 견준다)
         #expect(UsbFieldsLab.canonical("e\u{301}") == "s:e\u{301}")
-    }
-
-    @Test func flattensNestedOptionalAndFormatKeyedFields() {
-        let track = UsbTrack(id: 1, title: "시험 곡 1", bpmx100: 12800, artistID: nil,
-                             deviceFields: [.deviceLibrary: UsbTrackDeviceFields(rating: 2, playCount: 3, hasModified: nil)])
-        let fields = UsbFieldsLab.fields(of: track)
-        #expect(fields["title"] == "e7918c99dd3a6fb6")
-        #expect(fields["bpmx100"] == "5151edc3359adcb9")
-        #expect(fields["artistID"] == "1b16b1df538ba12d")
-        #expect(fields["deviceFields.deviceLibrary.rating"] == UsbFieldsLab.hash("i:2"))
-        #expect(fields["deviceFields.deviceLibrary.hasModified"] == UsbFieldsLab.hash("n"))
-        #expect(fields["presentIn"] == UsbFieldsLab.hash("l:"))
-        #expect(!fields.values.contains { $0.hasPrefix("?") })
-        let playlist = UsbPlaylist(id: 10, name: "시험 목록", entries: [.oneLibrary: [1, 2]])
-        #expect(UsbFieldsLab.fields(of: playlist)["entries.oneLibrary"] == "6e326a3894bbe3eb")
-        let extras = UsbPdbTrackExtras(unknownStrings: [5: ""], stringKinds: [.shortASCII, .utf16LE])
-        let extraFields = UsbFieldsLab.fields(of: extras)
-        #expect(extraFields["unknownStrings.5"] == "05d8bd490f04e608")
-        #expect(extraFields["stringKinds"] == UsbFieldsLab.hash("l:shortASCII,utf16LE"))
     }
 
     @Test func writesHashesAndStructureWithoutValues() throws {

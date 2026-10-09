@@ -1,5 +1,7 @@
 #if DEBUG
 import AppKit
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -51,9 +53,9 @@ enum Issue237Capture {
         guard volume.isDiskImage, volume.name == "DJCDEMO" else { throw Failure("합성 디스크 이미지(DJCDEMO)가 아님") }
         let (events, continuation) = AsyncStream.makeStream(of: [UsbVolumeInfo].self)
         defer { continuation.finish() }
-        let host = SystemUsbHost(io: .reading(snapshots: DJCPaths.userData.appending(path: "issue237-usb-snapshots")), events: events, current: { [volume] })
-        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, localLibrary: { nil })
-        usb.draftDirectory = DJCPaths.usbDrafts
+        let host = SystemUsbHost(io: UsbAppComposition.hostIO(snapshots: DJCPaths.userData.appending(path: "issue237-usb-snapshots")), events: events, current: { [volume] })
+        let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: UsbAppComposition.writeService(), localLibrary: { nil })
+        usb.drafts = .live(directory: DJCPaths.usbDrafts)
         store.usb = usb
         await usb.refresh()
         NSApp.appearance = NSAppearance(named: .aqua)
@@ -67,7 +69,7 @@ enum Issue237Capture {
         // 쓰기 대기: 큐 초안 3곡, 앞의 두 곡을 고른다
         for row in store.rows.prefix(3) {
             var draft = CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues)
-            draft.cues.append(EditableCue(kind: .memory, time: 10, name: "합성 큐"))
+            draft.cues.append(EditableCue(id: UUID(), kind: .memory, time: 10, name: "합성 큐"))
             try CueDraftStore.save(draft)
             store.cueDraftChanged(draft)
         }

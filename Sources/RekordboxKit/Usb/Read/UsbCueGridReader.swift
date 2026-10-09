@@ -4,18 +4,41 @@ import Foundation
 
 /// USB ANLZ에서 로컬 초안으로 옮길 수 있는 큐·박만 읽는다. DB·분석 파일에는 쓰지 않는다.
 public enum UsbCueGridReader {
-    public struct Result: Sendable {
-        public var cues: [EditableCue]?
-        public var grid: BeatGrid?
-        public var usesLegacyCues: Bool
-        public var cueIssue: String?
-        public var gridIssue: String?
+    public typealias Result = UsbCueGridRead
+    public typealias ReadFailure = UsbCueGridReadFailure
+
+    /// OneLibrary 사본에서 기기 큐 행(`cue` 표)이 있는 content_id. 이 행의 해석은 확인하지 않아 그 곡의 큐는 가져오지 않는다
+    public static func deviceCueContentIDs(oneLibraryCopy url: URL) throws -> Set<Int> {
+        let database = try CipherDatabase(path: url.path, key: .passphrase(RekordboxKey.oneLibrary()), mode: .readOnly)
+        defer { database.close() }
+        var ids: Set<Int> = []
+        try database.query("SELECT DISTINCT content_id FROM cue") { if let id = $0.int(0) { ids.insert(id) } }
+        return ids
     }
 
-    public struct ReadFailure: Error, LocalizedError, Sendable {
-        public let message: String
-        public var errorDescription: String? { message }
-        public init(message: String) { self.message = message }
+    /// 가져오기가 짝을 맞출 로컬 키: 스냅샷 사본을 읽기 전용으로 열어 라이브 DB가 아닌지·DBID가 하나인지 본 뒤 읽는다
+    public static func localKeys(snapshot: URL) throws -> LocalLibraryKeys {
+        let database = try CipherDatabase(path: snapshot.path, key: .hex(RekordboxKey.derive()), mode: .readOnly)
+        defer { database.close() }
+        _ = try UsbLocalSource(database: database).localDBID()
+        return try LocalLibraryKeysReader.load(database: database)
+    }
+
+    /// USB DB 셋(사이드카 포함)이 사본을 뜬 때(`fingerprint`)와 같은지: 크기·수정 시각·SHA-256. 사본을 읽는 동안 매체 DB가 바뀌었으면 거짓
+    public static func databasesUnchanged(since fingerprint: UsbFingerprint, root: UsbRoot, access: SnapshotFileAccess = .posix) throws -> Bool {
+        let paths = [UsbLayout.oneLibrary, UsbLayout.exportPdb, UsbLayout.exportExtPdb]
+            + UsbLayout.oneLibrarySidecarSuffixes.map { UsbLayout.oneLibrary + $0 }
+        for path in paths {
+            let url = try root.url(for: path)
+            let stamp = try access.stat(url)
+            guard let old = fingerprint.files[path] else {
+                if stamp != nil { return false }
+                continue
+            }
+            guard let stamp, stamp.isRegularFile, stamp.size == old.size, stamp.modificationDate == old.mtime,
+                  try access.sha256(url) == old.sha256 else { return false }
+        }
+        return true
     }
 
     public static func read(root: UsbRoot, track: UsbTrack) throws -> Result {
@@ -110,8 +133,9 @@ public enum UsbCueGridReader {
                     guard beats == nil || EditableCue.Loop.beats(beatLoopSize: EditableCue.Loop.beatLoopSize(beats: beats)) == beats else {
                         throw failure(String(ui: "이 루프의 박 수를 초안으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
                     }
-                    cues.append(EditableCue(kind: kind == 0 ? .memory : .hot(Int(entry.hotCue) - 1), time: Double(entry.inMsec) / 1000,
-                                            name: entry.comment, loop: entry.type == 2 ? .init(end: Double(entry.outMsec) / 1000, beats: beats) : nil))
+                    cues.append(EditableCue(id: UUID(), kind: kind == 0 ? .memory : .hot(Int(entry.hotCue) - 1),
+                                            time: Double(entry.inMsec) / 1000, name: entry.comment,
+                                            loop: entry.type == 2 ? .init(end: Double(entry.outMsec) / 1000, beats: beats) : nil))
                 }
                 // DAT(A–C·메모리)와 EXT(D–H)의 위치가 PCO2와 다르면 어느 쪽 기기 편집인지 짐작하지 않는다.
                 let short = kind == 0 ? old[0] ?? [] : (old[1] ?? []) + (extra[1] ?? [])
@@ -127,7 +151,7 @@ public enum UsbCueGridReader {
                     guard entry.type == 1 else {
                         throw failure(String(ui: "확장 큐 정보가 없어 루프의 박 수를 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
                     }
-                    cues.append(EditableCue(kind: kind == 0 ? .memory : .hot(Int(entry.hotCue) - 1), time: Double(entry.inMsec) / 1000))
+                    cues.append(EditableCue(id: UUID(), kind: kind == 0 ? .memory : .hot(Int(entry.hotCue) - 1), time: Double(entry.inMsec) / 1000))
                 }
             }
         }

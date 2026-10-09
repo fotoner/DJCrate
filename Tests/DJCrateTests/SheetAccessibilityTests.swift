@@ -85,7 +85,7 @@ struct SheetAccessibilityTests {
 
 @MainActor
 private final class SheetAccessibilityHarness {
-    let store = LibraryStore(saveTagDrafts: { _ in })
+    let store = LibraryStore.test(saveTagDrafts: { _ in })
     let coordinator: SheetCoordinator
     let table = SheetTableView(frame: .init(x: 0, y: 40, width: 660, height: 300))
 

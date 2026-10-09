@@ -1,4 +1,6 @@
+import DJCApplication
 import DJCDomain
+import Foundation
 
 /// 쓰기 잠금에서 허용하는 시스템 동작과 막는 라이브러리 조작을 구분한다.
 struct WriteLockPolicy {

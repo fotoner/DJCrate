@@ -1,18 +1,23 @@
 import AppKit
 import DJCDomain
-import DJCStorage
 import SwiftUI
 
-@main
+/// 실행 파일(`DJCrateExecutable/main.swift`)의 진입점. 본체를 라이브러리로 두어 실행 파일과 테스트가 컴파일 결과를 함께 쓴다.
+@MainActor
+package func runDJCrate() {
+    DJCrateApp.main()
+}
+
 struct DJCrateApp: App {
     /// 문구 카탈로그(이 타깃 번들)를 가장 먼저 정한다. 하위 모듈의 문구(막힘 이유 등)도 이 카탈로그로 찾는다.
-    private let strings: Void = UIStrings.bundle = .module
+    private let strings: Void = UIStrings.useAppCatalog()
     /// 옛 이름(anicue) 데이터·설정 옮기기. 목록·덱이 설정을 읽기 전에 돌아야 해서 첫 속성으로 둔다.
-    private let migrated = LegacyMigration.run()
+    private let migrated: Void = AppComposition.migrateLegacyData()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    /// 앱만 데이터 폴더의 손상된 초안 파일을 옮기고 알린다(#174).
-    @State private var store = LibraryStore(draftHome: DJCPaths.userData)
-    @State private var deck = DeckModel()
+    /// 저장소·덱·창을 한 곳에서 만들어 잇는다(`AppComposition`)
+    @State private var app = AppComposition.live()
+    private var store: LibraryStore { app.store }
+    private var deck: DeckModel { app.deck }
     @State private var windowFrameRestored = false
 
     init() {
@@ -49,7 +54,7 @@ struct DJCrateApp: App {
     var body: some Scene {
         // 단일 창: ⌘N 새 창이 같은 상태를 공유하며 라이브러리를 다시 읽는 문제를 막는다.
         Window(Text(verbatim: "DJCrate"), id: "main") {
-            ContentView(store: store, deck: deck, windowFrameRestored: windowFrameRestored)
+            ContentView(store: store, deck: deck, app: app, windowFrameRestored: windowFrameRestored)
                 .modifier(AppTextScale())
                 .frame(minWidth: 1100, minHeight: 700)
                 .background(MainWindowFrame { windowFrameRestored = true })
@@ -59,16 +64,13 @@ struct DJCrateApp: App {
                     // 쓰기 시험(`--write-selftest`)도 키 입력 없이 스토어로만 돌아 사용 중인 앱의 포커스를 가져오지 않는다
                     if !ResizePerfSelfTest.isRequested,
                        !ProcessInfo.processInfo.arguments.contains("--playlist-recovery-selftest"),
-                       !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--blocked-reasons-capture=") || $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--write-selftest" }) {
+                       !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--write-selftest" }) {
                         NSApplication.shared.activate()
                     }
                     #else
                     NSApplication.shared.activate()
                     #endif
-                    UsbAppSetup.attach(to: store)
-                    // CLI가 앱의 시점 스냅샷 보관 일수를 따르게 공유 파일에 맞춘다
-                    store.settings.syncShared()
-                    await store.loadInitial()
+                    await app.start()
                 }
         }
         .commands {
@@ -100,7 +102,7 @@ struct DJCrateApp: App {
         // Settings가 설정 메뉴와 ⌘,도 등록한다. 주 창에 수동 메뉴를 더하면 중복된다.
         // 덱과 같은 모델에 묶여 바꾸면 바로 반영·저장된다.
         Settings {
-            SettingsView(store: store, deck: deck)
+            SettingsView(store: store, deck: deck, storage: { [app] in app.storageSettings() })
         }
     }
 }

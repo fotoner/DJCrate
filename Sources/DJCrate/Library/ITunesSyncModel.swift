@@ -1,5 +1,4 @@
 import DJCDomain
-import DJCStorage
 import Foundation
 import Observation
 
@@ -32,26 +31,22 @@ final class ITunesSyncModel {
         return ITunesSyncOutline(playlists: snapshot.playlists)
     }
 
+    /// - Parameter captureITunes: Music 조회(주지 않으면 저장소 유스케이스의 Music 포트). 시험이 바꿔 넣는다
     func load(store: LibraryStore, forceRefresh: Bool = false,
-              arguments: [String] = ProcessInfo.processInfo.arguments,
-              environment: [String: String] = ProcessInfo.processInfo.environment,
-              captureITunes: @escaping @Sendable () -> ITunesLibrarySnapshot = {
-                  RekordboxITunesReader.capture()
-              }) async {
+              captureITunes: (@Sendable () -> ITunesLibrarySnapshot)? = nil) async {
         loadSequence += 1
         let sequence = loadSequence
         isWaitingForMusic = false
         let previousSource = source
         let previousSelection = selection
         let hadSource = previousSource.status == .ready || previousSource.status == .stale
-        let selectionEdited = hadSource && previousSelection != previousSource.initialSelection
+        let selectionEdited = hadSource && previousSelection != store.iTunesInitialSelection(of: previousSource)
         isLoading = true
         error = nil
         let requestedDatabase = store.snapshotURL
         let requestedRevision = store.previewRevision
         database = requestedDatabase
-        let captured = await store.iTunesSyncSource(forceRefresh: forceRefresh, arguments: arguments,
-                                                     environment: environment, captureITunes: captureITunes)
+        let captured = await store.iTunesSyncSource(forceRefresh: forceRefresh, captureITunes: captureITunes)
         guard sequence == loadSequence else { return }
         guard !Task.isCancelled, store.iTunesSync === self, store.showingITunesSync else {
             isLoading = false
@@ -73,7 +68,7 @@ final class ITunesSyncModel {
                 let available = Set(source.selectionNodes.map(\.id)).union(["0"])
                 selection = ITunesSyncSelection(selectedIDs: previousSelection.selectedIDs.intersection(available))
             } else {
-                selection = source.initialSelection
+                selection = store.iTunesInitialSelection(of: source)
             }
             if source.status == .ready, source.syncData == nil {
                 error = String(ui: "rekordbox 동기화 파일 사본이 없습니다. rekordbox에서 한 번 동기화한 뒤 새로고침하세요.")
@@ -87,7 +82,7 @@ final class ITunesSyncModel {
         guard sequence == loadSequence else { return }
         isWaitingForMusic = false
         guard !Task.isCancelled, store.iTunesSync === self, store.showingITunesSync else { return }
-        await load(store: store, arguments: arguments, environment: environment, captureITunes: captureITunes)
+        await load(store: store, captureITunes: captureITunes)
     }
 
     func sync(store: LibraryStore) async -> Bool {

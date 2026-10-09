@@ -1,8 +1,11 @@
+import DJCAdapters
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Synchronization
 import Testing
@@ -17,13 +20,14 @@ struct ITunesMissingCacheReloadTests {
         let sourceDB = fixture.database
         let stamp = Date(timeIntervalSince1970: 1_800_000_000)
         let previous = try LibrarySnapshot.take(from: sourceDB, into: directory, force: true, now: stamp)
-        let defaults = UserDefaults(suiteName: "djc.test.itunes-missing-cache.\(UUID())")!
-        let store = LibraryStore(settings: SettingsStore(defaults: defaults, persist: false),
+        let defaults = TestDefaults.make("itunes-missing-cache")
+        let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
+                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                                 arguments: ["test"], environment: [:])
 
-        await store.load(snapshot: previous, refreshITunes: true, arguments: ["test"], environment: [:],
+        await store.load(snapshot: previous, refreshITunes: true,
                          captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(store.iTunesSnapshot.status == .unavailable)
         #expect(ITunesLibrarySnapshot.load(for: previous).status == .notCaptured)
@@ -35,7 +39,7 @@ struct ITunesMissingCacheReloadTests {
                                  }, captureITunes: {
                                      Issue.record("쓰기 후 Music을 다시 조회했습니다")
                                      return ITunesLibrarySnapshot()
-                                 }, arguments: ["test"], environment: [:])
+                                 })
 
         #expect(!store.isLoading)
         #expect(store.iTunesSnapshot.status == .unavailable)
@@ -46,6 +50,8 @@ struct ITunesMissingCacheReloadTests {
     @Test func 명시한_DB에_캐시가_없으면_미캡처_상태를_유지한다() throws {
         let fixture = try RekordboxFixture()
         let loaded = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: false,
+                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            drafts: .dataFolder(),
                                             captureITunes: {
                                                 Issue.record("명시한 DB를 읽을 때 Music을 조회했습니다")
                                                 return ITunesLibrarySnapshot()
@@ -64,6 +70,8 @@ struct ITunesMissingCacheReloadTests {
                                             previousITunesSnapshot: .init(source: previous,
                                                 contents: ITunesLibrarySnapshot(status: .notCaptured),
                                                 preferOverCurrent: true),
+                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            drafts: .dataFolder(),
                                             captureITunes: {
                                                 Issue.record("쓰기 후 Music을 다시 조회했습니다")
                                                 return ITunesLibrarySnapshot()
@@ -83,6 +91,8 @@ struct ITunesMissingCacheReloadTests {
                                             previousITunesSnapshot: .init(source: previous,
                                                 contents: ITunesLibrarySnapshot(status: .unavailable),
                                                 preferOverCurrent: true),
+                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            drafts: .dataFolder(),
                                             captureITunes: {
                                                 Issue.record("쓰기 후 Music을 다시 조회했습니다")
                                                 return ITunesLibrarySnapshot()
@@ -102,7 +112,7 @@ struct ITunesMissingCacheReloadTests {
             let loaded = try LoadedLibrary.load(snapshot: fixture.database,
                                                 previousITunesSnapshot: .init(source: previous,
                                                     contents: ITunesLibrarySnapshot(status: oldStatus),
-                                                    preferOverCurrent: true))
+                                                    preferOverCurrent: true), fallbackDirectory: LibrarySnapshot.defaultDirectory, drafts: .dataFolder())
             #expect(loaded.iTunesSnapshot.status == status)
             #expect(loaded.iTunesSnapshot.playlists == current.playlists)
         }
@@ -111,10 +121,11 @@ struct ITunesMissingCacheReloadTests {
     // MARK: - 읽기와 한 번에 하는 캡처의 읽는 중 표시(#197)
 
     func quietStore(_ fixture: RekordboxFixture) -> LibraryStore {
-        LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.itunes-loading.\(UUID())")!, persist: false),
+        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes-loading"), persist: false),
                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                      backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
-                     mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
+                     mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                     arguments: ["test", "--db", fixture.database.path], environment: [:])
     }
 
     @Test func 조용히_읽으며_Music을_함께_조회하는_동안_사이드바는_읽는_중으로_보인다() async throws {
@@ -122,12 +133,12 @@ struct ITunesMissingCacheReloadTests {
         // 캡처한 목록이 없다는 안내를 읽는 중 안내로 바꾸고, 결과를 채택하면 그 결과로 바뀐다.
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec(id: "1"))
-        let store = quietStore(fixture), args = ["test", "--db", fixture.database.path]
-        await store.load(snapshot: fixture.database, arguments: args, environment: [:])
+        let store = quietStore(fixture)
+        await store.load(snapshot: fixture.database)
         #expect(store.iTunesLibrary.status == .notCaptured)
         let resume = DispatchSemaphore(value: 0), started = Mutex(false)
         let loading = Task {
-            await store.load(snapshot: fixture.database, quiet: true, refreshITunes: true, arguments: args, environment: [:],
+            await store.load(snapshot: fixture.database, quiet: true, refreshITunes: true,
                              captureITunes: {
                                  started.withLock { $0 = true }
                                  resume.wait()
@@ -145,11 +156,11 @@ struct ITunesMissingCacheReloadTests {
     @Test func 읽기가_결과를_채택하지_못하고_끝나면_읽는_중을_되돌린다() async throws {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec(id: "1"))
-        let store = quietStore(fixture), args = ["test", "--db", fixture.database.path]
-        await store.load(snapshot: fixture.database, arguments: args, environment: [:])
+        let store = quietStore(fixture)
+        await store.load(snapshot: fixture.database)
         #expect(store.iTunesLibrary.status == .notCaptured)
         // 읽지 못한 사본: 캡처에 이르지 못해도 읽는 중이 남지 않는다
-        await store.load(snapshot: fixture.root.appending(path: "없는.db"), quiet: true, refreshITunes: true, arguments: args, environment: [:],
+        await store.load(snapshot: fixture.root.appending(path: "없는.db"), quiet: true, refreshITunes: true,
                          captureITunes: {
                              Issue.record("읽지 못한 사본에서 Music을 조회했습니다")
                              return ITunesLibrarySnapshot()

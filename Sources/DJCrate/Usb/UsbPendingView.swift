@@ -1,6 +1,5 @@
+import DJCApplication
 import DJCDomain
-import DJCStorage
-import RekordboxKit
 import SwiftUI
 
 /// USB 쓰기 대기 목록(순수 모델): 초안 편집마다 설명과 상태(미리 판정·미리 보기 결과), 요약 줄, 쓰기 단추 상태
@@ -52,7 +51,7 @@ struct UsbPendingModel: Equatable {
     /// "USB에 쓰기…" 도움말(막혔으면 그 까닭과 할 일)
     var writeHelp: String
 
-    /// - blockReason: 미리 보기 전의 가벼운 막힘 판정(`UsbEditActions.blockReason`)
+    /// - blockReason: 미리 보기 전의 가벼운 막힘 판정(`UsbEditRules.blockReason`)
     init(volumeName: String, isConnected: Bool, edits: [UsbLibraryEdit], library: UsbLibrary?, summary: UsbEditSummary?, busy: Bool,
          blockReason: (UsbLibraryEdit) -> String?) {
         self.volumeName = volumeName
@@ -72,7 +71,7 @@ struct UsbPendingModel: Equatable {
         }
         if let summary {
             summaryLines = [String(ui: "쓸 편집 \(summary.writtenCount)건 · 막힌 편집 \(summary.blockedCount)건 · 바꿀 것 없는 편집 \(summary.unchangedCount)건")]
-                + summary.stopping + UsbWriteCoordinator.editLines(summary, blockedEdits: false)
+                + summary.stopping + UsbWriteFlow.editLines(summary, blockedEdits: false)
         } else {
             summaryLines = []
         }
@@ -82,7 +81,7 @@ struct UsbPendingModel: Equatable {
         let nothingToWrite = summary.map { $0.stopping.isEmpty && !$0.hasChanges } ?? false
         canWrite = canPreview && stopping.isEmpty && !nothingToWrite
         writeHelp = if !isConnected {
-            String(ui: "USB를 연결한 뒤 쓰세요")
+            UsbWriteFlow.Text.connectFirstDetail
         } else if busy {
             String(ui: "USB에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 시도하세요")
         } else if edits.isEmpty {
@@ -228,7 +227,7 @@ struct UsbPendingView: View {
         defer { isPreviewing = false }
         let revision = usb.draftRevisions[volumeKey]
         let pending = UsbPendingWorkflow(coordinator: coordinator, volumeKey: volumeKey, database: store.snapshotURL,
-                                         share: usb.syncDraftSources[volumeKey]?.job.share ?? RekordboxShare.directory)
+                                         share: usb.syncDraftSources[volumeKey]?.job.share ?? store.shareRoot)
         let result = await pending.preview()
         // 기다리는 동안 초안이 바뀌었으면 버린다
         if usb.draftRevisions[volumeKey] == revision { summary = result }
@@ -237,7 +236,7 @@ struct UsbPendingView: View {
     private func write() async {
         guard let coordinator = store.usbCoordinator else { return }
         let pending = UsbPendingWorkflow(coordinator: coordinator, volumeKey: volumeKey, database: store.snapshotURL,
-                                         share: usb.syncDraftSources[volumeKey]?.job.share ?? RekordboxShare.directory)
+                                         share: usb.syncDraftSources[volumeKey]?.job.share ?? store.shareRoot)
         await pending.write(reusing: summary)
     }
 }

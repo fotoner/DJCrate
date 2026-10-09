@@ -1,6 +1,6 @@
 import AppKit
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import SwiftUI
 
 /// '폴더에서 찾기…'(#62): 파일 없는 곡 ↔ 새 위치 후보를 미리 보고, 애매한 곡은 사람이 고른다.
@@ -43,7 +43,7 @@ struct RelocateView: View {
         }
     }
 
-    private func scanning(_ progress: RelocateScanner.Progress) -> some View {
+    private func scanning(_ progress: RelocateProgress) -> some View {
         VStack(spacing: 12) {
             Spacer()
             if progress.phase == .reading, progress.filesToRead > 0 {
@@ -263,7 +263,8 @@ struct RelocateEntryButton: View {
 
     private func open() {
         guard let folder = RelocatePanels.chooseFolder() else { return }
-        let next = RelocateModel(tracks: store.rows.filter { $0.fileMissing && !$0.isStaged }.map(\.track), snapshot: store.snapshotURL, folder: folder)
+        let next = RelocateModel(tracks: store.rows.filter { $0.fileMissing && !$0.isStaged }.map(\.track), snapshot: store.snapshotURL, folder: folder,
+                                 relocate: store.useCases.relocate)
         next.start()
         model = next
     }

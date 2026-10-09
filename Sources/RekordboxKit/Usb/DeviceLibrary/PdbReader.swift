@@ -1,28 +1,6 @@
 import DJCDomain
 import Foundation
 
-/// Device Library 읽기 보고서. 이름·경로 같은 글자 값은 넣지 않는다.
-public struct PdbReadReport: Sendable {
-    public var exportHeader: PdbFileHeader
-    public var extHeader: PdbFileHeader?
-    /// 표 이름("tracks", "exportExt.tags" 등) → 산 행/자리
-    public var tableCounts: [String: (live: Int, slots: Int)]
-    public var unknownRows: [UsbUnknownRows]
-    /// 멈추지 않고 모은 구조 문제(`issueDetails`의 글자 모양)
-    public var issues: [String]
-    /// 문자열 모양별 개수(산 행만)
-    public var stringKinds: [String: Int]
-    public var issueDetails: [PdbIssue]
-    /// 표 이름 → 사슬 쪽 수(인덱스 쪽 포함)
-    public var pageCounts: [String: Int]
-    /// 가장 긴 짧은 ASCII 글자 수
-    public var longestShortASCII: Int
-    /// 행 시작 기준 4바이트 경계에 있지 않은 UTF-16 문자열 수
-    public var misalignedUTF16: Int
-    /// 표 이름 → 먼 오프셋 모양(0x0064·0x0084·0x0684)으로 읽은 산 행 수. 왕복 검사가 다시 쓴 파일의 수와 비교한다
-    public var farShapeRows: [String: Int]
-}
-
 /// 파일 하나를 읽은 결과(lab·진단용). 쪽까지 들고 있다.
 public struct PdbFileReport: Sendable {
     public var kind: PdbFileKind

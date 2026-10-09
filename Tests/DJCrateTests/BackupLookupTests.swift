@@ -1,4 +1,5 @@
 @testable import DJCrate
+import DJCDomain
 import Foundation
 @testable import RekordboxKit
 import Testing
@@ -20,7 +21,7 @@ struct BackupLookupTests {
 
     @Test func 열거한_백업의_정확한_경로를_찾는다() throws {
         try withBackup { _, backup in
-            #expect(DirectWritePanels.backup(matching: backup.url, in: [backup])?.url == backup.url)
+            #expect(ReflectionCoordinator.backup(matching: backup.url, in: [backup])?.url == backup.url)
         }
     }
 
@@ -28,10 +29,10 @@ struct BackupLookupTests {
         try withBackup { requested, backup in
             #expect(requested.path != backup.url.path)
             #expect(requested.resolvingSymlinksInPath().path == backup.url.resolvingSymlinksInPath().path)
-            #expect(DirectWritePanels.backup(matching: requested, in: [backup])?.url == backup.url)
+            #expect(ReflectionCoordinator.backup(matching: requested, in: [backup])?.url == backup.url)
             var aliased = backup
             aliased.url = requested
-            #expect(DirectWritePanels.backup(matching: backup.url, in: [aliased])?.url == requested)
+            #expect(ReflectionCoordinator.backup(matching: backup.url, in: [aliased])?.url == requested)
         }
     }
 
@@ -39,17 +40,17 @@ struct BackupLookupTests {
         try withBackup { _, backup in
             for isDirectory in [true, false] {
                 let requested = URL(fileURLWithPath: backup.url.path, isDirectory: isDirectory)
-                #expect(DirectWritePanels.backup(matching: requested, in: [backup])?.url == backup.url)
+                #expect(ReflectionCoordinator.backup(matching: requested, in: [backup])?.url == backup.url)
             }
         }
     }
 
     @Test func 없는_백업과_빈_목록은_선택하지_않는다() throws {
         try withBackup { requested, backup in
-            #expect(DirectWritePanels.backup(matching: requested, in: []) == nil)
-            #expect(DirectWritePanels.backup(matching: requested.appending(path: "missing"), in: [backup]) == nil)
+            #expect(ReflectionCoordinator.backup(matching: requested, in: []) == nil)
+            #expect(ReflectionCoordinator.backup(matching: requested.appending(path: "missing"), in: [backup]) == nil)
             try FileManager.default.removeItem(at: backup.url)
-            #expect(DirectWritePanels.backup(matching: backup.url, in: [backup]) == nil)
+            #expect(ReflectionCoordinator.backup(matching: backup.url, in: [backup]) == nil)
         }
     }
 
@@ -57,8 +58,8 @@ struct BackupLookupTests {
         try withBackup { _, backup in
             try withBackup { other, otherBackup in
                 #expect(other.lastPathComponent == backup.url.lastPathComponent)
-                #expect(DirectWritePanels.backup(matching: other, in: [backup]) == nil)
-                #expect(DirectWritePanels.backup(matching: backup.url, in: [otherBackup, backup])?.url == backup.url)
+                #expect(ReflectionCoordinator.backup(matching: other, in: [backup]) == nil)
+                #expect(ReflectionCoordinator.backup(matching: backup.url, in: [otherBackup, backup])?.url == backup.url)
             }
         }
     }
@@ -67,8 +68,8 @@ struct BackupLookupTests {
         try withBackup { requested, backup in
             var aliased = backup
             aliased.url = requested
-            #expect(DirectWritePanels.backup(matching: backup.url, in: [backup, aliased]) == nil)
-            #expect(DirectWritePanels.backup(matching: requested, in: [backup, aliased]) == nil)
+            #expect(ReflectionCoordinator.backup(matching: backup.url, in: [backup, aliased]) == nil)
+            #expect(ReflectionCoordinator.backup(matching: requested, in: [backup, aliased]) == nil)
         }
     }
 
@@ -76,7 +77,7 @@ struct BackupLookupTests {
         try withBackup { _, backup in
             var file = backup
             file.url = backup.url.appending(path: "master.db")
-            #expect(DirectWritePanels.backup(matching: file.url, in: [file]) == nil)
+            #expect(ReflectionCoordinator.backup(matching: file.url, in: [file]) == nil)
         }
     }
 }

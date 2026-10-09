@@ -1,0 +1,40 @@
+# 모듈 경계 규칙의 빚 목록(scripts/check-imports.py). 지금 남은 위반을 고정한다.
+# 줄: 파일<TAB>규칙<TAB>대상. 규칙: import(허용 밖 프로젝트 모듈), api(핵심부의 직접 호출), test-defaults(시험의 UserDefaults(suiteName:)),
+# view-task(뷰 파일의 Task 시작·await, 대상에 곳 수: 늘면 새 위반, 줄면 이 줄을 고친다).
+# 빚을 갚으면 그 줄을 지운다(남겨 두면 검사가 "지워도 됨"으로 실패한다). 새 위반은 여기 더하지 말고 고친다.
+# 다시 만들기: scripts/check-imports.py --write-debt
+Sources/DJCApplication/Usb/UsbWriteSession.swift	api	Observation
+Sources/DJCrate/App/AppCommands.swift	view-task	Task 1곳
+Sources/DJCrate/App/AppCommands.swift	view-task	await 1곳
+Sources/DJCrate/App/ContentView.swift	view-task	Task 7곳
+Sources/DJCrate/App/ContentView.swift	view-task	await 12곳
+Sources/DJCrate/App/ITunesPlaylistSection.swift	view-task	Task 1곳
+Sources/DJCrate/App/ITunesPlaylistSection.swift	view-task	await 1곳
+Sources/DJCrate/App/ITunesSyncView.swift	view-task	Task 2곳
+Sources/DJCrate/App/ITunesSyncView.swift	view-task	await 2곳
+Sources/DJCrate/App/PlaylistSidebar.swift	view-task	Task 1곳
+Sources/DJCrate/App/PlaylistSidebar.swift	view-task	await 1곳
+Sources/DJCrate/App/Sidebar.swift	view-task	Task 1곳
+Sources/DJCrate/App/Sidebar.swift	view-task	await 1곳
+Sources/DJCrate/Edit/TrackEditWindow.swift	view-task	Task 2곳
+Sources/DJCrate/Edit/TrackEditWindow.swift	view-task	await 3곳
+Sources/DJCrate/Library/ArtworkInspectorSection.swift	view-task	Task 1곳
+Sources/DJCrate/Library/ArtworkInspectorSection.swift	view-task	await 2곳
+Sources/DJCrate/Library/DuplicateTracksView.swift	view-task	Task 1곳
+Sources/DJCrate/Library/DuplicateTracksView.swift	view-task	await 2곳
+Sources/DJCrate/Reflection/AppToast.swift	view-task	await 1곳
+Sources/DJCrate/Reflection/AppleMusicImportWindow.swift	view-task	Task 2곳
+Sources/DJCrate/Reflection/AppleMusicImportWindow.swift	view-task	await 5곳
+Sources/DJCrate/Reflection/PointSnapshotWindow.swift	view-task	Task 7곳
+Sources/DJCrate/Reflection/PointSnapshotWindow.swift	view-task	await 18곳
+Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	Task 1곳
+Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	await 1곳
+Sources/DJCrate/Settings/ShortcutSettingsView.swift	view-task	Task 2곳
+Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	Task 4곳
+Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	await 6곳
+Sources/DJCrate/Usb/UsbExportSheet.swift	view-task	Task 2곳
+Sources/DJCrate/Usb/UsbExportSheet.swift	view-task	await 3곳
+Sources/DJCrate/Usb/UsbPendingView.swift	view-task	Task 4곳
+Sources/DJCrate/Usb/UsbPendingView.swift	view-task	await 9곳
+Sources/DJCrate/Usb/UsbSidebarSection.swift	view-task	Task 10곳
+Sources/DJCrate/Usb/UsbSidebarSection.swift	view-task	await 14곳

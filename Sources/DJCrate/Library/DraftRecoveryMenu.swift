@@ -1,4 +1,6 @@
 import AppKit
+import DJCApplication
+import DJCDomain
 
 /// 선택으로 목록을 움직이지 않고, 곡·종류를 명시해 그 줄만 든 복구 시트를 연다(#232).
 @MainActor
@@ -9,11 +11,13 @@ final class DraftRecoveryMenu: NSObject, NSMenuItemValidation {
     }
 
     let store: LibraryStore
-    var recover: (LibraryStore, TrackRow, DraftRecoveryKind) -> Void = {
-        DraftRecoveryPanels.recover(store: $0, row: $1, kind: $2)
-    }
+    /// 고른 곡·종류의 복구 시트를 연다(앱은 반영 화면 쪽 `ReflectionCoordinator.startRecovery`)
+    let recover: @MainActor (TrackRow, DraftRecoveryKind) -> Void
 
-    init(store: LibraryStore) { self.store = store }
+    init(store: LibraryStore, recover: @escaping @MainActor (TrackRow, DraftRecoveryKind) -> Void) {
+        self.store = store
+        self.recover = recover
+    }
 
     func append(to menu: NSMenu, rows targets: [TrackRow]) {
         let rows = store.uniqueTracks(targets).filter { !store.recoveryKinds(for: $0).isEmpty }
@@ -65,6 +69,6 @@ final class DraftRecoveryMenu: NSObject, NSMenuItemValidation {
 
     @objc private func recoverDraft(_ sender: NSMenuItem) {
         guard validateMenuItem(sender), let target = sender.representedObject as? Target else { return }
-        recover(store, target.row, target.kind)
+        recover(target.row, target.kind)
     }
 }

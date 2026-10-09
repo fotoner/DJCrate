@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(python3 scripts/check-imports.py *)",
+      "Bash(python3 scripts/check-docs.py *)",
+      "Bash(python3 scripts/test-harness.py *)",
+      "Bash(python3 scripts/affected-tests.py *)",
+      "Bash(scripts/check.sh --changed *)",
+      "Bash(scripts/check.sh --quick *)"
+    ],
+    "deny": [
+      "Edit(~/Library/Pioneer/**)",
+      "Edit(~/Library/Application Support/Pioneer/**)",
+      "Edit(//Volumes/**)",
+      "Edit(~/Library/Application Support/DJCrate/**)",
+      "Edit(~/Library/Logs/DJCrate/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-bash.py\"; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/check-imports-after-edit.py\"; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"",
+            "timeout": 90
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/stop-verify-reminder.py\"; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/session-safety.py\"; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

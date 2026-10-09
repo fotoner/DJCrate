@@ -270,9 +270,7 @@ enum CueLab {
             throw UsageError()
         }
         let fm = FileManager.default
-        let folder = URL(filePath: work)
-        try? fm.removeItem(at: folder)
-        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let folder = try LabWorkFolder.reset(work)
         let copy = folder.appending(path: "master.db")
         try fm.copyItem(at: URL(filePath: oldPath), to: copy)
         let before = try RekordboxLibrary.load(snapshot: URL(filePath: oldPath))
@@ -353,7 +351,7 @@ enum CueLab {
             } else {
                 loop.time += 1; loop.loop?.end += 1; loop.loop?.active = true   // 옮기고 활성으로
                 draft.place(loop)
-                var half = EditableCue(kind: .memory, time: 30)
+                var half = EditableCue(id: UUID(), kind: .memory, time: 30)
                 half.loop = EditableCue.Loop(end: 30.25, active: false, beats: 0.5)
                 draft.place(half)
             }
@@ -404,8 +402,8 @@ enum CueLab {
             if let first = memories.first { draft.remove(first.id) }                  // 지우기
             if memories.count > 1 { var moved = memories[1]; moved.time += 0.5; moved.name = "DJCrate 옮김"; draft.place(moved) }  // 옮기기+이름
             let free = (0..<8).first { slot in !draft.cues.contains { $0.kind == .hot(slot) } }
-            if let free { draft.place(EditableCue(kind: .hot(free), time: 10 + Double(n), name: n == 0 ? "따옴표\"·역슬래시\\" : "")) }  // 핫큐 추가
-            draft.place(EditableCue(kind: .memory, time: 20.123 + Double(n)))        // 메모리 추가
+            if let free { draft.place(EditableCue(id: UUID(), kind: .hot(free), time: 10 + Double(n), name: n == 0 ? "따옴표\"·역슬래시\\" : "")) }  // 핫큐 추가
+            draft.place(EditableCue(id: UUID(), kind: .memory, time: 20.123 + Double(n)))        // 메모리 추가
             drafts.append(draft)
             print("시험 곡 \(track.title.prefix(24)) · \(legacy.contains(track.id) ? "옛 JSON" : "새 JSON") · 변경 \(draft.changes.count)")
         }
@@ -413,13 +411,13 @@ enum CueLab {
         if let track = candidates.dropFirst(6).first {
             var stale = CueDraft(trackUUID: track.uuid, rekordboxCues: library.cues(for: track))
             stale.base[0].time += 1   // rekordbox 쪽 큐가 달라진 것처럼
-            stale.place(EditableCue(kind: .memory, time: 30))
+            stale.place(EditableCue(id: UUID(), kind: .memory, time: 30))
             drafts.append(stale)
         }
         for (label, match) in [("VBR", { (f: (Int, Int)) in f.0 == 1 && f.1 == 0 }), ("FLAC", { (f: (Int, Int)) in f.0 == 5 })] {
             if let track = library.tracks.first(where: { formats[$0.id].map(match) ?? false }) {
                 var d = CueDraft(trackUUID: track.uuid, rekordboxCues: library.cues(for: track))
-                d.place(EditableCue(kind: .memory, time: 12))
+                d.place(EditableCue(id: UUID(), kind: .memory, time: 12))
                 drafts.append(d)
                 print("막혀야 함(\(label)): \(track.title.prefix(24))")
             }
@@ -481,11 +479,9 @@ enum CueLab {
         guard let work = value(after: "--work", in: args) else { throw UsageError() }
         let limit = Int(value(after: "--limit", in: args) ?? "") ?? 50
         let fm = FileManager.default
-        let folder = URL(filePath: work)
-        try? fm.removeItem(at: folder)
-        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
-        let original = try LibrarySnapshot.latest()
+        let folder = try LabWorkFolder.reset(work)
         let copy = folder.appending(path: "master.db")
+        let original = try LibrarySnapshot.latest()
         try fm.copyItem(at: original, to: copy)
         let library = try RekordboxLibrary.load(snapshot: copy)
         var ids: [String] = []

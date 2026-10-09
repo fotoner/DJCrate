@@ -2,7 +2,6 @@ import AppKit
 import Foundation
 import Testing
 import DJCDomain
-import DJCTestSupport
 import RekordboxKit
 @testable import DJCrate
 
@@ -34,8 +33,7 @@ struct PreviewCueTests {
                      PreviewCueMark(EditableCue(kind: .memory, time: 75))]
         for mode in WaveformColorMode.allCases {
             for appearance in [NSAppearance.Name.aqua, .darkAqua] {
-                let image = try #require(PreviewWaveformRenderer.image(preview, mode: mode, appearance: appearance.rawValue,
-                                                                      cues: marks, duration: 100))
+                let image = try #require(PreviewWaveformRenderer.image(preview, mode: mode, appearance: appearance.rawValue, cues: marks, duration: 100))
                 let bitmap = NSBitmapImageRep(cgImage: image)
                 let hot = try #require(bitmap.colorAt(x: 100, y: 4))
                 let memory = try #require(bitmap.colorAt(x: 300, y: 35))
@@ -50,10 +48,10 @@ struct PreviewCueTests {
     }
 
     @Test @MainActor func movingACueWithSameCountsRefreshesOnlyItsDraftMarkers() {
-        let store = LibraryStore()
-        var first = CueDraft(trackUUID: "first", rekordboxCues: [])
+        let store = LibraryStore.test()
+        var first = CueDraft(trackUUID: "first")
         first.cues = [EditableCue(kind: .hot(0), time: 10)]
-        var second = CueDraft(trackUUID: "second", rekordboxCues: [])
+        var second = CueDraft(trackUUID: "second")
         second.cues = [EditableCue(kind: .memory, time: 20)]
         store.cueDraftChanged(first); store.cueDraftChanged(second)
         let other = store.draftPreviewCues["second"]

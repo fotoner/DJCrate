@@ -11,7 +11,7 @@ struct TimelineShiftTests {
         #expect(abs(back.segments[0].start - 0.25) < 1e-9 && abs(back.base[0].start - 0.2) < 1e-9)
         #expect(!draft.shifted(by: 0.05).hasChanges == !draft.hasChanges)
 
-        var cues = CueDraft(trackUUID: "t", rekordboxCues: [])
+        var cues = CueDraft(trackUUID: "t")
         cues.cues = [EditableCue(kind: .memory, time: 1.0)]
         #expect(abs(cues.shifted(by: -0.048).cues[0].time - 0.952) < 1e-9)
     }

@@ -1,3 +1,5 @@
+import DJCDomain
+
 enum DeckTrackNavigation {
     static func adjacentRows<Rows: Sequence>(in rows: Rows, currentUUID: String?) -> (previous: TrackRow?, next: TrackRow?) where Rows.Element == TrackRow {
         var first: TrackRow?

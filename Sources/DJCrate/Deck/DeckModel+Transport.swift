@@ -1,9 +1,7 @@
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
 import Foundation
-import RekordboxKit
 
 /// 오디오가 샘플 단위로 예약하지 못해 화면 틱이 넘길 재생 퀀타이즈 점프
 struct PendingJump: Equatable {
@@ -19,7 +17,7 @@ extension DeckModel {
 
     func togglePlay() {
         guard canPlay else { return }
-        AudioEvents.record("조작 재생/정지 · 재생 중=\(isPlaying) · 미리듣기=\(isCuePreviewing) · 위치 \(String(format: "%.2f", playhead))")
+        audio.recordEvent("조작 재생/정지 · 재생 중=\(isPlaying) · 미리듣기=\(isCuePreviewing) · 위치 \(String(format: "%.2f", playhead))")
         if isCuePreviewing {
             if isCueHeld {
                 // CUE를 누른 채 재생을 누르면 손을 떼도 계속 재생한다(CDJ와 같다).
@@ -27,7 +25,7 @@ extension DeckModel {
                 return
             }
             // CUE를 뗀 신호를 놓쳐 미리 듣기 상태만 남은 경우: 평소처럼 재생/정지한다.
-            AudioEvents.record("남아 있던 미리 듣기 상태를 풀었음")
+            audio.recordEvent("남아 있던 미리 듣기 상태를 풀었음")
             isCuePreviewing = false
         }
         if isPlaying {
@@ -156,7 +154,7 @@ extension DeckModel {
         }
         // CUE를 뗀 신호(키·마우스)를 놓치면 미리 듣기가 끝나지 않는다. 실제로 누르고 있지 않으면 뗀 것으로 본다.
         if isCuePreviewing, !isCueHeld {
-            AudioEvents.record("CUE를 뗀 신호를 놓쳐 미리 듣기를 끝냄")
+            audio.recordEvent("CUE를 뗀 신호를 놓쳐 미리 듣기를 끝냄")
             cueUp()
             return
         }
@@ -276,7 +274,7 @@ extension DeckModel {
     /// - 멈춤 + 큐 지점: 누르고 있는 동안 재생한다. 떼면 큐 지점으로 돌아간다.
     func cueDown() {
         guard canPlay, !isCuePreviewing else { return }
-        AudioEvents.record("조작 CUE 누름 · 재생 중=\(isPlaying) · 위치 \(String(format: "%.2f", playhead)) · 큐 \(String(format: "%.2f", cuePoint))")
+        audio.recordEvent("조작 CUE 누름 · 재생 중=\(isPlaying) · 위치 \(String(format: "%.2f", playhead)) · 큐 \(String(format: "%.2f", cuePoint))")
         if isPlaying {
             returnToCue()
         } else if abs(playhead - cuePoint) > Self.cueTolerance {
@@ -294,7 +292,7 @@ extension DeckModel {
     /// CUE를 뗌: 미리 듣던 중이면 큐 지점으로 돌아가 멈춘다.
     func cueUp() {
         guard isCuePreviewing else { return }
-        AudioEvents.record("조작 CUE 뗌(미리 듣기 끝)")
+        audio.recordEvent("조작 CUE 뗌(미리 듣기 끝)")
         isCuePreviewing = false
         if isPlaying { returnToCue() }
     }

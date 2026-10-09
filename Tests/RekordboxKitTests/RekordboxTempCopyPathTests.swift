@@ -1,6 +1,7 @@
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -91,7 +92,17 @@ struct RekordboxTempCopyPathTests {
         #expect(Array(savedManifest.values) == [paths.relative])
     }
 
-    @Test(arguments: parents, ["outside", "sibling", "traversal", "other-folder", "link", "duplicate"])
+    /// 막는 경우마다 표기 하나: 표기를 돌려 네 표기가 모두 한 번 이상 쓰인다. 표기 × 경우 전체(24가지)는 같은 규칙(`backupTarget`)을
+    /// 되풀이할 뿐이라 줄였다(#167). 표기마다 같은 상대 경로가 되는 것은 위 `절대_경로는_…` 시험이 본다.
+    static let refusedKinds = ["outside", "sibling", "traversal", "other-folder", "link", "duplicate"]
+    static let refusedCases = refusedKinds.enumerated().map { (parents[$0.offset % parents.count], $0.element) }
+
+    @Test func 막는_경우는_모든_표기를_한_번_이상_쓴다() {
+        #expect(Set(Self.refusedCases.map(\.0)) == Set(Self.parents))
+        #expect(Self.refusedCases.map(\.1) == Self.refusedKinds)
+    }
+
+    @Test(arguments: refusedCases)
     func 임시_폴더에서도_루트_밖_이동_링크_중복은_막는다(_ parent: String, _ kind: String) throws {
         let paths = RekordboxBackupPathTests()
         let (fixture, backup, target) = try paths.setup(parent: URL(filePath: parent))

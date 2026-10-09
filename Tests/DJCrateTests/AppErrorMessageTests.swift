@@ -1,7 +1,8 @@
 @testable import DJCrate
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import Testing
 
 @Suite("앱 오류 표시")
@@ -30,13 +31,12 @@ struct AppErrorMessageTests {
     @MainActor
     @Test func 라이브러리_로드_실패도_앱_문구로_표시한다() async throws {
         let fixture = try RekordboxFixture()
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.error.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("error"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), backupDirectory: fixture.backups,
-                                 draftHome: fixture.root.appending(path: "drafts"))
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
+                                 draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: fixture.database,
+                                 rekordboxShareRoot: fixture.shareRoot)
         let missing = fixture.root.appending(path: "missing.db")
-        await store.load(snapshot: missing, arguments: ["test", "--db", fixture.database.path], environment: [:])
+        await store.load(snapshot: missing)
         guard case let .failed(message) = store.phase else {
             Issue.record("사본이 없으면 실패 화면을 보여야 한다")
             return

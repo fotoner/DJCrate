@@ -1,6 +1,7 @@
 @testable import DJCrate
 @testable import DJCAnalysis
 import SwiftUI
+import DJCDomain
 import Testing
 
 @MainActor
@@ -9,7 +10,7 @@ struct WaveformBandPathCacheTests {
     private let rect = CGRect(x: 3, y: 2, width: 2, height: 20)
     private var waveform: Waveform { Waveform(rate: 1, duration: 4, low: [0, 255, 128, 64], mid: [255, 0, 0, 0], high: [0, 0, 255, 0]) }
 
-    @Test func 같은_파형과_크기의_반복_배치는_경로를_한_번만_만든다() {
+    @Test(.tags(.perfContract)) func 같은_파형과_크기의_반복_배치는_경로를_한_번만_만든다() {
         let previous = PerfProbe.countsBodies
         defer { PerfProbe.countsBodies = previous; PerfProbe.resetBodyCounts() }
         PerfProbe.countsBodies = true

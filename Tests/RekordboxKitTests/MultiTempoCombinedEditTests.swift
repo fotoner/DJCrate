@@ -1,7 +1,7 @@
 import DJCDomain
-import DJCTestSupport
 import Foundation
 @testable import RekordboxKit
+import RekordboxFixtures
 import Testing
 
 /// 여러 편집을 한 초안으로 쌓았을 때도 미리 보기와 저장 결과가 같은지 확인한다.

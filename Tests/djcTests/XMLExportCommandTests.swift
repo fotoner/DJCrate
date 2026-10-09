@@ -1,7 +1,9 @@
+import DJCApplication
 import DJCDomain
+import DJCEnvironment
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 @testable import djc
@@ -74,25 +76,35 @@ struct XMLExportCommandTests {
     }
 
     /// `djc snapshot` 사본 옆에는 `share`가 없다. 그대로 두면 모든 곡의 TEMPO가 조용히 빠지므로 막는다.
-    @Test func 사본_옆에_share가_없으면_share나_no_analysis를_줘야_한다() throws {
+    /// `xml-export`·`xml-diff`가 같은 규칙(`XMLExportCommand.shareRoot`)을 쓰므로 명령마다 한 번씩 본다.
+    @Test(arguments: ["xml-export", "xml-diff"])
+    func 사본_옆에_share가_없으면_share나_no_analysis를_줘야_한다(command: String) throws {
         let fixture = try library()
+        let input = command == "xml-diff" ? try XMLDiffCommandTests().xml(fixture) : nil
         try FileManager.default.removeItem(at: fixture.shareRoot)
         let out = fixture.root.appending(path: "out.xml")
-        let error = try #require(throws: ReadFailure.self) {
-            _ = try XMLExportCommand.execute(.init(database: fixture.database, out: out, share: nil, overwrite: false, dryRun: false))
+        func run(share: URL?, noAnalysis: Bool = false) throws -> [String] {
+            if let input {
+                let report = try XMLDiffCommand.report(.init(database: fixture.database, xml: input, share: share, noAnalysis: noAnalysis))
+                #expect(report.diff.isEmpty, "그리드를 읽지 않으면 그리드를 비교하지 않는다")
+                return XMLDiffCommand.lines(report, limit: 50)
+            }
+            return try XMLExportCommand.execute(.init(database: fixture.database, out: out, share: share, overwrite: false, dryRun: false,
+                                                      noAnalysis: noAnalysis))
         }
+        let error = try #require(throws: ReadFailure.self) { _ = try run(share: nil) }
         #expect(error.code == "missing_share" && error.message.contains("--share") && error.message.contains("--no-analysis"))
-        #expect(!FileManager.default.fileExists(atPath: out.path))
         // 없는 --share도 같다
-        #expect(throws: ReadFailure.self) {
-            _ = try XMLExportCommand.execute(.init(database: fixture.database, out: out, share: fixture.root.appending(path: "없음"),
-                                                   overwrite: false, dryRun: false))
+        #expect(throws: ReadFailure.self) { _ = try run(share: fixture.root.appending(path: "없음")) }
+        #expect(!FileManager.default.fileExists(atPath: out.path))
+        // --no-analysis를 주면 그리드 없이 하고 요약에 드러난다
+        let lines = try run(share: nil, noAnalysis: true).joined(separator: "\n")
+        if command == "xml-diff" {
+            #expect(lines.contains("그리드는 비교하지 않았습니다"))
+        } else {
+            #expect(try !String(contentsOf: out, encoding: .utf8).contains("<TEMPO "))
+            #expect(lines.contains("분석 파일이 없거나 읽지 못한 곡 1"))
         }
-        // --no-analysis를 주면 TEMPO 없이 내보내고 요약에 드러난다
-        let lines = try XMLExportCommand.execute(.init(database: fixture.database, out: out, share: nil, overwrite: false, dryRun: false,
-                                                       noAnalysis: true))
-        #expect(try !String(contentsOf: out, encoding: .utf8).contains("<TEMPO "))
-        #expect(lines.joined(separator: "\n").contains("분석 파일이 없거나 읽지 못한 곡 1"))
     }
 
     @Test func 이미_있는_파일은_덮어쓰기를_줘야_바꾼다() throws {

@@ -1,5 +1,6 @@
 @testable import DJCrate
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Observation
 import Testing
@@ -12,8 +13,8 @@ struct ObservedSettingTests {
     private let defaults: UserDefaults
 
     init() {
-        let suite = "djc.test.observed-setting.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.suiteName("observed-setting")
+        defaults = TestDefaults.open(suite)
         defaults.removePersistentDomain(forName: suite)
     }
 

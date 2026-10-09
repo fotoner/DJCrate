@@ -1,18 +1,6 @@
 import DJCDomain
 import Foundation
 
-/// DeviceSQL 문자열 모양
-public enum PdbStringKind: String, Sendable, Hashable, CaseIterable {
-    /// 첫 바이트 홀수 `((n+1)<<1)+1` + ASCII n바이트(끝 표시 없음)
-    case shortASCII
-    /// `40`, u16 길이(머리 4 포함), `00`, ASCII
-    case longASCII
-    /// `90`, u16 길이(머리 4 포함), `00`, UTF-16LE
-    case utf16LE
-    /// `90`, u16 길이, `00`, `03`, ASCII, `00`(트랙 ISRC 칸에만)
-    case isrc
-}
-
 public enum PdbStringDecoder {
     /// 행 시작 기준 offset에서 DeviceSQL 문자열 하나를 읽는다. `isrcAllowed`는 트랙 문자열 0(ISRC)에서만 참으로 준다
     /// (그 밖의 칸에서 `90 … 00 03`은 첫 글자 아래 바이트가 3인 UTF-16이다. 그래서 기본은 거짓).

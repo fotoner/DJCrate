@@ -37,8 +37,8 @@ struct LibraryTablePolishTests {
     }
 
     @Test func 저장된_좁은_번호_칸도_다시_넓히고_배율을_따른다() throws {
-        let store = LibraryStore(saveTagDrafts: { _ in })
-        let coordinator = TrackListCoordinator(store: store)
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
+        let coordinator = TrackListCoordinator(store: store, actions: .live(store: store))
         let table = NSTableView()
         let column = NSTableColumn(identifier: .init("index"))
         column.minWidth = 30
@@ -58,7 +58,7 @@ struct LibraryTablePolishTests {
     }
 
     @Test func 시트_머리글_정렬은_스토어에_전달된다() throws {
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         let coordinator = SheetCoordinator(store: store)
         let table = SheetTableView()
         coordinator.table = table
@@ -74,7 +74,7 @@ struct LibraryTablePolishTests {
     }
 
     @Test func 다른_표의_정렬이_시트_머리글로_돌아오고_선택한_곡은_유지된다() {
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         let coordinator = SheetCoordinator(store: store)
         let table = SheetTableView()
         coordinator.table = table

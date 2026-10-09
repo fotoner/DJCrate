@@ -1,8 +1,9 @@
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -40,20 +41,16 @@ struct SmartPlaylistAppTests {
     }
 
     static func makeStore(_ fixture: RekordboxFixture, lab: Bool? = nil, persist: Bool = false, defaults: UserDefaults? = nil) async -> LibraryStore {
-        let defaults = defaults ?? UserDefaults(suiteName: "djc.test.smart-playlists.\(UUID())")!
+        let defaults = defaults ?? TestDefaults.make("smart-playlists")
         let settings = SettingsStore(defaults: defaults, persist: persist)
         if persist, let lab { defaults.set(lab, forKey: SettingKeys.labSmartPlaylists.name) }
-        let store = LibraryStore(settings: settings, resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(settings: settings, resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
-                                 playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        let database = fixture.database
-        store.takeLiveSnapshot = { _ in database }
-        store.launchArguments = ["test"]
-        store.launchEnvironment = [:]
-        store.draftHome = fixture.root.appending(path: "drafts")
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
-        await store.load(snapshot: fixture.database, arguments: ["test"], environment: [:])
+                                 playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                                 draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: fixture.database,
+                                 rekordboxShareRoot: fixture.shareRoot, arguments: ["test"], environment: [:],
+                                 takeLiveSnapshot: { [database = fixture.database] _ in database })
+        await store.load(snapshot: fixture.database)
         if !persist, lab == true { store.showSmartPlaylists = true }
         return store
     }
@@ -200,7 +197,7 @@ struct SmartPlaylistAppTests {
 
     @Test func 켜_둔_설정은_저장돼_다시_열어도_이어진다() async throws {
         let fixture = try Self.fixture()
-        let defaults = UserDefaults(suiteName: "djc.test.smart-playlists.save.\(UUID())")!
+        let defaults = TestDefaults.make("smart-playlists.save")
         let store = await Self.makeStore(fixture, persist: true, defaults: defaults)
         #expect(!store.showSmartPlaylists)
         store.showSmartPlaylists = true
@@ -214,7 +211,7 @@ struct SmartPlaylistAppTests {
 
     @Test func 자가_테스트_프로세스는_저장된_설정을_읽지_않는다() async throws {
         let fixture = try Self.fixture()
-        let defaults = UserDefaults(suiteName: "djc.test.smart-playlists.selftest.\(UUID())")!
+        let defaults = TestDefaults.make("smart-playlists.selftest")
         defaults.set(true, forKey: SettingKeys.labSmartPlaylists.name)
         #expect(!SettingsStore(defaults: defaults, persist: false).value(SettingKeys.labSmartPlaylists))
         let store = await Self.makeStore(fixture, persist: false, defaults: defaults)

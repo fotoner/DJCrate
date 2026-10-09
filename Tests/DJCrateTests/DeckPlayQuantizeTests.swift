@@ -1,5 +1,7 @@
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Testing
 
@@ -45,6 +47,31 @@ struct DeckPlayQuantizeTests {
         playing(h)
         h.deck.pressHotCue(slot: 0)
         #expect(h.audio.log.last == "jump 11.000→30.000")
+    }
+
+    /// #107: 이전 설정(½박)이 남아 있어도 예약 방식(샘플 단위 예약·화면 틱)마다 다음 큰 박까지 기다린다.
+    /// 설정값 조합은 `PlayQuantizeTests`가 본다(DeckQuantizeBoundaryRegressionTests를 합침).
+    @Test(arguments: [false, true])
+    func 이전_설정과_예약방식에_관계없이_다음_큰_박까지_기다린다(sampleAccurate: Bool) async throws {
+        let h = try harness()
+        try await h.loaded()
+        h.deck.playQuantizeBeats = 0.5
+        h.audio.schedulesJumps = sampleAccurate
+        playing(h)
+        h.deck.pressHotCue(slot: 0)
+        if sampleAccurate {
+            #expect(h.deck.scheduledJump == .init(at: 11, to: 30))
+            #expect(h.audio.log.last == "jump 11.000→30.000")
+        } else {
+            #expect(h.deck.pendingJump?.jump == .init(at: 11, to: 30))
+            h.audio.position = 10.999
+            h.deck.tick()
+            #expect(h.audio.log.last == "play 10.600", "큰 박선 전에는 원래 구간을 재생한다")
+            h.audio.position = 11.02
+            h.deck.tick()
+            #expect(h.audio.log.last == "play 30.020", "화면 틱이 늦은 20ms만 보상한다")
+            #expect(h.deck.pendingJump == nil)
+        }
     }
 
     @Test(arguments: [false, true], [0, 1])
@@ -296,11 +323,14 @@ struct DeckPlayQuantizeTests {
         #expect(h.audio.loop == 10.5...11.5)
     }
 
-    @Test func 설정은_저장되고_기본값으로_되돌릴_수_있다() async throws {
-        let h = try harness()
-        h.deck.playQuantize = false
-        h.deck.playQuantizeBeats = 0.5
-        let reopened = DeckModel(audio: FakeDeckAudio(), storage: h.deck.storage, runsAnalysis: false)
+    @Test func 설정은_저장되고_기본값으로_되돌릴_수_있다() {
+        // 메모리 저장소의 기본 설정은 저장하지 않으므로, 저장하는 설정(임시 폴더 영역)을 준다.
+        let settings = SettingsStore(defaults: TestDefaults.make("play-quantize"), persist: true, sharedFile: nil)
+        let storage = DeckStorage.memory(MemoryDrafts(), settings: settings)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
+        deck.playQuantize = false
+        deck.playQuantizeBeats = 0.5
+        let reopened = DeckModel.test(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
         #expect(!reopened.playQuantize && reopened.playQuantizeBeats == 0.5)
         reopened.resetDeckSettings()
         #expect(reopened.playQuantize && reopened.playQuantizeBeats == PlayQuantize.defaultBeats)

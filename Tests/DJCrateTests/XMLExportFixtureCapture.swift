@@ -1,5 +1,6 @@
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
+import RekordboxKit
 import Testing
 
 /// 라이브러리 XML 내보내기 화면 캡처(`--xml-export-capture=<폴더>`)용 합성 라이브러리(#72). 곡 제목은 모두 "합성 곡"으로 시작한다.

@@ -1,7 +1,10 @@
+import DJCAdapters
+import DJCApplication
 @testable import DJCrate
+import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -34,7 +37,7 @@ struct ITunesSnapshotPrecedenceTests {
 
         let loaded = try LoadedLibrary.load(snapshot: fixture.database, previousITunesSnapshot:
             .init(source: fixture.root.appending(path: "previous.db"), contents: values.old,
-                  preferOverCurrent: preferPrevious))
+                  preferOverCurrent: preferPrevious), fallbackDirectory: LibrarySnapshot.defaultDirectory, drafts: .dataFolder(), source: .withoutDatabase)
 
         #expect(loaded.iTunesSnapshot.status == .ready)
         #expect(loaded.iTunesSnapshot.selectedIDs == ["B"])
@@ -52,6 +55,8 @@ struct ITunesSnapshotPrecedenceTests {
         let loaded = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: true,
             previousITunesSnapshot: .init(source: fixture.root.appending(path: "previous.db"),
                                           contents: values.old, preferOverCurrent: true),
+            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+            drafts: .dataFolder(), source: .withoutDatabase,
             captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
 
         #expect(loaded.iTunesSnapshot.status == .stale)

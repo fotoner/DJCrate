@@ -1,23 +1,6 @@
 import DJCDomain
 import Foundation
 
-/// 저널에 남겨 두는 선택 파일의 의미 검증 기대값. 원문은 로그·보고서로 내보내지 않는다.
-public struct UsbSyncSelectionVerification: Codable, Equatable, Sendable {
-    public var draft: UsbSyncSelectionDraft
-    public var formats: Set<UsbFormat>
-    /// 형식마다 원본 ID → 그 형식 DB의 USB 목록 번호(Dev_ID)
-    public var playlistIDs: [UsbFormat: [String: Int]]
-    public var contract: UsbSyncXMLWriteContract
-
-    public init(draft: UsbSyncSelectionDraft, formats: Set<UsbFormat>, playlistIDs: [UsbFormat: [String: Int]],
-                contract: UsbSyncXMLWriteContract) {
-        self.draft = draft
-        self.formats = formats
-        self.playlistIDs = playlistIDs
-        self.contract = contract
-    }
-}
-
 /// 목록 DB와 선택 파일을 한 쓰기 묶음으로 준비한다. 확인한 계약이 없으면 백업·USB 쓰기 전에 멈춘다.
 public enum UsbSyncSelectionStage {
     public static var productionBlock: UsbBlock? {

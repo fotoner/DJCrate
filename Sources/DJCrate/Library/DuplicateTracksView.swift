@@ -1,5 +1,4 @@
 import DJCDomain
-import DJCStorage
 import SwiftUI
 
 /// 기존 곡 표의 열·정렬 설정을 바꾸지 않고 후보끼리 비교한다.
@@ -79,16 +78,16 @@ struct DuplicateTracksView: View {
     private static let artworkSide: CGFloat = 22
     private static let artworkSpacing: CGFloat = 12
 
-    private func candidate(_ member: LibraryRead.DuplicateMember, group: LibraryRead.DuplicateGroup) -> some View {
+    private func candidate(_ member: LibraryRecords.DuplicateMember, group: LibraryRecords.DuplicateGroup) -> some View {
         HStack(alignment: .top, spacing: Self.artworkSpacing) {
-            ArtworkThumbnail(imagePath: member.imagePath, id: member.id)
+            ArtworkThumbnail(imagePath: member.imagePath, id: member.id, shareRoot: store.shareRoot, thumbnails: store.thumbnails)
                 .frame(width: Self.artworkSide, height: Self.artworkSide)
             details(member, group: group)
         }
         .padding(.vertical, 3)
     }
 
-    private func details(_ member: LibraryRead.DuplicateMember, group: LibraryRead.DuplicateGroup) -> some View {
+    private func details(_ member: LibraryRecords.DuplicateMember, group: LibraryRecords.DuplicateGroup) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             columns(title: member.track.title, length: String(ui: "\(member.track.lengthSeconds)초"), cues: "\(member.cueCount)",
                     playlists: "\(member.playlistCount)", plays: "\(member.playCount)", format: member.format,
@@ -135,6 +134,8 @@ struct DuplicateTracksView: View {
 private struct ArtworkThumbnail: View {
     let imagePath: String?
     let id: String
+    let shareRoot: URL
+    let thumbnails: Thumbnails
     @State private var artwork: Thumbnails.Box?
 
     var body: some View {
@@ -151,7 +152,7 @@ private struct ArtworkThumbnail: View {
         .accessibilityLabel(artwork == nil ? Text(.ui("앨범아트 없음")) : Text(.ui("앨범아트")))
         // 스크롤로 지나친 줄은 작업이 취소되어 디코딩하지 않는다(`Thumbnails`).
         .task(id: ArtworkRevisions.key(id)) {
-            let box = await Thumbnails.shared.image(imagePath: imagePath, key: ArtworkRevisions.key(id))
+            let box = await thumbnails.image(imagePath: imagePath, root: shareRoot, key: ArtworkRevisions.key(id))
             if !Task.isCancelled { artwork = box }
         }
     }

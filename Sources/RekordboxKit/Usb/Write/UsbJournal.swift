@@ -4,13 +4,10 @@ import Foundation
 /// USB 쓰기 진행 기록. USB가 아니라 맥(`usb-sessions/<볼륨키>.json`)에 두어 USB가 뽑혀도 회복할 근거가 남는다.
 /// 바꿀 때마다 내구 쓰기(`UsbDurableFile`)로 디스크에 내린 뒤 다음 USB 연산을 한다.
 public struct UsbJournal: Codable, Sendable, Equatable {
-    public enum State: String, Codable, Sendable, CaseIterable {
-        case planned, staged, backedUp, filesWritten, committing, committed, cleaned, verified
-        case rolledBack, restoreFailed, restorePending, needsReplan, dryRun, recovered, restored
-    }
+    public typealias State = UsbJournalState
 
-    /// 닫힌 상태. 닫힌 저널은 다음 쓰기를 막지 않는다(드라이 런·다시 계획 포함). 앱·회복·백업 정리도 이것만 본다
-    public static let closedStates: Set<State> = [.verified, .rolledBack, .restored, .recovered, .dryRun, .needsReplan]
+    /// 닫힌 상태(`UsbJournalState.closed`). 닫힌 저널은 다음 쓰기를 막지 않는다(드라이 런·다시 계획 포함). 앱·회복·백업 정리도 이것만 본다
+    public static let closedStates: Set<State> = UsbJournalState.closed
 
     public var isClosed: Bool { Self.closedStates.contains(state) }
 

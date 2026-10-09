@@ -1,6 +1,7 @@
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -138,7 +139,7 @@ struct DuplicateMergeWriterTests {
     @Test func 같은곡_다른초안이나_목록초안과_겹치면_합치기는_막는다() throws {
         let fixture = try fixture()
         let merge = try draft(fixture)
-        var cue = CueDraft(trackUUID: "u100", rekordboxCues: [])
+        var cue = CueDraft(trackUUID: "u100")
         cue.place(.init(kind: .memory, time: 2))
         let report = try RekordboxWriter.write(drafts: [cue], merges: [merge], to: fixture.database, dryRun: false, backups: fixture.backups)
         #expect(report.mergeBlocked.count == 1 && report.written.count == 1)

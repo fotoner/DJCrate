@@ -1,7 +1,7 @@
 import AppKit
+import DJCApplication
 import Foundation
 import Testing
-import DJCTestSupport
 import DJCDomain
 @testable import DJCAnalysis
 @testable import DJCrate
@@ -13,7 +13,7 @@ struct ColorWaveformRasterTests {
 
     @Test func fallbackUsesAudioTimelineAndBandColors() throws {
         for mode in [WaveformColorMode.blue, .rgb] {
-            let raster = try #require(ColorWaveformRaster.load(waveform: Self.waveform, datURL: nil,
+            let raster = try #require(ColorWaveformRaster.make(waveform: Self.waveform, source: nil,
                                                                mode: mode, audioOffset: 0.04))
             #expect(raster.offset == 0.04)
             #expect(raster.rate == 2)
@@ -27,14 +27,10 @@ struct ColorWaveformRasterTests {
         }
     }
 
+    /// rekordbox 분석 파일의 색 파형(읽기는 DJCAdaptersTests `TrackAssetReaderLiveTests`)은 이미 rekordbox 시간축이다.
     @Test func analysisDetailAlreadyUsesRekordboxTimeline() throws {
-        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let dat = root.appending(path: "ANLZ0000.DAT")
-        try AnlzBuilder.file([AnlzBuilder.waveform("PWV3", entryBytes: 1, samples: Array(repeating: 31, count: 300))])
-            .write(to: dat.deletingPathExtension().appendingPathExtension("EXT"))
-        let raster = try #require(ColorWaveformRaster.load(waveform: Self.waveform, datURL: dat, mode: .blue, audioOffset: 0.04))
+        let source = ColorWaveformColumns(columns: Array(repeating: WaveformColumn(low: 1, mid: 0, high: 0), count: 300), rate: 150)
+        let raster = try #require(ColorWaveformRaster.make(waveform: Self.waveform, source: source, mode: .blue, audioOffset: 0.04))
         #expect(raster.offset == 0)
         #expect(raster.rate == 150)
         #expect(raster.detail.width == 300)
@@ -42,7 +38,7 @@ struct ColorWaveformRasterTests {
     }
 
     @Test @MainActor func changingModeDiscardsOldRasterAndCancelledResults() async throws {
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         deck.waveform = Self.waveform
         deck.waveformColorMode = .rgb
         await deck.colorWaveformTask?.value

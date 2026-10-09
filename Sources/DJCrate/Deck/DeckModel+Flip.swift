@@ -1,3 +1,4 @@
+import DJCApplication
 import DJCDomain
 import Foundation
 
@@ -49,6 +50,24 @@ extension DeckModel {
     /// 곡을 바꿔 기록을 버리기 전에 묻는다. 기록 중이 아니거나 점프·루프가 아직 없으면 묻지 않는다.
     /// - Returns: 버려도 되면 true(기록은 곡을 바꿀 때 `load`가 지운다). 취소하면 false이고 기록은 이어 간다.
     func confirmDiscardingFlip() -> Bool {
+        if !isFlipRecording, let waiting = awaitingFlipResult {
+            // 기록은 마쳤지만 결과 창이 아직 열리지 않았다(음원 확인을 기다리는 중). 곡을 바꾸면 결과 창을 열지 않는다.
+            // 확인 창이 떠 있는 동안 음원 확인이 끝난 열기는 답을 기다린다(`finishAwaitingFlipResult`).
+            flipDecisionWaiters = flipDecisionWaiters ?? []
+            let discard = prompter.show(ReflectionPrompt(
+                title: String(ui: "Flip 기록을 버릴까요?"),
+                text: String(ui: "곡을 바꾸면 방금 마친 기록(점프·루프 \(waiting.jumpCount)개)으로 결과 창을 열지 않고 버립니다. 버린 기록은 다시 만들 수 없으니, 남기려면 취소하고 결과 창이 열릴 때까지 기다리세요"),
+                confirm: String(ui: "기록 버리기"), destructive: true))
+            // 버리면 차례를 넘겨 진행 중인 열기가 결과 창도 안내도 없이 끝나게 한다.
+            if discard {
+                flipResultTurn += 1
+                awaitingFlipResult = nil
+            }
+            let waiters = flipDecisionWaiters ?? []
+            flipDecisionWaiters = nil
+            waiters.forEach { $0.resume() }
+            return discard
+        }
         guard isFlipRecording else { return true }
         // 지금 재생 안에서 아직 알리지 않은 점프도 센다.
         if let run = audio.takePlayedRun() { flipRecording?.record(run) }
@@ -58,4 +77,25 @@ extension DeckModel {
             text: String(ui: "곡을 바꾸면 지금까지 기록한 점프·루프 \(recording.jumpCount)개를 버립니다. 버린 기록은 다시 만들 수 없으니, 남기려면 취소하고 Flip을 눌러 기록을 마치세요"),
             confirm: String(ui: "기록 버리기"), destructive: true))
     }
+
+    /// 마친 기록의 결과 창을 기다리기 시작한다(그동안 곡을 바꾸면 버릴지 묻는다). 돌려준 차례는 기다린 뒤 `finishAwaitingFlipResult`에 넘긴다.
+    func beginAwaitingFlipResult(_ recording: FlipRecording) -> Int {
+        flipResultTurn += 1
+        awaitingFlipResult = recording
+        return flipResultTurn
+    }
+
+    /// 기다리기를 마친다. 버릴지 묻는 창이 떠 있으면 답을 기다린다.
+    /// - Returns: 그 사이 기록을 버렸으면 false(결과 창을 열지 않고 조용히 끝낸다).
+    func finishAwaitingFlipResult(_ turn: Int) async -> Bool {
+        if flipDecisionWaiters != nil {
+            await withCheckedContinuation { flipDecisionWaiters?.append($0) }
+        }
+        guard turn == flipResultTurn else { return false }
+        awaitingFlipResult = nil
+        return true
+    }
+
+    /// 시험용: 결과 창 열기가 버릴지 묻는 창의 답을 기다리는 중인지
+    var isAwaitingFlipDecision: Bool { !(flipDecisionWaiters?.isEmpty ?? true) }
 }

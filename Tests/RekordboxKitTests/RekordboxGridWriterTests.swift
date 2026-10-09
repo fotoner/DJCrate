@@ -1,7 +1,8 @@
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import CryptoKit
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 

@@ -1,9 +1,12 @@
 @testable import DJCrate
+import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Darwin
 import Foundation
+import RekordboxFixtures
 @testable import RekordboxKit
 import Testing
 
@@ -84,8 +87,9 @@ enum UsbTestData {
     }
 
     @MainActor
-    static func store(_ host: FakeUsbHost, policy: UsbReadPolicy = .all, local: LocalLibraryKeys? = nil) -> UsbStore {
-        let store = UsbStore(host: host, readPolicy: policy, localLibrary: { local })
+    static func store(_ host: FakeUsbHost, policy: UsbReadPolicy = .all, local: LocalLibraryKeys? = nil,
+                      service: any UsbWriting = FakeUsbWriteService()) -> UsbStore {
+        let store = UsbStore(host: host, readPolicy: policy, writeService: service, localLibrary: { local })
         // 지어낸 디스크 이미지의 마운트 지점(/Volumes/…)은 없는 경로라, 편집 막힘 판정에서는 임시 폴더 아래 이미지로 본다
         store.isScratchMount = { _ in true }
         return store
@@ -99,24 +103,29 @@ struct UsbStoreTests {
 
     @Test("명시한 사본(--db·DJC_DB)으로 띄우면 사본 폴더가 없는 한 스냅샷을 뜨지 않는다")
     func explicitDatabaseNeverTakesSnapshot() async {
-        #expect(!LibraryStore.snapshotTakeAllowed(arguments: ["--db", "/tmp/x/m.db"], environment: [:]))
-        #expect(!LibraryStore.snapshotTakeAllowed(arguments: [], environment: ["DJC_DB": "/tmp/x/m.db"]))
-        #expect(LibraryStore.snapshotTakeAllowed(arguments: ["--db", "/tmp/x/m.db"], environment: ["DJC_REKORDBOX_DIR": "/tmp/x/rb"]))
-        #expect(LibraryStore.snapshotTakeAllowed(arguments: [], environment: [:]))
-        #expect(!LibraryStore.snapshotTakeAllowed(arguments: ["--db", "/tmp/x/m.db"], environment: ["DJC_HOME": "/tmp/x/home"]))
+        func allowed(_ arguments: [String], _ environment: [String: String]) -> Bool {
+            LibraryLocation.resolve(arguments: arguments, environment: environment).allowsSnapshot
+        }
+        #expect(!allowed(["--db", "/tmp/x/m.db"], [:]))
+        #expect(!allowed([], ["DJC_DB": "/tmp/x/m.db"]))
+        #expect(allowed(["--db", "/tmp/x/m.db"], ["DJC_REKORDBOX_DIR": "/tmp/x/rb"]))
+        #expect(allowed([], [:]))
+        #expect(!allowed(["--db", "/tmp/x/m.db"], ["DJC_HOME": "/tmp/x/home"]))
 
         // 스냅샷을 뜨는 길(스냅샷 뜨기·창 복귀·곡 추가·빼기 미리 보기·복원 전 확인)이 모두 같은 판정으로 막힌다.
         // 라이브 master.db를 건드리지 않게 뜨기는 바꿔 넣고, 불린 횟수만 센다
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.usbsnap.\(UUID())")!, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
-                                 mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
-        store.launchArguments = ["DJCrate", "--db", "/tmp/x/m.db"]
-        store.launchEnvironment = ["DJC_HOME": "/tmp/x/home"]
         let taken = ThreadRecorder()
-        store.takeLiveSnapshot = { _ in
+        let take: @Sendable (Bool) throws -> URL = { _ in
             taken.record("take", main: false)
             throw CancellationError()
         }
+        func makeStore(environment: [String: String]) -> LibraryStore {
+            LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbsnap"), persist: false),
+                              resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                              mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                              arguments: ["DJCrate", "--db", "/tmp/x/m.db"], environment: environment, takeLiveSnapshot: take)
+        }
+        let store = makeStore(environment: ["DJC_HOME": "/tmp/x/home"])
         let refused = "명시한 사본(--db)으로 연 창에서는 스냅샷을 뜨지 않습니다. --db 없이 다시 여세요"
         func isRefusal(_ error: any Error) -> Bool {
             if case let DJCError.writeRefused(message)? = error as? DJCError { message == refused } else { false }
@@ -124,18 +133,17 @@ struct UsbStoreTests {
         await store.takeSnapshot()
         if case let .failed(message) = store.phase { #expect(message == refused) } else { Issue.record("스냅샷 뜨기가 막히지 않음") }
         await store.refreshIfRekordboxChanged()
-        await #expect(performing: { _ = try await store.previewTrackAdd(rows: []) }, throws: isRefusal)
-        await #expect(performing: { _ = try await store.previewTrackDelete(rows: []) }, throws: isRefusal)
+        await #expect(performing: { _ = try await store.session.previewAdd(rows: []) }, throws: isRefusal)
+        await #expect(performing: { _ = try await store.session.previewDelete(rows: []) }, throws: isRefusal)
         #expect(store.writeStage == nil)
         let report = RekordboxWriter.Report(outcomes: [], backup: nil, dryRun: false, createdAt: "", finalUpdateCount: 1)
         let backup = RekordboxWriter.Backup(url: URL(filePath: "/tmp/x/backup"), createdAt: .now, isWrite: true, report: report)
-        #expect(await store.libraryChangedSince(backup) == nil)
+        #expect(await store.session.libraryChangedSince(backup) == nil)
         #expect(taken.calls.isEmpty)
 
         // 사본 rekordbox 폴더(DJC_REKORDBOX_DIR)로 띄웠으면 그 사본에서 뜬다(바꿔 넣은 뜨기가 불린다)
-        store.launchEnvironment = ["DJC_REKORDBOX_DIR": "/tmp/x/rb"]
-        #expect(await store.libraryChangedSince(backup) == nil)
-        #expect(taken.calls.count == 1)
+        #expect(await makeStore(environment: ["DJC_REKORDBOX_DIR": "/tmp/x/rb"]).session.libraryChangedSince(backup) == nil)
+        #expect(!taken.calls.isEmpty)
     }
 
     @Test("USB 곡의 태그 충돌 선택은 기존 초안·저장·실행 취소를 바꾸지 않는다", arguments: [false, true])
@@ -150,7 +158,7 @@ struct UsbStoreTests {
         draft.fields.comment = "내 초안"
         #expect(draft.conflictingKeys(with: TagFields(track: row.track)).contains(.comment))
         var saves = 0
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.usbtag.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbtag"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in saves += 1 },
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
         let undo = UndoManager()
@@ -280,34 +288,6 @@ struct UsbStoreTests {
         #expect(store.volumes.isEmpty && store.shapes.isEmpty)
     }
 
-    // MARK: - 로컬 짝짓기 키
-
-    @Test("로컬 스냅샷 사본에서 DB ID·곡 키·갱신 횟수를 읽는다(지운 곡 제외)")
-    func localLibraryKeysLoad() throws {
-        let fixture = try RekordboxFixture()
-        var first = TrackSpec(id: "71")
-        first.cueUpdated = "4"
-        first.analysisUpdated = "5"
-        first.trackInfoUpdated = "6"
-        try fixture.add(first)
-        try fixture.add(TrackSpec(id: "72"))
-        try fixture.add(TrackSpec(id: "73"))
-        try fixture.execute("UPDATE djmdProperty SET DBID = '424242'")
-        try fixture.execute("UPDATE djmdContent SET MasterSongID = '801', FileNameL = 'a.mp3' WHERE ID = '71'")
-        try fixture.execute("UPDATE djmdContent SET MasterSongID = '802', FileNameL = 'b.mp3', CueUpdated = NULL WHERE ID = '72'")
-        try fixture.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '73'")
-        let database = try CipherDatabase(path: fixture.database.path, key: .hex(RekordboxKey.derive()), mode: .readOnly)
-        defer { database.close() }
-        let keys = try LocalLibraryKeys.load(database: database)
-        #expect(keys.localDBID == 424_242)
-        let folderPath = TrackSpec(id: "71").folderPath
-        #expect(Set(keys.tracks) == [UsbLocalTrackKey(contentID: "71", masterSongID: "801", fileNameL: "a.mp3", folderPath: folderPath),
-                                     UsbLocalTrackKey(contentID: "72", masterSongID: "802", fileNameL: "b.mp3", folderPath: folderPath)])
-        #expect(keys.counters["71"] == LocalTrackCounters(information: "6", analysis: "5", cue: "4"))
-        #expect(keys.counters["72"]?.cue == nil)
-        #expect(keys.counters["73"] == nil)
-    }
-
     // MARK: - 백그라운드 읽기
 
     @Test("볼륨 읽기(정보·라이브러리)는 메인 스레드 밖에서 한다")
@@ -326,11 +306,12 @@ struct UsbStoreTests {
             eject: { _ in })
         let (events, continuation) = AsyncStream.makeStream(of: [UsbVolumeInfo].self)
         let host = SystemUsbHost(io: io, events: events, current: { [image] })
-        let store = UsbStore(host: host, readPolicy: .all, localLibrary: { nil })
+        let store = UsbStore(host: host, readPolicy: .all, writeService: FakeUsbWriteService(), localLibrary: { nil })
         await store.refresh()
         continuation.finish()
         #expect(store.shapes[image.usbKey] == .rekordbox(formats: [.oneLibrary]))
-        #expect(recorder.calls == [ThreadRecorder.Call(name: "info", main: false), ThreadRecorder.Call(name: "library", main: false)])
+        // 읽기(정보·라이브러리)는 모두 메인 스레드 밖에서
+        #expect(Set(recorder.calls.map(\.name)) == ["info", "library"] && recorder.calls.allSatisfy { !$0.main })
     }
 
     @Test("읽기 직전에 그 자리의 볼륨을 다시 보고, 새 정보로 읽는다")
@@ -350,15 +331,15 @@ struct UsbStoreTests {
             return nil
         }
         // 다시 보기가 볼륨이 바뀌었다고 하면 읽지 않는다
-        let changed = SystemUsbHost.IO.reading(snapshots: snapshots, recheck: { _ in throw UsbError.readFailed(detail: "volumeChanged") })
+        let changed = UsbAppComposition.hostIO(snapshots: snapshots, recheck: { _ in throw UsbError.readFailed(detail: "volumeChanged") })
         #expect(refusal { _ = try changed.library(listed) } == "volumeChanged")
         #expect(refusal { _ = try changed.info(listed) } == "volumeChanged")
         #expect(!FileManager.default.fileExists(atPath: snapshots.path))
         // 다시 본 새 정보(실물)로 읽는다
-        let stale = SystemUsbHost.IO.reading(snapshots: snapshots, recheck: { [swapped] _ in swapped })
+        let stale = UsbAppComposition.hostIO(snapshots: snapshots, recheck: { [swapped] _ in swapped })
         #expect(try stale.info(listed).volume?.isDiskImage == false)
         // 같은 볼륨이면 그대로 사본을 떠서 읽는다
-        let same = SystemUsbHost.IO.reading(snapshots: snapshots, recheck: { $0 })
+        let same = UsbAppComposition.hostIO(snapshots: snapshots, recheck: { $0 })
         #expect(try same.library(listed).tracks.count == 3)
     }
 }

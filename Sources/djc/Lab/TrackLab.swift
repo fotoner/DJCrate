@@ -1,6 +1,7 @@
 import CoreGraphics
 import CryptoKit
 import DJCAnalysis
+import DJCApplication
 import DJCDomain
 import Foundation
 import ImageIO
@@ -259,7 +260,7 @@ enum TrackLab {
             let loudness = try Loudness.measure(fileAt: url)
             // 음원 내장 그림이 있으면 앱처럼 아트워크도 넣는다(#87)
             let tags = try await AudioTags.read(url: url)
-            inputs[track.uuid] = .init(duration: tags.duration, loudness: loudness.integrated, peak: pow(10, loudness.peak / 20), artwork: tags.artwork)
+            inputs[track.uuid] = .init(duration: tags.duration, loudness: loudness, artwork: tags.artwork)
             grids.append(GridDraft(trackUUID: track.uuid, base: [], segments: segments))
             print(String(format: "· %@: %.2f BPM · 첫 박 %.4f초 · %.1f LUFS", track.id, segments.first?.bpm ?? 0, segments.first?.start ?? 0,
                          loudness.integrated ?? .nan))

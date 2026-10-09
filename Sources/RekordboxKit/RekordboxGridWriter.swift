@@ -232,7 +232,7 @@ public enum RekordboxGridWriter {
 
 extension RekordboxGridWriter {
     /// 계획대로 파일을 바꾼다(같은 폴더의 임시 파일에 쓰고 바꿔 끼운다). 다시 읽어 검증하고, 실패하면 원본으로 되돌리고 던진다.
-    public static func apply(_ plan: Plan) throws {
+    static func apply(_ plan: Plan) throws {
         let fm = FileManager.default
         func replace(_ url: URL, with data: Data) throws {
             let partial = url.deletingLastPathComponent().appending(path: ".\(url.lastPathComponent).djc-part")
@@ -257,7 +257,7 @@ extension RekordboxGridWriter {
     }
 
     /// 원본 바이트로 되돌린다.
-    public static func restore(_ plan: Plan) throws {
+    static func restore(_ plan: Plan) throws {
         try plan.originalDat.write(to: plan.datURL, options: .atomic)
         if let extURL = plan.extURL, let originalExt = plan.originalExt { try originalExt.write(to: extURL, options: .atomic) }
     }

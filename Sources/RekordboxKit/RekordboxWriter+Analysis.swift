@@ -27,24 +27,8 @@ extension RekordboxWriter {
     /// 첫 BPM/Grid 분석 카운터(글자, 2026-09-27 합성 곡 auto/manual-grid 사본 재현)
     static let attachedCounters: [String: CipherDatabase.Value] = ["AnalysisUpdated": .text("1"), "TrackInfoUpdated": .text("1")]
 
-    /// 분석을 붙일 곡의 음원 길이·음량(앱이 AVFoundation·음량 분석으로 잰다)
-    public struct AnalysisInput: Sendable, Equatable {
-        /// AVFoundation 길이(초). 곡 넣기처럼 버림해 `Length`에 적는다.
-        public var duration: Double
-        /// 통합 음량(LUFS). nil이면 오토게인 0dB.
-        public var loudness: Double?
-        /// 샘플 피크(선형, 0~1)
-        public var peak: Double
-        /// 음원 내장 그림(`AudioTags.artwork`). 있으면 아트워크 파일 셋도 넣는다.
-        public var artwork: Data?
-
-        public init(duration: Double, loudness: Double?, peak: Double, artwork: Data? = nil) {
-            self.duration = duration
-            self.loudness = loudness
-            self.peak = peak
-            self.artwork = artwork
-        }
-    }
+    /// 분석을 붙일 곡의 음원 길이·음량(값은 DJCDomain, #167)
+    public typealias AnalysisInput = RekordboxAnalysisInput
 
     /// 분석 파일이 없는 곡인지(분석 경로가 비었다). 분석을 붙이는 대상이다.
     public static func needsAnalysis(_ analysisDataPath: String?) -> Bool { (analysisDataPath ?? "").isEmpty }

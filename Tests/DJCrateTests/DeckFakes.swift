@@ -1,8 +1,12 @@
 @testable import DJCrate
 import DJCAnalysis
+@testable import DJCAdapters
+import DJCApplication
 import DJCDomain
-import DJCTestSupport
+import DJCEnvironment
+import DJCTestKit
 import Foundation
+import Synchronization
 
 /// 소리를 내지 않는 재생 엔진. 위치는 시험이 직접 옮긴다.
 @MainActor
@@ -60,9 +64,11 @@ final class FakeDeckAudio: DeckAudioEngine {
         onInterrupted?(position)
     }
 
+    /// 마지막으로 연 음원의 인코더 지연(rekordbox 시간축 − 음원 시간축)
+    var loadedOffset: Double?
     func load(url: URL, timelineOffset: Double) throws {
         if let loadError { throw loadError }
-        isLoaded = true; duration = trackLength; log.append("load")
+        isLoaded = true; duration = trackLength; loadedOffset = timelineOffset; log.append("load")
     }
     func unload() { endRun(continuing: false); isLoaded = false; isPlaying = false }
     func play(from position: Double) -> Bool {
@@ -101,39 +107,69 @@ final class FakeDeckAudio: DeckAudioEngine {
                    + (loop.map { String(format: " loop %.3f~%.3f", $0.lowerBound, $0.upperBound) } ?? ""))
         return jump
     }
+    /// 음원을 열지 못한 이유는 실제 엔진과 같은 규칙으로 가른다(계약 시험 `AudioEngineContractTests`).
+    func failureState(for error: any Error) -> AudioSourceState { AudioSourceFailure.state(for: error) }
+    /// 덱 조작 기록(실제는 오디오 사건 기록 파일). 재생 순서 기록(`log`)과 섞지 않는다.
+    var events: [String] = []
+    func recordEvent(_ message: String) { events.append(message) }
     func debugStopEngine() {}
     func debugConfigurationChange() {}
 }
 
-/// 메모리 초안 저장소(디스크·UserDefaults 표준 영역을 건드리지 않는다)
-final class MemoryDrafts: @unchecked Sendable {
-    private let lock = NSLock()
-    private var cues: [String: CueDraft] = [:]
-    private var grids: [String: GridDraft] = [:]
-    private var gains: [String: Double] = [:]
-    func cue(_ uuid: String) -> CueDraft? { lock.withLock { cues[uuid] } }
-    func grid(_ uuid: String) -> GridDraft? { lock.withLock { grids[uuid] } }
-    func removeGrid(_ uuid: String) { lock.withLock { grids[uuid] = nil } }
-    func gain(_ uuid: String) -> Double? { lock.withLock { gains[uuid] } }
-    func save(_ draft: CueDraft) { lock.withLock { cues[draft.trackUUID] = draft } }
-    func save(_ draft: GridDraft) { lock.withLock { grids[draft.trackUUID] = draft } }
-    func save(gain: Double?, _ uuid: String) { lock.withLock { gains[uuid] = gain } }
-}
-
 extension DeckStorage {
+    /// 메모리 초안 저장소(`MemoryDrafts`: 디스크·UserDefaults 표준 영역을 건드리지 않는다, 실제 구현과 같은 규칙인지는 계약 시험이 본다)
     static func memory(_ drafts: MemoryDrafts,
-                       settings: SettingsStore = SettingsStore(defaults: UserDefaults(suiteName: "djc-test-\(UUID().uuidString)")!,
-                                                               persist: true)) -> DeckStorage {
-        DeckStorage(
-            loadCueDraft: { drafts.cue($0) }, saveCueDraft: { draft, completion in drafts.save(draft); completion(nil) },
-            loadGridDraft: { drafts.grid($0) }, saveGridDraft: { draft, completion in drafts.save(draft); completion(nil) },
-            loadGain: { drafts.gain($0) }, saveGain: { gain, uuid, completion in drafts.save(gain: gain, uuid); completion(nil) },
-            removeGridDraft: { uuid, completion in drafts.removeGrid(uuid); completion(nil) },
-            settings: settings)
+                       settings: SettingsStore = SettingsStore(defaults: TestDefaults.make("deck"),
+                                                               persist: false)) -> DeckStorage {
+        memory(drafts.store, settings: settings)
+    }
+
+    /// 저장을 바꿔 넣은 초안 저장소(저장 실패·완료 순서를 시험이 정한다)
+    static func memory(_ store: DraftStore,
+                       settings: SettingsStore = SettingsStore(defaults: TestDefaults.make("deck"),
+                                                               persist: false)) -> DeckStorage {
+        let storage = DeckStorage(drafts: store, settings: settings)
+        testDeckStores.withLock { $0[ObjectIdentifier(settings)] = store }
+        return storage
+    }
+
+    /// 이 시험 덱 저장소를 만든 초안 저장소(덱은 저장소를 들지 않는다. 시험의 덱 읽기가 같은 초안을 읽게 이 표로 찾는다)
+    var testDraftStore: DraftStore {
+        guard let store = testDeckStores.withLock({ $0[ObjectIdentifier(settings)] }) else {
+            preconditionFailure("DeckStorage.memory로 만든 덱 저장소만 시험 초안 저장소가 있습니다")
+        }
+        return store
     }
 }
 
-/// 덱 하나 + 가짜 오디오 + 메모리 저장소 + 합성 WAV 곡
+/// 시험 덱 저장소의 설정 객체별 초안 저장소(`DeckStorage.memory`가 채운다)
+private let testDeckStores = Mutex<[ObjectIdentifier: DraftStore]>([:])
+
+extension TrackAssetReader {
+    /// 파일을 읽지 않는 덱 읽기(`MemoryTrackAssets`): 음원은 있다고 보고(가짜 오디오가 연다), 초안은 덱 저장소에서 읽는다.
+    /// 인코더 지연·rekordbox 원본 그리드처럼 실제 읽기가 곡마다 내는 값을 줄 수 있다(같은 규칙인지는 DJCAdaptersTests의 계약 시험).
+    static func memory(_ storage: DeckStorage, _ assets: MemoryTrackAssets = MemoryTrackAssets()) -> TrackAssetReader {
+        assets.reader(drafts: storage.testDraftStore)
+    }
+}
+
+extension AnalyzeDeckTrack {
+    /// 시험 덱의 분석: 실제 분석기(조성 흐름·메모리 큐 제안 계산, 무거운 분석은 `runsAnalysis`가 끈다)와 메모리 캐시
+    static func test(_ cache: MemoryAnalysisStore = MemoryAnalysisStore()) -> AnalyzeDeckTrack {
+        AnalyzeDeckTrack(analyzer: .live(paths: .current), cache: cache.store)
+    }
+}
+
+extension DeckModel {
+    /// 시험 덱(조립 지점 대신). 읽기를 주지 않으면 옛 기본값처럼 실제 파일과 `storage`의 초안을 읽는다. 분석 캐시는 메모리다.
+    static func test(audio: any DeckAudioEngine, storage: DeckStorage, reader: TrackAssetReader? = nil,
+                     analysis: AnalyzeDeckTrack = .test(), runsAnalysis: Bool = true) -> DeckModel {
+        DeckModel(audio: audio, storage: storage, assets: reader ?? .live(drafts: storage.testDraftStore), analysis: analysis,
+                  runsAnalysis: runsAnalysis)
+    }
+}
+
+/// 덱 하나 + 가짜 오디오 + 메모리 저장소 + 가짜 읽기(음원·DB 파일 없음)
 @MainActor
 final class DeckHarness {
     let deck: DeckModel
@@ -142,20 +178,36 @@ final class DeckHarness {
     let root: URL
 
     /// - Parameter gridBase: 그리드 초안의 "rekordbox 원래 그리드"(되돌리기 대상). 비우면 분석 전 곡처럼 원래 그리드가 없다.
+    /// - Parameter audioFile: 음원 파일을 실제로 둔다(덱 밖에서 파일 있음을 다시 보는 안내 시험용).
+    /// - Parameter timelineOffset: 음원의 인코더 지연(실제 읽기가 압축 음원에서 내는 값, 덱 시각은 rekordbox 시간축)
     init(cues: [Cue] = [], grid: [GridSegment]? = [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)],
-         gridBase: [GridSegment] = [], autoGain: RekordboxAutoGain? = nil, key: String? = "8B") throws {
+         gridBase: [GridSegment] = [], autoGain: RekordboxAutoGain? = nil, key: String? = "8B", audioFile: Bool = false,
+         timelineOffset: Double = 0) throws {
         root = FileManager.default.temporaryDirectory.appending(path: "djc-deck-\(UUID().uuidString)")
         audio = FakeDeckAudio()
         drafts = MemoryDrafts()
-        deck = DeckModel(audio: audio, storage: .memory(drafts), runsAnalysis: false)
-        // 메모리 저장소를 쓰는 덱 시험에는 DB 없이 합성 음원 폴더만 필요하다.
-        let directory = root.appending(path: "audio")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = try AudioFixture.wav(seconds: 1, in: directory)
+        let storage = DeckStorage.memory(drafts)
+        var assets = MemoryTrackAssets(defaultOffset: timelineOffset)
+        var analysisPath: String?
+        if let grid, grid == gridBase, !grid.isEmpty {
+            // 고친 것이 없는 그리드 초안은 저장소에 남지 않는다(실제 저장소와 같다): rekordbox 분석 파일의 그리드로 준다.
+            let original = GridDraft(trackUUID: "track-1", base: grid, segments: grid).grid(duration: 181)
+            analysisPath = "/PIONEER/USBANLZ/harness/ANLZ0000.DAT"
+            assets.analysis[analysisPath!] = .init(grid: .grid(original))
+        }
+        let reader = TrackAssetReader.memory(storage, assets)
+        deck = DeckModel.test(audio: audio, storage: storage, reader: reader, runsAnalysis: false)
+        // 시험이 쓰는 폴더(초안 폴더 등)의 뿌리. 음원은 가짜 오디오가 열어 파일이 없다.
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var url = root.appending(path: "audio/silence.wav")
+        if audioFile {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            url = try AudioFixture.wav(seconds: 1, in: url.deletingLastPathComponent())
+        }
         let track = Track(id: "1", uuid: "track-1", title: "시험 곡", artist: nil, album: nil, albumArtist: nil, genre: nil,
                           composer: nil, releaseYear: nil, trackNumber: nil, key: key, bpm: 120, lengthSeconds: 180,
-                          folderPath: url.path, comment: "", importedOn: nil, analysisDataPath: nil, imagePath: nil, isDeleted: false)
-        // 그리드는 rekordbox 분석 파일 대신 초안으로 준다(분석 경로가 없는 곡)
+                          folderPath: url.path, comment: "", importedOn: nil, analysisDataPath: analysisPath, imagePath: nil, isDeleted: false)
+        // 고친 그리드는 초안으로 준다(원본이 없으면 분석 경로가 없는 곡)
         if let grid { drafts.save(GridDraft(trackUUID: track.uuid, base: gridBase, segments: grid)) }
         deck.load(TrackRow(track: track, cues: cues, playCount: 0, autoGain: autoGain))
     }

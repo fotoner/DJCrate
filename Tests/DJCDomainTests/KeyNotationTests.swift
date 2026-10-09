@@ -33,7 +33,7 @@ struct KeyNotationTests {
     }
 
     @Test func 추가한_곡은_키가_목록_모양에_들어가고_옛_기록도_읽는다() throws {
-        var staged = StagedTrack(path: "/a.wav", title: "합성 곡", duration: 60, addedOn: "2026-09-28")
+        var staged = StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/a.wav", title: "합성 곡", duration: 60, addedOn: "2026-09-28")
         #expect(staged.needsKey && staged.track.key == nil)
         staged.key = "8A"
         staged.keySource = .estimate

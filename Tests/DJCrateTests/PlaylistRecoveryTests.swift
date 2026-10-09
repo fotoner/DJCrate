@@ -1,8 +1,10 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -10,11 +12,10 @@ import Testing
 @Suite("재생 목록 초안 복구 흐름", .serialized)
 struct PlaylistRecoveryTests {
     func makeStore(_ fixture: RekordboxFixture, save: @escaping (PlaylistDraft) throws -> Void = { _ in }) -> LibraryStore {
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.recovery.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("recovery"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
-                                 playlistDraftSaver: save, playlistImportURL: nil, stagingSaver: { _ in })
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
+                                 playlistDraftSaver: save, playlistImportURL: nil, stagingSaver: { _ in },
+                                 rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
         store.phase = .loaded
         return store
     }
@@ -105,14 +106,14 @@ struct PlaylistRecoveryTests {
         try draft.append(.addTracks(playlist: .id("A"), contentIDs: ["3"]), rekordbox: layout)
         try fixture.execute("DELETE FROM djmdContent WHERE ID = '3'")
         store.rekordboxPlaylists = layout
-        store.rowsByID = ["1": ReflectionCoordinatorTests.row("1")]
+        store.rowsByID = ["1": ReflectionPresenterTests.row("1")]
         store.playlistDraft = draft
         store.refreshPlaylists()
         #expect(store.blockedPlaylistRecoveryIDs == ["A"])
         let review = try await store.preparePlaylistRecovery(playlist: "A")
         #expect(review.recovery.reapplied.isEmpty && review.recovery.refused.count == 1)
         // 다시 적용할 편집이 없으면 시트 줄은 내 편집 유지를 고를 수 없고 초안 버리기만 고른다.
-        let sheet = RecoverySheetModel(store: store, requests: [.playlist("A")])
+        let sheet = RecoverySheetModel(host: store, requests: [.playlist("A")])
         await sheet.load()
         let line = try #require(sheet.lines.first)
         #expect(line.options == [.useCurrent, .later] && line.choice == .later && !line.canKeep)
@@ -123,7 +124,7 @@ struct PlaylistRecoveryTests {
     @Test func 현재_목록에_새로_등록된_곡도_다시_적용한_화면에_보인다() async throws {
         let fixture = try RekordboxFixture(), store = makeStore(fixture)
         _ = try prepare(fixture, store: store)
-        store.rowsByID = Dictionary(uniqueKeysWithValues: ["1", "2", "3"].map { ($0, ReflectionCoordinatorTests.row($0)) })
+        store.rowsByID = Dictionary(uniqueKeysWithValues: ["1", "2", "3"].map { ($0, ReflectionPresenterTests.row($0)) })
         try fixture.add(TrackSpec(id: "4"))
         _ = try RekordboxWriter.write(drafts: [], playlists: [.addTracks(playlist: .id("A"), contentIDs: ["4"])],
                                      to: fixture.database, dryRun: false, backups: fixture.backups, shareRoot: fixture.shareRoot)
@@ -153,7 +154,7 @@ struct PlaylistRecoveryTests {
         let original = try prepare(fixture, store: store)
         // 시트를 열고 아무것도 고르지 않은 채 취소한다.
         let prompter = ScriptedPrompter()
-        await ReflectionCoordinator(host: store, prompter: prompter).recover(store: store, requests: [.playlist("A")])
+        await ReflectionCoordinator.test(store: store, prompter: prompter).recover(requests: [.playlist("A")])
         #expect(store.playlistDraft == original && prompter.reviewed.count == 1 && prompter.shown.isEmpty)
     }
 }

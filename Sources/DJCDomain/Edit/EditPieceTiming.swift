@@ -31,8 +31,8 @@ public extension Array where Element: EditPieceTiming {
 
     /// 큐(핫큐·메모리 큐·루프)를 출력 위치로 옮긴다. 같은 소리가 여러 번 나오면 처음 나오는 자리 하나에만 둔다
     /// (핫큐 슬롯이 겹치지 않고, 인트로를 늘려도 뒤 인트로에 같은 메모리 큐가 또 생기지 않는다).
-    /// 루프는 끝까지 한 조각 안에 드는 첫 자리로 옮긴다.
-    func carry(_ cues: [EditableCue]) -> CueCarry {
+    /// 루프는 끝까지 한 조각 안에 드는 첫 자리로 옮긴다. 옮긴 큐는 새 곡의 큐라 `newID`로 새 ID를 받는다.
+    func carry(_ cues: [EditableCue], newID: () -> UUID) -> CueCarry {
         var result = CueCarry(placed: [], dropped: [])
         for cue in cues {
             let candidates = filter { $0.holds(cue.time) }
@@ -42,7 +42,7 @@ public extension Array where Element: EditPieceTiming {
             let time = Swift.max(0, piece.outputStart + cue.time - piece.sourceStart)
             var loop = cue.loop
             loop?.end = piece.outputStart + (cue.loop?.end ?? 0) - piece.sourceStart
-            result.placed.append(EditableCue(kind: cue.kind, time: time, name: cue.name, loop: loop))
+            result.placed.append(EditableCue(id: newID(), kind: cue.kind, time: time, name: cue.name, loop: loop))
         }
         result.placed.sort { $0.time < $1.time }
         return result

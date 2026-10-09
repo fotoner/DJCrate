@@ -1,4 +1,5 @@
 import DJCDomain
+import Foundation
 
 /// 메뉴에는 키 이름만 표시한다. 실제 키 입력은 포커스·누르기/떼기를 아는 KeyRouter가 맡는다.
 enum DeckMenuCommand: Hashable {

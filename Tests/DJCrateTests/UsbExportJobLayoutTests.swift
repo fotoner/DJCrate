@@ -1,8 +1,10 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -132,13 +134,12 @@ struct UsbExportJobLayoutTests {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec(id: "101"))
         try fixture.add(PlaylistSpec(id: "11", name: "합성 목록", seq: 1, contentIDs: ["101", "101"]))
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.usb-retry.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usb-retry"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
-                                 draftHome: fixture.root.appending(path: "drafts"))
-        store.rekordboxShareRoot = fixture.shareRoot
-        await store.load(snapshot: fixture.database, arguments: ["test", "--db", fixture.database.path], environment: [:])
+                                 draftHome: fixture.root.appending(path: "drafts"), rekordboxShareRoot: fixture.shareRoot)
+        await store.load(snapshot: fixture.database)
         let lease = try #require(await store.leaseUsbSyncSnapshot(directory: fixture.root.appending(path: "copies")))
         let source = UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.iTunesLibrary)
         let context = UsbExportSyncSourceContext(source: source, catalogRevision: store.previewRevision,

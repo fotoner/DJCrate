@@ -18,22 +18,6 @@ struct AppFeedback {
     var isVoiceOverEnabled: () -> Bool = { NSWorkspace.shared.isVoiceOverEnabled }
 }
 
-struct WriteStage: Equatable {
-    static var reloadingLibrary: Self { Self(String(ui: "쓴 라이브러리를 다시 읽는 중…")) }
-
-    var text: String
-    var completed: Int?
-    var total: Int?
-    var cancellable: Bool
-
-    init(_ text: String, completed: Int? = nil, total: Int? = nil, cancellable: Bool = false) {
-        self.text = text
-        self.completed = completed
-        self.total = total
-        self.cancellable = cancellable
-    }
-}
-
 struct AppMessageView: View {
     let message: AppMessage
     let onClose: () -> Void

@@ -1,7 +1,5 @@
-import RekordboxKit
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import Foundation
 import Observation
 
@@ -47,14 +45,7 @@ extension LibraryStore {
     }
 
     /// 추가한 곡을 넣을 때 함께 쓸 키(사용자가 고른 Camelot 이름, #5). 키를 고치지 않았거나 비웠으면(넣는 곡은 처음부터 키가 없다) nil.
-    func confirmedStagedKey(uuid: String) -> String? {
-        guard let draft = tagDrafts[uuid] else { return nil }
-        var base = draft.base
-        base.musicalKey = ""
-        let adopted = draft.adoptingMusicalKey(of: base)
-        guard adopted.changedKeys.contains(.musicalKey), !adopted.fields.musicalKey.isEmpty else { return nil }
-        return adopted.fields.musicalKey
-    }
+    func confirmedStagedKey(uuid: String) -> String? { AddedTrackDrafts.confirmedKey(tagDrafts[uuid]) }
 
     /// 선택한 곡들의 값. 모두 같으면 그 값, 다르면 `mixed`.
     func tagValue(_ key: TagFields.Key, rows: [TrackRow]) -> (value: String, mixed: Bool) {

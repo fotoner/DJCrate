@@ -1,7 +1,8 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import RekordboxKit
 import Testing

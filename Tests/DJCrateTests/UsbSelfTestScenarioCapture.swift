@@ -1,8 +1,9 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -26,13 +27,13 @@ struct UsbSelfTestScenarioCapture {
         let mount = scenario.mountPoint.path
         let (events, continuation) = AsyncStream.makeStream(of: [UsbVolumeInfo].self)
         defer { continuation.finish() }
-        let usbHost = SystemUsbHost(io: .reading(snapshots: home.appending(path: "usb-snapshots")), events: events, current: {
+        let usbHost = SystemUsbHost(io: UsbAppComposition.hostIO(snapshots: home.appending(path: "usb-snapshots")), events: events, current: {
             guard let real = UsbScratchRoots.realPath(mount), UsbScratchRoots.mountedOn(real) == real,
                   let volume = try? UsbVolumes.info(root: URL(filePath: real)) else { return [] }
             return [volume]
         })
         let service = scenario.makeService()
-        let usb = UsbStore(host: usbHost, readPolicy: .diskImagesOnly, localLibrary: { nil }, journal: { service.journal(volumeKey: $0) })
+        let usb = UsbStore(host: usbHost, readPolicy: .diskImagesOnly, writeService: service, localLibrary: { nil }, journal: { service.journal(volumeKey: $0) })
         let passed = try await scenario.run(usb: usb, host: FakeUsbWriteHost())
         print(passed)
         #expect(passed.hasPrefix("USB 시험 통과"))

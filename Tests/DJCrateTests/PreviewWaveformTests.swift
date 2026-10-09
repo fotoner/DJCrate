@@ -1,9 +1,11 @@
 import AppKit
 import Foundation
+import RekordboxFixtures
 import Testing
-import DJCTestSupport
 import RekordboxKit
 import DJCDomain
+import DJCAdapters
+import DJCApplication
 import DJCStorage
 @testable import DJCrate
 
@@ -16,7 +18,7 @@ struct PreviewWaveformTests {
         try AnlzBuilder.file([AnlzBuilder.pwav([31])]).write(to: url)
         try AnlzBuilder.file([AnlzBuilder.waveform("PWV4", entryBytes: 6, samples: [0, 255, 127, 127, 0, 0])])
             .write(to: url.deletingPathExtension().appendingPathExtension("EXT"))
-        let cache = PreviewWaveformCache(store: PreviewWaveformStore(file: nil))
+        let cache = PreviewWaveformCache(previews: ShowPreviewWaveforms(previews: .live(store: PreviewWaveformStore(file: nil))))
         var request = PreviewWaveformRequest(url: url, revision: "same", appearance: NSAppearance.Name.darkAqua.rawValue)
         request.mode = .blue
         let blue = try #require(await cache.image(for: request))
@@ -55,7 +57,7 @@ struct PreviewWaveformTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appending(path: "preview.DAT")
-        let cache = PreviewWaveformCache(store: PreviewWaveformStore(file: nil))
+        let cache = PreviewWaveformCache(previews: ShowPreviewWaveforms(previews: .live(store: PreviewWaveformStore(file: nil))))
         let first = PreviewWaveformRequest(url: url, revision: "first", appearance: NSAppearance.Name.aqua.rawValue)
         #expect(await cache.image(for: first) == nil)
         #expect(await cache.image(for: first) == nil)

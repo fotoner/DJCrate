@@ -1,7 +1,10 @@
+import DJCAdapters
+import DJCApplication
 @testable import DJCrate
 import DJCStorage
-import DJCTestSupport
+import DJCDomain
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -24,6 +27,8 @@ struct ITunesRefreshRegressionTests {
         #expect(LibrarySnapshot.sameDirectory(fresh.deletingLastPathComponent(), directory))
         let loaded = try LoadedLibrary.load(snapshot: fresh, refreshITunes: true,
                                             previousITunesSnapshot: .init(source: previous, contents: good),
+                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                            drafts: .dataFolder(), source: .withoutDatabase,
                                             captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(loaded.iTunesLibrary.status == .stale)
         #expect(loaded.iTunesLibrary.index["itunes:A"]?.name == "마지막 정상")
@@ -42,6 +47,7 @@ struct ITunesRefreshRegressionTests {
         let previous = LoadedLibrary.ITunesFallback(source: badURL, contents: ITunesLibrarySnapshot.load(for: badURL))
         let loaded = try LoadedLibrary.load(snapshot: fresh, refreshITunes: true, previousITunesSnapshot: previous,
                                             fallbackDirectory: directory,
+                                            drafts: .dataFolder(), source: .withoutDatabase,
                                             captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(loaded.iTunesLibrary.status == .stale)
         #expect(loaded.iTunesLibrary.index["itunes:A"]?.name == "더 이전 정상")
@@ -57,6 +63,8 @@ struct ITunesRefreshRegressionTests {
         let first = iTunesBlockingTask {
             try LoadedLibrary.load(snapshot: database, refreshITunes: true,
                                    previousITunesSnapshot: .init(source: previousURL, contents: old),
+                                   fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                   drafts: .dataFolder(), source: .withoutDatabase,
                                    captureITunes: {
                                        gate.started.signal()
                                        // 최신 읽기가 끝날 때까지 자동으로 캡처를 재개하지 않는다.
@@ -74,7 +82,8 @@ struct ITunesRefreshRegressionTests {
                 try #require(started)
                 try Task.checkCancellation()
                 let newer = ITunesLibrarySnapshot(playlists: [.init(id: "B", name: "새 정상")])
-                let second = try LoadedLibrary.load(snapshot: database, refreshITunes: true, captureITunes: { newer })
+                let second = try LoadedLibrary.load(snapshot: database, refreshITunes: true, fallbackDirectory: LibrarySnapshot.defaultDirectory,
+                                                    drafts: .dataFolder(), source: .withoutDatabase, captureITunes: { newer })
                 try Task.checkCancellation()
                 gate.resume.signal()
                 let late = try await first.value
@@ -99,10 +108,14 @@ struct ITunesRefreshRegressionTests {
         let first = ITunesRefreshCoordinator.shared.begin(snapshot: database)
         let second = ITunesRefreshCoordinator.shared.begin(snapshot: database)
         let newer = ITunesLibrarySnapshot(playlists: [.init(id: "B", name: "새 정상")])
-        _ = try LoadedLibrary.load(snapshot: database, refreshITunes: true, refreshTicket: second,
+        _ = try LoadedLibrary.load(snapshot: database, refreshITunes: true,
+                                   fallbackDirectory: LibrarySnapshot.defaultDirectory, refreshTicket: second,
+                                    drafts: .dataFolder(), source: .withoutDatabase,
                                     captureITunes: { newer })
         let older = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "이전 정상")])
-        let late = try LoadedLibrary.load(snapshot: database, refreshITunes: true, refreshTicket: first,
+        let late = try LoadedLibrary.load(snapshot: database, refreshITunes: true,
+                                          fallbackDirectory: LibrarySnapshot.defaultDirectory, refreshTicket: first,
+                                          drafts: .dataFolder(), source: .withoutDatabase,
                                           captureITunes: { older })
         #expect(late.iTunesLibrary.index["itunes:B"] != nil)
         #expect(ITunesLibrarySnapshot.load(for: database).playlists.map(\.id) == ["B"])

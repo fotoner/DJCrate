@@ -18,3 +18,6 @@ dist/
 
 # Claude Code 서브에이전트 워크트리
 .claude/worktrees/
+
+# 파이썬 스크립트를 돌리면 생긴다
+__pycache__/

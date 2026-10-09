@@ -1,9 +1,12 @@
 @testable import DJCrate
+@testable import DJCAdapters
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
 import AudioToolbox
+import RekordboxFixtures
 import Synchronization
 import RekordboxKit
 import Testing
@@ -21,27 +24,28 @@ struct AsyncFailureGuidanceTests {
                                     imagePath: t.imagePath, isDeleted: t.isDeleted), cues: row.cues, playCount: row.playCount)
     }
     private func store(_ fixture: RekordboxFixture) -> LibraryStore {
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.async.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("async"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in },
-                                 playlistImportURL: nil, stagingSaver: { _ in }, draftHome: fixture.root.appending(path: "drafts"))
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
+                                 playlistImportURL: nil, stagingSaver: { _ in }, draftHome: fixture.root.appending(path: "drafts"),
+                                 rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot,
+                                 // 명시한 사본으로 열고 사본 rekordbox 폴더를 준 개발 실행(스냅샷도 그 폴더에서만 뜬다)
+                                 arguments: ["test", "--db", fixture.database.path],
+                                 environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
         return store
     }
 
     @Test func 사본_열기_실패는_생성_실패로_알리지_않고_이전_목록을_보존한다() async throws {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec())
-        let store = store(fixture), args = ["test", "--db", fixture.database.path]
-        await store.load(snapshot: fixture.database, arguments: args, environment: [:])
+        let store = store(fixture)
+        await store.load(snapshot: fixture.database)
         let before = store.rows
-        await store.load(snapshot: fixture.root.appending(path: "missing.db"), quiet: true, arguments: args, environment: [:])
+        await store.load(snapshot: fixture.root.appending(path: "missing.db"), quiet: true)
         #expect(store.rows == before)
-        #expect(store.lastError?.contains("열지 못") == true)
-        #expect(store.lastError?.contains("이전 목록") == true)
-        #expect(store.lastError?.contains("확인") == true)
-        #expect(store.lastError?.contains("새로 뜨지") == false)
+        // 사본 생성 실패가 아니라 열기 실패이고, 이전 목록을 보존한다는 안내다(문구는 `LibraryReadFailure.message`가 정한다)
+        #expect(store.lastReadFailure == LibraryReadFailure(stage: .opening, keepsPreviousLibrary: true))
+        #expect(store.lastError == store.lastReadFailure?.message)
     }
 
     /// 목록 위 오류 줄은 닫을 수 있다(#230). 닫아도 오류 상태(`lastError`)는 남아 그 상태를 보는 흐름은 그대로이고, 새 오류가 오면 다시 보인다.
@@ -72,7 +76,7 @@ struct AsyncFailureGuidanceTests {
     @Test func UUID가_다른_현재_초안은_고치지_않고_다시_불러오기를_안내한다() async throws {
         let h = try DeckHarness()
         try await h.loaded()
-        let other = CueDraft(trackUUID: "other-track", rekordboxCues: [])
+        let other = CueDraft(trackUUID: "other-track")
         h.deck.draft = other
         h.deck.addMemoryCue(at: 1)
         #expect(h.deck.draft == other)
@@ -83,11 +87,23 @@ struct AsyncFailureGuidanceTests {
     }
 
     @Test func 재생_준비_전에는_지원_밖_형식으로_단정하지_않는다() async throws {
-        let h = try DeckHarness()
+        let h = try DeckHarness(audioFile: true)
         try await h.loaded()
         h.deck.canPlay = false
-        #expect(h.deck.playbackUnavailableReason?.contains("불러오기") == true)
-        #expect(h.deck.playbackUnavailableReason?.contains("파일 형식") == false)
+        #expect(h.deck.playbackUnavailableReason == AudioSourceState.preparing.unavailableReason)
+    }
+
+    @Test func 재생_불가_이유는_불러올_때_정한_음원_상태를_따른다() async throws {
+        // 음원 파일은 디스크에 없지만 덱 읽기는 있다고 본다(가짜 읽기). 소리 열기는 읽기 오류로 실패한다.
+        let h = try DeckHarness()
+        try await h.loaded()
+        let row = try #require(h.deck.row)
+        h.audio.loadError = CocoaError(.fileReadNoPermission)
+        h.deck.load(replacing(row, id: "2", uuid: "track-2"))
+        for _ in 0..<200 where h.deck.audioSourceState == .preparing { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(h.deck.audioSourceState == .readFailed)
+        // 화면이 읽을 때 메인 스레드에서 파일을 다시 확인하지 않는다(불러올 때 읽은 값으로 안내)
+        #expect(h.deck.playbackUnavailableReason == AudioSourceState.readFailed.unavailableReason)
     }
 
     @Test(arguments: [true, false])
@@ -109,7 +125,7 @@ struct AsyncFailureGuidanceTests {
 
     @Test func XML_미리_보기는_변경_없는_선택도_이유와_함께_남긴다() throws {
         let fixture = try RekordboxFixture(), store = store(fixture)
-        let row = ReflectionCoordinatorTests.row("unchanged")
+        let row = ReflectionPresenterTests.row("unchanged")
         let plans = store.reflectionPlans(for: [row])
         #expect(plans.count == 1)
         #expect(plans.first?.isEligible == false)
@@ -127,10 +143,10 @@ struct AsyncFailureGuidanceTests {
                 signal.yield(())
                 gate.wait()
                 throw FixtureFailure()
-            }, arguments: ["test"], environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
+            })
         }
         for await _ in started { break }
-        await store.load(snapshot: fixture.database, arguments: ["test", "--db", fixture.database.path], environment: [:])
+        await store.load(snapshot: fixture.database)
         gate.signal()
         await old.value
         #expect(store.lastError == nil)
@@ -143,8 +159,7 @@ struct AsyncFailureGuidanceTests {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec())
         let store = store(fixture), database = fixture.database
-        let args = ["test", "--db", database.path]
-        await store.load(snapshot: database, arguments: args, environment: [:])
+        await store.load(snapshot: database)
         let gate = DispatchSemaphore(value: 0)
         let (started, signal) = AsyncStream<Void>.makeStream()
         let old = Task {
@@ -153,10 +168,10 @@ struct AsyncFailureGuidanceTests {
                 gate.wait()
                 if fails { throw FixtureFailure() }
                 return database
-            }, arguments: ["test"], environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
+            })
         }
         for await _ in started { break }
-        await store.load(snapshot: database, arguments: args, environment: [:])
+        await store.load(snapshot: database)
         let before = store.rows, count = store.completedLoadCount
         gate.signal()
         await old.value
@@ -181,13 +196,14 @@ struct AsyncFailureGuidanceTests {
         let row = try #require(h.deck.row)
         let gate = DispatchSemaphore(value: 0), calls = Mutex(0)
         let (started, signal) = AsyncStream<Void>.makeStream()
-        var storage = DeckStorage.memory(h.drafts)
-        storage.loadCueDraft = { uuid in
+        var drafts = h.drafts.store
+        drafts.cueDraft = { uuid in
             let count = calls.withLock { $0 += 1; return $0 }
             if uuid == row.track.uuid, count == 2 { signal.yield(()); gate.wait() }
-            return CueDraft(trackUUID: uuid, rekordboxCues: [])
+            return CueDraft(trackUUID: uuid)
         }
-        let deck = DeckModel(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
+        let storage = DeckStorage.memory(drafts)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
         deck.load(row)
         await deck.loadTask?.value
         let changed = replacing(row, title: "새 메타데이터")
@@ -217,21 +233,21 @@ struct AsyncFailureGuidanceTests {
     @Test func 사본_내용_실패는_열기_실패와_구별하고_기존_태그를_보존한다() async throws {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec())
-        let store = store(fixture), args = ["test", "--db", fixture.database.path]
-        await store.load(snapshot: fixture.database, arguments: args, environment: [:])
+        let store = store(fixture)
+        await store.load(snapshot: fixture.database)
         let before = store.rows
         try fixture.execute("DROP TABLE djmdCue")
-        await store.load(snapshot: fixture.database, quiet: true, arguments: args, environment: [:])
+        await store.load(snapshot: fixture.database, quiet: true)
         #expect(store.lastReadFailure?.stage == .contents)
-        #expect(store.lastError?.contains("내용을 읽지") == true)
+        #expect(store.lastError == LibraryReadFailure(stage: .contents, keepsPreviousLibrary: true).message)
         #expect(store.rows == before)
     }
 
     @Test func 취소한_현재_읽기는_로딩_상태와_경고를_남기지_않는다() async throws {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec())
-        let store = store(fixture), args = ["test", "--db", fixture.database.path]
-        await store.load(snapshot: fixture.database, arguments: args, environment: [:])
+        let store = store(fixture)
+        await store.load(snapshot: fixture.database)
         let before = store.rows, count = store.completedLoadCount
         let gate = DispatchSemaphore(value: 0)
         let database = fixture.database
@@ -241,7 +257,7 @@ struct AsyncFailureGuidanceTests {
                 signal.yield(())
                 gate.wait()
                 return database
-            }, arguments: ["test"], environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
+            })
         }
         for await _ in started { break }
         read.cancel()
@@ -251,75 +267,71 @@ struct AsyncFailureGuidanceTests {
         if case .loaded = store.phase { } else { Issue.record("취소한 읽기가 로딩 상태로 남음") }
     }
 
-    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    @Test
     func 미리_보기는_주입한_합성_라이브러리를_쓴다() async throws {
         let fixture = try RekordboxFixture()
         let spec = TrackSpec(id: "1", uuid: "async-preview-\(UUID())")
         try fixture.add(spec)
         try fixture.execute("UPDATE djmdContent SET rb_data_status = 0")
-        let store = store(fixture), args = ["test", "--db", fixture.database.path]
-        await store.load(snapshot: fixture.database, arguments: args, environment: [:])
+        let store = store(fixture)
+        await store.load(snapshot: fixture.database)
         let row = try #require(store.rows.first)
         var draft = TagDraft(track: row.track)
         draft.fields.comment = "합성 코멘트"
-        try TagDraftStore.save(draft)
-        defer { try? TagDraftStore.remove(trackUUID: spec.uuid, directory: TagDraftStore.directory) }
+        // 저장소는 자기 초안 폴더(`draftHome`)만 읽는다
+        try TagDraftStore.save(draft, directory: store.tagDraftDirectory)
         store.tagDrafts[spec.uuid] = draft
-        let preview = try await store.previewWrite(rows: [row], playlists: false)
+        let preview = try await store.session.previewWrite(rows: [row], playlists: false)
         #expect(preview.report.tagWritten.count == 1)
         #expect(try RekordboxLibrary.load(snapshot: fixture.database).tracks.first?.comment == "")
     }
 
-    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    @Test
     func 제외_이유는_곡과_종류별로_보이고_XML의_지원_범위를_유지한다() throws {
         let fixture = try RekordboxFixture(), store = store(fixture)
-        let row = ReflectionCoordinatorTests.row("exclusions-\(UUID())")
+        let row = ReflectionPresenterTests.row("exclusions-\(UUID())")
         let staged = replacing(row, id: "djc-synthetic")
         #expect(store.draftExclusionReasons(for: [staged]).first?.contains("추가한 곡") == true)
         #expect(store.draftExclusionReasons(for: [row]).first?.contains("변경이 없") == true)
         store.draftChanged(trackUUID: row.track.uuid, kind: .cue, exists: true)
         let missing = store.draftExclusionReasons(for: [row])
-        #expect(missing.first?.contains(row.title) == true && missing.first?.contains("큐 쓰지") == true)
-        #expect(missing.first?.contains("불러오지 못") == true)
-        var cue = CueDraft(trackUUID: row.track.uuid, rekordboxCues: [])
+        // XML이 아닌 쓰기에서 막힌 큐 줄은 초안을 읽지 못한 경우뿐이다(바꿀 것 없음은 `unchanged`, XML 범위 밖은 `xml: true`에서만)
+        #expect(missing.count == 1 && missing.first?.hasPrefix("• \(row.title): " + WritePart.cue.blocked("")) == true)
+        var cue = CueDraft(trackUUID: row.track.uuid)
         cue.cues.append(EditableCue(kind: .memory, time: 1))
-        try CueDraftStore.save(cue)
+        try CueDraftStore.save(cue, directory: store.draftLocations.cue)
         var tag = TagDraft(track: row.track)
         tag.fields.comment = "합성 태그"
-        try TagDraftStore.save(tag)
-        defer {
-            try? CueDraftStore.remove(trackUUID: row.track.uuid, directory: CueDraftStore.directory)
-            try? TagDraftStore.remove(trackUUID: row.track.uuid, directory: TagDraftStore.directory)
-        }
+        try TagDraftStore.save(tag, directory: store.tagDraftDirectory)
         store.tagDrafts[row.track.uuid] = tag
         #expect(store.reflectionPlans(for: [row]).first?.isEligible == true)
-        #expect(store.draftExclusionReasons(for: [row], xml: true).first?.contains("태그 쓰지") == true)
-        #expect(store.draftExclusionReasons(for: [row], xml: true).first?.contains("큐·그리드만") == true)
+        // 읽을 수 있는 초안이라(XML이 아니면 줄이 없다) XML에서 막힌 태그 줄은 지원 범위 밖이라는 이유다
+        let xml = store.draftExclusionReasons(for: [row], xml: true)
+        #expect(xml.count == 1 && xml.first?.hasPrefix("• \(row.title): " + WritePart.tag.blocked("")) == true)
         #expect(store.draftExclusionReasons(for: [row]).isEmpty)
     }
 
     /// 쓰기 확인 목록에는 막힌 초안만 남긴다. 고르기만 한 곡·추가한 곡·바꿀 것 없는 초안은 줄로 넣지 않는다(#211).
-    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    @Test
     func 쓰기_미리_보기의_제외_줄은_막힌_초안만_남긴다() throws {
         let fixture = try RekordboxFixture(), store = store(fixture)
-        let row = ReflectionCoordinatorTests.row("blocked-only-\(UUID())")
+        let row = ReflectionPresenterTests.row("blocked-only-\(UUID())")
         let staged = replacing(row, id: "djc-synthetic")
         #expect(store.draftExclusionReasons(for: [staged, row], blockedOnly: true).isEmpty)
         // 초안 파일을 읽지 못한 곡은 막힌 이유로 남긴다
         store.draftChanged(trackUUID: row.track.uuid, kind: .cue, exists: true)
         let missing = store.draftExclusionReasons(for: [row], blockedOnly: true)
-        #expect(missing.count == 1 && missing.first?.contains("큐 쓰지") == true)
+        #expect(missing.count == 1 && missing.first?.hasPrefix("• \(row.title): " + WritePart.cue.blocked("")) == true)
         // 읽을 수 있는 초안이면 줄이 없다
-        var cue = CueDraft(trackUUID: row.track.uuid, rekordboxCues: [])
+        var cue = CueDraft(trackUUID: row.track.uuid)
         cue.cues.append(EditableCue(kind: .memory, time: 1))
-        try CueDraftStore.save(cue)
-        defer { try? CueDraftStore.remove(trackUUID: row.track.uuid, directory: CueDraftStore.directory) }
+        try CueDraftStore.save(cue, directory: store.draftLocations.cue)
         #expect(store.draftExclusionReasons(for: [row], blockedOnly: true).isEmpty)
     }
 
     @Test func 사라진_선택으로_실행한_현재_불러오기_명령만_다시_선택을_안내한다() throws {
         let fixture = try RekordboxFixture(), store = store(fixture)
-        let row = ReflectionCoordinatorTests.row("selected")
+        let row = ReflectionPresenterTests.row("selected")
         store.loadToDeck(row)
         store.selection = ["deleted"]
         store.loadSelectionToDeck()
@@ -336,7 +348,7 @@ struct AsyncFailureGuidanceTests {
         h.deck.load(row)
         await h.deck.loadTask?.value
         #expect(h.deck.audioSourceState == .readFailed)
-        #expect(h.deck.waveformError?.contains("접근 권한") == true)
+        #expect(h.deck.waveformError == AudioSourceState.readFailed.unavailableReason)
         #expect(h.deck.draft?.trackUUID == row.track.uuid)
         #expect(!h.deck.canPlay)
     }
@@ -346,7 +358,7 @@ struct AsyncFailureGuidanceTests {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec())
         let store = store(fixture)
-        await store.load(snapshot: fixture.database, arguments: ["test", "--db", fixture.database.path], environment: [:])
+        await store.load(snapshot: fixture.database)
         let before = store.iTunesSnapshot
         let gate = DispatchSemaphore(value: 0)
         let (started, signal) = AsyncStream<Void>.makeStream()

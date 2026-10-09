@@ -1,4 +1,4 @@
-import DJCAnalysis
+import DJCDomain
 import SwiftUI
 
 /// 같은 Canvas 크기를 여러 번 배치할 때 3밴드의 구간 최대값과 경로를 다시 만들지 않는다.

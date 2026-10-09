@@ -1,4 +1,5 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import Foundation
 import Testing

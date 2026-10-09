@@ -13,7 +13,7 @@ struct SidebarObservationTests {
     private final class Flag: @unchecked Sendable { var fired = false }
 
     private func store() -> LibraryStore {
-        LibraryStore(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
     }
 
     /// `body`를 한 번 계산하는 동안 읽은 값 중 `change`가 바꾸는 것이 있는지.
@@ -42,20 +42,21 @@ struct SidebarObservationTests {
 
     // MARK: - 사이드바 본문
 
-    @Test func 그리드_추정_진행은_본문이_읽지_않는다() {
+    @Test(.tags(.perfContract)) func 그리드_추정_진행은_본문이_읽지_않는다() {
         #expect(!sidebarReads(before: { $0.gridJob = GridJob(done: 1, total: 5) }) { $0.gridJob = GridJob(done: 2, total: 5) })
     }
 
-    @Test func 그리드_추정을_시작하고_끝내면_진행_줄을_넣고_빼려고_본문을_다시_계산한다() {
+    @Test(.tags(.perfContract)) func 그리드_추정을_시작하고_끝내면_진행_줄을_넣고_빼려고_본문을_다시_계산한다() {
         #expect(sidebarReads { $0.gridJob = GridJob(done: 0, total: 5) })
         #expect(sidebarReads(before: { $0.gridJob = GridJob(done: 5, total: 5) }) { $0.gridJob = nil })
     }
 
-    @Test func 추가한_곡_수는_본문이_읽지_않는다() {
-        #expect(!sidebarReads { $0.staged = [StagedTrack(path: "/synthetic/a.wav", title: "합성 곡", duration: 60, addedOn: "2026-09-28")] })
+    @Test(.tags(.perfContract)) func 추가한_곡_수는_본문이_읽지_않는다() {
+        #expect(!sidebarReads { $0.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/synthetic/a.wav", title: "합성 곡", duration: 60,
+                                                         addedOn: "2026-09-28")] })
     }
 
-    @Test func 쓰기_대기_수는_본문이_읽지_않는다() {
+    @Test(.tags(.perfContract)) func 쓰기_대기_수는_본문이_읽지_않는다() {
         let other = row("y")
         #expect(!sidebarReads { $0.tagDrafts = ["x": TagDraft(track: other.track)] })
         #expect(!sidebarReads { $0.draftChanged(trackUUID: "x", kind: .cue, exists: true) })
@@ -65,15 +66,16 @@ struct SidebarObservationTests {
         #expect(!sidebarReads(before: { $0.draftChanged(trackUUID: "y", kind: .cue, exists: true) }) { $0.rowsByUUID = ["y": other] })
     }
 
-    @Test func 쓰기_중_표시는_본문이_읽지_않는다() {
+    @Test(.tags(.perfContract)) func 쓰기_중_표시는_본문이_읽지_않는다() {
         #expect(!sidebarReads { $0.isWritingRekordbox = true })
     }
 
     // MARK: - 줄 뷰
 
-    @Test func 배지_값은_각자_줄이_읽어_값이_바뀌면_그_줄만_다시_계산한다() {
+    @Test(.tags(.perfContract)) func 배지_값은_각자_줄이_읽어_값이_바뀌면_그_줄만_다시_계산한다() {
         #expect(reads({ SidebarStagedRow(store: $0) }) {
-            $0.staged = [StagedTrack(path: "/synthetic/a.wav", title: "합성 곡", duration: 60, addedOn: "2026-09-28")]
+            $0.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/synthetic/a.wav", title: "합성 곡", duration: 60,
+                                     addedOn: "2026-09-28")]
         })
         #expect(reads({ SidebarPendingRow(store: $0) }) { $0.draftChanged(trackUUID: "x", kind: .cue, exists: true) })
         #expect(reads({ SidebarGridJobRow(store: $0) }, before: { $0.gridJob = GridJob(done: 1, total: 5) }) {

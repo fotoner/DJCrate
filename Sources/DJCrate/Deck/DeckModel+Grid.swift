@@ -1,9 +1,7 @@
-import DJCAnalysis
+import DJCApplication
 import DJCDomain
-import DJCStorage
 import AppKit
 import Foundation
-import RekordboxKit
 
 /// 그리드 편집·추정 제안(초안만 바뀐다)
 extension DeckModel {
@@ -163,39 +161,23 @@ extension DeckModel {
 
     private func refreshGridEditEligibility() {
         guard let originalGrid else { return }
-        let fresh = GridDraft(trackUUID: row?.track.uuid ?? "", grid: originalGrid)
-        let rebuilt = fresh.grid(duration: max(duration + 1, (originalGrid.beats.last?.time ?? 0) + 0.01))
-        let worst = GridEditEligibility.reconstructionErrorMilliseconds(original: originalGrid, rebuilt: rebuilt)
-        let replacement = gridDraft?.isVerifiedReplacement(of: originalGrid, duration: duration) == true
-        if gridDraft?.replacementSource != nil, !replacement {
-            gridEditBlockedReason = String(ui: "초안을 만든 뒤 rekordbox에서 그리드가 바뀌었으니 그리드 현재값 가져오기로 비교하세요")
-        } else if worst > 2, !replacement {
-            gridEditBlockedReason = String(ui: "이 곡의 그리드는 템포 구간 \(fresh.segments.count)개로 복잡해 정확히 재현되지 않습니다(최대 \(worst, specifier: "%.0f")ms). 편집을 막았습니다.")
-        } else {
-            gridEditBlockedReason = nil
-        }
+        gridEditBlockedReason = DeckGridGate.editBlockedReason(trackUUID: row?.track.uuid ?? "", original: originalGrid,
+                                                               draft: gridDraft, duration: duration)
     }
 
     // MARK: - 그리드 추정·제안
 
     /// MU 분석 결과와 어택 곡선으로 그리드를 추정한다. 추가한 곡(아직 rekordbox에 없음)은 그리드가 없으면 바로 적용한다.
-    func startGridSuggestion(analysis: PartAnalysis, url: URL, id: String) {
+    func startGridSuggestion(_ sections: DeckSections, url: URL, key: String, generation: Int) {
         suggestionTask?.cancel()
+        let analyzer = analyzer, offset = timelineOffset, duration = duration
         suggestionTask = Task {
-            let key = self.row?.track.uuid ?? id
-            let estimate = try? await Task.detached(priority: .utility) {
-                if let cached = AnalysisCache.gridEstimate(key: key, file: url) { return cached }
-                let onset = try OnsetEnvelope.compute(url: url)
-                try Task.checkCancellation()
-                let estimate = GridEstimator.estimate(beats: analysis.beats, bars: analysis.bars, duration: analysis.duration, onset: onset)
-                if let estimate { AnalysisCache.store(estimate, key: key, file: url) }
-                return estimate
+            let suggestion = try? await Task.detached(priority: .utility) {
+                try analyzer.gridSuggestion(sections, file: url, key: key, timelineOffset: offset, duration: duration)
             }.value
-            guard !Task.isCancelled, self.row?.id == id, var estimate else { return }
-            // 추정은 음원(AVFoundation) 시간축 → rekordbox 시간축으로 옮긴다.
-            for i in estimate.segments.indices { estimate.segments[i].start += self.timelineOffset }
-            self.gridSuggestion = estimate
-            self.suggestedGrid = GridDraft(trackUUID: "", base: [], segments: estimate.segments).grid(duration: self.duration)
+            guard self.isCurrentLoad(generation), let suggestion else { return }
+            self.gridSuggestion = suggestion.estimate
+            self.suggestedGrid = suggestion.grid
             if self.gridDraft == nil, self.row?.isStaged == true {
                 self.applyGridSuggestion(recordingUndo: false)
             } else {
@@ -207,7 +189,7 @@ extension DeckModel {
     /// 재분석: 이 곡의 섹션·그리드 추정·조성 캐시와 제안 무시 표시(그리드·키)를 지우고 다시 불러온다.
     func reanalyze() {
         guard let uuid = row?.track.uuid else { return }
-        AnalysisCache.removeAll(key: uuid)
+        analyzer.forget(key: uuid)
         var dismissed = storage.settings.strings(SettingKeys.dismissedGridSuggestions)
         dismissed.remove(uuid)
         storage.settings.setStrings(SettingKeys.dismissedGridSuggestions, dismissed)
@@ -309,7 +291,7 @@ extension DeckModel {
 
     /// 백그라운드 추정이 이 곡의 초안을 저장했으면 다시 읽는다.
     func gridDraftSavedExternally(_ uuid: String) {
-        guard row?.track.uuid == uuid, gridDraft == nil, let saved = storage.loadGridDraft(uuid) else { return }
+        guard row?.track.uuid == uuid, gridDraft == nil, let saved = storage.drafts.currentGrid(uuid) else { return }
         clearDraftUndo()
         gridDraft = saved
         refreshGrid()

@@ -1,14 +1,16 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import DJCStorage
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
 /// 막힌 초안이 여러 곡·종류·재생 목록에 섞인 합성 라이브러리(#232).
 /// 초안의 기준(`base`)이 지금 rekordbox와 달라 모두 쓸 수 없는 상태다. 곡·초안 값은 고정이라 같은 시나리오를 둘 만들어 같은 선택의 결과를 견줄 수 있다.
-/// 현재값은 합성 사본 DB·분석 파일에서 실제로 읽는다. 초안은 메모리(`recoveryMemoryInput`·`tagDrafts`)에 두고 저장 폴더는 `home`이다.
+/// 현재값은 합성 사본 DB·분석 파일에서 실제로 읽는다. 초안은 메모리(`recoveryMemoryInput`·`tagDrafts`)에 두고 저장 폴더는 `home`(저장소의 초안 폴더)이다.
 @MainActor
 struct RecoveryScenario {
     /// 줄 하나: 곡 이름("A"·"B"·"C")과 종류, 또는 재생 목록 ID
@@ -71,16 +73,13 @@ struct RecoveryScenario {
         try fixture.add(playlists: [PlaylistSpec(id: "P1", name: "합성 목록 하나", seq: 1, contentIDs: [a.id, b.id]),
                                     PlaylistSpec(id: "P2", name: "합성 목록 둘", seq: 2, contentIDs: [c.id])])
         // 초안은 옛 rekordbox 상태를 기준으로 만들어 뒀고, 그 뒤 rekordbox에서 바뀐 것처럼 합성 사본이 다르다.
-        let store = LibraryStore(settings: SettingsStore(defaults: UserDefaults(suiteName: "djc.test.recovery.\(UUID())")!, persist: false),
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("recovery"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
-                                 draftHome: fixture.root.appending(path: "drafts"))
-        store.rekordboxDatabase = fixture.database
-        store.rekordboxShareRoot = fixture.shareRoot
-        store.launchArguments = ["test", "--db", fixture.database.path]
-        store.launchEnvironment = ["DJC_REKORDBOX_DIR": fixture.root.path]
-        await store.load(snapshot: fixture.database, arguments: store.launchArguments, environment: store.launchEnvironment)
+                                 draftHome: fixture.root, rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot,
+                                 arguments: ["test", "--db", fixture.database.path], environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
+        await store.load(snapshot: fixture.database)
         var scenario = RecoveryScenario(fixture: fixture, store: store)
         scenario.halfAnalysedGrid = halfGrid
         for track in withHalfAnalysedTrack ? ["A", "B", "C", "D"] : ["A", "B", "C"] {
@@ -113,7 +112,7 @@ struct RecoveryScenario {
     private static func memoryDrafts() -> [String: RecoveryDraft] {
         // A: 큐 시각을 rekordbox에서 옮겼고 내가 이름을 붙였다(내 편집을 그대로 다시 쌓을 수 있다)
         let oldA = EditableCue(sourceID: "cue-a1", kind: .memory, time: 2)
-        var cueA = CueDraft(trackUUID: uuid("A"), rekordboxCues: [])
+        var cueA = CueDraft(trackUUID: uuid("A"))
         cueA.base = [oldA]; cueA.cues = [oldA]; cueA.cues[0].name = "내 큐"
         // B: 그리드 BPM을 rekordbox에서 바꿨고 나는 첫 박 번호를 옮겼다
         let base = [GridSegment(start: 0.2, bpm: 120, firstBeatNumber: 1)]
@@ -121,7 +120,7 @@ struct RecoveryScenario {
         gridB.segments[0].firstBeatNumber = 3
         // C: 내가 고친 큐가 rekordbox에서 다시 만들어져 ID가 달라졌다(대상을 사람이 이어야 한다)
         let oldC = EditableCue(sourceID: "cue-c-old", kind: .memory, time: 4, name: "인트로")
-        var cueC = CueDraft(trackUUID: uuid("C"), rekordboxCues: [])
+        var cueC = CueDraft(trackUUID: uuid("C"))
         cueC.base = [oldC]; cueC.cues = [oldC]; cueC.cues[0].name = "내 큐 C"
         return [uuid("A") + "/cues": .cues(cueA), uuid("B") + "/grid": .grid(gridB), uuid("C") + "/cues": .cues(cueC)]
     }
@@ -140,31 +139,32 @@ struct RecoveryScenario {
     nonisolated static let allTargets: [Target] = [.draft("A", .tags), .draft("A", .cues), .draft("B", .tags), .draft("B", .grid),
                                        .draft("C", .cues), .playlist("P1"), .playlist("P2")]
 
-    /// 쓰기 미리 보기가 읽는 초안 파일을 DJC_HOME(시험은 임시 폴더)에 남기고 쓰기 대기로 알린다. 끝나면 `removeDraftFiles()`로 지운다.
+    /// 쓰기 미리 보기가 읽는 초안 파일을 저장소의 초안 폴더(합성 사본 옆 `drafts`)에 남기고 쓰기 대기로 알린다. 끝나면 `removeDraftFiles()`로 지운다.
     func saveDraftFiles() throws {
-        for (uuid, draft) in store.tagDrafts where draft.hasChanges { try TagDraftStore.save(draft) }
+        let places = store.draftLocations
+        for (_, draft) in store.tagDrafts where draft.hasChanges { try TagDraftStore.save(draft, directory: store.tagDraftDirectory) }
         for track in ["A", "B", "C", "D"] {
             let uuid = Self.uuid(track)
             if case let .cues(draft)? = store.recoveryMemoryInput?(uuid, .cues) {
-                try CueDraftStore.save(draft)
+                try CueDraftStore.save(draft, directory: places.cue)
                 store.draftChanged(trackUUID: uuid, kind: .cue, exists: true)
             }
             if case let .grid(draft)? = store.recoveryMemoryInput?(uuid, .grid) {
-                try GridDraftStore.save(draft)
+                try GridDraftStore.save(draft, directory: places.grid)
                 store.draftChanged(trackUUID: uuid, kind: .grid, exists: true)
             }
         }
-        DraftWriter.flush()
+        store.testDrafts.flush()
     }
 
     func removeDraftFiles() {
         for track in ["A", "B", "C", "D"] {
             let uuid = Self.uuid(track)
-            try? TagDraftStore.remove(trackUUID: uuid, directory: TagDraftStore.directory)
-            CueDraftStore.remove(trackUUID: uuid)
-            GridDraftStore.remove(trackUUID: uuid)
+            try? TagDraftStore.remove(trackUUID: uuid, directory: store.tagDraftDirectory)
+            try? CueDraftStore.remove(trackUUID: uuid, directory: store.draftLocations.cue)
+            try? FileManager.default.removeItem(at: store.draftLocations.grid.appending(path: "\(uuid).json"))
         }
-        DraftWriter.flush()
+        store.testDrafts.flush()
     }
 
     /// 큐 하나의 모양(`id`는 곡마다 새로 만들어져 견주지 않는다)
@@ -202,7 +202,7 @@ struct RecoveryScenario {
     }
 
     func outcome() -> Outcome {
-        DraftWriter.flush()
+        store.testDrafts.flush()
         var cues: [String: CueShape] = [:], grids: [String: GridDraft] = [:]
         for track in ["A", "B", "C"] {
             if let draft = CueDraftStore.load(trackUUID: Self.uuid(track), directory: home.appending(path: "cue-drafts")) { cues[track] = CueShape(draft) }

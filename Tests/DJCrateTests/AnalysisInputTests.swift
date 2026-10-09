@@ -1,7 +1,9 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
-import DJCTestSupport
+import DJCTestKit
 import Foundation
+import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -23,12 +25,12 @@ struct AnalysisInputTests {
         let image = ImageFixture.image(width: 300, height: 200)
         let art = try AudioFixture.mp3(try TestResources.url("mp3-notag-cbr.mp3"), artwork: image, in: directory)
         let plain = try AudioFixture.wav(seconds: 2, in: directory)
-        let store = LibraryStore(saveTagDrafts: { _ in })
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
         for row in [row("art", art), row("plain", plain), row("done", art, analysisDataPath: "/PIONEER/USBANLZ/abc/d/ANLZ0000.DAT")] {
             store.rowsByUUID[row.track.uuid] = row
         }
         let grids = ["art", "plain", "done"].map { GridDraft(trackUUID: $0, base: [], segments: [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)]) }
-        let inputs = try await store.analysisInputs(for: grids, measuringLoudness: false)
+        let inputs = try await store.session.analysisInputs(for: grids, measuringLoudness: false)
         #expect(Set(inputs.keys) == ["art", "plain"], "분석 파일이 있는 곡은 붙이지 않는다")
         #expect(inputs["art"]?.artwork == image, "음원 내장 앨범아트로 앨범아트를 넣는다")
         #expect((inputs["art"]?.duration ?? 0) > 0 && inputs["plain"]?.artwork == nil)
