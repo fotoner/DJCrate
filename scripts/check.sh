@@ -408,7 +408,8 @@ awk -v write_min="$write_min_files" -v only="$only" '
         for (i = 1; i <= n; i++) {
             g = order[i]
             # 쓰기 그룹만 판정할 때(--changed)는 코어·앱 줄을 내지도 판정하지도 않는다.
-            if (only == "write" && g != "쓰기") continue
+            # 한글끼리 비교하지 않고 순번으로 거른다: en_US.UTF-8(CI 러너)에서 macOS awk는 한글을 strcoll로 비교해 모두 같다고 본다
+            if (only == "write" && i != 1) continue
             pct = total[g] ? 100 * (total[g] - miss[g]) / total[g] : 0
             mark = (pct >= target[g]) ? "✔" : "✘"
             if (pct < target[g]) failed = 1
