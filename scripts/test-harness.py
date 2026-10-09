@@ -16,6 +16,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+# 훅은 실제 홈 폴더 경로로 판정한다. 개인 경로를 저장소에 남기지 않게 실행 때 만든다
+HOME = os.path.expanduser('~')
 
 ROOT = Path(__file__).resolve().parent.parent
 HOOKS = ROOT / "scripts/hooks"
@@ -89,7 +91,7 @@ BLOCK = [
     'cd ~/Library/Pioneer/rekordbox && rm master.db',
     'pushd /Volumes/MYUSB && rm -rf PIONEER',
     'cp /tmp/a.db ~/Library/pioneer/rekordbox/master.db',
-    'cp /tmp/a.db /Users/fotone//Library/Pioneer/rekordbox/master.db',
+    f'cp /tmp/a.db {HOME}//Library/Pioneer/rekordbox/master.db',
     'RB=~/Library/Pioneer/rekordbox; cp /tmp/a.db "$RB/master.db"',
     'ln -sfn /tmp/x ~/Library/Pioneer/rekordbox/share',
     "find /Volumes/MYUSB -name '._*' -delete",
@@ -172,9 +174,9 @@ BLOCK = [
     "perl -pi -e 's/a/b/' /Volumes/X/a.txt",
     'python3 -c "import shutil; shutil.rmtree(__import__(\'os\').path.expanduser(\'~/Library/Pioneer/rekordbox/share\'))"',
     "python3 - <<'EOF'\nimport os\nos.remove(os.path.expanduser('~/Library/Pioneer/rekordbox/master.db'))\nEOF",
-    'cp /tmp/a.db //Users/fotone/Library/Pioneer/rekordbox/master.db',
+    f'cp /tmp/a.db /{HOME}/Library/Pioneer/rekordbox/master.db',
     'cp /tmp/a /VOLUMES/MYUSB/a',
-    'cp /tmp/a /System/Volumes/Data/Users/fotone/Library/Pioneer/rekordbox/x',
+    f'cp /tmp/a /System/Volumes/Data{HOME}/Library/Pioneer/rekordbox/x',
     'time rm -rf /Volumes/X/a',
     'ln -s /Volumes/MYUSB/PIONEER /tmp/copy/PIONEER',
     'unzip /tmp/a.zip -d /Volumes/X',
@@ -277,7 +279,7 @@ ALLOW = [
     'echo /Volumes/MYUSB | xargs -I{} ls {}',
     'cd /Volumes/MYUSB && cd /tmp && rm -rf work',
     'cd ~/Library/Pioneer/rekordbox && cd - && rm -rf /tmp/x',
-    'cd ~/Library/Pioneer/rekordbox; cd /Users/fotone/dev/DJCrate; rm -f .build/x',
+    f'cd ~/Library/Pioneer/rekordbox; cd {HOME}/dev/DJCrate; rm -f .build/x',
     'cd ~/Library/Pioneer/rekordbox && mkdir -p /tmp/copy && cp master.db /tmp/copy/',
     "cd /Volumes/MYUSB && find . -name '*.pdb' > /tmp/pdbs.txt",
     'cd ~/Library/Pioneer/rekordbox && rsync -a share /tmp/copy/',
