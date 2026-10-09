@@ -20,6 +20,20 @@ struct DJCrateApp: App {
     private var deck: DeckModel { app.deck }
     @State private var windowFrameRestored = false
 
+    private static func makeLibraryStore() -> LibraryStore {
+        #if DEBUG
+        if CommandLine.arguments.contains("--history-selftest") {
+            do {
+                _ = try HistorySelfTest.startupDatabase(arguments: CommandLine.arguments, environment: ProcessInfo.processInfo.environment)
+            } catch {
+                FileHandle.standardError.write(Data("[히스토리 시험] 미검증: 같은 합성 DB와 임시 DJC_HOME·DJC_REKORDBOX_DIR을 지정하세요\n".utf8))
+                exit(2)
+            }
+        }
+        #endif
+        return LibraryStore(draftHome: DJCPaths.userData)
+    }
+
     init() {
         // SwiftPM 실행 파일은 번들이 없어서 Dock·메뉴 막대에 올리려면 직접 지정해야 한다.
         NSApplication.shared.setActivationPolicy(.regular)

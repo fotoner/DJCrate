@@ -2381,6 +2381,38 @@ DJCrate(`TrackArtwork`·`ArtworkJPEG`):
 - 끄면 목록은 곡 없이 보여, 이 기능이 없던 때와 같다.
 - 쓰기·USB 내보내기·XML 경로는 설정과 상관없이 인텔리전트 목록을 그대로 거른다.
 
+### 재생 기록 폴더 읽기·USB 기록 가져오기 실험 (#43, DJCrate 쓰기는 아직 열지 않음)
+
+2026-10-09에 rekordbox 7.2.x 실제 라이브러리의 스냅샷 사본을 읽기 전용으로 질의해 본 모양과, 같은 날 USB 기록 가져오기 실험(아래 "가져오기 실험")으로 본 행이다. DJCrate 쓰기 경로는 아래 실험과 사본 재현·골든 시험으로 확인했다. 미확인 조건은 기록별로 막는다.
+
+- 연 폴더: ID = 연("2026"), Name = 연, `Attribute` 1, `ParentID` "root". 월 폴더: ID = 연+월 두 자리("202608"), Name = 월 숫자("8", 앞 0 없음), `Attribute` 1, `ParentID` = 연 폴더. 화면은 월 폴더를 "8월"로 보인다.
+- 기록: `Attribute` 0, `ParentID` = 월 폴더, `Seq` = 그 폴더 안 순서(1부터), `DateCreated` = 로컬 시각 "yyyy-MM-dd HH:mm:ss". 연·월 폴더의 `Seq`도 만든 순서다. 화면은 연·월·기록 모두 오래된 것부터 보인다.
+- 이름: USB에서 가져온 기기 기록과 PERFORMANCE 기록은 "HISTORY yyyy-MM-dd", PRO DJ LINK(LINK EXPORT) 기록은 "LINK HISTORY yyyy-MM-dd". 같은 이름이 있으면 " (1)", " (2)"를 붙인다. 이름이 같은 날짜인 기록 셋이 같은 초에 만들어져 있었다(USB 기록 여럿을 한 번에 가져온 흔적). USB 기록의 날짜는 가져온 날이다: 매뉴얼 JA "取り込んだ日付が付加されて"(7.2.18 JA p.109), 기기 기록에는 날짜 칸이 없다(`docs/usb-internals.md` §2.2·§3.5).
+- rekordbox 쪽 가져오기 규칙(매뉴얼·FAQ, #43 조사): EXPORT 모드에서 USB를 연결하면 자동으로 가져온다(Preferences › DJ System › Device › History의 "Import the play history automatically", 기본 켜짐). "Delete from the device after importing the play history"도 기본 켜짐이라 기본 설정의 rekordbox는 가져온 기록을 USB에서 지운다(7.0.6 전에는 늘 지웠다). 이름·내용이 같은 기록은 자동으로 다시 가져오지 않는다. 컬렉션에 없는 곡은 빼고 가져온다. PERFORMANCE 모드에서는 가져오지 않는다.
+- `djmdSongHistory`: `HistoryID`·`ContentID`·`TrackNo`(1부터). 같은 곡을 두 번 틀면 행이 둘이다.
+- 읽기: `RekordboxLibrary.loadHistories`가 폴더 행을 따로 읽어 기록마다 위 폴더 이름(`folderNames`, 예: ["2026", "8"])과 `Seq`를 붙인다. 앱 트리(`HistoryTree`)는 폴더 이름이 [연, 월] 숫자면 그것으로, 아니면 `DateCreated`로 연·월을 정한다.
+- **가져오기 실험**(2026-10-09, rekordbox 7.2.19.0342, EXPORT 모드, 환경설정 › DJ System › 장치 › 히스토리의 "재생 히스토리 자동으로 들여오기" 켬·"Delete from the device after importing the play history" 끔으로 바꿔서). Device Library만 기록이 든 FAT32 USB(CDJ가 남긴 `SEUNGMOOK 001`, 곡 1개 "エクストラ・マジック・アワー")를 꽂고 rekordbox를 켜자 자동으로 가져왔다. 전후 스냅샷(`djc snapshot --force`) `djc lab db-diff`:
+  - 월 폴더가 없으면 새로 만든다: `djmdHistory` ID = "yyyyMM"("202610"), Name = 월 숫자("10"), `Attribute` 1, `ParentID` = 연 폴더 ID("2026"), `Seq` = 그 연 폴더 안 다음 번호, `DateCreated` = 로컬 "yyyy-MM-dd HH:mm:ss", **`UUID` = ID와 같은 글자**("202610"). 연 폴더도 ID = Name = `UUID` = "yyyy", `ParentID` "root"(기존 행).
+  - 기록 행: ID = 숫자 글자(32비트 범위 난수 모양, "2063847119"), Name "HISTORY 2026-10-09"(가져온 날), `Attribute` 0, `ParentID` = 월 폴더, `Seq` = 그 월 폴더 안 다음 번호, `DateCreated` = 로컬 시각, `UUID` = 소문자 v4 UUID.
+  - `djmdSongHistory` 행: **ID = 소문자 v4 UUID 글자**, `HistoryID`, `ContentID`, `TrackNo` 1부터, `UUID` = 또 다른 v4 UUID.
+  - 새 행 셋 모두 `rb_data_status`·`rb_local_data_status`·`rb_local_deleted`·`rb_local_synced` 0, `usn` NULL, `created_at`·`updated_at` = UTC ms.
+  - 기록에 든 곡의 `djmdContent`: **`DJPlayCount`(정수) +1**, `TrackInfoUpdated`(글자) +1, `rb_local_usn`, `updated_at`. 그 밖의 칸·표는 그대로(`djmdProperty` 포함, 인증 표는 비교하지 않음).
+  - 변경 번호: 월 폴더 → 기록 → 기록 항목 → (빈 번호 하나) → 곡 행. 곡 저장의 빈 번호는 태그 저장과 같은 모양이다.
+  - USB: 기록은 지우지 않고 `PIONEER/rekordbox/ImportedHistory.xml`을 새로 썼다(`docs/usb-internals.md` §8.5). 이 USB는 동기화(`playlists3.sync` AutomaticSync 1)가 켜져 있어 rekordbox가 연결 때 목록도 다시 내보냈다(DB 셋 다시 씀, 기록 표는 그대로). `masterPlaylists6.xml`도 같은 때 바뀌었는데 실험 전 사본이 없어 기록 가져오기 때문인지 모른다.
+  - 확인 안 된 것: 같은 곡이 기록에 두 번 든 경우 `DJPlayCount` 증가 수, 컬렉션에 없는 곡만 든 기록, 연 폴더를 새로 만드는 경우의 `Seq`, OneLibrary 기록, 기록 ID를 짓는 규칙.
+- **재생 기록 쓰기**(`RekordboxWriter+History`, `RekordboxWriter.write(histories:)`, 열림: `RekordboxWriter.writesHistories = true`): 위 실험의 행을 그대로 쓴다. 사본 재현(`djc lab history-repro --old <실험 전 사본> --new <실험 뒤 사본> --work <새 폴더>`, 마지막 줄 "기록 재현: 차이 0")을 2026-10-09에 확인해 열었다. SQLite 저장 형식까지 차이 0이며, 미확인 조건의 차단은 유지한다.
+  - 순서: (월 폴더) → 기록 → 항목(TrackNo 순) → 곡 행(처음 나온 순), 행마다 변경 번호 하나. 연 폴더가 없는 경우는 막는다. rekordbox가 곡 행 앞에 두는 빈 번호는 두지 않는다(번호 값은 비교하지 않는다).
+  - 컬렉션에 없는 곡(없거나 지운 곡)은 빼고 TrackNo를 1부터 다시 매긴다(rekordbox 매뉴얼).
+  - 이름: 같은 이름의 살아 있는 기록이 있으면 " (n)"의 가장 작은 빈 번호(이미 " (n)"으로 끝나면 떼고 다시). 지운 기록 이름은 세지 않는다.
+  - 기록 ID: `UInt32` 난수, 7자리 미만·기존 ID와 겹치면 다시 뽑는다(연·월 폴더 ID와 겹치지 않게). `Seq`: 살아 있는 자식의 가장 큰 값 + 1.
+  - `DateCreated`(기록·새 폴더)는 DJCrate가 USB에서 보존한 시각, `created_at`·`updated_at`은 쓰는 시각이다(rekordbox는 둘이 같은 순간).
+  - 이미 있는 월 폴더 행은 고치지 않는다(실제 폴더 행은 모두 `created_at` = `updated_at`).
+  - 막는 것(그 기록만, 백업 전): 같은 곡이 두 번 이상 든 기록(재생 횟수 증가 수 미확인), 곡 행 `rb_data_status` ≠ 0인 곡(동기화 곡 미확인), `DJPlayCount` NULL, 새 연 폴더가 필요한 기록, 한 쓰기에서 같은 곡이 여러 기록에 든 경우(해당 기록 모두), 컬렉션 곡이 없는 기록, 연·월 폴더 자리에 폴더가 아닌 행·다른 부모·지운 행, 같은 쓰기의 같은 곡 태그·그림 초안·합치기, 빈 이름·날짜 없음. 앱은 같은 곡이 두 번 든 기록을 쓰기 대기에 올리지 않는다(`HistoryWriteQueue`).
+  - 재현 도구는 임시 폴더의 빈 작업 폴더만 받고, 실제 라이브 DB로 이어지는 링크도 거부한다. 인증 표·칸을 읽지 않고 SQLite 저장 형식과 모든 칸 값을 비교한다(난수 ID·UUID, 실행 시각, 변경 번호 값만 명시적으로 제외). 비교할 기록이 없거나 차이가 있으면 실패 종료한다.
+  - 앱 입력은 현재 컬렉션 DBID와 USB 원본 곡 키를 함께 넘기고, 백업 전·트랜잭션 안에서 대상 곡의 원본 식별을 다시 확인한다. 최신 대상에 같은 이름·날짜·전체 곡 순서의 기록이나 확인된 쓴 ID가 이미 있으면 `unchanged`로 반환해 DB·재생 횟수는 그대로 두고 보존본 연결만 갱신한다.
+  - `djmdHistory`·`djmdSongHistory`는 `exactColumns`에 있다(칸이 바뀌면 모든 쓰기가 막힌다, 재생 목록 표와 같은 정책).
+- 환경설정 저장 위치: `~/Library/Application Support/Pioneer/rekordbox6/rekordbox3.settings`의 `importHistory`(자동 가져오기)·`DeleteHistoryWhenImported`(가져온 뒤 기기에서 삭제). 이 Mac에서는 실험 전 둘 다 켜짐(1)이었다(기본값).
+
 ## ALAC 분석 파일 조사 (#8, 2026-09-26)
 
 **결론: ALAC 기준 표본을 확인하지 못해 규칙을 확정하지 못했다. 분석 붙이기 차단을 유지한다.**

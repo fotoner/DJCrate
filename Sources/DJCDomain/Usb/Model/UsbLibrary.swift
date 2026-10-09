@@ -1,5 +1,16 @@
 import Foundation
 
+/// 기기 기록 보존용 원본 형식의 곡·아티스트 정보. 합친 편집 모델의 대표 행과 별도로 남긴다
+public struct UsbHistoryMetadata: Sendable, Hashable {
+    public var tracks: [UsbTrack]
+    public var artists: [UsbNamedRow]
+
+    public init(tracks: [UsbTrack], artists: [UsbNamedRow]) {
+        self.tracks = tracks
+        self.artists = artists
+    }
+}
+
 /// USB 라이브러리 형식 중립 모델. OneLibrary·Device Library 두 형식의 칸을 모두 담는다.
 /// 한 형식 리더가 만든 모델은 `formats`가 그 형식 하나이고, 그 형식이 담지 않는 칸은 `UsbFieldFormats`의 기본값이다.
 /// 배열은 모두 id(또는 자연 키) 오름차순이라 같은 USB를 두 번 읽으면 구조체가 같다.
@@ -24,6 +35,8 @@ public struct UsbLibrary: Sendable, Hashable {
     public var categories: [UsbCategory]
     public var sorts: [UsbSort]
     public var histories: [UsbHistory]
+    /// 합치며 대표 행에서 소실된 형식 충돌 곡도 기기 기록에는 남겨야 한다. 쓰기 투영에는 사용하지 않는다
+    public private(set) var historyMetadataByFormat: [UsbFormat: UsbHistoryMetadata] = [:]
     /// 형식·표 번호·산 행 수(모델에 담지 않는 표)
     public var unknownRows: [UsbUnknownRows]
     /// pdb 죽은 행 ID. 지운 ID를 다시 쓰지 않으려고 둔다
@@ -63,6 +76,11 @@ public struct UsbLibrary: Sendable, Hashable {
     }
 
     public static let empty = UsbLibrary(formats: [], property: UsbProperty())
+
+    /// 기록이 만들어진 형식의 원본 메타데이터. 한 형식 리더의 모델이면 그 모델에서 바로 읽는다
+    public func historyMetadata(in format: UsbFormat) -> UsbHistoryMetadata {
+        historyMetadataByFormat[format] ?? UsbHistoryMetadata(tracks: tracks.filter { $0.presentIn.contains(format) }, artists: artists)
+    }
 
     /// 한 형식만 본 모델. 쓰기·검증은 늘 이 투영과 비교한다.
     /// 그 형식에 있는 곡·목록·My Tag 연결과 그 형식의 기록·모르는 표만 남기고, 그 형식이 담지 않는 칸은 그 형식 리더의 기본값으로 바꾼다.
@@ -108,6 +126,7 @@ public struct UsbLibrary: Sendable, Hashable {
         result.categories = categories.map { UsbFieldFormats.category.projecting($0, to: format) }
         result.sorts = sorts.map { UsbFieldFormats.sort.projecting($0, to: format) }
         result.histories = histories.filter { $0.format == format }
+        result.historyMetadataByFormat = [:]
         result.unknownRows = unknownRows.filter { $0.format == format }
         if !oneFormatRows.isEmpty { result.dropOtherFormatRows(oneFormatRows, keeping: format) }
         result.oneFormatRows = [:]
@@ -157,6 +176,9 @@ public struct UsbLibrary: Sendable, Hashable {
         let a = oneLibrary.projected(to: .oneLibrary), b = deviceLibrary.projected(to: .deviceLibrary)
         var mismatches: [UsbFormatMismatch] = []
         var result = UsbLibrary(formats: a.formats.union(b.formats), property: a.property)
+        // 투영 전에 원본을 확보한다. 이미 합친 모델을 다시 합쳐도 소실된 곡 정보를 되살려 남긴다
+        result.historyMetadataByFormat = [.oneLibrary: oneLibrary.historyMetadata(in: .oneLibrary),
+                                          .deviceLibrary: deviceLibrary.historyMetadata(in: .deviceLibrary)]
 
         result.tracks = union(a.tracks, b.tracks, id: \.id).map { left, right in
             guard let left, let right else {
@@ -245,6 +267,10 @@ public struct UsbLibrary: Sendable, Hashable {
         result.categories.sort { $0.id < $1.id }
         result.sorts.sort { $0.id < $1.id }
         result.histories.sort { ($0.format.order, $0.id) < ($1.format.order, $1.id) }
+        for format in result.historyMetadataByFormat.keys {
+            result.historyMetadataByFormat[format]?.tracks.sort { $0.id < $1.id }
+            result.historyMetadataByFormat[format]?.artists.sort { $0.id < $1.id }
+        }
         result.unknownRows.sort { ($0.format.order, $0.file, $0.tableType) < ($1.format.order, $1.file, $1.tableType) }
         return result
     }

@@ -15,6 +15,8 @@ extension DJCPaths {
     public static var usbSessions: URL { userData.appending(path: "usb-sessions") }
     /// 쓰기 전에 만든 파일(분석·아트워크·DB)
     public static var usbStaging: URL { userData.appending(path: "usb-staging") }
+    /// USB에서 가져와 보존한 기기 재생 기록(기록마다 JSON 한 파일, `UsbHistoryStore`). USB → Mac 보존만 한다
+    public static var usbHistories: URL { userData.appending(path: "usb-histories") }
 }
 
 extension UsbWritePaths {

@@ -55,7 +55,7 @@ enum LibraryMenuAction: CaseIterable {
         case .importRekordboxXML:
             guard case .loaded = store.phase else { return false }
             return store.snapshotURL != nil && !store.isLoading && !store.isReadingXMLImport && store.xmlImportPreview == nil
-        case .reflect: return store.pendingLibraryCount > 0 || store.hasPlaylistDrafts
+        case .reflect: return store.pendingLibraryCount > 0 || store.hasPlaylistDrafts || store.hasHistoryDrafts
         case .pending, .writeResult: return true
         case .restore: return store.hasWriteBackup
         case .pointSnapshots: return true

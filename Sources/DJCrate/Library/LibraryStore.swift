@@ -136,6 +136,8 @@ final class LibraryStore {
     var sidebar: SidebarItem = .filter(.all) {
         didSet {
             guard sidebar != oldValue else { return }
+            // 고른 재생 기록이 접힌 연·월 안에 있으면 펼친다
+            if case let .history(id) = sidebar { revealHistory(id) }
             // 플레이리스트는 rekordbox 순서가 기본, 필터는 임포트 최신순이 기본.
             suppressRefresh = true
             switch sidebar {
@@ -218,9 +220,93 @@ final class LibraryStore {
     /// '재생 목록에 넣기…' 창과 넣을 곡(연 때 고른 곡)
     var showingPlaylistPicker = false
     var playlistPickerTracks: [TrackRow] = []
-    var histories: [RekordboxHistory] = []
+    var histories: [RekordboxHistory] = [] {
+        didSet {
+            guard histories != oldValue else { return }
+            historyIndex = Dictionary(histories.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            refreshHistoryTree()
+        }
+    }
     private(set) var historyIndex: [String: RekordboxHistory] = [:]
+    /// USB에서 가져와 DJCrate에 보존한 기기 재생 기록(#43, `LibraryStore+Histories`). rekordbox 라이브러리에는 없다
+    var archivedHistories: [ArchivedHistory] = [] {
+        didSet {
+            guard archivedHistories != oldValue else { return }
+            archivedHistoryIndex = Dictionary(archivedHistories.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+            refreshHistoryTree()
+        }
+    }
+    private(set) var archivedHistoryIndex: [String: ArchivedHistory] = [:]
+    /// 보존 기록 폴더(`usb-histories/`). nil이면 USB 기록을 보존·가져오지 않는다(시험 기본: 사용자 폴더를 건드리지 않게, 앱만 붙인다)
+    @ObservationIgnored var usbHistoryStore: UsbHistoryStore?
+    /// 현재 채택한 스냅샷의 키. USB 분리 뒤에도 보존본의 짝·쓴 표시를 검증한다.
+    @ObservationIgnored var historyLocalKeys: LocalLibraryKeys?
+    /// 읽지 못해 그 자리에 남은 보존 파일. 해소될 때까지 새 ID 보존을 막아 중복을 만들지 않는다.
+    @ObservationIgnored var unreadableHistoryFiles: [String] = []
+    /// 보존 기록의 가져온 시각·이름(시험은 고정 시계를 넣는다)
+    @ObservationIgnored var historyClock: () -> Date = { Date() }
+    /// 사이드바 재생 기록 트리(연 › 월 › 기록). 두 기록 중 하나가 바뀔 때만 다시 만들어, 사이드바 구역 본문은 이 값만 읽는다(#141)
+    private(set) var historyTree = HistoryTree()
+    /// rekordbox도 가져온 같은 USB 기록이라 트리에서 숨긴 보존 기록(파일은 그대로)
+    private(set) var shadowedArchiveIDs: Set<String> = []
+    /// 펼친 재생 기록 연·월 폴더(`HistoryTree.yearID`·`monthID`)
+    var expandedHistoryFolders: Set<String> = []
+    /// 가장 최근 연·월을 한 번 펼쳤는지(그 뒤 접고 펼친 것은 사용자 몫)
+    @ObservationIgnored var historyFoldersSeeded = false
+    /// USB 기록 보존·보존본 저장(쓰기 대기에서 빼기·rekordbox에 쓴 표시)을 한 줄로 세운다
+    /// (USB 읽기와 로컬 짝 다시 계산이 겹쳐도 같은 기록을 두 번 보존하지 않고, 파일 쓰기가 서로 겹치지 않게)
+    @ObservationIgnored var historyImports: Task<Void, Never>?
+    /// rekordbox 쓰기 대기에 오른 보존 기록(#43, `HistoryWriteQueue.pending`, 가져온 차례). 라이브러리를 읽은 뒤에만 고르고
+    /// (rekordbox에 이미 쓴 기록인지 모르는 동안 올리지 않게), 기록·보존본이 바뀔 때만 다시 계산한다(#141).
+    /// 사이드바 배지·기록 줄 표시·쓰기 대기 바·rekordbox에 쓰기(⇧⌘E)가 이것을 쓴다
+    private(set) var pendingHistories: [ArchivedHistory] = []
+    /// 쓰기 대기 기록 ID(사이드바 기록 줄이 대기 표시를 고른다)
+    private(set) var pendingHistoryIDs: Set<String> = []
+    /// rekordbox에 썼지만 아직 새 스냅샷으로 읽지 못한 기록의 rekordbox ID. 다시 읽을 때까지 rekordbox에 있는 것으로 본다
+    /// (쓴 뒤 다시 읽지 못해도 같은 기록을 또 쓰지 않게). 라이브러리를 새로 읽으면 비운다
+    @ObservationIgnored var historyIDsAwaitingReload: Set<String> = []
+    /// rekordbox 재생 기록 쓰기 관문. 앱은 사본 재현으로 확인한 `RekordboxWriter.writesHistories`를 따르고 시험은 따로 바꾼다.
+    /// 닫혀 있으면 보존·보기만 하고 쓰기 대기에 올리지 않는다(다른 초안을 쓸 때마다 막힘을 묻지 않게)
+    @ObservationIgnored var writesHistories = RekordboxWriter.writesHistories {
+        didSet { if writesHistories != oldValue { refreshPendingHistories() } }
+    }
 
+    func refreshHistoryTree() {
+        let rekordbox = histories.map { history in
+            HistoryDuplicates.Record(id: history.id, name: history.name, dateCreated: history.dateCreated,
+                                     contentIDs: history.entries.sorted { $0.trackNumber < $1.trackNumber }.map(\.contentID))
+        }
+        let shadowed = HistoryDuplicates.shadowedArchiveIDs(archived: archivesForDuplicateMatching, rekordbox: rekordbox)
+        let tree = Self.makeHistoryTree(histories: histories, archived: archivedHistories.filter { !shadowed.contains($0.id) })
+        // 같으면 건드리지 않는다(사이드바가 트리를 다시 비교하지 않게)
+        if shadowed != shadowedArchiveIDs { shadowedArchiveIDs = shadowed }
+        if tree != historyTree { historyTree = tree }
+        refreshPendingHistories()
+    }
+
+    /// 쓰기 대기 기록을 다시 고른다. 라이브러리를 읽기 전(쓴 기록이 rekordbox에 있는지 아직 모른다)·쓰기 관문이 닫혀 있을 때는 비워 둔다
+    func refreshPendingHistories() {
+        let pending = snapshotURL == nil || historyLocalKeys == nil || !writesHistories ? [] : HistoryWriteQueue.pending(
+            archivesWithValidatedWrittenMarkers, shadowed: shadowedArchiveIDs,
+            rekordboxHistoryIDs: Set(historyIndex.keys).union(historyIDsAwaitingReload))
+        // 같으면 건드리지 않는다(배지·기록 줄이 다시 계산되지 않게)
+        guard pending != pendingHistories else { return }
+        pendingHistories = pending
+        pendingHistoryIDs = Set(pending.map(\.id))
+    }
+
+    var sidebarTitle: String {
+        switch sidebar {
+        case let .filter(filter): filter.title
+        case let .playlist(id): playlistIndex[id]?.name ?? String(ui: "플레이리스트")
+        case let .itunesPlaylist(id): iTunesLibrary.index[id]?.name ?? String(ui: "iTunes 동기화 목록")
+        case let .history(id): historyIndex[id].map(historyTitle) ?? archivedHistoryIndex[id]?.name ?? String(ui: "재생 기록")
+        case .duplicates: String(ui: "중복 후보")
+        case .staged: String(ui: "추가한 곡")
+        case .pending: String(ui: "rekordbox 쓰기 대기")
+        case let .usb(target): usb?.title(for: target) ?? "USB"
+        }
+    }
     var search = "" { didSet { if search != oldValue { refreshFiltered() } } }
     var sortOrder = [KeyPathComparator(\TrackRow.importedOn, order: .reverse)] {
         didSet { if !suppressRefresh { refreshBase() } }
@@ -359,6 +445,8 @@ final class LibraryStore {
         .union(artworkDrafts.keys).union(mergeDrafts.flatMap { $0.members.map(\.trackUUID) }) }
     /// 반영 대기 중인 rekordbox 곡 수(추가한 곡 제외)
     var pendingLibraryCount: Int { pendingUUIDs.filter { rowsByUUID[$0].map { !$0.isStaged } ?? false }.count }
+    /// 사이드바 'rekordbox 쓰기 대기' 배지: 쓸 곡 수 + 쓰기 대기 재생 기록 수(#43). 재생 목록 초안은 목록 구역 머리에 따로 알린다
+    var pendingWriteCount: Int { pendingLibraryCount + pendingHistories.count }
     /// 백그라운드 추정이 초안을 저장했을 때(덱이 같은 곡을 보고 있으면 다시 읽게)
     var onGridDraftSaved: ((String) -> Void)?
     var onCueDraftsReloaded: (([String: CueDraft]) -> Void)?

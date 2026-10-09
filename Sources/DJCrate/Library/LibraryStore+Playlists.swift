@@ -226,11 +226,21 @@ extension LibraryStore {
     }
 
     /// 재생 기록으로 재생 목록을 만든다(#70). 맨 위에, 튼 순서대로(같은 곡은 처음 한 번), 이름은 기록 제목.
+    /// USB에서 보존한 기록(#43)은 컬렉션 짝이 있는 곡만 넣고, 이름은 기록 이름이다.
     func createPlaylist(fromHistory id: String) {
-        guard let history = histories.first(where: { $0.id == id }) else { return }
-        let rows = history.entries.sorted { $0.trackNumber < $1.trackNumber }.compactMap { rowsByID[$0.contentID] }
-        guard !rows.isEmpty else { return }
-        createPlaylist(isFolder: false, in: PlaylistLayout.root, name: historyTitle(history), tracks: rows)
+        guard let source = historyPlaylistSource(id), !source.rows.isEmpty else { return }
+        createPlaylist(isFolder: false, in: PlaylistLayout.root, name: source.name, tracks: source.rows)
+    }
+
+    /// 재생 기록으로 만들 재생 목록의 이름과 컬렉션 곡(튼 순서, 반복 재생 포함 — 넣을 때 처음 한 번만 남는다). 없는 기록이면 nil
+    func historyPlaylistSource(_ id: String) -> (name: String, rows: [TrackRow])? {
+        if let history = historyIndex[id] {
+            let rows = history.entries.sorted { $0.trackNumber < $1.trackNumber }.compactMap { rowsByID[$0.contentID] }
+            return (historyTitle(history), rows)
+        }
+        guard let archived = archivedHistoryIndex[id] else { return nil }
+        let rows = archived.entries.sorted { $0.trackNumber < $1.trackNumber }.compactMap { $0.contentID.flatMap { rowsByID[$0] } }
+        return (archived.name, rows)
     }
 
     func renamePlaylist(_ id: String, to name: String) {
