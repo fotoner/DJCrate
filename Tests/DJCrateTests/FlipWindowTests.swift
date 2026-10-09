@@ -21,7 +21,7 @@ struct FlipWindowTests {
                 outputDirectory: { URL(filePath: "/편집본") },
                 fileExists: { [self] _ in
                     started.withLock { $0 = true }
-                    release.wait()
+                    release.waitOffPool()
                     return true
                 },
                 createDirectory: { _ in }, removeFile: { _ in }, render: { _, _, _ in }),

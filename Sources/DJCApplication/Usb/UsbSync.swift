@@ -318,7 +318,7 @@ public final class UsbSync {
         let files = ports.files, keys = ports.localKeys
         let wasEmpty = state.emptyVolume
         // 라이브 폴더가 아니라 스냅샷을 뜰 때 함께 복사한 사본을 읽는다. 없으면(옛 스냅샷) 체크한 목록을 쓸 때 막힌다.
-        let result = await Task.detached(priority: .userInitiated) {
+        let result = await BlockingWork.run {
             () -> Result<(LocalLibraryKeys, Result<UsbSyncPreferences?, any Error>, UsbSyncNativeSelection, UsbFingerprint, [MasterPlaylistNode]), any Error> in
             Result {
                 guard let files, let keys else { throw UsbSyncUnavailable() }
@@ -329,7 +329,7 @@ public final class UsbSync {
                 let master = files.masterNodes(snapshot)
                 return (local, prefs, native, try service.draftBase(current), master)
             }
-        }.value
+        }
         defer { state.isLoading = false }
         let after = ports.library(), now = ports.volume()
         guard !Task.isCancelled, after.readEpoch == epoch, after.provenance == lease.provenance,
@@ -463,7 +463,7 @@ public final class UsbSync {
         let log = ports.log
         let task = Task { @MainActor [weak self] in
             _ = await previous?.value
-            let result = await Task.detached(priority: .utility) { Result { try files.save(prefs) } }.value
+            let result = await BlockingWork.run(qos: .utility) { Result { try files.save(prefs) } }
             if case let .failure(failure) = result {
                 log(failure)
                 self?.notify(.problem(String(ui: "USB 동기화 설정을 저장하지 못했습니다. 데이터 폴더의 usb-sync-selections 파일을 확인한 뒤 다시 시도하세요")))
@@ -502,7 +502,7 @@ public final class UsbSync {
         state.isSyncing = true
         // 실행 중에는 아래 지역 소유자가 유지하고, 저장한 native 초안은 USB 화면이 창을 닫은 뒤에도 이어 소유한다.
         defer { state.isSyncing = false }
-        let running = await Task.detached(priority: .utility) { [service = ports.service] in service.isRekordboxRunning() }.value
+        let running = await BlockingWork.run(qos: .utility) { [service = ports.service] in service.isRekordboxRunning() }
         guard !running else {
             notify(.problem(String(ui: "rekordbox와 rekordboxAgent를 종료한 뒤 USB와 동기화하세요")))
             return false
@@ -771,7 +771,7 @@ public final class UsbSync {
         }
         state.isSyncing = true
         defer { state.isSyncing = false; snapshotLease = nil }
-        let running = await Task.detached(priority: .utility) { [service = ports.service] in service.isRekordboxRunning() }.value
+        let running = await BlockingWork.run(qos: .utility) { [service = ports.service] in service.isRekordboxRunning() }
         guard !running else { return decline(String(ui: "rekordbox와 rekordboxAgent를 종료한 뒤 USB와 동기화하세요")) }
         guard await nativeFilesAreCurrent(ports, volume: volume) else { closeDeclined = true; return .stay }
         guard await savePreferences(ports) else { closeDeclined = true; return .stay }
@@ -813,14 +813,14 @@ public final class UsbSync {
     private func nativeFilesAreCurrent(_ ports: UsbSyncPorts, volume: UsbVolumeInfo) async -> Bool {
         let formats = state.library?.formats ?? UsbFormat.defaultSet
         let service = ports.service, files = ports.files
-        let result = await Task.detached(priority: .userInitiated) {
+        let result = await BlockingWork.run {
             Result {
                 guard let files else { throw UsbSyncUnavailable() }
                 let current = try service.currentVolume(volume)
                 let native = try files.selection(URL(filePath: current.mountPoint), formats)
                 return (native, try service.draftBase(current))
             }
-        }.value
+        }
         guard ports.volume().volume == volume else {
             notify(.problem(String(ui: "USB가 바뀌었습니다. USB를 다시 읽은 뒤 동기화하세요")))
             return false
@@ -845,13 +845,13 @@ public final class UsbSync {
         guard let volume = opened.volume, let localDBID = state.localDBID else { return false }
         let formats = opened.library?.formats ?? UsbFormat.defaultSet
         let service = ports.service, files = ports.files
-        let result = await Task.detached(priority: .userInitiated) {
+        let result = await BlockingWork.run {
             Result {
                 guard let files else { throw UsbSyncUnavailable() }
                 let current = try service.currentVolume(volume)
                 return try files.selection(URL(filePath: current.mountPoint), formats)
             }
-        }.value
+        }
         let now = ports.volume()
         guard now.volume == volume else { return false }
         switch result {

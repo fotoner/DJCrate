@@ -384,7 +384,7 @@ struct UsbWriteCoordinatorTests {
         service.update {
             $0.writeProgress = [UsbProgress(phase: .backup, cancellable: true),
                                 UsbProgress(phase: .files, completedItems: 1, totalItems: 9, completedBytes: 10, totalBytes: 90, cancellable: true)]
-            $0.onWrite = { release.wait() }
+            $0.onWrite = { release.waitOffPool() }
         }
         let coordinator = coordinator(usb)
         let task = Task {

@@ -143,7 +143,7 @@ extension ReflectionSession {
         let conflicts = restoreConflicts(backup), state = ports.library.state()
         return conflictTrackUUIDs(conflicts, merges: state.mergeDrafts)
             .map { uuid, conflicts in (state.rows[uuid]?.title ?? titles[uuid] ?? stagedTitles[uuid] ?? uuid, conflicts) }
-            .sorted { $0.0.localizedStandardCompare($1.0) == .orderedAscending }
+            .sorted { UIStrings.standardOrder($0.0, $1.0) == .orderedAscending }
             .map { title, conflicts in "• \(title) — \(conflicts.map(\.label).joined(separator: "·"))" }
     }
 

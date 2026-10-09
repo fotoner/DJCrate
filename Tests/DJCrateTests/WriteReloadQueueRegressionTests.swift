@@ -129,7 +129,7 @@ struct WriteReloadQueueRegressionTests {
                 try LibrarySnapshot.take(from: sourceDB, into: directory, force: force, now: stamp.addingTimeInterval(60))
             }, captureITunes: {
                 musicStarted.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return late
             })
             backgroundReturned.withLock { $0 = true }

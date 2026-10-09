@@ -39,6 +39,7 @@ final class TestGate: @unchecked Sendable {
     /// 메인 액터 밖에서만 부른다
     func pass() {
         lock.withLock { arrived += 1 }
+        expectBlockingOffPool()
         let deadline = Date().addingTimeInterval(120)
         while !lock.withLock({ opened }) {
             if Date() >= deadline {

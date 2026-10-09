@@ -101,7 +101,7 @@ AGENTS.md "안전 불변식"의 rekordbox 줄을 자세히 적은 규칙이다. 
   4. `djc cue-write --db <스냅샷 사본> --dry-run`을 돌린다. 기존 초안의 쓰기/막힘 결과가 바꾸기 전과 같아야 한다.
   5. 그리드를 바꿨으면 `djc lab grid-write-test <사본.db> <사본 share> <UUID> <BPM>`을 돌린다. 이 명령은 라이브 DB와 분석 폴더를 거부한다.
   6. 흐름 전체는 `--write-selftest`로 본다(스킬 `app-selftest`). 환경 변수 `DJC_REKORDBOX_DIR=<사본> DJC_HOME=<임시>`를 준다.
-- **RBW-39** 전체 커버리지는 합치기 전 전체 검사와 CI가 본다.
+- **RBW-39** 쓰기 그룹 커버리지(80%)는 쓰기 그룹 파일을 바꾼 `--changed`가 본다. PR·`dev` CI도 같다. 코어 커버리지(60%)는 릴리스 전체 검사가 본다.
 
 ## 더 보기
 

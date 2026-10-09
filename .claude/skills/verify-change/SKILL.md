@@ -1,6 +1,6 @@
 ---
 name: verify-change
-description: 작업이 끝났다고 말하기 전에 바꾼 것을 확인하고 보고할 때 쓴다. 검증 단계(편집 중 --quick → 작업 끝 scripts/check.sh --changed → 합치기 전 전체), --changed 출력·끝 요약 읽는 법, 넓히기·재사용, 보고 형식이 있다.
+description: 작업이 끝났다고 말하기 전에 바꾼 것을 확인하고 보고할 때 쓴다. 검증 단계(편집 중 --quick → 작업 끝·dev 합치기 scripts/check.sh --changed → 릴리스 전체), --changed 출력·끝 요약 읽는 법, 넓히기·재사용, 보고 형식이 있다.
 ---
 
 # 바꾼 것 확인하고 보고하기
@@ -12,14 +12,15 @@ description: 작업이 끝났다고 말하기 전에 바꾼 것을 확인하고 
 | 단계 | 언제 | 명령 | 보는 것 |
 |---|---|---|---|
 | 편집 중 | 시험을 쓰고 고칠 때마다 | `scripts/check.sh --quick --filter '^DJCDomainTests\.LoopPlannerTests/'` | 그 시험의 빨강 → 초록 |
-| 작업 끝 | "됐다"고 말하기 전 한 번 | `scripts/check.sh --changed` | 바꾼 파일에 닿는 시험·검사 전부 통과 |
-| 합치기 전·CI | `dev`에 합치기 직전 한 번, PR·`main` CI | `scripts/check.sh` | 릴리스 빌드·번역·전체 시험·커버리지(쓰기 80%·코어 60%) |
+| 작업 끝·합치기 | "됐다"고 말하기 전 한 번, `dev`에 합치기 직전, PR·`dev` 푸시 CI | `scripts/check.sh --changed` | 바꾼 파일에 닿는 시험·검사 전부 통과 |
+| 릴리스 | `main`·`release/*` CI, 수동 실행, 사용자 요청 | `scripts/check.sh` | 릴리스 빌드·번역·전체 시험·커버리지(쓰기 80%·코어 60%) |
 | 특수 | SQLCipher 초기화·`CipherLab`·cold-open | `scripts/check.sh --stress` | `.claude/rules/cipher.md` |
 
 - 편집 중 필터는 Suite 하나나 시험 하나로 좁힌다.
 - 타깃 이름으로 앵커하면(`'^<타깃>\.<Suite>/'`) 그 타깃의 시험만 돈다.
 - `Tests`처럼 거의 모든 시험에 맞는 필터로 전체를 대신하지 않는다.
-- 로컬 전체 검사는 사용자 요청, `dev` 합치기 직전, `--changed`가 넓힐 때만 돌린다.
+- 로컬 전체 검사는 릴리스 준비, 사용자 요청, `--changed`가 넓힐 때만 돌린다. `dev`에 합칠 때는 `--changed`로 충분하다.
+- `--changed`가 놓칠 수 있는 회귀는 릴리스 전체 검사가 잡는다. 기호 grep이 닿지 않는 코드가 그렇다. 예: 프로토콜로만 닿는 구현, 전역 함수, 다른 타입을 거친 동작 변화.
 
 ## 작업 끝 확인 순서
 
@@ -49,11 +50,14 @@ description: 작업이 끝났다고 말하기 전에 바꾼 것을 확인하고 
   - `scripts/check.sh`나 `.github/**`가 바뀜
   - 규칙 밖 파일이 바뀜
   - 고른 Suite가 절반을 넘음
+- 검사 스크립트가 바뀌면 `scripts/test-check.py`도 돈다. `check.sh`와 `check-imports.py`도 검사 스크립트다. 목록은 `docs/ci.md`의 `--changed` 표에 있다.
+- Swift가 바뀌면 안전 시험 선택 검사(`test-check.py affected-real-map safety-`, 몇 초)도 돈다.
 - `Tests/Support/**`와 Suite 없는 시험 도우미를 바꾸면 그 시험 타깃 전체를 돈다.
 - `Sources/djc/**`·`Sources/DJCAdapters/**`를 바꾸면 djcTests 전체를 돈다.
 - 하네스만 바꾸면 넓히지 않는다. 그때는 `check-docs.py`와 `test-harness.py` 두 검사만 돈다. 하네스는 `scripts/hooks/**`·`.claude/**`와 `test-harness.py`·`check-docs.py`다.
 - 잘못 묶은 인자는 종료 코드 2로 끝난다. 예: `--changed --filter`, `--changed` 없는 `--base`, `--changed --stress`.
 - 안전 장치는 모든 모드에 그대로다. 종료 코드 3은 실제 rekordbox 파일이 바뀌었다는 뜻이다. 4는 DJCrate 사용자 폴더·로그 폴더·환경설정이 바뀌었다는 뜻이다.
+- 종료 코드 124는 시험 단계가 멈췄다는 뜻이다. 5분(`DJC_CHECK_STALL_SECONDS`) 동안 시험 출력이 없었다. 요약에 끝나지 않은 시험과 스택 파일이 나온다.
 - 같은 작업 트리·모드·필터의 통과 기록이 있으면 다시 돌리지 않는다. 그때는 `재사용: <로그 폴더>`만 낸다.
 - 같은 작업 트리의 전체 검사 통과는 `--changed`만 대신한다. `--quick`은 대신하지 않는다.
 - 다시 돌리려면 `--no-reuse`를 준다. stress는 늘 다시 돈다.

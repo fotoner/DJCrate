@@ -182,6 +182,21 @@ with open("defaults-prefix.txt", "a") as log:
     log.write(os.environ.get("DJC_TEST_DEFAULTS_PREFIX", "unset") + "\n")
 if mode == "pulse-orphan" and args[0] == "build":
     time.sleep(1.5)
+if mode == "build-silent" and args[0] == "build":
+    time.sleep(3)
+if mode == "test-silent" and args[0] == "test":
+    time.sleep(3)
+if mode == "test-stall" and args[0] == "test":
+    # 시험 하나는 끝나고 나머지는 시작만 한 채 멈춘다(DJCrateTests가 출력 없이 30분 제한까지 갔다).
+    for line in ("◇ Test run started.", "◇ Suite 합성Suite started.", "◇ Test 끝난_시험() started.",
+                 "✔ Test 끝난_시험() passed after 0.1 seconds.", "◇ Test 멈춘_시험() started.",
+                 '◇ Test "표시 이름 시험" started.', '✘ Test "표시 이름 시험" recorded an issue at A.swift:1:1: 합성 문제',
+                 "Test Case '-[DJCrateTests.OldTests testHang]' started."):
+        print(line, flush=True)
+    # TERM을 무시하는 자식: 멈춤 감시가 5초 뒤 KILL로 끝내야 한다
+    child = subprocess.Popen([sys.executable, "-c", "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"])
+    (root / "child.pid").write_text(str(child.pid))
+    child.wait()
 if args[0] == "test" and "--enable-code-coverage" in args and mode != "stale-profile":
     profile = root / ".build/out/Products/Debug/codecov/default.profdata"
     profile.parent.mkdir(parents=True, exist_ok=True)
@@ -307,6 +322,17 @@ if [ "$CASE" = split-output ] && [ "$1" = 60 ]; then
     exec /bin/sleep 0.1
 fi
 exec /bin/sleep "$@"
+''')
+    # 가짜 sample: 부른 인자를 sample-calls.txt에 남기고 -file 자리에 합성 스택을 쓴다.
+    (root / "bin/sample").write_text('''#!/bin/sh
+echo "$*" >> sample-calls.txt
+out=""
+while [ $# -gt 0 ]; do
+    if [ "$1" = -file ]; then out=$2; fi
+    shift
+done
+[ -n "$out" ] && printf 'Call graph:\\n    합성_스택\\n\\nSort by top of stack, same collapsed (when >= 5):\\n        합성_멈춘_함수  (in 합성) 5\\n' > "$out"
+exit 0
 ''')
     (root / "bin/pgrep").write_text('''#!/bin/sh
 # pulse-orphan: 자식 찾기(-P)가 자식을 못 보는 경쟁을 흉내 낸다.
@@ -869,6 +895,14 @@ AFFECTED_CASES = {
                            "화면 문구"),
     "affected-script-tests": (["scripts/affected-tests.py", "scripts/test-map.txt"], "none", [], [], [], ["scripts"],
                               "test-check.py"),
+    # test-check.py가 시험하는 스크립트(모듈 경계 검사·CI 비교 기준)도 그 회귀를 돈다. CI에 늘 돌던 따로 단계가 없어졌다.
+    "affected-imports-script": (["scripts/check-imports.py"], "none", [], [], [], ["imports", "scripts"], "test-check.py"),
+    "affected-ci-base": (["scripts/ci-base.sh"], "none", [], [], [], ["scripts"], "test-check.py"),
+    "affected-ci-mtimes": (["scripts/ci-mtimes.py"], "none", [], [], [], ["scripts"], "test-check.py"),
+    # Swift를 바꾸면 실제 지도로 안전 시험 고르기를 확인한다(test-check.py의 affected-real-map·safety-, 몇 초).
+    # 파일을 옮기면 지도 when이 다른 파일에 맞아도 안전 Suite를 못 고를 수 있다. 전체 test-check가 늘 돌던 CI 단계를 대신한다.
+    "affected-selection": (["Tests/DJCDomainTests/FooTests.swift"], "tests",
+                           ["DJCDomainTests.FooTests"], [], ["DJCDomainTests"], ["imports", "selection"], "안전 시험 선택"),
     "affected-imports-only": (["scripts/import-debt.txt"], "none", [], [], [], ["imports"], "모듈 경계"),
     "affected-deleted-test": (["Tests/DJCDomainTests/GoneTests.swift"], "build", [], [], [], ["imports"], "지운"),
 }
@@ -880,6 +914,8 @@ def check_affected(case, files, scope, suites, whole, targets, checks, reason):
         make_synthetic_repo(root)
         if case == "affected-docs-with-checker":
             (root / "scripts/check-docs.py").write_text("print('문서 검사')\n")
+        if case == "affected-selection":
+            (root / "scripts/test-check.py").write_text("print('검사 스크립트 회귀')\n")
         if case in ("affected-harness", "affected-harness-self"):
             (root / "scripts/test-harness.py").write_text("print('훅 검사')\n")
         if case == "affected-harness-self":
@@ -914,6 +950,9 @@ def check_affected(case, files, scope, suites, whole, targets, checks, reason):
             assert reason in text, f"이유에 {reason!r} 없음: {text}"
         enabled = sorted(name for name, on in plan["checks"].items() if on)
         assert scope == "full" or enabled == sorted(checks), f"켠 검사 불일치: {enabled}"
+        # check.sh를 바꾸면 전체로 넓히면서 검사 스크립트 회귀도 돈다(전체 검사만으로는 test-check.py가 돌지 않는다).
+        if case == "affected-check-script-widens":
+            assert plan["checks"]["scripts"], f"check.sh를 바꿨는데 검사 스크립트 회귀를 켜지 않음: {enabled}"
         assert {"selectedSuites", "totalSuites"} <= set(plan["counts"]) and plan["counts"]["totalSuites"] == 9, \
             f"Suite 수 누락: {plan['counts']}"
         if case == "affected-safety-map":
@@ -1230,6 +1269,15 @@ CHANGED_CASES = {
                       ["전체 검사로 넓힙니다", "Package.swift", "목표 60%", "통과: full"]),
     "changed-widen-scripts": (["--changed"], ["Package.swift", "scripts/test-map.txt"], "ok", 0, [DEBUG, RELEASE, TRANSLATIONS, TEST],
                               ["전체 검사로 넓힙니다", "검사 스크립트 회귀: 1개 중 1개 통과", "check-docs.py 합성 출력", "통과: full"]),
+    "changed-widen-check-script": (["--changed"], ["scripts/check.sh"], "ok", 0, [DEBUG, RELEASE, TRANSLATIONS, TEST],
+                                   ["전체 검사로 넓힙니다", "검사 스크립트 회귀: 1개 중 1개 통과", "통과: full"]),
+    "changed-imports-script": (["--changed"], ["scripts/check-imports.py"], "ok", 0, [],
+                               ["모듈 경계 규칙: 위반 0개", "검사 스크립트 회귀: 1개 중 1개 통과", "통과: changed"]),
+    "changed-selection": (["--changed"], ["Tests/DJCDomainTests/FooTests.swift"], "ok", 0,
+                          [SOURCES, build_target("DJCDomainTests"), TEST + r" --filter ^(DJCDomainTests\.(FooTests)/)"],
+                          ["안전 시험 선택", "검사 스크립트 회귀: 1개 중 1개 통과", "통과: changed"]),
+    "changed-widen-selection": (["--changed"], ["Package.swift", "Tests/DJCDomainTests/FooTests.swift"], "ok", 0,
+                                [DEBUG, RELEASE, TRANSLATIONS, TEST], ["전체 검사로 넓힙니다", "안전 시험 선택", "통과: full"]),
     "changed-write": (["--changed"], ["Sources/RekordboxKit/RekordboxWriter.swift"], "ok", 0,
                       [SOURCES, build_target("RekordboxKitTests"), TEST + r" --filter ^(RekordboxKitTests\.)"],
                       ["목표 80%", "rekordbox-safety", "쓰기 관문을 바꿨으면", "⚠ 남은 필수 검사: 합성 필수 검사를 돌리세요"]),
@@ -1276,8 +1324,11 @@ def check_changed(case, arguments, changed, mode, expected, expected_calls, note
             code = 1 if case.endswith("fail") else 0
             word = "실패" if code else "통과"
             (root / "scripts/check-docs.py").write_text(f"import sys\nprint('문서 검사 {word}')\nsys.exit({code})\n")
-        if case in {"changed-scripts", "changed-widen-scripts"}:
-            (root / "scripts/test-check.py").write_text("print('검사 스크립트 회귀: 1개 중 1개 통과')\n")
+        if case in {"changed-scripts", "changed-widen-scripts", "changed-widen-check-script", "changed-imports-script",
+                    "changed-selection", "changed-widen-selection"}:
+            (root / "scripts/test-check.py").write_text(
+                "import sys\nopen('script-calls.txt', 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
+                "print('검사 스크립트 회귀: 1개 중 1개 통과')\n")
         env = check_env(root, mode, CHANGED="\n".join(changed))
         result = run_check(root, env, *arguments)
         if case == "changed-reuse":
@@ -1293,6 +1344,11 @@ def check_changed(case, arguments, changed, mode, expected, expected_calls, note
         if case == "changed-reuse":
             assert len(list((root / ".build/check-logs").glob("run.*"))) == 1, "재사용인데 로그 폴더를 만듦"
             return
+        # 검사 스크립트가 바뀌면 test-check.py 전체, Swift만 바뀌면 실제 지도 경우만 돈다
+        if (root / "script-calls.txt").exists() or case in {"changed-selection", "changed-widen-selection"}:
+            calls = (root / "script-calls.txt").read_text().splitlines()
+            want = ["affected-real-map safety-"] if case in {"changed-selection", "changed-widen-selection"} else [""]
+            assert calls == want, f"test-check.py 인자: {calls}, 기대값 {want}"
         if case == "changed-docs-checker":
             light = (root / "light-calls.txt").read_text().splitlines()
             assert light == ["check-prose.py --base synthetic-base"], f"문장 검사를 --changed 기준으로 부르지 않음: {light}"
@@ -1331,6 +1387,188 @@ def check_changed(case, arguments, changed, mode, expected, expected_calls, note
         assert "requested=changed" in info, info
 
 
+# 멈춤 감시: (가짜 swift 동작, 환경 변수, 종료코드). 시험 단계가 정한 초 동안 출력을 내지 않으면 끝나지 않은 시험과
+# 시험 프로세스의 스택을 남기고 124로 끝난다(CI에서 DJCrateTests가 출력 없이 30분 제한까지 갔다).
+STALL_CASES = {
+    "stall-test": ("test-stall", {"DJC_CHECK_STALL_SECONDS": "2"}, 124),
+    # 정한 초보다 짧은 침묵과 꺼 둔 감시(0)는 기다린다
+    "stall-under": ("test-silent", {"DJC_CHECK_STALL_SECONDS": "10"}, 0),
+    "stall-off": ("test-silent", {"DJC_CHECK_STALL_SECONDS": "0"}, 0),
+    # 빌드 단계는 보지 않는다(릴리스 빌드는 몇 분 동안 출력이 없을 수 있다)
+    "stall-build-quiet": ("build-silent", {"DJC_CHECK_STALL_SECONDS": "1"}, 0),
+    "stall-invalid": ("ok", {"DJC_CHECK_STALL_SECONDS": "5분"}, 2),
+}
+
+
+def check_stall(case, mode, extra, expected):
+    with tempfile.TemporaryDirectory(prefix="djc-check-stall-") as directory:
+        root = Path(directory)
+        prepare(root)
+        started = time.monotonic()
+        result = run_check(root, check_env(root, mode, **extra), "--quick", "--filter", "SampleTests")
+        output = result.stdout + result.stderr
+        assert result.returncode == expected, f"종료코드 {result.returncode}, 기대값 {expected}\n{output}"
+        assert time.monotonic() - started < 30, "멈춤 감시가 늦게 끝남"
+        if expected == 2:
+            assert "DJC_CHECK_STALL_SECONDS" in output and not (root / "calls.txt").exists(), f"틀린 값을 거부하지 않음\n{output}"
+            return
+        if expected == 0:
+            assert "멈춤" not in output, f"멈추지 않은 단계를 멈췄다고 봄\n{output}"
+            return
+        child = int((root / "child.pid").read_text())
+        try:
+            os.kill(child, 0)
+            os.kill(child, signal.SIGKILL)
+            raise AssertionError("TERM을 무시하는 멈춘 시험의 자식 프로세스가 남음(KILL하지 않음)")
+        except ProcessLookupError:
+            pass
+        run, = (root / ".build/check-logs").glob("run.*")
+        stall = (run / "stall.txt").read_text()
+        for name in ("Test 멈춘_시험()", 'Test "표시 이름 시험"', "Suite 합성Suite", "Test Case '-[DJCrateTests.OldTests testHang]'"):
+            assert name in stall, f"끝나지 않은 시험 {name} 누락\n{stall}"
+        for name in ("끝난_시험", "Test run"):
+            assert name not in stall, f"끝난 시험 {name}을(를) 멈춘 시험으로 적음\n{stall}"
+        calls = (root / "sample-calls.txt").read_text().splitlines()
+        assert calls and all(re.fullmatch(r"\d+ 5 -file .*stall-sample-\d+\.txt", c) for c in calls), f"sample 인자: {calls}"
+        assert list(run.glob("stall-sample-*.txt")), "스택 파일을 로그 폴더에 남기지 않음"
+        assert "합성_멈춘_함수" in output, f"스택 요약을 출력하지 않음\n{output}"
+        summary = output.split("── 검사 요약", 1)[1] if "── 검사 요약" in output else ""
+        assert "✘ 실패" in summary and "멈춘_시험" in summary, f"요약에 멈춘 시험이 없음\n{summary}"
+        assert (run / "exit-code.txt").read_text().strip() == "124", "종료코드 보존 누락"
+
+
+# CI의 --changed 비교 기준(scripts/ci-base.sh): (이벤트 환경, 기대 기준 이름, 기준이 없을 때 이유에 있어야 할 말).
+# 기준을 구할 수 없으면 비워서 전체 검사로 넓힌다(조용히 좁히지 않는다).
+CI_BASE = Path(__file__).with_name("ci-base.sh")
+ZERO = "0" * 40
+CI_BASE_CASES = {
+    # PR: 체크아웃한 병합 커밋과 PR 기준 브랜치(origin/<base_ref>)의 merge-base
+    "ci-base-pr": ({"EVENT": "pull_request", "BASE_REF": "dev"}, "C", ""),
+    "ci-base-pr-base-moved": ({"EVENT": "pull_request", "BASE_REF": "dev", "MOVE": "1"}, "C", ""),
+    "ci-base-pr-missing": ({"EVENT": "pull_request", "BASE_REF": "nosuch"}, "", "origin/nosuch"),
+    # 푸시: 앞 끝(github.event.before)
+    "ci-base-push": ({"EVENT": "push", "BEFORE": "B"}, "B", ""),
+    "ci-base-push-forced": ({"EVENT": "push", "BEFORE": "B", "FORCED": "true"}, "", "강제"),
+    "ci-base-push-new": ({"EVENT": "push", "BEFORE": ZERO}, "", "새 브랜치"),
+    "ci-base-push-empty": ({"EVENT": "push", "BEFORE": ""}, "", "새 브랜치"),
+    "ci-base-push-not-ancestor": ({"EVENT": "push", "BEFORE": "F"}, "", "조상"),
+    "ci-base-push-missing": ({"EVENT": "push", "BEFORE": "1234567890abcdef1234567890abcdef12345678"}, "", "조상"),
+    "ci-base-dispatch": ({"EVENT": "workflow_dispatch"}, "", "workflow_dispatch"),
+}
+
+
+def check_ci_base(case, event, expected, reason_word):
+    with tempfile.TemporaryDirectory(prefix="djc-ci-base-") as directory:
+        root = Path(directory)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+
+        def run(*arguments):
+            return subprocess.run(git + list(arguments), cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+
+        def commit(name):
+            (root / f"{name}.txt").write_text(name)
+            run("add", "-A")
+            run("commit", "-qm", name)
+            return run("rev-parse", "HEAD")
+
+        run("init", "-q", "-b", "dev")
+        shas = {"A": commit("A"), "B": commit("B")}
+        run("checkout", "-q", "-b", "feature")
+        shas["F"] = commit("F")
+        run("checkout", "-q", "dev")
+        shas["C"] = commit("C")
+        if event["EVENT"] == "pull_request":
+            # GitHub가 PR에 체크아웃하는 병합 커밋(첫 부모 = 기준 브랜치 끝, 둘째 부모 = PR 끝)
+            run("checkout", "-q", "--detach", shas["C"])
+            run("merge", "-q", "--no-ff", "-m", "M", "feature")
+            merged, remote_dev = run("rev-parse", "HEAD"), shas["C"]
+            if event.get("MOVE"):
+                # 병합 커밋을 만든 뒤 기준 브랜치가 앞으로 나간 경우
+                run("checkout", "-q", "dev")
+                remote_dev = commit("D")
+                run("checkout", "-q", "--detach", merged)
+            run("update-ref", "refs/remotes/origin/dev", remote_dev)
+        values = {name: shas.get(value, value) for name, value in event.items() if name != "MOVE"}
+        env = {key: value for key, value in os.environ.items() if key not in ("EVENT", "BASE_REF", "BEFORE", "FORCED")}
+        result = subprocess.run(["/bin/bash", str(CI_BASE)], cwd=root, env={**env, **values}, capture_output=True, text=True,
+                                timeout=30)
+        assert result.returncode == 0, f"종료코드 {result.returncode}\n{result.stdout}{result.stderr}"
+        lines = result.stdout.splitlines()
+        assert [line.split("=", 1)[0] for line in lines] == ["base", "reason"], f"GITHUB_OUTPUT 모양이 아님: {lines}"
+        fields = dict(line.split("=", 1) for line in lines)
+        want = shas.get(expected, "")
+        assert fields["base"] == want, f"기준 {fields['base']!r}, 기대값 {want!r}\n{result.stdout}{result.stderr}"
+        if want:
+            assert fields["reason"] == "", f"기준이 있는데 이유를 적음: {fields['reason']}"
+        else:
+            assert reason_word in fields["reason"], f"넓히는 이유에 {reason_word!r} 없음: {fields['reason']!r}"
+
+
+
+# CI 빌드 캐시의 소스 수정 시각(scripts/ci-mtimes.py). 체크아웃은 모든 파일의 수정 시각을 새로 매겨서, 받은 .build가 있어도
+# Swift가 다시 컴파일했다(실제 저장소: 같은 내용 새 파일 72초 = cold 65초, 수정 시각을 되돌리면 1초).
+# 캐시를 저장할 때 내용 해시와 수정 시각을 적고, 받은 뒤 내용이 같은 파일만 그 시각으로 되돌린다. 바뀐 파일은 새 시각 그대로 다시 컴파일한다.
+CI_MTIMES = Path(__file__).with_name("ci-mtimes.py")
+CI_MTIMES_CASES = ["ci-mtimes-restore", "ci-mtimes-no-manifest", "ci-mtimes-dirty"]
+
+
+def check_ci_mtimes(case):
+    with tempfile.TemporaryDirectory(prefix="djc-ci-mtimes-") as directory:
+        root = Path(directory)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+
+        def run_git(*arguments):
+            subprocess.run(git + list(arguments), cwd=root, check=True, capture_output=True, text=True)
+
+        def tool(*arguments):
+            result = subprocess.run([sys.executable, str(CI_MTIMES), *arguments], cwd=root, capture_output=True, text=True,
+                                    timeout=30)
+            assert result.returncode == 0, f"{arguments} 종료코드 {result.returncode}\n{result.stdout}{result.stderr}"
+            return result.stdout + result.stderr
+
+        def mtime(name):
+            return os.stat(root / name).st_mtime_ns
+
+        files = {"Sources/A/a.swift": "a\n", "Sources/A/b.swift": "b\n", "docs/c.md": "c\n", "run.sh": "#!/bin/sh\n"}
+        for name, text in files.items():
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text(text)
+        (root / ".gitignore").write_text(".build/\n")
+        run_git("init", "-q", "-b", "dev")
+        run_git("add", "-A")
+        run_git("commit", "-qm", "기준")
+        # 캐시를 만든 실행이 본 수정 시각(서로 다르게)
+        built = {name: (1_000_000_000 + 100 * i) * 1_000_000_000 for i, name in enumerate(files)}
+        for name, ns in built.items():
+            os.utime(root / name, ns=(ns, ns))
+        if case == "ci-mtimes-no-manifest":
+            out = tool("restore")
+            assert "없" in out, f"기록이 없음을 알리지 않음: {out}"
+            assert all(mtime(name) == ns for name, ns in built.items()), "기록이 없는데 수정 시각을 바꿈"
+            return
+        tool("save")
+        assert (root / ".build/djc-source-mtimes.tsv").exists(), "기록을 .build에 남기지 않음(캐시와 함께 저장돼야 한다)"
+        # 다음 실행: 새 체크아웃(모든 파일이 새 수정 시각), b.swift는 내용이 바뀌고 새 파일 d.swift가 생겼다
+        (root / "Sources/A/b.swift").write_text("b2\n")
+        (root / "Sources/A/d.swift").write_text("d\n")
+        if case == "ci-mtimes-restore":
+            run_git("add", "-A")
+            run_git("commit", "-qm", "다음")
+        else:
+            # 커밋하지 않은 작업 트리 변경도 내용으로 본다
+            (root / "docs/c.md").write_text("c 고침\n")
+        now = time.time_ns()
+        for name in list(files) + ["Sources/A/d.swift"]:
+            os.utime(root / name, ns=(now, now))
+        out = tool("restore")
+        same = ["Sources/A/a.swift", "run.sh"] + (["docs/c.md"] if case == "ci-mtimes-restore" else [])
+        for name in same:
+            assert mtime(name) == built[name], f"내용이 같은 {name}의 수정 시각을 되돌리지 않음"
+        for name in ["Sources/A/b.swift", "Sources/A/d.swift"] + ([] if case == "ci-mtimes-restore" else ["docs/c.md"]):
+            assert mtime(name) == now, f"바뀐·새 파일 {name}의 수정 시각을 되돌림(다시 컴파일하지 않게 된다)"
+        # .gitignore도 내용이 같은 추적 파일이라 함께 되돌린다
+        assert f"되돌림 {len(same) + 1}개" in out, f"되돌린 수를 알리지 않음: {out}"
+
 
 # 인자로 경우 이름의 일부를 주면 그것만 돈다(예: scripts/test-check.py affected changed). 인자가 없으면 전부.
 ONLY = sys.argv[1:]
@@ -1358,6 +1596,9 @@ runs += [("affected-real-map", check_real_map, ())]
 runs += [(case, check_real_safety, (case, *arguments)) for case, arguments in REAL_SAFETY_CASES.items()]
 runs += [(case, check_reuse, (case,)) for case in REUSE_CASES]
 runs += [(case, check_changed, (case, *arguments)) for case, arguments in CHANGED_CASES.items()]
+runs += [(case, check_stall, (case, *arguments)) for case, arguments in STALL_CASES.items()]
+runs += [(case, check_ci_base, (case, *arguments)) for case, arguments in CI_BASE_CASES.items()]
+runs += [(case, check_ci_mtimes, (case,)) for case in CI_MTIMES_CASES]
 runs += [(case, check_case, (case, expected)) for case, expected in CASES.items()]
 runs += [(name, check_partition, arguments) for name, arguments in PARTITIONS.items()]
 runs += [(name, check_imports, (name, *arguments)) for name, arguments in IMPORT_CASES.items()]
