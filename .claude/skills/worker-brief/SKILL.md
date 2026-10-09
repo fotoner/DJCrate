@@ -20,6 +20,7 @@ description: 서브에이전트·다른 세션·워커에게 DJCrate 구현·리
 
 ## 작업 위치
 - 워크트리: <절대 경로>(이 밖은 건드리지 않는다. cd 대신 절대 경로·git -C)
+- 시작할 때 `scripts/worker-lock.sh take <일 이름>`. 이미 표시가 있으면 아무것도 고치지 않는다. 그 자리에서 멈춰 보고한다. 끝나면 `scripts/worker-lock.sh drop <일 이름>`
 - 건드릴 파일: <경로 목록>  /  건드리지 않을 파일: <경로 목록>
 - 파일 이동은 git mv. 커밋·푸시·git stash 금지(따로 허락한 경우만)
 

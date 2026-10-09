@@ -19,12 +19,18 @@ paths:
   - `scripts/test-map.txt`
 - **HAR-2** 아래 파일을 바꾸면 `python3 scripts/test-harness.py`를 돌린다.
   - 훅(`scripts/hooks/`)
+  - `scripts/worker-lock.sh`
   - `.claude/settings.json`
   - `scripts/check-docs.py`, `scripts/test-harness.py`
   - `scripts/check-prose.py`, `scripts/prose-terms.txt`
 - **HAR-3** 워크플로를 바꾸면 `actionlint`를 돌린다.
 - **HAR-4** 문서 문장을 고치면 `python3 scripts/check-prose.py`를 돌린다. 사용법은 `docs/ci.md`의 "문장 규칙"에 있다.
 - **HAR-5** 지침을 바꾸면 `python3 scripts/check-docs.py`를 돌린다.
+- **HAR-36** `python3 scripts/test-check.py` 전체는 2분을 넘는다. 에이전트의 Bash 도구 기본 timeout(120초)에 걸린다. 그래서 배경으로 돌린다. 앞에서 돌릴 때는 timeout을 600초로 준다.
+
+## 워크트리 작업 표시
+
+- **HAR-37** 워크트리에서 일을 시작하는 작업자는 `scripts/worker-lock.sh take <작업 이름>`을 먼저 부른다. 이미 표시가 있으면 아무것도 고치지 않는다. 그 자리에서 멈춰 보고한다. 일이 끝나면 `scripts/worker-lock.sh drop <작업 이름>`으로 지운다. 두 세션이 같은 워크트리를 함께 고친 일이 있었다(#167).
 
 ## 시험 지도
 

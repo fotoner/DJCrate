@@ -77,7 +77,7 @@ Swift 소스를 바꾸면 그 파일이 선언한 타입을 쓰는 Suite를 고�
 | 화면 문구, `Localizable.xcstrings`, `scripts/i18n.swift` | 번역 검사 |
 | 쓰기 커버리지 그룹 파일 | 쓰기 그룹 커버리지(80%). 코어 60%는 전체 검사·CI만 본다 |
 | 문서, `skills/**` | `scripts/check-docs.py`와 문장 규칙 |
-| 하네스: `scripts/hooks/**`, `.claude/**`, `scripts/test-harness.py`, `scripts/check-docs.py`, `scripts/check-prose.py`, `scripts/prose-*.txt` | `scripts/test-harness.py`와 `scripts/check-docs.py`. 이것만 바뀌면 넓히지 않는다 |
+| 하네스: `scripts/hooks/**`, `.claude/**`, `scripts/test-harness.py`, `scripts/check-docs.py`, `scripts/check-prose.py`, `scripts/prose-*.txt`, `scripts/worker-lock.sh` | `scripts/test-harness.py`와 `scripts/check-docs.py`. 이것만 바뀌면 넓히지 않는다 |
 | 검사 스크립트: `scripts/test-check.py`, `affected-tests.py`, `test-map.txt` | `python3 scripts/test-check.py` |
 
 고른 Suite가 전체의 절반을 넘어도 전체 검사로 넓힌다. 넓힐 때는 이유를 담아 `▸ 전체 검사로 넓힙니다: <이유>`를 출력한다. 넓힌 실행은 문서·훅 검사를 포함해 전체 검사와 같은 단계를 돈다. 검사 스크립트가 바뀌었으면 `scripts/test-check.py`도 돈다.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""하네스(.claude/settings.json·scripts/hooks/*·scripts/check-docs.py·scripts/check-prose.py)를 표본 입력으로 시험한다.
+"""하네스(.claude/settings.json·scripts/hooks/*·scripts/check-docs.py·scripts/check-prose.py·scripts/worker-lock.sh)를 표본 입력으로 시험한다.
 
 훅에는 Claude Code가 주는 모양의 JSON을 표준 입력으로 넣고 종료 코드·출력을 본다. 실제 라이브러리·볼륨에는
 아무것도 하지 않는다(막는 훅은 명령을 실행하지 않고 판정만 한다, 나머지는 임시 폴더에서).
@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HOOKS = ROOT / "scripts/hooks"
 CHECK_DOCS = ROOT / "scripts/check-docs.py"
 CHECK_PROSE = ROOT / "scripts/check-prose.py"
+WORKER_LOCK = ROOT / "scripts/worker-lock.sh"
 
 # 막아야 하는 명령(라이브 rekordbox 폴더·실물 볼륨·디스크 장치에 대한 쓰기, --live·--allow-physical, 보호 경로가 든 코드 넘기기)
 BLOCK = [
@@ -961,6 +962,32 @@ def case_prose_real():
     assert time.monotonic() - started < 5, "문장 검사가 5초를 넘음"
 
 
+def case_worker_lock():
+    with tempfile.TemporaryDirectory() as temp:
+        repo = Path(temp)
+        git(repo, "init", "-q")
+        (repo / "sub").mkdir()
+
+        def lock(*arguments, cwd=repo):
+            return subprocess.run(["bash", str(WORKER_LOCK), *arguments], capture_output=True, text=True, timeout=10, cwd=cwd)
+
+        marker = repo / ".djc-worker.lock"
+        assert lock("show").returncode == 1, "표시가 없으면 show는 1"
+        assert lock("take").returncode == 2, "작업 이름 없는 take는 2"
+        first = lock("take", "작업 가", "세션1", cwd=repo / "sub")
+        assert first.returncode == 0 and marker.exists(), f"하위 폴더에서도 뿌리에 만든다: {first.stderr}"
+        text = marker.read_text()
+        assert "작업: 작업 가" in text and "세션: 세션1" in text and "시각: " in text, text
+        second = lock("take", "작업 나")
+        assert second.returncode == 1 and "작업 가" in second.stderr, "이미 있으면 멈추고 앞 작업을 보인다"
+        assert marker.read_text() == text, "앞 표시를 덮지 않는다"
+        other = lock("drop", "작업 나")
+        assert other.returncode == 1 and marker.exists(), "다른 작업의 표시는 지우지 않는다"
+        assert lock("show").returncode == 0
+        assert lock("drop", "작업 가").returncode == 0 and not marker.exists()
+        assert lock("drop", "작업 가").returncode == 0, "이미 없으면 조용히 끝난다"
+
+
 CASES = [(f"막음: {c!r}", case_guard, (c, 2)) for c in BLOCK]
 CASES += [(f"통과: {c!r}", case_guard, (c, 0)) for c in ALLOW]
 CASES += [(f"cwd {cwd}: {c!r}", case_guard, (c, expected, cwd)) for cwd, c, expected in CWD_CASES]
@@ -982,6 +1009,7 @@ CASES += [
     ("settings.json: 훅·권한 모양", case_settings, ()),
     ("settings.json: 훅 명령을 sh로 그대로(스크립트 없으면 조용히)", case_settings_commands_run, ()),
     ("PreToolUse: 훅의 djc 명령 이름이 소스 등록과 맞음", case_guard_names, ()),
+    ("워크트리 작업 표시: 만들기·겹침 거부·남의 표시 지키기", case_worker_lock, ()),
 ]
 CASES += [(name, case_docs, (edit, expected, text)) for name, edit, expected, text in DOCS_CASES]
 CASES += [("문서: 이 저장소 검사", case_docs_real, ())]
