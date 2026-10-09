@@ -44,6 +44,7 @@
 | `PIONEER/rekordbox/exportLibrary.db` | OneLibrary(§2) | 만든다·고친다 |
 | `PIONEER/rekordbox/export.pdb`·`exportExt.pdb` | Device Library(§3) | 만든다·고친다 |
 | `PIONEER/rekordbox/playlists3.sync`·`playlists3Plus.sync` | 장치별 동기화 선택 XML | 읽기·고쳐 쓰기·새로 만들기(#233, 2026-10-08 실험으로 확인한 칸 규칙). 한 형식의 파일만 있으면 막음 |
+| `PIONEER/rekordbox/ImportedHistory.xml` | rekordbox가 가져온 기기 재생 기록 표시(형식별 기록 번호·내용 해시, §8.5) | 만들지도 지우지도 않는다(지우기 허용 목록 밖) |
 | `PIONEER/USBANLZ/P???/????????/ANLZ000N.DAT`·`.EXT`·`.2EX` | 곡마다 분석 파일 셋(§4) | 만든다. 폴더 이름은 §5 "분석 파일(ANLZ) 자리" |
 | `PIONEER/Artwork/%05d/a{id}.jpg`·`a{id}_m.jpg`·`b{id}.jpg`·`b{id}_m.jpg` | 아트워크(a는 Device Library, b는 OneLibrary) | 만든다(§5) |
 | `Contents/…` | 음원 | 복사한다(§5) |
@@ -2296,6 +2297,121 @@ OneLibrary에만 있는 칸:
   - rekordbox 변환 결과의 칸. 칸은 analysedBits, createdDate, myTagMasterDBID, isComplation, 목록 항목이다.
   - rekordbox 5·6이 쓴 옛 pdb를 그대로 읽는지. `.2EX`나 `exportExt.pdb`가 없는 USB도 포함한다.
   - OneLibrary 기기가 옮긴 USB를 그대로 읽는지. 중복 항목이 있는 목록도 포함한다.
+
+### 8.5 기기 재생 기록 보존 (#43, USB는 읽기만)
+
+rekordbox는 USB를 연결하면 기기가 남긴 재생 기록을 Histories로 가져온다. DJCrate는 같은 기록을 USB에서 읽어 Mac에 보존한다.
+
+- 보존 자리는 **DJCrate 데이터 폴더**의 `usb-histories/<id>.json`이다. 기록마다 한 파일이다.
+- USB에는 쓰지 않는다. 기록을 지우지 않는다. `ImportedHistory.xml`도 쓰지 않는다.
+- rekordbox 라이브러리에는 보존본을 "rekordbox 쓰기 대기"에 올린다.
+  - rekordbox에 쓰기 때 rekordbox가 가져올 때와 같은 행으로 넣는다(`docs/rekordbox-internals.md` "재생 기록").
+  - 2026-10-09 사본 재현에서 칸 값과 저장 형식의 차이 0을 확인한 뒤 이 쓰기 경로를 열었다.
+  - 확인하지 않은 조건은 기록마다 막는다.
+
+**코드의 자리**
+
+| 일 | 자리 |
+|---|---|
+| 보존 흐름: 후보 → 계획 → 짝 다시 검증 → 저장 | 유스케이스 `ArchiveUsbHistories` |
+| 후보·계획 | `UsbHistoryCandidates`, `UsbHistoryImport` (DJCDomain) |
+| 트리·숨김·쓰기 대기·쓰기 입력 | `UsbHistoryRules`, `HistoryDuplicates`, `HistoryWriteQueue` (DJCDomain) |
+| 보존 파일 | 포트 `UsbHistoryFiles`. 실제 구현은 DJCStorage `UsbHistoryStore`다 |
+| 화면 상태와 보존 줄 | `LibraryStore+Histories` |
+
+**언제**
+
+- 사이드바가 USB 라이브러리를 사본으로 읽은 즉시 보존한다(`UsbStore.onLibraryEvaluated`, §8.1).
+- 앱을 켤 때 꽂혀 있던 USB와 새로 꽂은 USB가 같다.
+- 로컬 스냅샷을 아직 읽지 않았으면 짝 없이 먼저 보존한다.
+- 스냅샷을 읽으면 원본 식별로 짝을 다시 계산한다. USB가 빠졌어도 계산한다.
+- 볼륨 알림이 오면 캐시가 있어도 그 볼륨을 다시 읽는다. 빠른 분리·재연결로 알림 여럿이 하나로 와도 새 기록을 놓치지 않는다.
+
+**무엇을**
+
+- `UsbHistoryCandidates.make`가 두 형식의 기록을 형식마다 따로 고른다.
+  - OneLibrary: `history`·`history_content`
+  - Device Library: 표 11·12
+- 순서는 OneLibrary 먼저, 그다음 기록 번호 순이다.
+- 항목이 없는 기록은 뺀다. 폴더 행이 그 예다.
+- 형식별 원본 곡 정보를 남긴다(`UsbLibrary.historyMetadataByFormat`).
+  - 그래서 같은 USB 번호가 두 형식에서 다른 파일이어도 기록을 잃지 않는다.
+- 원본 곡 행이 없으면 USB 곡 번호만 남긴 읽기 전용 항목으로 보존한다.
+- 컬렉션에 없는 곡도 남긴다. rekordbox는 이 곡을 가져오지 않는다.
+
+**같은 기록 알아보기** (`UsbHistoryImport.plan`)
+
+- 아래가 모두 같아야 같은 기록이다.
+  - 볼륨키, 형식, 기록 번호
+  - USB 안 이름과 곡 순서(USB content_id)
+  - 곡마다 `masterDbId`와 `masterContentId`
+  - 곡마다 경로와 파일 이름
+- 볼륨 이름은 보지 않는다.
+- 번호를 다시 써도 곡이 다르면 새 기록이다.
+- 앞부분만 같은 기록을 이어 붙이지 않는다. 건너뛰지도 않는다.
+- 보존본은 지우지 않는다.
+
+**이름**
+
+- rekordbox처럼 "HISTORY yyyy-MM-dd"다. 날짜는 가져온 날이다. Mac 달력으로 정한다.
+- 같은 이름의 보존본이 있으면 뒤에 번호를 붙인다. 예: "HISTORY 2026-10-09 (1)"
+- 번호는 보존본끼리만 센다. rekordbox 기록의 이름을 피하면 같은 이름으로 중복을 알아볼 수 없기 때문이다.
+- rekordbox 기록과 이름이 겹치면 rekordbox에 쓸 때 쓰기가 번호를 붙인다.
+- 기기 기록에는 날짜 칸이 없다.
+
+**보이기**
+
+- 사이드바 재생 기록 트리(`HistoryTree`)에 rekordbox 기록과 섞는다. 가져온 시각 순으로 놓는다.
+- `HistoryDuplicates`는 rekordbox도 가져온 같은 기록을 숨긴다.
+  - 이 라이브러리에 쓴 기록 ID를 먼저 본다.
+  - 그 밖에는 이름·날짜·전체 곡 순서가 같은 기록을 일대일로만 숨긴다.
+- 다른 날짜의 같은 세트는 계속 보인다. 짝 없는 항목이 든 보존본도 계속 보인다.
+- LINK HISTORY와는 추정으로 비교하지 않는다.
+- 짝 없는 곡은 `usb:history:<id>:<순번>` ID의 읽기 전용 줄이다.
+
+**저장**
+
+- 기록마다 따로 내구 쓰기를 한다(`UsbDurableFile`). 메인 액터 밖에서 한다.
+- 저장에 성공한 기록만 화면 상태에 넣는다. 그래서 중간에 실패해도 다음 시도가 같은 기록을 새 ID로 또 저장하지 않는다.
+- 보존과 보존본 저장은 한 줄로 선다(`LibraryStore.historyImports`).
+  - USB 읽기와 로컬 짝 다시 계산이 겹쳐도 같은 기록을 두 번 보존하지 않는다.
+
+**손상**
+
+- 해석하지 못한 파일은 `damaged-drafts/usb-histories/`로 옮긴다. 옮긴 파일은 알린다.
+- 권한 등으로 읽지 못한 파일은 그 자리에 둔다. 옮기지 못한 파일도 그 자리에 둔다. 둘 다 알린다.
+  - 그 파일을 확인할 때까지 새 보존을 미룬다. 중복을 막기 위해서다.
+- rename 뒤 폴더 fsync가 실패하면 같은 ID의 지금 파일 내용을 먼저 본다.
+  - 같으면 그 기록을 채택한다. 경고는 남긴다.
+
+**rekordbox의 USB 표시** (2026-10-09 실험)
+
+- 실험은 rekordbox 7.2.19에서 했다.
+- "가져온 뒤 기기에서 삭제"를 끈 채 가져오면 rekordbox는 기록을 지우지 않는다. 대신 `PIONEER/rekordbox/ImportedHistory.xml`을 쓴다.
+- 파일 모양은 아래와 같다.
+  - `<IMPORTED-HISTORY>` 아래에 형식마다 칸이 있다. pdb는 `<DEVICE-LIBRARY>`다. OneLibrary는 `<DEVICE-LIBRARY-PLUS>`다.
+  - 칸마다 `<HISTORY id="기록 번호"><CONTENTS>64자 16진 SHA-256</CONTENTS></HISTORY>`가 있다.
+  - 인코딩은 UTF-8, 줄 끝은 CRLF다.
+- 무엇의 해시인지는 모른다. 표 11·12 행 바이트, 곡 번호, 이름으로 맞춰 봤으나 달랐다.
+- rekordbox는 이 파일로 같은 기록을 다시 가져오지 않는 것으로 본다 [추정].
+- DJCrate는 이 파일을 쓰지 않는다.
+
+**rekordbox와 다른 점**
+
+- rekordbox는 기본 설정에서 가져온 기록을 USB에서 지운다(`docs/rekordbox-internals.md` "재생 기록").
+- DJCrate는 USB를 고치지 않는다. 그래서 기록이 USB에 남는다.
+- 그 USB를 나중에 rekordbox에 꽂으면 rekordbox도 가져온다. 그때는 위 숨김 규칙으로 한 번만 보인다.
+- OneLibrary 가이드도 기록 기능을 쓸 때 아래 설정을 권한다.
+  - 자동 가져오기: 켬
+  - 기기에서 지우기: 끔
+
+**확인하지 못한 것** [미확인]
+
+- OneLibrary `history.attribute`·`history_id_parent`의 뜻
+- 두 형식이 함께 있는 USB에서 rekordbox가 기록을 가져온 뒤 다시 내보낼 때 기록이 다른 형식에도 생기는지
+- 실물 USB 확인은 PR #242의 화면 한 장뿐이다(`docs/images/issues/43/usb-history-physical.png`).
+  - 이 화면에는 보존 기록 하나의 USB 표시와 쓰기 대기 표시가 있다.
+  - 형식마다 나눈 실물 확인은 아직 없다(`needs:device`).
 
 ## 9. 확인 안 된 규칙
 

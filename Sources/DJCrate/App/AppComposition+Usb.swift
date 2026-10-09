@@ -63,12 +63,28 @@ enum UsbAppSetup {
         FileHandle.standardOutput.write(Data("USB 읽기 정책: \(policy.name)\n".utf8))
         #endif
         store.usb = usb
-        store.onSnapshotLoaded = { [weak usb] url in
-            Task.detached(priority: .utility) {
-                keys.set(try? source.load(url))
-                await usb?.localLibraryChanged()
-            }
+        store.onSnapshotLoaded = { [weak store, weak usb] _ in
+            // 읽기가 채택한 키를 쓴다(`LoadLibrary.open`). 뒤늦은 별도 파일 읽기가 더 새 사본의 키를 덮지 않게 한다.
+            keys.set(store?.historyLocalKeys)
+            Task { await usb?.localLibraryChanged() }
         }
+        // 보존한 기록을 먼저 읽어 둔다(USB를 읽으면 그와 견줘 새 기록만 보존한다)
+        connectHistories(store: store, usb: usb, histories: histories(directory: DJCPaths.usbHistories, home: DJCPaths.userData))
         Task { await usb.watch() }
+    }
+
+    /// USB 기기 재생 기록 보존(#43)의 실제 구현: DJC_HOME의 `usb-histories/`(손상 파일은 데이터 폴더의 damaged-drafts로)
+    static func histories(directory: URL, home: URL, now: @escaping @Sendable () -> Date = { Date() }) -> ArchiveUsbHistories {
+        ArchiveUsbHistories(files: .live(directory: directory, home: home), now: now, newID: { UUID().uuidString })
+    }
+
+    /// USB 기기 재생 기록 보존(#43)을 잇는다: 보존한 기록을 읽고, USB 라이브러리를 읽거나 로컬 짝을 다시 계산할 때마다
+    /// 새 기록을 DJCrate 데이터 폴더에 보존한다(USB·rekordbox 라이브러리에는 쓰지 않는다). 시험은 임시 폴더의 보존으로 같은 연결을 쓴다
+    static func connectHistories(store: LibraryStore, usb: UsbStore, histories: ArchiveUsbHistories?) {
+        store.usbHistories = histories
+        store.startLoadingArchivedHistories()
+        usb.onLibraryEvaluated = { [weak store] volume, library, matches in
+            store?.importUsbHistories(volume: volume, library: library, matches: matches)
+        }
     }
 }

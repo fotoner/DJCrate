@@ -16,7 +16,7 @@ extension LibraryPorts {
                      staging: .live(home: location.draftHome), files: .live, analysis: .live, recovery: .live,
                      playlistImports: .live(url: DraftLocations(home: location.draftHome).playlistImports), backups: .live(), artwork: .live, relocate: .live,
                      query: .live(home: location.draftHome), appleMusic: .live, liveShare: location.liveShare,
-                     linkedXML: DJCIdentity.linkedXMLFile, usbSnapshots: .live, snapshots: .live(location),
+                     linkedXML: DJCIdentity.linkedXMLFile, usbSnapshots: .live, snapshots: .live(location), localKeys: .live,
                      prepareMerge: { try RekordboxWriter.prepareMerge(keeping: $0, removing: $1, snapshot: $2) },
                      now: { Date() }, today: { String(ISO8601DateFormatter().string(from: .now).prefix(10)) }, newKey: { UUID().uuidString })
     }

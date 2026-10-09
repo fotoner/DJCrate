@@ -79,14 +79,14 @@ struct SidebarStagedRow: View {
     }
 }
 
-/// 쓰기 대기 배지. 개수는 초안 여러 종류의 합집합이라 읽는 값이 많다.
+/// 쓰기 대기 배지. 개수는 초안 여러 종류의 합집합이라 읽는 값이 많다. 쓰기 대기 재생 기록(#43)도 센다.
 struct SidebarPendingRow: View {
     let store: LibraryStore
 
     var body: some View {
         Label(.ui("rekordbox 쓰기 대기"), systemImage: "square.and.arrow.up.on.square")
-            .badge(store.pendingLibraryCount)
-            .help(.ui("rekordbox에 쓸 곡 초안을 모아 봅니다. 재생 목록 초안도 함께 쓸 수 있습니다."))
+            .badge(store.pendingWriteCount)
+            .help(.ui("rekordbox에 쓸 곡 초안과 USB 재생 기록을 모아 봅니다. 재생 목록 초안도 함께 쓸 수 있습니다."))
     }
 }
 
@@ -133,20 +133,25 @@ struct SidebarXMLExportRow: View {
     }
 }
 
-/// 재생 기록 구역. 펼침 설정은 여기서 읽는다.
+/// 재생 기록 구역: rekordbox Histories처럼 연 › 월 › 기록(모두 오래된 것부터). rekordbox 기록과 USB에서 보존한 기록을 섞는다(#43).
+/// 본문은 트리 구조(`historyTree`)만 읽고, 곡 수·USB 표시는 줄 뷰가 읽는다(#141). 구역 펼침 설정은 여기서 읽는다.
 struct SidebarHistorySection: View {
     let store: LibraryStore
     @AppStorage(SettingKeys.sidebarHistoriesExpanded.name) private var isExpanded = SettingKeys.sidebarHistoriesExpanded.defaultValue
 
     var body: some View {
         Section(isExpanded: $isExpanded) {
-            if store.histories.isEmpty {
+            let tree = store.historyTree
+            if tree.isEmpty {
                 Text(.ui("재생 기록이 없습니다")).foregroundStyle(.secondary)
             }
-            // 날짜로 시작하는 이름이라 아이콘 없이도 알아본다. 아이콘 자리만큼 이름이 덜 잘린다.
-            ForEach(store.histories) { history in
-                SidebarHistoryRow(store: store, history: history)
-                    .tag(SidebarItem.history(history.id))
+            ForEach(tree.years) { year in
+                SidebarHistoryYearRow(store: store, year: year)
+            }
+            // 연·월을 모르는 기록은 트리 아래에 바로 둔다
+            ForEach(tree.undated) { item in
+                SidebarHistoryRow(store: store, item: item)
+                    .tag(SidebarItem.history(item.id))
             }
         } header: {
             Text(.ui("재생 기록")).sidebarSectionHeader()
@@ -154,15 +159,101 @@ struct SidebarHistorySection: View {
     }
 }
 
-struct SidebarHistoryRow: View {
+/// 연 폴더. 펼침은 스토어에 둔다(기록을 고르면 그 폴더를 펼친다). 폴더는 고르는 대상이 아니라 태그를 달지 않는다
+struct SidebarHistoryYearRow: View {
     let store: LibraryStore
-    let history: RekordboxHistory
+    let year: HistoryTree.Year
 
     var body: some View {
-        Text(store.historyTitle(history))
-            .badge(store.count(history: history))
-            .lineLimit(1)
-            .help(store.historyTitle(history))
+        DisclosureGroup(isExpanded: Binding(
+            get: { store.expandedHistoryFolders.contains(year.id) },
+            set: { store.setHistoryFolder(year.id, expanded: $0) }
+        )) {
+            ForEach(year.months) { month in
+                SidebarHistoryMonthRow(store: store, month: month)
+            }
+        } label: {
+            Text(verbatim: String(year.year))
+        }
+    }
+}
+
+/// 월 폴더(이름은 앱 화면 언어의 월 이름)
+struct SidebarHistoryMonthRow: View {
+    let store: LibraryStore
+    let month: HistoryTree.Month
+
+    var body: some View {
+        DisclosureGroup(isExpanded: Binding(
+            get: { store.expandedHistoryFolders.contains(month.id) },
+            set: { store.setHistoryFolder(month.id, expanded: $0) }
+        )) {
+            ForEach(month.items) { item in
+                SidebarHistoryRow(store: store, item: item)
+                    .tag(SidebarItem.history(item.id))
+            }
+        } label: {
+            Text(verbatim: Self.name(of: month.month))
+        }
+    }
+
+    /// 화면 언어(`UIStrings.locale`)의 월 이름(한국어 "8월", 영어 "August", 일본어 "8月")
+    static func name(of month: Int) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = UIStrings.locale
+        let symbols = calendar.standaloneMonthSymbols
+        return symbols.indices.contains(month - 1) ? symbols[month - 1] : String(month)
+    }
+}
+
+/// 기록 줄. 곡 수와 USB 보존·쓰기 대기 표시는 이 뷰만 읽는다
+struct SidebarHistoryRow: View {
+    let store: LibraryStore
+    let item: HistoryTree.Item
+
+    var body: some View {
+        let archived = store.archivedHistory(item.id)
+        let pending = archived != nil && store.pendingHistoryIDs.contains(item.id)
+        HStack(spacing: 4) {
+            Text(verbatim: item.name)
+                .lineLimit(1)
+            if archived != nil {
+                Image(systemName: "externaldrive")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(.ui("USB에서 가져온 기록"))
+            }
+            // 아직 rekordbox에 쓰지 않은 초안과 같은 표식(쓰기 대기)
+            if pending {
+                Image(systemName: DraftMark.symbol)
+                    .imageScale(.small)
+                    .foregroundStyle(UIColors.draft.color)
+                    .accessibilityLabel(.ui("rekordbox 쓰기 대기"))
+            }
+        }
+        .badge(store.historyCount(item.id))
+        .help(archived.map { archivedHelp($0, pending: pending) } ?? store.historyIndex[item.id].map { store.historyTitle($0) } ?? item.name)
+    }
+
+    /// 보존 기록의 도움말: 어디서 가져왔는지와 rekordbox 쓰기 상태
+    private func archivedHelp(_ archived: ArchivedHistory, pending: Bool) -> String {
+        let volume = archived.source.volumeName
+        if pending {
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에 있어 rekordbox에 쓰기(⇧⌘E) 때 rekordbox 재생 기록에 넣습니다")
+        }
+        if archived.excludedFromRekordbox {
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
+        }
+        if let id = archived.rekordboxHistoryID, store.historyIndex[id] != nil {
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에 썼습니다")
+        }
+        if HistoryWriteQueue.hasRepeatedTracks(archived) {
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 같은 곡이 두 번 이상 들어 DJCrate는 rekordbox에 쓰지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요")
+        }
+        if archived.matchedContentIDs.isEmpty {
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 컬렉션에 있는 곡이 없어 rekordbox에는 쓰지 않습니다")
+        }
+        return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에는 없습니다")
     }
 }
 
@@ -244,14 +335,31 @@ struct ListActionBar: View {
             bar {
                 let targets = store.selection.isEmpty ? store.displayRows : store.selectedRows
                 let playlistEdits = store.playlistDraft.steps.count
+                let histories = store.pendingHistories.count
                 Button { reflection?.startWrite(rows: targets) } label: {
-                    Label(playlistEdits > 0 ? LocalizedStringResource.ui("rekordbox에 쓰기 (\(targets.count)곡 · 재생 목록 \(playlistEdits)건)")
-                            : .ui("rekordbox에 쓰기 (\(targets.count)곡)"),
+                    Label(Self.pendingWriteTitle(tracks: targets.count, playlistEdits: playlistEdits, histories: histories),
                           systemImage: "square.and.arrow.up.on.square")
                 }
-                .disabled((targets.isEmpty && playlistEdits == 0) || store.isWritingRekordbox || store.writesBlockedBySheet)
+                .disabled((targets.isEmpty && playlistEdits == 0 && histories == 0) || store.isWritingRekordbox || store.writesBlockedBySheet)
                 .help(store.writesBlockedBySheet ? LibraryStore.writesBlockedBySheetReason
-                      : String(ui: "고른 곡(없으면 목록 전체)과 재생 목록 초안을 rekordbox에 씁니다."))
+                      : String(ui: "고른 곡(없으면 목록 전체)과 재생 목록 초안·USB 재생 기록을 rekordbox에 씁니다."))
+                if histories > 0 {
+                    // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 이 메뉴에서 보고(고르면 그 기록으로) 뺀다
+                    Menu {
+                        ForEach(store.pendingHistories) { history in
+                            Button(history.name) { store.sidebar = .history(history.id) }
+                        }
+                        Divider()
+                        Button(.ui("모두 rekordbox 쓰기 대기에서 빼기")) {
+                            store.setHistoriesExcluded(store.pendingHistories.map(\.id), excluded: true)
+                        }
+                        .disabled(store.isWritingRekordbox)
+                    } label: {
+                        Label(.ui("재생 기록 \(histories)건"), systemImage: "clock.arrow.circlepath")
+                    }
+                    .fixedSize()
+                    .help(.ui("쓰기 대기에 오른 USB 재생 기록입니다. 고르면 그 기록을 보고, 빼면 실행 취소로 되돌립니다."))
+                }
                 if playlistEdits > 0 {
                     Button { PlaylistPanels.discardAll(store: store) } label: {
                         Label(.ui("재생 목록 초안 버리기"), systemImage: "trash")
@@ -395,6 +503,16 @@ struct ListActionBar: View {
                     .font(.caption).foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+        }
+    }
+
+    /// 쓰기 대기 바의 쓰기 단추 제목: 곡 수와 함께 쓸 재생 목록 편집·재생 기록 수
+    static func pendingWriteTitle(tracks: Int, playlistEdits: Int, histories: Int) -> LocalizedStringResource {
+        switch (playlistEdits > 0, histories > 0) {
+        case (true, true): .ui("rekordbox에 쓰기 (\(tracks)곡 · 재생 목록 \(playlistEdits)건 · 재생 기록 \(histories)건)")
+        case (true, false): .ui("rekordbox에 쓰기 (\(tracks)곡 · 재생 목록 \(playlistEdits)건)")
+        case (false, true): .ui("rekordbox에 쓰기 (\(tracks)곡 · 재생 기록 \(histories)건)")
+        case (false, false): .ui("rekordbox에 쓰기 (\(tracks)곡)")
         }
     }
 

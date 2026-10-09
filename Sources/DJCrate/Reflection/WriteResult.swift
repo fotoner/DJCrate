@@ -71,6 +71,15 @@ struct WriteResult: Codable, Equatable {
         if !playlistBlocked.isEmpty { skipped.append(PlaylistWriteText.summary(playlistBlocked.count)) }
         reasons += playlistBlocked.map { $0.reason ?? String(ui: "이유 없음") }
         lines += playlists.map(PlaylistWriteText.result)
+        // 재생 기록(#43)은 미리 보기에서 쓸 수 있던 기록만 넘겨 쓰므로 막힌 기록은 미리 보기 결과에서 가져온다(곡 초안과 같다).
+        let histories = HistoryWriteText.merged(report, preview: preview)
+        let historyWritten = histories.filter { $0.status == .written }.count
+        if historyWritten > 0 { summaries.append(HistoryWriteText.summary(historyWritten)) }
+        count += historyWritten
+        let historyBlocked = histories.filter { $0.status == .blocked }
+        if !historyBlocked.isEmpty { skipped.append(HistoryWriteText.summary(historyBlocked.count)) }
+        reasons += historyBlocked.map { $0.reason ?? String(ui: "이유 없음") }
+        lines += histories.map(HistoryWriteText.result)
         return Self(kind: !skipped.isEmpty || count == 0 ? .warning : .success,
                     title: count == 0 ? String(ui: "rekordbox에 쓴 것이 없습니다")
                         : String(ui: "rekordbox에 썼습니다 · \(summaries.joined(separator: " · "))"),
@@ -148,7 +157,9 @@ struct WriteResult: Codable, Equatable {
         let report = backup.report
         let outcomes: [RekordboxWriteOutcome] = (report?.written ?? []) + (report?.gridWritten ?? []) + (report?.gainWritten ?? [])
             + (report?.analysisWritten ?? []) + (report?.tagWritten ?? []) + (report?.artworkWritten ?? []) + (report?.mergeWritten ?? [])
-        let names: [String] = (report?.playlistWritten ?? []).map(\.name) + (backup.trackReport?.titles ?? [])
+        // 그때 쓴 재생 기록은 rekordbox에서 사라져 다시 쓰기 대기에 오른다(#43)
+        let names: [String] = (report?.playlistWritten ?? []).map(\.name) + (report?.historyWritten ?? []).map(\.name)
+            + (backup.trackReport?.titles ?? [])
         let titles = Set(outcomes.map(\.title) + names)
         var lines = [String(ui: "rekordbox 라이브러리 전체를 선택한 백업의 쓰기 전 상태로 복원했습니다."),
                      String(ui: "그때 쓴 초안과 추가 목록도 복원했습니다. 복원 직전 상태는 아래 두 번째 백업에 남아 있습니다.")]

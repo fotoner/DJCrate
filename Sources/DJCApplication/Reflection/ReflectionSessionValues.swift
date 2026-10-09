@@ -33,13 +33,16 @@ public struct ReflectionLibraryState: Sendable {
     public var deckStagedUUID: String?
     /// 목록 위 오류 줄(다시 읽기가 실패한 이유)
     public var lastError: String?
+    /// rekordbox 쓰기 대기에 오른 USB 재생 기록의 쓰기 입력(#43, 가져온 차례). 곡을 고르지 않아도 쓸 것이 있다
+    public var pendingHistories: [HistoryImport]
 
     public init(rows: [String: TrackRow] = [:], cueDraftUUIDs: Set<String> = [], gridDraftUUIDs: Set<String> = [], gainDraftUUIDs: Set<String> = [],
                 tagDrafts: [String: TagDraft] = [:], artworkDrafts: [String: ArtworkDraft] = [:], mergeDrafts: [DuplicateMergeDraft] = [],
                 playlistDraft: PlaylistDraft = PlaylistDraft(), playlistDraftUnsaved: Bool = false,
                 rekordboxPlaylists: PlaylistLayout = PlaylistLayout(), playlistImports: PlaylistImports = PlaylistImports(),
                 playlistImportsLoadFailed: Bool = false, unreadableDraftKinds: [String: Set<WritePart>] = [:], failedTagSaves: Set<String> = [], staged: [StagedTrack] = [],
-                estimatingGrids: Bool = false, iTunesSelection: Bool = false, deckStagedUUID: String? = nil, lastError: String? = nil) {
+                estimatingGrids: Bool = false, iTunesSelection: Bool = false, deckStagedUUID: String? = nil, lastError: String? = nil,
+                pendingHistories: [HistoryImport] = []) {
         self.rows = rows
         self.cueDraftUUIDs = cueDraftUUIDs
         self.gridDraftUUIDs = gridDraftUUIDs
@@ -59,6 +62,7 @@ public struct ReflectionLibraryState: Sendable {
         self.iTunesSelection = iTunesSelection
         self.deckStagedUUID = deckStagedUUID
         self.lastError = lastError
+        self.pendingHistories = pendingHistories
     }
 
     /// 반영 대기 초안이 있는 곡(큐·그리드·게인·태그·앨범아트 초안, 합치기 초안에 묶인 곡)
@@ -107,6 +111,8 @@ public enum ReflectionLibraryChange: Sendable {
     case followUp([String])
     /// 쓰기 전 백업 목록이 바뀌었다
     case writeBackupsChanged
+    /// 최신 사본에 이미 있던 재생 기록의 보존본 연결을 저장하지 못했다(미리 보기 뒤, #43): 경고로 알린다
+    case historyMarkFailed(String)
 }
 
 /// 반영 흐름 하나의 결과. 세션이 알릴 자리에서 `ReflectionResults.publish`로 알리고(`busy`·`declined`는 알리지 않는다) 그대로 돌려준다.

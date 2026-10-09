@@ -55,7 +55,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 |---|---|
 | `Deck/` | `LoadDeckTrack`, `AnalyzeDeckTrack`, `SaveDeckDrafts` |
 | `Edit/` | `RenderEdit`, `StageEdit` |
-| `Library/` | `LoadLibrary`, `ImportXML`, `RecoverDrafts`, `RelocateTracks`, `StageTracks`, `EditPlaylists` |
+| `Library/` | `LoadLibrary`, `ImportXML`, `RecoverDrafts`, `RelocateTracks`, `StageTracks`, `EditPlaylists`, `ArchiveUsbHistories` |
 | `Reflection/` | `ReflectionSession`, `CompatibilityCheck` |
 | `Usb/` | `UsbSync`, `UsbExportSession`, `UsbWriteFlow` |
 
@@ -250,6 +250,7 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - USB DB의 Mac 사본: `usb-snapshots/`
 - USB 저널과 잠금: `usb-sessions/`
 - USB 준비 폴더: `usb-staging/`
+- USB에서 가져와 보존한 기기 재생 기록: `usb-histories/`. 기록마다 JSON 한 파일이다. 캐시가 아니므로 지우지 않는다(#43).
 - 스냅샷·백업·DB 사본에는 rekordbox 클라우드 토큰이 들어 있다. 이 파일을 커밋·이슈·로그에 넣지 않는다.
 - 캐시 종류별 비우기는 `docs/cli.md` "캐시 보기·비우기"에 있다.
 
@@ -930,6 +931,20 @@ DJCApplication 유스케이스 `UsbMigrateSession`이 아래 순서를 부른다
 
 - **USB에서는 큐·그리드·평점 초안만 가져온다.** `LibraryStore.importUsbCueGrid`가 USB DB 사본과 로컬 스냅샷에서 1:1 짝을 새로 계산한다. ANLZ는 `UsbCueGridReader`로 읽어 초안으로 저장한다. 기존 초안, 더 새로운 로컬 카운터, 표현할 수 없는 값은 그대로 둔다. 가져온 뒤 목록과 덱의 초안 표시를 갱신한다.
 - **USB에도 로컬 rekordbox DB에도 쓰지 않는다.**
+
+### 기기 재생 기록 보존 (#43)
+
+- **기기 재생 기록은 Mac에 보존한다. USB에는 쓰지 않는다.** 사이드바가 USB를 읽으면 `UsbStore.onLibraryEvaluated`가 저장소에 알린다. 저장소는 보존을 한 줄(`historyImports`)에 세운다.
+- **보존 흐름은 유스케이스 `ArchiveUsbHistories`가 정한다.** 순서는 아래와 같다.
+  1. 후보: `UsbHistoryCandidates`
+  2. 계획: `UsbHistoryImport.plan`
+  3. 짝 다시 검증: `UsbHistoryRules.rematch`
+  4. 기록마다 저장: 포트 `UsbHistoryFiles`
+- **보존 파일의 실제 구현은 DJCStorage `UsbHistoryStore`다.** 어댑터 `UsbHistoryFiles.live`가 이것을 감싼다. 조립 지점 `UsbAppSetup`이 `usb-histories/`를 정해 붙인다. 시험 저장소는 붙이지 않으므로 보존하지 않는다.
+- **트리·숨김·쓰기 대기는 `UsbHistoryRules.view` 하나가 정한다.** 저장소는 기록이나 보존본이 바뀔 때만 이 값을 다시 계산한다(#141).
+- **rekordbox에는 다른 초안처럼 반영 세션으로 쓴다.** 저장소는 쓰기 대기 기록을 `HistoryImport`로 바꿔 `ReflectionLibraryState.pendingHistories`에 싣는다. 세션은 이것을 `DraftWriteBatch.histories`로 묶어 관문 `RekordboxWriteGate`에 넘긴다. 관문의 실제 구현은 `RekordboxWriter.write(histories:)`를 부른다.
+- **쓴 기록은 다시 읽기 전에 보존본에 표시한다.** 세션은 포트 `ReflectionLibrary.recordHistories`로 결과를 넘긴다. 미리 보기에서 최신 대상에 이미 있던 기록도 같은 길로 표시한다. 쓰기 전으로 복원해 그 기록이 사라지면 다시 쓰기 대기에 오른다.
+- **쓰기 경로를 연 근거는 `docs/rekordbox-internals.md` "재생 기록"에 있다.** 보존 규칙은 `docs/usb-internals.md` §8.5에 있다.
 
 ## 더 보기
 

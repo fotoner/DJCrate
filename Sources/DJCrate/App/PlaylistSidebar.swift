@@ -197,8 +197,19 @@ struct PlaylistSidebarMenu: ViewModifier {
             } else if items.count == 1, case let .playlist(id)? = items.first, let node = store.playlistIndex[id] {
                 PlaylistContextMenu(store: store, node: node)
             } else if items.count == 1, case let .history(id)? = items.first {
+                // USB에서 보존한 기록도 같다(컬렉션 짝이 있는 곡만 넣는다). 넣을 곡이 없으면 누를 수 없다
                 Button(.ui("재생 목록으로 만들기")) { store.createPlaylist(fromHistory: id) }
-                    .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+                    .disabled(!store.writeLockPolicy.allowsLibraryInteraction || store.historyPlaylistSource(id)?.rows.isEmpty != false)
+                // USB에서 보존한 기록(#43): rekordbox 쓰기 대기에서 빼거나 다시 넣는다(편집 › 실행 취소로 되돌린다)
+                if let archived = store.archivedHistory(id) {
+                    if store.pendingHistoryIDs.contains(id) {
+                        Button(.ui("rekordbox 쓰기 대기에서 빼기")) { store.setHistoriesExcluded([id], excluded: true) }
+                            .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+                    } else if archived.excludedFromRekordbox, store.writesHistories {
+                        Button(.ui("rekordbox 쓰기 대기에 넣기")) { store.setHistoriesExcluded([id], excluded: false) }
+                            .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+                    }
+                }
             } else if items.count == 1, case let .usb(target)? = items.first, let actions = store.usbEdits {
                 UsbSidebarMenu(store: store, actions: actions, target: target)
             }

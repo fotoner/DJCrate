@@ -15,7 +15,7 @@ import Foundation
 /// 트랜잭션 안에서 쓰고 다시 읽어 검증한 뒤에만 커밋한다. 커밋 뒤 무결성 검사·재검증이 실패하면 백업으로 되돌린다
 /// (`writeRolledBack`). 되돌리지도 못하면 상태를 알 수 없으니 `restoreFailed`로 따로 알린다.
 /// 초안을 시작한 뒤 rekordbox에서 그 곡의 큐가 바뀌었으면 그 곡은 쓰지 않는다.
-/// 그리드·오토게인·분석 붙이기·재생 목록은 역할별 확장(`+Grid`·`+Gain`·`+Analysis`·`+Playlist`)에 있다.
+/// 그리드·오토게인·분석 붙이기·재생 목록·재생 기록은 역할별 확장(`+Grid`·`+Gain`·`+Analysis`·`+Playlist`·`+History`)에 있다.
 public enum RekordboxWriter {
     // 결과 값은 DJCDomain에 있다(#167). 옛 이름을 남긴다.
     public typealias Outcome = RekordboxWriteOutcome
@@ -45,20 +45,22 @@ public enum RekordboxWriter {
     ///   - playlists: 재생 목록 편집(적힌 순서대로). DB 옆 `masterPlaylists6.xml`도 rekordbox처럼 고친다.
     ///   - playlistDraft: 앱의 재생 목록 초안. `playlists` 대신 준다. 초안을 만든 뒤 rekordbox에서 바뀐 목록(base와 다름)의 편집은 쓰지 않는다.
     ///   - artworks: 곡 정보 그림 초안(넣기·바꾸기·지우기, #66). 그림 파일 셋은 `shareRoot` 아래에 쓴다. 음원 파일의 그림은 그대로 둔다.
+    ///   - histories: USB에서 가져온 기기 재생 기록(#43, 넘긴 순서대로). `writesHistories`가 닫혀 있으면 모두 막고 DB·백업을 건드리지 않는다.
     public static func write(drafts: [CueDraft], grids: [GridDraft] = [], gains: [String: Double] = [:], tags: [TagDraft] = [],
                              artworks: [ArtworkEdit] = [],
                              analysisInputs: [String: AnalysisInput] = [:], playlists: [PlaylistEdit] = [],
-                             playlistDraft: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [], iTunesSync: RekordboxITunesSyncChange? = nil,
+                             playlistDraft: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [], histories: [HistoryImport] = [],
+                             iTunesSync: RekordboxITunesSyncChange? = nil,
                              to database: URL, dryRun: Bool,
                              now: Date = .now, backups: URL, shareRoot: URL? = nil,
                              guard writeGuard: RekordboxWriteGuard = .system) throws -> Report {
         if let iTunesSync {
             guard drafts.isEmpty, grids.isEmpty, gains.isEmpty, tags.isEmpty, artworks.isEmpty, analysisInputs.isEmpty,
-                  playlists.isEmpty, playlistDraft == nil, merges.isEmpty else { throw RekordboxITunesSyncChange.invalidSource }
+                  playlists.isEmpty, playlistDraft == nil, merges.isEmpty, histories.isEmpty else { throw RekordboxITunesSyncChange.invalidSource }
             return try writeITunesSync(iTunesSync, to: database, dryRun: dryRun, now: now, backups: backups, guard: writeGuard)
         }
         return try write(drafts: drafts, grids: grids, gains: gains, tags: tags, artworks: artworks, analysisInputs: analysisInputs, playlists: playlists,
-                  playlistDraft: playlistDraft, merges: merges, to: database,
+                  playlistDraft: playlistDraft, merges: merges, histories: histories, to: database,
                   dryRun: dryRun, now: now, backups: backups, shareRoot: shareRoot, guard: writeGuard, attachesAnalysis: attachesAnalysis,
                   writesArtwork: RekordboxTrackWriter.writesArtwork)
     }
@@ -68,25 +70,42 @@ public enum RekordboxWriter {
     ///   - writesArtwork: 분석을 붙이는 곡에 아트워크도 넣는지. 앱은 `RekordboxTrackWriter.writesArtwork`를 따르고, 시험만 바꾼다.
     ///   - tagKeys: 태그 쓰기를 연 칸. 앱은 `writableTagKeys`를 따르고, 시험과 사본 실험(`djc lab tag-write-test`)만 바꾼다.
     ///   - tagScopes: 칸별로 확인한 범위(평점·곡 색의 곡 상태·재생 목록). 앱은 `TagWriteScope.byKey`, 사본 실험만 비운다.
+    ///   - writesHistories: 재생 기록 쓰기를 여는지. 앱은 `writesHistories`를 따르고, 시험과 사본 재현(`djc lab history-repro`)만 연다.
+    ///   - historyEnvironment: 기록 ID·UUID 난수와 로컬 시간대(시험만 정한다)
     package static func write(drafts: [CueDraft], grids: [GridDraft], gains: [String: Double], tags: [TagDraft] = [],
                               artworks: [ArtworkEdit] = [],
                               analysisInputs: [String: AnalysisInput],
-                              playlists: [PlaylistEdit] = [], playlistDraft: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [], to database: URL, dryRun: Bool, now: Date,
+                              playlists: [PlaylistEdit] = [], playlistDraft: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [],
+                              histories: [HistoryImport] = [], to database: URL, dryRun: Bool, now: Date,
                               backups: URL, shareRoot: URL?,
                               guard writeGuard: RekordboxWriteGuard = .system, attachesAnalysis: Bool,
                               writesArtwork: Bool = RekordboxTrackWriter.writesArtwork,
                               tagKeys: Set<TagFields.Key> = writableTagKeys,
-                              tagScopes: [TagFields.Key: TagWriteScope] = TagWriteScope.byKey) throws -> Report {
+                              tagScopes: [TagFields.Key: TagWriteScope] = TagWriteScope.byKey,
+                              writesHistories: Bool = RekordboxWriter.writesHistories,
+                              historyEnvironment: HistoryEnvironment = .system) throws -> Report {
         let stamp = CueJSON.timestamps(now)
         let grids = grids.filter(\.hasChanges)
         var tags = tags.filter(\.hasChanges)
         let playlistSteps = playlistDraft?.steps ?? playlists.map { PlaylistDraft.Step(edit: $0) }
+        // 재생 기록 결과(넘긴 순서 → 결과). 쓰기를 열기 전에는 모두 막고, 그러면 쓸 기록이 없는 것으로 본다(다른 초안은 평소처럼).
+        var historyResults: [Int: HistoryOutcome] = [:]
+        var histories = Array(histories.enumerated())
+        if !writesHistories {
+            for (index, history) in histories { historyResults[index] = .blocked(history, closedHistoryReason) }
+            histories = []
+        }
+        func historyReport() -> [HistoryOutcome]? {
+            historyResults.isEmpty ? nil : historyResults.keys.sorted().compactMap { historyResults[$0] }
+        }
         guard drafts.contains(where: \.hasChanges) || !grids.isEmpty || !gains.isEmpty || !tags.isEmpty || !artworks.isEmpty || !playlistSteps.isEmpty
-                || !merges.isEmpty else {
+                || !merges.isEmpty || !histories.isEmpty else {
             // 쓸 것이 없으면 DB를 열지도, 백업을 만들지도 않는다.
-            return Report(outcomes: drafts.map { Outcome(trackUUID: $0.trackUUID, title: $0.trackUUID, status: .unchanged,
-                                                          reason: nil, removed: 0, added: 0) },
-                          backup: nil, dryRun: dryRun, createdAt: stamp.json, finalUpdateCount: nil)
+            var report = Report(outcomes: drafts.map { Outcome(trackUUID: $0.trackUUID, title: $0.trackUUID, status: .unchanged,
+                                                               reason: nil, removed: 0, added: 0) },
+                                backup: nil, dryRun: dryRun, createdAt: stamp.json, finalUpdateCount: nil)
+            report.historyOutcomes = historyReport()
+            return report
         }
         let live = writeGuard.isLive(database)
         let gridRoot = try writeGuard.checkTargets(database, shareRoot: shareRoot, dryRun: dryRun)
@@ -148,12 +167,13 @@ public enum RekordboxWriter {
         }
         // 태그·그림 초안이 모두 막혔고 다른 쓸 것도 없으면 백업을 뜨지 않는다.
         if tags.isEmpty, artworkPlans.isEmpty, !tagOutcomes.isEmpty || !artworkOutcomes.isEmpty, !drafts.contains(where: \.hasChanges), grids.isEmpty,
-           gains.isEmpty, playlistSteps.isEmpty, merges.isEmpty {
+           gains.isEmpty, playlistSteps.isEmpty, merges.isEmpty, histories.isEmpty {
             let unchanged = drafts.map { Outcome(trackUUID: $0.trackUUID, title: $0.trackUUID, status: .unchanged,
                                                    reason: nil, removed: 0, added: 0) }
             var report = Report(outcomes: unchanged, backup: nil, dryRun: dryRun, createdAt: stamp.json, finalUpdateCount: nil)
             report.tagOutcomes = tagOutcomes.isEmpty ? nil : tagOutcomes
             report.artworkOutcomes = artworkOutcomes.isEmpty ? nil : artworkOutcomes
+            report.historyOutcomes = historyReport()
             return report
         }
         var mergeOutcomes: [Outcome] = []
@@ -179,12 +199,63 @@ public enum RekordboxWriter {
             }
         }
         if !merges.isEmpty, mergePlans.isEmpty, !drafts.contains(where: \.hasChanges), grids.isEmpty, gains.isEmpty,
-           tags.isEmpty, artworkPlans.isEmpty, playlistSteps.isEmpty {
+           tags.isEmpty, artworkPlans.isEmpty, playlistSteps.isEmpty, histories.isEmpty {
             var report = Report(outcomes: [], backup: nil, dryRun: dryRun, createdAt: stamp.json, finalUpdateCount: nil)
             report.mergeOutcomes = mergeOutcomes
             report.tagOutcomes = tagOutcomes.isEmpty ? nil : tagOutcomes
             report.artworkOutcomes = artworkOutcomes.isEmpty ? nil : artworkOutcomes
+            report.historyOutcomes = historyReport()
             return report
+        }
+        // 재생 기록: 막힐 기록(빈 이름·날짜·폴더 자리·곡·같은 곡의 다른 초안)은 백업 전에 거른다. 트랜잭션 안에서 한 번 더 본다.
+        // 같은 곡 행을 두 번 고치는 조합(태그·그림·합치기)은 확인하지 않아 그 기록을 막는다. 큐·그리드·분석은 같은 곡이어도 함께 쓴다.
+        let historyConflicts = HistoryConflicts(edited: Set(tags.map(\.trackUUID) + artworkPlans.map(\.uuid)),
+                                                merged: Set(mergePlans.flatMap { $0.members.map(\.trackUUID) }))
+        var historyPlans: [(index: Int, history: HistoryImport)] = []
+        if !histories.isEmpty {
+            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
+            defer { reader.close() }
+            var seen = Set<String>()
+            var historyTrackCounts: [String: Int] = [:]
+            var historyTrackIDs: [Int: Set<String>] = [:]
+            for (index, history) in histories {
+                do {
+                    guard seen.insert(history.id).inserted else {
+                        throw HistoryBlocked(reason: String(ui: "같은 기록이 한 번에 두 번 들어 있어 앞의 것만 쓰니 쓴 뒤 기록을 확인하세요"))
+                    }
+                    guard !live || (history.expectedLibraryID != nil && !history.trackIdentities.isEmpty) else {
+                        throw HistoryBlocked(reason: String(ui: "기록의 원본 곡 식별이 없어 라이브러리에 쓰지 않으니 DJCrate에서 USB 기록을 다시 가져온 뒤 쓰세요"))
+                    }
+                    let checked = try checkHistory(history, db: reader, conflicts: historyConflicts, environment: historyEnvironment)
+                    let ids = Set(checked.tracks.map(\.contentID))
+                    historyTrackIDs[index] = ids
+                    for id in ids { historyTrackCounts[id, default: 0] += 1 }
+                    historyPlans.append((index, history))
+                } catch let present as HistoryPresent {
+                    historyResults[index] = present.outcome
+                } catch let blocked as HistoryBlocked {
+                    historyResults[index] = .blocked(history, blocked.reason)
+                }
+            }
+            // 여러 기록의 같은 곡 재생 횟수 규칙은 아직 실험하지 않았다. 해당 기록 모두를 백업 전에 막는다.
+            let repeated = Set(historyTrackCounts.filter { $0.value > 1 }.map(\.key))
+            historyPlans.removeAll { plan in
+                guard !(historyTrackIDs[plan.index] ?? []).isDisjoint(with: repeated) else { return false }
+                historyResults[plan.index] = .blocked(plan.history, String(ui: "같은 곡이 여러 기록에 든 묶음은 재생 횟수 규칙을 확인하지 않아 쓰지 않으니 기록을 하나씩 쓰거나 rekordbox에서 직접 가져오세요"))
+                return true
+            }
+            // 기록이 모두 막혔고 다른 쓸 것도 없으면 백업을 뜨지 않는다.
+            if historyPlans.isEmpty, !drafts.contains(where: \.hasChanges), grids.isEmpty, gains.isEmpty, tags.isEmpty, artworkPlans.isEmpty,
+               playlistSteps.isEmpty, mergePlans.isEmpty {
+                let unchanged = drafts.map { Outcome(trackUUID: $0.trackUUID, title: $0.trackUUID, status: .unchanged,
+                                                       reason: nil, removed: 0, added: 0) }
+                var report = Report(outcomes: unchanged, backup: nil, dryRun: dryRun, createdAt: stamp.json, finalUpdateCount: nil)
+                report.tagOutcomes = tagOutcomes.isEmpty ? nil : tagOutcomes
+                report.artworkOutcomes = artworkOutcomes.isEmpty ? nil : artworkOutcomes
+                report.mergeOutcomes = mergeOutcomes.isEmpty ? nil : mergeOutcomes
+                report.historyOutcomes = historyReport()
+                return report
+            }
         }
         // 그리드 계획(파일을 읽기만 한다)
         var gridPlans: [RekordboxGridWriter.Plan] = []
@@ -264,6 +335,9 @@ public enum RekordboxWriter {
         var merged: [MergeExpectation] = []
         var mergeRenumbered = RekordboxTrackWriter.Renumbered()
         var mergeFiles: [URL] = []
+        var historyExpectations: [HistoryExpectation] = []
+        /// 기록을 쓴 곡 행(ContentID → 쓴 뒤 칸)
+        var historyPlays: [String: HistoryPlay] = [:]
         var finalUpdateCount: Int?
         var committed = false
         do {
@@ -479,6 +553,39 @@ public enum RekordboxWriter {
                                                removed: 0, added: 0))
                 }
             }
+            // 재생 기록은 그 뒤(#43): 곡 행 재생 횟수를 고쳐 그 곡의 가장 큰 변경 번호를 받는다. 같은 곡의 큐·그리드·분석 검증은 그 번호·횟수를 본다.
+            // 막힌 기록은 그 기록만 되돌린다(번호도).
+            for (index, history) in historyPlans {
+                try db.execute("SAVEPOINT djc_history")
+                let saved = (usn, historyPlays)
+                do {
+                    let result = try applyHistory(history, db: db, usn: &usn, stamp: stamp, conflicts: historyConflicts,
+                                                  environment: historyEnvironment, plays: &historyPlays)
+                    try db.execute("RELEASE djc_history")
+                    historyExpectations.append(result.expectation)
+                    historyResults[index] = HistoryOutcome(id: history.id, name: result.checked.name,
+                                                           historyID: dryRun ? nil : result.expectation.historyID, status: .written,
+                                                           reason: nil, entries: result.checked.tracks.count, skipped: result.checked.skipped)
+                    for track in result.checked.tracks {
+                        guard let play = historyPlays[track.contentID] else { continue }
+                        for i in written.indices where written[i].contentID == track.contentID { written[i].expectation.contentUSN = play.usn }
+                        for i in regridded.indices where regridded[i].contentID == track.contentID {
+                            regridded[i].content["TrackInfoUpdated"] = .text(play.trackInfoUpdated)
+                            regridded[i].content["rb_local_usn"] = .int(play.usn)
+                        }
+                    }
+                } catch let present as HistoryPresent {
+                    try db.execute("ROLLBACK TO djc_history")
+                    try db.execute("RELEASE djc_history")
+                    (usn, historyPlays) = saved
+                    historyResults[index] = present.outcome
+                } catch let blocked as HistoryBlocked {
+                    try db.execute("ROLLBACK TO djc_history")
+                    try db.execute("RELEASE djc_history")
+                    (usn, historyPlays) = saved
+                    historyResults[index] = .blocked(history, blocked.reason)
+                }
+            }
             // XML은 커밋 뒤에 적지만, 적을 수 있는지는 커밋 전에 본다.
             if !xmlChanges.isEmpty { updatedXML = try playlistXML.map { try applyPlaylistXML(xmlChanges, to: $0, now: now) } }
             if let backup, !merged.isEmpty {
@@ -492,7 +599,7 @@ public enum RekordboxWriter {
             finalUpdateCount = usn
 
             let databaseChanged = !written.isEmpty || !regridded.isEmpty || !gained.isEmpty || !attached.isEmpty || !tagged.isEmpty
-                || !drawn.isEmpty || playlistWork != nil || !merged.isEmpty
+                || !drawn.isEmpty || playlistWork != nil || !merged.isEmpty || !historyExpectations.isEmpty
             if dryRun || !databaseChanged {
                 try db.execute("ROLLBACK")
             } else {
@@ -514,8 +621,8 @@ public enum RekordboxWriter {
                 let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
                 defer { db.close() }
                 for item in written { try verify(db: db, contentID: item.contentID, item.expectation) }
-                // 분석을 붙인 뒤 태그도 쓴 곡은 곡 정보 변경 횟수를 태그 쪽에서 본다.
-                let taggedIDs = Set(tagged.map(\.contentID))
+                // 분석을 붙인 뒤 태그·재생 기록도 쓴 곡은 곡 정보 변경 횟수를 그쪽에서 본다.
+                let taggedIDs = Set(tagged.map(\.contentID)).union(historyPlays.keys)
                 for plan in attached { try verifyAttach(plan, db: db, skipsTrackInfo: taggedIDs.contains(plan.contentID)) }
                 for expectation in tagged { try verifyTags(db: db, expectation) }
                 for expectation in drawn { try verifyArtwork(db: db, expectation) }
@@ -524,6 +631,8 @@ public enum RekordboxWriter {
                 if let playlistWork { try verifyPlaylists(playlistWork, db: db) }
                 for expectation in merged { try verifyMerge(expectation, db: db) }
                 try RekordboxTrackWriter.verifyRenumbered(mergeRenumbered, db: db)
+                for expectation in historyExpectations { try verifyHistory(db: db, expectation) }
+                try verifyHistoryPlays(db: db, historyPlays)
             } catch {
                 throw recover(from: error, database: database, backup: backup, live: live)
             }
@@ -585,6 +694,7 @@ public enum RekordboxWriter {
         report.tagOutcomes = tagOutcomes.isEmpty ? nil : tagOutcomes
         report.mergeOutcomes = mergeOutcomes.isEmpty ? nil : mergeOutcomes
         report.artworkOutcomes = artworkOutcomes.isEmpty ? nil : artworkOutcomes
+        report.historyOutcomes = historyReport()
         if let backup {
             if let warning = saveReport(report, in: backup, shareRoot: gridRoot) { report.warnings = [warning] }
             // 되돌리면 DJCrate 초안도 살릴 수 있게 쓴 초안을 백업 옆에 둔다.

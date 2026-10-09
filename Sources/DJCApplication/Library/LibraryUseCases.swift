@@ -47,6 +47,8 @@ public struct LibraryPorts: Sendable {
     public var usbSnapshots: UsbSyncSnapshots
     /// 라이브 DB에서 읽기용 스냅샷 사본 뜨기(반영 세션도 같은 것을 쓴다)
     public var snapshots: SnapshotTaker
+    /// 읽은 사본의 USB 짝짓기 키(보존한 기기 재생 기록의 짝·쓴 표시 검증, #43)
+    public var localKeys: LocalLibraryKeysSource
     /// 같은 음원 곡 합치기 초안 만들기(사본에서 읽는다)
     public var prepareMerge: @Sendable (_ keeping: String, _ removing: [String], _ snapshot: URL) throws -> DuplicateMergeDraft
     /// 시계(반영 묶음 시각 등)·오늘 날짜(`yyyy-MM-dd`)와 새 열쇠(재생 목록 초안)
@@ -59,7 +61,7 @@ public struct LibraryPorts: Sendable {
                 staging: StagingStore, files: TrackFiles, analysis: StagingAnalysis, recovery: RecoveryReader,
                 playlistImports: PlaylistImportsStore, backups: RekordboxBackups, artwork: ArtworkFiles, relocate: RelocateSource,
                 query: LibraryQuerySource, appleMusic: AppleMusicFiles, liveShare: URL, linkedXML: URL, usbSnapshots: UsbSyncSnapshots,
-                snapshots: SnapshotTaker,
+                snapshots: SnapshotTaker, localKeys: LocalLibraryKeysSource,
                 prepareMerge: @escaping @Sendable (_ keeping: String, _ removing: [String], _ snapshot: URL) throws -> DuplicateMergeDraft,
                 now: @escaping @Sendable () -> Date, today: @escaping @Sendable () -> String, newKey: @escaping @Sendable () -> String) {
         self.source = source
@@ -84,6 +86,7 @@ public struct LibraryPorts: Sendable {
         self.linkedXML = linkedXML
         self.usbSnapshots = usbSnapshots
         self.snapshots = snapshots
+        self.localKeys = localKeys
         self.prepareMerge = prepareMerge
         self.now = now
         self.today = today
@@ -130,7 +133,7 @@ public struct LibraryUseCases: Sendable {
     public init(ports: LibraryPorts) {
         self.ports = ports
         load = LoadLibrary(source: ports.source, music: ports.music, drafts: ports.drafts, order: ports.musicOrder,
-                           snapshots: ports.snapshots, usbSnapshots: ports.usbSnapshots)
+                           snapshots: ports.snapshots, usbSnapshots: ports.usbSnapshots, localKeys: ports.localKeys)
         watch = WatchDrafts(drafts: ports.drafts)
         importXML = ImportXML(files: ports.xml, source: ports.source, drafts: ports.drafts, draftFiles: ports.draftFiles,
                               newKey: ports.newKey)

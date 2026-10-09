@@ -45,6 +45,10 @@ final class AppComposition {
 
     /// 옛 이름(anicue) 데이터·설정 옮기기. 앱이 시작할 때 목록·덱이 설정을 읽기 전에 한 번 부른다(`DJCrateApp`의 첫 속성)
     nonisolated static func migrateLegacyData() {
+        #if DEBUG
+        // 합성 사본 자가 테스트가 사용자 폴더·설정을 옮기지 않게 한다.
+        if CommandLine.arguments.contains("--history-selftest") { return }
+        #endif
         LegacyMigration.run()
     }
 
@@ -62,6 +66,8 @@ final class AppComposition {
         let store = LibraryStore(settings: settings, location: location, useCases: LibraryUseCases(ports: ports),
                                  resultHistory: WriteResultHistory(url: places.writeResult),
                                  launch: LibraryLaunchOptions(arguments: info.arguments))
+        // 재생 기록 쓰기 관문(#43): 사본 재현으로 연 쓰기 경로. 닫혀 있으면 보존·보기만 하고 쓰기 대기에 올리지 않는다
+        store.writesHistories = RekordboxWriter.writesHistories
         // 덱은 저장소와 같은 초안 저장소(같은 저장 큐)·설정을 쓴다(읽기는 메인 밖에서 실제 파일을 본다).
         let storage = DeckStorage(drafts: drafts, settings: settings)
         let deck = DeckModel(audio: DeckAudio(), storage: storage, assets: .live(drafts: drafts), analysis: deckAnalysis(), runsAnalysis: true)
@@ -80,7 +86,8 @@ final class AppComposition {
                                         apply: { [weak store] in store?.applyReflection($0) },
                                         retryTagSaves: { [weak store] in store?.retryFailedTagSaves() },
                                         preserveDamagedDrafts: { [weak store] in store?.preserveDamagedDraftFiles() ?? [] },
-                                        savePlaylistDraft: { [weak store] in store?.ensurePlaylistDraftSaved() ?? true })
+                                        savePlaylistDraft: { [weak store] in store?.ensurePlaylistDraftSaved() ?? true },
+                                        recordHistories: { [weak store] in await store?.recordWrittenHistories($0) })
         let lock = WriteLock(isLocked: { [weak store] in store?.isWritingRekordbox ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
                              stage: { [weak store] in store?.writeStage = $0 })

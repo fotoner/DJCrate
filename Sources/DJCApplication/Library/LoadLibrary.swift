@@ -15,15 +15,18 @@ public struct LoadLibrary: Sendable {
     let snapshots: SnapshotTaker
     /// 읽은 사본의 지문과 USB 작업 사본
     let usbSnapshots: UsbSyncSnapshots
+    /// 읽은 사본의 USB 짝짓기 키(보존한 기기 재생 기록의 짝·쓴 표시 검증, #43). nil이면 읽지 않는다
+    let localKeys: LocalLibraryKeysSource?
 
     public init(source: LibrarySource, music: MusicLibrarySource, drafts: DraftStore, order: ITunesRefreshCoordinator,
-                snapshots: SnapshotTaker, usbSnapshots: UsbSyncSnapshots) {
+                snapshots: SnapshotTaker, usbSnapshots: UsbSyncSnapshots, localKeys: LocalLibraryKeysSource? = nil) {
         self.source = source
         self.music = music
         self.drafts = drafts
         self.order = order
         self.snapshots = snapshots
         self.usbSnapshots = usbSnapshots
+        self.localKeys = localKeys
     }
 
     // MARK: - 어떤 사본을 읽을지
@@ -135,6 +138,8 @@ public struct LoadLibrary: Sendable {
         public var moved: [DamagedDraftFile]
         /// 읽는 동안 사본이 그대로였으면 그 지문(USB 작업 사본의 출처). 바뀌었거나 뜨지 못하면 nil
         public var usbSnapshot: UsbSyncSnapshotProvenance?
+        /// 읽는 동안 사본이 그대로였으면 그 사본의 USB 짝짓기 키. 바뀌었거나 읽지 못하면 nil
+        public var localKeys: LocalLibraryKeys?
     }
 
     /// 사본 하나를 읽는 흐름: 걸린 초안 저장을 끝내고 손상된 초안 파일을 옮긴 뒤(빈 값으로 읽어 덮지 않게, #174) 화면에 옮긴 파일을 넘기고,
@@ -153,8 +158,12 @@ public struct LoadLibrary: Sendable {
         guard await settled(moved) else { return nil }
         let before = await usbStamp(of: request.snapshot)
         let loaded = try await Self.background { try loader.read(request, progress: progress, capture: capture) }
+        let keys: LocalLibraryKeys?
+        if let localKeys { keys = try? await Self.background { try localKeys.load(request.snapshot) } } else { keys = nil }
         let after = await usbStamp(of: request.snapshot)
-        return Opened(loaded: loaded, moved: moved, usbSnapshot: before == after ? before : nil)
+        // 파일 교체가 읽기와 겹치면 일반 화면은 유지하되, 그 사본의 지문·짝짓기 키는 채택하지 않는다
+        let stable = before != nil && before == after
+        return Opened(loaded: loaded, moved: moved, usbSnapshot: before == after ? before : nil, localKeys: stable ? keys : nil)
     }
 
     /// 읽은 뒤 맞춘 초안

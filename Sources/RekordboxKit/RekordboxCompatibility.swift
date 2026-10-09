@@ -52,6 +52,12 @@ public enum RekordboxCompatibility {
                              "rb_local_deleted", "rb_local_synced", "usn", "rb_local_usn", "created_at", "updated_at"],
         "djmdCloudFilterPlaylist": ["ID", "PlaylistUUID", "Seq", "ParentID", "UUID", "rb_data_status", "rb_local_data_status",
                                     "rb_local_deleted", "rb_local_synced", "usn", "rb_local_usn", "created_at", "updated_at"],
+        // 재생 기록 쓰기(#43, 연·월 폴더·기록·항목 행을 새로 넣는다). 곡 행의 `DJPlayCount`·`TrackInfoUpdated`는 위 `djmdContent` 칸 전체에 있다.
+        // 곡 삭제가 읽고 고치는 `djmdSongHistory` 칸은 아래 `requiredColumns`에도 그대로 둔다(막힘 문구가 칸을 하나씩 적는다).
+        "djmdHistory": ["ID", "Seq", "Name", "Attribute", "ParentID", "DateCreated", "UUID", "rb_data_status", "rb_local_data_status",
+                        "rb_local_deleted", "rb_local_synced", "usn", "rb_local_usn", "created_at", "updated_at"],
+        "djmdSongHistory": ["ID", "HistoryID", "ContentID", "TrackNo", "UUID", "rb_data_status", "rb_local_data_status",
+                            "rb_local_deleted", "rb_local_synced", "usn", "rb_local_usn", "created_at", "updated_at"],
     ]
 
     /// 고치거나 읽는 칸: 있어야 한다

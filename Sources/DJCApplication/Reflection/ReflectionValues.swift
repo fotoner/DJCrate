@@ -33,9 +33,12 @@ public struct DraftWriteBatch: Sendable, Equatable {
     /// 함께 쓸 재생 목록 초안(없으면 nil). 결과(`playlistOutcomes`)가 편집 순서와 같다.
     public var playlists: PlaylistDraft?
     public var merges: [DuplicateMergeDraft]
+    /// 함께 쓸 쓰기 대기 재생 기록(#43, 가져온 차례). 결과는 `historyOutcomes`(기록 ID로 맞춘다)
+    public var histories: [HistoryImport]
 
     public init(drafts: [CueDraft] = [], grids: [GridDraft] = [], gains: [String: Double] = [:], tags: [TagDraft] = [],
-                artworks: [ArtworkEdit] = [], playlists: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = []) {
+                artworks: [ArtworkEdit] = [], playlists: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [],
+                histories: [HistoryImport] = []) {
         self.drafts = drafts
         self.grids = grids
         self.gains = gains
@@ -43,6 +46,7 @@ public struct DraftWriteBatch: Sendable, Equatable {
         self.artworks = artworks
         self.playlists = playlists
         self.merges = merges
+        self.histories = histories
     }
 
     /// 묶음이 건드리는 곡(합치기는 묶인 곡 모두)
@@ -66,23 +70,26 @@ public struct WritePreview: Sendable {
     }
 
     /// 미리 보기에서 쓸 수 있다고 나온 것만(분석을 붙이는 곡도 그리드 초안으로 쓴다). 재생 목록은 쓰는 편집이 있으면 초안 전체를 넘긴다.
+    /// 재생 기록도 곡 초안처럼 미리 보기에서 쓸 수 있던 기록만 넘긴다(막힌 기록은 쓰기 대기에 남는다).
     public var writableBatch: DraftWriteBatch {
         let cues = Set(report.written.map(\.trackUUID)), grids = Set((report.gridWritten + report.analysisWritten).map(\.trackUUID))
         let gains = Set(report.gainWritten.map(\.trackUUID)), tags = Set(report.tagWritten.map(\.trackUUID))
-        let artworks = Set(report.artworkWritten.map(\.trackUUID))
+        let artworks = Set(report.artworkWritten.map(\.trackUUID)), histories = Set(report.historyWritten.map(\.id))
         return DraftWriteBatch(drafts: batch.drafts.filter { cues.contains($0.trackUUID) },
                                grids: batch.grids.filter { grids.contains($0.trackUUID) },
                                gains: batch.gains.filter { gains.contains($0.key) },
                                tags: batch.tags.filter { tags.contains($0.trackUUID) },
                                artworks: batch.artworks.filter { artworks.contains($0.trackUUID) },
                                playlists: report.playlistWritten.isEmpty ? nil : batch.playlists,
-                               merges: batch.merges.filter { draft in report.mergeWritten.contains { $0.trackUUID == draft.id } })
+                               merges: batch.merges.filter { draft in report.mergeWritten.contains { $0.trackUUID == draft.id } },
+                               histories: batch.histories.filter { histories.contains($0.id) })
     }
 
     /// 쓸 것이 하나라도 있는지
     public var hasWritable: Bool {
         !report.written.isEmpty || !report.gridWritten.isEmpty || !report.analysisWritten.isEmpty || !report.gainWritten.isEmpty
             || !report.tagWritten.isEmpty || !report.artworkWritten.isEmpty || !report.playlistWritten.isEmpty || !report.mergeWritten.isEmpty
+            || !report.historyWritten.isEmpty
     }
 }
 

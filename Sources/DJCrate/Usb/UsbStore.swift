@@ -165,6 +165,9 @@ import Observation
     @ObservationIgnored private var journalChecked: Set<String> = []
     /// 목록·라이브러리·배지가 바뀐 뒤(보고 있는 USB 목록을 다시 만든다)
     @ObservationIgnored var onChange: (() -> Void)?
+    /// 라이브러리를 읽었거나 로컬 짝을 다시 계산한 뒤(볼륨, 그 라이브러리, USB content_id → 로컬 ContentID). 기기 재생 기록을 보존한다(#43).
+    /// 읽기 성공 즉시 짝 없이도 먼저 보존하고, 로컬 키가 준비되면 짝을 다시 계산해 알린다.
+    @ObservationIgnored var onLibraryEvaluated: ((UsbVolumeInfo, UsbLibrary, [Int: String]) -> Void)?
     /// 다 읽은 볼륨의 그때 정보(같으면 알림 때 다시 읽지 않는다)
     @ObservationIgnored private var readVolumes: [String: UsbVolumeInfo] = [:]
     /// 새로 읽기를 한 줄로 세운다(알림과 새로고침이 겹쳐도 차례로)
@@ -200,26 +203,26 @@ import Observation
         await enqueue(force: true)
     }
 
-    /// 볼륨이 붙거나 떨어질 때마다 새로 본다. 새 볼륨·바뀐 볼륨만 읽는다
+    /// 볼륨 이벤트의 목록을 채택한다. 중간 분리 알림이 합쳐져도 같은 정보의 재연결 USB를 다시 읽는다.
     func watch() async {
         await enqueue(force: false)
-        for await _ in host.volumeEvents {
-            await enqueue(force: false)
+        for await volumes in host.volumeEvents {
+            await enqueue(force: true, listedVolumes: volumes)
         }
     }
 
-    private func enqueue(force: Bool) async {
+    private func enqueue(force: Bool, listedVolumes: [UsbVolumeInfo]? = nil) async {
+        let listed = listedVolumes ?? host.volumes()
         let previous = chain
         let task = Task { @MainActor [weak self] in
             await previous?.value
-            await self?.update(force: force)
+            await self?.update(force: force, all: listed)
         }
         chain = task
         await task.value
     }
 
-    private func update(force: Bool) async {
-        let all = host.volumes()
+    private func update(force: Bool, all: [UsbVolumeInfo]) async {
         // 시험 실행은 실물 볼륨을 이름도 보이지 않게 뺀다(화면 캡처에 남지 않게)
         let visible = (readPolicy == .diskImagesOnly ? all.filter(\.isDiskImage) : all).sorted { lhs, rhs in
             let order = lhs.name.localizedStandardCompare(rhs.name)
@@ -273,12 +276,16 @@ import Observation
                 shapes[key] = .emptyExportable
             } else {
                 let library = try await host.library(for: volume)
+                // 로컬 키 계산을 기다리다 USB가 빠져도 읽은 기기 기록은 잃지 않는다.
+                onLibraryEvaluated?(volume, library, [:])
                 let evaluated = await badges(for: library)
                 infos[key] = info
                 libraries[key] = library
                 syncBadges[key] = evaluated.badges
                 localMatches[key] = evaluated.matches
                 shapes[key] = .rekordbox(formats: formats)
+                // 아래 기다림 전에 알린다(그 사이 볼륨이 빠지면 이 라이브러리로 부르지 않게)
+                onLibraryEvaluated?(volume, library, evaluated.matches)
                 await reloadDraft(key)
                 await validateSyncDraftAfterRead(key)
             }
@@ -317,14 +324,19 @@ import Observation
             if libraries[key] == library {
                 syncBadges[key] = evaluated.badges
                 localMatches[key] = evaluated.matches
+                if let mounted = self.volume(key) { onLibraryEvaluated?(mounted, library, evaluated.matches) }
             }
         }
         onChange?()
     }
 
-    private func badges(for library: UsbLibrary) async -> (badges: [Int: UsbSyncStatus], matches: [Int: String]) {
+    private func badges(for library: UsbLibrary) async -> UsbLocalEvaluation {
         let localLibrary = localLibrary
-        return await Task.detached(priority: .utility) { UsbSyncBadges.evaluate(library: library, local: localLibrary()) }.value
+        return await Task.detached(priority: .utility) { () -> UsbLocalEvaluation in
+            let local = localLibrary()
+            let evaluated = UsbSyncBadges.evaluate(library: library, local: local)
+            return UsbLocalEvaluation(badges: evaluated.badges, matches: evaluated.matches)
+        }.value
     }
 
     static func message(for error: any Error) -> String {
@@ -538,4 +550,10 @@ struct UsbAbsentVolume: Equatable {
 struct UsbSyncSheetRequest: Equatable, Identifiable {
     var volumeKey: String
     var id: String { volumeKey }
+}
+
+/// 로컬 곡과 견준 결과. 로컬 키를 몰랐으면(스냅샷을 아직 읽지 않음) 배지·짝이 비어 있다.
+private struct UsbLocalEvaluation: Sendable {
+    var badges: [Int: UsbSyncStatus]
+    var matches: [Int: String]
 }
