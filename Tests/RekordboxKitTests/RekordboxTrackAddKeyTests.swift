@@ -66,25 +66,17 @@ struct RekordboxTrackAddKeyTests {
     }
 
     func rawTables(_ fixture: RekordboxFixture) throws -> [String: [[String: String]]] {
-        let db = try CipherDatabase(path: fixture.database.path, key: RekordboxKey.derive())
-        defer { db.close() }
-        var names: [String] = []
-        try db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name") {
-            if let name = $0.string(0), name != "agentRegistry" { names.append(name) }
-        }
-        var tables: [String: [[String: String]]] = [:]
-        for name in names {
-            var columns: [String] = []
-            try db.query("PRAGMA table_info(\(name))") { if let column = $0.string(1) { columns.append(column) } }
-            var rows: [[String: String]] = []
-            try db.query("SELECT \(columns.map { "quote(\"\($0)\")" }.joined(separator: ", ")) FROM \(name)") { r in
-                var row: [String: String] = [:]
-                for (i, column) in columns.enumerated() { row[column] = r.string(Int32(i)) ?? "NULL" }
-                rows.append(row)
+        // 픽스처 연결 하나로 읽는다(제품 연결은 열 때마다 키를 풀어 느리다)
+        try fixture.session { db in
+            let names = try db.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+                .compactMap { $0["name"] }.filter { $0 != "agentRegistry" }
+            var tables: [String: [[String: String]]] = [:]
+            for name in names {
+                let columns = try db.rows("PRAGMA table_info(\(name))").compactMap { $0["name"] }
+                tables[name] = try db.rows("SELECT \(columns.map { "quote(\"\($0)\") AS \"\($0)\"" }.joined(separator: ", ")) FROM \(name)")
             }
-            tables[name] = rows
+            return tables
         }
-        return tables
     }
 
     func dump(_ fixture: RekordboxFixture, before: [String: Set<String>], contentID: String, uuid: String) throws -> Dump {

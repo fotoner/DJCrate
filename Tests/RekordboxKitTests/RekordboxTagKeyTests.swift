@@ -38,23 +38,16 @@ extension RekordboxTagWriterTests {
         return (fixture, track)
     }
 
-    /// `djmdContent`와 변경 카운터 말고 모든 표(`djmdKey` 포함)의 내용. 연결 하나로 읽는다(연결마다 키를 풀어 느리다).
+    /// `djmdContent`와 변경 카운터 말고 모든 표(`djmdKey` 포함)의 내용. 픽스처 연결 하나로 읽는다(제품 연결은 열 때마다 키를 풀어 느리다).
     func otherTables(_ fixture: RekordboxFixture) throws -> [String: [[String: String]]] {
-        let db = try CipherDatabase(path: fixture.database.path, key: RekordboxKey.derive())
-        defer { db.close() }
-        var names: [String] = []
-        try db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'") { if let name = $0.string(0) { names.append(name) } }
-        var tables: [String: [[String: String]]] = [:]
-        for name in names where name != "djmdContent" && name != "agentRegistry" {
-            var rows: [[String: String]] = []
-            try db.query("SELECT * FROM \(name) ORDER BY rowid") { r in
-                var row: [String: String] = [:]
-                for i in 0..<r.count { row[r.name(Int32(i))] = r.string(Int32(i)) ?? "NULL" }
-                rows.append(row)
+        try fixture.session { db in
+            let names = try db.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").compactMap { $0["name"] }
+            var tables: [String: [[String: String]]] = [:]
+            for name in names where name != "djmdContent" && name != "agentRegistry" {
+                tables[name] = try db.rows("SELECT * FROM \(name) ORDER BY rowid")
             }
-            tables[name] = rows
+            return tables
         }
-        return tables
     }
 
     func rawKey(_ fixture: RekordboxFixture, _ id: String = "500") throws -> (value: String, type: String) {
