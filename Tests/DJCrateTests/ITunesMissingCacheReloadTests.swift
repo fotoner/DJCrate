@@ -141,7 +141,7 @@ struct ITunesMissingCacheReloadTests {
             await store.load(snapshot: fixture.database, quiet: true, refreshITunes: true,
                              captureITunes: {
                                  started.withLock { $0 = true }
-                                 resume.wait()
+                                 resume.waitOffPool()
                                  return ITunesLibrarySnapshot(status: .unavailable)
                              })
         }

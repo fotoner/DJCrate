@@ -35,6 +35,7 @@ struct AudioStartupTests {
                 if main { onMain = true }
             }
             guard !main else { return }
+            expectBlockingOffPool()
             _ = semaphore.wait(timeout: .now() + valve)
             lock.withLock { finished = true }
         }

@@ -16,7 +16,7 @@ private final class ITunesSyncCaptureGate: @unchecked Sendable {
     func pause() {
         started.signal()
         // 쓰기가 얼마나 걸리든 명시적으로 해제하기 전에는 캡처를 끝내지 않는다.
-        resume.wait()
+        resume.waitOffPool()
     }
 
     func release() { resume.signal() }
@@ -479,7 +479,7 @@ struct ITunesSyncCaptureGateTests {
                 await withCheckedContinuation { continuation in
                     DispatchQueue.global().async {
                         writeStarted.signal()
-                        writeResume.wait()
+                        writeResume.waitOffPool()
                         continuation.resume()
                     }
                 }

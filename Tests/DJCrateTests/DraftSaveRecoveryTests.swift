@@ -137,7 +137,7 @@ struct DraftSaveRecoveryTests {
             let number = attempt.withLock { $0 += 1; return $0 }
             if number == 1 { throw CocoaError(.fileWriteNoPermission) }
             started.signal()
-            finish.wait()
+            finish.waitOffPool()
             try CueDraftStore.save(draft, directory: directory)
         })
         writer.flush()

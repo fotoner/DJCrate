@@ -60,12 +60,12 @@ import Foundation
 
     func info(for volume: UsbVolumeInfo) async throws -> UsbInfo {
         let io = io
-        return try await Task.detached(priority: .userInitiated) { try io.info(volume) }.value
+        return try await BlockingWork.run { try io.info(volume) }
     }
 
     func library(for volume: UsbVolumeInfo) async throws -> UsbLibrary {
         let io = io
-        return try await Task.detached(priority: .userInitiated) { try io.library(volume) }.value
+        return try await BlockingWork.run { try io.library(volume) }
     }
 
     func eject(_ volume: UsbVolumeInfo) async throws {

@@ -18,7 +18,7 @@ private final class StalledMusic: Sendable {
     var started: Bool { calls.withLock { $0 > 0 } }
     func capture() -> ITunesLibrarySnapshot {
         calls.withLock { $0 += 1 }
-        gate.wait()
+        gate.waitOffPool()
         return result
     }
     /// 잘못 다시 조회해도 시험이 멈추지 않게 넉넉히 푼다.
@@ -70,7 +70,7 @@ struct InitialITunesCacheLoadingTests {
         let loading = Task {
             await store.loadInitial(snapshotDirectory: directory, captureITunes: {
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return newer
             })
             completed.withLock { $0 = true }
@@ -118,7 +118,7 @@ struct InitialITunesCacheLoadingTests {
         let loading = Task {
             await store.loadInitial(snapshotDirectory: directory, captureITunes: {
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "늦은 목록")])
             })
             completed.withLock { $0 = true }
@@ -274,7 +274,7 @@ struct InitialITunesCacheLoadingTests {
             await store.loadInitial(snapshotDirectory: directory, captureITunes: {
                 calls.withLock { $0 += 1 }
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return fresh
             })
             initialReturned.withLock { $0 = true }
@@ -313,7 +313,7 @@ struct InitialITunesCacheLoadingTests {
         let loading = Task {
             await store.loadInitial(snapshotDirectory: directory, captureITunes: {
                 started.withLock { $0 = true }
-                resume.wait()
+                resume.waitOffPool()
                 return ITunesLibrarySnapshot()
             })
             returned.withLock { $0 = true }

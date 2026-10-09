@@ -109,9 +109,9 @@ struct UsbEditActions {
         let usb = usb
         return await usb.draftQueue(volumeKey) {
             let volume = usb.volume(volumeKey)
-            let result = await Task.detached(priority: .userInitiated) { () -> Result<(edits: [UsbLibraryEdit], changed: UsbDraftEditing.Change?), any Error> in
+            let result = await BlockingWork.run { () -> Result<(edits: [UsbLibraryEdit], changed: UsbDraftEditing.Change?), any Error> in
                 Result { try editing.mutate(volumeKey, volume: volume, change) }
-            }.value
+            }
             switch result {
             case let .success((edits, changed)):
                 // 그대로여도 파일과 다르면(다른 곳에서 고침) 맞춘다
@@ -172,7 +172,7 @@ struct UsbEditActions {
     /// 그 볼륨의 초안(없으면 nil)
     func draft(volumeKey: String) async -> UsbDraft? {
         guard let files = usb.drafts else { return nil }
-        return await Task.detached(priority: .userInitiated) { try? files.load(volumeKey) }.value ?? nil
+        return await BlockingWork.run { try? files.load(volumeKey) } ?? nil
     }
 
     /// 편집 하나를 초안에서 뺀다(번호는 1부터). `matching`을 주면 그 자리의 편집이 같을 때만 뺀다(그 사이 초안이 바뀌었으면 그대로).
@@ -240,9 +240,9 @@ struct UsbEditActions {
         let usb = usb
         let result = await usb.draftQueue(volumeKey) { () -> Result<UsbDraft?, any Error> in
             let transform = change()
-            let result = await Task.detached(priority: .userInitiated) { () -> Result<(old: UsbDraft?, new: UsbDraft?), any Error> in
+            let result = await BlockingWork.run { () -> Result<(old: UsbDraft?, new: UsbDraft?), any Error> in
                 Result { try editing.replace(volumeKey, transform) }
-            }.value
+            }
             switch result {
             case let .success((old, new)):
                 usb.setDraft(new?.edits ?? [], for: volumeKey)

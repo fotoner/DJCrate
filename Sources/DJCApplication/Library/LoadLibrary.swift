@@ -499,13 +499,9 @@ public struct LoadLibrary: Sendable {
 }
 
 extension LoadLibrary {
-    /// 동기 읽기·복사를 메인 밖 스레드에서 돌린다. 기다리는 동안 협력 스레드 풀을 붙잡지 않는다.
+    /// 동기 읽기·복사를 메인 밖 스레드에서 돌린다. 기다리는 동안 협력 스레드 풀을 붙잡지 않는다(`BlockingWork`).
     public static func background<Value: Sendable>(qos: DispatchQoS.QoSClass = .userInitiated,
                                                    _ operation: @escaping @Sendable () throws -> Value) async throws -> Value {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: qos).async {
-                continuation.resume(with: Result(catching: operation))
-            }
-        }
+        try await BlockingWork.run(qos: qos, operation)
     }
 }

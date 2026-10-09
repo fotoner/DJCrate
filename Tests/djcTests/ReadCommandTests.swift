@@ -19,6 +19,8 @@ struct ReadCommandTests {
         process.environment = ProcessInfo.processInfo.environment.merging([
             "DJC_HOME": fixture.root.appending(path: "home").path,
             "DJC_REKORDBOX_DIR": fixture.root.path,
+            // 출력 문구를 비교하므로 실행 환경의 로캘(CI 러너는 en_US)과 상관없이 한국어로 낸다
+            "DJC_LANG": "ko",
         ]) { _, new in new }
         process.standardOutput = out; process.standardError = err
         try process.run()
