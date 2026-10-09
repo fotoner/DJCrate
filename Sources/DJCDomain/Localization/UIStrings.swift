@@ -38,6 +38,14 @@ public enum UIStrings {
     }
 }
 
+extension UIStrings {
+    /// 화면에 보이는 이름을 사람이 기대하는 순서로 비교한다(`localizedStandardCompare`와 같은 규칙).
+    /// 시스템 로캘 대신 화면 문구 언어(`locale`)를 따라, 시험·CLI에서도 실행 환경과 상관없이 같은 순서가 나온다.
+    public static func standardOrder(_ lhs: String, _ rhs: String, locale: Locale = UIStrings.locale) -> ComparisonResult {
+        lhs.compare(rhs, options: [.caseInsensitive, .numeric, .widthInsensitive, .forcedOrdering], range: nil, locale: locale)
+    }
+}
+
 extension String {
     /// 카탈로그에서 찾은 문구. 원문(키)은 한국어이고, 번역이 없으면 원문이 그대로 나온다.
     /// 키는 컴파일러가 뽑아 `scripts/i18n.swift`가 카탈로그와 맞춘다(docs/i18n.md).
