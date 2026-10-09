@@ -44,8 +44,9 @@ jobs:
           || '["coverage", "release"]') }}
     # macOS 27에서 테스트를 실행하는 호스티드 이미지. 근거·제약은 docs/ci.md.
     runs-on: xcode-27
-    # 검사 단계 제한(40분)보다 길게 두어 요약·로그 보존·캐시 저장이 돈다. 멈춘 시험은 check.sh가 5분 만에 끝낸다.
-    timeout-minutes: 50
+    # 검사 단계 제한(45분)보다 길게 두어 요약·로그 보존·캐시 저장이 돈다. 멈춘 시험은 check.sh가 5분 만에 끝낸다.
+    # 캐시 없이 한 러너에서 전체로 넓힌 changed가 가장 길다(예상 30~35분).
+    timeout-minutes: 55
     defaults:
       run:
         shell: bash
@@ -127,7 +128,7 @@ jobs:
 
       - name: 분담한 검사 실행
         id: check
-        timeout-minutes: 40
+        timeout-minutes: 45
         env:
           CHANGED_BASE: ${{ steps.base.outputs.base }}
           BASE_REASON: ${{ steps.base.outputs.reason }}
