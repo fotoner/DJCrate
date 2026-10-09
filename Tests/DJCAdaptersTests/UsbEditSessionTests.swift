@@ -22,10 +22,7 @@ struct UsbEditSessionTests {
 
         /// 곡 101·102·103과 목록 900을 내보낸 USB(곡 id 1·2·3, 목록 id 1)
         init() throws {
-            fixture = try UsbEditFixture()
-            try fixture.addLocal(["101", "102", "103"])
-            try fixture.local.local.addPlaylist(id: "900", name: "합성 목록", seq: 1, contentIDs: ["101", "102", "103"])
-            try fixture.export(tracks: [], playlists: ["900"])
+            fixture = try UsbEditFixture.exported(["101", "102", "103"], playlist: true)
             copies = fixture.usb.home.appending(path: "usb-snapshots")
             draftsFolder = fixture.usb.home.appending(path: "usb-drafts")
             drafts = UsbDraftStore(directory: draftsFolder)

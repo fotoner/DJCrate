@@ -1,6 +1,7 @@
 import DJCDomain
 import Foundation
 import RekordboxKit
+import Synchronization
 
 /// USB 수정 시험 재료: 합성 로컬 라이브러리(`UsbExportFixture`)와 임시 폴더 USB(`UsbChangeSetFixture`, 디스크 이미지로 보이는 가짜 가드).
 /// USB는 DJCrate 내보내기 경로로 만들거나(`export`) rekordbox가 만든 것 같은 합성 USB(`UsbLibraryFixture`)를 둔다.
@@ -17,6 +18,73 @@ public final class UsbEditFixture: @unchecked Sendable {
     }
 
     deinit { usb.remove() }
+
+    // MARK: - 내보낸 USB 재사용
+
+    /// 로컬 곡 `ids`(아티스트·앨범 하나)와, `playlist`면 그 곡의 목록(900)을 DJCrate 내보내기로 넣은 USB.
+    /// `playlist`면 USB 목록 id 1, 곡 id는 1·2·3… 순서다. 로컬 라이브러리는 시험마다 새로 만든다.
+    ///
+    /// 내보내기(제품 경로, DB를 열 때마다 키 유도)가 USB 수정 시험 준비 시간의 대부분이었다. 그래서 같은 설정의 USB는 프로세스에서 한 번만
+    /// 내보내고 시험마다 USB·보관 폴더를 복사한다. 같은 설정으로 두 번 내보낸 USB는 파일과 OneLibrary 행이 같다. 로컬 곡 UUID와 음원 폴더
+    /// 이름이 달라도 같다(#167에서 확인). 내보내기 자체는 `UsbExportAssemblyTests`·`UsbWriterTests`가 본다.
+    public static func exported(_ ids: [String] = ["101", "102", "103"], playlist: Bool = true) throws -> UsbEditFixture {
+        let env = try UsbEditFixture()
+        try env.addLocal(ids)
+        if playlist { try env.local.local.addPlaylist(id: "900", name: "합성 목록", seq: 1, contentIDs: ids) }
+        try env.adopt(try exportTemplate(ids, playlist: playlist))
+        return env
+    }
+
+    /// 설정마다 한 번 내보낸 USB(프로세스가 끝날 때 지운다)
+    private static let templates = Mutex<[String: UsbEditFixture]>([:])
+
+    private static func exportTemplate(_ ids: [String], playlist: Bool) throws -> UsbEditFixture {
+        try templates.withLock { cache in
+            let key = ids.joined(separator: ",") + (playlist ? " 목록" : "")
+            if let template = cache[key] { return template }
+            if cache.isEmpty {
+                atexit {
+                    UsbEditFixture.templates.withLock { cache in
+                        for template in cache.values {
+                            template.usb.remove()
+                            try? FileManager.default.removeItem(at: template.local.local.root)
+                        }
+                    }
+                }
+            }
+            let template = try UsbEditFixture()
+            try template.addLocal(ids)
+            if playlist {
+                try template.local.local.addPlaylist(id: "900", name: "합성 목록", seq: 1, contentIDs: ids)
+                try template.export(tracks: [], playlists: ["900"])
+            } else {
+                try template.export(tracks: ids)
+            }
+            cache[key] = template
+            return template
+        }
+    }
+
+    /// 템플릿의 USB와 보관 폴더(저널·백업)를 이 재료로 복사한다. 저널 속 템플릿 폴더 경로는 이 재료의 폴더로 바꾼다
+    /// (복원이 템플릿 폴더를 건드리지 않게).
+    private func adopt(_ template: UsbEditFixture) throws {
+        let files = FileManager.default
+        for (from, to) in [(template.usb.usbURL, usb.usbURL), (template.usb.home, usb.home)] {
+            try files.removeItem(at: to)
+            try files.copyItem(at: from, to: to)
+        }
+        // 임시 폴더는 `/var/…`와 `/private/var/…` 두 표기로, JSON은 `/`를 `\/`로 적을 수 있다
+        var replacements: [(String, String)] = []
+        for (old, new) in [(template.usb.folder.path, usb.folder.path), ("/private" + template.usb.folder.path, "/private" + usb.folder.path)] {
+            replacements += [(old, new), (old.replacingOccurrences(of: "/", with: "\\/"), new.replacingOccurrences(of: "/", with: "\\/"))]
+        }
+        guard let walker = files.enumerator(at: usb.home, includingPropertiesForKeys: nil) else { return }
+        for case let url as URL in walker where url.pathExtension == "json" {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            let replaced = replacements.reduce(text) { $0.replacingOccurrences(of: $1.0, with: $1.1) }
+            if replaced != text { try replaced.write(to: url, atomically: true, encoding: .utf8) }
+        }
+    }
 
     /// 곡 여럿(아티스트·앨범은 하나를 함께 쓴다)
     public func addLocal(_ ids: [String], artist: (id: String, name: String) = ("1", "합성 아티스트"),
