@@ -6,7 +6,10 @@
 - 하네스(scripts/hooks/**·.claude/**·scripts/test-harness.py·scripts/check-docs.py·scripts/check-prose.py·
   scripts/prose-*.txt·scripts/worker-lock.sh) → 시험 없음(scripts/test-harness.py·scripts/check-docs.py 중 있는 것, 문서 검사는 check-prose.py와 함께).
 - 문서(*.md·docs/**·skills/**) → 시험 없음(scripts/check-docs.py가 있으면 그것).
-- 검사 스크립트·모듈 경계 빚 목록·번역 카탈로그 → 해당 가벼운 검사.
+- 검사 스크립트·모듈 경계 빚 목록·번역 카탈로그 → 해당 가벼운 검사. scripts/test-check.py가 시험하는 스크립트
+  (check.sh·check-imports.py·ci-base.sh 등)는 그 회귀도 돈다. check.sh는 전체로도 넓힌다.
+- Sources/**·Tests/**가 바뀌면 실제 지도로 안전 시험 고르기를 확인한다(test-check.py의 affected-real-map·safety-, 몇 초).
+  파일을 옮기면 지도 when이 다른 파일에 맞아 --check-map은 통과해도 안전 Suite를 못 고를 수 있다.
 - Tests/Support/<재료>/** → 그 재료 타깃을 쓰는 시험 타깃 전체.
 - Tests/<타깃>/X.swift → 그 파일의 Suite(Suite가 없는 도우미·가짜·재료 파일이면 그 타깃 전체).
 - Sources/<모듈>/X.swift → 그 파일이 선언한 타입(파일 이름의 `+꼬리`를 뗀 이름 포함)을 쓰는 Suite. 모듈에 의존하는
@@ -17,8 +20,8 @@
 - 어느 규칙에도 맞지 않는 파일 → 전체 검사로 넓힌다.
 - 고른 Suite가 전체의 절반을 넘으면 전체 검사로 넓힌다.
 
-기호 이름 grep이라 놓치는 경우가 있다(프로토콜 증인·전역 함수·다른 타입을 거쳐 닿는 동작 변화). 그 몫은 합치기 전 전체 검사와
-CI가 덮는다.
+기호 이름 grep이라 놓치는 경우가 있다(프로토콜 증인·전역 함수·다른 타입을 거쳐 닿는 동작 변화). 그 몫은 릴리스 전체 검사
+(main·release/* CI)가 덮는다.
 """
 import argparse
 import fnmatch
@@ -43,10 +46,12 @@ DOCS = ["*.md", "**/*.md", "docs/**", "skills/**", "LICENSE*"]
 HARNESS = ["scripts/hooks/**", ".claude/**", "scripts/test-harness.py", "scripts/check-docs.py", "scripts/check-prose.py",
            "scripts/prose-*.txt", "scripts/worker-lock.sh"]
 IMPORT_FILES = ["scripts/check-imports.py", "scripts/import-debt.txt"]
-SCRIPT_FILES = ["scripts/test-check.py", "scripts/affected-tests.py", "scripts/test-map.txt"]
+# scripts/test-check.py가 시험하는 스크립트. CI에 늘 돌던 test-check.py 단계를 없앴으므로 이것이 바뀔 때 돈다.
+SCRIPT_FILES = ["scripts/test-check.py", "scripts/affected-tests.py", "scripts/test-map.txt", "scripts/check.sh",
+                "scripts/check-imports.py", "scripts/ci-base.sh", "scripts/ci-mtimes.py"]
 TRANSLATION_FILES = ["scripts/i18n.swift", "**/*.xcstrings"]
 HALF = 0.5
-CHECKS = ["imports", "translations", "write-coverage", "docs", "harness", "scripts"]
+CHECKS = ["imports", "translations", "write-coverage", "docs", "harness", "scripts", "selection"]
 
 TOP_DECLARATION = re.compile(
     r"^(?:@[\w.]+(?:\([^)]*\))?\s+)*(?:(?:public|internal|package|private|fileprivate|open|final|indirect|"
@@ -460,7 +465,9 @@ def make_plan(files, base, index, groups, needs):
         group_hits = [g for g in groups if matches(path, g["paths"])]
         if matches(path, WIDEN):
             plan.widen_to_full(f"{path}이(가) 바뀌었습니다")
-            plan.add(path, "전체 검사로 넓힘")
+            # 전체 검사는 test-check.py를 돌지 않으므로 check.sh 자신의 회귀는 따로 켠다
+            plan.checks["scripts"] = plan.checks["scripts"] or path in SCRIPT_FILES
+            plan.add(path, "전체 검사로 넓힘" + (", 검사 스크립트 회귀(scripts/test-check.py)" if path in SCRIPT_FILES else ""))
             continue
         if matches(path, HARNESS):
             handled = True
@@ -477,7 +484,8 @@ def make_plan(files, base, index, groups, needs):
         elif path in IMPORT_FILES:
             handled = True
             plan.checks["imports"] = True
-            plan.add(path, "모듈 경계 규칙 검사")
+            plan.checks["scripts"] = plan.checks["scripts"] or path in SCRIPT_FILES
+            plan.add(path, "모듈 경계 규칙 검사" + (", 검사 스크립트 회귀(scripts/test-check.py)" if path in SCRIPT_FILES else ""))
         elif path in SCRIPT_FILES:
             handled = True
             plan.checks["scripts"] = True
@@ -515,6 +523,10 @@ def make_plan(files, base, index, groups, needs):
         if not handled:
             plan.widen_to_full(f"규칙에 없는 파일 {path}이(가) 바뀌었습니다")
             plan.add(path, "모르는 파일: 전체 검사로 넓힘")
+    # 안전 시험 고르기 확인: 늘 돌던 CI의 test-check.py 단계가 없어져, Swift를 바꾸면 실제 지도 경우만 따로 돈다
+    if any(p.startswith(("Sources/", "Tests/")) for p in files) and (ROOT / "scripts/test-check.py").exists():
+        plan.checks["selection"] = True
+        plan.notes.append("Swift를 바꿔 실제 지도로 안전 시험 선택을 확인합니다(scripts/test-check.py affected-real-map safety-)")
     total = sum(index.suite_count(t) for t in index.tests)
     selected = sum(index.suite_count(t) for t in plan.whole)
     selected += sum(len(s) for t, s in plan.suites.items() if t not in plan.whole)

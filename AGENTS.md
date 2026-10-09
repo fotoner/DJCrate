@@ -39,12 +39,12 @@ rekordbox 라이브러리와 사용자 데이터를 절대 깨뜨리지 않는�
 ## 명령
 
 ```bash
-python3 scripts/check-imports.py        # 모듈 경계 검사(1~2초)
-swift scripts/i18n.swift sync           # 화면 문구로 String Catalog 맞추기, 뒤에 en·ja 번역을 채운다
-swift build                             # 디버그 빌드
-.build/debug/djc                        # CLI 명령 목록(자세히는 docs/cli.md)
-.build/debug/djc compat                 # rekordbox 버전·DB 구조가 쓰기를 확인한 모양인지(읽기 전용)
-scripts/build-app.sh [--install]        # dist/DJCrate.app, --install이면 /Applications에
+python3 scripts/check-imports.py  # 모듈 경계 검사(1~2초)
+swift scripts/i18n.swift sync     # 화면 문구로 String Catalog 맞추기, 뒤에 en·ja 번역을 채운다
+swift build                       # 디버그 빌드
+.build/debug/djc                  # CLI 명령 목록(자세히는 docs/cli.md)
+.build/debug/djc compat           # rekordbox 버전·DB 구조가 쓰기를 확인한 모양인지(읽기 전용)
+scripts/build-app.sh [--install]  # dist/DJCrate.app, --install이면 /Applications에
 ```
 
 ## 검증
@@ -55,16 +55,16 @@ TDD로 일한다. 버그는 실패하는 시험으로 먼저 재현한 뒤 고�
 | 단계 | 언제 | 명령 |
 |---|---|---|
 | 편집 중 | 시험을 쓰고 고칠 때 | `scripts/check.sh --quick --filter '<Suite>'`(시험·Suite 하나) |
-| 작업 끝 | "됐다"고 말하기 전 | `scripts/check.sh --changed`(바꾼 파일에 닿는 시험·검사만) |
-| 합치기 전·CI | `dev`에 합치기 직전 한 번, PR·`main` CI | `scripts/check.sh`(릴리스 빌드·번역·전체 시험·커버리지 쓰기 80%·코어 60%) |
+| 작업 끝 | "됐다"고 말하기 전, `dev` 합치기 직전, PR·`dev` CI | `scripts/check.sh --changed`(바꾼 파일에 닿는 시험·검사만) |
+| 릴리스 | `main`·`release/*` CI, 수동 실행, 사용자 요청 | `scripts/check.sh`(릴리스 빌드·번역·전체 시험·커버리지 쓰기 80%·코어 60%) |
 | 특수 | SQLCipher 초기화(`CipherDatabase`)·`CipherLab`·cold-open 경쟁 | `scripts/check.sh --stress`도 반드시 통과 |
 
 - `swift test`를 직접 돌리면 `DJC_HOME`과 `DJC_REKORDBOX_DIR`을 임시 폴더로 준다.
 - `scripts/check.sh`가 종료 코드 3이나 4를 내면 작업을 멈춘 뒤 사용자에게 알린다. 3은 실제 rekordbox 파일이, 4는 DJCrate 사용자 폴더·로그 폴더·환경설정이 바뀌었다는 뜻이다.
 - 같은 checkout에서 Swift 빌드·시험·성능 측정을 동시에 돌리지 않는다(잠금: `docs/ci.md`).
 - 같은 작업 트리에서 통과한 검사는 다시 돌리지 않는다(`--no-reuse`).
-- 결과는 추측하지 않는다. 명령 출력의 끝 요약, 종료 코드, 로그 폴더로 보고한다.
-- 보고 순서, 전체 검사를 돌릴 때, 넓히기·재사용은 스킬 `verify-change`에 있다.
+- 결과는 추측하지 않는다. 끝 요약·종료 코드·로그 폴더로 보고한다.
+- `--changed`가 놓친 회귀는 릴리스 전체 검사가 잡는다(넓히기·보고: 스킬 `verify-change`).
 - 소리·실제 UI·rekordbox 쓰기 전 과정은 스킬 `app-selftest`로, USB 쓰기 전 과정은 스킬 `usb-image-check`로 확인한다.
 
 ## 지도
