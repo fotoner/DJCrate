@@ -6,7 +6,7 @@ import Foundation
 import Testing
 
 /// USB 기기 재생 기록을 rekordbox Histories에 넣기(#43). 기대값은 2026-10-09 rekordbox 7.2.19 실험에서 본 행이다: EXPORT 모드에서
-/// USB "SEUNGMOOK 001"의 곡 1개 기록(곡 エクストラ・マジック・アワー)을 rekordbox가 자동으로 가져온 전후 스냅샷을 `djc lab db-diff`로 비교했다
+/// USB 기기 기록 하나(곡 1개, 이름은 흐림)을 rekordbox가 자동으로 가져온 전후 스냅샷을 `djc lab db-diff`로 비교했다
 /// (docs/rekordbox-internals.md "재생 기록").
 /// 기록·항목의 ID·UUID는 난수라 시험에서 정해 주고 모양을 본다. 쓰기 관문(`writesHistories`)을 닫은 경우는 시험이 닫아서 본다.
 @Suite("rekordbox 재생 기록 쓰기 — USB 기록 가져오기 실험으로 확인한 모양")

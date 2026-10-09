@@ -3,7 +3,7 @@ import Foundation
 
 /// 재생 기록 쓰기(#43): `djmdHistory`(연·월 폴더, 기록) + `djmdSongHistory`(항목) + 곡 행 `DJPlayCount`·`TrackInfoUpdated`.
 ///
-/// rekordbox 7.2.19가 USB 기기 기록을 자동으로 가져온 결과를 따른다(2026-10-09 EXPORT 모드, USB "SEUNGMOOK 001"의 곡 1개 기록,
+/// rekordbox 7.2.19가 USB 기기 기록을 자동으로 가져온 결과를 따른다(2026-10-09 EXPORT 모드, USB 기기 기록 하나(곡 1개),
 /// 전후 스냅샷 `djc lab db-diff`, docs/rekordbox-internals.md "재생 기록"):
 /// - 월 폴더(없으면): ID "yyyyMM", Name 월 숫자(앞 0 없음), Attribute 1, ParentID 연 폴더, Seq 그 연 폴더 안 다음 번호, UUID = ID.
 /// - 연 폴더가 없으면 새로 만드는 규칙은 미확인이라 막는다. 기존 연 폴더의 ID = Name = UUID "yyyy", ParentID "root" 모양만 읽기로 확인했다.

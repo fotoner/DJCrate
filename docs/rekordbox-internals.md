@@ -2454,7 +2454,7 @@ DJCrate(`TrackArtwork`·`ArtworkJPEG`):
   - "재생 히스토리 자동으로 들여오기": 켬
   - "Delete from the device after importing the play history": 끔
 - USB는 Device Library에만 기록이 든 FAT32 USB다.
-  - CDJ가 남긴 기록 `SEUNGMOOK 001` 하나가 있었다.
+  - CDJ가 남긴 기록 하나가 있었다. 기록 이름은 흐렸다.
   - 곡은 "エクストラ・マジック・アワー" 1개다.
 - USB를 꽂은 채 rekordbox를 켰다. rekordbox가 기록을 자동으로 가져왔다.
 - 전후 스냅샷(`djc snapshot --force`)을 `djc lab db-diff`로 비교했다.
