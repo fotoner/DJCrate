@@ -84,7 +84,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - RekordboxKit은 DJCrate 자신의 쓰기 위치(예: 백업 폴더)를 인자로 받는다. 예외로 두 자리는 `DJCIdentity`로 직접 안다. 하나는 스냅샷 폴더(`LibrarySnapshot.defaultDirectory`)다. 다른 하나는 XML 내보내기가 거부하는 자리다. 이 자리는 DJCrate 데이터 폴더와 연동 XML이다.
 - **DJCStorage**는 DJCrate 자신의 파일을 맡는다. 초안과 추가한 곡, 반영 묶음과 USB 초안이 그 파일이다. iTunes 읽기와 USB 볼륨·도구 실행도 맡는다.
 - **DJCAnalysis**는 소리 분석과 곡 편집 렌더를 맡는다. 파형, 그리드 추정, 조성을 분석한다. 음량과 섹션도 분석한다. DJCAnalysis는 rekordbox를 모르므로 시간축 차이를 인자로 받는다.
-- **DJCEnvironment**는 이 프로세스의 환경을 읽는다. 시험 프로세스인지와 그 임시 폴더를 안다(`TestProcess`, #182). 데이터·로그·캐시 위치는 `DJC_HOME`과 `DJC_REKORDBOX_DIR`에 따라 정한다. 환경을 인자로 받는 순수 규칙은 DJCDomain에 남는다.
+- **DJCEnvironment**는 이 프로세스의 환경을 읽는다. 시험 프로세스인지와 그 임시 폴더를 안다(`TestProcess`, #182). 데이터·로그·캐시 위치는 `DJC_HOME`과 `DJC_REKORDBOX_DIR`에 따라 정한다. 환경을 인자로 받는 순수 규칙은 DJCDomain에 남는다. 인프라가 막는 입출력을 협력 풀 밖에서 돌리는 `OffPoolIO`도 여기 있다(#247).
 - 앱 **DJCrate**와 CLI **djc**의 본체는 라이브러리 타깃이다. 그래서 실행 파일과 시험이 컴파일 결과를 함께 쓴다. 실행 진입점만 `DJCrateExecutable`·`djcExecutable`로 나눈다. 제품 이름과 리소스 번들 이름은 그대로다.
 
 ### 경계 규칙
@@ -117,12 +117,10 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - `Sources/djc/Commands/CLIWriteTarget.swift`
 - `Sources/djc/CLI.swift`는 예외가 아니다. 이 파일에는 명령 표만 있다. `compat` 본문은 유스케이스 `CompatibilityCheck`와 명령 파일 `CompatCommand.swift`로 옮겼다.
 - **넓은 예외 폴더는 더 받을 import를 적는다.** 목록 밖 import는 위반이다. 폴더의 어느 파일도 쓰지 않는 허용이 남아도 실패한다.
-- 넓은 예외의 크기는 `--summary`의 예외 표로 본다. 2026-10 기준 두 폴더는 앱·CLI 소스 줄의 26%다.
+- 넓은 예외의 크기는 `--summary`의 예외 표로 본다. 2026-10 기준 두 폴더는 앱·CLI 소스 줄의 27%다.
 - **남은 위반은 빚 목록에 고정한다.** 빚 목록은 `scripts/import-debt.txt`이고 줄 모양은 `파일<TAB>규칙<TAB>대상`이다. 목록 밖 위반이 생기면 검사가 실패한다. 이미 해소한 항목이 목록에 남아도 실패한다. 그래서 빚이 줄면 목록도 줄어든다.
 - `view-task` 빚은 대상 칸에 파일마다 곳 수를 적는다(예: `Task 3곳`). 곳 수가 늘면 새 위반으로 실패한다. 줄어도 빚 목록을 고치라고 실패한다.
-- 2026-10 기준 빚은 35줄이다. 모두 새 규칙이 찾아낸 옛 코드다.
-  - `api` 1줄: `DJCApplication/Usb/UsbWriteSession.swift`의 `@Observable`
-  - `view-task` 34줄: 뷰 18파일의 `Task` 49곳과 `await` 82곳
+- 2026-10-10 기준 빚은 0줄이다. 옛 `api` 1줄(#243)과 `view-task` 34줄(#244)을 갚았다.
 - 개수는 `python3 scripts/check-imports.py --summary`로 본다. 새 위반은 빚 목록에 더하지 않는다. 위반은 그 자리에서 고친다.
 - **모든 Swift 타깃에 `MemberImportVisibility`(SE-0444)를 켠다.** 그러면 전이 의존으로 새어 들어오는 확장 멤버를 컴파일러가 막는다. 그래서 import 줄 검사가 실제 사용과 맞는다.
 - SwiftPM은 목록에 없는 아래층 모듈의 `import`를 막지 않는다. 그래서 의존 방향은 `Package.swift`와 이 검사로 지킨다.
@@ -136,6 +134,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - **기본 모양은 `Sendable` 클로저 struct다.** 포트는 메인 스레드 밖에서 부른다. 시험은 클로저를 바꿔 넣는다.
 - 동기 포트(파일·USB·DB 입출력)는 `BlockingWork.run`으로 GCD 스레드에서 부르고 기다린다. `Task.detached`·`@concurrent`로 협력 스레드 풀에서 막으면 코어가 적은 기계(CI 러너)에서 풀이 바닥나 다른 비동기 일까지 멈춘다. 시험 가짜는 동기 포트 클로저에서 `expectBlockingOffPool`을 부른다. 막을 때는 `waitOffPool`을 쓴다(DJCTestKit).
 - 작업 취소를 조각마다 보는 일은 협력 풀에 둔다. 음원 분석과 XML 파싱이 그 예다. GCD에는 지금 작업이 없어 `Task.isCancelled`가 늘 거짓이다. 그래서 옮기면 취소가 닿지 않는다.
+- 인프라의 막는 입출력 가운데 취소를 단계마다 보는 일은 `OffPoolIO.run`(DJCEnvironment)으로 GCD에서 돌린다. 이 함수는 작업 취소를 `CancellationCheck` 신호로 넘긴다. 일은 단계 사이에서 `check()`를 부른다. 미리 보기·복구의 사본 뜨기(`WritePreviewSnapshot`)와 옮긴 곡 후보의 폴더 열거(`RelocateScanner`)가 그 예다(#247).
 - 메인 액터 상태를 읽는 포트만 `@MainActor` 클로저 struct로 쓴다. 그 상태는 쓰기 잠금, 저장 대기, 화면 알림이다.
 - **반영 세션의 화면 상태 포트는 세 가지뿐이다.** 읽기 하나(`state`), 결과 적용 하나(`apply`), 쓰기 전 저장이다. 지울 초안과 되살릴 초안은 세션이 정한다. 라이브러리 저장소는 메모리 초안과 표시만 맞춘다.
 - 라이브러리 저장소는 이 포트를 채택하지 않는다. 조립 지점이 저장소 메서드를 클로저로 묶는다.
@@ -143,7 +142,8 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 본보기는 USB 동기화다. `UsbSync`는 흐름 상태를 값 `UsbSyncState`로 든다. 바깥에서는 읽기만 한다.
   - `UsbSync`는 출력 포트 `UsbSyncOutput`으로 바뀜과 알림 `UsbSyncNotice`를 내보낸다. 닫기 결과는 값 `UsbSyncCloseResult`다.
   - 앱 `UsbSyncModel`이 이것을 관찰 상태로 바꾼다. 표시 트리, 흐리게, 빈 목록 문구도 화면 모델이 만든다.
-  - 남은 예외는 `UsbWriteSession`(`@Observable`) 하나다. 빚 목록에 고정해 두었다.
+  - USB 쓰기 세션도 같은 모양이다. `UsbWriteSession`은 잠금·진행·옮기기 상태를 값 `UsbWriteSessionState`로 든다. 바뀌면 출력 포트 `UsbWriteSessionOutput`으로 내보낸다.
+  - 앱 `UsbWriteModel`이 그 값을 칸마다 관찰 상태로 옮긴다. Observation은 같은 값이면 알리지 않는다. 그래서 진행이 바뀌어도 잠금만 보는 화면은 다시 그리지 않는다.
 - **예외로 프로토콜인 포트는 아래와 같다.**
   - USB 파일 연산 `UsbFileSystem`: RekordboxKit의 USB 형식 코드가 쓰는 계약이다.
   - USB 쓰기 유스케이스 경계 `UsbWriting`: 실제는 `UsbWriteService`다. 앱 쓰기 흐름 시험은 가짜를 쓴다.
@@ -817,6 +817,8 @@ DJCApplication 유스케이스 `UsbMigrateSession`이 아래 순서를 부른다
   3. 시트에서 미리 본 결과로 쓴다. 미리 본 결과가 없으면 미리 보기를 한 뒤 확인 창을 띄운다(#212).
   4. 쓰는 동안 취소는 DB 교체 전까지 받는다.
   5. 끝나면 [꺼내기] 단추가 달린 토스트를 띄운다.
+- **잠금과 진행은 핵심부 `UsbWriteSession`이 든다.** 한 볼륨은 한 번만 잠근다. 한 볼륨에 쓰는 동안 다른 볼륨도 잠그지 않는다. 앱 `UsbWriteModel`이 그 상태를 덮개와 사이드바에 보인다.
+- **시트와 쓰기 대기의 단추는 화면 모델을 부른다.** 시트는 `UsbExportSheetModel`, 쓰기 대기는 `UsbPendingModel`이다. 사이드바 메뉴는 `UsbEditActions.start`와 `UsbWriteCoordinator`의 시작 메서드를 부른다. 뷰는 일을 기다리지 않는다.
 - **아래 경우는 창 대신 경고 토스트로 알린다.** 시트가 떠 있으면 시트 안에도 보인다.
   - rekordbox가 켜져 있다.
   - 이미 쓰는 중이다.

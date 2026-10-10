@@ -247,6 +247,49 @@ struct RelocateScannerTests {
         await #expect(throws: CancellationError.self) { _ = try await task.value }
     }
 
+    /// 폴더 열거는 잠든 외장 볼륨에서 오래 막는 입출력이라 협력 스레드 풀을 붙잡지 않는다(#247)
+    @Test func 목록_훑기는_협력_풀_밖에서_한다() async throws {
+        let tree = try Tree()
+        defer { tree.remove() }
+        let target = Self.target("1", name: "Song One.wav", length: 3, size: nil)
+        let onPool = Locked<[Bool]>([])
+        _ = try await RelocateScanner.scan(targets: [target], folder: tree.music, protectedRoots: tree.protectedRoots,
+                                           progress: { progress in
+                                               guard progress.phase == .listing else { return }
+                                               let pool = isOnCooperativePool()
+                                               onPool.withLock { $0.append(pool) }
+                                           })
+        let seen = onPool.withLock { $0 }
+        #expect(!seen.isEmpty)
+        #expect(!seen.contains(true))
+    }
+
+    /// 목록을 훑는 도중 취소하면 다음 폴더에서 멈춘다(끝 알림이 오지 않는다)
+    @Test func 목록_훑기_도중_취소하면_다음_폴더에서_멈춘다() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "djc-relocate-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appending(path: "Z"), withIntermediateDirectories: true)
+        // 200개마다 오는 중간 알림에서 멈춰 세우고, 아직 열지 않은 폴더(Z)가 남게 한다
+        for index in 0..<200 { try Data().write(to: root.appending(path: "\(index).wav")) }
+        try Data().write(to: root.appending(path: "Z/last.wav"))
+        let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        let counts = Locked<[Int]>([])
+        let task = Task {
+            try await RelocateScanner.scan(targets: [], folder: root, protectedRoots: [], progress: { progress in
+                guard progress.phase == .listing else { return }
+                counts.withLock { $0.append(progress.audioFiles) }
+                guard progress.audioFiles == 200 else { return }
+                entered.signal()
+                release.wait()
+            })
+        }
+        await withCheckedContinuation { continuation in DispatchQueue.global().async { entered.wait(); continuation.resume() } }
+        task.cancel()
+        release.signal()
+        await #expect(throws: CancellationError.self) { _ = try await task.value }
+        #expect(counts.withLock { $0 } == [200])
+    }
+
     @Test @MainActor func 메인_스레드에서_불러도_훑기와_진행_알림은_메인_스레드_밖에서_돈다() async throws {
         let tree = try Tree()
         defer { tree.remove() }

@@ -65,7 +65,7 @@ paths:
 
 ## 모듈 경계
 
-- **HAR-14** 모듈 경계 규칙은 `scripts/check-imports.py` 맨 위 표에 있다. 남은 위반은 빚 목록 `scripts/import-debt.txt`에 있다. 지금 빚은 새 규칙이 찾은 옛 코드다. `api` 1줄과 `view-task` 34줄이다.
+- **HAR-14** 모듈 경계 규칙은 `scripts/check-imports.py` 맨 위 표에 있다. 남은 위반은 빚 목록 `scripts/import-debt.txt`에 둔다. 2026-10-10 기준 빚은 0줄이다.
 - **HAR-15** 새 위반을 빚 목록에 더하지 않는다. 빚을 갚으면 그 줄을 지운다. `view-task` 줄은 곳 수가 줄면 곳 수를 고친다.
 - **HAR-16** 파일의 모듈은 `Package.swift` 타깃 경로로 정한다. 타깃 이름이나 폴더를 바꾸면 `ALLOWED` 키만 맞춘다.
 - **HAR-17** 파일·폴더를 옮기면 `.claude/rules/*.md`의 `paths`도 따라 고친다. `scripts/test-map.txt`의 `when`도 고친다.

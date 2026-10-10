@@ -1,4 +1,5 @@
 import DJCDomain
+import DJCEnvironment
 import Foundation
 
 /// 미리보기 한 번의 DB·분석 파일 사본. 성공·실패·취소 모두 폴더째 정리한다.
@@ -10,18 +11,50 @@ public enum WritePreviewSnapshot {
                                     artworks: [String] = [],
                                     directory: URL = FileManager.default.temporaryDirectory,
                                     body: (URL, URL) async throws -> T) async throws -> T {
-        let fm = FileManager.default
+        try await withCopy(from: source, shareRoot: shareRoot, grids: grids, merges: merges, artworks: artworks, directory: directory,
+                           checkpoint: {}, body: body)
+    }
+
+    /// `checkpoint`는 시험 이음매다. 사본 뜨기의 단계(취소 확인)마다 그 단계를 도는 스레드에서 불린다.
+    static func withCopy<T>(from source: URL, shareRoot: URL, grids: [GridDraft] = [], merges: [DuplicateMergeDraft] = [],
+                            artworks: [String] = [], directory: URL = FileManager.default.temporaryDirectory,
+                            checkpoint: @escaping @Sendable () -> Void,
+                            body: (URL, URL) async throws -> T) async throws -> T {
         let root = directory.appending(path: "djc-preview-\(UUID().uuidString)")
+        do {
+            // 사본 뜨기(DB·XML·분석 파일 복사)는 오래 막는 입출력이라 협력 풀 밖에서 한다. 작업 취소는 단계마다 신호로 본다(#247).
+            let (database, share) = try await OffPoolIO.run { cancellation in
+                try copy(from: source, shareRoot: shareRoot, grids: grids, merges: merges, artworks: artworks, into: root,
+                         check: { checkpoint(); try cancellation.check() })
+            }
+            try Task.checkCancellation()
+            let result = try await body(database, share)
+            try Task.checkCancellation()
+            await remove(root)
+            return result
+        } catch {
+            await remove(root)
+            throw error
+        }
+    }
+
+    /// 사본을 지우는 일도 풀 밖에서 한다. 취소된 뒤에도 지워야 하므로 취소 신호는 보지 않는다.
+    private static func remove(_ root: URL) async {
+        _ = try? await OffPoolIO.run { _ in try? FileManager.default.removeItem(at: root) }
+    }
+
+    private static func copy(from source: URL, shareRoot: URL, grids: [GridDraft], merges: [DuplicateMergeDraft], artworks: [String],
+                             into root: URL, check: () throws -> Void) throws -> (URL, URL) {
+        let fm = FileManager.default
         try fm.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        defer { try? fm.removeItem(at: root) }
-        try Task.checkCancellation()
+        try check()
         // DB 별칭도 링크 자체가 아닌 실제 파일을 복사한다. 읽기용 상시 스냅샷을 교체하거나 가지치기하지 않는다.
         let original = source.resolvingSymlinksInPath()
         let database = try LibrarySnapshot.take(from: original, into: root)
         let share = root.appending(path: "share")
         try fm.createDirectory(at: share, withIntermediateDirectories: true)
         let xml = original.deletingLastPathComponent().appending(path: "masterPlaylists6.xml")
-        try copyFile(xml, to: root.appending(path: xml.lastPathComponent), within: original.deletingLastPathComponent())
+        try copyFile(xml, to: root.appending(path: xml.lastPathComponent), within: original.deletingLastPathComponent(), check: check)
 
         if !grids.isEmpty || !merges.isEmpty {
             let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
@@ -34,7 +67,7 @@ public enum WritePreviewSnapshot {
                         // 분석 붙이기는 UUID 폴더의 비어 있음도 검사한다. 기존 파일을 빼면 충돌을 놓친다.
                         for folder in [RekordboxTrackWriter.analysisFolder(uuid: grid.trackUUID), TrackArtwork.folder(uuid: grid.trackUUID)] {
                             let relative = String(folder.drop(while: { $0 == "/" }))
-                            try copyDirectory(shareRoot.appending(path: relative), to: share.appending(path: relative), within: shareRoot)
+                            try copyDirectory(shareRoot.appending(path: relative), to: share.appending(path: relative), within: shareRoot, check: check)
                         }
                         return
                     }
@@ -53,7 +86,7 @@ public enum WritePreviewSnapshot {
             for file in files.sorted(by: { $0.path < $1.path }) {
                 try checkPath(file, within: shareRoot)
                 let relative = String(file.path.dropFirst(shareRoot.path.count + 1))
-                try copyFile(file, to: share.appending(path: relative), within: shareRoot)
+                try copyFile(file, to: share.appending(path: relative), within: shareRoot, check: check)
             }
         }
         // 그림 초안(#66): 쓰기 전 확인이 곡 UUID 그림 폴더의 파일 유무·링크를 보므로 그 폴더를 그대로 복사한다(없으면 없는 채로,
@@ -61,12 +94,10 @@ public enum WritePreviewSnapshot {
         for uuid in artworks {
             let relative = String(TrackArtwork.folder(uuid: uuid).drop(while: { $0 == "/" }))
             guard !fm.fileExists(atPath: share.appending(path: relative).path) else { continue }
-            try copyDirectory(shareRoot.appending(path: relative), to: share.appending(path: relative), within: shareRoot)
+            try copyDirectory(shareRoot.appending(path: relative), to: share.appending(path: relative), within: shareRoot, check: check)
         }
-        try Task.checkCancellation()
-        let result = try await body(database, share)
-        try Task.checkCancellation()
-        return result
+        try check()
+        return (database, share)
     }
 
     private static func unsafePath() -> DJCError {
@@ -83,8 +114,8 @@ public enum WritePreviewSnapshot {
               (try? file.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true else { throw unsafePath() }
     }
 
-    private static func copyDirectory(_ source: URL, to destination: URL, within root: URL) throws {
-        try Task.checkCancellation()
+    private static func copyDirectory(_ source: URL, to destination: URL, within root: URL, check: () throws -> Void) throws {
+        try check()
         try checkPath(source, within: root)
         let fm = FileManager.default
         guard fm.fileExists(atPath: source.path) else { return }
@@ -95,15 +126,15 @@ public enum WritePreviewSnapshot {
             try checkPath(file, within: root)
             let target = destination.appending(path: file.lastPathComponent)
             if try file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true {
-                try copyDirectory(file, to: target, within: root)
+                try copyDirectory(file, to: target, within: root, check: check)
             } else {
-                try copyFile(file, to: target, within: root)
+                try copyFile(file, to: target, within: root, check: check)
             }
         }
     }
 
-    private static func copyFile(_ source: URL, to destination: URL, within root: URL) throws {
-        try Task.checkCancellation()
+    private static func copyFile(_ source: URL, to destination: URL, within root: URL, check: () throws -> Void) throws {
+        try check()
         try checkPath(source, within: root)
         let fm = FileManager.default
         guard fm.fileExists(atPath: source.path) else { return }

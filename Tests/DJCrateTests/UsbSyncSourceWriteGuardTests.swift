@@ -340,7 +340,7 @@ struct UsbSyncSourceWriteGuardTests {
 
     @Test func 재시도_시트가_사본을_이어_소유하고_닫으면_캐시_약한참조만_남아_정리된다() async throws {
         let (usb, host, _, job) = try await setup()
-        var model = UsbExportSheetModel(volume: job.volume, selectedTrackIDs: [])
+        var model = UsbExportSelection(volume: job.volume, selectedTrackIDs: [])
         model.restore(job, summary: UsbTestData.summary(), layout: host.source.layout)
         host.lease = nil
         #expect(FileManager.default.fileExists(atPath: job.database.path))

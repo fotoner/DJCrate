@@ -17,7 +17,7 @@ paths:
 - `MVVM-4`: 뷰 본문에서 유스케이스나 `Task`를 시작하지 않는다. 화면 모델의 메서드를 부른다.
   - 검사는 `scripts/check-imports.py`의 `view-task`다. 뷰 파일의 `Task` 시작과 `await`를 센다.
   - 허용 꼴은 `.task { await model.method(args) }` 한 줄뿐이다. 받는 쪽은 `self`가 아니다. 인자에 클로저와 `await`가 없다.
-  - 옛 위반은 빚 목록에 파일마다 곳 수로 있다. 곳 수가 늘면 실패한다. 줄면 그 줄을 고친다.
+  - 옛 위반은 2026-10-10에 모두 갚았다. 새 위반은 그 자리에서 고친다.
 - `MVVM-5`: 화면 모델은 `Tests/DJCrateTests`에서 가짜 포트로 시험한다. 잎 뷰는 값만 넣어 시험한다.
 - `MVVM-6`: 예외는 덱 재생 경로와 공유 저장소 `LibraryStore`뿐이다. 덱 재생 경로에서는 `DeckModel`이 엔진 포트를 직접 부른다.
 - 지금 코드에 남은 빚은 `docs/mvvm.md` "남은 빚"에 있다. 손대는 화면부터 갚는다.

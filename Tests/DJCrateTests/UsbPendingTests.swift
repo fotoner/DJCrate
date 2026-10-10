@@ -52,7 +52,7 @@ struct UsbPendingTests {
         let blockReason: (UsbLibraryEdit, [UsbLibraryEdit]) -> String? = { edit, _ in
             UsbEditRules.blockReason(edit, volume: image, library: library, info: nil, isScratchMount: { _ in true }, syncGate: .live)
         }
-        let waiting = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library, summary: nil, busy: false,
+        let waiting = UsbPendingList(volumeName: "B13T", isConnected: true, edits: edits, library: library, summary: nil, busy: false,
                                       blockReason: blockReason)
         // 편집 설명은 `UsbEditText.describe`(같은 초안에서 만든 목록은 그 이름으로)
         #expect(waiting.rows.map(\.text) == edits.map { UsbEditText.describe($0, library: library, created: ["k1": "새 목록"]) })
@@ -76,7 +76,7 @@ struct UsbPendingTests {
                                                         .init(format: .deviceLibrary, written: false, blocked: "CDJ가 쓴 기록·목록이 있어 Device Library는 아직 고칠 수 없습니다")],
                                               removals: 4, deferred: ["Device Library가 막혀 파일 지우기를 미뤘습니다"],
                                               notes: ["USB가 그 사이 바뀌어 다시 계획했습니다"], formatDrift: true)
-        let previewed = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library, summary: summary, busy: false,
+        let previewed = UsbPendingList(volumeName: "B13T", isConnected: true, edits: edits, library: library, summary: summary, busy: false,
                                         blockReason: blockReason)
         #expect(previewed.rows[0].status == .written)
         #expect(previewed.rows[1].status == .deferred("Device Library가 막혀 파일 지우기를 미뤘습니다"))
@@ -92,21 +92,21 @@ struct UsbPendingTests {
         #expect(previewed.canWrite)
 
         // USB 전체 막힘: 쓰기를 막고 이유를 보인다
-        let stopped = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library,
+        let stopped = UsbPendingList(volumeName: "B13T", isConnected: true, edits: edits, library: library,
                                       summary: UsbTestData.editSummary(editCount: 9, stopping: [UsbEditRules.Reason.trackIDsDiffer],
                                                                        hasChanges: false),
                                       busy: false, blockReason: blockReason)
         #expect(!stopped.canWrite)
         #expect(stopped.writeHelp == UsbEditRules.Reason.trackIDsDiffer)
         // 쓰는 중·빈 초안
-        let busy = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library, summary: nil, busy: true,
+        let busy = UsbPendingList(volumeName: "B13T", isConnected: true, edits: edits, library: library, summary: nil, busy: true,
                                    blockReason: blockReason)
         #expect(!busy.canWrite && !busy.canPreview)
-        let empty = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: [], library: library, summary: nil, busy: false,
+        let empty = UsbPendingList(volumeName: "B13T", isConnected: true, edits: [], library: library, summary: nil, busy: false,
                                     blockReason: blockReason)
         #expect(!empty.canWrite && !empty.canPreview)
         // 미리 본 결과 쓸 것이 없으면 누르기 전에 막고 이유를 도움말로 보인다(#230)
-        let unchanged = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: library,
+        let unchanged = UsbPendingList(volumeName: "B13T", isConnected: true, edits: edits, library: library,
                                         summary: UsbTestData.editSummary(editCount: 9, outcomes: [1: .unchanged], hasChanges: false),
                                         busy: false, blockReason: blockReason)
         #expect(!unchanged.canWrite && unchanged.canPreview)
@@ -205,4 +205,95 @@ struct UsbPendingTests {
         #expect(await running.previewDraft(volumeKey: key, database: database, share: share) == nil)
         #expect(service.current.calls.isEmpty)
     }
+
+    /// 쓰기 대기 화면 모델과 그 포트(초안 편집·쓰기 흐름은 가짜 확인 창을 붙인 것)
+    private func pendingModel() async -> (UsbPendingModel, UsbStore, UsbEditActions) {
+        let usbHost = FakeUsbHost([image])
+        usbHost.serve(image, library: UsbTestData.library())
+        let usb = UsbTestData.store(usbHost, service: service)
+        usb.drafts = .live(directory: drafts)
+        await usb.refresh()
+        let actions = UsbEditActions(usb: usb, host: host, prompter: prompter, namePrompter: ScriptedNamePrompter())
+        let coordinator = UsbWriteCoordinator(usb: usb, host: host, service: service, prompter: prompter, isRekordboxRunning: { false })
+        let database = URL(filePath: "/tmp/djc-fixture/m.db"), share = URL(filePath: "/tmp/djc-fixture/share")
+        let model = UsbPendingModel(volumeKey: key, usb: usb,
+                                    ports: .init(actions: { actions }, coordinator: { coordinator }, database: { database }, share: { share }))
+        let drafts = drafts
+        service.update { $0.drafts = drafts }
+        await actions.append(.removeTracks(usbContentIDs: [2]), to: key)
+        await actions.append(.playlist(edit: .rename(playlist: .id("10"), name: "새 이름")), to: key)
+        return (model, usb, actions)
+    }
+
+    @Test("대기 목록 화면 모델: 다시 읽기는 초안을 읽고 미리 보기를 버린다. 미리 보기는 그동안 진행을 보이고 결과를 남기며, 쓰기는 그 결과를 다시 쓴다")
+    func pendingModelPreviewThenWrite() async throws {
+        defer { cleanUp() }
+        let (model, usb, _) = await pendingModel()
+        #expect(model.draftRevision == usb.draftRevisions[key] && model.draftRevision > 0)
+        await model.reload()
+        #expect(model.edits.count == 2 && model.summary == nil)
+        #expect(model.list.rows.count == 2 && model.list.canPreview && model.list.isConnected)
+
+        let gate = TestGate()
+        service.update {
+            $0.editSummary = UsbTestData.editSummary(editCount: 2)
+            $0.onPreviewEdit = { gate.pass() }
+        }
+        let previewing = model.previewTapped()
+        #expect(await waitForState { model.isPreviewing && gate.arrivals == 1 })
+        gate.open()
+        await previewing.value
+        #expect(!gate.timedOut && !model.isPreviewing)
+        let summary = try #require(model.summary)
+        #expect(summary.edits == model.edits && model.list.summaryLines.isEmpty == false)
+        #expect(service.current.editJobs.last?.database == URL(filePath: "/tmp/djc-fixture/m.db"))
+        #expect(service.current.editJobs.last?.share == URL(filePath: "/tmp/djc-fixture/share"))
+
+        // 쓰기는 방금 본 미리 보기를 다시 쓴다(다시 미리 보지 않는다)
+        service.update { $0.calls = [] }
+        await model.writeTapped().value
+        #expect(service.current.wrote && !service.current.previewed)
+        #expect(host.toast?.title == UsbWriteFlow.Text.editWrittenTitle(count: 2))
+
+        // 다시 읽으면 앞의 미리 보기를 버린다
+        await model.reload()
+        #expect(model.summary == nil)
+    }
+
+    @Test("대기 목록 화면 모델: 미리 보는 동안 초안이 바뀌면 그 결과를 버린다")
+    func pendingModelDropsStalePreview() async throws {
+        defer { cleanUp() }
+        let (model, _, actions) = await pendingModel()
+        await model.reload()
+        let gate = TestGate()
+        service.update { $0.onPreviewEdit = { gate.pass() } }
+        let previewing = model.previewTapped()
+        #expect(await waitForState { gate.arrivals == 1 })
+        await actions.append(.removeTracks(usbContentIDs: [3]), to: key)
+        gate.open()
+        await previewing.value
+        #expect(!gate.timedOut && model.summary == nil && !model.isPreviewing)
+    }
+
+    @Test("대기 목록 화면 모델: 편집 빼기는 보고 있는 편집일 때만 빼고, 초안 버리기는 초안을 모두 버린다")
+    func pendingModelRemoveAndDiscard() async throws {
+        defer { cleanUp() }
+        let (model, usb, actions) = await pendingModel()
+        await model.reload()
+        let shown = model.edits
+        // 보고 있는 목록이 낡았으면(그 사이 첫 편집이 빠짐) 같은 번호의 다른 편집을 빼지 않는다
+        await actions.removeEdit(1, volumeKey: key)
+        await model.removeTapped(1).value
+        #expect(try draft()?.edits == [shown[1]])
+        await model.reload()
+        await model.removeTapped(1).value
+        #expect(try draft() == nil && usb.draftCounts[key] == nil)
+
+        await actions.append(.removeTracks(usbContentIDs: [2]), to: key)
+        await model.reload()
+        await model.discardTapped().value
+        #expect(try draft() == nil && usb.draftCounts[key] == nil)
+    }
+
+    private func draft() throws -> UsbDraft? { try UsbDraftStore(directory: drafts).load(volumeKey: key) }
 }

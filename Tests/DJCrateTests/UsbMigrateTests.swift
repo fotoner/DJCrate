@@ -64,6 +64,19 @@ struct UsbMigrateTests {
         #expect(usb.migrationBackups[image.usbKey] == nil && usbHost.libraryCalls.count == 3)
     }
 
+    @Test("사이드바 메뉴는 기다리지 않고 옮기기·되돌리기를 시작한다. 붙어 있지 않은 볼륨이면 시작하지 않는다")
+    func sidebarStartsMigration() async throws {
+        let (usb, _) = await store()
+        let c = coordinator(usb)
+        let backup = URL(filePath: "/tmp/djc-fixture/usb-backups/B/m1")
+        #expect(c.startMigrate(volumeKey: "합성 없는 볼륨") == nil && c.startRestoreMigration(volumeKey: "합성 없는 볼륨") == nil)
+        await c.startMigrate(volumeKey: image.usbKey)?.value
+        #expect(service.current.wrote && usb.migrationBackups[image.usbKey] == backup)
+        await c.startRestoreMigration(volumeKey: image.usbKey)?.value
+        #expect(service.current.restoredBackups == [backup] && usb.migrationBackups[image.usbKey] == nil)
+        #expect(usb.busyVolumes.isEmpty && usb.activeWrite == nil)
+    }
+
     @Test("CLI의 막힘을 그대로 보이고 도움말에 남기며 쓰지 않는다", arguments: [
         UsbMigration.Blocks.oneLibraryExists,
         UsbBlock(code: "carriedDeviceRows", scope: .format(.deviceLibrary), message: "CDJ가 쓴 기록·목록이 있어 아직 옮길 수 없습니다. rekordbox에서 USB를 다시 내보내세요", rule: .carriedDeviceRows),

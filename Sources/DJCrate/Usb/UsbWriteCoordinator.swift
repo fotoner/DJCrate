@@ -82,6 +82,20 @@ struct UsbWriteCoordinator {
     func migrate(_ volume: UsbVolumeInfo) async { await flow.migrate(volume) }
     func restoreMigration(_ volume: UsbVolumeInfo) async { await flow.restoreMigration(volume) }
 
+    /// 사이드바 "OneLibrary 더하기…": 붙어 있는 볼륨이면 옮기기를 시작한다(뷰는 기다리지 않는다). 없으면 nil
+    @discardableResult
+    func startMigrate(volumeKey: String) -> Task<Void, Never>? {
+        guard let volume = usb.volume(volumeKey) else { return nil }
+        return Task { await migrate(volume) }
+    }
+
+    /// 사이드바 "쓰기 전으로 되돌리기…": 붙어 있는 볼륨이면 되돌리기를 시작한다. 없으면 nil
+    @discardableResult
+    func startRestoreMigration(volumeKey: String) -> Task<Void, Never>? {
+        guard let volume = usb.volume(volumeKey) else { return nil }
+        return Task { await restoreMigration(volume) }
+    }
+
     // MARK: - 수정(초안)
 
     /// 동기화 모델이 저장한 초안의 인계. 확인 취소·실패 뒤에도 동일 초안은 UsbStore가 사본을 이어 소유한다.
@@ -97,6 +111,12 @@ struct UsbWriteCoordinator {
     @discardableResult
     func writeDraft(volumeKey: String, database: URL?, share: URL?, snapshotTime: String? = nil, reusing reused: UsbEditSummary? = nil) async -> Bool {
         await flow.writeDraft(volumeKey: volumeKey, database: database, share: share, snapshotTime: snapshotTime, reusing: reused)
+    }
+
+    /// 사이드바 쓰기 대기 메뉴의 "USB에 쓰기…"(뷰는 기다리지 않는다)
+    @discardableResult
+    func startWriteDraft(volumeKey: String, database: URL?, share: URL?) -> Task<Void, Never> {
+        Task { await writeDraft(volumeKey: volumeKey, database: database, share: share) }
     }
 
     // MARK: - 끝나지 않은 쓰기

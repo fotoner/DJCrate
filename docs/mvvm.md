@@ -104,7 +104,7 @@ struct UnlinkedDraftsView: View {
 
 유스케이스에는 화면 상태가 없다. 유스케이스는 `@Observable`이 아니다. 흐름 상태는 값으로, 알림은 출력 포트로 내보낸다. 화면 모델이 그것을 관찰 상태로 바꾼다.
 
-본보기는 `UsbSync`와 앱 `UsbSyncModel`이다. `UsbSync`는 값 `UsbSyncState`와 출력 포트 `UsbSyncOutput`을 쓴다. 경계 검사의 `api` 규칙이 핵심부의 Observation을 막는다.
+본보기는 `UsbSync`와 앱 `UsbSyncModel`이다. `UsbSync`는 값 `UsbSyncState`와 출력 포트 `UsbSyncOutput`을 쓴다. USB 쓰기 세션 `UsbWriteSession`과 앱 `UsbWriteModel`도 같은 모양이다. 경계 검사의 `api` 규칙이 핵심부의 Observation을 막는다.
 
 올바른 예: 찾기는 유스케이스가 한다. 고르기 규칙은 DJCDomain 값이 한다. 화면 모델은 결과를 상태에 담기만 한다.
 
@@ -238,8 +238,8 @@ func startMerge(keeping: String, removing: [String]) {
 .task { if await model.ready() { show = true } } // ✗ 뷰에 로직이 있다
 ```
 
-- 지금 남은 위반은 빚 목록 `scripts/import-debt.txt`에 파일마다 곳 수로 고정한다. 줄 모양은 `파일<TAB>view-task<TAB>Task N곳`과 `…<TAB>await N곳`이다.
-- 곳 수가 늘면 "새 위반"으로 실패한다. 곳 수가 줄면 "갚은 빚"으로 실패한다. 줄었을 때는 그 줄의 곳 수를 고친다. 0곳이 되면 줄을 지운다(`--write-debt`).
+- 옛 위반은 빚 목록 `scripts/import-debt.txt`에 파일마다 곳 수로 고정했다. 2026-10-10에 모두 갚았다. 지금 빚 목록에 `view-task` 줄은 없다.
+- 새 위반은 빚 목록에 더하지 않는다. 그 자리에서 화면 모델로 옮긴다.
 
 ### MVVM-5 시험 자리
 
@@ -316,7 +316,7 @@ func tick() {
 
 | 규칙 | 지금 | 잰 방법 |
 |---|---|---|
-| `MVVM-4` | 18개 파일에 `Task` 시작 49곳과 `await` 82곳이 있다(빚 34줄) | `python3 scripts/check-imports.py --summary` |
+| `MVVM-4` | 빚 0줄. 2026-10-10에 #243·#244로 갚았다 | `python3 scripts/check-imports.py --summary` |
 | `MVVM-3` | 35개 파일이 `LibraryStore`를 통째로 받는다 | `grep -lE '(let\|var) store: LibraryStore'` |
 | `MVVM-3` | 20개 파일이 `DeckModel`을 통째로 받는다 | `grep -lE '(let\|var) deck: DeckModel'` |
 | `MVVM-1` | 화면 모델 없는 시트가 있다(예: `UnlinkedDraftsView`, `PlaylistPickerView`, `XMLImportSheet`) | 사람이 본다 |
@@ -324,7 +324,7 @@ func tick() {
 - `MVVM-3` 수는 잎 뷰와 묶음 뷰를 가리지 않는다. 묶음 뷰가 모델을 받는 것은 규칙 위반이 아니다.
 - 이 빚은 손대는 화면부터 조금씩 갚는다. 빚 때문에 큰 화면을 한 번에 나누지 않는다.
 - 뷰가 인프라를 import하는 빚은 0이다. 이것은 `scripts/check-imports.py`가 막는다.
-- 뷰의 `Task`·`await` 빚은 `view-task` 규칙이 파일마다 곳 수로 막는다. 많은 곳은 `PointSnapshotWindow`, `UsbSidebarSection`, `ContentView`다.
+- 뷰의 `Task`·`await` 빚은 0이다. 새 위반은 `view-task` 규칙이 막는다.
 - `MVVM-3`·`MVVM-1` 빚을 검사로 막는 장치는 아직 없다.
 
 ## 더 보기

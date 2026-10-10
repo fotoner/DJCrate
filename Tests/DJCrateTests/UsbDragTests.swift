@@ -315,11 +315,11 @@ struct UsbDragTests {
         #expect(await actions.moveEntries([UsbTrackDrag(volumeKey: key, contentID: 1, playlist: 10, trackNo: 1)], before: nil, volumeKey: key, playlist: 10))
         let edits = try #require(try draft()).edits
         #expect(edits.count == 2)
-        let model = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: edits, library: usb.editLibrary(key), summary: nil, busy: false,
+        let model = UsbPendingList(volumeName: "B13T", isConnected: true, edits: edits, library: usb.editLibrary(key), summary: nil, busy: false,
                                     blockReason: { actions.blockReason($0, volumeKey: key, after: $1) })
         #expect(model.rows.map(\.status) == [.waiting, .waiting])
         // 앞 편집을 빼면 뒤 편집의 자리가 어긋난다
-        let alone = UsbPendingModel(volumeName: "B13T", isConnected: true, edits: [edits[1]], library: usb.editLibrary(key), summary: nil, busy: false,
+        let alone = UsbPendingList(volumeName: "B13T", isConnected: true, edits: [edits[1]], library: usb.editLibrary(key), summary: nil, busy: false,
                                     blockReason: { actions.blockReason($0, volumeKey: key, after: $1) })
         #expect(alone.rows.map(\.status) == [.expectedBlock("1번째 곡이 편집을 만들 때와 다릅니다. USB를 다시 읽은 뒤 고치세요")])
     }
