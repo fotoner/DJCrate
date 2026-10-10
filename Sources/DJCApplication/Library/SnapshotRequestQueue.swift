@@ -1,9 +1,9 @@
 import Foundation
 import Synchronization
 
-/// 스냅샷 작업은 차례로 실행하고, 합쳐서 대기한 호출도 자기 작업이 끝날 때 깨운다.
+/// 스냅샷 작업은 차례로 실행하고, 합쳐서 대기한 호출도 자기 작업이 끝날 때 깨운다(사본 뜨기 요청 합치기, `LibraryReadFlow`).
 @MainActor
-final class SnapshotRequestQueue {
+public final class SnapshotRequestQueue {
     private final class Request: Sendable {
         private struct Cancellation: Sendable {
             var cancelled = false
@@ -37,11 +37,13 @@ final class SnapshotRequestQueue {
         var waiters: [CheckedContinuation<Task<Void, Never>?, Never>]
     }
 
-    private(set) var isRunning = false
-    var waitingCount: Int { pending.reduce(0) { $0 + $1.waiters.count } }
+    public private(set) var isRunning = false
+    public var waitingCount: Int { pending.reduce(0) { $0 + $1.waiters.count } }
     private var pending: [Pending] = []
 
-    func run(force: Bool, quiet: Bool, operation: @escaping @MainActor (Bool, Bool) async -> Void) async {
+    public init() {}
+
+    public func run(force: Bool, quiet: Bool, operation: @escaping @MainActor (Bool, Bool) async -> Void) async {
         await runWithFollowUp(force: force, quiet: quiet, refreshITunes: false) { force, quiet in
             await operation(force, quiet)
             return nil
@@ -49,7 +51,7 @@ final class SnapshotRequestQueue {
     }
 
     /// DB 작업만 직렬화한다. 후속 Music 작업은 대기열 밖에서 기다리되 병합한 호출도 완료를 기다린다.
-    func runWithFollowUp(force: Bool, quiet: Bool, refreshITunes: Bool, synchronizingDrafts: Bool = false,
+    public func runWithFollowUp(force: Bool, quiet: Bool, refreshITunes: Bool, synchronizingDrafts: Bool = false,
                          operation: @escaping @MainActor (Bool, Bool) async -> Task<Void, Never>?) async {
         let request = Request(force: force, quiet: quiet, operation: operation)
         await withTaskCancellationHandler {
