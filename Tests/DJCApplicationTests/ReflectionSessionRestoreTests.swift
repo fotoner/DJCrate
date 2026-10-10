@@ -272,14 +272,17 @@ struct ReflectionSessionRestoreTests {
 
     // MARK: - iTunes 동기화
 
-    @Test func iTunes_동기화는_덱을_잠그지_않고_명시한_사본이면_그_사본에_아니면_라이브에_쓴다() async throws {
+    /// `--db`는 읽기 출처만 바꾼다(2026-10-10 결정): 명시한 사본으로 열어도 반영·복원과 같은 쓰기 대상·백업 폴더에 쓴다.
+    /// 그래야 최근 쓰기 복원이 이 동기화의 백업을 쓴 곳과 같은 대상으로 되돌린다(#167 최종 리뷰 6절 P2).
+    @Test func iTunes_동기화는_덱을_잠그지_않고_명시한_사본으로_열어도_쓰기_대상에_쓴다() async throws {
         let change = ITunesSyncWrite(base: Data(), source: [], selection: ITunesSyncSelection(selectedIDs: []))
-        let live = try await h.session.syncITunes(change, opened: URL(filePath: "/snapshots/s.db"))
+        let live = try await h.session.syncITunes(change)
         #expect(live.target == URL(filePath: "/lib/master.db") && live.syncData == Data("sync".utf8))
         #expect(h.locks == ["true (덱 빼고)", "false (덱 빼고)"])
         h.location = H.location(explicitCopy: true)
-        let copy = try await h.session.syncITunes(change, opened: URL(filePath: "/opened/master.db"))
-        #expect(copy.target == URL(filePath: "/opened/master.db"))
+        let copy = try await h.session.syncITunes(change)
+        #expect(copy.target == h.session.target.database)
+        #expect(h.gateCalls.value.iTunesTargets.map(\.database) == [URL(filePath: "/lib/master.db"), URL(filePath: "/lib/master.db")])
         #expect(h.gateCalls.value.iTunesTargets.map(\.backups) == [URL(filePath: "/backups"), URL(filePath: "/backups")])
     }
 }

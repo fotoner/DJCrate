@@ -370,10 +370,13 @@ public struct LoadLibrary: Sendable {
         public var sameSource: Bool
         /// 목록 사본을 남기지 못한 곳이 있다
         public var saveFailed: Bool
+        /// 쓴 동기화 선택이 지금 보는 사본에 보인다. 거짓이면(`--db`로 쓰기 대상과 다른 폴더의 사본을 열었을 때) 화면 목록을 바꾸지 않는다
+        public var visible: Bool
     }
 
-    /// 쓴 동기화 선택을 목록에 적용하고, 동기화한 DB(사본 실행이면 그 사본)와 지금 보는 사본 옆에 목록 사본을 남긴다.
+    /// 쓴 동기화 선택을 목록에 적용하고, 동기화 창을 연 사본과 지금 보는 사본 옆에 목록 사본을 남긴다.
     /// 다른 읽기가 낡은 목록을 채택하지 않게 같은 잠금 안에서 순서를 올린다.
+    /// 명시한 사본(`--db`)이 쓰기 대상과 다른 폴더면 그 사본은 쓴 동기화 파일을 읽지 않으므로 남기지 않는다(`visible` 거짓).
     /// - Parameters:
     ///   - database: 동기화 창을 연 사본(쓰기를 요청한 곳)
     ///   - target: 실제로 쓴 rekordbox DB
@@ -383,9 +386,10 @@ public struct LoadLibrary: Sendable {
         let selected = try music.applySelection(source, syncData)
         let sameSource = !location.opensExplicitCopy
             && active.map { $0.deletingLastPathComponent().isSameDirectory(as: location.snapshotDirectory) } == true
+        let visible = Self.showsSync(of: target, in: database, location: location)
         let mayCacheDatabase = location.rekordboxDirectoryOverridden
             || !database.deletingLastPathComponent().isSameDirectory(as: location.rekordboxDirectory)
-        let destinations = Set((mayCacheDatabase ? [database] : []) + (sameSource ? [active].compactMap { $0 } : []))
+        let destinations = visible ? Set((mayCacheDatabase ? [database] : []) + (sameSource ? [active].compactMap { $0 } : [])) : []
         let invalidated = Set(Array(destinations) + [target, database])
         var saveFailed = false
         order.publish(sources: Array(invalidated)) {
@@ -394,7 +398,21 @@ public struct LoadLibrary: Sendable {
                 catch { saveFailed = true }
             }
         }
-        return SyncedSelection(selected: selected, sameSource: sameSource, saveFailed: saveFailed)
+        return SyncedSelection(selected: selected, sameSource: sameSource, saveFailed: saveFailed, visible: visible)
+    }
+
+    /// 명시한 사본(`--db`)이 쓰기 대상과 다른 폴더인데 그 사본의 동기화 원문이 쓰기 대상의 동기화 파일과 다르다.
+    /// 새로고침은 그 사본만 다시 읽어 맞춰지지 않으므로 화면이 쓰기 전에 다시 여는 길을 알린다(최종 확인은 쓰기 관문이 한다).
+    /// - Parameter database: 동기화 창을 연 사본
+    public func syncDiffersFromTarget(_ base: Data, opened database: URL, location: LibraryLocation) -> Bool {
+        !Self.showsSync(of: location.database, in: database, location: location)
+            && music.selectionChanged(base, location.database.deletingLastPathComponent())
+    }
+
+    /// 사본은 옆의 동기화 파일을 읽는다. 명시한 사본은 쓰기 대상과 같은 폴더여야 쓴 선택이 그 사본에 보인다
+    private static func showsSync(of target: URL, in database: URL, location: LibraryLocation) -> Bool {
+        !location.opensExplicitCopy
+            || database.deletingLastPathComponent().isSameDirectory(as: target.deletingLastPathComponent())
     }
 
     // MARK: - Music 사본 규칙

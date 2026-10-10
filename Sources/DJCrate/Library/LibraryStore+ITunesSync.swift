@@ -113,17 +113,27 @@ extension LibraryStore {
         guard let base = source.syncData else {
             throw DJCError.writeRefused(String(ui: "rekordbox 동기화 파일 사본이 없습니다. rekordbox에서 한 번 동기화한 뒤 새로고침하세요."))
         }
+        // 다른 폴더의 `--db` 사본은 새로고침해도 쓰기 대상과 원문이 맞춰지지 않는다. 쓰기 관문의 "새로고침" 안내 대신 다시 여는 길을 알린다
+        if useCases.load.syncDiffersFromTarget(base, opened: database, location: location) {
+            throw DJCError.writeRefused(String(ui: "지금 연 사본(--db)의 동기화 선택이 rekordbox와 다르니 --db 없이 다시 열어 동기화하세요."))
+        }
         guard let syncITunesWrite else { throw DJCError.writeRefused(String(ui: "라이브러리가 바뀌었거나 목록을 읽지 못했습니다. 동기화 창을 다시 여세요.")) }
         invalidatePendingLoads()
         defer { invalidatePendingLoads() }
-        // 쓰기는 반영 세션이 한다: 명시한 사본으로 열었으면 그 사본에, 아니면 라이브 라이브러리에(판단은 위치 값), 덱은 잠그지 않는다.
-        let written = try await syncITunesWrite(ITunesSyncWrite(base: base, source: source.selectionNodes, selection: selection), database)
-        // 쓴 선택을 목록에 적용하고 동기화한 DB·지금 보는 사본 옆에 목록 사본을 남긴다(규칙은 유스케이스).
+        // 쓰기는 반영 세션이 한다: 반영·복원과 같은 쓰기 대상에(명시한 사본 `--db`는 읽기 출처만 바꾼다), 덱은 잠그지 않는다.
+        let written = try await syncITunesWrite(ITunesSyncWrite(base: base, source: source.selectionNodes, selection: selection))
+        // 쓴 선택을 목록에 적용하고 동기화 창을 연 사본·지금 보는 사본 옆에 목록 사본을 남긴다(규칙은 유스케이스).
         let synced = try useCases.load.publishSync(source: source, syncData: written.syncData, database: database, target: written.target,
                                                    active: snapshotURL, location: location)
         let selected = synced.selected, sameSource = synced.sameSource
         if synced.saveFailed {
             reportLibraryError(String(ui: "rekordbox 동기화는 완료했지만 사본을 저장하지 못했습니다. 저장 폴더를 확인한 뒤 새로고침하세요."))
+        }
+        // 개발 실행에서 `--db`로 쓰기 대상과 다른 폴더의 사본을 열었으면 그 사본에는 쓴 선택이 보이지 않는다. 화면은 그대로 두고 알린다.
+        guard synced.visible else {
+            toast = .notice(String(ui: "iTunes 동기화를 rekordbox에 썼습니다"),
+                            String(ui: "지금 연 사본(--db)에는 보이지 않으니 --db 없이 다시 열어 확인하세요."))
+            return
         }
         guard snapshotURL == database || sameSource else { return }
         iTunesSnapshot = selected

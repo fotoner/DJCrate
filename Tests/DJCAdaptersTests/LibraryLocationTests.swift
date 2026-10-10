@@ -41,9 +41,6 @@ struct LibraryLocationTests {
         #expect(location.snapshotDirectory == URL(filePath: "/tmp/djc-rb/djc-snapshots"))
         // 사본 rekordbox 폴더가 있으면 명시한 사본으로 열어도 스냅샷을 뜰 수 있다.
         #expect(location.allowsSnapshot)
-        // iTunes 동기화는 명시한 사본이면 연 사본에 쓴다(#167 R1: 지금 동작 그대로).
-        let opened = URL(filePath: "/tmp/djc-copy/master.db")
-        #expect(location.iTunesSyncTarget(opened: opened) == opened)
     }
 
     @Test func 사본_폴더_없이_DJC_DB만_주면_스냅샷을_뜨지_않는다() {
@@ -68,9 +65,12 @@ struct LibraryLocationTests {
         #expect(!explicit(["DJCrate"], ["DJC_REKORDBOX_DIR": "/copy"]))
     }
 
-    @Test func 명시한_사본이_없으면_iTunes_동기화는_라이브에_쓴다() {
-        let location = LibraryLocation.resolve(arguments: ["DJCrate"], environment: ["DJC_REKORDBOX_DIR": "/tmp/djc-rb"])
-        #expect(location.iTunesSyncTarget(opened: URL(filePath: "/tmp/snapshot.db")) == URL(filePath: "/tmp/djc-rb/master.db"))
+    /// `--db`는 읽기 출처만 바꾼다(2026-10-10 결정): 쓰기 대상(반영·복원·iTunes 동기화)은 늘 rekordbox 폴더의 master.db다.
+    @Test func 명시한_사본은_읽기_출처만_바꾸고_쓰기_대상은_rekordbox_폴더다() {
+        let copy = LibraryLocation.resolve(arguments: ["DJCrate", "--db", "/tmp/djc-copy/master.db"], environment: [:])
+        #expect(copy.explicitCopy == URL(filePath: "/tmp/djc-copy/master.db") && copy.database == copy.liveDatabase)
+        let overridden = LibraryLocation.resolve(arguments: ["DJCrate"], environment: ["DJC_REKORDBOX_DIR": "/tmp/djc-rb"])
+        #expect(overridden.database == URL(filePath: "/tmp/djc-rb/master.db") && overridden.database == overridden.liveDatabase)
     }
 
     @Test func DJC_HOME은_초안과_백업_폴더를_옮기고_스냅샷은_옮기지_않는다() {

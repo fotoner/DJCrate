@@ -261,8 +261,50 @@ struct LoadLibraryTests {
         let synced = try Self.loader([:], music: music).publishSync(
             source: ITunesLibrarySnapshot(sourcePlaylists: Self.catalog()), syncData: MemoryMusicLibrary.syncData(["A"]),
             database: copy, target: copy, active: copy, location: Self.location(explicitCopy: copy))
-        #expect(!synced.sameSource)
+        #expect(!synced.sameSource && synced.visible)
         // 동기화한 사본 옆에는 남긴다(라이브 rekordbox 폴더 밖)
         #expect(music.cached(copy)?.playlists.map(\.id) == ["A"])
+    }
+
+    /// `--db`는 읽기 출처만 바꾼다: 쓰기 대상과 다른 폴더의 사본은 쓴 동기화 파일을 읽지 않는다.
+    /// 그 사본 옆에 쓴 선택을 남기면 사본의 동기화 파일과 어긋나므로 남기지 않고, 화면도 바꾸지 않게 알린다.
+    @Test func 명시한_사본이_쓰기_대상과_다른_폴더면_사본에_남기지_않고_화면에_보이지_않는다고_알린다() throws {
+        let copy = URL(filePath: "/copies/master.db"), target = Self.root.appending(path: "master.db")
+        let music = MemoryMusicLibrary()
+        let synced = try Self.loader([:], music: music).publishSync(
+            source: ITunesLibrarySnapshot(sourcePlaylists: Self.catalog()), syncData: MemoryMusicLibrary.syncData(["A"]),
+            database: copy, target: target, active: copy, location: Self.location(explicitCopy: copy))
+        #expect(!synced.sameSource && !synced.visible && !synced.saveFailed)
+        #expect(music.cached(copy) == nil && music.cached(target) == nil)
+        // 같은 폴더의 다른 사본(`DJC_REKORDBOX_DIR` 안)은 쓴 동기화 파일을 함께 읽으므로 보인다
+        let sibling = Self.root.appending(path: "other.db")
+        let shown = try Self.loader([:], music: music).publishSync(
+            source: ITunesLibrarySnapshot(sourcePlaylists: Self.catalog()), syncData: MemoryMusicLibrary.syncData(["A"]),
+            database: sibling, target: target, active: sibling, location: Self.location(explicitCopy: sibling, overridden: true))
+        #expect(shown.visible && music.cached(sibling)?.playlists.map(\.id) == ["A"])
+    }
+
+    /// 다른 폴더의 `--db` 사본은 새로고침해도 그 사본만 다시 읽는다. 사본의 동기화 원문이 쓰기 대상과 다를 때만 어긋났다고 본다
+    @Test func 다른_폴더의_명시한_사본은_동기화_원문이_쓰기_대상과_다를_때만_어긋났다고_본다() {
+        let music = MemoryMusicLibrary(), loader = Self.loader([:], music: music)
+        let copy = URL(filePath: "/copies/master.db"), base = MemoryMusicLibrary.syncData(["A"])
+        music.setSelection(["A"], in: Self.root)
+        #expect(!loader.syncDiffersFromTarget(base, opened: copy, location: Self.location(explicitCopy: copy)))
+        music.setSelection(["A", "B"], in: Self.root)
+        #expect(loader.syncDiffersFromTarget(base, opened: copy, location: Self.location(explicitCopy: copy)))
+        // 같은 폴더의 사본과 스냅샷 실행은 새로고침으로 원문이 맞춰지므로 쓰기 관문의 원문 확인에 맡긴다
+        let sibling = Self.root.appending(path: "other.db")
+        #expect(!loader.syncDiffersFromTarget(base, opened: sibling, location: Self.location(explicitCopy: sibling, overridden: true)))
+        let active = Self.snapshots.appending(path: "master-6.db")
+        #expect(!loader.syncDiffersFromTarget(base, opened: active, location: Self.location()))
+    }
+
+    @Test func 명시한_사본이_없으면_쓰기_대상이_다른_폴더여도_화면에_보인다() throws {
+        let active = Self.snapshots.appending(path: "master-6.db")
+        let synced = try Self.loader([:]).publishSync(source: ITunesLibrarySnapshot(sourcePlaylists: Self.catalog()),
+                                                      syncData: MemoryMusicLibrary.syncData(["A"]), database: active,
+                                                      target: Self.root.appending(path: "master.db"), active: active,
+                                                      location: Self.location())
+        #expect(synced.visible && synced.sameSource)
     }
 }

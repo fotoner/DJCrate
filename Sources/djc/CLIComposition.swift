@@ -101,7 +101,7 @@ struct CLIComposition: Sendable {
     func writeGate(guard writeGuard: RekordboxWriteGuard) -> RekordboxWriteGate { .live(guard: writeGuard) }
 
     /// rekordbox 쓰기 명령의 반영 세션: 앱과 같은 유스케이스, 같은 관문·백업 폴더·초안 저장소. CLI는 화면이 없어 잠금·다시 읽기·결과 알리기가 없고,
-    /// 확인은 플래그가 곧 동의다. 쓴 초안 정리·복원 때 되살리기는 하지 않는다(`liveCLI`, 앱과 다름, 사용자 결정 대기).
+    /// 확인은 플래그가 곧 동의다. 쓴 초안 정리·복원 때 되살리기는 하지 않는다(`liveCLI`, 앱과 다름, 사용자 결정 2026-10-10).
     /// - Parameter gate: 라이브 판정을 바꿔 시험하는 명령만 준다(시점 스냅샷 복원)
     @MainActor
     func reflection(gate: RekordboxWriteGate? = nil) -> ReflectionSession {

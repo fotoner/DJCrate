@@ -66,7 +66,7 @@ struct ITunesSyncConsistencyTests {
             .applyingRekordboxSelection(base)
     }
 
-    /// 위치(실행 인자·환경)를 주지 않으면 이 프로세스의 것.
+    /// 위치(실행 인자·환경)를 주지 않으면 이 프로세스의 것. 쓰기 대상은 `root`의 master.db(앱의 라이브 또는 `DJC_REKORDBOX_DIR`).
     /// 기본은 사본 옆 iTunes 파일만 본다(DB를 열지 않는 원본). 곡 행을 보는 시험만 `liveDatabase`로 DB를 연다.
     @MainActor func store(_ root: URL, arguments: [String]? = nil, environment: [String: String]? = nil,
                           location: LibraryLocation? = nil, liveDatabase: Bool = false) -> LibraryStore {
@@ -75,6 +75,7 @@ struct ITunesSyncConsistencyTests {
                           resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                           backupDirectory: root.appending(path: "backups"),
                           playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                          rekordboxDatabase: root.appending(path: "master.db"),
                           arguments: arguments ?? ProcessInfo.processInfo.arguments,
                           environment: environment ?? ProcessInfo.processInfo.environment, location: location,
                           ports: ports)

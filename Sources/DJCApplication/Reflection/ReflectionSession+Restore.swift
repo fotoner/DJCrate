@@ -284,12 +284,12 @@ extension ReflectionSession {
 
     // MARK: - iTunes 동기화
 
-    /// iTunes 동기화 선택을 rekordbox 라이브러리에 쓴다. 대상은 명시한 사본으로 열었으면 그 사본, 아니면 라이브(위치 값이 정한다).
+    /// iTunes 동기화 선택을 rekordbox 라이브러리에 쓴다. 대상은 반영·복원과 같은 쓰기 대상(`target`)이다.
+    /// 명시한 사본(`--db`)은 읽기 출처만 바꾼다: 그래야 이 쓰기의 백업을 최근 쓰기 복원이 같은 대상으로 되돌린다(2026-10-10 결정).
     /// 다른 쓰기만 막고 덱은 잠그지 않는다(동기화는 덱 초안을 건드리지 않는다: 실행 취소 이력·재생 유지).
-    /// - Parameter database: 화면이 연 사본(읽기 출처)
     /// - Returns: 쓴 DB와 rekordbox가 맞춘 동기화 파일
-    public func syncITunes(_ change: ITunesSyncWrite, opened database: URL) async throws -> (target: URL, syncData: Data) {
-        let target = RekordboxWriteTarget(database: location.iTunesSyncTarget(opened: database), shareRoot: nil, backups: location.backupDirectory)
+    public func syncITunes(_ change: ITunesSyncWrite) async throws -> (target: URL, syncData: Data) {
+        let target = self.target
         ports.lock.set(true, false)
         defer { ports.lock.set(false, false) }
         let gate = ports.gate

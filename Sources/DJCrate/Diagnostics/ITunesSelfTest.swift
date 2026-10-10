@@ -27,8 +27,8 @@ extension DevSelfTests {
                 log("실패 · 합성 라이브러리 로드"); exit(1)
             }
             check(store.iTunesLibrary.index["itunes:A"]?.name == "iTunes 합성 목록", "합성 iTunes 목록 로드")
-            // 동기화가 쓰는 곳: 명시한 사본이면 그 사본 옆, 아니면 라이브 rekordbox 폴더(저장소의 위치 값)
-            let syncDirectory = store.location.iTunesSyncTarget(opened: snapshot).deletingLastPathComponent()
+            // 동기화가 쓰는 곳: 다른 쓰기와 같은 쓰기 대상의 폴더(저장소의 위치 값, `--db`는 읽기 출처만 바꾼다)
+            let syncDirectory = store.location.database.deletingLastPathComponent()
             let syncURL = syncDirectory.appending(path: "playlists3.sync")
             let syncBefore = try? Data(contentsOf: syncURL)
             @MainActor func button(_ id: String, in view: NSView) -> NSButton? {

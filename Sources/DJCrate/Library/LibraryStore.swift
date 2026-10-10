@@ -164,7 +164,7 @@ final class LibraryStore {
     @ObservationIgnored var iTunesSyncCapture: ITunesSyncCapture?
     @ObservationIgnored var iTunesSyncCatalogEpoch: UInt64 = 0
     /// iTunes 동기화 선택을 rekordbox에 쓴다(반영 세션 `syncITunes`, 조립 지점이 붙인다. 없으면 쓰지 않는다)
-    @ObservationIgnored var syncITunesWrite: ((ITunesSyncWrite, URL) async throws -> (target: URL, syncData: Data))?
+    @ObservationIgnored var syncITunesWrite: ((ITunesSyncWrite) async throws -> (target: URL, syncData: Data))?
     var isITunesSelection: Bool { if case .itunesPlaylist = sidebar { true } else { false } }
     /// USB 목록을 보는 중(읽기 전용: 편집·쓰기·끌기·덱 불러오기를 막는다)
     var isUsbSelection: Bool { if case .usb = sidebar { true } else { false } }
