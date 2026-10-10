@@ -1,3 +1,4 @@
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
@@ -38,18 +39,22 @@ struct InitialITunesCacheLoadingTests {
     }
 
     /// 위치는 CI의 사본 경로 설정과 무관하게 정한다(기본은 명시 사본도 사본 rekordbox 폴더도 없는 실행).
-    private func store(_ fixture: RekordboxFixture, arguments: [String] = ["test"], environment: [String: String] = [:]) -> LibraryStore {
-        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("initial-itunes-cache"), persist: false),
+    /// 기본은 사본 옆 iTunes 파일만 본다(DB를 열지 않는 원본). 곡 행을 보는 시험만 `liveDatabase`로 DB를 연다.
+    private func store(_ root: URL, arguments: [String] = ["test"], environment: [String: String] = [:],
+                       liveDatabase: Bool = false) -> LibraryStore {
+        let ports: ((inout LibraryPorts) -> Void)? = liveDatabase ? nil : { $0.source = .withoutDatabase }
+        return LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("initial-itunes-cache"), persist: false),
                           resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
-                          backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
+                          backupDirectory: root.appending(path: "backups"), playlistDraftSaver: { _ in },
                           mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
-                          arguments: arguments, environment: environment)
+                          arguments: arguments, environment: environment,
+                          ports: ports)
     }
 
-    private func snapshot(_ fixture: RekordboxFixture, directory: URL) throws -> URL {
+    private func snapshot(from database: URL, directory: URL) throws -> URL {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try sync.write(to: directory.appending(path: "playlists3.sync"))
-        return try LibrarySnapshot.take(from: fixture.database, into: directory, force: true,
+        return try LibrarySnapshot.take(from: database, into: directory, force: true,
                                         now: Date(timeIntervalSince1970: 1_800_000_000))
     }
 
@@ -57,13 +62,13 @@ struct InitialITunesCacheLoadingTests {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec(id: "1"))
         let directory = fixture.root.appending(path: "snapshots")
-        let database = try snapshot(fixture, directory: directory)
+        let database = try snapshot(from: fixture.database, directory: directory)
         let cached = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "캐시 목록")])
             .applyingRekordboxSelection(sync)
         try cached.save(for: database)
         let newer = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "새 목록")])
             .applyingRekordboxSelection(sync)
-        let store = store(fixture)
+        let store = store(fixture.root, liveDatabase: true)
         let started = Mutex(false)
         let completed = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
@@ -105,13 +110,13 @@ struct InitialITunesCacheLoadingTests {
     }
 
     @Test func 늦은_초기_Music은_그뒤_시작한_DB_로드를_덮지_않는다() async throws {
-        let fixture = try RekordboxFixture()
-        let directory = fixture.root.appending(path: "snapshots")
-        let database = try snapshot(fixture, directory: directory)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let directory = folder.url.appending(path: "snapshots")
+        let database = try snapshot(from: folder.database, directory: directory)
         let cached = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "보존 목록")])
             .applyingRekordboxSelection(sync)
         try cached.save(for: database)
-        let store = store(fixture)
+        let store = store(folder.url)
         let started = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let completed = Mutex(false)
@@ -172,12 +177,12 @@ struct InitialITunesCacheLoadingTests {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec(id: "1"))
         let directory = fixture.root.appending(path: "snapshots")
-        let database = try snapshot(fixture, directory: directory)
+        let database = try snapshot(from: fixture.database, directory: directory)
         try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "캐시 목록")])
             .applyingRekordboxSelection(sync).save(for: database)
         let music = StalledMusic(try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "최신 목록")])
             .applyingRekordboxSelection(sync))
-        let store = store(fixture)
+        let store = store(fixture.root, liveDatabase: true)
         guard await openWithStalledMusic(store, directory: directory, music: music) else { return }
 
         // 쓰기 뒤 다시 읽기는 Music을 기다리지 않고 캐시로 새 사본을 연다.
@@ -211,14 +216,14 @@ struct InitialITunesCacheLoadingTests {
     }
 
     @Test func Music_최신화_중에는_동기화_쓰기를_막고_끝나면_최신_목록으로_연다() async throws {
-        let fixture = try RekordboxFixture()
-        let directory = fixture.root.appending(path: "snapshots")
-        let database = try snapshot(fixture, directory: directory)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let directory = folder.url.appending(path: "snapshots")
+        let database = try snapshot(from: folder.database, directory: directory)
         try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "캐시 목록")])
             .applyingRekordboxSelection(sync).save(for: database)
         let music = StalledMusic(try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "최신 목록")])
             .applyingRekordboxSelection(sync))
-        let store = store(fixture)
+        let store = store(folder.url)
         guard await openWithStalledMusic(store, directory: directory, music: music) else { return }
 
         store.presentITunesSync()
@@ -257,15 +262,15 @@ struct InitialITunesCacheLoadingTests {
     }
 
     @Test func 초기_Music_최신화와_선택창_강제_새로고침은_캡처_하나를_공유한다() async throws {
-        let fixture = try RekordboxFixture()
-        let directory = fixture.root.appending(path: "snapshots")
-        let database = try snapshot(fixture, directory: directory)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let directory = folder.url.appending(path: "snapshots")
+        let database = try snapshot(from: folder.database, directory: directory)
         let cached = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "이전 목록")])
             .applyingRekordboxSelection(sync)
         try cached.save(for: database)
         let fresh = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "최신 목록")])
             .applyingRekordboxSelection(sync)
-        let store = store(fixture)
+        let store = store(folder.url)
         let calls = Mutex(0)
         let started = Mutex(false)
         let initialReturned = Mutex(false)
@@ -303,10 +308,10 @@ struct InitialITunesCacheLoadingTests {
     }
 
     @Test func 전체캐시가_없으면_기존_Music_로딩을_유지한다() async throws {
-        let fixture = try RekordboxFixture()
-        let directory = fixture.root.appending(path: "snapshots")
-        _ = try snapshot(fixture, directory: directory)
-        let store = store(fixture)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let directory = folder.url.appending(path: "snapshots")
+        _ = try snapshot(from: folder.database, directory: directory)
+        let store = store(folder.url)
         let started = Mutex(false)
         let returned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
@@ -328,16 +333,16 @@ struct InitialITunesCacheLoadingTests {
     }
 
     @Test func 명시_DB와_사본_모드에서는_Music을_조회하지_않는다() async throws {
-        let fixture = try RekordboxFixture()
-        let directory = fixture.root.appending(path: "djc-snapshots")
-        _ = try snapshot(fixture, directory: directory)
-        let explicit = store(fixture, arguments: ["test", "--db", fixture.database.path])
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let directory = folder.url.appending(path: "djc-snapshots")
+        _ = try snapshot(from: folder.database, directory: directory)
+        let explicit = store(folder.url, arguments: ["test", "--db", folder.database.path])
         await explicit.loadInitial(snapshotDirectory: directory, captureITunes: {
             Issue.record("명시 DB에서 Music을 읽었습니다")
             return .init(status: .unavailable)
         })
-        #expect(explicit.snapshotURL == fixture.database)
-        let copy = store(fixture, environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
+        #expect(explicit.snapshotURL == folder.database)
+        let copy = store(folder.url, environment: ["DJC_REKORDBOX_DIR": folder.url.path])
         await copy.loadInitial(snapshotDirectory: directory, captureITunes: {
             Issue.record("사본 모드에서 Music을 읽었습니다")
             return .init(status: .unavailable)

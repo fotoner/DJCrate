@@ -1,3 +1,4 @@
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 @testable import DJCStorage
@@ -9,11 +10,16 @@ import Testing
 
 struct ITunesSyncTests {
     /// 명시한 사본(`--db`)으로 연 창: iTunes 동기화가 그 사본에만 쓴다
-    @MainActor private func store(_ fixture: RekordboxFixture) -> LibraryStore {
-        LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes.sync"), persist: false),
-                          resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+    @MainActor private func store(_ fixture: RekordboxFixture) -> LibraryStore { store(root: fixture.root) }
+    /// DB를 열지 않는 시험(`withoutDatabase`)은 임시 폴더만 준다
+    @MainActor private func store(root: URL, withoutDatabase: Bool = false) -> LibraryStore {
+        let ports: ((inout LibraryPorts) -> Void)? = withoutDatabase ? { $0.source = .withoutDatabase } : nil
+        return LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes.sync"), persist: false),
+                          resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                          backupDirectory: root.appending(path: "backups"),
                           playlistDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
-                          arguments: ["DJCrate", "--db", fixture.database.path], environment: [:])
+                          arguments: ["DJCrate", "--db", root.appending(path: "master.db").path], environment: [:],
+                          ports: ports)
     }
     let source: [ITunesLibrarySnapshot.Playlist] = [
         .init(id: "F", name: "폴더", isFolder: true),
@@ -102,24 +108,24 @@ struct ITunesSyncTests {
     }
 
     @MainActor @Test func 외부_변경과_출처_변경은_표시를_바꾸지_않는다() async throws {
-        let fixture = try RekordboxFixture(), snapshot = try snapshot()
-        try snapshot.save(for: fixture.database)
-        let syncURL = fixture.root.appending(path: "playlists3.sync")
+        let folder = try TemporaryFolder.withEmptyDatabase(), snapshot = try snapshot()
+        try snapshot.save(for: folder.database)
+        let syncURL = folder.url.appending(path: "playlists3.sync")
         try base.write(to: syncURL)
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        let store = store(root: folder.url, withoutDatabase: true)
+        await store.load(snapshot: folder.database)
         try (base + Data("\n".utf8)).write(to: syncURL)
         let writes = store.rekordboxWriteCount
         await #expect(throws: (any Error).self) {
-            try await store.syncITunesPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: fixture.database)
+            try await store.syncITunesPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: folder.database)
         }
         #expect(store.iTunesLibrary.index["itunes:B"] != nil)
         // 잠근 뒤 쓰기에서 실패해도 잠금이 풀린다(defer)
         #expect(store.rekordboxWriteCount == writes + 1 && !store.isWritingRekordbox)
         await #expect(throws: (any Error).self) {
-            try await store.syncITunesPlaylists(ITunesSyncSelection(), source: snapshot, database: fixture.root.appending(path: "other.db"))
+            try await store.syncITunesPlaylists(ITunesSyncSelection(), source: snapshot, database: folder.url.appending(path: "other.db"))
         }
         #expect(store.iTunesLibrary.index["itunes:B"] != nil)
-        #expect(RekordboxWriter.backups(in: fixture.backups).isEmpty)
+        #expect(RekordboxWriter.backups(in: folder.backups).isEmpty)
     }
 }

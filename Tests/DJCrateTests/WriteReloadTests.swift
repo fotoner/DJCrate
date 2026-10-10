@@ -75,21 +75,22 @@ struct WriteReloadTests {
 
     @Test(arguments: [ITunesLibrarySnapshot.Status.ready, .stale])
     func 재사용한_목록은_sync가_없어도_새_사본에_남긴다(status: ITunesLibrarySnapshot.Status) throws {
-        let fixture = try RekordboxFixture()
-        let previous = fixture.root.appending(path: "previous.db")
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let previous = folder.url.appending(path: "previous.db")
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "보존할 목록")], status: status)
-        let loaded = try LoadedLibrary.load(snapshot: fixture.database,
+        let loaded = try LoadedLibrary.load(snapshot: folder.database,
                                             previousITunesSnapshot: .init(source: previous, contents: cached),
                                             fallbackDirectory: LibrarySnapshot.defaultDirectory,
-                                            drafts: .dataFolder(),
+                                            drafts: .dataFolder(), source: .withoutDatabase,
                                             captureITunes: { Issue.record("재사용 중 Music을 조회했습니다"); return .init() })
         #expect(loaded.iTunesSnapshot.status == status)
-        #expect(ITunesLibrarySnapshot.load(for: fixture.database).status == status)
-        #expect(ITunesLibrarySnapshot.load(for: fixture.database).playlists == cached.playlists)
+        #expect(ITunesLibrarySnapshot.load(for: folder.database).status == status)
+        #expect(ITunesLibrarySnapshot.load(for: folder.database).playlists == cached.playlists)
     }
 
     @Test(arguments: [false, true])
     func 진행_단계는_DB와_Music_캡처를_구분한다(refresh: Bool) throws {
+        // DB 읽기 단계(.database)를 보므로 실제 사본 DB를 연다.
         let fixture = try RekordboxFixture()
         let stages = Mutex<[LoadedLibrary.Stage]>([])
         _ = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: refresh,
@@ -103,13 +104,13 @@ struct WriteReloadTests {
     }
 
     @Test func 재사용한_목록의_저장에_실패해도_메모리와_기존_파일은_보존한다() throws {
-        let fixture = try RekordboxFixture()
-        let sidecar = ITunesLibrarySnapshot.url(for: fixture.database)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let sidecar = ITunesLibrarySnapshot.url(for: folder.database)
         try FileManager.default.createDirectory(at: sidecar, withIntermediateDirectories: false)
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "보존할 목록")])
-        let loaded = try LoadedLibrary.load(snapshot: fixture.database, previousITunesSnapshot:
-            .init(source: fixture.root.appending(path: "previous.db"),
-                  contents: cached), fallbackDirectory: LibrarySnapshot.defaultDirectory, drafts: .dataFolder())
+        let loaded = try LoadedLibrary.load(snapshot: folder.database, previousITunesSnapshot:
+            .init(source: folder.url.appending(path: "previous.db"),
+                  contents: cached), fallbackDirectory: LibrarySnapshot.defaultDirectory, drafts: .dataFolder(), source: .withoutDatabase)
         #expect(loaded.iTunesSnapshot == cached)
         #expect(try FileManager.default.attributesOfItem(atPath: sidecar.path)[.type] as? FileAttributeType == .typeDirectory)
     }

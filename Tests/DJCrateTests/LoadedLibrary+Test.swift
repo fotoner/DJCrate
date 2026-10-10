@@ -2,6 +2,7 @@ import DJCAdapters
 import DJCApplication
 import DJCDomain
 import DJCStorage
+import DJCTestKit
 import Foundation
 import RekordboxKit
 
@@ -54,5 +55,17 @@ extension LibrarySource {
         source.grid = { _, _ in nil }
         source.log = { _ in }
         return source
+    }
+}
+
+extension TemporaryFolder {
+    var database: URL { url.appending(path: "master.db") }
+    var backups: URL { url.appending(path: "backups") }
+
+    /// 빈 `master.db`가 든 임시 폴더. `.withoutDatabase`처럼 DB를 열지 않고 경로·사본 옆 파일만 쓰는 시험이 쓴다.
+    static func withEmptyDatabase() throws -> TemporaryFolder {
+        let folder = try TemporaryFolder()
+        try Data().write(to: folder.database)
+        return folder
     }
 }

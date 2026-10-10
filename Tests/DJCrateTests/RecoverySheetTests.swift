@@ -31,7 +31,6 @@ struct RecoverySheetTests {
             .draft("A", .tags): .useCurrent, .draft("A", .cues): .keep, .draft("B", .tags): .keep, .draft("B", .grid): .useCurrent,
             .draft("C", .cues): .useCurrent, .playlist("P1"): .useCurrent, .playlist("P2"): .keep,
         ])
-        static let allLater = Plan(name: "모두 나중에", choices: Dictionary(uniqueKeysWithValues: RecoveryScenario.allTargets.map { ($0, RecoveryChoice.later) }))
     }
 
     func model(_ scenario: RecoveryScenario, _ targets: [Target] = RecoveryScenario.allTargets) -> RecoverySheetModel {
@@ -69,7 +68,9 @@ struct RecoverySheetTests {
 
     // MARK: - 지금 흐름과 같은 결과
 
-    @Test(arguments: [Plan.mixed, .opposite, .allLater])
+    /// 두 계획이 줄마다 내 편집 유지·현재값 쓰기를 한 번씩 고른다. 나중에는 `.mixed`의 B 태그 줄, 나중에만 고른 시트는
+    /// 저장 자체가 막힌다(`save`는 `canSave`를 먼저 본다, `나중에만_고르면_저장할_수_없다`).
+    @Test(arguments: [Plan.mixed, .opposite])
     func 줄마다_다르게_고른_결과가_연속_창_흐름과_같다(plan: Plan) async throws {
         let legacy = try await RecoveryScenario.make(), sheet = try await RecoveryScenario.make()
         let initial = sheet.outcome()
@@ -90,15 +91,11 @@ struct RecoverySheetTests {
             if case let .failed(reason) = line.phase { "\(line.title) \(line.kindLabel): \(reason)" } else { nil }
         }
         #expect(failures.isEmpty, "저장하지 못한 줄: \(failures)")
-        #expect(saved || plan.name == "모두 나중에")
+        #expect(saved)
 
         #expect(sheet.outcome() == legacy.outcome(), "결과가 다름: \(sheet.differences(sheet.outcome(), legacy.outcome()))")
-        if plan.name == "모두 나중에" {
-            #expect(sheet.outcome() == initial, "나중에만 고르면 초안이 그대로여야 한다")
-        } else {
-            #expect(sheet.outcome() != initial, "고른 줄은 초안이 바뀌어야 한다")
-            #expect(model.isClosed)
-        }
+        #expect(sheet.outcome() != initial, "고른 줄은 초안이 바뀌어야 한다")
+        #expect(model.isClosed)
     }
 
     // MARK: - 줄과 기본 선택

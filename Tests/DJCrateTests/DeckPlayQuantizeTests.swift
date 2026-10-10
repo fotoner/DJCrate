@@ -40,15 +40,6 @@ struct DeckPlayQuantizeTests {
         #expect(h.deck.selectedCueID == h.deck.hotCue(slot: 0)?.id)
     }
 
-    @Test func 한_박_단위면_다음_박에서_정확히_큐로() async throws {
-        let h = try harness()
-        try await h.loaded()
-        h.deck.playQuantizeBeats = 1
-        playing(h)
-        h.deck.pressHotCue(slot: 0)
-        #expect(h.audio.log.last == "jump 11.000→30.000")
-    }
-
     /// #107: 이전 설정(½박)이 남아 있어도 예약 방식(샘플 단위 예약·화면 틱)마다 다음 큰 박까지 기다린다.
     /// 설정값 조합은 `PlayQuantizeTests`가 본다(DeckQuantizeBoundaryRegressionTests를 합침).
     @Test(arguments: [false, true])
