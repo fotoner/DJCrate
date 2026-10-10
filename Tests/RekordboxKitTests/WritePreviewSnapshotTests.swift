@@ -1,8 +1,10 @@
 import CryptoKit
 import DJCDomain
+import DJCTestKit
 import Foundation
 import RekordboxFixtures
 @testable import RekordboxKit
+import Synchronization
 import Testing
 
 @Suite("반영 미리보기 사본")
@@ -271,4 +273,59 @@ struct WritePreviewSnapshotTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.backups.path).isEmpty)
     }
 
+    /// 사본 뜨기의 단계를 센다. 협력 풀에서 불린 단계도 따로 센다.
+    final class Steps: Sendable {
+        let state = Mutex((all: 0, onPool: 0))
+        func record() { let pool = isOnCooperativePool(); state.withLock { $0.all += 1; if pool { $0.onPool += 1 } } }
+    }
+
+    /// 사본 뜨기(DB·XML·분석 파일 복사)는 오래 막는 입출력이라 협력 스레드 풀을 붙잡지 않는다(#247)
+    @Test func 사본_뜨기는_협력_풀_밖에서_한다() async throws {
+        let fixture = try RekordboxFixture()
+        let (track, _) = try RekordboxGridWriterTests().makeTrack(fixture)
+        var grid = try RekordboxGridWriterTests().draft(fixture, track)
+        grid.shift(by: 0.01)
+        let steps = Steps()
+        let directory = fixture.root.appending(path: "preview")
+        try await WritePreviewSnapshot.withCopy(from: fixture.database, shareRoot: fixture.shareRoot, grids: [grid], artworks: [track.uuid],
+                                                directory: directory, checkpoint: { steps.record() }) { database, share in
+            #expect(FileManager.default.fileExists(atPath: database.path))
+            #expect(RekordboxShare.analysisURL(track.analysisDataPath, root: share).map { FileManager.default.fileExists(atPath: $0.path) } == true)
+        }
+        let counted = steps.state.withLock { $0 }
+        #expect(counted.all >= 3)
+        #expect(counted.onPool == 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+
+    /// 사본을 뜨는 도중 작업을 취소하면 다음 단계에서 멈춰 `CancellationError`로 끝나고, 본문은 돌지 않으며 사본은 지운다(#247)
+    @Test func 사본_뜨는_도중_취소하면_멈추고_사본을_지운다() async throws {
+        let fixture = try RekordboxFixture()
+        let (track, _) = try RekordboxGridWriterTests().makeTrack(fixture)
+        var grid = try RekordboxGridWriterTests().draft(fixture, track)
+        grid.shift(by: 0.01)
+        let directory = fixture.root.appending(path: "preview")
+        let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
+        let steps = Steps()
+        let task = Task {
+            try await WritePreviewSnapshot.withCopy(from: fixture.database, shareRoot: fixture.shareRoot, grids: [grid], directory: directory,
+                                                    checkpoint: {
+                                                        steps.record()
+                                                        // 첫 단계에서 시험이 작업을 취소할 때까지 기다린다
+                                                        guard steps.state.withLock({ $0.all }) == 1 else { return }
+                                                        entered.signal()
+                                                        release.wait()
+                                                    }) { _, _ in
+                Issue.record("취소한 사본 뜨기가 본문을 실행함")
+            }
+        }
+        // 풀 스레드를 막지 않게 GCD에서 기다린다
+        await withCheckedContinuation { continuation in DispatchQueue.global().async { entered.wait(); continuation.resume() } }
+        task.cancel()
+        release.signal()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        // 취소를 본 그 단계에서 멈춘다(다음 복사로 가지 않는다)
+        #expect(steps.state.withLock { $0.all } == 1)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
 }

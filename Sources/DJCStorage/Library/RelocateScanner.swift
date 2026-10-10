@@ -7,7 +7,7 @@ import RekordboxKit
 ///
 /// - 심볼릭 링크는 따라가지 않는다(파일도 폴더도 건너뜀). 숨은 파일·`._*`·USB의 `PIONEER` 폴더(대소문자 무시)·`djprofile.nxs`·rekordbox/DJCrate 데이터 폴더도 건너뛰고,
 ///   고른 폴더 자신이 `PIONEER`이거나 그 안이면 거부한다.
-/// - 훑는 일은 호출한 쪽 액터(메인 스레드 등) 밖에서 하고, 폴더·파일마다 취소를 본다.
+/// - 훑는 일은 호출한 쪽 액터(메인 스레드 등) 밖에서 하고, 폴더·파일마다 취소를 본다. 폴더 열거는 협력 풀 밖(`OffPoolIO`)에서 한다.
 /// - 태그·길이는 이름이나 크기가 어느 곡과 맞는 파일만 읽는다(`RelocateTargetIndex`).
 public enum RelocateScanner {
     public typealias Progress = RelocateProgress
@@ -66,8 +66,11 @@ public enum RelocateScanner {
             throw ScanError.notAFolder
         }
 
-        let listed = try listAudioFiles(in: root, protectedRoots: protectedRoots) { count in
-            progress(Progress(phase: .listing, audioFiles: count, filesToRead: 0, filesRead: 0))
+        // 폴더 열거는 잠든 외장 볼륨에서 오래 막을 수 있어 협력 풀 밖에서 한다. 작업 취소는 폴더마다 신호로 본다(#247).
+        let listed = try await OffPoolIO.run { cancellation in
+            try listAudioFiles(in: root, protectedRoots: protectedRoots, cancellation: cancellation) { count in
+                progress(Progress(phase: .listing, audioFiles: count, filesToRead: 0, filesRead: 0))
+            }
         }
         try Task.checkCancellation()
 
@@ -110,14 +113,15 @@ public enum RelocateScanner {
     }
 
     /// 폴더 아래 음원 파일(경로·크기). 취소를 폴더마다 본다. 읽을 수 없는 폴더는 건너뛴다.
-    public static func listAudioFiles(in root: URL, protectedRoots: [String], onCount: (Int) -> Void) throws -> [(url: URL, size: Int64)] {
+    public static func listAudioFiles(in root: URL, protectedRoots: [String], cancellation: CancellationCheck = CancellationCheck(),
+                                      onCount: (Int) -> Void) throws -> [(url: URL, size: Int64)] {
         let keys: [URLResourceKey] = [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey, .isPackageKey, .fileSizeKey]
         let keySet = Set(keys)
         let fm = FileManager.default
         var found: [(url: URL, size: Int64)] = []
         var pending = [root]
         while let directory = pending.popLast() {
-            try Task.checkCancellation()
+            try cancellation.check()
             guard let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
             else { continue }
             for entry in entries {
