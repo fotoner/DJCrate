@@ -96,9 +96,10 @@ final class TrackStagingStore {
         stagingMessage = AppMessage(kind: .failure, text: String(ui: "추가한 곡 목록을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"))
     }
 
-    /// 파일 선택 창·메뉴가 고른 파일을 추가하기 시작한다(MVVM-4). 기다리지 않는다. 돌려주는 손잡이는 시험이 기다린다
+    /// 파일 선택 창·메뉴가 고른 파일을 추가하기 시작한다(MVVM-4). 기다리지 않는다. 돌려주는 손잡이는 시험이 기다린다.
+    /// 조각은 핵심을 붙들지 않으므로 일은 핵심을 거쳐 부른다(끝날 때까지 핵심을 붙든다)
     @discardableResult
-    func startAddingFiles(_ urls: [URL]) -> Task<Void, Never> { Task { await addFiles(urls) } }
+    func startAddingFiles(_ urls: [URL]) -> Task<Void, Never> { Task { [library] in await library.staging.addFiles(urls) } }
 
     /// 파일·폴더를 추가한다. 이미 rekordbox 컬렉션에 있는 파일은 건너뛴다
     /// (XML로 다시 가져오면 rekordbox의 기존 큐·그리드를 덮을 수 있다).
@@ -214,7 +215,12 @@ final class TrackStagingStore {
         if gridJob == nil { gridJob = GridJob(done: 0, total: 0) }
         gridJob?.total += fresh.count
         if gridTask == nil {
-            gridTask = Task { [weak self] in await self?.runGridQueue() }
+            // 도는 동안은 핵심을 붙든다(조각은 핵심을 unowned로만 본다. 옛 저장소의 일과 같은 수명)
+            gridTask = Task { [weak library] in
+                guard let library else { return }
+                await library.staging.runGridQueue()
+                withExtendedLifetime(library) {}
+            }
         }
     }
 
@@ -294,8 +300,8 @@ final class TrackStagingStore {
         let urls = library.launch.addFiles, export = library.launch.exportStaged
         let useCases = library.useCases
         let log: @Sendable (String) -> Void = { useCases.log($0) }
-        Task {
-            await addFiles(urls)
+        Task { [library] in
+            await library.staging.addFiles(urls)
             log("[staging] 추가: \(stagingMessage?.text ?? "")")
             while gridJob != nil { try? await Task.sleep(for: .milliseconds(300)) }
             for track in staged {

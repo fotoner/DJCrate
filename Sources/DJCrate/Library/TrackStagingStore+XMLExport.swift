@@ -34,15 +34,16 @@ extension TrackStagingStore {
             return
         }
         xmlExportJob = LibraryXMLExportJob()
-        xmlExportTask = Task { [weak self] in
+        // 핵심이 사라지면 마무리하지 않는다(조각은 핵심을 unowned로만 보므로 핵심을 거쳐 부른다)
+        xmlExportTask = Task { [weak library] in
             let result = await Result {
                 try await LoadLibrary.background(qos: .utility) {
                     try exporter.exportLibrary(snapshot: snapshot, share: shareRoot, to: url) { progress in
-                        Task { @MainActor in self?.xmlExportJob?.apply(progress) }
+                        Task { @MainActor in library?.staging.xmlExportJob?.apply(progress) }
                     }
                 }
             }
-            self?.finishXMLExport(result, url: url)
+            library?.staging.finishXMLExport(result, url: url)
         }
     }
 

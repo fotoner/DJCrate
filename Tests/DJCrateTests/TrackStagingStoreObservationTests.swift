@@ -80,6 +80,46 @@ struct TrackStagingStoreObservationTests {
         #expect(store.staging.stagedRows.first?.track.bpm == 126)
     }
 
+    // MARK: - 수명
+
+    /// 조각은 핵심을 붙들지 않는다(unowned). 조각이 시작한 일은 옛 저장소의 일처럼 도는 동안 핵심을 붙들어야 한다(리뷰 P1).
+    @Test func 그리드_추정과_곡_추가는_도는_동안_핵심을_붙든다() async {
+        weak var weakStore: LibraryStore?
+        let started = TestSwitch()
+        let (gate, release) = AsyncStream<Void>.makeStream()
+        var grid: Task<Void, Never>?
+        do {
+            let path = "/synthetic/\(UUID().uuidString).wav"
+            let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
+                                          ports: { ports in
+                                              let exists = ports.files.exists
+                                              ports.files.exists = { $0 == path || exists($0) }
+                                              // 추정을 멈춰 두어 큐가 도는 동안 시험이 저장소를 놓게 한다
+                                              ports.analysis.estimateGrid = { _, _ in
+                                                  started.set(true)
+                                                  for await _ in gate {}
+                                                  return nil
+                                              }
+                                          })
+            weakStore = store
+            store.staging.enqueueGrid([GridJobItem(uuid: UUID().uuidString.lowercased(), path: path, staged: false)])
+            grid = store.staging.gridTask
+            #expect(await waitForState { started.isOn })
+        }
+        #expect(weakStore != nil, "추정 도중에는 핵심을 붙든다")
+        release.finish()
+        await grid?.value
+
+        var adding: Task<Void, Never>?
+        do {
+            let store = store(saves: Saves())
+            weakStore = store
+            adding = store.staging.startAddingFiles([URL(filePath: "/nonexistent-djc-fixture/\(UUID()).mp3")])
+        }
+        #expect(weakStore != nil, "추가가 끝날 때까지 핵심을 붙든다")
+        await adding?.value
+    }
+
     // MARK: - 목록 아래 막대
 
     private func bar(_ store: LibraryStore) -> () -> Void {
