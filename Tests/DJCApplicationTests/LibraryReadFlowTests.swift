@@ -70,8 +70,10 @@ struct LibraryReadFlowTests {
         return snapshot
     }
 
+    /// 상태를 기다린다. 안전망(300초)은 판정이 오지 않는 잘못된 구현에서 시험이 멈추지 않게 할 뿐이다(TEST-30~32)
     func waitUntil(_ condition: @MainActor () -> Bool) async throws {
-        for _ in 0..<400 where !condition() { try await Task.sleep(for: .milliseconds(5)) }
+        let deadline = ContinuousClock.now + .seconds(300)
+        while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
         #expect(condition())
     }
 
@@ -108,6 +110,25 @@ struct LibraryReadFlowTests {
         #expect(w.screen.music.isEmpty)
         #expect(w.flow.musicRefresh == nil)
         #expect(w.screen.state.snapshot == Self.second)
+    }
+
+    @Test func 같은_사본을_다시_읽으면_그_전에_시작한_Music_최신화는_목록에_넣지_않는다() async throws {
+        let gate = Gate()
+        let w = Self.world()
+        await w.flow.load(snapshot: Self.first)
+        let captured = Self.catalog(["A"], selected: ["A"])
+
+        let refresh = w.flow.startMusicRefresh(snapshot: Self.first, quiet: true, previous: nil, fallbackDirectory: L.snapshots,
+                                               sourceDatabase: nil, capture: { gate.pass(); return captured })
+        try await waitUntil { gate.entered == 1 }
+        // 사본이 같아 세대만 결과를 가른다
+        await w.flow.load(snapshot: Self.first)
+        gate.open()
+        await refresh.value
+
+        #expect(w.screen.adopted.map(\.snapshot) == [Self.first, Self.first])
+        #expect(w.screen.music.isEmpty)
+        #expect(w.flow.musicRefresh == nil)
     }
 
     // MARK: - 요청 합치기

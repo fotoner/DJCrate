@@ -432,8 +432,9 @@ final class LibraryStore {
     private var suppressRefresh = false
     /// 읽기 순서(유스케이스): 처음 열기·바뀜 확인·사본 뜨기 요청 합치기·Music 최신화·동기화 창 목록. 화면은 `readScreen`으로 붙인다
     @ObservationIgnored let readFlow: LibraryReadFlow
-    /// 읽기 세대·요청 순번(`readFlow`가 센다). 늦게 끝난 읽기·Music 최신화·파일 확인·USB 사본 출처를 이것으로 가른다.
-    var reads: LibraryReadSequence { readFlow.reads }
+    /// 읽기 세대·요청 순번(`readFlow`가 세어 알린다). 늦게 끝난 읽기·Music 최신화·파일 확인·USB 사본 출처를 이것으로 가른다.
+    /// 뷰가 쓰기 판정 단추(`usbSyncSourceIsCurrent`)에서 읽으므로 관찰하는 값으로 둔다.
+    private(set) var reads = LibraryReadSequence()
     /// 결과 채택 전에도 조용한 다시 읽기 시작을 native USB 작업에서 구분한다.
     var snapshotReadEpoch: Int { reads.generation }
     /// 읽은 목록의 사본 지문과 그 읽기 세대(USB 작업 사본의 출처, `Usb/LibraryStore+UsbSnapshot`)
@@ -462,6 +463,8 @@ final class LibraryStore {
     // 저장소를 받는 다른 코드(USB 화면 등)가 쓰기 판정의 근거(`snapshotURL`·`previewRevision` …)를 실수로 바꾸지 못하게 한다.
 
     func invalidatePendingLoads() { readFlow.invalidate() }
+    /// 읽기 순번이 바뀌었다(`readFlow`가 알린다)
+    func setReads(_ sequence: LibraryReadSequence) { reads = sequence }
 
     /// 읽은 곡 행을 넣는다. 지난 확인에서 없던 파일은 새 확인이 끝날 때까지 '파일 없음'으로 둔다.
     /// 초안 파일 시각도 잊어 다음 바깥 확인이 다시 읽게 한다.

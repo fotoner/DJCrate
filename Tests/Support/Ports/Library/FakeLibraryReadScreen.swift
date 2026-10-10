@@ -14,6 +14,8 @@ public final class FakeLibraryReadScreen {
     /// 넣은 Music 최신화 결과(차례대로)
     public private(set) var music: [ITunesLibrarySnapshot] = []
     public var commentPreset: CommentPreset = .none
+    /// 마지막으로 알린 읽기 순번
+    public private(set) var reads = LibraryReadSequence()
 
     public init() {}
 
@@ -32,6 +34,8 @@ public final class FakeLibraryReadScreen {
         case let .phase(phase):
             state.phase = phase
             events.append("phase \(phase)")
+        case let .readSequence(sequence):
+            reads = sequence
         case let .error(message):
             state.hasError = true
             events.append("error \(message)")

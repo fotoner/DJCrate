@@ -49,6 +49,8 @@ public struct LibraryReadState: Sendable {
 /// 읽기 흐름이 화면에 알리는 것. 무엇을 바꿀지는 흐름이 정하고, 화면은 표시만 바꾼다.
 public enum LibraryReadChange: Sendable {
     case phase(LibraryReadPhase)
+    /// 읽기 순번이 바뀌었다(읽기를 시작하거나 버렸다). 화면은 이 값으로 쓰기 판정 단추를 다시 계산한다
+    case readSequence(LibraryReadSequence)
     /// 목록은 그대로 두고 오류만 알린다
     case error(String)
     /// 사이드바 iTunes 절 상태를 바꾼다(읽는 중 ↔ 미캡처)

@@ -81,6 +81,8 @@ extension LibraryStore {
             case .loaded: self.phase = .loaded
             case let .failed(message): self.phase = .failed(message)
             }
+        case let .readSequence(sequence):
+            setReads(sequence)
         case let .error(message):
             reportLibraryError(message)
         case let .musicStatus(status):

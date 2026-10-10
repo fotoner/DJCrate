@@ -24,8 +24,11 @@ public final class LibraryReadFlow {
     let location: LibraryLocation
     /// 흐름이 보는 화면. 화면 모델이 만들 때 붙인다(붙이지 않으면 읽은 결과를 버린다)
     public var screen: LibraryReadScreen = .none
-    /// 읽기 세대·요청 순번. 늦게 끝난 읽기·Music 최신화·파일 확인·USB 사본 출처를 이것으로 가른다
-    public internal(set) var reads = LibraryReadSequence()
+    /// 읽기 세대·요청 순번. 늦게 끝난 읽기·Music 최신화·파일 확인·USB 사본 출처를 이것으로 가른다.
+    /// 화면도 쓰기 판정에 이 값을 쓰므로 바뀔 때마다 알린다
+    public internal(set) var reads = LibraryReadSequence() {
+        didSet { screen.apply(.readSequence(reads)) }
+    }
     /// 사본 뜨기 요청 합치기(DB 복사·읽기만 차례로 돌린다)
     let requests = SnapshotRequestQueue()
     public internal(set) var musicRefresh: MusicRefresh?
