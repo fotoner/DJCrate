@@ -40,19 +40,19 @@ struct StagedKeyTests {
         var saved: [[StagedTrack]] = []
         let store = store { saved.append($0) }
         let staged = StagedTrack(uuid: "s1", path: "/fixtures/a.wav", title: "합성 곡", duration: 30, addedOn: "2026-09-28")
-        store.staged = [staged]
-        store.rebuildStagedRows()
-        #expect(store.stagedRows.first?.keyName == "" && store.stagedRows.first?.keyEstimated == false)
+        store.staging.staged = [staged]
+        store.staging.rebuildStagedRows()
+        #expect(store.staging.stagedRows.first?.keyName == "" && store.staging.stagedRows.first?.keyEstimated == false)
 
-        store.setStagedKey(uuid: "s1", key: "8A", source: .estimate)
-        let row = try #require(store.stagedRows.first)
+        store.staging.setStagedKey(uuid: "s1", key: "8A", source: .estimate)
+        let row = try #require(store.staging.stagedRows.first)
         #expect(row.keyName == "8A" && row.keyEstimated)
         #expect(store.rowsByUUID["s1"]?.keyName == "8A")
         #expect(saved.last?.first?.key == "8A" && saved.last?.first?.keySource == .estimate)
 
         // 태그 키는 추정 표시를 하지 않는다.
-        store.setStagedKey(uuid: "s1", key: "4A", source: .tag)
-        #expect(store.stagedRows.first?.keyName == "4A" && store.stagedRows.first?.keyEstimated == false)
+        store.staging.setStagedKey(uuid: "s1", key: "4A", source: .tag)
+        #expect(store.staging.stagedRows.first?.keyName == "4A" && store.staging.stagedRows.first?.keyEstimated == false)
         // 이미 찾은 곡은 다시 읽어도(다음 실행) 추정하지 않는다.
         #expect(saved.last?.first?.needsKey == false)
     }

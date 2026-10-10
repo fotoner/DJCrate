@@ -194,7 +194,7 @@ struct UsbSidebarTests {
         #expect(!store.tagDrafts.keys.contains { $0.hasPrefix(UsbLibraryRows.idPrefix) })
         store.loadToDeck(store.displayRows.first)
         #expect(store.deckTrackID == nil)
-        #expect(store.stagingMessage?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
+        #expect(store.staging.stagingMessage?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
         // 로컬 목록으로 돌아오면 갱신 상태 칸만 숨긴다(사용자가 숨긴 칸은 그대로)
         coordinator.updateUsbMode(false)
         #expect(visible() == ids.filter { $0 != "album" && $0 != "usbSync" })

@@ -17,7 +17,7 @@ extension LibraryStore {
 
     @discardableResult
     func startAddingFiles(_ urls: [URL], toPlaylist playlistID: String) -> Task<Void, Never> {
-        Task { await addFiles(urls, toPlaylist: playlistID) }
+        Task { await staging.addFiles(urls, toPlaylist: playlistID) }
     }
 
     /// 창에 끌어다 놓은 파일을 읽어 추가한 곡에 넣는다. 읽는 사이 rekordbox 쓰기가 시작되면 넣지 않는다.
@@ -32,7 +32,7 @@ extension LibraryStore {
                 if let url, url.isFileURL { urls.append(url) }
             }
             guard !urls.isEmpty, writeLockPolicy.allowsLibraryInteraction else { return }
-            await addFiles(urls)
+            await staging.addFiles(urls)
         }
     }
 

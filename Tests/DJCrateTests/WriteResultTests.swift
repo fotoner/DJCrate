@@ -207,7 +207,7 @@ struct WriteResultTests {
         let feedback = AppFeedback(announce: { messages.append($0) }, isVoiceOverEnabled: { true })
         let store = LibraryStore.test(resultHistory: WriteResultHistory(), feedback: feedback)
         store.toast = AppToast(kind: .failure, title: "실패", detail: "이유 전체")
-        store.stagingMessage = AppMessage(kind: .failure, text: "목록 저장 실패")
+        store.staging.stagingMessage = AppMessage(kind: .failure, text: "목록 저장 실패")
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         deck.feedback = feedback
         deck.showToast("덱 안내")

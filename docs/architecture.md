@@ -72,6 +72,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - 동기화 창 화면 모델 `ITunesSyncModel`은 저장소 대신 좁은 포트(`ITunesSyncModel.Ports`)를 받는다. Music 결과에 맞춰 곡 목록·사이드바 선택을 고치는 일은 저장소가 한다.
 - **재생 기록 트리·보존본·쓰기 대기는 기능 조각 `HistoryStore`가 든다(#251).** 조각은 저장소의 `history` 속성이다. 보존의 줄 세우기·채택·실패 알림은 유스케이스 `ArchiveUsbHistories`가 정한다. 유스케이스는 화면 포트 `UsbHistoryScreen`으로 조각의 값을 읽는다. 결과도 그 포트로 알린다.
 - **재생 목록 트리·초안·연결 기록은 기능 조각 `PlaylistEditStore`가 든다(#251).** 조각은 저장소의 `playlists` 속성이다. 최근 목록·넣기 전 나누기·기록 원본 고르기의 규칙은 유스케이스 `EditPlaylists`가 정한다. 사이드바의 폴더 펼침과 이름 바꾸기는 화면 모델 `PlaylistSidebarModel`이 든다.
+- **추가한 곡·그리드 일괄 추정·XML 내보내기는 기능 조각 `TrackStagingStore`가 든다(#252).** 조각은 저장소의 `staging` 속성이다. 넣기·저장·추정의 규칙과 순서는 유스케이스 `StageTracks`와 `ExportXML`이 정한다. 목록 아래 막대의 단추·막힘 이유와 파일 없음 확인은 화면 모델 `ListActionBarModel`이 든다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
   - 읽기 순번: 늦게 끝난 옛 결과를 버린다

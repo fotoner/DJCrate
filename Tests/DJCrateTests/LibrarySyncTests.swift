@@ -281,7 +281,7 @@ struct LibrarySyncTests {
         let staged = try JSONDecoder().decode(StagedTrack.self, from: Data("""
             {"uuid":"\(UUID().uuidString)","path":"/tmp/djc-synthetic.mp3","title":"합성 추가 곡","comment":"","duration":2,"addedOn":"2026-10-01"}
             """.utf8))
-        store.staged = [staged]
+        store.staging.staged = [staged]
         let unlinked = UUID().uuidString
         writeOrphanTagDraft(staged.uuid, comment: "추가 곡 코멘트", in: fixture)
         writeOrphanTagDraft(unlinked, comment: "연결이 끊긴 초안", in: fixture)

@@ -10,7 +10,7 @@ final class AppleMusicImportWindow: NSObject, NSWindowDelegate {
 
     func open(store: LibraryStore) {
         if let window, window.isVisible { window.makeKeyAndOrderFront(nil); return }
-        let model = AppleMusicImportModel(store: store)
+        let model = AppleMusicImportModel(staging: store.staging, appleMusic: store.useCases.appleMusic)
         let window = NSWindow(contentViewController: NSHostingController(rootView: AppleMusicImportView(model: model)))
         window.title = String(ui: "Apple Music XML 가져오기")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -87,7 +87,7 @@ private struct AppleMusicImportView: View {
                 Spacer()
                 Button(.ui("선택한 곡 추가")) { model.startAddSelected() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(model.selectedTracks.isEmpty || !model.store.writeLockPolicy.allowsLibraryInteraction)
+                    .disabled(model.selectedTracks.isEmpty || !model.staging.allowsLibraryInteraction)
             }
         }
         .padding(20)

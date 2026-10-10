@@ -318,7 +318,7 @@ enum DevSelfTests {
         try? FileManager.default.removeItem(at: url)
         try FileManager.default.copyItem(at: URL(filePath: source.track.folderPath), to: url)
         let staged = try await StagedTrack.make(fileAt: url, addedOn: String(ISO8601DateFormatter().string(from: .now).prefix(10)))
-        _ = store.restage([staged])
+        _ = store.staging.restage([staged])
         guard let row = store.rowsByID[staged.id] else { log("넣기+키: 추가한 곡을 목록에서 찾지 못했습니다"); return false }
         store.tags.setTag(.musicalKey, key, rows: [row])
         let picked = store.tags.confirmedStagedKey(uuid: staged.uuid)
@@ -331,13 +331,13 @@ enum DevSelfTests {
             log("넣기+키: 넣지 못했습니다 \(report.added.first?.reason ?? preview.unreadable.joined(separator: " / "))"); return false
         }
         let reread = store.rowsByUUID[uuid]?.track.key
-        log("넣기+키: 고른 키 \(picked ?? "-") · 미리 보기 키 \(previewKey ?? "-") · 넣음 \(report.added.filter(\.written).count)곡(\(preview.withoutAnalysis.isEmpty ? "분석 포함" : "분석 없이")) · 쓴 키 \(outcome.keyWritten ?? "-")\(outcome.keyReason.map { " 막힘 \($0)" } ?? "") · 다시 읽은 키 \(reread ?? "-") · 남은 추가 곡 \(store.staged.count)")
+        log("넣기+키: 고른 키 \(picked ?? "-") · 미리 보기 키 \(previewKey ?? "-") · 넣음 \(report.added.filter(\.written).count)곡(\(preview.withoutAnalysis.isEmpty ? "분석 포함" : "분석 없이")) · 쓴 키 \(outcome.keyWritten ?? "-")\(outcome.keyReason.map { " 막힘 \($0)" } ?? "") · 다시 읽은 키 \(reread ?? "-") · 남은 추가 곡 \(store.staging.staged.count)")
         guard let backup = RekordboxWriter.backups(in: DJCPaths.rekordboxBackups).first(where: { $0.trackReport?.added.contains { $0.uuid == uuid } == true }) else {
             log("넣기+키: 넣기 백업이 없습니다"); return false
         }
         _ = try await session.restoreBackup(backup, to: session.target)
         let gone = store.rowsByUUID[uuid] == nil
-        let restaged = store.staged.contains { $0.uuid == staged.uuid }
+        let restaged = store.staging.staged.contains { $0.uuid == staged.uuid }
         let kept = store.tags.confirmedStagedKey(uuid: staged.uuid)
         log("넣기+키 되돌림: 넣은 곡 빠짐 \(gone) · 추가 목록에 돌아옴 \(restaged) · 키 초안 \(kept ?? "없음") · 새 곡 키 초안 남음 \(store.tagDrafts[uuid] != nil)")
         let passed = picked == key && previewKey == key && outcome.keyWritten == key && reread == key && gone && restaged && kept == key

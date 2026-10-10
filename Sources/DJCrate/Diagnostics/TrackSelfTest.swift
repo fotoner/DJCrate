@@ -48,12 +48,12 @@ extension DevSelfTests {
             @MainActor func latestBackup() -> RekordboxWriter.Backup? { RekordboxWriter.backups(in: DJCPaths.rekordboxBackups).first(where: \.isWrite) }
 
             // 1. 추가 목록에 넣고 그리드 추정을 기다린다
-            await store.addFiles(files)
-            while store.gridJob != nil { await wait(0.3) }
-            let paths = store.staged.map(\.path)
-            log("추가 목록 \(store.staged.count)곡 · 그리드 " + store.staged.map { "\($0.title.prefix(16)) \($0.bpm.map { String(format: "%.2f", $0) } ?? "-")" }.joined(separator: ", "))
+            await store.staging.addFiles(files)
+            while store.staging.gridJob != nil { await wait(0.3) }
+            let paths = store.staging.staged.map(\.path)
+            log("추가 목록 \(store.staging.staged.count)곡 · 그리드 " + store.staging.staged.map { "\($0.title.prefix(16)) \($0.bpm.map { String(format: "%.2f", $0) } ?? "-")" }.joined(separator: ", "))
             // 곡마다 큐 초안(메모리 큐·핫큐)을 만들어 둔다(넣을 때 함께 들어가는지)
-            for track in store.staged {
+            for track in store.staging.staged {
                 var draft = CueDraft(trackUUID: track.uuid)
                 draft.place(EditableCue(id: UUID(), kind: .memory, time: 0.2))
                 draft.place(EditableCue(id: UUID(), kind: .hot(0), time: 0.6))
@@ -61,7 +61,7 @@ extension DevSelfTests {
             }
 
             // 2. 넣기
-            await coordinator.addTracks(rows: store.stagedRows)
+            await coordinator.addTracks(rows: store.staging.stagedRows)
             let added = rows(at: paths)
             log("넣기: 컬렉션 \(before) → \(store.rows.count)곡 · 알림 \(toast())")
             for row in added {
@@ -72,17 +72,17 @@ extension DevSelfTests {
                     .filter { FileManager.default.fileExists(atPath: $0.path) }
                 log("  \(row.title.prefix(24)) · BPM \(row.track.bpm.map { String(format: "%.2f", $0) } ?? "-") · 분석 파일 \(files.count)개 · 아트워크 파일 \(artwork.count)개 · 오토게인 \(row.autoGain.map { String(format: "%+.1f dB", $0.gainDB) } ?? "-") · 큐 \(row.cues.count)개 · 반영 대기 \(store.pendingUUIDs.contains(row.track.uuid))")
             }
-            log("추가 목록 남은 곡 \(store.staged.count)")
+            log("추가 목록 남은 곡 \(store.staging.staged.count)")
             guard !added.isEmpty, let addBackup = latestBackup() else { log("넣은 곡이 없습니다"); exit(1) }
             let createdFiles = (addBackup.trackReport?.createdFiles ?? []).map { URL(filePath: $0, relativeTo: RekordboxShare.directory) }
 
             // 3. 되돌리기: 곡이 빠지고 분석 파일이 지워지고 추가 목록으로 돌아온다
             await coordinator.restore(addBackup)
             let leftFiles = createdFiles.filter { FileManager.default.fileExists(atPath: $0.path) }.count
-            log("되돌리기: 컬렉션 \(store.rows.count)곡(처음 \(before)) · 남은 만든 파일(분석·아트워크) \(leftFiles)/\(createdFiles.count) · 추가 목록 \(store.staged.count)곡 · 알림 \(toast())")
+            log("되돌리기: 컬렉션 \(store.rows.count)곡(처음 \(before)) · 남은 만든 파일(분석·아트워크) \(leftFiles)/\(createdFiles.count) · 추가 목록 \(store.staging.staged.count)곡 · 알림 \(toast())")
 
             // 4. 다시 넣고 빼기 → 되돌리기
-            await coordinator.addTracks(rows: store.stagedRows)
+            await coordinator.addTracks(rows: store.staging.stagedRows)
             let again = rows(at: paths)
             log("다시 넣기: \(again.count)곡 · 컬렉션 \(store.rows.count)")
             await coordinator.deleteTracks(rows: again)
@@ -116,8 +116,8 @@ extension DevSelfTests {
             log("바깥에서 지움: \(outside?.deleted.filter(\.written).count ?? 0)곡 · 새로 읽기 전 목록에 남은 곡 \(rows(at: paths).count)")
             await store.refreshIfRekordboxChanged()
             log("창으로 돌아옴: 목록에 남은 곡 \(rows(at: paths).count) · 선택 \(store.selection.count) · 덱 \(store.deckTrackID == nil ? "비움" : "남음")")
-            await store.addFiles(files)
-            log("다시 추가: 추가 목록 \(store.staged.count)곡 · \(store.stagingMessage?.text ?? "")")
+            await store.staging.addFiles(files)
+            log("다시 추가: 추가 목록 \(store.staging.staged.count)곡 · \(store.staging.stagingMessage?.text ?? "")")
             log("끝")
             exit(0)
         }

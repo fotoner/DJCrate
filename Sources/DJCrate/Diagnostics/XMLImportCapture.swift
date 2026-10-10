@@ -64,7 +64,7 @@ extension DevSelfTests {
             check(store.xmlImport.isReading, "시작하자마자 읽는 중이어야 합니다")
             await store.xmlImport.task?.value
             guard let preview = store.xmlImport.preview else {
-                log("미리 보기가 열리지 않았습니다: \(store.stagingMessage?.text ?? "")")
+                log("미리 보기가 열리지 않았습니다: \(store.staging.stagingMessage?.text ?? "")")
                 exit(1)
             }
             let counts = preview.diff.counts

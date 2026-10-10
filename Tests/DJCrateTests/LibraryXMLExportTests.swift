@@ -43,8 +43,8 @@ struct LibraryXMLExportTests {
         let store = await loadedStore(fixture)
         #expect(LibraryMenuAction.exportLibraryXML.isEnabled(in: store))
         #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: store) == nil)
-        store.xmlExportJob = LibraryXMLExportJob()
-        #expect(store.hasXMLExportJob && !LibraryMenuAction.exportLibraryXML.isEnabled(in: store))
+        store.staging.xmlExportJob = LibraryXMLExportJob()
+        #expect(store.staging.hasXMLExportJob && !LibraryMenuAction.exportLibraryXML.isEnabled(in: store))
         #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: store)?.contains("끝난 뒤") == true)
     }
 
@@ -53,13 +53,13 @@ struct LibraryXMLExportTests {
         let store = await loadedStore(fixture)
         let out = fixture.root.appending(path: "export.xml")
         let before = try Data(contentsOf: fixture.database)
-        store.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
-        #expect(store.hasXMLExportJob, "시작하자마자 진행 줄이 선다(메인 스레드를 막지 않고 돌아온다)")
-        await store.xmlExportTask?.value
-        #expect(store.xmlExportJob == nil && !store.hasXMLExportJob && store.xmlExportTask == nil)
+        store.staging.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
+        #expect(store.staging.hasXMLExportJob, "시작하자마자 진행 줄이 선다(메인 스레드를 막지 않고 돌아온다)")
+        await store.staging.xmlExportTask?.value
+        #expect(store.staging.xmlExportJob == nil && !store.staging.hasXMLExportJob && store.staging.xmlExportTask == nil)
         let xml = try String(contentsOf: out, encoding: .utf8)
         #expect(xml.contains(#"<COLLECTION Entries="1">"#) && xml.contains("<TEMPO ") && xml.contains(#"Num="0""#))
-        let message = try #require(store.stagingMessage)
+        let message = try #require(store.staging.stagingMessage)
         #expect(message.kind == .success)
         #expect(message.text.contains("export.xml") && message.text.contains("뺀 것: 스트리밍 곡 1"))
         #expect(message.text.contains("쓰지 않은 초안은 넣지 않았습니다"))
@@ -76,8 +76,8 @@ struct LibraryXMLExportTests {
         draft.fields.comment = "초안 코멘트"
         store.tagDrafts[row.track.uuid] = draft
         let out = fixture.root.appending(path: "export.xml")
-        store.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
-        await store.xmlExportTask?.value
+        store.staging.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
+        await store.staging.xmlExportTask?.value
         let xml = try String(contentsOf: out, encoding: .utf8)
         #expect(xml.contains(#"Name="합성 곡 A""#) && !xml.contains("초안"))
     }
@@ -87,10 +87,10 @@ struct LibraryXMLExportTests {
         let store = await loadedStore(fixture)
         for out in [LibrarySnapshot.realRekordboxDirectory.appending(path: "export.xml"), DJCIdentity.linkedXMLFile,
                     fixture.root.appending(path: "master.db")] {
-            store.stagingMessage = nil
-            store.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
-            #expect(store.xmlExportJob == nil && store.xmlExportTask == nil, "작업을 시작하지 않는다")
-            let message = try #require(store.stagingMessage)
+            store.staging.stagingMessage = nil
+            store.staging.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
+            #expect(store.staging.xmlExportJob == nil && store.staging.xmlExportTask == nil, "작업을 시작하지 않는다")
+            let message = try #require(store.staging.stagingMessage)
             #expect(message.kind == .failure && message.text.hasPrefix("라이브러리 XML을 내보내지 못했습니다"))
         }
         #expect(!FileManager.default.fileExists(atPath: fixture.root.appending(path: "export.xml").path))
@@ -101,10 +101,10 @@ struct LibraryXMLExportTests {
         let store = await loadedStore(fixture)
         try FileManager.default.removeItem(at: fixture.database)
         let out = fixture.root.appending(path: "export.xml")
-        store.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
-        await store.xmlExportTask?.value
-        #expect(store.xmlExportJob == nil)
-        #expect(store.stagingMessage?.kind == .failure)
+        store.staging.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
+        await store.staging.xmlExportTask?.value
+        #expect(store.staging.xmlExportJob == nil)
+        #expect(store.staging.stagingMessage?.kind == .failure)
         #expect(!FileManager.default.fileExists(atPath: out.path), "실패하면 파일을 만들지 않는다")
     }
 

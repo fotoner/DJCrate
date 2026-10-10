@@ -107,7 +107,7 @@ extension TrackListCoordinator {
     @discardableResult
     func beginEditing(row index: Int, column: String) -> Bool {
         if rows.indices.contains(index), let reason = TrackListTagEditing.unavailableReason(rows[index], key: TrackListTagEditing.key(forColumn: column)) {
-            store.stagingMessage = AppMessage(kind: .warning, text: reason)
+            store.staging.stagingMessage = AppMessage(kind: .warning, text: reason)
             return false
         }
         guard !isEditing, store.writeLockPolicy.allowsLibraryInteraction, let table, rows.indices.contains(index), !rows[index].isUsb,

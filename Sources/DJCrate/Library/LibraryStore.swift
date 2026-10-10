@@ -121,10 +121,8 @@ final class LibraryStore {
     private(set) var duplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var displayDuplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var filterCounts: [LibraryFilter: Int] = [:]
-    /// 마지막 파일 확인 결과(#126). 연결되지 않은 외장 디스크는 목록 위 작업 줄에 알린다.
-    private(set) var missingFiles = MissingFiles()
-    private(set) var isCheckingFiles = false
-    @ObservationIgnored var missingFileTask: Task<Void, Never>?
+    /// 파일 없음 확인(#126)을 맡은 곳. 목록 아래 막대 화면 모델(`ListActionBarModel`)이 붙인다. 확인 결과·진행 표시는 그 모델이 든다
+    @ObservationIgnored var onCheckMissingFiles: (() -> Void)?
     /// 지난 확인에서 없던 경로. 다시 읽은 직후 확인이 끝날 때까지 이것으로 표시해 개수가 0으로 깜빡이지 않게 한다.
     @ObservationIgnored private var missingPathCache: Set<String> = []
     var isLoading: Bool { if case .loading = phase { true } else { false } }
@@ -236,33 +234,15 @@ final class LibraryStore {
     var rowsByID: [TrackRow.ID: TrackRow] = [:]
     var rowsByUUID: [String: TrackRow] = [:]
 
-    // 추가한 곡(LibraryStore+Staging.swift)
-    var staged: [StagedTrack] = []
-    var stagedRows: [TrackRow] = []
-    /// 백그라운드 그리드 추정 진행(끝나면 nil)
-    var gridJob: GridJob? {
-        didSet { if (oldValue == nil) != (gridJob == nil) { hasGridJob = gridJob != nil } }
-    }
-    /// 추정이 도는 중인지. 진행(`done`)이 오를 때마다가 아니라 시작·끝에만 바뀌어, 사이드바 본문은 이것만 읽고 진행 줄을 넣고 뺀다(#141).
-    private(set) var hasGridJob = false
-    var gridQueue: [GridJobItem] = []
-    var gridTask: Task<Void, Never>?
-    /// 라이브러리 XML 내보내기 진행(끝나면 nil, `LibraryStore+XMLExport.swift`). 그리드 추정처럼 줄은 시작·끝에만 넣고 뺀다.
-    var xmlExportJob: LibraryXMLExportJob? {
-        didSet { if (oldValue == nil) != (xmlExportJob == nil) { hasXMLExportJob = xmlExportJob != nil } }
-    }
-    private(set) var hasXMLExportJob = false
-    @ObservationIgnored var xmlExportTask: Task<Void, Never>?
+    /// 추가한 곡·그리드 일괄 추정·XML 내보내기(기능 조각, `TrackStagingStore`). 조각이 핵심(곡·사이드바·선택·초안 표시)을 붙들어 처음 쓸 때 만든다.
+    /// 관찰하지 않는다: 화면은 조각의 값을 읽는다
+    @ObservationIgnored private(set) lazy var staging = TrackStagingStore(library: self)
     /// rekordbox XML 가져오기(읽는 중·미리 보기 시트·초안 결과, `XMLImportModel`). 메뉴가 읽는 중인지 보므로 시트를 닫아도 남는다
     @ObservationIgnored private(set) lazy var xmlImport = XMLImportModel(store: self)
     /// 덱에 올린 곡과 그 그리드 초안을 덱에서 바꿨는지(가져오기가 덱 곡의 그리드 초안을 덱에 넘길지 정한다)
     @ObservationIgnored var deckGridDraftState: (() -> (uuid: String, hasChanges: Bool)?)?
     /// 가져온 그리드 초안을 덱이 받아 저장한다. 받지 못하면(덱에서 고쳤거나 다른 곡) false.
     @ObservationIgnored var adoptImportedGridDraft: ((GridDraft) -> Bool)?
-    /// 곡 추가·내보내기 결과 안내
-    var stagingMessage: AppMessage? {
-        didSet { if let stagingMessage { feedback.announce(stagingMessage) } }
-    }
     /// rekordbox 반영 내보내기·검증 결과 안내
     var reflectionMessage: AppMessage? {
         didSet { if let reflectionMessage { feedback.announce(reflectionMessage) } }
@@ -459,8 +439,8 @@ final class LibraryStore {
     /// 코멘트 규칙을 곡 행·추가한 곡 행·보고서에 다시 적용한다
     func applyCommentRuleToRows(_ rule: (any CommentRule)?) {
         for index in rows.indices { rows[index].applyCommentRule(rule) }
-        for index in stagedRows.indices { stagedRows[index].applyCommentRule(rule) }
-        for row in rows + stagedRows { rowsByID[row.id] = row; rowsByUUID[row.track.uuid] = row }
+        for index in staging.stagedRows.indices { staging.stagedRows[index].applyCommentRule(rule) }
+        for row in rows + staging.stagedRows { rowsByID[row.id] = row; rowsByUUID[row.track.uuid] = row }
         report?.applyCommentRule(rule, comments: rows.map(\.comment))
     }
 
@@ -471,12 +451,11 @@ final class LibraryStore {
         rowsByID[row.track.id] = row
     }
 
-    func setCheckingFiles(_ checking: Bool) { isCheckingFiles = checking }
+    /// 음원 파일이 있는지 다시 확인한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때 부른다. 확인은 붙인 막대 화면 모델이 메인 스레드 밖에서 한다
+    func checkMissingFiles() { onCheckMissingFiles?() }
 
     /// 파일 확인 결과를 행·'파일 없음' 개수에 넣는다(#126)
     func applyMissingFiles(_ result: MissingFiles) {
-        isCheckingFiles = false
-        missingFiles = result
         // 사본을 고쳐 한 번에 넣는다(곡마다 고치면 관찰 알림이 곡 수만큼 나간다).
         var updated = rows, byID = rowsByID, byUUID = rowsByUUID
         var changed = false

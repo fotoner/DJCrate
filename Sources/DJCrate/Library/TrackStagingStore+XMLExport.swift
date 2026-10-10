@@ -20,12 +20,12 @@ struct LibraryXMLExportJob: Equatable {
 
 /// 파일 메뉴의 "라이브러리 XML 내보내기…". 스냅샷(지금 화면의 라이브러리)과 분석 파일을 읽기만 하고 고른 파일 하나에만 쓴다(유스케이스 `ExportXML`,
 /// CLI `xml-export`와 같다). 쓰지 않은 초안은 넣지 않는다(rekordbox에 있는 그대로). 무거운 일은 메인 스레드 밖에서 돈다.
-extension LibraryStore {
-    /// - Parameter shareRoot: 분석 파일 뿌리(없으면 저장소의 share). 시험은 합성 사본의 `share`를 준다.
+extension TrackStagingStore {
+    /// - Parameter shareRoot: 분석 파일 뿌리(없으면 핵심 저장소의 share). 시험은 합성 사본의 `share`를 준다.
     func exportLibraryXML(to url: URL, shareRoot: URL? = nil) {
-        guard xmlExportJob == nil, let snapshot = snapshotURL else { return }
-        let shareRoot = shareRoot ?? self.shareRoot
-        let exporter = useCases.exportXML
+        guard xmlExportJob == nil, let snapshot = library.snapshotURL else { return }
+        let shareRoot = shareRoot ?? library.shareRoot
+        let exporter = library.useCases.exportXML
         do {
             // 저장 창이 덮어쓰기를 이미 물었다
             try exporter.checkOutput(url, overwrite: true, dryRun: false)
@@ -34,15 +34,16 @@ extension LibraryStore {
             return
         }
         xmlExportJob = LibraryXMLExportJob()
-        xmlExportTask = Task { [weak self] in
+        // 핵심이 사라지면 마무리하지 않는다(조각은 핵심을 unowned로만 보므로 핵심을 거쳐 부른다)
+        xmlExportTask = Task { [weak library] in
             let result = await Result {
                 try await LoadLibrary.background(qos: .utility) {
                     try exporter.exportLibrary(snapshot: snapshot, share: shareRoot, to: url) { progress in
-                        Task { @MainActor in self?.xmlExportJob?.apply(progress) }
+                        Task { @MainActor in library?.staging.xmlExportJob?.apply(progress) }
                     }
                 }
             }
-            self?.finishXMLExport(result, url: url)
+            library?.staging.finishXMLExport(result, url: url)
         }
     }
 

@@ -8,6 +8,7 @@ import RekordboxFixtures
 import Testing
 
 /// 파일이 없는 곡 모아 보기(#126): 라이브러리를 읽은 뒤 메인 스레드 밖에서 파일을 확인해 필터·개수·행에 반영한다.
+/// 확인과 진행 표시는 목록 아래 막대 화면 모델(`ListActionBarModel`)이 맡는다(앱은 조립 지점이 붙인다).
 @Suite("파일이 없는 곡 목록")
 @MainActor
 struct MissingFileListTests {
@@ -48,12 +49,13 @@ struct MissingFileListTests {
         let (fixture, _, volume) = try fixture()
         let log = ThreadLog()
         let store = store(fixture, log: log)
+        let bar = ListActionBarModel(store: store)
         await store.load(snapshot: fixture.database)
-        await store.missingFileTask?.value
+        await bar.missingFileTask?.value
         #expect(store.count(.missingFile) == 2)
         #expect(Set(store.rows.filter(\.fileMissing).map(\.track.id)) == ["102", "104"])
-        #expect(store.missingFiles.unmountedVolumes == [.init(path: volume, trackCount: 1)])
-        #expect(!store.isCheckingFiles)
+        #expect(bar.missingFiles.unmountedVolumes == [.init(path: volume, trackCount: 1)])
+        #expect(!bar.isCheckingFiles)
         #expect(log.counts.total > 0 && log.counts.main == 0)
         store.sidebar = .filter(.missingFile)
         #expect(Set(store.displayRows.map(\.track.id)) == ["102", "104"])
@@ -63,31 +65,33 @@ struct MissingFileListTests {
     @Test func 다시_읽는_동안에는_지난_결과를_보이고_확인이_끝나면_바꾼다() async throws {
         let (fixture, deleted, _) = try fixture()
         let store = store(fixture, log: ThreadLog())
+        let bar = ListActionBarModel(store: store)
         await store.load(snapshot: fixture.database)
-        await store.missingFileTask?.value
+        await bar.missingFileTask?.value
         store.sidebar = .filter(.missingFile)
         // 음원을 되돌려 놓고 다시 읽는다. 확인은 메인 액터를 놓은 뒤에 반영되므로 지금은 지난 결과(캐시)가 보인다.
         try Data("x".utf8).write(to: deleted)
         await store.load(snapshot: fixture.database, quiet: true)
-        #expect(store.isCheckingFiles)
+        #expect(bar.isCheckingFiles)
         #expect(store.count(.missingFile) == 2)
         #expect(Set(store.displayRows.map(\.track.id)) == ["102", "104"])
-        await store.missingFileTask?.value
-        #expect(!store.isCheckingFiles)
+        await bar.missingFileTask?.value
+        #expect(!bar.isCheckingFiles)
         #expect(store.count(.missingFile) == 1)
         #expect(store.displayRows.map(\.track.id) == ["104"])
         // 다시 확인(디스크 연결·빼기, 작업 줄 버튼)도 같은 길로 반영한다.
         try FileManager.default.removeItem(at: deleted)
         store.checkMissingFiles()
-        await store.missingFileTask?.value
+        await bar.missingFileTask?.value
         #expect(store.count(.missingFile) == 2)
     }
 
     @Test func 새로_읽기_시작하면_늦게_끝난_확인은_버린다() async throws {
         let (fixture, _, _) = try fixture()
         let store = store(fixture, log: ThreadLog())
+        let bar = ListActionBarModel(store: store)
         await store.load(snapshot: fixture.database)
-        let stale = store.missingFileTask
+        let stale = bar.missingFileTask
         store.invalidatePendingLoads()
         await stale?.value
         #expect(store.count(.missingFile) == 0)

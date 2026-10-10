@@ -6,10 +6,12 @@ import Observation
 import UniformTypeIdentifiers
 
 /// Apple Music XML 가져오기 창의 화면 모델. 창의 단추는 동기 메서드만 부르고, 일(`Task`)과 그 손잡이는 이 모델이 든다(MVVM-4).
+/// 고른 곡은 추가 목록 조각(`TrackStagingStore`)에 넣는다(#252). XML 열기·파일 검사는 유스케이스 `ImportAppleMusic`이 한다.
 @MainActor
 @Observable
 final class AppleMusicImportModel {
-    let store: LibraryStore
+    let staging: TrackStagingStore
+    private let appleMusic: ImportAppleMusic
     var library: AppleMusicLibrary?
     var selected = Set<Int>()
     var playlistID = ""
@@ -20,7 +22,10 @@ final class AppleMusicImportModel {
     /// 단추가 마지막으로 시작한 일(XML 열기·곡 추가). 창을 닫아도 끝까지 간다. 시험은 이것을 기다린다
     @ObservationIgnored private(set) var task: Task<Void, Never>?
 
-    init(store: LibraryStore) { self.store = store }
+    init(staging: TrackStagingStore, appleMusic: ImportAppleMusic) {
+        self.staging = staging
+        self.appleMusic = appleMusic
+    }
 
     var visibleTracks: [AppleMusicLibrary.Track] {
         guard let library else { return [] }
@@ -50,7 +55,7 @@ final class AppleMusicImportModel {
         playlistID = ""
         defer { isBusy = false }
         do {
-            self.library = try await store.useCases.appleMusic.open(url)
+            self.library = try await appleMusic.open(url)
         } catch {
             message = String(ui: "XML을 열지 못했습니다. Music에서 보관함을 XML로 다시 내보내고 파일 접근 권한을 확인하세요.")
         }
@@ -64,7 +69,7 @@ final class AppleMusicImportModel {
     func startAddSelected() { task = Task { await addSelected() } }
 
     func addSelected() async {
-        guard !isBusy, store.writeLockPolicy.allowsLibraryInteraction, let library else { return }
+        guard !isBusy, staging.allowsLibraryInteraction, let library else { return }
         let candidates = selectedTracks
         guard !candidates.isEmpty else { return }
         isBusy = true
@@ -76,7 +81,7 @@ final class AppleMusicImportModel {
         for track in candidates {
             guard let url = track.fileURL else { continue }
             // XML을 내보낸 뒤 파일이 바뀌었거나 보호 표시가 빠진 경우도 실제 파일에서 막는다.
-            if let reason = await store.useCases.appleMusic.exclusion(for: url) {
+            if let reason = await appleMusic.exclusion(for: url) {
                 if let index = self.library?.tracks.firstIndex(where: { $0.id == track.id }) {
                     self.library?.tracks[index].exclusion = reason
                 }
@@ -88,13 +93,13 @@ final class AppleMusicImportModel {
             origins[url.path.precomposedStringWithCanonicalMapping, default: []].append(library.origin(for: track.id))
         }
         // 파일 검사 중 시작된 반영과 곡 추가가 겹치지 않게 다시 확인한다.
-        guard store.writeLockPolicy.allowsLibraryInteraction else {
+        guard staging.allowsLibraryInteraction else {
             message = String(ui: "rekordbox 쓰기가 끝난 뒤 선택한 곡을 다시 추가하세요.")
             return
         }
         if !urls.isEmpty {
-            await store.addFiles(urls, appleMusicOrigins: origins, createPlaylists: createPlaylists)
-            message = store.stagingMessage?.text
+            await staging.addFiles(urls, appleMusicOrigins: origins, createPlaylists: createPlaylists)
+            message = staging.stagingMessage?.text
         }
         if rejected > 0 {
             let warning = String(ui: "\(rejected)곡은 파일을 확인하지 못해 제외했습니다. 각 곡의 안내를 확인하세요.")

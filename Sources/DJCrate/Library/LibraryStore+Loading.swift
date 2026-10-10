@@ -156,7 +156,7 @@ extension LibraryStore {
         // 스냅샷을 채택한 뒤에야 쓰기 대기를 고른다(쓴 기록이 rekordbox에 있는지 그 전에는 모른다). 처음 한 번 가장 최근 연·월을 펼친다
         history.refreshHistoryTree()
         history.seedHistoryFolders()
-        loadStaged()
+        staging.loadStaged()
         // 기다리는 동안 설정이 바뀌었으면 최신 프리셋으로 맞춘다.
         if preset != commentPreset { refreshCommentRule() }
         // rekordbox에서 지운 곡은 선택에서도 뺀다
@@ -185,9 +185,9 @@ extension LibraryStore {
         }
         checkMissingFiles()
         applyLaunchSelection()
-        runLaunchStagingTest()
+        staging.runLaunchStagingTest()
         // 라이브러리에 없는 곡의 음량 항목·캐시 정리는 조립 지점이 맡는다(#217, `AppComposition.start`). 추가한 곡의 경로는 남긴다.
-        onLibraryLoaded?(Set((rows + stagedRows).filter { !$0.track.isStreaming }.map(\.track.folderPath) + staged.map(\.path)))
+        onLibraryLoaded?(Set((rows + staging.stagedRows).filter { !$0.track.isStreaming }.map(\.track.folderPath) + staging.staged.map(\.path)))
     }
 
     /// 개발용: `--select <ContentID>` 곡을 골라 덱에 올린다(처음 읽을 때 한 번).

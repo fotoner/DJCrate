@@ -106,10 +106,10 @@ struct ShowStagedEditTests {
         let store = store(home: home)
         var loaded: [String?] = []
         store.onLoadToDeck = { loaded.append($0?.id) }
-        store.showStagedEdit(plain, hasGrid: false)
+        store.staging.showStagedEdit(plain, hasGrid: false)
         #expect(!store.hasDraft(.grid, trackUUID: plain.uuid))
         #expect(store.selection == [plain.id] && loaded == [plain.id])
-        store.showStagedEdit(gridded, hasGrid: true)
+        store.staging.showStagedEdit(gridded, hasGrid: true)
         #expect(store.hasDraft(.grid, trackUUID: gridded.uuid))
         #expect(!store.hasDraft(.grid, trackUUID: plain.uuid))
         #expect(loaded == [plain.id, gridded.id])
