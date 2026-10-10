@@ -44,12 +44,11 @@ struct TrackListSourceTests {
         var isPlaying = false
     }
 
-    private func settle(_ host: NSView, until done: () -> Bool) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now + .seconds(5)
-        while !done(), clock.now < deadline {
+    /// 상태를 기다린다(걸린 시간으로 판정하지 않는다, TEST-30·31). 기다리는 동안 표를 다시 배치해 SwiftUI 갱신을 받는다
+    private func settle(_ host: NSView, until done: () -> Bool) async -> Bool {
+        await waitForState {
             host.layoutSubtreeIfNeeded()
-            try await Task.sleep(for: .milliseconds(20))
+            return done()
         }
     }
 
@@ -69,20 +68,16 @@ struct TrackListSourceTests {
 
         let rows = TrackListDragTests.rows(["1", "2", "3"])
         source.displayRows = rows
-        try await settle(host) { table.numberOfRows == 3 }
-        #expect(table.numberOfRows == 3)
+        #expect(await settle(host) { table.numberOfRows == 3 })
 
         source.selection = [rows[1].id]
-        try await settle(host) { table.selectedRowIndexes == [1] }
-        #expect(table.selectedRowIndexes == [1])
+        #expect(await settle(host) { table.selectedRowIndexes == [1] })
 
         source.deckTrackID = rows[2].track.id
-        try await settle(host) { coordinator.deckTrackID == rows[2].track.id }
-        #expect(coordinator.deckTrackID == rows[2].track.id)
+        #expect(await settle(host) { coordinator.deckTrackID == rows[2].track.id })
 
         source.isUsbSelection = true
-        try await settle(host) { coordinator.usbMode == true }
-        #expect(coordinator.usbMode == true)
+        #expect(await settle(host) { coordinator.usbMode == true })
         #expect(source.madeCoordinators == 1, "값이 바뀌어도 조정자는 처음 한 번만 만든다")
     }
 

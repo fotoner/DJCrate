@@ -347,7 +347,7 @@ func tick() {
 | 규칙 | 지금 | 잰 방법 |
 |---|---|---|
 | `MVVM-4` | 빚 0줄. 2026-10-10에 #243·#244로 갚았다 | `python3 scripts/check-imports.py --summary` |
-| `MVVM-3` | 33개 파일(뷰 파일 21개)이 `LibraryStore`를 통째로 받는다. #248 전에는 35개(뷰 파일 24개)였다 | `grep -lE '(let\|var) store: LibraryStore'` |
+| `MVVM-3` | 33개 파일(뷰 파일 21개)이 `LibraryStore`를 통째로 받는다. #248 전 44개(뷰 32개), #254 전 35개(뷰 24개)였다 | `grep -lE '(let\|var) store: LibraryStore'` |
 | `MVVM-3` | 27개 파일(뷰 파일 20개)이 `DeckModel`을 통째로 받는다 | `grep -lE '(let\|var) deck: DeckModel'` |
 | `MVVM-1` | 화면 모델 없는 화면이 있다. 시트 셋(`UnlinkedDraftsView`, `PlaylistPickerView`, `XMLImportSheet`)은 2026-10-10에 #249로 갚았다 | 사람이 본다 |
 
