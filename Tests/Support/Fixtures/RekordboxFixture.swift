@@ -1,4 +1,3 @@
-import CommonCrypto
 import DJCDomain
 import DJCTestKit
 import Foundation
@@ -261,7 +260,7 @@ public final class RekordboxFixture {
     }
 }
 
-/// 픽스처가 행을 넣고 읽는 연결. 원시 키(`x'…'`)로 열어 SQLCipher 키 유도(PBKDF2 256,000번)를 건너뛴다.
+/// 픽스처가 행을 넣고 읽는 연결. 원시 키(`x'…'`)로 열어 SQLCipher 키 유도(PBKDF2)를 건너뛴다.
 ///
 /// 제품 연결(`CipherDatabase`)은 열 때마다 문자열 키로 키를 유도해, 행 하나 넣거나 읽으려 열 때마다 수십 ms가 들었다(시험 시간의 대부분).
 /// 원시 키는 파일 머리의 솔트로 프로세스에서 한 번만 유도한다. 파일 형식(SQLCipher 4 기본값)은 그대로라 제품 코드는 같은 파일을 문자열 키로 연다.
@@ -298,20 +297,24 @@ final class FixtureConnection {
         guard tables > 0 else { throw FixtureError("픽스처 DB에 표가 없습니다") }
     }
 
-    /// SQLCipher 4 기본값: PBKDF2-HMAC-SHA512, 256,000번, 32바이트. 솔트는 파일 첫 16바이트.
+    /// SQLCipher 4 기본값(PBKDF2-HMAC-SHA512, 32바이트)에 이 프로세스의 기본 반복 수를 쓴다. 솔트는 파일 첫 16바이트.
+    /// 시험 전용 장치(`CipherTestKDF`)가 있는 묶음은 낮춘 값, 없는 묶음(djcTests)은 256,000번이라 제품이 만든 파일과 같다.
+    /// 처음 읽은 값을 둔다. 읽기가 실패하면 두지 않고 다음 연결에서 다시 읽는다.
+    private static let iterations = Mutex<Int?>(nil)
+
+    private static func processIterations() throws -> Int {
+        if let value = iterations.withLock({ $0 }) { return value }
+        let value = try CipherKDF.processDefaultIterations()
+        iterations.withLock { $0 = value }
+        return value
+    }
+
     private static func rawKey(path: String, passphrase: String) throws -> String {
         guard let file = FileHandle(forReadingAtPath: path) else { throw FixtureError("DB 머리를 읽지 못했습니다") }
         defer { try? file.close() }
         guard let salt = try file.read(upToCount: 16), salt.count == 16 else { throw FixtureError("DB 머리가 짧습니다") }
         if let key = rawKeys.withLock({ $0[salt] }) { return key }
-        var derived = [UInt8](repeating: 0, count: 32)
-        let status = salt.withUnsafeBytes { saltBytes in
-            CCKeyDerivationPBKDF(CCPBKDFAlgorithm(kCCPBKDF2), passphrase, passphrase.utf8.count,
-                                 saltBytes.bindMemory(to: UInt8.self).baseAddress, salt.count,
-                                 CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA512), 256_000, &derived, derived.count)
-        }
-        guard status == kCCSuccess else { throw FixtureError("키를 유도하지 못했습니다") }
-        let key = derived.map { String(format: "%02x", $0) }.joined()
+        let key = try CipherKDF.rawKey(salt: salt, passphrase: passphrase, iterations: try processIterations())
         rawKeys.withLock { $0[salt] = key }
         return key
     }
