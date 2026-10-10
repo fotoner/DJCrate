@@ -4,7 +4,7 @@ import DJCDomain
 
 struct PreviewWaveformRequest: Hashable, Sendable {
     let url: URL?
-    let revision: String
+    var revision: String
     let appearance: String
     var mode: WaveformColorMode = .threeBand
     var emphasized = false
@@ -15,13 +15,20 @@ struct PreviewWaveformRequest: Hashable, Sendable {
     /// 칸의 파형 자리 크기(pt)와 화면 배율. 눈금은 이 크기로 그린다(#121).
     var size = CGSize(width: 400, height: 40)
     var scale: Double = 1
+    /// USB 곡의 분석 파일(볼륨 뿌리와 볼륨 안 .DAT 경로, #256). 열 자리는 캐시가 메인 밖에서 링크를 거른 뒤 정한다(`url`은 nil)
+    var volume: VolumeFile?
+
+    struct VolumeFile: Hashable, Sendable {
+        let root: URL
+        let path: String
+    }
 
     var cacheKey: NSString {
         let positions = cues.map { "\($0.time):\($0.end ?? -1):\($0.hot)" }.joined(separator: ",")
         // 눈금이 없으면 파형 비트맵 하나를 칸에 늘려 쓰므로 크기가 달라도 같은 그림이다.
         let drawing = cues.isEmpty ? "" : "\(size.width)x\(size.height)@\(scale)"
         return [url?.absoluteString ?? "", revision, appearance, mode.rawValue, String(emphasized), audioURL?.absoluteString ?? "", trackKey,
-                positions, String(duration), drawing]
+                positions, String(duration), drawing, volume.map { $0.root.path + "\u{1F}" + $0.path } ?? ""]
             .joined(separator: "\u{1F}") as NSString
     }
 }
@@ -98,11 +105,13 @@ actor PreviewWaveformCache {
     func image(for request: PreviewWaveformRequest) async -> CGImage? {
         guard !Task.isCancelled else { return nil }
         let key = request.trackKey.isEmpty ? request.url?.absoluteString ?? "" : request.trackKey
-        let revision = await previews.revision(key: key, analysisFile: request.url)
+        // USB 곡은 볼륨 안 분석 파일이 링크를 거치지 않을 때만 읽는다(열지 않는 자리·이 Mac의 다른 파일에 닿지 않게)
+        let file = request.volume.map { previews.volumeFile(root: $0.root, path: $0.path) } ?? request.url
+        let revision = await previews.revision(key: key, analysisFile: file)
         let imageKey = "\(request.cacheKey)\u{1F}\(revision)" as NSString
         guard !Task.isCancelled else { return nil }
         if let hit = cache.object(forKey: imageKey) { return hit.image }
-        let raw = await previews.waveform(key: key, analysisFile: request.url)
+        let raw = await previews.waveform(key: key, analysisFile: file)
         var image: CGImage?
         // 음원 대체는 이 액터 위에서 동기로 돌려 칸이 많아도 음원을 한 번에 하나씩만 푼다
         let waveform = PreviewWaveformSource.addingFallback(to: raw, audioURL: request.audioURL, key: request.trackKey,
@@ -123,7 +132,7 @@ final class PreviewWaveformCell: NSTableCellView {
     private let cache: PreviewWaveformCache
     private let waveformLayer = CALayer()
     private var source: (url: URL?, revision: String, mode: WaveformColorMode, audioURL: URL?, key: String,
-                         cues: [PreviewCueMark], duration: Double)?
+                         cues: [PreviewCueMark], duration: Double, volume: PreviewWaveformRequest.VolumeFile?)?
     private(set) var request: PreviewWaveformRequest?
     private var task: Task<Void, Never>?
 
@@ -140,9 +149,10 @@ final class PreviewWaveformCell: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// - Parameter volume: USB 곡의 분석 파일(볼륨 뿌리와 볼륨 안 경로). 있으면 `url` 대신 캐시가 링크를 거른 자리를 읽는다
     func configure(url: URL?, revision: String, mode: WaveformColorMode = .threeBand, audioURL: URL? = nil, key: String = "",
-                   cues: [PreviewCueMark] = [], duration: Double = 0) {
-        source = (url, revision, mode, audioURL, key, cues, duration)
+                   cues: [PreviewCueMark] = [], duration: Double = 0, volume: PreviewWaveformRequest.VolumeFile? = nil) {
+        source = (url, revision, mode, audioURL, key, cues, duration, volume)
         refresh()
     }
 
@@ -194,6 +204,7 @@ final class PreviewWaveformCell: NSTableCellView {
                                           audioURL: source.audioURL, trackKey: source.key, cues: source.cues, duration: source.duration)
         next.size = size
         next.scale = Double(window?.backingScaleFactor ?? 2)
+        next.volume = source.volume
         guard request != next else { return }
         // 크기만 바뀌면(칸 너비 조절) 새 그림이 올 때까지 옛 그림을 늘려 둔다(깜박이지 않게).
         let resizedOnly = request.map { old in

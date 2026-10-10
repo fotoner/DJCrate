@@ -509,23 +509,39 @@ import Observation
         return physicalGate.blocks(judged, confirmName: volume.name).first?.message
     }
 
-    /// 사이드바 대상의 곡 줄(읽기 전용). 재생 목록은 쓰기 전 초안을 얹은 차례다(`UsbDraftProjection`)
-    func rows(for target: UsbSidebarTarget) -> [TrackRow] {
+    /// 사이드바 대상의 곡 줄(읽기 전용). 재생 목록은 쓰기 전 초안을 얹은 차례다(`UsbDraftProjection`). 분류 칸은 `commentPreset`으로 가른다.
+    /// 정렬·목록 전환마다 불리므로 같은 대상·입력이면 만든 줄을 다시 쓴다(큰 USB에서 곡마다 경로를 거르고 코멘트를 가르는 비용, #256)
+    func rows(for target: UsbSidebarTarget, commentPreset: CommentPreset = .none) -> [TrackRow] {
         guard let volume = volume(target.volumeKey), let read = libraries[target.volumeKey] else { return [] }
-        let library = UsbDraftProjection.library(read, edits: draftEdits[target.volumeKey] ?? [])
-        let badges = syncBadges[target.volumeKey] ?? [:]
-        let revision = libraryRevisions[target.volumeKey] ?? 0
-        switch target {
+        if case .pending = target { return [] }
+        let inputs = RowInputs(target: target, revision: libraryRevisions[target.volumeKey] ?? 0, mountPoint: volume.mountPoint,
+                               edits: draftEdits[target.volumeKey] ?? [], badges: syncBadges[target.volumeKey] ?? [:], commentPreset: commentPreset)
+        if let built = builtRows, built.inputs == inputs { return built.rows }
+        let library = UsbDraftProjection.library(read, edits: inputs.edits)
+        let rows = switch target {
         case .collection:
-            return UsbLibraryRows.collection(library: library, volumeKey: target.volumeKey, mountPoint: volume.mountPoint, badges: badges,
-                                             revision: revision)
+            UsbLibraryRows.collection(library: library, volumeKey: target.volumeKey, mountPoint: volume.mountPoint, badges: inputs.badges,
+                                      revision: inputs.revision, commentRule: commentPreset.rule)
         case let .playlist(_, id):
-            return UsbLibraryRows.playlist(id, library: library, volumeKey: target.volumeKey, mountPoint: volume.mountPoint, badges: badges,
-                                           revision: revision)
+            UsbLibraryRows.playlist(id, library: library, volumeKey: target.volumeKey, mountPoint: volume.mountPoint, badges: inputs.badges,
+                                    revision: inputs.revision, commentRule: commentPreset.rule)
         case .pending:
-            return []
+            [TrackRow]()
         }
+        builtRows = (inputs, rows)
+        return rows
     }
+
+    /// 마지막으로 만든 줄과 그 입력(읽은 판·마운트 지점·초안·배지·프리셋). 하나만 둔다
+    private struct RowInputs: Equatable {
+        var target: UsbSidebarTarget
+        var revision: Int
+        var mountPoint: String
+        var edits: [UsbLibraryEdit]
+        var badges: [Int: UsbSyncStatus]
+        var commentPreset: CommentPreset
+    }
+    @ObservationIgnored private var builtRows: (inputs: RowInputs, rows: [TrackRow])?
 
     /// 대상이 아직 보이는지(볼륨이 빠지거나 목록이 없어지면 거짓). 쓰기 대기 목록은 초안이 남은 채 빠진 볼륨에도 있다
     func contains(_ target: UsbSidebarTarget) -> Bool {

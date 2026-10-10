@@ -52,16 +52,22 @@ public enum UsbLayout {
 
     /// USB DB에 적힌 그림·분석 파일 경로("/PIONEER/…")를 `root` 아래 파일의 상대 경로로. 곡 목록이 읽기 전용으로 여는 파일이라
     /// 손상됐거나 꾸민 경로가 다른 파일을 읽히지 못하게 `..`·`.`·빈 성분, `._` 짝 파일, 열지 않는 자리(`neverRead`)면 nil
+    /// 링크는 보지 않는다. 열 때 `UsbRoot.url(for:)`로 성분마다 다시 거른다.
+    /// 큰 USB의 곡마다 부르므로 뿌리 성분은 글자 그대로 먼저 견주고, 열지 않는 자리는 그 깊이(`neverReadDepth`)까지만 본다
     public static func readablePath(_ path: String, under root: String) -> String? {
         let relative = String(path.drop { $0 == "/" })
         let components = relative.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-        let prefix = keys(root)
+        let prefix = root.split(separator: "/").map(String.init)
         guard !relative.contains("\0"), components.count > prefix.count,
               !components.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }),
-              zip(components, prefix).allSatisfy({ collisionKey($0) == $1 }),
-              let leaf = components.last, !isAppleDouble(leaf), !isNeverRead(relative) else { return nil }
+              zip(components, prefix).allSatisfy({ $0 == $1 || collisionKey($0) == collisionKey($1) }),
+              let leaf = components.last, !isAppleDouble(leaf),
+              !isNeverRead(components.prefix(neverReadDepth).joined(separator: "/")) else { return nil }
         return relative
     }
+
+    /// 열지 않는 자리의 가장 긴 성분 수. 그보다 깊은 성분은 열지 않는 자리인지에 상관없다
+    static let neverReadDepth = neverRead.map { $0.split(separator: "/").count }.max() ?? 0
 
     /// 소문자 base32 8자
     public static func newSessionID() -> String {

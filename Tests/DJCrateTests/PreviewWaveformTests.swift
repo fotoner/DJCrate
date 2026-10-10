@@ -19,7 +19,7 @@ struct PreviewWaveformTests {
             expectBlockingOffPool()
             calls.withLock { $0 += 1 }
             return [WaveformColumn(low: 1, mid: 0.5, high: 0.2)]
-        }, clear: {})
+        }, clear: {}, volumeFile: { _, _ in nil })
         let cache = PreviewWaveformCache(previews: ShowPreviewWaveforms(previews: previews))
         var request = PreviewWaveformRequest(url: nil, revision: "r", appearance: NSAppearance.Name.aqua.rawValue)
         request.audioURL = URL(filePath: "/missing/audio.wav")

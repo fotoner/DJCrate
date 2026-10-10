@@ -73,10 +73,9 @@ struct UsbTrackListColumnsTests {
         #expect(files.root == URL(filePath: Self.mount))
         #expect(files.artwork == "PIONEER/Artwork/00001/b7.jpg")
         #expect(files.analysis == "PIONEER/USBANLZ/P016/0000875E/ANLZ0000.DAT")
-        #expect(files.analysisURL == URL(filePath: Self.mount + Self.analysis))
         #expect(files.revision == 3)
         let bare = try #require(rows.last?.usbFiles)
-        #expect(bare.artwork == nil && bare.analysis == nil && bare.analysisURL == nil)
+        #expect(bare.artwork == nil && bare.analysis == nil)
 
         // Device Library에만 그림이 있으면 그 그림, 재생 목록 줄도 같다
         var library = Self.library()
@@ -108,19 +107,46 @@ struct UsbTrackListColumnsTests {
         #expect(second.revision > first.revision)
     }
 
+    /// 정렬·목록 전환마다 곡마다 경로를 가르고 코멘트를 분류하면 큰 USB에서 메인이 걸린다. 같은 대상·판이면 만든 줄을 다시 쓴다
+    @Test("같은 대상을 다시 그리면 만든 줄을 다시 쓰고, 다시 읽거나 프리셋이 바뀌면 새로 만든다")
+    func rowsAreReusedUntilInputsChange() async throws {
+        let image = FakeUsbVolume.diskImageFAT32()
+        let host = FakeUsbHost([image])
+        host.serve(image, library: Self.library())
+        let usb = UsbTestData.store(host)
+        await usb.refresh()
+        let target = UsbSidebarTarget.collection(volumeKey: image.usbKey)
+        func storage(_ rows: [TrackRow]) -> UnsafeRawPointer? { rows.withUnsafeBufferPointer { $0.baseAddress.map(UnsafeRawPointer.init) } }
+        let first = usb.rows(for: target)
+        #expect(storage(usb.rows(for: target)) == storage(first))
+        let classified = usb.rows(for: target, commentPreset: .anisong)
+        #expect(storage(classified) != storage(first) && !(classified.first?.commentClassName.isEmpty ?? true))
+        #expect(usb.rows(for: target).first?.commentClassName == "")
+        await usb.refresh()
+        let reread = usb.rows(for: target)
+        #expect(storage(reread) != storage(first) && reread.first?.usbFiles?.revision != first.first?.usbFiles?.revision)
+    }
+
     // MARK: - 칸
 
     @Test("USB 줄의 앨범아트 칸은 볼륨 뿌리에서 그림을 읽고 로컬 share를 보지 않는다")
     func thumbnailReadsFromVolume() async throws {
-        let usbCalls = Mutex<[(path: String?, root: URL?, pixels: Int)]>([])
+        let usbCalls = Mutex<[(root: URL, path: String, pixels: Int)]>([])
         let localCalls = Mutex<[(path: String?, root: URL?)]>([])
         let jpeg = ImageFixture.image(width: 8, height: 8)
         let store = LibraryStore.test(saveTagDrafts: { _ in }, ports: { ports in
-            ports.artwork.thumbnail = { path, root, pixels in
-                usbCalls.withLock { $0.append((path, root, pixels)) }
+            // 볼륨 안 그림은 링크를 거르는 포트로만 읽는다. 느린 USB를 읽어도 협력 풀을 막지 않는다
+            ports.artwork.volumeThumbnail = { root, path, pixels in
+                expectBlockingOffPool()
+                usbCalls.withLock { $0.append((root, path, pixels)) }
                 return CGImageSourceCreateWithData(jpeg as CFData, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
             }
+            ports.artwork.thumbnail = { _, _, _ in
+                Issue.record("목록 칸은 share 기준 큰 그림을 읽지 않는다")
+                return nil
+            }
             ports.artwork.listThumbnail = { path, root in
+                expectBlockingOffPool()
                 localCalls.withLock { $0.append((path, root)) }
                 return nil
             }
@@ -154,14 +180,46 @@ struct UsbTrackListColumnsTests {
         cell.frame = NSRect(x: 0, y: 0, width: 160, height: 24)
         cell.layout()
         let request = try #require(cell.request)
-        #expect(request.url == URL(filePath: Self.mount + Self.analysis))
+        // 볼륨 뿌리와 볼륨 안 경로만 넘긴다. 열 자리는 캐시가 링크를 거른 뒤 정한다
+        #expect(request.url == nil)
+        #expect(request.volume == PreviewWaveformRequest.VolumeFile(root: URL(filePath: Self.mount), path: "PIONEER/USBANLZ/P016/0000875E/ANLZ0000.DAT"))
         #expect(request.audioURL == nil)
         #expect(request.trackKey == "usb:synthetic:1")
 
         let bare = try #require(coordinator.tableView(table, viewFor: column, row: 1) as? PreviewWaveformCell)
         bare.frame = NSRect(x: 0, y: 0, width: 160, height: 24)
         bare.layout()
-        #expect(bare.request?.url == nil && bare.request?.audioURL == nil)
+        #expect(bare.request?.url == nil && bare.request?.volume == nil && bare.request?.audioURL == nil)
+    }
+
+    @Test("미리 보기 캐시는 USB 분석 파일을 링크 확인을 거친 자리로만 읽고, 확인은 협력 풀 밖에서 한다")
+    func previewCacheReadsOnlyCheckedVolumeFile() async throws {
+        let checked = Mutex<[(root: URL, path: String)]>([])
+        let read = Mutex<[URL?]>([])
+        let approved = Mutex<URL?>(nil)
+        let previews = PreviewWaveforms(warm: { _, _ in }, revision: { _, _ in 0 },
+                                        waveform: { _, file in read.withLock { $0.append(file) }; return nil },
+                                        audioColumns: { _, _ in nil }, clear: {},
+                                        volumeFile: { root, path in
+                                            expectBlockingOffPool()
+                                            checked.withLock { $0.append((root, path)) }
+                                            return approved.withLock { $0 }
+                                        })
+        let cache = PreviewWaveformCache(previews: ShowPreviewWaveforms(previews: previews))
+        var request = PreviewWaveformRequest(url: nil, revision: "링크", appearance: NSAppearance.Name.aqua.rawValue)
+        request.trackKey = "usb:synthetic:1"
+        request.volume = .init(root: URL(filePath: Self.mount), path: "PIONEER/USBANLZ/P016/0000875E/ANLZ0000.DAT")
+        // 링크를 거치면(확인이 nil) 아무 파일도 읽지 않는다
+        _ = await cache.image(for: request)
+        #expect(checked.withLock { $0.map(\.path) } == ["PIONEER/USBANLZ/P016/0000875E/ANLZ0000.DAT"])
+        #expect(checked.withLock { $0.map(\.root) } == [URL(filePath: Self.mount)])
+        #expect(read.withLock { $0 } == [nil])
+
+        let file = URL(filePath: Self.mount + Self.analysis)
+        approved.withLock { $0 = file }
+        request.revision = "확인"
+        _ = await cache.image(for: request)
+        #expect(read.withLock { $0 } == [nil, file])
     }
 
     @Test("USB 줄의 평점·곡 색은 같은 값의 컬렉션 줄과 똑같이 보인다")
@@ -201,6 +259,8 @@ struct UsbTrackListColumnsTests {
         #expect(row.commentClassName == local.commentClassName)
         store.commentPreset = .none
         #expect(store.displayRows.first?.commentClassName == "")
+        store.commentPreset = .anisong
+        #expect(store.displayRows.first?.commentClassName == local.commentClassName)
     }
 
     @Test("USB 줄은 USB에 있는 값으로 칸을 채우고 USB에 없는 초안·변속·큐 칸은 비운다")

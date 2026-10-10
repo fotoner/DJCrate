@@ -39,11 +39,12 @@ extension TrackListCoordinator {
         switch view {
         case let cell as PreviewWaveformCell:
             // USB 곡은 볼륨 안 분석 파일을 읽고(#256) 음원에서 파형을 새로 만들지 않는다(USB를 오래 읽고 로컬 캐시를 채운다)
-            cell.configure(url: row.isUsb ? row.usbFiles?.analysisURL : row.track.analysisURL(in: store.shareRoot),
+            let usb = row.usbFiles.flatMap { files in files.analysis.map { PreviewWaveformRequest.VolumeFile(root: files.root, path: $0) } }
+            cell.configure(url: row.isUsb ? nil : row.track.analysisURL(in: store.shareRoot),
                            revision: "\(snapshotURL?.absoluteString ?? ""):\(previewRevision)", mode: waveformMode,
                            audioURL: row.track.isStreaming || row.isUsb ? nil : URL(filePath: row.track.folderPath), key: row.track.uuid,
                            cues: PerfProbe.previewCuesVisible ? PreviewCueMark.current(saved: row.cues, draft: previewCues[row.track.uuid]) : [],
-                           duration: Double(row.track.lengthSeconds))
+                           duration: Double(row.track.lengthSeconds), volume: row.isUsb ? usb : nil)
         case let cell as ThumbnailCell:
             cell.configure(row: row, shareRoot: store.shareRoot)
         case let cell as EditedMarkCell:
