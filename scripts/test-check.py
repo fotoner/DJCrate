@@ -49,6 +49,7 @@ TRANSLATIONS = "scripts/i18n.swift check --enable-code-coverage"
 TEST = "test --skip-build --enable-code-coverage"
 QUICK = TEST + " --filter SampleTests"
 STRESS = TEST + " --filter CipherColdOpenTests"
+RELEASE_LATER = "릴리스 빌드는 릴리스 검사에서"
 PARTITIONS = {
     "coverage-only": (["--coverage"], "ok", 0, [DEBUG, TRANSLATIONS, TEST]),
     "release-only": (["--release"], "ok", 0, [RELEASE]),
@@ -180,6 +181,9 @@ with open("stress-env.txt", "a") as log:
     log.write(os.environ.get("DJC_CIPHER_STRESS", "unset") + "\n")
 with open("defaults-prefix.txt", "a") as log:
     log.write(os.environ.get("DJC_TEST_DEFAULTS_PREFIX", "unset") + "\n")
+if args[0] == "test":
+    with open("kdf-env.txt", "a") as log:
+        log.write(os.environ.get("DJC_CHECK_TEST_KDF", "unset") + "\n")
 if mode == "pulse-orphan" and args[0] == "build":
     time.sleep(1.5)
 if mode == "build-silent" and args[0] == "build":
@@ -526,6 +530,7 @@ def check_partition(arguments, case, expected, expected_calls):
         env.pop("DJC_TEST_DEFAULTS_PREFIX", None)
         env.pop("DJC_CHECK_LOG_ROOT", None)
         env.pop("DJC_CIPHER_STRESS", None)
+        env.pop("DJC_CHECK_TEST_KDF", None)
         if case.startswith("stress-env-"):
             env["DJC_CIPHER_STRESS"] = {"stress-env-invalid": "true", "stress-env-empty": "", "stress-env-zero": "0"}[case]
         result = subprocess.run(
@@ -536,6 +541,10 @@ def check_partition(arguments, case, expected, expected_calls):
         calls_file = root / "calls.txt"
         calls = calls_file.read_text().splitlines() if calls_file.exists() else []
         assert calls == expected_calls, f"검사 범위 불일치: {calls}"
+        # 키 유도 장치 표지: 일상 검사(전체·--coverage)의 시험만 받는다. --quick·--stress는 실험·캡처가 장치를 끌 수 있어 주지 않는다.
+        marker = (root / "kdf-env.txt").read_text().splitlines() if (root / "kdf-env.txt").exists() else []
+        want_marker = "1" if arguments[:1] in ([], ["--coverage"]) else "unset"
+        assert marker == [want_marker] * len(marker), f"{arguments} 키 유도 장치 표지 {marker}, 기대값 {want_marker}"
         light_file = root / "light-calls.txt"
         light = light_file.read_text().splitlines() if light_file.exists() else []
         if arguments == ["--coverage"]:
@@ -1144,7 +1153,7 @@ def check_env(root, case="ok", **extra):
                LEAKS=json.dumps(LEAKS), PREFERENCE_LEAKS=json.dumps(PREFERENCE_LEAKS),
                **{"LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8", **extra})
     for name in ("DJC_TEST_DEFAULTS_PREFIX", "DJC_CHECK_LOG_ROOT", "DJC_CIPHER_STRESS", "DJC_CHECK_VERBOSE",
-                 "DJC_HOME", "DJC_REKORDBOX_DIR", "DJC_LAYOUT_RECOMPUTE_TESTS"):
+                 "DJC_HOME", "DJC_REKORDBOX_DIR", "DJC_LAYOUT_RECOMPUTE_TESTS", "DJC_CHECK_TEST_KDF"):
         if name not in extra:
             env.pop(name, None)
     return env
@@ -1227,6 +1236,18 @@ def check_reuse(case):
             stress = run_check(root, env, "--stress")
             assert "재사용:" not in stress.stdout and len(swift_calls(root)) > before, "stress를 전체 통과로 건너뜀"
             return
+        elif case == "reuse-widened-not-full":
+            # 넓힌 --changed 통과(릴리스 앱 빌드 뺌)는 다음 --changed만 대신한다. 인자 없는 전체 검사는 다시 돌아 릴리스 앱을 빌드한다.
+            make_synthetic_repo(root)
+            changed_env = check_env(root, CHANGED="Package.swift")
+            widened = run_check(root, changed_env, "--changed", "--no-reuse")
+            assert widened.returncode == 0 and RELEASE not in swift_calls(root), widened.stdout
+            again = run_check(root, changed_env, "--changed")
+            assert "재사용:" in again.stdout, "넓힌 --changed 통과를 같은 --changed에 재사용하지 않음\n" + again.stdout
+            full = run_check(root, env)
+            assert full.returncode == 0 and "재사용:" not in full.stdout, "넓힌 --changed 통과를 전체 검사로 넘김\n" + full.stdout
+            assert swift_calls(root).count(RELEASE) == 1, f"전체 검사가 릴리스 앱을 빌드하지 않음: {swift_calls(root)}"
+            return
         elif case == "reuse-tree-moved":
             # 검사 중에 작업 트리가 바뀌면(시작·끝 해시가 다르면) 통과로 기록하지 않는다.
             (root / ".build/check-logs/last-pass").unlink()
@@ -1242,7 +1263,7 @@ def check_reuse(case):
 
 
 REUSE_CASES = ["reuse-no-reuse", "reuse-tree-changed", "reuse-other-filter", "reuse-env-differs", "reuse-after-failure",
-               "reuse-tree-unknown", "reuse-full-covers", "reuse-last-pass-format", "reuse-tree-moved"]
+               "reuse-tree-unknown", "reuse-full-covers", "reuse-last-pass-format", "reuse-tree-moved", "reuse-widened-not-full"]
 
 
 SOURCES = "build --enable-code-coverage"
@@ -1265,11 +1286,14 @@ CHANGED_CASES = {
     "changed-docs-checker": (["--changed"], ["docs/ci.md"], "ok", 0, [], ["문서 검사 통과", "check-prose.py 합성 출력"]),
     "changed-docs-checker-fail": (["--changed"], ["docs/ci.md"], "ok", 1, [], ["문서 검사 실패"]),
     "changed-scripts": (["--changed"], ["scripts/test-map.txt"], "ok", 0, [], ["검사 스크립트 회귀: 1개 중 1개 통과"]),
-    "changed-widen": (["--changed"], ["Package.swift"], "ok", 0, [DEBUG, RELEASE, TRANSLATIONS, TEST],
-                      ["전체 검사로 넓힙니다", "Package.swift", "목표 60%", "통과: full"]),
-    "changed-widen-scripts": (["--changed"], ["Package.swift", "scripts/test-map.txt"], "ok", 0, [DEBUG, RELEASE, TRANSLATIONS, TEST],
+    # 넓힌 --changed는 전체 시험·경계·번역·문서·커버리지를 돌되 릴리스 앱 빌드는 뺀다(릴리스 검사의 몫)
+    "changed-widen": (["--changed"], ["Package.swift"], "ok", 0, [DEBUG, TRANSLATIONS, TEST],
+                      ["전체 검사로 넓힙니다", "Package.swift", "목표 60%", "통과: full", RELEASE_LATER]),
+    "changed-widen-release-fail": (["--changed"], ["Package.swift"], "release-fail", 0, [DEBUG, TRANSLATIONS, TEST],
+                                   ["통과: full", RELEASE_LATER]),
+    "changed-widen-scripts": (["--changed"], ["Package.swift", "scripts/test-map.txt"], "ok", 0, [DEBUG, TRANSLATIONS, TEST],
                               ["전체 검사로 넓힙니다", "검사 스크립트 회귀: 1개 중 1개 통과", "check-docs.py 합성 출력", "통과: full"]),
-    "changed-widen-check-script": (["--changed"], ["scripts/check.sh"], "ok", 0, [DEBUG, RELEASE, TRANSLATIONS, TEST],
+    "changed-widen-check-script": (["--changed"], ["scripts/check.sh"], "ok", 0, [DEBUG, TRANSLATIONS, TEST],
                                    ["전체 검사로 넓힙니다", "검사 스크립트 회귀: 1개 중 1개 통과", "통과: full"]),
     "changed-imports-script": (["--changed"], ["scripts/check-imports.py"], "ok", 0, [],
                                ["모듈 경계 규칙: 위반 0개", "검사 스크립트 회귀: 1개 중 1개 통과", "통과: changed"]),
@@ -1277,7 +1301,7 @@ CHANGED_CASES = {
                           [SOURCES, build_target("DJCDomainTests"), TEST + r" --filter ^(DJCDomainTests\.(FooTests)/)"],
                           ["안전 시험 선택", "검사 스크립트 회귀: 1개 중 1개 통과", "통과: changed"]),
     "changed-widen-selection": (["--changed"], ["Package.swift", "Tests/DJCDomainTests/FooTests.swift"], "ok", 0,
-                                [DEBUG, RELEASE, TRANSLATIONS, TEST], ["전체 검사로 넓힙니다", "안전 시험 선택", "통과: full"]),
+                                [DEBUG, TRANSLATIONS, TEST], ["전체 검사로 넓힙니다", "안전 시험 선택", "통과: full"]),
     "changed-write": (["--changed"], ["Sources/RekordboxKit/RekordboxWriter.swift"], "ok", 0,
                       [SOURCES, build_target("RekordboxKitTests"), TEST + r" --filter ^(RekordboxKitTests\.)"],
                       ["목표 80%", "rekordbox-safety", "쓰기 관문을 바꿨으면", "⚠ 남은 필수 검사: 합성 필수 검사를 돌리세요"]),
@@ -1382,8 +1406,13 @@ def check_changed(case, arguments, changed, mode, expected, expected_calls, note
             rekordbox = {line.split("\t")[1] for line in (root / "env.txt").read_text().splitlines()}
             assert all(h.startswith(str(run.resolve())) for h in homes | rekordbox), \
                 f"임시 DJC_HOME·DJC_REKORDBOX_DIR을 주지 않음: {homes} {rekordbox}"
+        marker = (root / "kdf-env.txt").read_text().splitlines() if (root / "kdf-env.txt").exists() else []
+        assert marker == ["1"] * len(marker), f"--changed 시험이 키 유도 장치 표지를 받지 않음: {marker}"
         info = (run / "run-info.txt").read_text()
         assert "mode=" + ("full" if case.startswith("changed-widen") else "changed") in info, info
+        assert "release=off" in info, info
+        if not case.startswith("changed-widen"):
+            assert RELEASE_LATER not in output, f"넓히지 않은 --changed에 릴리스 빌드 안내를 냄\n{output}"
         assert "requested=changed" in info, info
 
 

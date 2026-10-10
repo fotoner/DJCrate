@@ -83,6 +83,8 @@ Swift 소스를 바꾸면 그 파일이 선언한 타입을 쓰는 Suite를 고�
 
 고른 Suite가 전체의 절반을 넘어도 전체 검사로 넓힌다. 넓힐 때는 이유를 담아 `▸ 전체 검사로 넓힙니다: <이유>`를 출력한다. 넓힌 실행은 문서·훅 검사를 포함해 전체 검사와 같은 단계를 돈다. 검사 스크립트가 바뀌었으면 `scripts/test-check.py`도 돈다. 전체 검사만으로는 이 검사가 돌지 않는다.
 
+넓힌 실행은 릴리스 앱 빌드를 뺀다. 릴리스 빌드는 릴리스 검사의 몫이다. 끝 요약에는 "릴리스 빌드는 릴리스 검사에서"가 남는다. 그 통과 기록은 인자 없는 전체 검사가 재사용하지 않는다.
+
 djcTests는 `.build/debug/djc`를 명령 문자열로 띄워서 기호 grep이 닿지 않으므로 경로로 고른다.
 
 쓰기 그룹 커버리지는 RekordboxKitTests·DJCApplicationTests·DJCAdaptersTests를 통째로 돌려 잰다. 그래서 쓰기 그룹 파일을 바꾼 `--changed`는 약 5분 걸린다. 그 밖의 변경은 고른 Suite만 돈다.
@@ -332,6 +334,7 @@ DB 연결은 SQLCipher 키 유도 때문에 비싸므로, 시험은 필요한 �
 - 같은 반복 수: 장치가 있는 묶음이 만드는 DB는 모두 1번을 쓴다. 픽스처 템플릿과 제품이 만드는 OneLibrary가 그렇다. `FixtureConnection`의 원시 키도 프로세스 기본값(`CipherKDF.processDefaultIterations`)으로 유도한다.
 - 기본값을 두는 경우: 환경에 시험 기본 변수 밖의 `DJC_` 변수가 있으면 장치는 반복 수를 낮추지 않는다. 실험 재현 시험과 캡처 시험이 그런 변수로 켜진다. 실험 재현 시험은 rekordbox가 만든 사본을 읽는다. 캡처 시험은 앱 자가 테스트·외부 파서에 넘길 사본을 만든다(CIP-13·14).
 - djc를 띄우는 시험: djcTests에 둔다. djcTests는 256,000번으로 픽스처를 만들므로 djc가 그 픽스처를 연다.
+- 표지: 일상 검사(`--changed`·전체·`--coverage`)는 시험에 `DJC_CHECK_TEST_KDF=1`을 준다. 장치가 꺼진 채 표지를 받으면 `CipherTestKDFTests`가 그 변수 이름을 들어 실패한다(CIP-15). `--quick`·`swift test`는 표지 없이 돈다.
 - 지키는 시험: `CipherTestKDFTests`와 `CipherTestKDFLinkTests`는 장치가 켜졌는지 본다. `CipherDefaultKDFTests`는 djc가 만든 OneLibrary가 256,000번으로 열리는지 본다. `CipherColdOpenTests`는 djc 새 프로세스에서 기본값으로 연다.
 - 실제 라이브러리: 시험 프로세스의 기본 폴더는 `TestProcess.sandbox`다. 1번으로 유도한 키로는 실제 `master.db`를 풀지 못한다. 새 DB는 rekordbox 라이브러리 폴더 아래에 만들지 않는다(`OpenMode.create`).
 
@@ -438,7 +441,7 @@ DB 연결은 SQLCipher 키 유도 때문에 비싸므로, 시험은 필요한 �
 | PR | 체크아웃한 병합 커밋과 `origin/<PR 기준 브랜치>`의 merge-base. 이 값은 병합 커밋의 첫 부모, 곧 기준 브랜치 끝이다 |
 | 푸시 | 앞 끝(`github.event.before`) |
 
-다음 경우에는 기준을 비운다. 그러면 전체 검사(`scripts/check.sh`)로 넓힌다. 조용히 좁히지 않는다. 넓힌 이유는 경고 주석과 Job summary에 남는다.
+다음 경우에는 기준을 비운다. 그러면 릴리스 앱 빌드를 뺀 전체 검사(`scripts/check.sh --coverage`)로 넓힌다. 조용히 좁히지 않는다. 넓힌 이유는 경고 주석과 Job summary에 남는다.
 
 - 새 브랜치: `before`가 `000…`이거나 비어 있다.
 - 강제 푸시(`github.event.forced`)

@@ -26,6 +26,16 @@ struct CipherTestKDFTests {
         #expect(djc_test_kdf_lowered() == (Self.expectedIterations == Int(DJC_TEST_KDF_ITER) ? 1 : 0))
     }
 
+    /// scripts/check.sh의 일상 검사(--changed·전체·--coverage)는 표지 `DJC_CHECK_TEST_KDF=1`을 준다(CIP-15).
+    /// 그때 장치가 꺼져 있으면 시험 기본 변수 목록(`CipherTestKDF.m`)이 늦은 것이다. 표지가 없으면(실험·캡처) 보지 않는다.
+    @Test func 검사가_장치를_요구하면_장치가_켜져_있다() {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["DJC_CHECK_TEST_KDF"] == "1" else { return }
+        let unknown = environment.filter { Self.keepsDefault(["\($0.key)=\($0.value)"]) }.keys.sorted()
+        #expect(djc_test_kdf_lowered() == 1,
+                "시험 기본 변수 밖의 DJC_ 변수 \(unknown) 때문에 장치가 꺼졌습니다. 시험 기본 환경이면 CipherTestKDF.m 목록에 더하고, 실험·캡처면 --quick이나 swift test로 돌리세요")
+    }
+
     @Test func 시험_기본_환경에서만_낮추고_실험·캡처_변수가_있으면_기본값을_둔다() {
         #expect(!Self.keepsDefault([]))
         #expect(!Self.keepsDefault(["PATH=/usr/bin", "DJC_HOME=/t/home", "DJC_REKORDBOX_DIR=/t/rb", "DJC_LANG=ko",
