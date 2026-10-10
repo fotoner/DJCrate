@@ -115,17 +115,19 @@ struct SidebarObservationTests {
 
     @Test(.tags(.perfContract)) func 재생_목록_조각과_화면_모델의_값은_사이드바_본문이_읽지_않는다() {
         // 재생 목록 상태는 핵심에서 재생 목록 조각(`PlaylistEditStore`)으로, 펼침·이름 바꾸기는 화면 모델로 옮겼다(#251).
-        // 재생 목록 구역·줄만 읽는다(`PlaylistEditStoreObservationTests`)
+        // 재생 목록 구역·줄만 읽는다(`PlaylistEditStoreObservationTests`). 구역은 읽은 뒤에만 그리므로 읽은 상태에서 본다
         let layout = PlaylistLayout([(PlaylistLayout.Item(id: "A", name: "합성 목록"), 1)])
-        #expect(!sidebarReads { $0.playlists.playlistMessage = AppMessage(text: "합성 안내") })
-        #expect(!sidebarReads { $0.playlists.rekordboxPlaylists = layout })
-        #expect(!sidebarReads { $0.playlists.recentPlaylistIDs = ["A"] })
-        #expect(!sidebarReads { $0.playlists.playlistCounts = ["A": 1] })
-        #expect(!sidebarReads {
+        let loaded: (LibraryStore) -> Void = { $0.phase = .loaded }
+        #expect(!sidebarReads(before: loaded) { $0.playlists.playlistMessage = AppMessage(text: "합성 안내") })
+        #expect(!sidebarReads(before: loaded) { $0.playlists.rekordboxPlaylists = layout })
+        #expect(!sidebarReads(before: loaded) { $0.playlists.recentPlaylistIDs = ["A"] })
+        #expect(!sidebarReads(before: loaded) { $0.playlists.playlistCounts = ["A": 1] })
+        #expect(!sidebarReads(before: loaded) {
             $0.playlists.rekordboxPlaylists = layout
             $0.playlists.refreshPlaylists()
         })
         let store = store()
+        store.phase = .loaded
         let model = PlaylistSidebarModel(playlists: store.playlists)
         let flag = Flag()
         withObservationTracking { _ = Sidebar(store: store, playlistSidebar: model).body } onChange: { flag.fired = true }

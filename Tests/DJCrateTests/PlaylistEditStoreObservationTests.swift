@@ -13,8 +13,11 @@ import Testing
 struct PlaylistEditStoreObservationTests {
     private final class Flag: @unchecked Sendable { var fired = false }
 
+    /// 사이드바는 읽은 뒤에만 재생 목록 구역을 그리므로 읽은 상태로 둔다
     private func store() -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
+        store.phase = .loaded
+        return store
     }
 
     /// `body`를 한 번 계산하는 동안 읽은 값 중 `change`가 바꾸는 것이 있는지
