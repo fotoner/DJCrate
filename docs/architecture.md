@@ -84,7 +84,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - RekordboxKit은 DJCrate 자신의 쓰기 위치(예: 백업 폴더)를 인자로 받는다. 예외로 두 자리는 `DJCIdentity`로 직접 안다. 하나는 스냅샷 폴더(`LibrarySnapshot.defaultDirectory`)다. 다른 하나는 XML 내보내기가 거부하는 자리다. 이 자리는 DJCrate 데이터 폴더와 연동 XML이다.
 - **DJCStorage**는 DJCrate 자신의 파일을 맡는다. 초안과 추가한 곡, 반영 묶음과 USB 초안이 그 파일이다. iTunes 읽기와 USB 볼륨·도구 실행도 맡는다.
 - **DJCAnalysis**는 소리 분석과 곡 편집 렌더를 맡는다. 파형, 그리드 추정, 조성을 분석한다. 음량과 섹션도 분석한다. DJCAnalysis는 rekordbox를 모르므로 시간축 차이를 인자로 받는다.
-- **DJCEnvironment**는 이 프로세스의 환경을 읽는다. 시험 프로세스인지와 그 임시 폴더를 안다(`TestProcess`, #182). 데이터·로그·캐시 위치는 `DJC_HOME`과 `DJC_REKORDBOX_DIR`에 따라 정한다. 환경을 인자로 받는 순수 규칙은 DJCDomain에 남는다.
+- **DJCEnvironment**는 이 프로세스의 환경을 읽는다. 시험 프로세스인지와 그 임시 폴더를 안다(`TestProcess`, #182). 데이터·로그·캐시 위치는 `DJC_HOME`과 `DJC_REKORDBOX_DIR`에 따라 정한다. 환경을 인자로 받는 순수 규칙은 DJCDomain에 남는다. 인프라가 막는 입출력을 협력 풀 밖에서 돌리는 `OffPoolIO`도 여기 있다(#247).
 - 앱 **DJCrate**와 CLI **djc**의 본체는 라이브러리 타깃이다. 그래서 실행 파일과 시험이 컴파일 결과를 함께 쓴다. 실행 진입점만 `DJCrateExecutable`·`djcExecutable`로 나눈다. 제품 이름과 리소스 번들 이름은 그대로다.
 
 ### 경계 규칙
@@ -136,6 +136,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - **기본 모양은 `Sendable` 클로저 struct다.** 포트는 메인 스레드 밖에서 부른다. 시험은 클로저를 바꿔 넣는다.
 - 동기 포트(파일·USB·DB 입출력)는 `BlockingWork.run`으로 GCD 스레드에서 부르고 기다린다. `Task.detached`·`@concurrent`로 협력 스레드 풀에서 막으면 코어가 적은 기계(CI 러너)에서 풀이 바닥나 다른 비동기 일까지 멈춘다. 시험 가짜는 동기 포트 클로저에서 `expectBlockingOffPool`을 부른다. 막을 때는 `waitOffPool`을 쓴다(DJCTestKit).
 - 작업 취소를 조각마다 보는 일은 협력 풀에 둔다. 음원 분석과 XML 파싱이 그 예다. GCD에는 지금 작업이 없어 `Task.isCancelled`가 늘 거짓이다. 그래서 옮기면 취소가 닿지 않는다.
+- 인프라의 막는 입출력 가운데 취소를 단계마다 보는 일은 `OffPoolIO.run`(DJCEnvironment)으로 GCD에서 돌린다. 이 함수는 작업 취소를 `CancellationCheck` 신호로 넘긴다. 일은 단계 사이에서 `check()`를 부른다. 미리 보기·복구의 사본 뜨기(`WritePreviewSnapshot`)와 옮긴 곡 후보의 폴더 열거(`RelocateScanner`)가 그 예다(#247).
 - 메인 액터 상태를 읽는 포트만 `@MainActor` 클로저 struct로 쓴다. 그 상태는 쓰기 잠금, 저장 대기, 화면 알림이다.
 - **반영 세션의 화면 상태 포트는 세 가지뿐이다.** 읽기 하나(`state`), 결과 적용 하나(`apply`), 쓰기 전 저장이다. 지울 초안과 되살릴 초안은 세션이 정한다. 라이브러리 저장소는 메모리 초안과 표시만 맞춘다.
 - 라이브러리 저장소는 이 포트를 채택하지 않는다. 조립 지점이 저장소 메서드를 클로저로 묶는다.

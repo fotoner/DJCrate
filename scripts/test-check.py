@@ -1077,6 +1077,114 @@ AFFECTED_EXTRA = ["affected-map-missing-suite", "affected-dump-cache", "affected
                   "affected-shell-format", "affected-map-stale-when", "affected-git-rename"]
 
 
+# 화면 문구 파일의 바뀜 → 번역 검사를 고르는지(#245). 카탈로그 키(원문·보간 개수·형식 지정)가 바뀔 수 있으면 고르고,
+# 문구 호출 줄의 다른 부분·다른 줄만 바뀌면 고르지 않는다.
+UI_BASE = '''struct Prompt {
+    let count = 3
+    let name = "a"
+    var title: String { String(ui: "곡 \\(count)개를 지웠습니다") }
+    var body: some View {
+        Text(.ui("재생")).font(.title)
+    }
+    var size: String { String(ui: "크기 \\(ratio, specifier: "%.1f")") }
+    var split: String {
+        String(
+            ui: "나뉜 문구")
+    }
+    static let usage = String(ui: """
+        사용법:
+          djc \\(name)
+        """)
+    let other = 1
+    func plays(n: Int) -> String { String(ui: "\\(n)곡") }
+    let column = String(localized: "library.plays", defaultValue: "재생 횟수", bundle: UIStrings.bundle)
+    let pair = ("ui:", String(ui: "앞에 ui: 글"))
+    let mixed = "\\(String(ui: "안쪽 문구"))"
+    // 예: String(ui: "주석 문구")
+    let link = #/https?://\\S+/#; let linkTitle = String(ui: "링크")
+}
+'''
+UI_ANONYMOUS_BASE = '''struct Counts {
+    let items: [Int] = [1]
+    var list: some View { ForEach(items, id: \\.self) { Text(.ui("\\($0)곡")) } }
+}
+'''
+
+
+def ui_edit(old, new):
+    assert old in UI_BASE, f"기준에 없는 줄: {old!r}"
+    return UI_BASE.replace(old, new, 1)
+
+
+# 경우 → (바뀐 파일 내용, None이면 지움; 번역 검사를 골라야 하는지[; 기준 내용, 없으면 UI_BASE])
+UI_DIFF_CASES = {
+    # 놓치면 안 되는 경우
+    "ui-diff-text": (ui_edit('.ui("재생")', '.ui("재생 시작")'), True),
+    "ui-diff-add": (ui_edit("    let other = 1\n", '    let other = 1\n    let more = String(ui: "새 문구")\n'), True),
+    "ui-diff-remove-last": (ui_edit('        Text(.ui("재생")).font(.title)\n', ""), True),
+    "ui-diff-delete-file": (None, True),
+    "ui-diff-interpolation-count": (ui_edit('"곡 \\(count)개를', '"곡 \\(count)개를 \\(name)에서'), True),
+    "ui-diff-specifier": (ui_edit('"%.1f"', '"%.2f"'), True),
+    "ui-diff-literal-space": (ui_edit('"곡 \\(count)개를', '"곡  \\(count)개를'), True),
+    # 여러 줄 문자열 안의 줄에는 String(ui:)가 없다
+    "ui-diff-multiline-text": (ui_edit("djc \\(name)\n", "djc \\(name) [옵션]\n"), True),
+    "ui-diff-multiline-add-line": (ui_edit("          djc \\(name)\n", "          djc \\(name)\n          djc help\n"), True),
+    # 여러 줄에 걸친 호출의 문구만 바뀜(ui: 줄이 아닌 줄)
+    "ui-diff-split-call-text": (ui_edit('String(\n            ui: "나뉜 문구")', 'String(\n            ui:\n                "바뀐 문구")'), True),
+    "ui-diff-join-with-text": (ui_edit('String(\n            ui: "나뉜 문구")', 'String(ui: "합친 문구")'), True),
+    # 판단(#245): diff로는 보간 식의 형을 모른다(Int `%lld` → String `%@`). 놓치지 않는 쪽을 골라 식이 바뀌면 고른다.
+    "ui-diff-interpolation-rename": (ui_edit('"곡 \\(count)개를', '"곡 \\(label)개를'), True),
+    "ui-diff-broken-literal": (ui_edit('.ui("재생")', '.ui("재생)'), True),
+    # 같은 파일에서 보간 식의 형이 바뀜(식은 그대로): 보간에 쓴 이름이 든 줄이 바뀌면 고른다
+    "ui-diff-type-elsewhere": (ui_edit("let count = 3", 'let count = "3"'), True),
+    "ui-diff-type-same-line": (ui_edit("plays(n: Int)", "plays(n: String)"), True),
+    # 키를 따로 준 문구(키·원문)와 .ui 밖 지역화 문구(번역 검사가 막는다)
+    "ui-diff-explicit-default": (ui_edit('defaultValue: "재생 횟수"', 'defaultValue: "재생 수"'), True),
+    "ui-diff-explicit-key": (ui_edit('"library.plays"', '"library.playCount"'), True),
+    "ui-diff-misplaced-text": (ui_edit('        Text(.ui("재생")).font(.title)\n', '        Text(.ui("재생")).font(.title)\n        Text("새 문구")\n'), True),
+    "ui-diff-badge": (ui_edit('Text(.ui("재생")).font(.title)', 'Text(.ui("재생")).badge("새")'), True),
+    "ui-diff-regex-literal": (ui_edit('String(ui: "링크")', 'String(ui: "주소")'), True),
+    # 이름 없는 보간(`$0`)은 선언을 이름으로 못 찾으므로 그 파일의 문구 밖 줄이 바뀌면 고른다
+    "ui-diff-anonymous-type": (UI_ANONYMOUS_BASE.replace("[Int]", "[String]"), True, UI_ANONYMOUS_BASE),
+    # 일반 문자열 안의 ui: 글자, 일반 문자열 보간 안의 문구
+    "ui-diff-string-mentions-ui": (ui_edit('"앞에 ui: 글"', '"뒤에 ui: 글"'), True),
+    "ui-diff-inside-interpolation": (ui_edit('"안쪽 문구"', '"안쪽 문구 바뀜"'), True),
+    # 고르지 않아야 하는 경우
+    "ui-diff-modifier": (ui_edit(".font(.title)", ".font(.body)"), False),
+    "ui-diff-other-line": (ui_edit("let other = 1", "let other = 2"), False),
+    "ui-diff-indent": (ui_edit('        Text(.ui("재생"))', '            Text(.ui("재생"))'), False),
+    "ui-diff-split-line": (ui_edit('Text(.ui("재생")).font(.title)', 'Text(.ui("재생"))\n            .font(.title)'), False),
+    "ui-diff-join-line": (ui_edit('String(\n            ui: "나뉜 문구")', 'String(ui: "나뉜 문구")'), False),
+    "ui-diff-interpolation-space": (ui_edit('"곡 \\(count)개를', '"곡 \\( count )개를'), False),
+    "ui-diff-comment": (ui_edit('"주석 문구"', '"주석 문구 바뀜"'), False),
+    "ui-diff-duplicate": (ui_edit("    let other = 1\n", '    let other = 1\n    let again = String(ui: "재생")\n'), False),
+    "ui-diff-multiline-reindent": (ui_edit('String(ui: """\n        사용법:\n          djc \\(name)\n        """)',
+                                           'String(ui: """\n            사용법:\n              djc \\(name)\n            """)'), False),
+}
+
+
+def check_ui_diff(case, content, expected, base=UI_BASE):
+    with tempfile.TemporaryDirectory(prefix="djc-affected-") as directory:
+        root = Path(directory)
+        make_synthetic_repo(root)
+        path = root / "Sources/DJCApplication/Prompt.swift"
+        path.write_text(base)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        subprocess.run(git + ["init", "-q", "-b", "dev"], cwd=root, check=True)
+        subprocess.run(git + ["add", "-A"], cwd=root, check=True)
+        subprocess.run(git + ["commit", "-qm", "기준"], cwd=root, check=True)
+        if content is None:
+            path.unlink()
+        else:
+            path.write_text(content)
+        result = run_affected(root, "--base", "HEAD", "--json")
+        assert result.returncode == 0, f"종료코드 {result.returncode}\n{result.stdout}{result.stderr}"
+        plan = json.loads(result.stdout)
+        assert plan["files"] == ["Sources/DJCApplication/Prompt.swift"], f"바꾼 파일 목록: {plan['files']}"
+        chosen = plan["checks"]["translations"]
+        assert chosen == expected, f"번역 검사 {'고름' if chosen else '안 고름'}, 기대값 {'고름' if expected else '안 고름'}"
+
+
 def check_real_map():
     """저장소의 test-map.txt가 지금 Tests/에 있는 Suite만 적고, 쓰기 커버리지 묶음이 check.sh 쓰기 정규식과 같은 파일을 고르는지."""
     root = Path(__file__).resolve().parent.parent
@@ -1626,6 +1734,7 @@ def attempt(name, check, *arguments):
 runs = []
 runs += [(case, check_affected, (case, *arguments)) for case, arguments in AFFECTED_CASES.items()]
 runs += [(case, check_affected_extra, (case,)) for case in AFFECTED_EXTRA]
+runs += [(case, check_ui_diff, (case, *arguments)) for case, arguments in UI_DIFF_CASES.items()]
 runs += [("affected-real-map", check_real_map, ())]
 runs += [(case, check_real_safety, (case, *arguments)) for case, arguments in REAL_SAFETY_CASES.items()]
 runs += [(case, check_reuse, (case,)) for case in REUSE_CASES]
