@@ -104,7 +104,7 @@ struct UnlinkedDraftsView: View {
 
 유스케이스에는 화면 상태가 없다. 유스케이스는 `@Observable`이 아니다. 흐름 상태는 값으로, 알림은 출력 포트로 내보낸다. 화면 모델이 그것을 관찰 상태로 바꾼다.
 
-본보기는 `UsbSync`와 앱 `UsbSyncModel`이다. `UsbSync`는 값 `UsbSyncState`와 출력 포트 `UsbSyncOutput`을 쓴다. 경계 검사의 `api` 규칙이 핵심부의 Observation을 막는다.
+본보기는 `UsbSync`와 앱 `UsbSyncModel`이다. `UsbSync`는 값 `UsbSyncState`와 출력 포트 `UsbSyncOutput`을 쓴다. USB 쓰기 세션 `UsbWriteSession`과 앱 `UsbWriteModel`도 같은 모양이다. 경계 검사의 `api` 규칙이 핵심부의 Observation을 막는다.
 
 올바른 예: 찾기는 유스케이스가 한다. 고르기 규칙은 DJCDomain 값이 한다. 화면 모델은 결과를 상태에 담기만 한다.
 

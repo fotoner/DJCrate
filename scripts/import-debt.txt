@@ -3,7 +3,6 @@
 # view-task(뷰 파일의 Task 시작·await, 대상에 곳 수: 늘면 새 위반, 줄면 이 줄을 고친다).
 # 빚을 갚으면 그 줄을 지운다(남겨 두면 검사가 "지워도 됨"으로 실패한다). 새 위반은 여기 더하지 말고 고친다.
 # 다시 만들기: scripts/check-imports.py --write-debt
-Sources/DJCApplication/Usb/UsbWriteSession.swift	api	Observation
 Sources/DJCrate/App/AppCommands.swift	view-task	Task 1곳
 Sources/DJCrate/App/AppCommands.swift	view-task	await 1곳
 Sources/DJCrate/App/ContentView.swift	view-task	Task 7곳

@@ -143,7 +143,8 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 본보기는 USB 동기화다. `UsbSync`는 흐름 상태를 값 `UsbSyncState`로 든다. 바깥에서는 읽기만 한다.
   - `UsbSync`는 출력 포트 `UsbSyncOutput`으로 바뀜과 알림 `UsbSyncNotice`를 내보낸다. 닫기 결과는 값 `UsbSyncCloseResult`다.
   - 앱 `UsbSyncModel`이 이것을 관찰 상태로 바꾼다. 표시 트리, 흐리게, 빈 목록 문구도 화면 모델이 만든다.
-  - 남은 예외는 `UsbWriteSession`(`@Observable`) 하나다. 빚 목록에 고정해 두었다.
+  - USB 쓰기 세션도 같은 모양이다. `UsbWriteSession`은 잠금·진행·옮기기 상태를 값 `UsbWriteSessionState`로 든다. 바뀌면 출력 포트 `UsbWriteSessionOutput`으로 내보낸다.
+  - 앱 `UsbWriteModel`이 그 값을 칸마다 관찰 상태로 옮긴다. Observation은 같은 값이면 알리지 않는다. 그래서 진행이 바뀌어도 잠금만 보는 화면은 다시 그리지 않는다.
 - **예외로 프로토콜인 포트는 아래와 같다.**
   - USB 파일 연산 `UsbFileSystem`: RekordboxKit의 USB 형식 코드가 쓰는 계약이다.
   - USB 쓰기 유스케이스 경계 `UsbWriting`: 실제는 `UsbWriteService`다. 앱 쓰기 흐름 시험은 가짜를 쓴다.

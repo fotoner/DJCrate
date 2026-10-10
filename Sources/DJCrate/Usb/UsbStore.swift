@@ -5,7 +5,8 @@ import Observation
 
 /// 사이드바 USB 절 상태: 연결된 볼륨마다 모양(빈 FAT32·rekordbox USB·쓸 수 없는 모양)과 사본으로 읽은 라이브러리.
 /// 여기서는 USB에 쓰지 않는다. 읽기는 호스트가 메인 액터 밖에서 사본으로 하고, 여기서는 결과만 받는다.
-/// 쓰기(`UsbWriteCoordinator`)가 쥐는 볼륨별 잠금·진행·지난 쓰기는 쓰기 세션(`session`, `UsbWriteSession`)에 따로 두고 여기서는 이어 보인다.
+/// 쓰기(`UsbWriteCoordinator`)가 쥐는 볼륨별 잠금·진행·지난 쓰기는 핵심부 쓰기 세션(`UsbWriteSession`)이 들고, 그 관찰 상태는
+/// 쓰기 화면 모델(`write`, `UsbWriteModel`)에 따로 둔다. 여기서는 같은 이름으로 이어 보인다.
 /// 끝나지 않은 쓰기가 있는 볼륨이 나타났다는 알림은 여기 둔다.
 /// USB 초안(편집·빠진 볼륨의 초안)도 여기서 본다. 초안 파일은 `UsbEditActions`·초안 쓰기가 볼륨마다 한 줄(`draftQueue`)로 고친다.
 @MainActor @Observable final class UsbStore {
@@ -36,13 +37,15 @@ import Observation
     private(set) var syncBadges: [String: [Int: UsbSyncStatus]] = [:]
     /// 볼륨키 → USB content_id → 로컬 ContentID(짝이 하나인 곡만, 배지와 함께 계산)
     private(set) var localMatches: [String: [Int: String]] = [:]
-    /// 쓰기 세션 상태(잠금·진행·지난 쓰기). 사이드바 상태와 따로 관찰한다
-    let session = UsbWriteSession()
+    /// 쓰기 세션의 화면 모델(잠금·진행·옮기기 상태). 사이드바 상태와 따로 관찰한다
+    let write = UsbWriteModel()
+    /// 핵심부 쓰기 세션(쓰기 흐름 `UsbWriteFlow`가 쥔다)
+    var session: UsbWriteSession { write.session }
     /// 볼륨별 잠금(쓰기 중 표시). 잠긴 볼륨은 다시 읽거나 꺼내지 않는다. `beginWrite`·`endWrite`로만 바꾼다
-    var busyVolumes: Set<String> { session.busyVolumes }
+    var busyVolumes: Set<String> { write.busyVolumes }
     private(set) var ejecting: Set<String> = []
     /// 지금 쓰는 볼륨과 진행(덮개가 읽는다). 앱은 한 번에 한 볼륨에만 쓴다
-    var activeWrite: UsbActiveWrite? { session.activeWrite }
+    var activeWrite: UsbActiveWrite? { write.activeWrite }
     /// 열 내보내기 시트(볼륨·다시 미리 보기 결과)
     var exportSheet: UsbExportSheetRequest?
     /// 볼륨 이름 옆에서 연 동기화 시트
@@ -145,12 +148,13 @@ import Observation
         get { session.lastMigrations }
         set { session.lastMigrations = newValue }
     }
+    /// 관찰은 화면 모델에서, 바꾸기는 세션으로 한다(세션이 내보내면 화면 모델이 곧바로 따라온다)
     var migrationBackups: [String: URL] {
-        get { session.migrationBackups }
+        get { write.migrationBackups }
         set { session.migrationBackups = newValue }
     }
     var migrationBlockReasons: [String: String] {
-        get { session.migrationBlockReasons }
+        get { write.migrationBlockReasons }
         set { session.migrationBlockReasons = newValue }
     }
     /// 앱의 USB 쓰기 창구(유스케이스 `UsbWriting`, `LibraryStore.usbCoordinator`가 쓴다. 저널 알림과 같은 창구를 붙인다).
@@ -469,7 +473,7 @@ import Observation
     func setWriteTitle(_ title: String, for key: String) { session.setTitle(title, for: key) }
     func report(_ progress: UsbProgress, for key: String) { session.report(progress, for: key) }
     func endWrite(_ key: String) { session.end(key) }
-    func cancelWrite() { session.cancel() }
+    func cancelWrite() { write.cancel() }
 
     // MARK: - 목록 줄
 
