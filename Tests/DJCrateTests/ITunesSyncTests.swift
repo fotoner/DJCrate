@@ -77,7 +77,7 @@ struct ITunesSyncTests {
         #expect(store.music.library.index["itunes:A"] != nil)
         #expect(store.music.library.index["itunes:B"] == nil)
         #expect(try Data(contentsOf: fixture.database) == before)
-        #expect(store.playlistDraft.isEmpty)
+        #expect(store.playlists.playlistDraft.isEmpty)
         // rekordbox에서 바꾼 선택이 DJCrate의 옛 로컬 선택에 가려지면 안 된다.
         try base.write(to: syncURL)
         await store.load(snapshot: fixture.database)

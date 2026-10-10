@@ -52,8 +52,8 @@ struct LibraryDetail: View {
                 if let message = store.stagingMessage {
                     AppMessageView(message: message, onClose: { store.stagingMessage = nil })
                 }
-                if let message = store.playlistMessage {
-                    AppMessageView(message: message, onClose: { store.playlistMessage = nil })
+                if let message = store.playlists.playlistMessage {
+                    AppMessageView(message: message, onClose: { store.playlists.playlistMessage = nil })
                 }
             }
             .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureNotice($0) }

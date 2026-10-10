@@ -38,7 +38,7 @@ struct ContentView: View {
     var body: some View {
         let _ = PerfProbe.body(Self.self)
         NavigationSplitView(columnVisibility: columnVisibility) {
-            Sidebar(store: store)
+            Sidebar(store: store, playlistSidebar: app.playlistSidebar)
                 .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 230)
         } detail: {
@@ -93,7 +93,7 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $store.showingWriteResult) { WriteResultView(history: store.resultHistory) }
-        .sheet(isPresented: $store.showingPlaylistPicker) { if let picker = store.playlistPicker { PlaylistPickerView(model: picker) } }
+        .sheet(item: Binding(get: { store.playlists.playlistPicker }, set: { store.playlists.playlistPicker = $0 })) { PlaylistPickerView(model: $0) }
         .sheet(item: $store.unlinkedDraftsSheet) { UnlinkedDraftsView(model: $0) }
         .sheet(item: Binding(get: { store.xmlImport.preview }, set: { store.xmlImport.preview = $0 })) { preview in
             XMLImportSheet(model: store.xmlImport, preview: preview)
@@ -241,7 +241,7 @@ struct EmptyLibraryOverlay: View {
     @ViewBuilder private var message: some View {
         if !store.search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             ContentUnavailableView.search(text: store.search)
-        } else if let summary = store.selectedSmartPlaylistResult?.unsupportedSummary {
+        } else if let summary = store.playlists.selectedSmartPlaylistResult?.unsupportedSummary {
             ContentUnavailableView {
                 Label(.ui("조건을 계산하지 못했습니다"), systemImage: WarningMark.symbol)
             } description: {
@@ -255,7 +255,7 @@ struct EmptyLibraryOverlay: View {
             } actions: {
                 Button(.ui("평점·곡 색 거르기 끄기")) { store.minimumRating = 0; store.colorFilter = nil }
             }
-        } else if store.selectedSmartPlaylistResult != nil, store.streamingHiddenInView == 0 {
+        } else if store.playlists.selectedSmartPlaylistResult != nil, store.streamingHiddenInView == 0 {
             ContentUnavailableView {
                 Label(.ui("조건에 맞는 곡이 없습니다"), systemImage: "music.note.list")
             } description: {

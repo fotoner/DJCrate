@@ -24,7 +24,7 @@ extension LibraryStore: UsbWriteHost {
         return !isLoading && !isWritingRekordbox && writeLockPolicy.allowsLibraryInteraction
             && shareRoot == share
             && previewRevision == context.catalogRevision
-            && UsbSyncSource.make(rekordbox: rekordboxPlaylists, iTunes: music.library) == context.source
+            && UsbSyncSource.make(rekordbox: playlists.rekordboxPlaylists, iTunes: music.library) == context.source
     }
 }
 

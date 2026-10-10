@@ -30,8 +30,6 @@ final class LibraryStore {
     /// 이번 실행에서 저장을 맡긴 태그 초안 곡(저장 실패를 이 저장소 것만 본다, `LibraryStore+DraftIndex`)
     @ObservationIgnored private(set) var tagSaveAttempts: Set<String> = []
     var mergeDrafts: [DuplicateMergeDraft] = []
-    var playlistImports = PlaylistImports()
-    var playlistImportsLoadFailed = false
     var backupDirectory: URL { location.backupDirectory }
     /// 쓰기·복원 대상 rekordbox DB와 분석 파일 뿌리(사본이면 그 share). 앱은 라이브 라이브러리, 시험은 합성 사본을 준다.
     /// 복원은 늘 이 DB로 되돌린다(#182: 대상 없이 되돌려 시험이 실제 라이브러리를 덮었다).
@@ -74,18 +72,14 @@ final class LibraryStore {
         }
     }
     /// 실험실 '인텔리전트 재생 목록 보기'(#68). 켜면 인텔리전트 목록의 조건을 계산해 읽기 전용으로 보인다. 끄면(기본) 계산하지 않고,
-    /// 사이드바·곡 목록·편집은 이 기능이 없던 때와 같다. 켜고 끄면 다시 읽지 않고 사이드바를 바로 바꾼다(`LibraryStore+SmartPlaylists`).
+    /// 사이드바·곡 목록·편집은 이 기능이 없던 때와 같다. 켜고 끄면 다시 읽지 않고 사이드바를 바로 바꾼다(`PlaylistEditStore+Smart`).
     var showSmartPlaylists: Bool {
         didSet {
             guard showSmartPlaylists != oldValue else { return }
             settings.set(SettingKeys.labSmartPlaylists, showSmartPlaylists)
-            refreshPlaylists()
+            playlists.refreshPlaylists()
         }
     }
-    /// 목록 ID → 읽은 조건 칸(스냅샷을 읽을 때 채운다)
-    var smartPlaylistSources: [String: SmartPlaylistSource] = [:]
-    /// 켜 있을 때 목록 ID → 계산 결과(계산하지 못한 조건이 있으면 곡 없이 이유만)
-    var smartPlaylistResults: [String: SmartPlaylistResult] = [:]
     /// 지금 보는 목록에서 '스트리밍 곡 숨기기' 때문에 뺀 줄 수. 0이 아니면 보이는 줄 번호가 목록 순서와 다르니 끌어 옮기지 않는다.
     /// (고치는 곳: `LibraryStore+List`)
     private(set) var streamingHiddenInView = 0
@@ -113,8 +107,8 @@ final class LibraryStore {
         readFlow.screen = readScreen
         music.host = musicHost
         refreshWriteBackups()
-        loadRecentPlaylists()
-        loadPlaylistImports()
+        playlists.loadRecentPlaylists()
+        playlists.loadPlaylistImports()
     }
 
     var phase: Phase = .idle
@@ -133,7 +127,6 @@ final class LibraryStore {
     @ObservationIgnored var missingFileTask: Task<Void, Never>?
     /// 지난 확인에서 없던 경로. 다시 읽은 직후 확인이 끝날 때까지 이것으로 표시해 개수가 0으로 깜빡이지 않게 한다.
     @ObservationIgnored private var missingPathCache: Set<String> = []
-    var playlistCounts: [String: Int] = [:]
     var isLoading: Bool { if case .loading = phase { true } else { false } }
 
     var sidebar: SidebarItem = .filter(.all) {
@@ -152,8 +145,6 @@ final class LibraryStore {
             refreshBase()
         }
     }
-    /// 사이드바 재생 목록 트리(rekordbox 상태에 재생 목록 초안을 얹은 모양, LibraryStore+Playlists)
-    var playlistTree: [PlaylistOutlineNode] = []
     /// Music(iTunes) 표시 상태와 동기화 창(기능 조각, `MusicLibraryStore`). `let`이라 관찰하지 않는다: 화면은 조각의 값을 읽는다
     let music: MusicLibraryStore
     var isITunesSelection: Bool { if case .itunesPlaylist = sidebar { true } else { false } }
@@ -174,29 +165,9 @@ final class LibraryStore {
     private(set) var usbEdits: UsbEditActions?
     /// 곡 목록에서 USB 곡을 끄는 동안 그 볼륨키(#240). 사이드바 USB 줄이 같은 USB의 목록만 받으려고 본다(놓기 판정은 끈 내용을 미리 읽지 못한다)
     @ObservationIgnored var usbDragVolume: String?
-    /// 새 항목의 부모만 펼치고 다른 폴더의 펼침 상태는 유지한다.
-    var expandedPlaylistIDs: Set<String> = []
-    var playlistIndex: [String: PlaylistOutlineNode] = [:] { didSet { playlistCount = playlistIndex.values.filter { !$0.isFolder }.count } }
-    /// 폴더를 뺀 rekordbox 플레이리스트 수(사이드바 제목)
-    private(set) var playlistCount = 0
-    /// 스냅샷에서 읽은 rekordbox 재생 목록(초안을 얹기 전)
-    var rekordboxPlaylists = PlaylistLayout()
-    /// 재생 목록 초안(반영 때 쓴다). 바꿀 때는 `setPlaylistDraft`로(저장·화면·되돌리기).
-    var playlistDraft = PlaylistDraft()
-    /// 초안을 얹은 모양과 편집마다 막힌 이유
-    var playlistProjection = PlaylistDraft().project(onto: PlaylistLayout())
-    /// 목록마다 초안으로 넣은 곡(ContentID). 목록을 볼 때 초안 표식을 붙인다.
-    var playlistAddedTracks: [String: Set<String>] = [:]
-    /// 최근에 곡을 넣은 목록(최근 것부터). 오른쪽 클릭 메뉴 맨 위·'마지막에 쓴 목록에 넣기'.
-    var recentPlaylistIDs: [String] = []
-    /// 사이드바에서 이름을 고치는 중인 목록
-    var renamingPlaylistID: String?
-    /// 재생 목록 편집 결과 안내(넣은 곡 수·이미 든 곡·막힌 이유)
-    var playlistMessage: AppMessage? {
-        didSet { if let playlistMessage { feedback.announce(playlistMessage) } }
-    }
-    /// 재생 목록 초안 저장에 실패해 메모리 초안이 디스크보다 최신이다(쓰기 전에 다시 저장한다, #174).
-    var playlistDraftUnsaved = false
+    /// 재생 목록 상태와 초안 편집(기능 조각, `PlaylistEditStore`). 조각이 핵심(곡·사이드바·설정·되돌리기)을 붙들어 처음 쓸 때 만든다
+    /// (init 끝에서 최근 목록·연결 기록을 읽을 때). 관찰하지 않는다: 화면은 조각의 값을 읽는다
+    @ObservationIgnored private(set) lazy var playlists = PlaylistEditStore(library: self)
     /// 읽지 못해 옮겨 보관한 초안 파일 안내(#174). 닫을 때까지 남는다.
     var draftFileMessage: AppMessage? {
         didSet { if let draftFileMessage { feedback.announce(draftFileMessage) } }
@@ -209,19 +180,10 @@ final class LibraryStore {
     var unlinkedDraftsSheet: UnlinkedDraftsModel?
     /// 개발용 실행 인자(처음 읽은 뒤 한 번 곡을 고르거나 곡을 추가한다)
     @ObservationIgnored let launch: LibraryLaunchOptions
-    /// '재생 목록에 넣기…' 창과 넣을 곡(연 때 고른 곡)
-    var showingPlaylistPicker = false
-    var playlistPickerTracks: [TrackRow] = [] {
-        // 열 때마다 새 화면 모델(찾는 말·고른 줄을 처음부터). 시트 본문이 다시 그려져도 같은 모델을 쓴다
-        didSet { playlistPicker = PlaylistPickerModel(store: self, tracks: playlistPickerTracks) }
-    }
-    @ObservationIgnored private(set) var playlistPicker: PlaylistPickerModel?
     /// 재생 기록 상태와 USB 기록 보존 연결(기능 조각, `HistoryStore`). 조각이 핵심(곡·사이드바·알림·되돌리기)을 붙들어 처음 쓸 때 만든다.
     /// 관찰하지 않는다: 화면은 조각의 값을 읽는다
     @ObservationIgnored private(set) lazy var history = HistoryStore(library: self, archive: useCases.histories)
-    // 다른 작업이 맡은 파일(주 창·목록 메뉴·재생 목록 확장)이 아직 핵심 이름으로 읽는 재생 기록 값. 그 파일을 옮길 때 `history.…`로 바꾸고 지운다
-    var historyIndex: [String: RekordboxHistory] { history.historyIndex }
-    var archivedHistoryIndex: [String: ArchivedHistory] { history.archivedHistoryIndex }
+    // 다른 작업이 맡은 파일(주 창·목록 메뉴)이 아직 핵심 이름으로 읽는 재생 기록 값. 그 파일을 옮길 때 `history.…`로 바꾸고 지운다
     var pendingHistories: [ArchivedHistory] { history.pendingHistories }
     var hasHistoryDrafts: Bool { history.hasHistoryDrafts }
 
@@ -338,8 +300,6 @@ final class LibraryStore {
     @ObservationIgnored var onLibraryLoaded: ((Set<String>) -> Void)?
     /// rekordbox에 쓰거나 되돌렸지만 아직 새 스냅샷으로 다시 읽지 못한 곡. 다음 읽기가 성공하면 덱에 알린다.
     @ObservationIgnored var writtenAwaitingReload: Set<String> = []
-    /// 복원한 뒤 다시 읽지 못해 아직 쌓지 못한 재생 목록 편집(옛 목록 상태에 쌓지 않게 다음 읽기 뒤에 쌓는다)
-    @ObservationIgnored var playlistEditsAwaitingReload: [PlaylistEdit] = []
     /// 마지막 쓰기·복원은 끝났지만 뒤따른 일(초안 정리·다시 읽기·복원 충돌)에 남은 경고. 쓰기 결과와 나눠 알린다.
     @ObservationIgnored var writeFollowUp: [String] = []
 

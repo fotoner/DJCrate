@@ -27,6 +27,8 @@ final class AppComposition {
     let trackListActions: TrackListActions
     /// 태그 인스펙터 화면 모델. 인스펙터를 닫았다 열어도 같은 모델을 쓴다(그림 칸 안내가 남는다).
     let tagInspector: TagInspectorModel
+    /// 사이드바 재생 목록 칸 화면 모델(폴더 펼침·이름 바꾸기). 사이드바를 다시 그려도 같은 모델을 쓴다.
+    let playlistSidebar: PlaylistSidebarModel
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
@@ -39,6 +41,7 @@ final class AppComposition {
         self.reflection = reflection
         trackListActions = .live(store: store, reflection: reflection)
         tagInspector = TagInspectorModel(store: store)
+        playlistSidebar = PlaylistSidebarModel(playlists: store.playlists)
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
@@ -91,7 +94,7 @@ final class AppComposition {
                                         apply: { [weak store] in store?.applyReflection($0) },
                                         retryTagSaves: { [weak store] in store?.retryFailedTagSaves() },
                                         preserveDamagedDrafts: { [weak store] in store?.preserveDamagedDraftFiles() ?? [] },
-                                        savePlaylistDraft: { [weak store] in store?.ensurePlaylistDraftSaved() ?? true },
+                                        savePlaylistDraft: { [weak store] in store?.playlists.ensurePlaylistDraftSaved() ?? true },
                                         recordHistories: { [weak store] in await store?.history.recordWrittenHistories($0) })
         let lock = WriteLock(isLocked: { [weak store] in store?.isWritingRekordbox ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
@@ -182,7 +185,7 @@ final class AppComposition {
         windows.trackEdit.attach(editLinks)
         windows.flip.attach(editLinks)
         #if DEBUG
-        DevSelfTests.runIfRequested(store: store, deck: deck, windows: windows, reflection: reflection)
+        DevSelfTests.runIfRequested(store: store, deck: deck, windows: windows, reflection: reflection, playlistSidebar: playlistSidebar)
         DevSelfTests.runAsyncGuidanceCaptureIfRequested(store: store, deck: deck)
         UsbMigrateCapture.runIfRequested(store: store)
         DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows)

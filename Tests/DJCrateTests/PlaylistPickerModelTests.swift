@@ -56,12 +56,12 @@ struct PlaylistPickerModelTests {
 
     @Test func 저장소에서_열면_고른_곡과_최근_목록을_쓴다() {
         let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }))
-        store.playlistPickerTracks = Self.tracks
-        let picker = store.playlistPicker
+        store.playlists.openPlaylistPicker(tracks: Self.tracks)
+        let picker = store.playlists.playlistPicker
         #expect(picker?.trackCount == 2)
         // 다시 열면 찾는 말을 처음부터 쓴다(새 화면 모델)
         picker?.query = "x"
-        store.playlistPickerTracks = Self.tracks
-        #expect(store.playlistPicker !== picker && store.playlistPicker?.query == "")
+        store.playlists.openPlaylistPicker(tracks: Self.tracks)
+        #expect(store.playlists.playlistPicker !== picker && store.playlists.playlistPicker?.query == "")
     }
 }

@@ -24,7 +24,7 @@ extension ReflectionCoordinator {
     static func recoveryRequests(store: LibraryStore, targets: [TrackRow], blocked: BlockedDrafts) -> [RecoveryRequest] {
         store.uniqueTracks(targets).flatMap { row in
             store.recoveryKinds(for: row).filter { blocked.kinds[row.track.uuid]?.contains($0) == true }.map { RecoveryRequest.draft(row, $0) }
-        } + (blocked.playlists ? store.blockedPlaylistRecoveryIDs.map(RecoveryRequest.playlist) : [])
+        } + (blocked.playlists ? store.playlists.blockedPlaylistRecoveryIDs.map(RecoveryRequest.playlist) : [])
     }
 
     // MARK: - 입구
@@ -36,7 +36,7 @@ extension ReflectionCoordinator {
 
     /// 막힌 재생 목록 하나, 또는 막힌 모든 재생 목록(`id`가 nil)을 줄로 든 시트
     func startPlaylistRecovery(playlist id: String? = nil) {
-        let ids = id.map { [$0] } ?? store.blockedPlaylistRecoveryIDs
+        let ids = id.map { [$0] } ?? store.playlists.blockedPlaylistRecoveryIDs
         presentRecovery(requests: ids.map(RecoveryRequest.playlist), anchor: .library)
     }
 

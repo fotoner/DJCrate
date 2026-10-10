@@ -142,7 +142,7 @@ struct HideStreamingTests {
 
     @Test func 재생_목록과_재생_기록_보기와_곡_수에서_빠진다() async throws {
         let store = await Self.makeStore(try Self.fixture())
-        let node = try #require(store.playlistIndex["P"])
+        let node = try #require(store.playlists.playlistIndex["P"])
         #expect(store.count(playlist: node) == 5)
         store.sidebar = .playlist("P")
         #expect(Self.ids(store) == ["1", "2", "3", "4", "5"])
@@ -150,9 +150,9 @@ struct HideStreamingTests {
         #expect(store.count(history: history) == 3)
         store.hideStreaming = true
         #expect(Self.ids(store) == ["1", "3", "5"])
-        #expect(store.count(playlist: try #require(store.playlistIndex["P"])) == 3)
-        #expect(store.count(playlist: try #require(store.playlistIndex["Q"])) == 0)
-        #expect(store.count(playlist: try #require(store.playlistIndex["R"])) == 2)
+        #expect(store.count(playlist: try #require(store.playlists.playlistIndex["P"])) == 3)
+        #expect(store.count(playlist: try #require(store.playlists.playlistIndex["Q"])) == 0)
+        #expect(store.count(playlist: try #require(store.playlists.playlistIndex["R"])) == 2)
         #expect(store.count(history: history) == 2)
         store.sidebar = .history("h")
         #expect(Self.ids(store) == ["1", "3"])
@@ -160,7 +160,7 @@ struct HideStreamingTests {
         #expect(store.displayRows.isEmpty && store.streamingHiddenInView == 2)
         store.hideStreaming = false
         #expect(Self.ids(store) == ["2", "4"] && store.streamingHiddenInView == 0)
-        #expect(store.count(playlist: try #require(store.playlistIndex["P"])) == 5)
+        #expect(store.count(playlist: try #require(store.playlists.playlistIndex["P"])) == 5)
     }
 
     // MARK: 선택·덱
@@ -217,19 +217,19 @@ struct HideStreamingTests {
             // 보이는 줄에서 3과 5를 골라 뺀다(숨은 줄이 있어도 3번째·5번째 자리로 가리킨다)
             let visible = store.displayRows.filter { ["3", "5"].contains($0.track.id) }
             store.selection = Set(visible.map(\.id))
-            store.removeSelectedFromPlaylist()
-            store.addTracks([try #require(store.rowsByID["6"])], toPlaylist: "P")
+            store.playlists.removeSelectedFromPlaylist()
+            store.playlists.addTracks([try #require(store.rowsByID["6"])], toPlaylist: "P")
         }
         let expected: [PlaylistEdit] = [
             .removeTracks(playlist: .id("P"), entries: [.init(trackNo: 3, contentID: "3"), .init(trackNo: 5, contentID: "5")]),
             .addTracks(playlist: .id("P"), contentIDs: ["6"]),
         ]
-        #expect(off.playlistDraft.edits == expected)
-        #expect(on.playlistDraft.edits == expected)
-        #expect(on.playlistDraft == off.playlistDraft)
-        #expect(on.playlistProjection.layout.item("P")?.entries == off.playlistProjection.layout.item("P")?.entries)
+        #expect(off.playlists.playlistDraft.edits == expected)
+        #expect(on.playlists.playlistDraft.edits == expected)
+        #expect(on.playlists.playlistDraft == off.playlists.playlistDraft)
+        #expect(on.playlists.playlistProjection.layout.item("P")?.entries == off.playlists.playlistProjection.layout.item("P")?.entries)
         // 숨은 스트리밍 곡은 목록에 그대로 남고 번호만 다시 매겨진다
-        #expect(on.playlistIndex["P"]?.trackIDs == ["1", "2", "4", "6"])
+        #expect(on.playlists.playlistIndex["P"]?.trackIDs == ["1", "2", "4", "6"])
         #expect(Self.ids(on) == ["1", "6"] && Self.ids(off) == ["1", "2", "4", "6"])
     }
 
@@ -239,31 +239,31 @@ struct HideStreamingTests {
         let on = await Self.makeStore(fixture, hideStreaming: true)
         off.sidebar = .playlist("P")
         on.sidebar = .playlist("P")
-        #expect(off.canReorderDisplayedTracks)
-        #expect(!on.canReorderDisplayedTracks, "숨은 줄이 끼어 있으면 놓을 자리가 모호하다: 검색으로 거른 목록과 같게 막는다")
+        #expect(off.playlists.canReorderDisplayedTracks)
+        #expect(!on.playlists.canReorderDisplayedTracks, "숨은 줄이 끼어 있으면 놓을 자리가 모호하다: 검색으로 거른 목록과 같게 막는다")
         // 같은 명령(곡·앞 곡)은 설정과 관계없이 같은 초안을 만든다
-        off.moveTracks(["5"], inPlaylist: "P", before: "1")
-        on.moveTracks(["5"], inPlaylist: "P", before: "1")
-        #expect(off.playlistDraft.edits == [.moveTracks(playlist: .id("P"), entries: [.init(trackNo: 5, contentID: "5")], to: 1)])
-        #expect(on.playlistDraft == off.playlistDraft)
+        off.playlists.moveTracks(["5"], inPlaylist: "P", before: "1")
+        on.playlists.moveTracks(["5"], inPlaylist: "P", before: "1")
+        #expect(off.playlists.playlistDraft.edits == [.moveTracks(playlist: .id("P"), entries: [.init(trackNo: 5, contentID: "5")], to: 1)])
+        #expect(on.playlists.playlistDraft == off.playlists.playlistDraft)
         // 스트리밍이 없는 목록은 숨기기를 켜도 끌어 옮길 수 있다
         on.sidebar = .playlist("R")
-        #expect(on.streamingHiddenInView == 0 && on.canReorderDisplayedTracks)
+        #expect(on.streamingHiddenInView == 0 && on.playlists.canReorderDisplayedTracks)
         // 숨기기를 끄면 다시 옮길 수 있다
         on.sidebar = .playlist("P")
         on.hideStreaming = false
-        #expect(on.canReorderDisplayedTracks)
+        #expect(on.playlists.canReorderDisplayedTracks)
     }
 
     @Test func 재생_기록으로_만든_재생_목록도_설정과_같다() async throws {
         let fixture = try Self.fixture()
         let off = await Self.makeStore(fixture)
         let on = await Self.makeStore(fixture, hideStreaming: true)
-        off.createPlaylist(fromHistory: "h")
-        on.createPlaylist(fromHistory: "h")
+        off.playlists.createPlaylist(fromHistory: "h")
+        on.playlists.createPlaylist(fromHistory: "h")
         // 이름·새 목록 키는 만들 때마다 다르니 편집 모양(곡)만 견준다
         func tracks(_ store: LibraryStore) -> [[String]] {
-            store.playlistDraft.edits.compactMap { if case let .addTracks(_, ids) = $0 { ids } else { nil } }
+            store.playlists.playlistDraft.edits.compactMap { if case let .addTracks(_, ids) = $0 { ids } else { nil } }
         }
         #expect(tracks(off) == [["1", "2", "3"]])
         #expect(tracks(on) == tracks(off), "숨긴 곡도 기록에 있던 곡이라 목록에는 들어간다: 쓰는 내용은 설정과 무관하다")
@@ -278,9 +278,9 @@ struct HideStreamingTests {
             store.sidebar = .playlist("P")
             let visible = store.displayRows.filter { ["3", "5"].contains($0.track.id) }
             store.selection = Set(visible.map(\.id))
-            store.removeSelectedFromPlaylist()
-            store.addTracks([try #require(store.rowsByID["6"])], toPlaylist: "P")
-            store.moveTracks(["1"], inPlaylist: "P", before: nil)
+            store.playlists.removeSelectedFromPlaylist()
+            store.playlists.addTracks([try #require(store.rowsByID["6"])], toPlaylist: "P")
+            store.playlists.moveTracks(["1"], inPlaylist: "P", before: nil)
             let preview = try await store.session.previewWrite(rows: [], playlists: true)
             let previewed = try #require(preview.report.playlistOutcomes)
             #expect(previewed.count == 3 && previewed.allSatisfy { $0.status == .written })

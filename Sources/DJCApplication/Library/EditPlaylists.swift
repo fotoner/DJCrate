@@ -17,7 +17,8 @@ public struct PlaylistImportsStore: Sendable {
 }
 
 /// 재생 목록 초안 편집(유스케이스, #39·#40): 편집 더하기(하나라도 막히면 아무것도 더하지 않는다), 쓴 뒤 정리(새 목록 ID 잇기),
-/// 복원 뒤 다시 쌓기, 컬렉션 등록 뒤 목록 연결. 초안은 화면 모델이 들고(되돌리기·표시), 초안 파일·연결 기록 저장은 여기서 포트로 한다.
+/// 복원 뒤 다시 쌓기, 컬렉션 등록 뒤 목록 연결, 최근 목록·넣기 전 나누기·재생 기록 원본 고르기(#251).
+/// 초안은 앱의 재생 목록 조각(`PlaylistEditStore`)이 들고(되돌리기·표시), 초안 파일·연결 기록 저장은 여기서 포트로 한다.
 /// 저장 순서는 초안 → 연결 기록이다: 초안을 저장하지 못하면 연결 기록은 그대로 두어 다음 읽기에서 다시 확인한다.
 /// 반영 세션도 쓴 뒤·복원 뒤 저장에 이것을 쓴다(`finishWrite`·`resetImports`).
 public struct EditPlaylists: Sendable {
@@ -213,6 +214,47 @@ public struct EditPlaylists: Sendable {
             throw Refused(message: String(ui: "재생 목록을 고치지 않았습니다: \(reason)"))
         }
         return draft
+    }
+
+    // MARK: - 최근 목록·넣기 전 나누기·재생 기록 원본(#251)
+
+    /// 최근에 곡을 넣은 목록을 몇 개까지 기억할지(오른쪽 클릭 메뉴 맨 위·'마지막에 쓴 목록에 넣기')
+    public static let recentLimit = 5
+
+    /// 곡을 넣은 목록을 최근 목록 맨 앞에 한 번만 둔다. `recentLimit`개를 넘으면 오래된 것을 버린다
+    public static func touchingRecent(_ id: String, in recent: [String]) -> [String] {
+        var recent = recent.filter { $0 != id }
+        recent.insert(id, at: 0)
+        return Array(recent.prefix(recentLimit))
+    }
+
+    /// 쓴 뒤: 새로 만든 목록의 임시 ID(`new:키`)를 받은 rekordbox ID로 바꾼다(`finishWrite`의 `ids`)
+    public static func remappingRecent(_ recent: [String], ids: [String: String]) -> [String] {
+        recent.map { ids[$0] ?? $0 }
+    }
+
+    /// 목록에 넣기 전에 곡을 나눈다: 새로 넣을 곡, 이미 든 곡, 넣지 않는 추가한 곡(아직 rekordbox 컬렉션에 없다)의 수
+    /// - Parameter tracks: 곡마다 한 줄(재생 기록의 반복 행은 부르는 쪽이 먼저 줄인다)
+    public static func addPlan(_ tracks: [TrackRow], to item: PlaylistLayout.Item) -> (new: [String], duplicates: [String], staged: Int) {
+        let staged = tracks.filter(\.isStaged).count
+        let split = item.split(adding: tracks.filter { !$0.isStaged }.map(\.track.id))
+        return (split.new, split.duplicates, staged)
+    }
+
+    /// 새 목록에 넣을 곡. 추가한 곡은 아직 rekordbox 컬렉션에 없어 뺀다
+    public static func creatableTrackIDs(_ tracks: [TrackRow]) -> [String] {
+        tracks.filter { !$0.isStaged }.map(\.track.id)
+    }
+
+    /// 재생 기록으로 만들 재생 목록의 이름과 컬렉션 곡(튼 순서, 반복 재생 포함 — 넣을 때 처음 한 번만 남는다). 없는 기록이면 nil.
+    /// rekordbox 기록(#70)을 먼저 본다. 이름은 기록 제목이다. USB에서 보존한 기록(#43)은 컬렉션 짝이 있는 곡만 고르고, 이름은 기록 이름이다.
+    public static func historySource(_ id: String, histories: [String: RekordboxHistory], archived: [String: ArchivedHistory],
+                                     rows: [TrackRow.ID: TrackRow]) -> (name: String, rows: [TrackRow])? {
+        if let history = histories[id] {
+            return (history.title, history.entries.sorted { $0.trackNumber < $1.trackNumber }.compactMap { rows[$0.contentID] })
+        }
+        guard let archived = archived[id] else { return nil }
+        return (archived.name, archived.entries.sorted { $0.trackNumber < $1.trackNumber }.compactMap { $0.contentID.flatMap { rows[$0] } })
     }
 
     /// 목록에 곡을 넣은 결과 안내(넣은 곡·이미 든 곡·저장 실패·아직 컬렉션에 없는 곡). 알릴 것이 없으면 nil

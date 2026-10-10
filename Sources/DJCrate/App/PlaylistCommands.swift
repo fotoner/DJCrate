@@ -15,18 +15,18 @@ struct PlaylistCommands: View {
     private var tracks: [TrackRow] { store?.selectedRows.filter { !$0.isStaged } ?? [] }
 
     var body: some View {
-        Button(.ui("새 재생 목록")) { store?.createPlaylist(isFolder: false) }
+        Button(.ui("새 재생 목록")) { store?.playlists.createPlaylist(isFolder: false) }
             .keyboardShortcut("n", modifiers: .command)
             .disabled(!enabled)
-        Button(.ui("새 폴더")) { store?.createPlaylist(isFolder: true) }
+        Button(.ui("새 폴더")) { store?.playlists.createPlaylist(isFolder: true) }
             .keyboardShortcut("n", modifiers: [.command, .shift])
             .disabled(!enabled)
-        Button(.ui("고른 곡으로 새 재생 목록")) { store?.createPlaylist(isFolder: false, tracks: tracks) }
+        Button(.ui("고른 곡으로 새 재생 목록")) { store?.playlists.createPlaylist(isFolder: false, tracks: tracks) }
             .keyboardShortcut("n", modifiers: [.command, .option])
             .disabled(!enabled || tracks.isEmpty)
         Divider()
-        if let last = store?.lastUsedPlaylist {
-            Button(.ui("‘\(last.name)’에 넣기")) { store?.addSelectionToLastPlaylist() }
+        if let last = store?.playlists.lastUsedPlaylist {
+            Button(.ui("‘\(last.name)’에 넣기")) { store?.playlists.addSelectionToLastPlaylist() }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(!enabled || tracks.isEmpty)
         } else {
@@ -34,15 +34,15 @@ struct PlaylistCommands: View {
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(true)
         }
-        Button(.ui("재생 목록에 넣기…")) { store?.openPlaylistPicker() }
+        Button(.ui("재생 목록에 넣기…")) { store?.playlists.openPlaylistPicker() }
             .keyboardShortcut("p", modifiers: [.command, .option])
             .disabled(!enabled || tracks.isEmpty)
-        Button(.ui("이 목록에서 빼기")) { store?.removeSelectedFromPlaylist() }
-            .disabled(!enabled || store?.editablePlaylistID == nil || tracks.isEmpty)
+        Button(.ui("이 목록에서 빼기")) { store?.playlists.removeSelectedFromPlaylist() }
+            .disabled(!enabled || store?.playlists.editablePlaylistID == nil || tracks.isEmpty)
         Divider()
         Button(.ui("재생 목록 초안 버리기")) { if let store { PlaylistPanels.discardAll(store: store) } }
-            .disabled(!enabled || store?.hasPlaylistDrafts != true)
-        if let store, store.blockedPlaylistEditCount > 0 {
+            .disabled(!enabled || store?.playlists.hasPlaylistDrafts != true)
+        if let store, store.playlists.blockedPlaylistEditCount > 0 {
             Button(.ui("재생 목록 현재값 가져오기…")) { reflection?.startPlaylistRecovery() }
                 .disabled(!enabled)
         }

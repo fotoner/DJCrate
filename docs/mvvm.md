@@ -295,6 +295,7 @@ try await h.loaded()
   - 조각 속성은 `let`으로 둔다. 조각이 저장소를 붙들면 `@ObservationIgnored lazy var`로 둔다.
   - 예: Music 목록과 동기화 창은 `MusicLibraryStore`(`store.music`)가 든다. 태그 인스펙터의 화면 모델 `TagInspectorModel`은 태그 편집 조각 `TagEditStore`(`store.tags`)를 부른다. 규칙은 유스케이스 `EditTags`에 있다.
   - 예: 재생 기록 트리와 보존본은 `HistoryStore`(`store.history`)가 든다. 보존의 줄 세우기와 실패 알림은 유스케이스 `ArchiveUsbHistories`에 있다.
+  - 예: 재생 목록 트리와 초안은 `PlaylistEditStore`(`store.playlists`)가 든다. 사이드바 펼침과 이름 바꾸기는 화면 모델 `PlaylistSidebarModel`이 든다.
 
 ```swift
 // Sources/DJCrate/Deck/DeckModel+Transport.swift — 예외: 화면 모델이 엔진 포트를 직접 부른다

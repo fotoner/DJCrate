@@ -90,14 +90,14 @@ struct RecoveryScenario {
         scenario.installDrafts()
 
         var drafts = PlaylistDraft()
-        let layout = store.rekordboxPlaylists
+        let layout = store.playlists.rekordboxPlaylists
         try drafts.append(.rename(playlist: .id("P1"), name: "내 이름 하나"), rekordbox: layout)
         try drafts.append(.rename(playlist: .id("P2"), name: "내 이름 둘"), rekordbox: layout)
-        store.playlistDraft = drafts
+        store.playlists.playlistDraft = drafts
         try fixture.execute("UPDATE djmdPlaylist SET Name = '외부 이름 하나' WHERE ID = 'P1'")
         try fixture.execute("UPDATE djmdPlaylist SET Name = '외부 이름 둘' WHERE ID = 'P2'")
-        store.rekordboxPlaylists = PlaylistLayout(rekordbox: try RekordboxLibrary.load(snapshot: fixture.database).playlists)
-        store.refreshPlaylists()
+        store.playlists.rekordboxPlaylists = PlaylistLayout(rekordbox: try RekordboxLibrary.load(snapshot: fixture.database).playlists)
+        store.playlists.refreshPlaylists()
         return scenario
     }
 
@@ -211,6 +211,6 @@ struct RecoveryScenario {
         // 같은 프로세스의 다른 시험이 시험 폴더에 남긴 태그 초안이 라이브러리를 읽을 때 섞일 수 있어, 이 시나리오의 곡만 견준다.
         let ours = Set(["A", "B", "C", "D"].map(Self.uuid))
         let tags = Dictionary(uniqueKeysWithValues: store.tagDrafts.filter { ours.contains($0.key) }.map { ($0.key, $0.value) })
-        return Outcome(tags: tags, cues: cues, grids: grids, playlists: store.playlistDraft)
+        return Outcome(tags: tags, cues: cues, grids: grids, playlists: store.playlists.playlistDraft)
     }
 }

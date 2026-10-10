@@ -26,7 +26,13 @@ extension LibraryStore {
 
     func count(_ filter: LibraryFilter) -> Int { filterCounts[filter] ?? 0 }
 
-    func count(playlist node: PlaylistOutlineNode) -> Int { playlistCounts[node.id] ?? 0 }
+    func count(playlist node: PlaylistOutlineNode) -> Int { playlists.playlistCounts[node.id] ?? 0 }
+
+    /// 표의 초안 칸: 곡 초안이 있는 곡 + 보고 있는 목록에 초안으로 넣은 곡(곡 목록 표가 읽는 값이라 핵심에 둔다)
+    var listMarkedUUIDs: Set<String> {
+        guard case let .playlist(id) = sidebar, let added = playlists.playlistAddedTracks[id], !added.isEmpty else { return editedUUIDs }
+        return editedUUIDs.union(added.compactMap { rowsByID[$0]?.track.uuid })
+    }
 
     /// USB 목록·라이브러리가 바뀌었다: 보고 있던 USB 대상이 없어졌으면 라이브러리로 돌아가고, 아니면 줄을 다시 만든다.
     func usbChanged() {
@@ -47,7 +53,7 @@ extension LibraryStore {
     private var listSource: TrackListProjection.Source {
         switch sidebar {
         case let .filter(filter): .filter(filter)
-        case let .playlist(id): .playlist(trackIDs: playlistIndex[id]?.trackIDs ?? [])
+        case let .playlist(id): .playlist(trackIDs: playlists.playlistIndex[id]?.trackIDs ?? [])
         case let .itunesPlaylist(id):
             .iTunesPlaylist(id: id, trackIDs: music.library.index[id]?.trackIDs ?? [], numbers: music.library.index[id]?.trackNumbers ?? [])
         case let .history(id):
@@ -84,7 +90,7 @@ extension LibraryStore {
     /// 설정을 바꾼 즉시: 필터·재생 목록 곡 수와 목록을 다시 만든다(다시 읽지 않는다).
     func applyStreamingVisibility() {
         recountFilters()
-        recountPlaylists()
+        playlists.recountPlaylists()
         if hideStreaming, sidebar == .filter(.streaming) {
             // 사이드바에서 사라지는 필터에 남지 않는다(목록은 sidebar 변경이 다시 만든다)
             sidebar = .filter(.all)
@@ -129,7 +135,7 @@ extension LibraryStore {
     var sidebarTitle: String {
         switch sidebar {
         case let .filter(filter): filter.title
-        case let .playlist(id): playlistIndex[id]?.name ?? String(ui: "플레이리스트")
+        case let .playlist(id): playlists.playlistIndex[id]?.name ?? String(ui: "플레이리스트")
         case let .itunesPlaylist(id): music.library.index[id]?.name ?? String(ui: "iTunes 동기화 목록")
         case let .history(id): history.historyIndex[id].map(historyTitle) ?? history.archivedHistoryIndex[id]?.name ?? String(ui: "재생 기록")
         case .duplicates: String(ui: "중복 후보")

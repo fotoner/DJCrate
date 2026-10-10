@@ -52,7 +52,7 @@ struct LibraryDraftFolderTests {
         try Data("{".utf8).write(to: home.appending(path: "playlist-imports.json"))
         let store = LibraryStore.test(saveTagDrafts: { _ in }, draftHome: home)
         #expect(store.resultHistory.storageError != nil)
-        #expect(store.playlistImportsLoadFailed)
+        #expect(store.playlists.playlistImportsLoadFailed)
     }
 }
 

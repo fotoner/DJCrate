@@ -154,10 +154,10 @@ struct UsbHistoryAppTests {
         #expect(store.stagingMessage?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
 
         // 재생 목록으로 만들기: 짝 있는 곡만 튼 순서대로(같은 곡은 처음 한 번), 이름은 기록 이름
-        store.createPlaylist(fromHistory: archived.id)
-        let created = try #require(store.playlistTree.first?.id)
-        #expect(store.playlistItem(created)?.name == archived.name)
-        #expect(store.playlistItem(created)?.trackIDs == ["102", "101"])
+        store.playlists.createPlaylist(fromHistory: archived.id)
+        let created = try #require(store.playlists.playlistTree.first?.id)
+        #expect(store.playlists.playlistItem(created)?.name == archived.name)
+        #expect(store.playlists.playlistItem(created)?.trackIDs == ["102", "101"])
     }
 
     @Test("같은 USB를 다시 읽거나 앱을 다시 켜도 보존 기록이 늘지 않고 알리지 않는다")

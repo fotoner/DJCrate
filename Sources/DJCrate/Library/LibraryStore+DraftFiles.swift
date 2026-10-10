@@ -69,7 +69,7 @@ extension LibraryStore {
                           previousPlaylist: PlaylistDraft? = nil, reporting: Bool = true) {
         guard !moved.isEmpty else { return }
         if reporting { reportDamagedDrafts(moved) }
-        let recovery = useCases.watch.recoverMoved(moved, memoryTags: previousTags ?? tagDrafts, memoryPlaylist: previousPlaylist ?? playlistDraft)
+        let recovery = useCases.watch.recoverMoved(moved, memoryTags: previousTags ?? tagDrafts, memoryPlaylist: previousPlaylist ?? playlists.playlistDraft)
         for step in recovery.steps {
             switch step {
             case let .keepTag(draft): tagDrafts[draft.trackUUID] = draft
@@ -88,9 +88,9 @@ extension LibraryStore {
         }
         if let gains = recovery.gainDraftUUIDs { applyGainDraftUUIDs(gains) }
         if let playlist = recovery.playlist {
-            playlistDraft = playlist.draft
-            applyPlaylistSave(playlist.error)
-            refreshPlaylists()
+            playlists.playlistDraft = playlist.draft
+            playlists.applyPlaylistSave(playlist.error)
+            playlists.refreshPlaylists()
         }
     }
 
@@ -101,40 +101,5 @@ extension LibraryStore {
         for uuid in uuids.symmetricDifference(gainDraftUUIDs) {
             draftChanged(trackUUID: uuid, kind: .gain, exists: uuids.contains(uuid))
         }
-    }
-
-    // MARK: - 재생 목록 초안 저장
-
-    static var playlistSaveFailureText: String { ReflectionSession.playlistSaveFailureText }
-
-    /// 메모리 초안을 저장한다. 실패하면 메모리 초안을 그대로 두고 기록해, 쓰기 전에 다시 저장한다.
-    @discardableResult
-    func savePlaylistDraft() -> Bool {
-        do {
-            try useCases.playlists.saveDraft(playlistDraft)
-            applyPlaylistSave(nil)
-            return true
-        } catch {
-            applyPlaylistSave(error)
-            return false
-        }
-    }
-
-    /// 메모리 초안을 저장한 결과(`error`가 nil이면 저장했다)를 표시에 맞춘다. 실패면 쓰기 전에 다시 저장하도록 기록한다(#174)
-    func applyPlaylistSave(_ error: (any Error)?) {
-        if let error {
-            playlistDraftUnsaved = true
-            AppErrorMessage.log(error)
-            playlistMessage = AppMessage(kind: .warning, text: Self.playlistSaveFailureText)
-        } else {
-            playlistDraftUnsaved = false
-            if playlistMessage?.text == Self.playlistSaveFailureText { playlistMessage = nil }
-        }
-    }
-
-    /// 쓰기 전에: 저장하지 못한 재생 목록 초안은 다시 저장해 본다. 저장했거나 저장할 것이 없으면 true(아니면 쓰기가 막는다).
-    func ensurePlaylistDraftSaved() -> Bool {
-        guard playlistDraftUnsaved else { return true }
-        return savePlaylistDraft()
     }
 }

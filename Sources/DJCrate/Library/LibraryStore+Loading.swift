@@ -120,7 +120,7 @@ extension LibraryStore {
         let snapshot = read.snapshot, generation = read.generation, synchronizingDrafts = read.synchronizingDrafts
         undoManager?.removeAllActions(withTarget: self)
         applyLoadedRows(from: loaded)
-        let previousTags = tagDrafts, previousPlaylist = playlistDraft
+        let previousTags = tagDrafts, previousPlaylist = playlists.playlistDraft
         // 읽는 동안 사용자가 편집했거나 저장에 실패한 입력은 디스크의 오래된 값으로 덮지 않는다. 동기화면 충돌하지 않는 초안의 base를
         // 새 rekordbox 값으로 옮겨 저장한다(유스케이스). 연결 안 된 초안은 쓰기 대기 목록에서 따로 다룬다(#175).
         let reconciled = useCases.load.reconcileDrafts(loaded, memoryTags: tagDrafts, editedDuringRead: tagRevision != initialTagRevision,
@@ -140,17 +140,17 @@ extension LibraryStore {
         artworkFileRows = loaded.artworkFiles
         trackColors = loaded.colors.isEmpty ? TrackColor.rekordboxDefaults : loaded.colors
         recountEdited()
-        rekordboxPlaylists = loaded.playlists
-        smartPlaylistSources = loaded.smartPlaylists
+        playlists.rekordboxPlaylists = loaded.playlists
+        playlists.smartPlaylistSources = loaded.smartPlaylists
         // 저장하지 못한 재생 목록 초안은 디스크의 옛 초안으로 덮지 않는다(#174).
-        if !playlistDraftUnsaved { playlistDraft = loaded.playlistDraft }
+        if !playlists.playlistDraftUnsaved { playlists.playlistDraft = loaded.playlistDraft }
         music.library = loaded.iTunesLibrary
         music.snapshot = loaded.iTunesSnapshot
         if case let .itunesPlaylist(id) = sidebar, music.library.index[id] == nil { sidebar = .filter(.all) }
         mergeDrafts = reconciled.mergeDrafts
-        refreshPlaylists(refreshList: false)
+        playlists.refreshPlaylists(refreshList: false)
         applyMovedDrafts(opened.moved, previousTags: previousTags, previousPlaylist: previousPlaylist, reporting: false)
-        restoreAwaitingPlaylistEdits()
+        playlists.restoreAwaitingPlaylistEdits()
         history.setHistories(loaded.histories, localKeys: opened.localKeys)
         adoptSnapshot(snapshot, usb: opened.usbSnapshot, generation: generation)
         // 스냅샷을 채택한 뒤에야 쓰기 대기를 고른다(쓴 기록이 rekordbox에 있는지 그 전에는 모른다). 처음 한 번 가장 최근 연·월을 펼친다

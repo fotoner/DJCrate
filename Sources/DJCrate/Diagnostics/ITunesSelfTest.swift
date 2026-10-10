@@ -111,7 +111,7 @@ extension DevSelfTests {
             store.selection = [store.displayRows[2].id]
             check(store.selectedRows.map(\.track.id) == ["2"] && store.primaryRow?.track.id == "2", "반복 행 선택을 기존 곡에 연결")
             check(store.music.library.index["itunes:A"]?.unavailableTrackCount == 1, "미연결 곡 안내")
-            check(store.editablePlaylistID == nil && !store.canReorderDisplayedTracks
+            check(store.playlists.editablePlaylistID == nil && !store.playlists.canReorderDisplayedTracks
                   && !LibraryMenuAction.removeTracks.isEnabled(in: store), "순서 변경·목록 삭제·컬렉션 삭제 차단")
             guard let row = store.displayRows.first else { log("실패 · 곡 선택"); exit(1) }
             store.tags.setTag(.comment, "iTunes 시험 초안", rows: [row])
@@ -125,7 +125,7 @@ extension DevSelfTests {
             check(deck.row?.track.id == row.track.id && deck.hotCue(slot: 0) != nil, "기존 곡에 핫큐 초안")
             store.useCases.watch.flush()
             check(CueDraftStore.load(trackUUID: row.track.uuid)?.hasChanges == true, "핫큐 초안 파일 저장")
-            check((try? Data(contentsOf: snapshot)) == before && store.playlistDraft.isEmpty, "DB 사본과 목록 구성 불변")
+            check((try? Data(contentsOf: snapshot)) == before && store.playlists.playlistDraft.isEmpty, "DB 사본과 목록 구성 불변")
             log("전체 통과 · 동기화 선택·취소·저장·다시 읽기·기존 9개 검증")
             exit(0)
         }

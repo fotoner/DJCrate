@@ -26,14 +26,14 @@ struct TrackListDragTests {
         let harness = ListHarness(rows: Self.rows((1...40).map(String.init)), selection: [])
         defer { harness.close() }
         harness.table.draggingDestinationFeedbackStyle = .gap
-        #expect(!harness.store.canReorderDisplayedTracks)
+        #expect(!harness.store.playlists.canReorderDisplayedTracks)
         harness.coordinator.tableView(harness.table, draggingSession: Self.session(), willBeginAt: .zero, forRowIndexes: [3])
         #expect(harness.table.draggingDestinationFeedbackStyle == .regular)
     }
 
     @Test func 순서를_바꿀_수_있는_재생_목록에서는_간격_표시로_끈다() {
         let store = Self.playlistStore(count: 3)
-        #expect(store.canReorderDisplayedTracks)
+        #expect(store.playlists.canReorderDisplayedTracks)
         let harness = ListHarness(rows: store.displayRows, selection: [], store: store)
         defer { harness.close() }
         harness.table.draggingDestinationFeedbackStyle = .regular
@@ -52,8 +52,8 @@ struct TrackListDragTests {
         store.phase = .loaded
         let ids = (1...count).map(String.init)
         for id in ids { store.rowsByID[id] = PlaylistEditingTests.row(id) }
-        store.rekordboxPlaylists = PlaylistLayout([(PlaylistEditingTests.item("A", "가", tracks: ids), 1)])
-        store.refreshPlaylists()
+        store.playlists.rekordboxPlaylists = PlaylistLayout([(PlaylistEditingTests.item("A", "가", tracks: ids), 1)])
+        store.playlists.refreshPlaylists()
         store.sidebar = .playlist("A")
         return store
     }
@@ -75,12 +75,12 @@ struct TrackListDragTests {
         // 다른 시험이 자동 저장한 칸 배치의 정렬이 표에 되살아나 # 순이 아닐 수 있다. 정렬을 비우고 줄이 다 찰 때까지 기다린다.
         let clock = ContinuousClock()
         let deadline = clock.now + .seconds(5)
-        while !(store.canReorderDisplayedTracks && table.numberOfRows == 60), clock.now < deadline {
+        while !(store.playlists.canReorderDisplayedTracks && table.numberOfRows == 60), clock.now < deadline {
             store.sortOrder = []
             host.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(20))
         }
-        try #require(store.canReorderDisplayedTracks && table.numberOfRows == 60)
+        try #require(store.playlists.canReorderDisplayedTracks && table.numberOfRows == 60)
         // 시험 프로세스가 막 떴을 때 AppKit이 한 번 보내는 스크롤 막대 모양 알림이 스크롤 뷰를 다시 배치해 표 높이를 고친다.
         // 그 알림이 지나간 뒤에 끈다(앱에서는 끌 때마다 오지 않는다).
         try await Task.sleep(for: .milliseconds(500))

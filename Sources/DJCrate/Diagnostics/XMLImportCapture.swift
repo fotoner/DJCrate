@@ -86,7 +86,7 @@ extension DevSelfTests {
             check(result?.tags == 2 && result?.cues == 1 && result?.grids == 1 && result?.playlists == 1,
                   "초안 수 \(String(describing: result))")
             check(store.tagDrafts.values.contains { $0.fields.title == "합성 곡 01 (가져옴)" }, "태그 초안이 보여야 합니다")
-            check(store.playlistDraft.project(onto: store.rekordboxPlaylists).layout.outline.contains { $0.name == "합성 목록 3" },
+            check(store.playlists.playlistDraft.project(onto: store.playlists.rekordboxPlaylists).layout.outline.contains { $0.name == "합성 목록 3" },
                   "재생 목록 초안이 보여야 합니다")
             check((try? Data(contentsOf: snapshot)) == before, "사본 DB가 그대로여야 합니다")
             log("차이: 큐 \(counts.cueTracks) · 그리드 \(counts.gridTracks) · 태그 \(counts.tagTracks) · 없는 목록 \(counts.missingPlaylists)")
