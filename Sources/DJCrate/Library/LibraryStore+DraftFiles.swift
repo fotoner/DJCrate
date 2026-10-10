@@ -45,7 +45,7 @@ extension LibraryStore {
     func reportDraftFilesMovedBySave(_ moved: [DamagedDraftFile]) {
         applyMovedDrafts(moved.filter {
             switch $0.kind {
-            case .staged: staged.isEmpty
+            case .staged: staging.staged.isEmpty
             case .merge: mergeDrafts.isEmpty
             default: true
             }

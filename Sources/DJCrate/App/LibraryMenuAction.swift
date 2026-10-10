@@ -48,10 +48,10 @@ enum LibraryMenuAction: CaseIterable {
         case .addFiles: return !store.rows.isEmpty
         case .importAppleMusic: return !store.isLoading
         case .snapshot: return store.canSynchronizeLibrary
-        case .exportXML: return store.sidebar == .staged ? !store.staged.isEmpty : !store.reflectionTargets.isEmpty
+        case .exportXML: return store.sidebar == .staged ? !store.staging.staged.isEmpty : !store.reflectionTargets.isEmpty
         case .exportLibraryXML:
             guard case .loaded = store.phase else { return false }
-            return store.snapshotURL != nil && !store.isLoading && !store.hasXMLExportJob
+            return store.snapshotURL != nil && !store.isLoading && !store.staging.hasXMLExportJob
         case .importRekordboxXML:
             guard case .loaded = store.phase else { return false }
             return store.snapshotURL != nil && !store.isLoading && !store.xmlImport.isBusy
@@ -69,7 +69,7 @@ enum LibraryMenuAction: CaseIterable {
     @MainActor func perform(in store: LibraryStore, windows: AppWindows? = nil, reflection: ReflectionCoordinator? = nil) {
         if writesLibrary, store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return }
         guard isEnabled(in: store) else {
-            if let reason = disabledReason(in: store) { store.stagingMessage = AppMessage(kind: .warning, text: reason) }
+            if let reason = disabledReason(in: store) { store.staging.stagingMessage = AppMessage(kind: .warning, text: reason) }
             return
         }
         switch self {
@@ -104,7 +104,7 @@ enum LibraryMenuAction: CaseIterable {
         case .reflect: return String(ui: "쓸 초안이 없으니 곡을 편집하거나 재생 목록 초안을 먼저 만드세요")
         case .exportXML: return String(ui: "XML로 넘길 추가한 곡이나 큐·그리드 초안을 먼저 만드세요")
         case .exportLibraryXML:
-            return store.hasXMLExportJob ? String(ui: "라이브러리 XML 내보내기가 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 내보내세요")
+            return store.staging.hasXMLExportJob ? String(ui: "라이브러리 XML 내보내기가 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 내보내세요")
         case .importRekordboxXML:
             return store.xmlImport.isBusy
                 ? String(ui: "지금 가져오는 XML이 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 가져오세요")

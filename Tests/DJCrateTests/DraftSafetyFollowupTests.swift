@@ -163,13 +163,13 @@ struct DraftSafetyFollowupTests {
         let staged = try JSONDecoder().decode(StagedTrack.self, from: Data("""
             {"uuid":"\(stagedUUID)","path":"/private/tmp/djc-followup-staged.mp3","title":"합성 추가 곡","comment":"","duration":30,"addedOn":"2026-10-01"}
             """.utf8))
-        store.staged = [staged]
+        store.staging.staged = [staged]
         let grid = GridDraft(trackUUID: stagedUUID, base: [], segments: [GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)])
         writer.save(grid, directory: locations.grid, write: { _, _ in throw CocoaError(.fileWriteNoPermission) })
         writer.flush()
         let gridFailure = try #require(writer.failures(in: locations).first { $0.trackUUID == stagedUUID })
         let stagedXML = fixture.root.appending(path: "staged.xml")
-        #expect { try store.exportStaged(to: stagedXML) } throws: { $0.localizedDescription.contains(gridFailure.message) }
+        #expect { try store.staging.exportStaged(to: stagedXML) } throws: { $0.localizedDescription.contains(gridFailure.message) }
         #expect(!FileManager.default.fileExists(atPath: stagedXML.path))
         let stagedRow = TrackRow(track: staged.track, cues: [], playCount: 0)
         await #expect { _ = try await store.session.previewAdd(rows: [stagedRow]) } throws: { $0.localizedDescription.contains(gridFailure.message) }

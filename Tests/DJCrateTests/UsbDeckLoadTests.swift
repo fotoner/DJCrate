@@ -49,7 +49,7 @@ struct UsbDeckLoadTests {
         #expect(s.store.deckTrackID == "101")
         #expect(s.log.ids == ["101"])
         #expect(s.log.rows.last??.isUsb == false)
-        #expect(s.store.stagingMessage == nil)
+        #expect(s.store.staging.stagingMessage == nil)
     }
 
     @Test("USB 재생 목록에서 고른 곡도 ⌘→·덱 메뉴로 로컬 곡을 올린다")
@@ -73,11 +73,11 @@ struct UsbDeckLoadTests {
         s.store.selection = [unmatched.id]
         #expect(s.store.canLoadSelectionToDeck)
         s.store.loadSelectionToDeck()
-        #expect(s.store.stagingMessage?.text == Self.notLocal)
-        #expect(s.store.stagingMessage?.kind == .warning)
-        s.store.stagingMessage = nil
+        #expect(s.store.staging.stagingMessage?.text == Self.notLocal)
+        #expect(s.store.staging.stagingMessage?.kind == .warning)
+        s.store.staging.stagingMessage = nil
         s.store.loadToDeck(unmatched)
-        #expect(s.store.stagingMessage?.text == Self.notLocal)
+        #expect(s.store.staging.stagingMessage?.text == Self.notLocal)
         #expect(s.store.deckTrackID == "101")
         #expect(s.log.ids == ["101"])
     }
@@ -90,7 +90,7 @@ struct UsbDeckLoadTests {
         s.store.loadToDeck(archived)
         #expect(s.store.deckTrackID == nil)
         #expect(s.log.rows.isEmpty)
-        #expect(s.store.stagingMessage?.text == Self.notLocal)
+        #expect(s.store.staging.stagingMessage?.text == Self.notLocal)
     }
 
     @Test("짝 로컬 곡이 목록에 없으면 덱을 바꾸지 않고 다시 읽으라고 알린다")
@@ -105,17 +105,17 @@ struct UsbDeckLoadTests {
         s.store.loadToDeck(row)
         #expect(s.store.deckTrackID == nil)
         #expect(s.log.rows.isEmpty)
-        #expect(s.store.stagingMessage?.text == "USB 곡과 짝인 로컬 곡을 찾을 수 없으니 라이브러리를 다시 읽은 뒤 덱에 불러오세요")
+        #expect(s.store.staging.stagingMessage?.text == "USB 곡과 짝인 로컬 곡을 찾을 수 없으니 라이브러리를 다시 읽은 뒤 덱에 불러오세요")
     }
 
     @Test("덱에 끌어 놓은 USB 곡은 첫 곡의 로컬 짝을 올리고, 짝이 없으면 알린다")
     func droppedUsbTracks() async throws {
         let s = try await setUp()
         s.store.loadDroppedUsbTracks([])
-        #expect(s.log.rows.isEmpty && s.store.stagingMessage == nil)
+        #expect(s.log.rows.isEmpty && s.store.staging.stagingMessage == nil)
         s.store.loadDroppedUsbTracks([UsbTrackDrag(volumeKey: s.key, contentID: 3), UsbTrackDrag(volumeKey: s.key, contentID: 1)])
         #expect(s.log.rows.isEmpty)
-        #expect(s.store.stagingMessage?.text == Self.notLocal)
+        #expect(s.store.staging.stagingMessage?.text == Self.notLocal)
         s.store.loadDroppedUsbTracks([UsbTrackDrag(volumeKey: s.key, contentID: 2, playlist: 10, trackNo: 1)])
         #expect(s.log.ids == ["102"])
         #expect(s.store.deckTrackID == "102")
@@ -154,7 +154,7 @@ struct UsbDeckLoadTests {
         let action = try #require(item.action)
         NSApp.sendAction(action, to: item.target, from: item)
         #expect(s.log.ids == ["101"])
-        #expect(s.store.stagingMessage?.text == Self.notLocal)
+        #expect(s.store.staging.stagingMessage?.text == Self.notLocal)
 
         // 쓰기를 받지 않는 USB여도 덱에 놓을 수 있게 USB 곡 형식을 싣는다(덱·로컬 목록 형식은 싣지 않는다)
         #expect(s.usb.acceptsEdits(s.key) == false)

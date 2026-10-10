@@ -1,3 +1,4 @@
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import DJCTestKit
@@ -8,8 +9,11 @@ import Testing
 @Suite("Apple Music 가져오기 선택 창")
 @MainActor
 struct AppleMusicImportModelTests {
+    /// 창 모델은 추가 목록 조각만 든다. 조각은 저장소를 붙들지 않으므로(unowned) 저장소는 시험이 든다
+    let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+
     func model() -> AppleMusicImportModel {
-        AppleMusicImportModel(store: LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }))
+        AppleMusicImportModel(staging: store.staging, appleMusic: store.useCases.appleMusic)
     }
 
     @Test func 보관함_ID가_없는_XML도_같은_파일이면_출처를_유지한다() async throws {
@@ -59,7 +63,7 @@ struct AppleMusicImportModelTests {
         model.selected = [1]
         await model.addSelected()
         #expect(model.library?.tracks.first?.exclusion == .unavailableFile)
-        #expect(model.selected.isEmpty && model.store.staged.isEmpty && !model.isBusy)
+        #expect(model.selected.isEmpty && store.staging.staged.isEmpty && !model.isBusy)
         #expect(model.message != nil)
     }
 
@@ -79,9 +83,9 @@ struct AppleMusicImportModelTests {
         let model = model()
         model.library = try AppleMusicLibrary.parse(AppleMusicXMLFixture.xml(tracks: ["1": AppleMusicXMLFixture.track(1)]), isReadableFile: { _ in true })
         model.selected = [1]
-        model.store.isWritingRekordbox = true
+        store.isWritingRekordbox = true
         await model.addSelected()
         #expect(model.library?.tracks.first?.exclusion == nil)
-        #expect(model.store.staged.isEmpty && model.message == nil)
+        #expect(store.staging.staged.isEmpty && model.message == nil)
     }
 }

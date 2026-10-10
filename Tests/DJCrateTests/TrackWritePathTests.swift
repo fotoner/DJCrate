@@ -93,7 +93,7 @@ struct TrackWritePathTests {
     /// 추가한 곡 하나를 미리 보고 합성 사본에 넣는다.
     func addStagedTrack(to store: LibraryStore, _ fixture: RekordboxFixture) async throws -> (preview: TrackAddPreview, report: RekordboxTrackWriter.Report) {
         let staged = try stagedTrack(path: try TestResources.url("mp3-notag-cbr.mp3").path)
-        store.staged = [staged]
+        store.staging.staged = [staged]
         let preview = try await store.session.previewAdd(rows: [TrackRow(track: staged.track, cues: [], playCount: 0)])
         let report = try await store.session.addTracksToRekordbox(preview, to: fixture.database, shareRoot: fixture.shareRoot)
         return (preview, report)
@@ -122,7 +122,7 @@ struct TrackWritePathTests {
     func addWithDrafts(_ store: LibraryStore, _ fixture: RekordboxFixture, path: String? = nil, cue makeCue: ((String) -> CueDraft)? = nil,
                        grid makeGrid: ((String) -> GridDraft)? = nil) async throws -> Added {
         let staged = try stagedTrack(path: try path ?? TestResources.url("mp3-notag-cbr.mp3").path)
-        store.staged = [staged]
+        store.staging.staged = [staged]
         let cueDraft = makeCue?(staged.uuid), gridDraft = makeGrid?(staged.uuid)
         if let cueDraft { saveDraft(cueDraft, in: store) }
         if let gridDraft { saveDraft(gridDraft, in: store) }
@@ -146,7 +146,7 @@ struct TrackWritePathTests {
         try fixture.add(TrackSpec())   // 라이브러리 공통값을 가져올 기존 곡
         let store = await loadedStore(fixture)
         let staged = try stagedTrack(path: try TestResources.url("mp3-notag-cbr.mp3").path)
-        store.staged = [staged]
+        store.staging.staged = [staged]
         let preview = try await store.session.previewAdd(rows: [TrackRow(track: staged.track, cues: [], playCount: 0)])
         #expect(preview.report.added.first?.written == true)
         // 미리 보기는 백업을 뜨지 않는다.
@@ -234,7 +234,7 @@ struct TrackWritePathTests {
                                        "rb_data_status": .int(256), "rb_local_deleted": .int(0), "rb_local_usn": .int(1)])
         let store = await loadedStore(fixture, saveTagDrafts: nil)
         let staged = try stagedTrack(path: try TestResources.url("mp3-notag-cbr.mp3").path)
-        store.staged = [staged]
+        store.staging.staged = [staged]
         let row = TrackRow(track: staged.track, cues: [], playCount: 0)
         store.tags.setTag(.musicalKey, key, rows: [row])
         return (store, staged, row)
@@ -255,7 +255,7 @@ struct TrackWritePathTests {
         #expect(stored == ["KeyID": "1486464042", "TrackInfoUpdated": "1"])
         // 다시 읽은 목록: 넣은 곡의 키가 8A이고, 새 곡에는 키 초안이 없다(이미 썼다)
         #expect(store.rowsByUUID[uuid]?.track.key == "8A" && store.tagDrafts[uuid] == nil)
-        #expect(store.staged.isEmpty)
+        #expect(store.staging.staged.isEmpty)
         let lines = WriteResult.tracks(report, preview: preview.report, adding: true, withoutAnalysis: preview.withoutAnalysis).text
         #expect(lines.contains("키 8A"), "\(lines)")
 
@@ -263,7 +263,7 @@ struct TrackWritePathTests {
         let backup = try #require(RekordboxWriter.backups(in: fixture.backups).first)
         try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         #expect(try fixture.rows("SELECT ID FROM djmdContent WHERE ID = ?", [.text(id)]).isEmpty)
-        #expect(store.staged.map(\.uuid) == [staged.uuid] && store.tags.confirmedStagedKey(uuid: staged.uuid) == "8A")
+        #expect(store.staging.staged.map(\.uuid) == [staged.uuid] && store.tags.confirmedStagedKey(uuid: staged.uuid) == "8A")
         #expect(store.tagDrafts[uuid] == nil)
     }
 
@@ -330,7 +330,7 @@ struct TrackWritePathTests {
 
         try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         writer.flush()
-        #expect(store.staged.map(\.uuid) == [staged.uuid])
+        #expect(store.staging.staged.map(\.uuid) == [staged.uuid])
         #expect(store.tags.confirmedStagedKey(uuid: staged.uuid) == "8A", "고른 키가 다시 넣을 수 있게 돌아온다")
         #expect(CueDraftStore.load(trackUUID: staged.uuid, directory: store.draftLocations.cue) == original, "큐 초안도 돌아온다")
         #expect(!store.unlinkedDraftUUIDs.contains(staged.uuid), "되돌린 곡이 추가 목록에 있어 이어진 초안이다")
@@ -373,7 +373,7 @@ struct TrackWritePathTests {
 
         try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         writer.flush()
-        #expect(store.staged.map(\.uuid) == [staged.uuid] && store.tags.confirmedStagedKey(uuid: staged.uuid) == "12B")
+        #expect(store.staging.staged.map(\.uuid) == [staged.uuid] && store.tags.confirmedStagedKey(uuid: staged.uuid) == "12B")
         #expect(store.tagDrafts[uuid]?.fields.comment == "넣은 뒤 고친 코멘트", "사용자가 만든 초안은 지우지 않는다")
         #expect(TagDraftStore.load(trackUUID: uuid, directory: store.tagDraftDirectory)?.fields.comment == "넣은 뒤 고친 코멘트", "디스크에도 남아 있다")
         #expect(store.unlinkedDraftUUIDs.contains(uuid), "연결 안 된 초안으로 남아 쓰기 대기 목록에서 버릴 수 있다")
@@ -498,7 +498,7 @@ struct TrackWritePathTests {
         writer.flush()
         #expect(CueDraftStore.load(trackUUID: added.uuid, directory: store.draftLocations.cue) == nil && writer.pendingCue(trackUUID: added.uuid, directory: store.draftLocations.cue) == nil)
         #expect(CueDraftStore.load(trackUUID: added.staged.uuid, directory: store.draftLocations.cue) == added.cueDraft, "추가한 곡의 큐는 돌아온다")
-        #expect(store.staged.map(\.uuid) == [added.staged.uuid])
+        #expect(store.staging.staged.map(\.uuid) == [added.staged.uuid])
         #expect(!store.unlinkedDraftUUIDs.contains(added.uuid) && store.writeFollowUp.isEmpty, "\(store.writeFollowUp)")
     }
 
@@ -519,7 +519,7 @@ struct TrackWritePathTests {
 
         try await store.session.restoreRekordbox(added.backup, keepingCurrentDrafts: true)
         writer.flush()
-        #expect(store.staged.map(\.uuid) == [added.staged.uuid])
+        #expect(store.staging.staged.map(\.uuid) == [added.staged.uuid])
         #expect(CueDraftStore.load(trackUUID: added.uuid, directory: store.draftLocations.cue) == editedCue, "큐 초안을 지우지 않는다")
         #expect(GridDraftStore.load(trackUUID: added.uuid, directory: store.draftLocations.grid) == editedGrid, "그리드 초안을 지우지 않는다")
         #expect(store.unlinkedDraftUUIDs.contains(added.uuid), "연결 안 된 초안으로 남아 쓰기 대기 목록에서 버릴 수 있다")
@@ -626,7 +626,7 @@ struct TrackWritePathTests {
         store.writeFollowUp = ["지난 결과의 경고"]
         let added = try await addWithDrafts(store, fixture)
         let outcome = try #require(added.report.added.first)
-        #expect(outcome.written && store.staged.isEmpty, "넣기는 그대로 끝난다")
+        #expect(outcome.written && store.staging.staged.isEmpty, "넣기는 그대로 끝난다")
         #expect(RekordboxBackups.live().stagedTracks(added.backup.url) == nil)
         #expect(store.writeFollowUp == [ReflectionSession.stagedBackupFailureText], "\(store.writeFollowUp)")
         let result = WriteResult.tracks(added.report, preview: added.preview.report, adding: true,
@@ -635,7 +635,7 @@ struct TrackWritePathTests {
 
         // 경고가 알린 대로 곡은 추가 목록으로 돌아오지 못한다
         try await store.session.restoreRekordbox(added.backup, keepingCurrentDrafts: true)
-        #expect(store.staged.isEmpty)
+        #expect(store.staging.staged.isEmpty)
     }
 
     @Test func 백업에_초안_사본을_못_남기면_그_초안은_지우지_않고_연결_안_된_초안으로_알린다() async throws {
@@ -661,7 +661,7 @@ struct TrackWritePathTests {
         // 되돌리면 곡이 추가 목록에 돌아오고 남겨 둔 큐 초안이 다시 이어진다
         try await store.session.restoreRekordbox(added.backup, keepingCurrentDrafts: true)
         writer.flush()
-        #expect(store.staged.map(\.uuid) == [added.staged.uuid])
+        #expect(store.staging.staged.map(\.uuid) == [added.staged.uuid])
         #expect(CueDraftStore.load(trackUUID: added.staged.uuid, directory: store.draftLocations.cue)?.cues == original.cues)
         #expect(GridDraftStore.load(trackUUID: added.staged.uuid, directory: store.draftLocations.grid) == added.gridDraft)
         #expect(!store.unlinkedDraftUUIDs.contains(added.staged.uuid))
@@ -693,8 +693,8 @@ struct TrackWritePathTests {
     }
 
     func runQueue(_ store: LibraryStore, _ item: GridJobItem) async {
-        store.enqueueGrid([item])
-        await store.gridTask?.value
+        store.staging.enqueueGrid([item])
+        await store.staging.gridTask?.value
     }
 
     @Test func 그리드_추정_저장은_DraftWriter_기록과_디스크가_같다() async throws {

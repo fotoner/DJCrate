@@ -29,6 +29,8 @@ final class AppComposition {
     let tagInspector: TagInspectorModel
     /// 사이드바 재생 목록 칸 화면 모델(폴더 펼침·이름 바꾸기). 사이드바를 다시 그려도 같은 모델을 쓴다.
     let playlistSidebar: PlaylistSidebarModel
+    /// 목록 아래 작업 막대 화면 모델(단추·막힘 이유·파일 없음 확인). 핵심이 읽은 뒤 파일 확인을 이 모델에 맡긴다.
+    let listActionBar: ListActionBarModel
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
@@ -42,6 +44,7 @@ final class AppComposition {
         trackListActions = .live(store: store, reflection: reflection)
         tagInspector = TagInspectorModel(store: store)
         playlistSidebar = PlaylistSidebarModel(playlists: store.playlists)
+        listActionBar = ListActionBarModel(store: store)
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
@@ -130,10 +133,10 @@ final class AppComposition {
     /// 편집본 쓰기: 편집본은 음악 폴더의 DJCrate 편집본(`DJC_HOME`을 주면 그 아래 edits), 추가한 곡·초안은 저장소의 초안 폴더(덱·목록과 같은 곳).
     /// 추가 목록은 저장소가 든 목록과 디스크를 한 길로 고친다(넣기와 목록 저장이 겹쳐 편집본 줄을 잃지 않게, adv2 N8).
     static func renderEdit(store: LibraryStore) -> RenderEdit {
-        let staging = StagingStore(tracks: { [weak store] in store?.staged ?? [] },
+        let staging = StagingStore(tracks: { [weak store] in store?.staging.staged ?? [] },
                                    save: { [weak store] tracks in
                                        guard let store else { throw CancellationError() }
-                                       try store.saveStaged(tracks)
+                                       try store.staging.saveStaged(tracks)
                                    })
         return RenderEdit(files: .live(output: { DJCPaths.editOutput }),
                           stager: StageEdit(staging: staging, files: .live(home: store.draftFolder), now: { Date() }))
@@ -169,7 +172,7 @@ final class AppComposition {
             return (uuid, deck.gridDraft?.hasChanges == true || deck.gridDragBase != nil)
         }
         store.adoptImportedGridDraft = { [weak deck] draft in deck?.adoptImportedGridDraft(draft) ?? false }
-        deck.onStagedGridChange = { [weak store] uuid, bpm in store?.stagedGridChanged(uuid: uuid, bpm: bpm) }
+        deck.onStagedGridChange = { [weak store] uuid, bpm in store?.staging.stagedGridChanged(uuid: uuid, bpm: bpm) }
         deck.onCueDraftChange = { [weak store] draft in store?.cueDraftChanged(draft) }
         deck.onReanalyze = { [weak store] uuid in store?.tags.restoreKeySuggestion(uuid: uuid) }
         store.onWriteLock = { [weak deck] locked in deck?.isWriteLocked = locked }
@@ -181,7 +184,7 @@ final class AppComposition {
         keys.install(deck: deck, store: store, windows: windows)
         let editLinks = EditWindowLinks(deck: deck, store: store, reflection: reflection, writer: Self.renderEdit(store: store),
                                         makeAudio: { EditAudioPlayer() },
-                                        showStaged: { [weak store] staged, hasGrid in store?.showStagedEdit(staged, hasGrid: hasGrid) })
+                                        showStaged: { [weak store] staged, hasGrid in store?.staging.showStagedEdit(staged, hasGrid: hasGrid) })
         windows.trackEdit.attach(editLinks)
         windows.flip.attach(editLinks)
         #if DEBUG

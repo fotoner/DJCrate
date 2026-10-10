@@ -593,8 +593,8 @@ final class UIPerfRunner {
         guard !items.isEmpty else { log("그리드 일괄 추정: 곡이 없음"); return }
         recorder.reset()
         let start = CACurrentMediaTime()
-        store.enqueueGrid(items)
-        while store.gridJob != nil, CACurrentMediaTime() - start < 180 { await wait(0.1) }
+        store.staging.enqueueGrid(items)
+        while store.staging.gridJob != nil, CACurrentMediaTime() - start < 180 { await wait(0.1) }
         let elapsed = (CACurrentMediaTime() - start) * 1000
         let result = recorder.result(from: start, to: CACurrentMediaTime(), sync: 0)
         log(String(format: "그리드 일괄 추정 곡 %d개: 걸린 시간 %.0fms · 메인 일한 합 %.0fms · 한 번 최대 %.1fms · 프레임 최대 간격 %.1fms · 25ms 넘은 프레임 %d · 쓰기 대기 %d곡",

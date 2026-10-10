@@ -338,7 +338,7 @@ struct AsyncFailureGuidanceTests {
         store.selection = ["deleted"]
         store.loadSelectionToDeck()
         #expect(store.deckTrackID == row.track.id)
-        #expect(store.stagingMessage?.text.contains("다시 선택") == true)
+        #expect(store.staging.stagingMessage?.text.contains("다시 선택") == true)
     }
 
     @Test func 파일_읽기_실패는_초안과_형식_판정을_섞지_않는다() async throws {

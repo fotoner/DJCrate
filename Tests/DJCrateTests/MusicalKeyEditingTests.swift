@@ -319,7 +319,7 @@ struct MusicalKeyEditingTests {
         let staged = try JSONDecoder().decode(StagedTrack.self, from: Data("""
             {"uuid":"\(UUID().uuidString)","path":"\(path)","title":"합성 추가 곡","comment":"","duration":2,"addedOn":"2026-10-04"}
             """.utf8))
-        store.staged = [staged]
+        store.staging.staged = [staged]
         let row = TrackRow(track: staged.track, cues: [], playCount: 0)
         store.tags.setTag(.musicalKey, "8A", rows: [row])
         let preview = try await store.session.previewAdd(rows: [row])
@@ -367,7 +367,7 @@ struct MusicalKeyEditingTests {
                 """.utf8))
         }
         let keyed = try staged("키 초안 곡"), plain = try staged("키 초안 없는 곡")
-        store.staged = [keyed, plain]
+        store.staging.staged = [keyed, plain]
         var draft = TagDraft(track: keyed.track)
         draft.fields.musicalKey = "8A"
         store.tagDrafts[keyed.uuid] = draft
@@ -376,7 +376,7 @@ struct MusicalKeyEditingTests {
         defer { try? FileManager.default.removeItem(at: folder) }
 
         let url = folder.appending(path: "staged.xml")
-        let result = try store.exportStaged(to: url)
+        let result = try store.staging.exportStaged(to: url)
         #expect(result.count == 1 && result.skipped.count == 1)
         #expect(result.skipped.first?.contains("키 초안 곡") == true && result.skipped.first?.contains("XML") == true)
         #expect(result.skipped.first?.contains("rekordbox에 넣기") == true, "키까지 넣는 길을 알린다")
@@ -385,13 +385,13 @@ struct MusicalKeyEditingTests {
 
         // 키 초안이 있는 곡만 고르면 파일을 쓰지 않는다
         let alone = folder.appending(path: "alone.xml")
-        let none = try store.exportStaged(to: alone, only: [keyed.id])
+        let none = try store.staging.exportStaged(to: alone, only: [keyed.id])
         #expect(none.count == 0 && none.skipped.count == 1)
         #expect(!FileManager.default.fileExists(atPath: alone.path))
 
         // 키 초안을 버리면 담긴다
         store.tagDrafts[keyed.uuid] = nil
-        let all = try store.exportStaged(to: folder.appending(path: "all.xml"))
+        let all = try store.staging.exportStaged(to: folder.appending(path: "all.xml"))
         #expect(all.count == 2 && all.skipped.isEmpty)
     }
 

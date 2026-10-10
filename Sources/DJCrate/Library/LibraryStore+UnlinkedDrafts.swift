@@ -10,7 +10,7 @@ extension LibraryStore {
             if !unlinkedDraftUUIDs.isEmpty { unlinkedDraftUUIDs = [] }
             return
         }
-        let unlinked = useCases.watch.unlinked(linked: Set(rowsByUUID.keys).union(staged.map(\.uuid)))
+        let unlinked = useCases.watch.unlinked(linked: Set(rowsByUUID.keys).union(staging.staged.map(\.uuid)))
         if unlinked != unlinkedDraftUUIDs { unlinkedDraftUUIDs = unlinked }
     }
 

@@ -54,7 +54,7 @@ struct DamagedMergeStagedAppTests {
         let store = store(home: home, fixture: fixture)
         await store.load(snapshot: fixture.database)
         #expect(preserved(in: home).count == 2 && preserved(in: home).allSatisfy { (try? Data(contentsOf: $0)) == broken })
-        #expect(store.mergeDrafts.isEmpty && store.staged.isEmpty)
+        #expect(store.mergeDrafts.isEmpty && store.staging.staged.isEmpty)
         let message = try #require(store.draftFileMessage)
         #expect(message.kind == .warning)
         // 합치기 초안은 초안 파일로 세고, 추가 목록은 다시 추가할 일을 따로 안내한다.
@@ -88,9 +88,9 @@ struct DamagedMergeStagedAppTests {
         // 앱과 같은 넣기: 추가 목록은 저장소가 든 목록과 디스크를 한 길로 고친다
         let staged = try await AppComposition.renderEdit(store: store).stager.stage(
             EditStagingRequest(file: output, grid: [edit.outputGrid], cues: [], source: nil, title: "원곡 (Edit)"))
-        store.showStagedEdit(staged)
+        store.staging.showStagedEdit(staged)
         // 옛 추가 목록은 보관만 됐고 새로 읽은 목록에는 편집본뿐이므로 다시 추가할 일을 알려야 한다.
-        #expect(store.staged.map(\.uuid) == [staged.uuid])
+        #expect(store.staging.staged.map(\.uuid) == [staged.uuid])
         #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(0, stagedList: true))
         #expect(preserved(in: home).map { try? Data(contentsOf: $0) } == [broken])
     }
@@ -121,15 +121,15 @@ struct DamagedMergeStagedAppTests {
         let url = home.appending(path: StagedTrackFile.fileName)
         let store = store(home: home)
         // 읽은 뒤 바깥에서 깨졌다. 메모리 목록을 새로 썼으니 잃은 것이 없어 알리지 않는다.
-        store.staged = [track("a")]
+        store.staging.staged = [track("a")]
         try broken.write(to: url)
-        #expect(store.restage([track("b")]) == 1)
+        #expect(store.staging.restage([track("b")]) == 1)
         #expect(StagedTrackFile.load(url: url).map(\.path) == [track("a").path, track("b").path])
         #expect(preserved(in: home).map { try? Data(contentsOf: $0) } == [broken])
         #expect(store.draftFileMessage == nil)
         // 메모리 목록이 비었는데 파일이 깨져 있었다: 옛 목록은 보관만 되므로 다시 추가할 일을 알린다.
         try broken.write(to: url)
-        #expect(store.unstage(uuids: Set(store.staged.map(\.uuid))).count == 2 && store.staged.isEmpty)
+        #expect(store.staging.unstage(uuids: Set(store.staging.staged.map(\.uuid))).count == 2 && store.staging.staged.isEmpty)
         #expect(preserved(in: home).count == 2)
         #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(0, stagedList: true))
     }

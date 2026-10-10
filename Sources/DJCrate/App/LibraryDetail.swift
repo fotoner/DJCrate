@@ -13,6 +13,8 @@ struct LibraryDetail: View {
     var windowFrameRestored: Bool
     /// 폭이 모자라면 탐색 열을 접는다. 값은 읽지 않고 쓰기만 한다(읽으면 이 뷰가 사이드바를 여닫을 때마다 다시 계산된다).
     let sidebarVisible: ObservedSetting<Bool>
+    /// 목록 아래 작업 막대의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 막대에 넘긴다
+    let listActionBar: ListActionBarModel
     @AppStorage(SettingKeys.waveformHeight.name) private var waveformHeight = SettingKeys.waveformHeight.defaultValue
     @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
     @State private var sidebarAutoCollapse = SidebarVisibility()
@@ -49,8 +51,8 @@ struct LibraryDetail: View {
                 if let message = store.reflectionMessage {
                     AppMessageView(message: message, onClose: { store.reflectionMessage = nil })
                 }
-                if let message = store.stagingMessage {
-                    AppMessageView(message: message, onClose: { store.stagingMessage = nil })
+                if let message = store.staging.stagingMessage {
+                    AppMessageView(message: message, onClose: { store.staging.stagingMessage = nil })
                 }
                 if let message = store.playlists.playlistMessage {
                     AppMessageView(message: message, onClose: { store.playlists.playlistMessage = nil })
@@ -61,7 +63,7 @@ struct LibraryDetail: View {
             LibraryDeckViewport(store: store, deck: deck, layout: layout, widthClass: widthClass)
             LibrarySplitHandle(layout: layout, height: $waveformHeight)
             VStack(spacing: 0) {
-                ListActionBar(store: store)
+                ListActionBar(model: listActionBar)
                 if showsSheet { SheetHeader() }
             }
             .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureListHeader($0) }

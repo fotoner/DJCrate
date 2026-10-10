@@ -90,7 +90,7 @@ private struct DeckDropDelegate: DropDelegate {
         }
         group.notify(queue: .main) {
             let urls = box.values
-            Task { @MainActor in await store.addFiles(urls) }
+            Task { @MainActor in await store.staging.addFiles(urls) }
         }
         return true
     }

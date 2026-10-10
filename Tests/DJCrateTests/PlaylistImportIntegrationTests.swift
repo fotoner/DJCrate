@@ -68,7 +68,7 @@ struct PlaylistImportIntegrationTests {
         let store = store()
         store.playlists.rekordboxPlaylists = PlaylistLayout([(.init(id: "P", name: "세트"), 1)])
         store.playlists.refreshPlaylists()
-        store.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
+        store.staging.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
         let provider = NSItemProvider(object: file as NSURL)
         let node = try #require(store.playlists.playlistIndex["P"])
         #expect(PlaylistDrop.perform([provider], on: node, store: store))
@@ -90,9 +90,9 @@ struct PlaylistImportIntegrationTests {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         store.playlists.rekordboxPlaylists = PlaylistLayout([(.init(id: "P", name: "세트"), 1)])
         store.playlists.refreshPlaylists()
-        store.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
-        await store.addFiles([file], toPlaylist: "P")
-        #expect(store.stagingMessage?.kind == .failure)
+        store.staging.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
+        await store.staging.addFiles([file], toPlaylist: "P")
+        #expect(store.staging.stagingMessage?.kind == .failure)
         #expect(store.playlists.playlistImports.requests.isEmpty)
     }
 
@@ -114,10 +114,10 @@ struct PlaylistImportIntegrationTests {
         store.phase = .loaded
         store.playlists.rekordboxPlaylists = PlaylistLayout([(.init(id: "P", name: "세트"), 1)])
         store.playlists.refreshPlaylists()
-        store.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
-        await store.addFiles([file], toPlaylist: "P")
+        store.staging.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
+        await store.staging.addFiles([file], toPlaylist: "P")
         #expect(store.playlists.playlistDraft.isEmpty && store.playlists.playlistImports.pendingCount == 1)
-        #expect(store.staged.count == 1)
+        #expect(store.staging.staged.count == 1)
         store.playlists.resolvePlaylistImports(contentIDsByPath: [PlaylistImports.pathKey(file.path): "1"])
         #expect(store.playlists.playlistDraft.edits == [.addTracks(playlist: .id("P"), contentIDs: ["1"])])
         #expect(store.playlists.playlistImports.pendingCount == 0)
@@ -127,11 +127,11 @@ struct PlaylistImportIntegrationTests {
         let store = store()
         store.playlists.rekordboxPlaylists = PlaylistLayout([(.init(id: "F", name: "폴더", isFolder: true), 1)])
         store.playlists.refreshPlaylists()
-        await store.addFiles([], toPlaylist: "F")
-        #expect(store.stagingMessage == nil && store.playlists.playlistImports.requests.isEmpty)
+        await store.staging.addFiles([], toPlaylist: "F")
+        #expect(store.staging.stagingMessage == nil && store.playlists.playlistImports.requests.isEmpty)
         store.isWritingRekordbox = true
-        await store.addFiles([])
-        #expect(store.stagingMessage == nil)
+        await store.staging.addFiles([])
+        #expect(store.staging.stagingMessage == nil)
     }
 
     @Test func 가져오기_선택을_끄면_출처만_기억하고_목록은_만들지_않는다() async throws {
@@ -140,12 +140,12 @@ struct PlaylistImportIntegrationTests {
         defer { try? FileManager.default.removeItem(at: home) }
         let file = try AudioFixture.wav(seconds: 0.1, in: home)
         let store = store()
-        store.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
+        store.staging.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
         let origin = AppleMusicOrigin(libraryID: "L", trackID: 1, playlists: [.init(id: "P", name: "세트", parentID: nil, position: 0)])
-        await store.addFiles([file], appleMusicOrigins: [PlaylistImports.pathKey(file.path): [origin]])
-        #expect(store.staged.first?.appleMusicOrigins == [origin])
+        await store.staging.addFiles([file], appleMusicOrigins: [PlaylistImports.pathKey(file.path): [origin]])
+        #expect(store.staging.staged.first?.appleMusicOrigins == [origin])
         #expect(store.playlists.playlistImports.requests.isEmpty)
-        await store.addFiles([file], appleMusicOrigins: [PlaylistImports.pathKey(file.path): [origin]], createPlaylists: true)
+        await store.staging.addFiles([file], appleMusicOrigins: [PlaylistImports.pathKey(file.path): [origin]], createPlaylists: true)
         #expect(store.playlists.playlistImports.pendingCount == 1 && store.playlists.playlistDraft.isEmpty)
     }
 }

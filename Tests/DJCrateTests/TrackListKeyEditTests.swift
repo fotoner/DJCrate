@@ -339,7 +339,7 @@ struct TrackListKeyEditTests {
         #expect(opened == 1 && loaded == [row.track.id])
         // 키를 고칠 수 없는 곡(스트리밍·USB)은 경고 대신 다른 칸처럼 덱에 올린다
         h.coordinator.doubleClicked(row: 1, column: "key")
-        #expect(opened == 1 && loaded == [row.track.id, s.track.id] && h.store.stagingMessage == nil)
+        #expect(opened == 1 && loaded == [row.track.id, s.track.id] && h.store.staging.stagingMessage == nil)
     }
 
     // MARK: - 고르기 규칙
@@ -398,9 +398,9 @@ struct TrackListKeyEditTests {
         let rows = [a, s, usb]
         for index in [1, 2] {
             #expect(h.coordinator.keyMenu(row: index) == nil)
-            h.store.stagingMessage = nil
+            h.store.staging.stagingMessage = nil
             #expect(!h.coordinator.beginEditing(row: index, column: "key"))
-            #expect(h.store.stagingMessage?.text == KeyPicker.unavailableReason(rows[index]))
+            #expect(h.store.staging.stagingMessage?.text == KeyPicker.unavailableReason(rows[index]))
         }
         let menu = try #require(h.coordinator.keyMenu(row: 0))
         h.store.isWritingRekordbox = true

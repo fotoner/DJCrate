@@ -28,7 +28,7 @@ struct StagedEditRaceTests {
         earlier.key = "1A"
         earlier.keySource = .tag
         try store.testPorts.staging.save([earlier])
-        store.loadStaged()
+        store.staging.loadStaged()
         return (store, earlier)
     }
 
@@ -43,13 +43,13 @@ struct StagedEditRaceTests {
         // 편집 창이 렌더한 편집본을 추가한 곡에 넣는다(앱과 같은 조립)
         let staged = try await AppComposition.renderEdit(store: store).stager.stage(try request())
         // 그 사이 앞 곡의 키 추정이 끝나 화면 모델이 메모리의 목록을 저장한다
-        store.setStagedKey(uuid: earlier.uuid, key: "8A", source: .estimate)
+        store.staging.setStagedKey(uuid: earlier.uuid, key: "8A", source: .estimate)
         // 넣기가 끝나 편집본을 보여 준다
-        store.showStagedEdit(staged)
+        store.staging.showStagedEdit(staged)
 
         #expect(store.testPorts.staging.tracks().map(\.uuid) == [earlier.uuid, staged.uuid], "편집본 줄이 추가 목록 파일에 남아야 한다")
-        #expect(store.staged.map(\.uuid) == [earlier.uuid, staged.uuid])
-        #expect(store.staged.first?.key == "8A", "앞 곡의 키 저장도 남는다")
+        #expect(store.staging.staged.map(\.uuid) == [earlier.uuid, staged.uuid])
+        #expect(store.staging.staged.first?.key == "8A", "앞 곡의 키 저장도 남는다")
     }
 
     @Test func 넣는_도중_추가_목록이_바뀌어도_두_변경이_모두_남는다() async throws {
@@ -59,13 +59,13 @@ struct StagedEditRaceTests {
         let read = stager.files.readTrack
         // 태그를 읽는 동안(메인 밖) 앞 곡의 키 추정이 끝나 목록이 저장된다
         stager.files.readTrack = { url, addedOn in
-            await MainActor.run { store.setStagedKey(uuid: earlier.uuid, key: "8A", source: .estimate) }
+            await MainActor.run { store.staging.setStagedKey(uuid: earlier.uuid, key: "8A", source: .estimate) }
             return try await read(url, addedOn)
         }
         let staged = try await stager.stage(try request())
 
         #expect(store.testPorts.staging.tracks().map(\.uuid) == [earlier.uuid, staged.uuid])
         #expect(store.testPorts.staging.tracks().first?.key == "8A")
-        #expect(store.staged.map(\.uuid) == [earlier.uuid, staged.uuid])
+        #expect(store.staging.staged.map(\.uuid) == [earlier.uuid, staged.uuid])
     }
 }

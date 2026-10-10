@@ -131,11 +131,12 @@ struct HideStreamingTests {
         #expect(store.count(.all) == 4 && store.count(.emptyComment) == 4)
         store.commentPreset = .none
         #expect(store.count(.all) == 4)
-        // 파일 확인 결과를 반영해도 마찬가지
+        // 파일 확인 결과를 반영해도 마찬가지(확인은 목록 아래 막대 화면 모델이 한다)
+        let bar = ListActionBarModel(store: store)
         missing.set(true)
         store.checkMissingFiles()
-        for _ in 0..<500 where store.isCheckingFiles { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(!store.isCheckingFiles && store.count(.missingFile) == 4 && store.count(.all) == 4)
+        for _ in 0..<500 where bar.isCheckingFiles { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(!bar.isCheckingFiles && store.count(.missingFile) == 4 && store.count(.all) == 4)
     }
 
     // MARK: 재생 목록·재생 기록

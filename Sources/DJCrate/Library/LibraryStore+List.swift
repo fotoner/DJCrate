@@ -59,7 +59,7 @@ extension LibraryStore {
         case let .history(id):
             // USB에서 보존한 기록(#43)은 컬렉션 짝이 없는 곡도 읽기 전용 줄로 보인다
             if let history = self.history.historyIndex[id] { .history(history.entries) } else { .rows(self.history.archivedHistoryRows(id)) }
-        case .staged: .rows(stagedRows)
+        case .staged: .rows(staging.stagedRows)
         case .pending: .pending(pendingUUIDs)
         // 분류 칸은 로컬 줄과 같은 코멘트 규칙(지금 프리셋)으로 가른다(#256)
         case let .usb(target): .rows(usb?.rows(for: target, commentPreset: commentPreset) ?? [])

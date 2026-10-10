@@ -45,20 +45,20 @@ extension DevSelfTests {
             await wait(1.5)
             capture("before")
             // 진행 줄: 곡이 몇 곡 안 돼 실제 진행은 눈 깜짝할 새라, 줄 모양만 값을 직접 주어 한 컷 찍는다.
-            store.xmlExportJob = LibraryXMLExportJob(fraction: 0.45, isPreparing: false)
+            store.staging.xmlExportJob = LibraryXMLExportJob(fraction: 0.45, isPreparing: false)
             await wait(1)
             capture("progress")
-            store.xmlExportJob = nil
+            store.staging.xmlExportJob = nil
             let out = directory.appending(path: "library.xml")
             try? FileManager.default.removeItem(at: out)
-            store.exportLibraryXML(to: out)
-            check(store.hasXMLExportJob, "시작하자마자 진행 줄이 서야 합니다")
-            await store.xmlExportTask?.value
+            store.staging.exportLibraryXML(to: out)
+            check(store.staging.hasXMLExportJob, "시작하자마자 진행 줄이 서야 합니다")
+            await store.staging.xmlExportTask?.value
             store.usb = nil
             await wait(1.5)
             capture("after")
-            check(store.stagingMessage?.kind == .success, "완료 안내(\(store.stagingMessage?.text ?? "없음"))")
-            check(!store.hasXMLExportJob, "끝나면 진행 줄이 빠져야 합니다")
+            check(store.staging.stagingMessage?.kind == .success, "완료 안내(\(store.staging.stagingMessage?.text ?? "없음"))")
+            check(!store.staging.hasXMLExportJob, "끝나면 진행 줄이 빠져야 합니다")
             let xml = (try? String(contentsOf: out, encoding: .utf8)) ?? ""
             let tracks = xml.components(separatedBy: "\n").filter { $0.contains("<TRACK TrackID=") }.count
             let lists = xml.components(separatedBy: "\n").filter { $0.contains(#" Type="1" KeyType="0""#) }.count
@@ -67,7 +67,7 @@ extension DevSelfTests {
             check(!xml.contains("apple-music"), "스트리밍 곡은 넣지 않습니다")
             check(XMLParser(data: Data(xml.utf8)).parse(), "올바른 XML이어야 합니다")
             check((try? Data(contentsOf: snapshot)) == before, "사본 DB가 그대로여야 합니다")
-            log("곡 \(tracks) · 재생 목록 \(lists) · 안내: \(store.stagingMessage?.text.components(separatedBy: "\n").first ?? "")")
+            log("곡 \(tracks) · 재생 목록 \(lists) · 안내: \(store.staging.stagingMessage?.text.components(separatedBy: "\n").first ?? "")")
             log(failures == 0 ? "라이브러리 XML 시험 통과" : "라이브러리 XML 시험 실패 \(failures)건")
             exit(failures == 0 ? 0 : 1)
         }

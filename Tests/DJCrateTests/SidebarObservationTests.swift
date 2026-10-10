@@ -47,17 +47,27 @@ struct SidebarObservationTests {
     // MARK: - 사이드바 본문
 
     @Test(.tags(.perfContract)) func 그리드_추정_진행은_본문이_읽지_않는다() {
-        #expect(!sidebarReads(before: { $0.gridJob = GridJob(done: 1, total: 5) }) { $0.gridJob = GridJob(done: 2, total: 5) })
+        #expect(!sidebarReads(before: { $0.staging.gridJob = GridJob(done: 1, total: 5) }) { $0.staging.gridJob = GridJob(done: 2, total: 5) })
     }
 
     @Test(.tags(.perfContract)) func 그리드_추정을_시작하고_끝내면_진행_줄을_넣고_빼려고_본문을_다시_계산한다() {
-        #expect(sidebarReads { $0.gridJob = GridJob(done: 0, total: 5) })
-        #expect(sidebarReads(before: { $0.gridJob = GridJob(done: 5, total: 5) }) { $0.gridJob = nil })
+        #expect(sidebarReads { $0.staging.gridJob = GridJob(done: 0, total: 5) })
+        #expect(sidebarReads(before: { $0.staging.gridJob = GridJob(done: 5, total: 5) }) { $0.staging.gridJob = nil })
     }
 
     @Test(.tags(.perfContract)) func 추가한_곡_수는_본문이_읽지_않는다() {
-        #expect(!sidebarReads { $0.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/synthetic/a.wav", title: "합성 곡", duration: 60,
-                                                         addedOn: "2026-09-28")] })
+        #expect(!sidebarReads { $0.staging.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/synthetic/a.wav", title: "합성 곡", duration: 60,
+                                                                 addedOn: "2026-09-28")] })
+    }
+
+    @Test(.tags(.perfContract)) func 추가_목록_조각의_안내와_XML_내보내기_진행은_본문이_읽지_않는다() {
+        // 추가 목록·그리드 추정·XML 내보내기는 핵심에서 추가 목록 조각(`TrackStagingStore`)으로 옮겼다(#252).
+        // 본문은 진행 줄을 넣고 빼는 값(시작·끝)만 읽고, 안내는 목록 위 알림 줄이 읽는다
+        #expect(!sidebarReads { $0.staging.stagingMessage = AppMessage(text: "합성 안내") })
+        #expect(!sidebarReads(before: { $0.staging.xmlExportJob = LibraryXMLExportJob() }) {
+            $0.staging.xmlExportJob?.apply(LibraryXMLProgress(phase: .writing, done: 1, total: 2))
+        })
+        #expect(sidebarReads { $0.staging.xmlExportJob = LibraryXMLExportJob() })
     }
 
     @Test(.tags(.perfContract)) func 쓰기_대기_수는_본문이_읽지_않는다() {
@@ -82,27 +92,27 @@ struct SidebarObservationTests {
     // MARK: - 줄 뷰
 
     @Test(.tags(.perfContract)) func 배지_값은_각자_줄이_읽어_값이_바뀌면_그_줄만_다시_계산한다() {
-        #expect(reads({ SidebarStagedRow(store: $0) }) {
-            $0.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/synthetic/a.wav", title: "합성 곡", duration: 60,
-                                     addedOn: "2026-09-28")]
+        #expect(reads({ SidebarStagedRow(staging: $0.staging) }) {
+            $0.staging.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/synthetic/a.wav", title: "합성 곡", duration: 60,
+                                             addedOn: "2026-09-28")]
         })
         #expect(reads({ SidebarPendingRow(store: $0) }) { $0.draftChanged(trackUUID: "x", kind: .cue, exists: true) })
-        #expect(reads({ SidebarGridJobRow(store: $0) }, before: { $0.gridJob = GridJob(done: 1, total: 5) }) {
-            $0.gridJob = GridJob(done: 2, total: 5)
+        #expect(reads({ SidebarGridJobRow(staging: $0.staging) }, before: { $0.staging.gridJob = GridJob(done: 1, total: 5) }) {
+            $0.staging.gridJob = GridJob(done: 2, total: 5)
         })
         #expect(reads({ SidebarLastWriteResultRow(store: $0) }) { $0.isWritingRekordbox = true })
     }
 
     @Test func 그리드_추정_중_표시는_시작과_끝에만_바뀐다() {
         let store = store()
-        #expect(!store.hasGridJob)
-        store.gridJob = GridJob(done: 0, total: 3)
-        #expect(store.hasGridJob)
-        store.gridJob?.total += 2
-        store.gridJob?.done += 1
-        #expect(store.hasGridJob)
-        store.gridJob = nil
-        #expect(!store.hasGridJob)
+        #expect(!store.staging.hasGridJob)
+        store.staging.gridJob = GridJob(done: 0, total: 3)
+        #expect(store.staging.hasGridJob)
+        store.staging.gridJob?.total += 2
+        store.staging.gridJob?.done += 1
+        #expect(store.staging.hasGridJob)
+        store.staging.gridJob = nil
+        #expect(!store.staging.hasGridJob)
     }
 
     // MARK: - 재생 목록 구역

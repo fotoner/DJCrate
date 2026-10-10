@@ -19,7 +19,7 @@ extension LibraryStore {
                                tagDrafts: tagDrafts, artworkDrafts: artworkDrafts, mergeDrafts: mergeDrafts, playlistDraft: playlists.playlistDraft,
                                playlistDraftUnsaved: playlists.playlistDraftUnsaved, rekordboxPlaylists: playlists.rekordboxPlaylists,
                                playlistImports: playlists.playlistImports, playlistImportsLoadFailed: playlists.playlistImportsLoadFailed, unreadableDraftKinds: unreadableDraftKinds, failedTagSaves: failedTagSaves(),
-                               staged: staged, estimatingGrids: gridJob != nil, iTunesSelection: isITunesSelection,
+                               staged: staging.staged, estimatingGrids: staging.gridJob != nil, iTunesSelection: isITunesSelection,
                                deckStagedUUID: deckTrackID.flatMap { rowsByID[$0] }.flatMap { $0.isStaged ? $0.track.uuid : nil },
                                lastError: lastError, pendingHistories: history.pendingHistoryImports)
     }
@@ -37,8 +37,8 @@ extension LibraryStore {
         case let .playlistWritten(cleanup): playlists.applyPlaylistWrite(cleanup)
         case let .artworkCleared(uuids, failed): clearWrittenArtwork(uuids, failed: failed)
         case let .artworkRestored(drafts, touched): showRestoredArtwork(drafts, touched: touched)
-        case let .unstaged(uuids): _ = unstage(uuids: uuids)
-        case let .restaged(tracks): _ = restage(tracks)
+        case let .unstaged(uuids): _ = staging.unstage(uuids: uuids)
+        case let .restaged(tracks): _ = staging.restage(tracks)
         case let .deckTrackMoved(id): moveDeckTrack(to: id)
         case let .playlistImportsReset(reset): playlists.applyPlaylistImportsReset(reset)
         case .unlinkedDraftsChanged: refreshUnlinkedDrafts()

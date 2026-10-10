@@ -49,8 +49,8 @@ struct MusicLibraryStoreObservationTests {
     }
 
     @Test(.tags(.perfContract)) func 목록_위_작업_줄은_iTunes_목록을_볼_때만_Music_목록을_읽는다() {
-        #expect(reads({ ListActionBar(store: $0) }, before: { $0.sidebar = .itunesPlaylist("itunes:A") }) { $0.music.library = library })
-        #expect(!reads({ ListActionBar(store: $0) }) { $0.music.library = library })
+        #expect(reads({ ListActionBar(model: ListActionBarModel(store: $0)) }, before: { $0.sidebar = .itunesPlaylist("itunes:A") }) { $0.music.library = library })
+        #expect(!reads({ ListActionBar(model: ListActionBarModel(store: $0)) }) { $0.music.library = library })
     }
 
     @Test(.tags(.perfContract)) func 동기화_창은_사이드바_목록이_바뀌어도_다시_계산하지_않고_쓰기_잠금과_창_상태는_따른다() {

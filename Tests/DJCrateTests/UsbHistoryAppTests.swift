@@ -151,7 +151,7 @@ struct UsbHistoryAppTests {
         #expect(store.canLoadSelectionToDeck)
         store.loadSelectionToDeck()
         #expect(store.deckTrackID == nil)
-        #expect(store.stagingMessage?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
+        #expect(store.staging.stagingMessage?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
 
         // 재생 목록으로 만들기: 짝 있는 곡만 튼 순서대로(같은 곡은 처음 한 번), 이름은 기록 이름
         store.playlists.createPlaylist(fromHistory: archived.id)

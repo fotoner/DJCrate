@@ -147,7 +147,7 @@ struct RekordboxXMLImportTests {
         store.xmlImport.cancel()
         await store.xmlImport.task?.value
         #expect(store.xmlImport.preview == nil && !store.xmlImport.isReading)
-        #expect(store.stagingMessage == nil, "취소는 실패로 알리지 않는다")
+        #expect(store.staging.stagingMessage == nil, "취소는 실패로 알리지 않는다")
     }
 
     @Test func rekordbox_XML이_아니면_이유를_알리고_미리_보기를_열지_않는다() async throws {
@@ -158,6 +158,6 @@ struct RekordboxXMLImportTests {
         store.xmlImport.start(from: bad, shareRoot: fixture.shareRoot)
         await store.xmlImport.task?.value
         #expect(store.xmlImport.preview == nil && !store.xmlImport.isReading)
-        #expect(store.stagingMessage?.kind == .failure && store.stagingMessage?.text.contains("DJ_PLAYLISTS") == true)
+        #expect(store.staging.stagingMessage?.kind == .failure && store.staging.stagingMessage?.text.contains("DJ_PLAYLISTS") == true)
     }
 }

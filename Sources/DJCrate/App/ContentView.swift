@@ -126,7 +126,8 @@ struct ContentView: View {
     @ViewBuilder private var detail: some View {
             switch store.phase {
             case .loaded:
-                LibraryDetail(store: store, deck: deck, windowFrameRestored: windowFrameRestored, sidebarVisible: sidebarVisible)
+                LibraryDetail(store: store, deck: deck, windowFrameRestored: windowFrameRestored, sidebarVisible: sidebarVisible,
+                              listActionBar: app.listActionBar)
             case .idle:
                 ContentUnavailableView {
                     Label(.ui("스냅샷이 없습니다"), systemImage: "externaldrive.badge.questionmark")

@@ -91,7 +91,7 @@ enum UsbDeckCapture {
         table.selectRowIndexes([1], byExtendingSelection: false)
         coordinator.doubleClicked(row: 1, column: "title")
         try await settle(2500)
-        log("1 더블클릭: 덱 곡 \(store.deckTrackID ?? "-") · USB 줄 덱 표시 [\(marks())] · 안내 \(store.stagingMessage?.text ?? "-")")
+        log("1 더블클릭: 덱 곡 \(store.deckTrackID ?? "-") · USB 줄 덱 표시 [\(marks())] · 안내 \(store.staging.stagingMessage?.text ?? "-")")
         try UsbDragCapture.captureWindow(window, to: directory + "/usb-playlist-deck-loaded.jpg")
 
         // 2. 넷째 줄을 골라 ⌘→(덱 메뉴 '고른 곡 덱에 불러오기')로 올린다
