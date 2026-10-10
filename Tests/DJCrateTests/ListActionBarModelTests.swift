@@ -166,12 +166,12 @@ struct ListActionBarModelTests {
                                  })
     }
 
-    @Test func 읽은_뒤_핵심이_막대_모델의_파일_확인을_시작하고_결과를_행과_막대에_넣는다() async throws {
+    @Test func 읽은_뒤_핵심이_파일을_확인하고_막대는_결과와_진행을_읽는다() async throws {
         let present = TestSwitch(), folder = try TemporaryFolder.withEmptyDatabase()
         let store = missingFileStore(folder, present: present)
         let model = ListActionBarModel(store: store)
         await store.load(snapshot: folder.database)
-        let task = try #require(model.missingFileTask, "읽은 뒤 확인을 시작한다")
+        let task = try #require(store.missingFileTask, "읽은 뒤 확인을 시작한다")
         await task.value
         #expect(!model.isCheckingFiles)
         #expect(model.missingFiles.trackIDs == ["1", "2"])
@@ -182,7 +182,7 @@ struct ListActionBarModelTests {
         present.set(true)
         store.checkMissingFiles()
         #expect(model.isCheckingFiles)
-        await model.missingFileTask?.value
+        await store.missingFileTask?.value
         #expect(!model.isCheckingFiles && model.missingFiles.trackIDs.isEmpty)
         #expect(store.count(.missingFile) == 0 && store.rowsByID["1"]?.fileMissing == false)
         withExtendedLifetime(folder) {}
@@ -193,10 +193,11 @@ struct ListActionBarModelTests {
         let store = missingFileStore(folder, present: present)
         let model = ListActionBarModel(store: store)
         await store.load(snapshot: folder.database)
-        await model.missingFileTask?.value
+        await store.missingFileTask?.value
         present.set(true)
+        // 막대의 '다시 확인' 단추는 핵심의 확인을 부른다
         model.checkMissingFiles()
-        let stale = model.missingFileTask
+        let stale = store.missingFileTask
         store.invalidatePendingLoads()
         await stale?.value
         #expect(!model.isCheckingFiles)

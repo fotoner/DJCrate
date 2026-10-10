@@ -94,7 +94,7 @@ struct ITunesSyncTests {
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
         store.music.presentSyncWindow()
-        let window = store.music.syncWindow
+        let window = try #require(store.music.syncWindow)
         await window.load()
         #expect(window.canSync && window.database == fixture.database, "\(window.error ?? "")")
         window.selection = ITunesSyncSelection(selectedIDs: ["F"])

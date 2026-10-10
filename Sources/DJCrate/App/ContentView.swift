@@ -268,12 +268,12 @@ struct EmptyLibraryOverlay: View {
             } description: {
                 Text(.ui("DJCrate가 계산한 결과입니다. rekordbox 화면과 다를 수 있습니다."))
             }
-        } else if store.sidebar == .pending, !store.pendingHistories.isEmpty {
+        } else if store.sidebar == .pending, !store.history.pendingHistories.isEmpty {
             // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 위 쓰기 대기 바에서 함께 쓴다
             ContentUnavailableView {
                 Label(.ui("쓸 곡 초안이 없습니다"), systemImage: "clock.arrow.circlepath")
             } description: {
-                Text(.ui("USB 재생 기록 \(store.pendingHistories.count)건이 쓰기 대기에 있습니다. 위 ‘rekordbox에 쓰기’로 rekordbox 재생 기록에 넣습니다."))
+                Text(.ui("USB 재생 기록 \(store.history.pendingHistories.count)건이 쓰기 대기에 있습니다. 위 ‘rekordbox에 쓰기’로 rekordbox 재생 기록에 넣습니다."))
             }
         } else if store.sidebar == .pending {
             ContentUnavailableView {

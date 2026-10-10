@@ -55,49 +55,49 @@ extension DevSelfTests {
             let musicRefresh = store.music.startSimulatedRefresh { musicGate.wait(); return latestMusic }
             store.music.presentSyncWindow()
             for _ in 0..<100 {
-                if !store.music.syncWindow.isLoading, checkbox("C") != nil { break }
+                if store.music.syncWindow?.isLoading == false, checkbox("C") != nil { break }
                 try? await Task.sleep(for: .milliseconds(100))
             }
             try? await Task.sleep(for: .milliseconds(300))
             captureSyncWindow("--itunes-sync-waiting-capture=")
-            check(store.music.syncWindow.isWaitingForMusic && !store.music.syncWindow.canSync && checkbox("C") != nil,
+            check(store.music.syncWindow?.isWaitingForMusic == true && store.music.syncWindow?.canSync == false && checkbox("C") != nil,
                   "Music을 읽는 동안 캐시 목록을 보여 주고 동기화를 막음")
             musicGate.signal()
             await musicRefresh?.value
             for _ in 0..<50 {
-                if store.music.syncWindow.canSync { break }
+                if store.music.syncWindow?.canSync == true { break }
                 try? await Task.sleep(for: .milliseconds(100))
             }
-            check(!store.music.syncWindow.isWaitingForMusic && store.music.syncWindow.canSync, "Music을 다 읽은 뒤 동기화 허용")
-            store.music.showingSyncWindow = false
+            check(store.music.syncWindow?.isWaitingForMusic == false && store.music.syncWindow?.canSync == true, "Music을 다 읽은 뒤 동기화 허용")
+            store.music.syncWindow = nil
             try? await Task.sleep(for: .milliseconds(300))
             store.music.presentSyncWindow()
             for _ in 0..<100 {
-                if !store.music.syncWindow.isLoading, checkbox("C") != nil { break }
+                if store.music.syncWindow?.isLoading == false, checkbox("C") != nil { break }
                 try? await Task.sleep(for: .milliseconds(100))
             }
-            check(checkbox("C") != nil && store.music.syncWindow.canSync, "실제 동기화 선택 창과 체크박스")
+            check(checkbox("C") != nil && store.music.syncWindow?.canSync == true, "실제 동기화 선택 창과 체크박스")
             checkbox("C")?.performClick(nil)
-            check(store.music.syncWindow.selection.selectedIDs.contains("C") && store.music.library.index["itunes:C"] == nil,
+            check(store.music.syncWindow?.selection.selectedIDs.contains("C") == true && store.music.library.index["itunes:C"] == nil,
                   "체크박스로 선택하고 적용 전 기존 목록 유지")
-            store.music.showingSyncWindow = false
+            store.music.syncWindow = nil
             try? await Task.sleep(for: .milliseconds(300))
             check((try? Data(contentsOf: syncURL)) == syncBefore, "취소하면 rekordbox 동기화 선택 불변")
             store.music.presentSyncWindow()
             for _ in 0..<100 {
-                if !store.music.syncWindow.isLoading, checkbox("C") != nil { break }
+                if store.music.syncWindow?.isLoading == false, checkbox("C") != nil { break }
                 try? await Task.sleep(for: .milliseconds(100))
             }
             checkbox("C")?.performClick(nil)
-            if store.music.syncWindow.selection.state(of: "F", in: store.music.syncWindow.nodes) == .on { checkbox("F")?.performClick(nil) }
+            if let sync = store.music.syncWindow, sync.selection.state(of: "F", in: sync.nodes) == .on { checkbox("F")?.performClick(nil) }
             checkbox("F")?.performClick(nil)
-            check(store.music.syncWindow.selection.state(of: "F", in: store.music.syncWindow.nodes) == .on, "폴더와 하위 목록 전체 선택")
+            check(store.music.syncWindow.map { $0.selection.state(of: "F", in: $0.nodes) == .on } == true, "폴더와 하위 목록 전체 선택")
             try? await Task.sleep(for: .milliseconds(300))
             captureSyncWindow("--itunes-sync-capture=")
-            let synced = await store.music.syncWindow.sync()
+            let synced = await store.music.syncWindow?.sync() ?? false
             check(synced && store.music.library.index["itunes:C"] != nil, "동기화 즉시 사이드바에 추가")
             check((try? Data(contentsOf: syncURL)) != syncBefore, "rekordbox 동기화 파일에 반영")
-            store.music.showingSyncWindow = false
+            store.music.syncWindow = nil
             await store.music.refreshPlaylists()
             check(store.music.library.index["itunes:C"] != nil, "다시 읽은 뒤에도 선택 유지")
             if !store.location.opensExplicitCopy {

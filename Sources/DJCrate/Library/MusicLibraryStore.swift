@@ -14,9 +14,8 @@ final class MusicLibraryStore {
     var snapshot = ITunesLibrarySnapshot(status: .notCaptured) {
         didSet { readFlow.musicChanged() }
     }
-    var showingSyncWindow = false
-    /// 띄운 동기화 창의 화면 모델. 띄울 때 한 번 만든다(`presentSyncWindow`)
-    private(set) var syncWindow = ITunesSyncModel(ports: .closed)
+    /// 띄운 동기화 창의 화면 모델(있으면 창이 떠 있다, `.sheet(item:)`). 띄울 때 한 번 만들고 닫으면 버린다(`presentSyncWindow`)
+    var syncWindow: ITunesSyncModel?
     /// iTunes 동기화 선택을 rekordbox에 쓴다(반영 세션 `syncITunes`, 조립 지점이 붙인다. 없으면 쓰지 않는다)
     @ObservationIgnored var write: ((ITunesSyncWrite) async throws -> (target: URL, syncData: Data))?
     /// 이 조각이 보는 라이브러리 핵심(핵심이 다 만든 뒤 붙인다)
@@ -66,7 +65,6 @@ final class MusicLibraryStore {
 
     func presentSyncWindow() {
         syncWindow = ITunesSyncModel(ports: syncWindowPorts)
-        showingSyncWindow = true
     }
 
     /// 사본 실행에서는 Music에 접근하지 않고 함께 캡처한 전체 목록만 쓴다.
@@ -89,7 +87,7 @@ final class MusicLibraryStore {
         return ITunesSyncModel.Ports(
             database: { [weak self] in self?.host.snapshot() },
             open: { await readFlow.openSyncWindow(shown: $0, forceRefresh: $1, capture: $2) },
-            isShowing: { [weak self] model in self.map { $0.syncWindow === model && $0.showingSyncWindow } ?? false },
+            isShowing: { [weak self] model in self?.syncWindow === model },
             isLibraryBusy: { [weak self] in self?.host.isBusy() ?? true },
             sync: { [weak self] selection, source, database in
                 guard let self else { throw DJCError.writeRefused(LibraryReadFlow.libraryChangedMessage) }

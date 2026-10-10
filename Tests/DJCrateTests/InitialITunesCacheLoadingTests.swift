@@ -228,7 +228,7 @@ struct InitialITunesCacheLoadingTests {
         guard await openWithStalledMusic(store, directory: directory, music: music) else { return }
 
         store.music.presentSyncWindow()
-        let model = store.music.syncWindow
+        let model = try #require(store.music.syncWindow)
         let opening = Task {
             await model.load(captureITunes: {
                 Issue.record("선택창이 진행 중인 최신화 대신 Music을 다시 읽었습니다")
@@ -258,7 +258,7 @@ struct InitialITunesCacheLoadingTests {
         #expect(refused == String(ui: "Music 보관함을 새로 읽는 중이니 목록이 최신으로 바뀐 뒤 동기화하세요."))
         #expect(model.source.sourcePlaylists?.first?.name == "최신 목록")
         #expect(model.canSync)
-        store.music.showingSyncWindow = false
+        store.music.syncWindow = nil
         await opening.value
     }
 

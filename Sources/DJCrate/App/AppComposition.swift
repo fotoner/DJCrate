@@ -29,7 +29,7 @@ final class AppComposition {
     let tagInspector: TagInspectorModel
     /// 사이드바 재생 목록 칸 화면 모델(폴더 펼침·이름 바꾸기). 사이드바를 다시 그려도 같은 모델을 쓴다.
     let playlistSidebar: PlaylistSidebarModel
-    /// 목록 아래 작업 막대 화면 모델(단추·막힘 이유·파일 없음 확인). 핵심이 읽은 뒤 파일 확인을 이 모델에 맡긴다.
+    /// 목록 아래 작업 막대 화면 모델(단추·막힘 이유, 파일 없음 확인의 결과·다시 확인)
     let listActionBar: ListActionBarModel
     /// 주 창 화면 모델(주 창이 띄우는 시트와 단추·메뉴 입구). 주 창을 다시 그려도 같은 모델을 쓴다.
     let libraryWindow: LibraryWindowModel

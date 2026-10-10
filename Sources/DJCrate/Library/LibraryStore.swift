@@ -120,8 +120,11 @@ final class LibraryStore {
     private(set) var duplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var displayDuplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var filterCounts: [LibraryFilter: Int] = [:]
-    /// 파일 없음 확인(#126)을 맡은 곳. 목록 아래 막대 화면 모델(`ListActionBarModel`)이 붙인다. 확인 결과·진행 표시는 그 모델이 든다
-    @ObservationIgnored var onCheckMissingFiles: (() -> Void)?
+    /// 마지막 파일 확인 결과(#126). 연결되지 않은 외장 디스크는 목록 아래 막대가 알린다.
+    private(set) var missingFiles = MissingFiles()
+    private(set) var isCheckingFiles = false
+    /// 마지막으로 시작한 파일 확인. 시험은 이것을 기다린다
+    @ObservationIgnored private(set) var missingFileTask: Task<Void, Never>?
     /// 지난 확인에서 없던 경로. 다시 읽은 직후 확인이 끝날 때까지 이것으로 표시해 개수가 0으로 깜빡이지 않게 한다.
     @ObservationIgnored private var missingPathCache: Set<String> = []
     var isLoading: Bool { if case .loading = phase { true } else { false } }
@@ -178,9 +181,6 @@ final class LibraryStore {
     /// 재생 기록 상태와 USB 기록 보존 연결(기능 조각, `HistoryStore`). 조각이 핵심(곡·사이드바·알림·되돌리기)을 붙들어 처음 쓸 때 만든다.
     /// 관찰하지 않는다: 화면은 조각의 값을 읽는다
     @ObservationIgnored private(set) lazy var history = HistoryStore(library: self, archive: useCases.histories)
-    // 다른 작업이 맡은 파일(주 창·목록 메뉴)이 아직 핵심 이름으로 읽는 재생 기록 값. 그 파일을 옮길 때 `history.…`로 바꾸고 지운다
-    var pendingHistories: [ArchivedHistory] { history.pendingHistories }
-    var hasHistoryDrafts: Bool { history.hasHistoryDrafts }
 
     var search = "" { didSet { if search != oldValue { refreshFiltered() } } }
     var sortOrder = [KeyPathComparator(\TrackRow.importedOn, order: .reverse)] {
@@ -446,11 +446,29 @@ final class LibraryStore {
         rowsByID[row.track.id] = row
     }
 
-    /// 음원 파일이 있는지 다시 확인한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때 부른다. 확인은 붙인 막대 화면 모델이 메인 스레드 밖에서 한다
-    func checkMissingFiles() { onCheckMissingFiles?() }
+    /// 음원 파일이 있는지 뒤에서 확인해 행·'파일 없음' 개수에 반영한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때·막대의 다시 확인 단추에서 부른다.
+    /// 확인 결과는 곡 행·배지·필터 수를 바꾸므로 화면 모델이 아니라 핵심이 한다. 큰 라이브러리의 확인(곡마다 파일 시스템 조회)이 메인 스레드를 막지 않게 한다.
+    func checkMissingFiles() {
+        missingFileTask?.cancel()
+        let generation = reads.generation
+        let tracks = rows.map(\.track), useCases = useCases
+        isCheckingFiles = true
+        missingFileTask = Task { [weak self] in
+            let result = await useCases.missingFiles(tracks)
+            guard let self, !Task.isCancelled else { return }
+            // 그사이 다시 읽기 시작했으면 버린다(새로 읽은 뒤 다시 확인한다).
+            guard reads.isCurrent(generation) else {
+                isCheckingFiles = false
+                return
+            }
+            applyMissingFiles(result)
+        }
+    }
 
     /// 파일 확인 결과를 행·'파일 없음' 개수에 넣는다(#126)
-    func applyMissingFiles(_ result: MissingFiles) {
+    private func applyMissingFiles(_ result: MissingFiles) {
+        isCheckingFiles = false
+        missingFiles = result
         // 사본을 고쳐 한 번에 넣는다(곡마다 고치면 관찰 알림이 곡 수만큼 나간다).
         var updated = rows, byID = rowsByID, byUUID = rowsByUUID
         var changed = false

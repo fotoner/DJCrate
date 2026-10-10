@@ -5,7 +5,7 @@ import Observation
 
 /// iTunes 동기화 창의 화면 모델. 띄울 때 Music 조각(`MusicLibraryStore.presentSyncWindow`)이 만들고, 라이브러리 저장소 대신 좁은 포트만 본다.
 @MainActor @Observable
-final class ITunesSyncModel {
+final class ITunesSyncModel: Identifiable {
     /// 동기화 창이 보는 바깥(앱: Music 조각). 부를 때마다 지금 값을 읽는다
     struct Ports {
         /// 지금 목록을 읽은 사본(동기화 대상)

@@ -144,9 +144,9 @@ struct TrackStagingStoreObservationTests {
         let model = ListActionBarModel(store: store)
         let body = { _ = ListActionBar(model: model).body }
         #expect(!observes(body) { model.checkMissingFiles() })
-        await model.missingFileTask?.value
+        await store.missingFileTask?.value
         store.sidebar = .filter(.missingFile)
         #expect(observes(body) { model.checkMissingFiles() })
-        await model.missingFileTask?.value
+        await store.missingFileTask?.value
     }
 }
