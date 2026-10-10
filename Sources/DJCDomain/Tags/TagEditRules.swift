@@ -38,9 +38,15 @@ public enum TagEditRules {
     /// - 키는 고르기에서만 고친다. 붙여넣기·채우기·표 편집이 Camelot 이름이 아닌 값이나 고칠 수 없는 곡의 키를 초안에 넣지 못하게 여기서도 거른다.
     /// - 평점·곡 색도 고르기 값(별 1~5개·rekordbox 색)만 받는다. 고칠 수 없는 곡(추가한 곡·상태 0·256·257 밖의 곡, #65)에는 넣지 않는다.
     /// - 초안의 기준 값으로 되돌리기는 그대로 받는다: 기준이 옛 표기여도 되돌릴 수 있어야 한다.
-    public static func accepted(_ value: String, for key: TagFields.Key, row: TrackRow, base: TagFields, colors: [TrackColor]) -> String? {
+    /// - Parameter base: 초안의 기준 값(그 칸)
+    public static func accepted(_ value: String, for key: TagFields.Key, row: TrackRow, base: String, colors: [TrackColor]) -> String? {
         guard !row.track.isStreaming, !row.isUsb else { return nil }
-        guard TagChoice.keys.contains(key), value != base[key] else { return value }
+        // 고르기 칸(`TagChoice.keys`)만 거른다. 곡 수백 개를 한 번에 고치므로 집합 대신 갈래로 가른다.
+        switch key {
+        case .musicalKey, .rating, .color: break
+        default: return value
+        }
+        guard value != base else { return value }
         guard TrackListTagEditing.unavailableReason(row, key: key) == nil else { return nil }
         return TagChoice.accepted(key, value, colors: colors)
     }

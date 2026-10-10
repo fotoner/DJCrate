@@ -24,8 +24,8 @@ struct TagEditRulesTests {
     @Test func 스트리밍_곡과_USB_곡은_어떤_칸도_받지_않는다() {
         for subject in [Self.row(streaming: true), Self.row(usb: true)] {
             for key in TagFields.Key.allCases {
-                #expect(TagEditRules.accepted("값", for: key, row: subject, base: subject.tagFields, colors: colors) == nil)
-                #expect(TagEditRules.accepted(subject.tagFields[key], for: key, row: subject, base: subject.tagFields, colors: colors) == nil,
+                #expect(TagEditRules.accepted("값", for: key, row: subject, base: subject.tagFields[key], colors: colors) == nil)
+                #expect(TagEditRules.accepted(subject.tagFields[key], for: key, row: subject, base: subject.tagFields[key], colors: colors) == nil,
                         "기준 값으로 되돌리기도 받지 않는다")
             }
         }
@@ -33,36 +33,36 @@ struct TagEditRulesTests {
 
     @Test func 글자_칸은_값을_그대로_받는다() {
         let subject = Self.row()
-        #expect(TagEditRules.accepted(" 새 제목 ", for: .title, row: subject, base: subject.tagFields, colors: colors) == " 새 제목 ")
-        #expect(TagEditRules.accepted("", for: .comment, row: subject, base: subject.tagFields, colors: colors) == "")
+        #expect(TagEditRules.accepted(" 새 제목 ", for: .title, row: subject, base: subject.tagFields[.title], colors: colors) == " 새 제목 ")
+        #expect(TagEditRules.accepted("", for: .comment, row: subject, base: subject.tagFields[.comment], colors: colors) == "")
     }
 
     @Test func 키는_Camelot_이름과_빈칸만_받고_기준_값으로_되돌리기는_옛_표기여도_받는다() {
         let subject = Self.row(key: "Em")
         let base = subject.tagFields
-        #expect(TagEditRules.accepted(" 12b ", for: .musicalKey, row: subject, base: base, colors: colors) == "12B")
-        #expect(TagEditRules.accepted("", for: .musicalKey, row: subject, base: base, colors: colors) == "")
-        #expect(TagEditRules.accepted("Am", for: .musicalKey, row: subject, base: base, colors: colors) == nil)
-        #expect(TagEditRules.accepted("Em", for: .musicalKey, row: subject, base: base, colors: colors) == "Em")
+        #expect(TagEditRules.accepted(" 12b ", for: .musicalKey, row: subject, base: base[.musicalKey], colors: colors) == "12B")
+        #expect(TagEditRules.accepted("", for: .musicalKey, row: subject, base: base[.musicalKey], colors: colors) == "")
+        #expect(TagEditRules.accepted("Am", for: .musicalKey, row: subject, base: base[.musicalKey], colors: colors) == nil)
+        #expect(TagEditRules.accepted("Em", for: .musicalKey, row: subject, base: base[.musicalKey], colors: colors) == "Em")
         // 추가한 곡도 키는 고를 수 있다(넣을 때 함께 쓴다, #5)
         let staged = Self.row(staged: true)
-        #expect(TagEditRules.accepted("8A", for: .musicalKey, row: staged, base: staged.tagFields, colors: colors) == "8A")
+        #expect(TagEditRules.accepted("8A", for: .musicalKey, row: staged, base: staged.tagFields[.musicalKey], colors: colors) == "8A")
     }
 
     @Test func 평점과_곡_색은_고르기_값만_받고_고칠_수_없는_곡에는_넣지_않는다() {
         let subject = Self.row()
         let base = subject.tagFields
-        #expect(TagEditRules.accepted("★★★", for: .rating, row: subject, base: base, colors: colors) == "3")
-        #expect(TagEditRules.accepted("6", for: .rating, row: subject, base: base, colors: colors) == nil)
-        #expect(TagEditRules.accepted("0", for: .rating, row: subject, base: base, colors: colors) == "")
-        let named = TagEditRules.accepted(colors[0].name, for: .color, row: subject, base: base, colors: colors)
+        #expect(TagEditRules.accepted("★★★", for: .rating, row: subject, base: base[.rating], colors: colors) == "3")
+        #expect(TagEditRules.accepted("6", for: .rating, row: subject, base: base[.rating], colors: colors) == nil)
+        #expect(TagEditRules.accepted("0", for: .rating, row: subject, base: base[.rating], colors: colors) == "")
+        let named = TagEditRules.accepted(colors[0].name, for: .color, row: subject, base: base[.color], colors: colors)
         #expect(named == colors[0].id)
-        #expect(TagEditRules.accepted("보라보라", for: .color, row: subject, base: base, colors: colors) == nil)
+        #expect(TagEditRules.accepted("보라보라", for: .color, row: subject, base: base[.color], colors: colors) == nil)
         // 추가한 곡과 쓰기를 확인하지 않은 상태의 곡(#65)
         for blocked in [Self.row(staged: true), Self.row(state: 258)] {
-            #expect(TagEditRules.accepted("3", for: .rating, row: blocked, base: blocked.tagFields, colors: colors) == nil)
-            #expect(TagEditRules.accepted(colors[0].id, for: .color, row: blocked, base: blocked.tagFields, colors: colors) == nil)
-            #expect(TagEditRules.accepted(blocked.tagFields.rating, for: .rating, row: blocked, base: blocked.tagFields, colors: colors)
+            #expect(TagEditRules.accepted("3", for: .rating, row: blocked, base: blocked.tagFields[.rating], colors: colors) == nil)
+            #expect(TagEditRules.accepted(colors[0].id, for: .color, row: blocked, base: blocked.tagFields[.color], colors: colors) == nil)
+            #expect(TagEditRules.accepted(blocked.tagFields.rating, for: .rating, row: blocked, base: blocked.tagFields[.rating], colors: colors)
                     == blocked.tagFields.rating, "기준 값으로 되돌리기는 받는다")
         }
     }

@@ -24,10 +24,10 @@ struct EditTagsTests {
 
     @Test func 여러_칸을_한_단위로_바꾸고_스트리밍과_USB_곡은_거른다() throws {
         let local = Self.row("a"), streaming = Self.row("s", streaming: true), usb = Self.row("u", usb: true)
-        let change = try #require(edit.edit([EditTags.Change(row: local, key: .title, value: "새 제목"),
-                                             EditTags.Change(row: local, key: .artist, value: "새 가수"),
-                                             EditTags.Change(row: streaming, key: .title, value: "x"),
-                                             EditTags.Change(row: usb, key: .title, value: "x")],
+        let change = try #require(edit.edit([(row: local, key: .title, value: "새 제목"),
+                                             (row: local, key: .artist, value: "새 가수"),
+                                             (row: streaming, key: .title, value: "x"),
+                                             (row: usb, key: .title, value: "x")],
                                             drafts: [:], colors: colors))
         #expect(Set(change.before.keys) == ["a"] && Set(change.after.keys) == ["a"])
         #expect(change.before["a"] == TagDraft(trackUUID: "a", base: local.tagFields))
@@ -39,8 +39,8 @@ struct EditTagsTests {
         let local = Self.row("a")
         var draft = TagDraft(trackUUID: "a", base: local.tagFields)
         draft.fields.comment = "있던 코멘트"
-        let change = try #require(edit.edit([EditTags.Change(row: local, key: .title, value: "첫 값"),
-                                             EditTags.Change(row: local, key: .title, value: "끝 값")],
+        let change = try #require(edit.edit([(row: local, key: .title, value: "첫 값"),
+                                             (row: local, key: .title, value: "끝 값")],
                                             drafts: ["a": draft], colors: colors))
         #expect(change.before["a"] == draft)
         #expect(change.after["a"]?.fields.title == "끝 값" && change.after["a"]?.fields.comment == "있던 코멘트")
@@ -48,24 +48,24 @@ struct EditTagsTests {
 
     @Test func 바뀐_칸이_없으면_되돌리기_단위가_없다() {
         let local = Self.row("a", title: "곡")
-        #expect(edit.edit([EditTags.Change(row: local, key: .title, value: "곡")], drafts: [:], colors: colors) == nil)
-        #expect(edit.edit([EditTags.Change(row: Self.row("s", streaming: true), key: .title, value: "x")], drafts: [:], colors: colors) == nil)
+        #expect(edit.edit([(row: local, key: .title, value: "곡")], drafts: [:], colors: colors) == nil)
+        #expect(edit.edit([(row: Self.row("s", streaming: true), key: .title, value: "x")], drafts: [:], colors: colors) == nil)
         #expect(edit.edit([], drafts: [:], colors: colors) == nil)
     }
 
     @Test func 키_평점_곡_색은_고르기_값만_받는다() throws {
         let local = Self.row("a", key: "Em"), staged = Self.row("b", staged: true)
-        let change = try #require(edit.edit([EditTags.Change(row: local, key: .musicalKey, value: " 12b "),
-                                             EditTags.Change(row: local, key: .rating, value: "★★★"),
-                                             EditTags.Change(row: local, key: .color, value: colors[1].name),
-                                             EditTags.Change(row: staged, key: .musicalKey, value: "Am"),
-                                             EditTags.Change(row: staged, key: .rating, value: "3")],
+        let change = try #require(edit.edit([(row: local, key: .musicalKey, value: " 12b "),
+                                             (row: local, key: .rating, value: "★★★"),
+                                             (row: local, key: .color, value: colors[1].name),
+                                             (row: staged, key: .musicalKey, value: "Am"),
+                                             (row: staged, key: .rating, value: "3")],
                                             drafts: [:], colors: colors))
         #expect(change.after["a"]?.fields.musicalKey == "12B" && change.after["a"]?.fields.rating == "3")
         #expect(change.after["a"]?.fields.color == colors[1].id)
         #expect(change.after["b"] == nil, "Camelot 이름이 아닌 키와 추가한 곡의 평점은 받지 않는다")
         // 기준 값으로 되돌리기는 옛 표기여도 받는다
-        let reverted = try #require(edit.edit([EditTags.Change(row: local, key: .musicalKey, value: "Em")],
+        let reverted = try #require(edit.edit([(row: local, key: .musicalKey, value: "Em")],
                                               drafts: change.after, colors: colors))
         #expect(reverted.after["a"]?.fields.musicalKey == "Em")
     }
@@ -106,9 +106,9 @@ struct EditTagsTests {
         let local = Self.row("a")
         var draft = TagDraft(trackUUID: "a", base: local.tagFields)
         draft.fields.title = "새 제목"
-        edit.save(["a": draft])
+        edit.save([draft])
         #expect(memory.tag("a") == draft)
-        edit.save(["a": TagDraft(trackUUID: "a", base: local.tagFields)])
+        edit.save([TagDraft(trackUUID: "a", base: local.tagFields)])
         #expect(memory.tag("a") == nil)
     }
 }

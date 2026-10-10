@@ -11,18 +11,8 @@ public struct EditTags: Sendable {
         self.drafts = drafts
     }
 
-    /// 칸 하나 바꾸기
-    public struct Change: Sendable {
-        public var row: TrackRow
-        public var key: TagFields.Key
-        public var value: String
-
-        public init(row: TrackRow, key: TagFields.Key, value: String) {
-            self.row = row
-            self.key = key
-            self.value = value
-        }
-    }
+    /// 칸 하나 바꾸기(곡·칸·값). 화면이 만든 배열을 옮겨 담지 않고 그대로 받는다(곡 수백 개를 한 번에 고친다).
+    public typealias Change = (row: TrackRow, key: TagFields.Key, value: String)
 
     /// 여러 칸을 한 번에 바꾼 앞뒤 초안(되돌리기 한 단위). 받지 않는 칸은 건너뛴다. 바뀐 칸이 없으면 nil.
     /// 같은 곡을 여러 번 바꾸면 앞은 처음 초안, 뒤는 모든 칸을 바꾼 초안이다.
@@ -32,7 +22,7 @@ public struct EditTags: Sendable {
         for change in changes {
             let uuid = change.row.track.uuid
             let original = TagEditRules.draft(for: change.row, in: current)
-            guard let value = TagEditRules.accepted(change.value, for: change.key, row: change.row, base: original.base,
+            guard let value = TagEditRules.accepted(change.value, for: change.key, row: change.row, base: original.base[change.key],
                                                     colors: colors) else { continue }
             before[uuid] = before[uuid] ?? original
             var edited = after[uuid] ?? original
@@ -46,7 +36,7 @@ public struct EditTags: Sendable {
     public func revert(_ rows: [TrackRow], drafts current: [String: TagDraft], colors: [TrackColor]) -> DraftChange<[String: TagDraft]>? {
         edit(rows.flatMap { row in
             let base = TagEditRules.draft(for: row, in: current).base
-            return TagFields.Key.allCases.map { Change(row: row, key: $0, value: base[$0]) }
+            return TagFields.Key.allCases.map { (row: row, key: $0, value: base[$0]) }
         }, drafts: current, colors: colors)
     }
 
@@ -68,7 +58,7 @@ public struct EditTags: Sendable {
     }
 
     /// 바꾼 초안을 저장한다. 고친 칸이 없는 초안은 저장소가 지운다.
-    @MainActor public func save(_ changed: [String: TagDraft]) {
-        drafts.saveTags(Array(changed.values))
+    @MainActor public func save(_ changed: [TagDraft]) {
+        drafts.saveTags(changed)
     }
 }

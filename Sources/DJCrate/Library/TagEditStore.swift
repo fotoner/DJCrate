@@ -97,8 +97,7 @@ final class TagEditStore {
     /// 여러 셀을 한 번에 바꾼다(태그 시트 붙여넣기·채우기). 되돌리기 한 단위가 된다.
     func applyTagEdits(_ changes: [(row: TrackRow, key: TagFields.Key, value: String)]) {
         guard !library.isWritingRekordbox else { return }
-        commit(edit.edit(changes.map { EditTags.Change(row: $0.row, key: $0.key, value: $0.value) },
-                         drafts: library.tagDrafts, colors: library.trackColors))
+        commit(edit.edit(changes, drafts: library.tagDrafts, colors: library.trackColors))
     }
 
     private func commit(_ change: DraftChange<[String: TagDraft]>?) {
@@ -132,8 +131,9 @@ final class TagEditStore {
     private func show(_ drafts: [String: TagDraft]) {
         library.tagDrafts = TagEditRules.applying(drafts, to: library.tagDrafts)
         for uuid in drafts.keys { library.updateEdited(uuid) }
-        library.rememberTagSaves(Array(drafts.values))
-        edit.save(drafts)
+        let changed = Array(drafts.values)
+        library.rememberTagSaves(changed)
+        edit.save(changed)
         library.tagRevision += 1
     }
 }
