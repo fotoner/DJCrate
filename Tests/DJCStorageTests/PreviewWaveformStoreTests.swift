@@ -1,4 +1,5 @@
 import DJCDomain
+import DJCTestKit
 import Foundation
 import RekordboxFixtures
 import Synchronization
@@ -7,6 +8,40 @@ import RekordboxKit
 @testable import DJCStorage
 
 struct PreviewWaveformStoreTests {
+    /// 시작 때 미리 데우기와 목록 칸이 곡마다 파일 상태와 분석 파일을 읽는다. 코어가 적으면 협력 풀이 바닥나므로 풀 밖에서 읽는다
+    @Test func 파일_읽기는_협력_풀_밖에서_한다() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let first = root.appending(path: "first.DAT"), second = root.appending(path: "second.DAT")
+        try AnlzBuilder.file([AnlzBuilder.pwav([5])]).write(to: first)
+        try AnlzBuilder.file([AnlzBuilder.pwav([9])]).write(to: second)
+        let store = PreviewWaveformStore(file: root.appending(path: "previews.plist"),
+                                         read: { url in expectBlockingOffPool(); return AnlzPreviewWaveform.readAnalysis(at: url) },
+                                         stat: { url in expectBlockingOffPool(); return PreviewWaveformStore.statFile(url) })
+        let warmed = PreviewWaveformStore.Source(uuid: "first", url: first)
+        await store.warm([warmed])
+        _ = await store.revision(for: warmed)
+        #expect(await store.waveform(for: warmed)?.heights == [5])
+        #expect(await store.waveform(for: .init(uuid: "second", url: second))?.heights == [9])
+    }
+
+    /// 풀 밖에서 돌아도 새 로드가 미리 데우기를 취소하면 다음 곡을 읽지 않는다
+    @Test func 취소된_미리_데우기는_다음_곡을_읽지_않는다() async throws {
+        let reads = Mutex(0), release = DispatchSemaphore(value: 0)
+        let store = PreviewWaveformStore(file: nil, read: { _ in
+            if reads.withLock({ $0 += 1; return $0 }) == 1 { release.waitOffPool() }
+            return nil
+        }, stat: { _ in (1, Date(timeIntervalSince1970: 0)) })
+        let sources = (0..<3).map { PreviewWaveformStore.Source(uuid: "\($0)", url: URL(filePath: "/missing/\($0).DAT")) }
+        let task = Task { await store.warm(sources) }
+        while reads.withLock({ $0 }) == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        task.cancel()
+        release.signal()
+        await task.value
+        #expect(reads.withLock { $0 } == 1)
+    }
+
     @Test func persistsReducedSourcesAndReusesThemAfterRestart() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
