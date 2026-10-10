@@ -29,7 +29,7 @@ struct ITunesMissingCacheReloadTests {
 
         await store.load(snapshot: previous, refreshITunes: true,
                          captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
-        #expect(store.iTunesSnapshot.status == .unavailable)
+        #expect(store.music.snapshot.status == .unavailable)
         #expect(ITunesLibrarySnapshot.load(for: previous).status == .notCaptured)
 
         await store.takeSnapshot(force: true, quiet: true, refreshITunes: false, snapshotDirectory: directory,
@@ -42,8 +42,8 @@ struct ITunesMissingCacheReloadTests {
                                  })
 
         #expect(!store.isLoading)
-        #expect(store.iTunesSnapshot.status == .unavailable)
-        #expect(store.iTunesSnapshot.status.message?.contains("Music 접근 권한") == true)
+        #expect(store.music.snapshot.status == .unavailable)
+        #expect(store.music.snapshot.status.message?.contains("Music 접근 권한") == true)
         #expect(ITunesLibrarySnapshot.load(for: try #require(store.snapshotURL)).status == .notCaptured)
     }
 
@@ -135,7 +135,7 @@ struct ITunesMissingCacheReloadTests {
         try fixture.add(TrackSpec(id: "1"))
         let store = quietStore(fixture)
         await store.load(snapshot: fixture.database)
-        #expect(store.iTunesLibrary.status == .notCaptured)
+        #expect(store.music.library.status == .notCaptured)
         let resume = DispatchSemaphore(value: 0), started = Mutex(false)
         let loading = Task {
             await store.load(snapshot: fixture.database, quiet: true, refreshITunes: true,
@@ -146,11 +146,11 @@ struct ITunesMissingCacheReloadTests {
                              })
         }
         while !started.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(store.iTunesLibrary.status == .loading)
-        #expect(store.iTunesLibrary.status.message == ITunesLibrarySnapshot.Status.loading.message)
+        #expect(store.music.library.status == .loading)
+        #expect(store.music.library.status.message == ITunesLibrarySnapshot.Status.loading.message)
         resume.signal()
         await loading.value
-        #expect(store.iTunesLibrary.status == .unavailable, "채택한 결과(조회 실패)로 바뀐다")
+        #expect(store.music.library.status == .unavailable, "채택한 결과(조회 실패)로 바뀐다")
     }
 
     @Test func 읽기가_결과를_채택하지_못하고_끝나면_읽는_중을_되돌린다() async throws {
@@ -158,7 +158,7 @@ struct ITunesMissingCacheReloadTests {
         try fixture.add(TrackSpec(id: "1"))
         let store = quietStore(fixture)
         await store.load(snapshot: fixture.database)
-        #expect(store.iTunesLibrary.status == .notCaptured)
+        #expect(store.music.library.status == .notCaptured)
         // 읽지 못한 사본: 캡처에 이르지 못해도 읽는 중이 남지 않는다
         await store.load(snapshot: fixture.root.appending(path: "없는.db"), quiet: true, refreshITunes: true,
                          captureITunes: {
@@ -166,6 +166,6 @@ struct ITunesMissingCacheReloadTests {
                              return ITunesLibrarySnapshot()
                          })
         #expect(store.lastError != nil)
-        #expect(store.iTunesLibrary.status == .notCaptured)
+        #expect(store.music.library.status == .notCaptured)
     }
 }

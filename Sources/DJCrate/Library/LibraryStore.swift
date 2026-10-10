@@ -110,7 +110,9 @@ final class LibraryStore {
         self.feedback = feedback
         self.launch = launch
         readFlow = LibraryReadFlow(loader: useCases.load, location: location)
+        music = MusicLibraryStore(readFlow: readFlow)
         readFlow.screen = readScreen
+        music.host = musicHost
         refreshWriteBackups()
         loadRecentPlaylists()
         loadPlaylistImports()
@@ -153,14 +155,8 @@ final class LibraryStore {
     }
     /// 사이드바 재생 목록 트리(rekordbox 상태에 재생 목록 초안을 얹은 모양, LibraryStore+Playlists)
     var playlistTree: [PlaylistOutlineNode] = []
-    var iTunesLibrary = SyncedITunesLibrary()
-    var iTunesSnapshot = ITunesLibrarySnapshot(status: .notCaptured) {
-        didSet { readFlow.musicChanged() }
-    }
-    var showingITunesSync = false
-    var iTunesSync = ITunesSyncModel()
-    /// iTunes 동기화 선택을 rekordbox에 쓴다(반영 세션 `syncITunes`, 조립 지점이 붙인다. 없으면 쓰지 않는다)
-    @ObservationIgnored var syncITunesWrite: ((ITunesSyncWrite) async throws -> (target: URL, syncData: Data))?
+    /// Music(iTunes) 표시 상태와 동기화 창(기능 조각, `MusicLibraryStore`). `let`이라 관찰하지 않는다: 화면은 조각의 값을 읽는다
+    let music: MusicLibraryStore
     var isITunesSelection: Bool { if case .itunesPlaylist = sidebar { true } else { false } }
     /// USB 목록을 보는 중(읽기 전용: 편집·쓰기·끌기·덱 불러오기를 막는다)
     var isUsbSelection: Bool { if case .usb = sidebar { true } else { false } }
@@ -438,8 +434,6 @@ final class LibraryStore {
     @ObservationIgnored private(set) var usbSnapshotStamp: UsbSyncSnapshotProvenance?
     @ObservationIgnored private(set) var usbSnapshotEpoch: Int?
 
-    /// 뒤에서 도는 Music 최신화(`readFlow`가 든다). 쓰기 뒤 다시 읽기가 버리면 새 사본이 같은 조회를 이어받는다.
-    var iTunesRefresh: LibraryReadFlow.MusicRefresh? { readFlow.musicRefresh }
     private(set) var lastError: String? {
         didSet { lastErrorDismissed = false }
     }

@@ -68,8 +68,8 @@ extension LibraryStore {
         case let .failed(message): .failed(message)
         }
         return LibraryReadState(phase: readPhase, snapshot: snapshotURL, revision: previewRevision, hasRows: !rows.isEmpty,
-                                hasError: lastError != nil, isWriting: isWritingRekordbox, music: iTunesSnapshot,
-                                musicStatus: iTunesLibrary.status)
+                                hasError: lastError != nil, isWriting: isWritingRekordbox, music: music.snapshot,
+                                musicStatus: music.library.status)
     }
 
     private func applyRead(_ change: LibraryReadChange) {
@@ -86,11 +86,11 @@ extension LibraryStore {
         case let .error(message):
             reportLibraryError(message)
         case let .musicStatus(status):
-            iTunesLibrary.status = status
+            music.library.status = status
         case let .music(result):
-            iTunesSnapshot = result
-            iTunesLibrary = SyncedITunesLibrary(snapshot: result, tracks: rows.map(\.track))
-            if case let .itunesPlaylist(id) = sidebar, iTunesLibrary.index[id] == nil { sidebar = .filter(.all) }
+            music.snapshot = result
+            music.library = SyncedITunesLibrary(snapshot: result, tracks: rows.map(\.track))
+            if case let .itunesPlaylist(id) = sidebar, music.library.index[id] == nil { sidebar = .filter(.all) }
             refreshBase()
             pruneMissingSelection()
         case let .damagedDrafts(moved):
@@ -144,9 +144,9 @@ extension LibraryStore {
         smartPlaylistSources = loaded.smartPlaylists
         // 저장하지 못한 재생 목록 초안은 디스크의 옛 초안으로 덮지 않는다(#174).
         if !playlistDraftUnsaved { playlistDraft = loaded.playlistDraft }
-        iTunesLibrary = loaded.iTunesLibrary
-        iTunesSnapshot = loaded.iTunesSnapshot
-        if case let .itunesPlaylist(id) = sidebar, iTunesLibrary.index[id] == nil { sidebar = .filter(.all) }
+        music.library = loaded.iTunesLibrary
+        music.snapshot = loaded.iTunesSnapshot
+        if case let .itunesPlaylist(id) = sidebar, music.library.index[id] == nil { sidebar = .filter(.all) }
         mergeDrafts = reconciled.mergeDrafts
         refreshPlaylists(refreshList: false)
         applyMovedDrafts(opened.moved, previousTags: previousTags, previousPlaylist: previousPlaylist, reporting: false)

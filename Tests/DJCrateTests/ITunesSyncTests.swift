@@ -68,21 +68,42 @@ struct ITunesSyncTests {
         await store.load(snapshot: fixture.database)
         store.sidebar = .itunesPlaylist("itunes:B")
         let before = try Data(contentsOf: fixture.database)
-        try await store.syncITunesPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: fixture.database)
-        #expect(store.iTunesLibrary.index["itunes:A"] != nil)
-        #expect(store.iTunesLibrary.index["itunes:B"] == nil)
+        try await store.music.syncPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: fixture.database)
+        #expect(store.music.library.index["itunes:A"] != nil)
+        #expect(store.music.library.index["itunes:B"] == nil)
         #expect(store.sidebar == .filter(.all))
         #expect(try RekordboxITunesSelection.parse(Data(contentsOf: syncURL)).selectedIDs == ["F", "A"])
         await store.load(snapshot: fixture.database)
-        #expect(store.iTunesLibrary.index["itunes:A"] != nil)
-        #expect(store.iTunesLibrary.index["itunes:B"] == nil)
+        #expect(store.music.library.index["itunes:A"] != nil)
+        #expect(store.music.library.index["itunes:B"] == nil)
         #expect(try Data(contentsOf: fixture.database) == before)
         #expect(store.playlistDraft.isEmpty)
         // rekordbox에서 바꾼 선택이 DJCrate의 옛 로컬 선택에 가려지면 안 된다.
         try base.write(to: syncURL)
         await store.load(snapshot: fixture.database)
-        #expect(store.iTunesLibrary.index["itunes:A"] == nil)
-        #expect(store.iTunesLibrary.index["itunes:B"] != nil)
+        #expect(store.music.library.index["itunes:A"] == nil)
+        #expect(store.music.library.index["itunes:B"] != nil)
+    }
+
+    /// 동기화 창 화면 모델의 포트가 Music 조각의 동기화(반영 세션 쓰기)에 이어지는지(#253). 창을 띄워 목록을 연 뒤 [동기화] 단추와 같은 길로 쓴다
+    @MainActor @Test func 동기화_창의_동기화는_반영_세션으로_쓰고_사이드바_목록에_넣는다() async throws {
+        let fixture = try RekordboxFixture(), snapshot = try snapshot()
+        try snapshot.save(for: fixture.database)
+        let syncURL = fixture.root.appending(path: "playlists3.sync")
+        try base.write(to: syncURL)
+        let store = store(fixture)
+        await store.load(snapshot: fixture.database)
+        store.music.presentSyncWindow()
+        let window = store.music.syncWindow
+        await window.load()
+        #expect(window.canSync && window.database == fixture.database, "\(window.error ?? "")")
+        window.selection = ITunesSyncSelection(selectedIDs: ["F"])
+        var dismissed = false
+        window.startSync { dismissed = true }
+        await window.task?.value
+        #expect(dismissed && window.error == nil, "\(window.error ?? "")")
+        #expect(try RekordboxITunesSelection.parse(Data(contentsOf: syncURL)).selectedIDs == ["F", "A"])
+        #expect(store.music.library.index["itunes:A"] != nil && store.music.library.index["itunes:B"] == nil)
     }
 
     /// iTunes 동기화는 다른 쓰기만 막고 덱은 잠그지 않는다. 덱 초안을 건드리지 않으므로
@@ -103,7 +124,7 @@ struct ITunesSyncTests {
         // 앱과 같은 연결(AppComposition.connect)
         store.onWriteLock = { [weak deck = h.deck] locked in deck?.isWriteLocked = locked }
         let writes = store.rekordboxWriteCount, played = h.audio.log.count
-        try await store.syncITunesPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: fixture.database)
+        try await store.music.syncPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: fixture.database)
         #expect(store.rekordboxWriteCount == writes + 1, "쓰는 동안 다른 쓰기를 막는다")
         #expect(!store.isWritingRekordbox && !h.deck.isWriteLocked)
         #expect(undo.canUndo && h.deck.isPlaying)
@@ -122,11 +143,11 @@ struct ITunesSyncTests {
         let store = store(root: target.root, opened: copy.database)
         await store.load(snapshot: copy.database)
         let copyBefore = try Data(contentsOf: copy.database)
-        try await store.syncITunesPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: copy.database)
+        try await store.music.syncPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: copy.database)
         #expect(try RekordboxITunesSelection.parse(Data(contentsOf: targetSync)).selectedIDs == ["F", "A"])
         #expect(try Data(contentsOf: copySync) == base && Data(contentsOf: copy.database) == copyBefore)
         // 연 사본에는 보이지 않으므로 화면 목록과 사본 옆 목록 사본은 그대로 두고 그 까닭을 알린다
-        #expect(store.iTunesLibrary.index["itunes:B"] != nil && store.iTunesLibrary.index["itunes:A"] == nil)
+        #expect(store.music.library.index["itunes:B"] != nil && store.music.library.index["itunes:A"] == nil)
         #expect(ITunesLibrarySnapshot.load(for: copy.database).selectedIDs == snapshot.selectedIDs)
         #expect(store.toast?.kind == .warning && store.toast?.detail?.contains("--db") == true)
         // 최근 쓰기 복원(`startRestoreLatest`)과 같은 고르기: 이 저장소의 백업 폴더에서 가장 최근 쓰기를 세션의 대상으로 되돌린다
@@ -148,12 +169,12 @@ struct ITunesSyncTests {
         }
         let store = store(root: target.root, opened: copy.database)
         await store.load(snapshot: copy.database)
-        try await store.syncITunesPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: copy.database)
+        try await store.music.syncPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: copy.database)
         let written = try Data(contentsOf: targetSync)
-        await store.refreshITunesPlaylists()
-        #expect(store.iTunesSnapshot.syncData == base)
+        await store.music.refreshPlaylists()
+        #expect(store.music.snapshot.syncData == base)
         let error = await #expect(throws: DJCError.self) {
-            try await store.syncITunesPlaylists(ITunesSyncSelection(selectedIDs: ["B"]), source: snapshot, database: copy.database)
+            try await store.music.syncPlaylists(ITunesSyncSelection(selectedIDs: ["B"]), source: snapshot, database: copy.database)
         }
         #expect(error?.description.contains("--db 없이 다시 열어") == true, "\(String(describing: error))")
         #expect(try Data(contentsOf: targetSync) == written)
@@ -170,15 +191,15 @@ struct ITunesSyncTests {
         try (base + Data("\n".utf8)).write(to: syncURL)
         let writes = store.rekordboxWriteCount
         await #expect(throws: (any Error).self) {
-            try await store.syncITunesPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: folder.database)
+            try await store.music.syncPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: folder.database)
         }
-        #expect(store.iTunesLibrary.index["itunes:B"] != nil)
+        #expect(store.music.library.index["itunes:B"] != nil)
         // 잠근 뒤 쓰기에서 실패해도 잠금이 풀린다(defer)
         #expect(store.rekordboxWriteCount == writes + 1 && !store.isWritingRekordbox)
         await #expect(throws: (any Error).self) {
-            try await store.syncITunesPlaylists(ITunesSyncSelection(), source: snapshot, database: folder.url.appending(path: "other.db"))
+            try await store.music.syncPlaylists(ITunesSyncSelection(), source: snapshot, database: folder.url.appending(path: "other.db"))
         }
-        #expect(store.iTunesLibrary.index["itunes:B"] != nil)
+        #expect(store.music.library.index["itunes:B"] != nil)
         #expect(RekordboxWriter.backups(in: folder.backups).isEmpty)
     }
 }

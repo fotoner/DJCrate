@@ -20,11 +20,11 @@ extension LibraryStore: UsbWriteHost {
               database == snapshot.database, snapshotURL == snapshot.provenance.sourceURL,
               snapshotReadEpoch == context.readEpoch, snapshotForUsbSync == snapshot.provenance,
               case .loaded = phase, lastError == nil,
-              currentITunesRefresh(snapshot: snapshot.provenance.sourceURL, revision: context.catalogRevision) == nil else { return false }
+              music.currentRefresh(snapshot: snapshot.provenance.sourceURL, revision: context.catalogRevision) == nil else { return false }
         return !isLoading && !isWritingRekordbox && writeLockPolicy.allowsLibraryInteraction
             && shareRoot == share
             && previewRevision == context.catalogRevision
-            && UsbSyncSource.make(rekordbox: rekordboxPlaylists, iTunes: iTunesLibrary) == context.source
+            && UsbSyncSource.make(rekordbox: rekordboxPlaylists, iTunes: music.library) == context.source
     }
 }
 

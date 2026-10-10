@@ -167,7 +167,7 @@ final class UsbExportSheetModel {
 
     convenience init(store: LibraryStore, usb: UsbStore, request: UsbExportSheetRequest) {
         let ports = Ports(snapshot: { store.snapshotURL }, share: { store.shareRoot }, playlists: { store.rekordboxPlaylists },
-                          syncSource: { UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.iTunesLibrary) },
+                          syncSource: { UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.music.library) },
                           catalogRevision: { store.previewRevision }, readEpoch: { store.snapshotReadEpoch },
                           sourceIsCurrent: { store.usbSyncSourceIsCurrent($0, database: $1, share: $2) },
                           coordinator: { store.usbCoordinator })

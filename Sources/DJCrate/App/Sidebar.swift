@@ -391,7 +391,7 @@ struct ListActionBar: View {
             bar {
                 Label(.ui("목록 구성과 순서는 Music에서 바꿉니다 · 큐·태그는 여기서 편집할 수 있습니다"), systemImage: "lock")
                     .font(.caption).foregroundStyle(.secondary)
-                if let node = store.iTunesLibrary.index[id], node.unavailableTrackCount > 0 {
+                if let node = store.music.library.index[id], node.unavailableTrackCount > 0 {
                     Text(.ui("연결하지 못한 \(node.unavailableTrackCount)곡은 rekordbox 컬렉션 등록과 파일 위치를 확인하세요"))
                         .font(.caption).foregroundStyle(UIColors.warning.color)
                 }

@@ -16,9 +16,6 @@ extension LibraryStore {
     func startRefreshIfRekordboxChanged() -> Task<Void, Never> { Task { await refreshIfRekordboxChanged() } }
 
     @discardableResult
-    func startRefreshITunesPlaylists() -> Task<Void, Never> { Task { await refreshITunesPlaylists() } }
-
-    @discardableResult
     func startAddingFiles(_ urls: [URL], toPlaylist playlistID: String) -> Task<Void, Never> {
         Task { await addFiles(urls, toPlaylist: playlistID) }
     }

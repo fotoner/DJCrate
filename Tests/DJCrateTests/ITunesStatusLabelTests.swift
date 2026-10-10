@@ -24,12 +24,12 @@ struct ITunesStatusLabelTests {
     }
 
     @Test func 아직_읽기_전에는_미캡처가_아니라_진행_안내를_보인다() throws {
-        #expect(store(root: try TemporaryFolder().url).iTunesLibrary.status == .loading)
+        #expect(store(root: try TemporaryFolder().url).music.library.status == .loading)
         #expect(SyncedITunesLibrary().status == .loading)
     }
 
     @Test func 동기화_창은_목록을_읽는_동안_미캡처로_안내하지_않는다() {
-        #expect(ITunesSyncModel().source.status == .loading)
+        #expect(ITunesSyncModel(ports: .closed).source.status == .loading)
     }
 
     @Test func 읽기가_끝난_명시적_사본은_미캡처_안내를_보인다() async throws {
@@ -38,7 +38,7 @@ struct ITunesStatusLabelTests {
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
         if case .loaded = store.phase {} else { Issue.record("읽기가 끝나지 않았습니다") }
-        #expect(store.iTunesLibrary.status == .notCaptured)
+        #expect(store.music.library.status == .notCaptured)
     }
 
     @Test(arguments: [false, true])
@@ -47,26 +47,26 @@ struct ITunesStatusLabelTests {
         try fixture.add(TrackSpec())
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
-        #expect(store.iTunesLibrary.status == .notCaptured)
+        #expect(store.music.library.status == .notCaptured)
 
         let gate = DispatchSemaphore(value: 0)
         let (started, signal) = AsyncStream<Void>.makeStream()
-        let task = try #require(store.startSimulatedITunesRefresh(quiet: true) {
+        let task = try #require(store.music.startSimulatedRefresh(quiet: true) {
             signal.yield(())
             gate.waitOffPool()
             return ITunesLibrarySnapshot(status: .unavailable)
         })
         for await _ in started { break }
-        #expect(store.iTunesLibrary.status == .loading, "Music을 읽는 중인데 미캡처로 안내했습니다")
+        #expect(store.music.library.status == .loading, "Music을 읽는 중인데 미캡처로 안내했습니다")
         if cancelled { task.cancel() }
         gate.signal()
         await task.value
 
         if cancelled {
-            #expect(store.iTunesLibrary.status == .notCaptured, "취소한 읽기가 진행 안내를 남겼습니다")
+            #expect(store.music.library.status == .notCaptured, "취소한 읽기가 진행 안내를 남겼습니다")
         } else {
-            #expect(store.iTunesLibrary.status == .unavailable)
-            #expect(store.iTunesLibrary.status != .loading)
+            #expect(store.music.library.status == .unavailable)
+            #expect(store.music.library.status != .loading)
         }
     }
 

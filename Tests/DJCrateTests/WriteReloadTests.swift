@@ -54,12 +54,12 @@ struct WriteReloadTests {
         resume.signal()
         await loading.value
         // 뒤늦게 시작한 Music 최신화도 기다려, 조회가 시작됐는지를 경쟁 없이 확인한다.
-        await store.iTunesRefresh?.task.value
+        await store.music.refresh?.task.value
         #expect(finishedBeforeMusic)
         #expect(!captureStarted.withLock { $0 })
         #expect(store.rows.map(\.id).sorted() == ["1", "2"])
-        #expect(store.iTunesSnapshot.status == .ready)
-        #expect(store.iTunesLibrary.index["itunes:A"]?.name == "이전 목록")
+        #expect(store.music.snapshot.status == .ready)
+        #expect(store.music.library.index["itunes:A"]?.name == "이전 목록")
         let fresh = try #require(store.snapshotURL)
         #expect(ITunesLibrarySnapshot.load(for: fresh).status == .ready)
         #expect(ITunesLibrarySnapshot.load(for: fresh).playlists == cached.playlists)
@@ -68,8 +68,8 @@ struct WriteReloadTests {
         await store.takeSnapshot(force: true, snapshotDirectory: directory, snapshotCopy: { force in
             try LibrarySnapshot.take(from: sourceDB, into: directory, force: force, now: stamp.addingTimeInterval(120))
         }, captureITunes: { ITunesLibrarySnapshot() })
-        #expect(store.iTunesSnapshot.status == .ready)
-        #expect(store.iTunesSnapshot.playlists.isEmpty)
+        #expect(store.music.snapshot.status == .ready)
+        #expect(store.music.snapshot.playlists.isEmpty)
         #expect(ITunesLibrarySnapshot.load(for: try #require(store.snapshotURL)).playlists.isEmpty)
     }
 

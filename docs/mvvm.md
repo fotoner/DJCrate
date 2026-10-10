@@ -234,6 +234,7 @@ func startMerge(keeping: String, removing: [String]) {
 - 단추가 시작하는 일의 이름은 `start…`로 짓는다. 화면 모델은 마지막 일의 손잡이를 `task`에 든다. 시험은 그 손잡이를 기다린다.
 - 단추의 일은 화면이 사라져도 취소하지 않는다. 화면과 함께 멈출 일은 `.task` 한 줄로 부른다.
 - 공유 저장소 `LibraryStore`의 단추 입구는 `LibraryStore+Actions.swift`에 모은다. 입구는 시작한 `Task`를 돌려준다.
+- 기능 조각(예: `MusicLibraryStore`)의 단추 입구는 그 조각에 둔다.
 
 `scripts/check-imports.py`의 `view-task` 규칙이 이 규칙을 검사한다.
 
@@ -290,6 +291,7 @@ try await h.loaded()
 - **덱 재생 경로**: `DeckModel`은 오디오 엔진 포트 `DeckAudioEngine`을 직접 부른다. 매 프레임 재생 위치와 샘플 단위 예약을 유스케이스 한 겹 뒤로 미루지 않으려는 것이다. 이유는 [구조 문서의 경계 규칙](architecture.md#경계-규칙)에 있다.
 - **공유 저장소 `LibraryStore`**: 사이드바, 곡 목록, 인스펙터, 태그 시트가 함께 쓴다. 나누기 전까지 이 모양을 둔다. 새 화면은 자기 화면 모델을 만든다. 그 화면 모델이 `LibraryStore`의 값을 읽는다.
   - 저장소의 흐름 순서도 유스케이스로 옮긴다. 예: 읽기 순번·요청 합치기·Music 최신화 잇기는 `LibraryReadFlow`에 있다. 저장소는 화면 포트 `LibraryReadScreen`으로 상태를 넘긴다. 저장소는 흐름이 알린 결과를 표시한다.
+  - 기능 하나의 상태는 기능 조각(`…Store`)으로 뗀다. 조각은 저장소의 `let` 속성이라 관찰하지 않는다. 화면은 조각의 값을 읽는다. 예: Music 목록과 동기화 창은 `MusicLibraryStore`(`store.music`)가 든다.
 
 ```swift
 // Sources/DJCrate/Deck/DeckModel+Transport.swift — 예외: 화면 모델이 엔진 포트를 직접 부른다
