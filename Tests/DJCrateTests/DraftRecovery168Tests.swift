@@ -15,11 +15,15 @@ struct DraftRecovery168Tests {
     /// 초안 폴더는 합성 사본 폴더(`fixture.root`), 저장 큐는 `writer`(덱·시험이 같은 큐를 볼 때 준다)
     /// 태그 초안은 실제처럼 초안 폴더에 저장한다(복구 저장이 같은 저장 큐로 쓴다).
     func makeStore(_ fixture: RekordboxFixture, writer: DraftWriter = DraftWriter(), opensCopy: Bool = false) -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), backupDirectory: fixture.backups,
+        makeStore(home: fixture.root, writer: writer, database: opensCopy ? fixture.database : nil)
+    }
+    /// 사본 DB를 열지 않는 시험은 폴더만 쓴다(TEST-16). 초안 폴더는 `home`, 백업은 그 아래 `backups`
+    func makeStore(home: URL, writer: DraftWriter = DraftWriter(), database: URL? = nil) -> LibraryStore {
+        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), backupDirectory: home.appending(path: "backups"),
                           playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
-                          draftHome: fixture.root, movesDamagedDrafts: false,
-                          arguments: opensCopy ? ["test", "--db", fixture.database.path] : ["test"],
-                          environment: opensCopy ? ["DJC_REKORDBOX_DIR": fixture.root.path] : [:], writer: writer)
+                          draftHome: home, movesDamagedDrafts: false,
+                          arguments: database.map { ["test", "--db", $0.path] } ?? ["test"],
+                          environment: database == nil ? [:] : ["DJC_REKORDBOX_DIR": home.path], writer: writer)
     }
     func inputs(_ kind: DraftRecoveryKind, uuid: String) -> (RecoveryDraft, RecoveryDraft) {
         switch kind {
@@ -45,7 +49,7 @@ struct DraftRecovery168Tests {
     @Test(arguments: DraftRecoveryKind.allCases)
     func 가져오기는_입력을_보존하고_선택한_종류만_저장한다(kind: DraftRecoveryKind) async throws {
         let choice = DraftRecoveryChoice.keepEditing
-        let fixture = try RekordboxFixture(), store = makeStore(fixture), row = ReflectionPresenterTests.row(UUID().uuidString)
+        let folder = try TemporaryFolder(), store = makeStore(home: folder.url), row = ReflectionPresenterTests.row(UUID().uuidString)
         let (original, current) = inputs(kind, uuid: row.track.uuid)
         store.rowsByUUID[row.track.uuid] = row
         store.recoveryMemoryInput = { uuid, k in uuid == original.uuid && k == kind ? original : nil }
@@ -61,7 +65,7 @@ struct DraftRecovery168Tests {
     }
     @Test(arguments: DraftRecoveryKind.allCases)
     func 읽기실패_저장실패_추가편집은_입력을_그대로_남긴다(kind: DraftRecoveryKind) async throws {
-        let fixture = try RekordboxFixture(), store = makeStore(fixture), row = ReflectionPresenterTests.row(UUID().uuidString)
+        let folder = try TemporaryFolder(), store = makeStore(home: folder.url), row = ReflectionPresenterTests.row(UUID().uuidString)
         let (original, current) = inputs(kind, uuid: row.track.uuid)
         var memory = original
         store.rowsByUUID[row.track.uuid] = row
@@ -82,7 +86,7 @@ struct DraftRecovery168Tests {
         #expect(store.recoveryInput(uuid: original.uuid, kind: kind) == current)
     }
     @Test func 취소와_현재값_재변경_대상없어짐은_초안을_남긴다() async throws {
-        let fixture = try RekordboxFixture(), store = makeStore(fixture), row = ReflectionPresenterTests.row(UUID().uuidString)
+        let folder = try TemporaryFolder(), store = makeStore(home: folder.url), row = ReflectionPresenterTests.row(UUID().uuidString)
         let (original, current) = inputs(.tags, uuid: row.track.uuid)
         if case let .tags(d) = original { store.tagDrafts[d.trackUUID] = d }
         store.rowsByUUID[row.track.uuid] = row
@@ -161,12 +165,12 @@ struct DraftRecovery168Tests {
     func 실제_저장_실패의_pending도_기존_초안이어야_한다(kind: DraftRecoveryKind) async throws {
         let choice = DraftRecoveryChoice.keepEditing
         let writer = DraftWriter()
-        let fixture = try RekordboxFixture(), store = makeStore(fixture, writer: writer), row = ReflectionPresenterTests.row(UUID().uuidString)
+        let folder = try TemporaryFolder(), store = makeStore(home: folder.url, writer: writer), row = ReflectionPresenterTests.row(UUID().uuidString)
         let (original, current) = inputs(kind, uuid: row.track.uuid)
         store.rowsByUUID[row.track.uuid] = row
         let name: String
         switch kind { case .tags: name = "tag-drafts"; case .cues: name = "cue-drafts"; case .grid: name = "grid-drafts" }
-        let directory = fixture.root.appending(path: name), archive = fixture.root.appending(path: name + "-original")
+        let directory = folder.url.appending(path: name), archive = folder.url.appending(path: name + "-original")
         switch original {
         case let .tags(d): store.tagDrafts[d.trackUUID] = d; try TagDraftStore.save(d, directory: directory)
         case let .cues(d): try CueDraftStore.save(d, directory: directory)
@@ -183,7 +187,7 @@ struct DraftRecovery168Tests {
         }
         writer.flush()
         // 덱이 보는 것: 같은 저장 큐의 저장 대기 입력, 없으면 디스크
-        let deckDrafts = DraftStore.live(writer: writer, home: fixture.root)
+        let deckDrafts = DraftStore.live(writer: writer, home: folder.url)
         let review = try await store.prepareDraftRecovery(row: row, kind: kind, readCurrent: { _ in current })
         await #expect(throws: DJCError.self) { try await store.applyDraftRecovery(review, choice: choice, readCurrent: { _ in current }) }
         #expect(store.recoveryInput(uuid: original.uuid, kind: kind) == original)
@@ -211,7 +215,7 @@ struct DraftRecovery168Tests {
     }
 
     @Test func 현재행_갱신은_목록_메타데이터를_보존한다() throws {
-        let fixture = try RekordboxFixture(), store = makeStore(fixture)
+        let folder = try TemporaryFolder(), store = makeStore(home: folder.url)
         let basic = ReflectionPresenterTests.row(UUID().uuidString)
         var before = TrackRow(track: basic.track, cues: basic.cues, playCount: 4, tempoChanges: [120, 160])
         before.fileMissing = true; before.keyEstimated = true
@@ -316,15 +320,15 @@ struct DraftRecovery168Tests {
     @Test(arguments: [DraftRecoveryKind.cues, .grid], [DraftRecoveryChoice.keepEditing, .useCurrent])
     func 실제_저장실패_복구저장_덱오류해소가_연결된다(kind: DraftRecoveryKind, choice: DraftRecoveryChoice) async throws {
         let writer = DraftWriter()
-        let fixture = try RekordboxFixture(), store = makeStore(fixture, writer: writer), row = ReflectionPresenterTests.row(UUID().uuidString)
+        let folder = try TemporaryFolder(), store = makeStore(home: folder.url, writer: writer), row = ReflectionPresenterTests.row(UUID().uuidString)
         let (cueInput, cueCurrent) = inputs(.cues, uuid: row.track.uuid), (gridInput, gridCurrent) = inputs(.grid, uuid: row.track.uuid)
         let cue = try #require({ if case let .cues(d) = cueInput { return d }; return nil }())
         let grid = try #require({ if case let .grid(d) = gridInput { return d }; return nil }())
-        let cues = fixture.root.appending(path: "cue-drafts"), grids = fixture.root.appending(path: "grid-drafts")
+        let cues = folder.url.appending(path: "cue-drafts"), grids = folder.url.appending(path: "grid-drafts")
         try Data([1]).write(to: cues); try Data([2]).write(to: grids)
         writer.save(cue, directory: cues); writer.save(grid, directory: grids); writer.flush()
         // 덱은 저장소와 같은 저장 큐·초안 폴더를 본다(앱의 조립과 같다)
-        let storage = DeckStorage.memory(.live(writer: writer, home: fixture.root),
+        let storage = DeckStorage.memory(.live(writer: writer, home: folder.url),
                                          settings: SettingsStore(defaults: TestDefaults.make("deck"), persist: false))
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: storage, runsAnalysis: false)
         deck.row = row; deck.draft = cue; deck.gridDraft = grid

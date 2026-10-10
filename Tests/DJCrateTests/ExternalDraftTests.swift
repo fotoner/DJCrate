@@ -174,8 +174,7 @@ struct ExternalDraftTests {
         let imported = GridDraft(trackUUID: "track-1", base: base, segments: [GridSegment(start: 0.5, bpm: 125, firstBeatNumber: 1)])
         #expect(h.deck.adoptImportedGridDraft(imported))
         #expect(h.deck.gridDraft == imported)
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(h.drafts.grid("track-1") == imported, "덱이 자기 저장 경로로 저장한다")
+        #expect(await waitForState { h.drafts.grid("track-1") == imported }, "덱이 자기 저장 경로로 저장한다")
         // 이어지는 덱 편집은 가져온 초안 위에 쌓인다
         h.deck.shiftGrid(ms: 10)
         #expect(h.deck.gridDraft?.segments.first?.bpm == 125)

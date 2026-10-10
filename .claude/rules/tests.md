@@ -79,7 +79,7 @@ paths:
 - **TEST-16** DB가 필요 없는 시험에 `RekordboxFixture`를 만들지 않는다. 연결마다 키 유도 비용이 든다.
 - **TEST-17** 덱 시험 하네스(`DeckHarness`)는 Kit만 쓴다.
 - **TEST-18** 앱 시험이 DB 옆 파일만 읽을 때는 DB를 열지 않는다. `LibrarySource.withoutDatabase`나 `LibrarySource.memory`를 쓴다. 앞의 것은 `Tests/DJCrateTests/LoadedLibrary+Test.swift`에 있다.
-- **TEST-19** `Tests/Support/Fixtures/Resources/rekordbox-7.2.18-schema.sql`은 실제 DB에서 **구조만** 뽑은 것이다(`djc schema-dump`, 데이터 0행). 같은 키로 암호화해 픽스처 DB를 만든다. 키 유도 반복 수는 그 시험 프로세스의 SQLCipher 기본값을 따른다. 장치(`CipherTestKDF`)가 있는 묶음은 1번, djcTests는 256,000번이다(CIP-10·11).
+- **TEST-19** `Tests/Support/Fixtures/Resources/rekordbox-7.2.18-schema.sql`은 실제 DB에서 **구조만** 뽑은 것이다(`djc schema-dump`, 데이터 0행). 같은 키로 암호화해 픽스처 DB를 만든다. 키 유도 반복 수는 그 시험 프로세스의 SQLCipher 기본값을 따른다. 장치(`CipherTestKDF`)가 있는 묶음은 1번, djcTests는 256,000번이다(CIP-10·11). 일상 검사에서 장치가 꺼지면 시험이 실패한다(CIP-15).
 - **TEST-20** 큐 ID 값이 상관없는 시험은 `CueIDs+Test.swift`의 옛 모양으로 만든다. 이 파일은 시험 타깃마다 있다. 옛 모양(예: `EditableCue(kind:time:)`)은 무작위 ID를 쓴다.
 - **TEST-21** ID를 주입하는 규칙 자체는 `DJCDomainTests/CueIDInjectionTests`가 본다.
 

@@ -13,7 +13,8 @@ import UniformTypeIdentifiers
 @MainActor
 @Suite("그림 반영", .serialized)
 struct ArtworkReflectionTests {
-    let image = ImageFixture.image(width: 400, height: 300)
+    /// 크기를 판정하지 않으므로 같은 비율의 작은 그림을 쓴다(디버그 JPEG 인코딩 비용, 크기 골든은 RekordboxKit이 본다).
+    let image = ImageFixture.image(width: 64, height: 48)
 
     @Test func 사용자에게_보이는_아트워크_문구는_앨범아트다() {
         #expect(ArtworkWriteKind.add.label == "앨범아트 넣기")

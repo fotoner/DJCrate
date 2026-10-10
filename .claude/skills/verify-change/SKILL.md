@@ -50,6 +50,7 @@ description: 작업이 끝났다고 말하기 전에 바꾼 것을 확인하고 
   - `scripts/check.sh`나 `.github/**`가 바뀜
   - 규칙 밖 파일이 바뀜
   - 고른 Suite가 절반을 넘음
+- 넓힌 검사도 릴리스 앱 빌드는 돌지 않는다. 릴리스 빌드는 릴리스 검사(인자 없는 `check.sh`·`--release`)에서 한다.
 - 검사 스크립트가 바뀌면 `scripts/test-check.py`도 돈다. `check.sh`와 `check-imports.py`도 검사 스크립트다. 목록은 `docs/ci.md`의 `--changed` 표에 있다.
 - Swift가 바뀌면 안전 시험 선택 검사(`test-check.py affected-real-map safety-`, 몇 초)도 돈다.
 - `Tests/Support/**`와 Suite 없는 시험 도우미를 바꾸면 그 시험 타깃 전체를 돈다.

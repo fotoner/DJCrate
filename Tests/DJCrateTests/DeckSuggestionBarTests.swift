@@ -58,7 +58,11 @@ struct DeckSuggestionBarTests {
     }
 
     /// A단조 화음 30초의 크로마(덱이 디코딩하며 구하는 것과 같다)
-    static func aMinorChroma() throws -> KeyAnalyzer.Chroma {
+    /// 같은 합성 음원(30초 WAV 쓰기와 크로마 분석)을 시험마다 다시 만들지 않는다.
+    private static let aMinorResult = Result { try makeAMinorChroma() }
+    static func aMinorChroma() throws -> KeyAnalyzer.Chroma { try aMinorResult.get() }
+
+    private static func makeAMinorChroma() throws -> KeyAnalyzer.Chroma {
         let directory = FileManager.default.temporaryDirectory.appending(path: "djc-suggestion-bar-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -228,6 +228,7 @@ struct UsbHistoryAppTests {
                 == ["102", "101", nil, "101"])
     }
 
+    /// 숨김 판정(다른 날·짝 없는 항목은 남김, rekordbox 기록 하나에 보존본 하나)은 DJCDomainTests `UsbHistoryImportTests`·`UsbHistoryRulesTests`가 본다
     @Test("rekordbox도 같은 날 가져온 짝이 모두 있는 기록은 보존하되 트리에서 숨기고 알리지 않는다")
     func shadowedByRekordboxHistory() async throws {
         let scratch = Self.scratch()
@@ -325,61 +326,6 @@ struct UsbHistoryAppTests {
         await store.load(snapshot: fixture.database)
         await store.waitForHistoryImports()
         #expect(store.archivedHistory(id)?.entries.map(\.contentID) == ["102", nil, nil, nil])
-    }
-
-    @Test("같은 곡 순서여도 다른 날의 rekordbox 기록은 숨기지 않고, 같은 날이라도 짝 없는 항목이 있는 보존본은 남긴다")
-    func differentDayAndUnmatchedArchiveStayVisible() async throws {
-        let scratch = Self.scratch()
-        defer { try? FileManager.default.removeItem(at: scratch) }
-        let fixture = try historyFixture()
-        let store = try await Self.libraryStore(fixture)
-        let (host, volume) = Self.host()
-        let usb = UsbTestData.store(host, local: Self.localKeys())
-        await Self.connect(store, usb, scratch: scratch)
-        var library = Self.usbLibrary()
-        library.histories[0].entries = [2, 1]
-        host.serve(volume, library: library)
-        let entries: [RekordboxHistory.Entry] = [.init(id: "rb-1", contentID: "102", trackNumber: 1),
-                                               .init(id: "rb-2", contentID: "101", trackNumber: 2)]
-        store.histories.append(.init(id: "rb-other-day", name: "HISTORY 2024-01-01", dateCreated: "2024-01-01 12:00:00", entries: entries))
-        await usb.refresh()
-        await store.waitForHistoryImports()
-        #expect(store.shadowedArchiveIDs.isEmpty)
-
-        library.histories[0].entries = [2, 1, 3]
-        host.serve(volume, library: library)
-        await usb.refresh()
-        await store.waitForHistoryImports()
-        store.histories.append(.init(id: "rb-same-day", name: Self.expectedName(),
-                                    dateCreated: String(Self.expectedName().dropFirst(8)) + " 12:00:00", entries: entries))
-        let unmatched = try #require(store.archivedHistories.first { $0.entries.contains { $0.contentID == nil } })
-        #expect(!store.shadowedArchiveIDs.contains(unmatched.id))
-        #expect(!store.historyTree.folderIDs(containing: unmatched.id).isEmpty)
-    }
-
-    @Test("rekordbox 기록 하나는 같은 날 같은 순서인 USB 보존본 하나만 숨긴다")
-    func duplicateMatchingIsOneToOne() async throws {
-        let scratch = Self.scratch()
-        defer { try? FileManager.default.removeItem(at: scratch) }
-        let fixture = try historyFixture()
-        let store = try await Self.libraryStore(fixture)
-        let (host, volume) = Self.host()
-        var library = Self.usbLibrary()
-        library.histories = [.init(format: .oneLibrary, id: 1, name: "HISTORY 001", entries: [2, 1]),
-                             .init(format: .oneLibrary, id: 2, name: "HISTORY 002", entries: [2, 1])]
-        host.serve(volume, library: library)
-        let usb = UsbTestData.store(host, local: Self.localKeys())
-        await Self.connect(store, usb, scratch: scratch)
-        store.histories.append(.init(id: "rb-one", name: Self.expectedName(),
-                                    dateCreated: String(Self.expectedName().dropFirst(8)) + " 12:00:00", entries: [
-                                        .init(id: "rb-1", contentID: "102", trackNumber: 1),
-                                        .init(id: "rb-2", contentID: "101", trackNumber: 2),
-                                    ]))
-        await usb.refresh()
-        await store.waitForHistoryImports()
-        #expect(store.archivedHistories.count == 2)
-        #expect(store.shadowedArchiveIDs.count == 1)
-        #expect(store.archivedHistories.filter { !store.historyTree.folderIDs(containing: $0.id).isEmpty }.count == 1)
     }
 
     @Test("읽지 못한 보존 파일이 남으면 경고하고 새 ID 보존을 막으며 읽기 실패가 해소된 뒤 다시 시도한다")

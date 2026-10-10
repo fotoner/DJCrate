@@ -38,6 +38,7 @@ rekordbox DB를 여는 코드와 그 시험을 고칠 때 지키는 규칙이다
 - **CIP-12** 두 가지 시험이 이 장치를 지킨다. `CipherTestKDFTests`·`CipherTestKDFLinkTests`는 장치가 켜졌는지 본다. 장치가 빠져도 다른 시험은 그대로 통과하기 때문이다. djcTests의 `CipherDefaultKDFTests`는 djc가 만든 OneLibrary가 256,000번으로 유도한 키로 열리는지 본다.
 - **CIP-13** 환경에 시험 기본 변수 밖의 `DJC_` 변수가 있으면 장치는 기본값(256,000번)을 그대로 둔다. 실험 재현 시험은 rekordbox가 만든 사본을 읽는다. 캡처 시험은 앱·djc에 넘길 사본을 만든다. 두 시험은 각자의 `DJC_` 변수로 켜지므로 기본값으로 돈다.
 - **CIP-14** 시험 기본 변수 목록은 `CipherTestKDF.m`에 있다. `DJC_HOME`·`DJC_REKORDBOX_DIR`·`DJC_LANG` 등이 그 목록에 든다. 새 기본 변수를 `scripts/check.sh`나 CI에 더하면 이 목록에도 더한다.
+- **CIP-15** `scripts/check.sh`의 일상 검사(`--changed`·전체·`--coverage`)는 시험에 표지 `DJC_CHECK_TEST_KDF=1`을 준다. 장치가 꺼진 채 표지를 받으면 `CipherTestKDFTests`가 실패한다. 목록이 늦어 장치가 조용히 꺼지는 것을 잡는다. 실험·캡처는 `--quick`이나 `swift test`로 돌아 표지를 받지 않는다.
 
 ## 더 보기
 

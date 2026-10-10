@@ -4,7 +4,6 @@ import DJCDomain
 import DJCStorage
 import DJCTestKit
 import Foundation
-import RekordboxFixtures
 import RekordboxKit
 import Synchronization
 import Testing
@@ -13,10 +12,10 @@ import Testing
 @Suite("iTunes 선택창 소스 캐시", .serialized)
 struct ITunesSyncSourceCacheTests {
     /// 이 묶음은 사본 옆 iTunes 파일(목록 사본·`playlists3.sync`)만 본다. 라이브러리 읽기는 DB를 열지 않는 원본(`withoutDatabase`)으로 한다.
-    private func store(_ fixture: RekordboxFixture, arguments: [String] = ["test"]) -> LibraryStore {
+    private func store(_ folder: TemporaryFolder, arguments: [String] = ["test"]) -> LibraryStore {
         LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes-sync-source"), persist: false),
                           resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
-                          backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
+                          backupDirectory: folder.backups, playlistDraftSaver: { _ in },
                           mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                           arguments: arguments, environment: [:],
                           ports: { $0.source = .withoutDatabase })
@@ -32,14 +31,14 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 현재_전체_카탈로그는_선택창에서_다시_캡처하지_않는다() async throws {
-        let fixture = try RekordboxFixture()
-        try syncA.write(to: fixture.root.appending(path: "playlists3.sync"))
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        try syncA.write(to: folder.url.appending(path: "playlists3.sync"))
         let cached = try ITunesLibrarySnapshot(sourcePlaylists: [
             .init(id: "A", name: "선택됨"), .init(id: "B", name: "아직 선택 안 됨")
         ]).applyingRekordboxSelection(syncA)
-        try cached.save(for: fixture.database)
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        try cached.save(for: folder.database)
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         let calls = Mutex(0)
         let source = await store.iTunesSyncSource(captureITunes: {
             calls.withLock { $0 += 1 }
@@ -52,13 +51,13 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 명시적_새로고침과_동기화_원본_변경은_새_캡처를_시작한다() async throws {
-        let fixture = try RekordboxFixture()
-        try syncA.write(to: fixture.root.appending(path: "playlists3.sync"))
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        try syncA.write(to: folder.url.appending(path: "playlists3.sync"))
         let cached = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "이전")])
             .applyingRekordboxSelection(syncA)
-        try cached.save(for: fixture.database)
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        try cached.save(for: folder.database)
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         let calls = Mutex(0)
         let newer = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "새 내용")])
         let refreshed = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
@@ -68,7 +67,7 @@ struct ITunesSyncSourceCacheTests {
         #expect(refreshed.playlists == newer.playlists)
         #expect(calls.withLock { $0 } == 1)
 
-        try (syncA + Data("\n".utf8)).write(to: fixture.root.appending(path: "playlists3.sync"))
+        try (syncA + Data("\n".utf8)).write(to: folder.url.appending(path: "playlists3.sync"))
         let changed = await store.iTunesSyncSource(captureITunes: {
             calls.withLock { $0 += 1 }
             return newer
@@ -78,12 +77,12 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 명시한_DB는_강제_새로고침에서도_Music을_조회하지_않는다() async throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder.withEmptyDatabase()
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "사본 목록")])
-        try cached.save(for: fixture.database)
-        let arguments = ["test", "--db", fixture.database.path]
-        let store = store(fixture, arguments: arguments)
-        await store.load(snapshot: fixture.database)
+        try cached.save(for: folder.database)
+        let arguments = ["test", "--db", folder.database.path]
+        let store = store(folder, arguments: arguments)
+        await store.load(snapshot: folder.database)
         let calls = Mutex(0)
         let source = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
             calls.withLock { $0 += 1 }
@@ -94,9 +93,9 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 겹친_선택창은_진행중인_캡처_하나를_공유한다() async throws {
-        let fixture = try RekordboxFixture()
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         let calls = Mutex(0)
         let started = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
@@ -135,13 +134,13 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 강제_캡처가_진행중이어도_유효한_캐시는_즉시_연다() async throws {
-        let fixture = try RekordboxFixture()
-        try syncA.write(to: fixture.root.appending(path: "playlists3.sync"))
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        try syncA.write(to: folder.url.appending(path: "playlists3.sync"))
         let cached = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "기존 목록")])
             .applyingRekordboxSelection(syncA)
-        try cached.save(for: fixture.database)
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        try cached.save(for: folder.database)
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         let started = Mutex(false)
         let refreshReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
@@ -180,10 +179,10 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 더_최근_store_카탈로그가_선택창_임시캐시보다_우선한다() async throws {
-        let fixture = try RekordboxFixture()
-        try syncA.write(to: fixture.root.appending(path: "playlists3.sync"))
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        try syncA.write(to: folder.url.appending(path: "playlists3.sync"))
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         let old = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "옛 목록")])
             .applyingRekordboxSelection(syncA)
         _ = await store.iTunesSyncSource(captureITunes: { old })
@@ -198,10 +197,10 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 오래_걸린_캡처는_그사이_도착한_store_카탈로그를_덮지_않는다() async throws {
-        let fixture = try RekordboxFixture()
-        try syncA.write(to: fixture.root.appending(path: "playlists3.sync"))
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        try syncA.write(to: folder.url.appending(path: "playlists3.sync"))
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         let old = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "옛 목록")])
             .applyingRekordboxSelection(syncA)
         let newer = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "최신 목록")])
@@ -236,16 +235,16 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 편집한_체크박스는_새로고침에_남고_편집하지_않은_선택은_원본을_따른다() async throws {
-        let fixture = try RekordboxFixture()
-        let sync = fixture.root.appending(path: "playlists3.sync")
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let sync = folder.url.appending(path: "playlists3.sync")
         try syncA.write(to: sync)
         let catalog: [ITunesLibrarySnapshot.Playlist] = [
             .init(id: "A", name: "첫 목록"), .init(id: "B", name: "둘째 목록")
         ]
         let old = try ITunesLibrarySnapshot(sourcePlaylists: catalog).applyingRekordboxSelection(syncA)
-        try old.save(for: fixture.database)
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        try old.save(for: folder.database)
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         store.presentITunesSync()
         let model = store.iTunesSync
         await model.load(store: store, captureITunes: {
@@ -274,15 +273,15 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 새로고침_실패는_체크박스를_보존하고_다음_성공에서_되살린다() async throws {
-        let fixture = try RekordboxFixture()
-        try syncA.write(to: fixture.root.appending(path: "playlists3.sync"))
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        try syncA.write(to: folder.url.appending(path: "playlists3.sync"))
         let catalog: [ITunesLibrarySnapshot.Playlist] = [
             .init(id: "A", name: "첫 목록"), .init(id: "B", name: "둘째 목록")
         ]
         let cached = try ITunesLibrarySnapshot(sourcePlaylists: catalog).applyingRekordboxSelection(syncA)
-        try cached.save(for: fixture.database)
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        try cached.save(for: folder.database)
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         store.presentITunesSync()
         let model = store.iTunesSync
         await model.load(store: store, captureITunes: {
@@ -305,9 +304,9 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 열린_선택창의_DB가_바뀌면_늦은_결과를_버리고_로딩을_끝낸다() async throws {
-        let fixture = try RekordboxFixture()
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         store.presentITunesSync()
         let model = store.iTunesSync
         let started = Mutex(false)
@@ -327,7 +326,7 @@ struct ITunesSyncSourceCacheTests {
             Issue.record("Music 캡처가 시작되지 않았습니다")
             return
         }
-        await store.load(snapshot: fixture.database)
+        await store.load(snapshot: folder.database)
         resume.signal()
         await loading.value
         #expect(!model.isLoading)
@@ -337,9 +336,9 @@ struct ITunesSyncSourceCacheTests {
     }
 
     @Test func 닫은_선택창의_늦은_캡처는_새_선택창을_바꾸지_않는다() async throws {
-        let fixture = try RekordboxFixture()
-        let store = store(fixture)
-        await store.load(snapshot: fixture.database)
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
         store.presentITunesSync()
         let old = store.iTunesSync
         let started = Mutex(false)

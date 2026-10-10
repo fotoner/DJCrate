@@ -10,7 +10,9 @@ import Testing
 @MainActor
 @Suite("덱 — 파형 묶음의 빈 높이", .serialized)
 struct DeckWaveformLayoutTests {
-    @Test(arguments: TextScale.steps, [80.0, 150.0, 480.0])
+    /// 배율·요청값 식 12경우는 `LibraryLayoutMetricsTests`가 순수하게 본다. 실제 창은 배율마다 한 번, 요청값마다 한 번 이상
+    /// (가장 큰 배율의 최소 요청 포함) 띄워 묶음이 빈 높이 없이 채워지는 연결만 본다.
+    @Test(arguments: zip(TextScale.steps, [80.0, 150.0, 480.0, 80.0]))
     func 조작부가_남긴_최소_높이는_확대_파형이_채운다(_ scale: Double, _ requested: Double) async throws {
         _ = NSApplication.shared
         let harness = try DeckHarness()

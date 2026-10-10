@@ -51,6 +51,9 @@ if [[ "$stall_seconds" != <-> ]]; then
     exit 2
 fi
 requested_mode=$mode
+# 릴리스 앱 빌드는 릴리스 검사(인자 없음·--release)에만 둔다. 넓힌 --changed는 전체 시험까지 돌되 이것은 뺀다.
+release_build=0
+if [[ "$mode" == full || "$mode" == release ]]; then release_build=1; fi
 
 # --changed: 바꾼 파일에서 시험을 고른다(scripts/affected-tests.py). 고른 범위·이유를 먼저 보인다.
 plan_scope="" plan_filter="" plan_targets="" plan_products="" plan_checks="" plan_widen="" plan_base=""
@@ -65,7 +68,7 @@ if [[ "$mode" == changed ]]; then
     eval "$plan_output"
     print -r -- "$plan_text"
     if [[ "$plan_scope" == full ]]; then
-        echo "▸ 전체 검사로 넓힙니다: $plan_widen"
+        echo "▸ 전체 검사로 넓힙니다(릴리스 앱 빌드 뺌): $plan_widen"
         mode=full
     else
         test_filter=$plan_filter
@@ -87,7 +90,8 @@ toolchain_id() {
 reuse_environment=$(env | grep '^DJC_' | grep -vE '^DJC_(HOME|REKORDBOX_DIR|CHECK_LOG_ROOT|TEST_DEFAULTS_PREFIX|CHECK_VERBOSE|CHECK_STALL_SECONDS)=' \
     | LC_ALL=C sort || true)
 reuse_cover=$(print -r -- "v1|$reuse_tree|$(toolchain_id)|$reuse_environment" | /usr/bin/shasum -a 256 | cut -d ' ' -f1)
-reuse_key=$(print -r -- "v1|$mode|$test_filter|$plan_base|$reuse_cover" | /usr/bin/shasum -a 256 | cut -d ' ' -f1)
+# 릴리스 앱 빌드를 뺀 넓힌 --changed 통과를 인자 없는 전체 검사가 재사용하지 않게 키에 넣는다.
+reuse_key=$(print -r -- "v1|$mode|$test_filter|$plan_base|$reuse_cover|release=$release_build" | /usr/bin/shasum -a 256 | cut -d ' ' -f1)
 if [[ -n "$reuse_tree" && "$mode" != stress ]] && (( ! no_reuse )) && [[ -f "$log_root/pass-history" ]]; then
     full_covers=0
     if [[ "$requested_mode" == changed ]]; then full_covers=1; fi
@@ -100,6 +104,11 @@ if [[ -n "$reuse_tree" && "$mode" != stress ]] && (( ! no_reuse )) && [[ -f "$lo
         exit 0
     fi
 fi
+
+# 일상 검사(--changed·전체·--coverage)는 시험에 키 유도 장치(Tests/Support/CipherKDF)가 켜져 있어야 한다고 알린다.
+# 장치가 모르는 DJC_ 변수가 시험 환경에 들어와 장치가 조용히 꺼지면 CipherTestKDFTests가 실패한다(CIP-15).
+# 실험·캡처처럼 일부러 장치를 끄는 실행은 --quick·swift test로 돌아 표지를 받지 않는다.
+if [[ "$requested_mode" == (changed|full|coverage) ]]; then export DJC_CHECK_TEST_KDF=1; fi
 
 # 실행마다 다른 폴더를 써서 이전 실패·취소 로그와 섞이지 않게 한다.
 mkdir -p "$log_root"
@@ -262,6 +271,9 @@ print_summary() {
     awk -F '\t' 'NR > 1 { printf "  %s %s %d초\n", ($3 == 0 ? "✔" : "✘"), $1, $2 }' "$log_dir/timings.tsv"
     if (( code == 0 )); then
         echo "✔ 통과: $title · 총 $((SECONDS - check_started))초${tests:+ · 시험 ${tests}개}"
+        if [[ "$requested_mode" == changed && "$mode" == full ]]; then
+            echo "▸ 릴리스 빌드는 릴리스 검사에서 합니다(scripts/check.sh·--release)"
+        fi
         # 지도가 적은 필수 검사(stress 등)는 --changed가 대신하지 않는다. 통과 뒤에도 남은 일로 다시 알린다.
         if [[ -n "$plan_required" ]]; then print -rl -- ${(f)plan_required} | sed 's/^/⚠ 남은 필수 검사: /'; fi
     else
@@ -296,7 +308,7 @@ fi
 debug_setting=coverage
 release_setting=off
 if [[ "$mode" == release ]]; then debug_setting=off; fi
-if [[ "$mode" == full || "$mode" == release ]]; then release_setting=on; fi
+if (( release_build )); then release_setting=on; fi
 {
     print -r -- "mode=$mode"
     print -r -- "requested=$requested_mode"
@@ -619,7 +631,7 @@ fi
 if [[ "$mode" != release ]]; then
     run_stage "디버그·테스트 빌드(커버리지 계측)" debug-build swift build --build-tests --enable-code-coverage
 fi
-if [[ "$mode" == full || "$mode" == release ]]; then
+if (( release_build )); then
     run_stage "릴리스 앱 빌드" release-build swift build -c release --product DJCrate
 fi
 if [[ "$mode" == full || "$mode" == coverage ]]; then
