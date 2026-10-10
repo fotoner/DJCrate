@@ -103,6 +103,18 @@ suite djcTests.CipherColdOpenTests
 suite djcTests.CipherColdOpenConfigurationTests
 require SQLCipher 초기화·cold-open을 바꿨으면 scripts/check.sh --stress
 
+# 시험 전용 키 유도 반복 수(CipherTestKDF, CIP-10~12): 장치가 켜졌는지, 장치 없는 djc·djcTests는 기본값인지
+group cipher-kdf
+when Sources/RekordboxKit/Database/**
+when Tests/Support/CipherKDF/**
+when Tests/Support/Fixtures/CipherKDF.swift
+when Tests/Support/Fixtures/RekordboxFixture.swift
+suite RekordboxKitTests.CipherTestKDFTests
+suite DJCStorageTests.CipherTestKDFLinkTests
+suite DJCAdaptersTests.CipherTestKDFLinkTests
+suite DJCrateTests.CipherTestKDFLinkTests
+suite djcTests.CipherDefaultKDFTests
+
 # 시험 격리: 시험 프로세스의 임시 폴더(TestProcess, #182)·DJCrate 데이터 폴더 기본값(DJCPaths)을 쓰는 시험
 # (LiveDraftHome 격리는 DJC_HOME이 있을 때만 돈다).
 group test-isolation

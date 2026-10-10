@@ -4,6 +4,8 @@ paths:
   - "Sources/djc/Lab/CipherLab.swift"
   - "Tests/djcTests/CipherColdOpen*"
   - "Tests/Support/Fixtures/RekordboxFixture.swift"
+  - "Tests/Support/Fixtures/CipherKDF.swift"
+  - "Tests/Support/CipherKDF/**"
 ---
 
 # SQLCipher 열기를 고칠 때
@@ -13,7 +15,7 @@ rekordbox DB를 여는 코드와 그 시험을 고칠 때 지키는 규칙이다
 ## 여는 길
 
 - **CIP-1** DB는 `CipherDatabase`로만 연다. 그래야 `sqlite3_initialize`를 한 번 거친다.
-- **CIP-2** 제품 코드와 `fixture.open()`은 늘 문자열 키로 연다.
+- **CIP-2** 제품 코드와 `fixture.open()`은 늘 문자열 키로 연다. 제품 코드는 SQLCipher 암호 설정(`cipher_*`·`kdf_iter` 등)을 바꾸지 않는다.
 
 이유: SQLCipher 4.7부터 처음 쓰는 순간에 초기화 경쟁이 있다.
 여러 스레드가 겹치면 전역 초기화가 끝나기 전에 들어온 스레드가 실패한다.
@@ -27,7 +29,15 @@ rekordbox DB를 여는 코드와 그 시험을 고칠 때 지키는 규칙이다
 - **CIP-6** stress는 cold-open 경쟁 시험 1개를 돌린다. 같은 파일의 설정 계약 시험 3개도 함께 돈다.
 - **CIP-7** 일반 회귀는 새 프로세스 4개, stress는 100개를 띄운다. 둘 다 32스레드와 동시 프로세스 4개 상한을 지킨다.
 - **CIP-8** `DJC_CIPHER_STRESS` 값이 없음·`0`이면 일반, `1`이면 stress다. 그 밖의 값은 실패한다.
-- **CIP-9** 픽스처의 키 유도 줄이기는 [`docs/ci.md` "테스트 준비 비용"](../../docs/ci.md#테스트-준비-비용)에 있다. 템플릿 DB 복사와 솔트별 원시 키가 그 방법이다.
+- **CIP-9** 픽스처의 키 유도 줄이기는 [`docs/ci.md` "테스트 준비 비용"](../../docs/ci.md#테스트-준비-비용)에 있다. 템플릿 DB 복사, 솔트별 원시 키, 시험 전용 반복 수가 그 방법이다.
+
+## 시험 전용 키 유도 반복 수
+
+- **CIP-10** 시험 전용 장치 `CipherTestKDF`(`Tests/Support/CipherKDF/`)는 시험 묶음이 올라올 때 SQLCipher 기본 키 유도 반복 수를 1로 낮춘다. 장치는 DB를 여는 시험 타깃 넷만 링크한다. 그 목록은 `Package.swift`에 있다. 제품 타깃(`Sources/**`)·앱·djc는 이 장치를 링크하지 않는다.
+- **CIP-11** djc를 띄우는 시험은 djcTests에 둔다. djcTests는 장치를 링크하지 않는다. 장치가 있는 묶음이 만든 DB는 djc가 열지 못하기 때문이다. djcTests와 djc는 SQLCipher 4 기본값(256,000번)을 쓴다.
+- **CIP-12** 두 가지 시험이 이 장치를 지킨다. `CipherTestKDFTests`·`CipherTestKDFLinkTests`는 장치가 켜졌는지 본다. 장치가 빠져도 다른 시험은 그대로 통과하기 때문이다. djcTests의 `CipherDefaultKDFTests`는 djc가 만든 OneLibrary가 256,000번으로 유도한 키로 열리는지 본다.
+- **CIP-13** 환경에 시험 기본 변수 밖의 `DJC_` 변수가 있으면 장치는 기본값(256,000번)을 그대로 둔다. 실험 재현 시험은 rekordbox가 만든 사본을 읽는다. 캡처 시험은 앱·djc에 넘길 사본을 만든다. 두 시험은 각자의 `DJC_` 변수로 켜지므로 기본값으로 돈다.
+- **CIP-14** 시험 기본 변수 목록은 `CipherTestKDF.m`에 있다. `DJC_HOME`·`DJC_REKORDBOX_DIR`·`DJC_LANG` 등이 그 목록에 든다. 새 기본 변수를 `scripts/check.sh`나 CI에 더하면 이 목록에도 더한다.
 
 ## 더 보기
 

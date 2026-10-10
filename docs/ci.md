@@ -318,10 +318,22 @@ DB 연결은 SQLCipher 키 유도 때문에 비싸므로, 시험은 필요한 �
 
 로컬(14코어) 측정에서 RekordboxKitTests 벽시계 시간은 240 → 106초였다. CPU 시간은 2,867 → 1,208초(−58%)였다. 이 측정은 다른 빌드와 겹친 부하에서 했다. CI 추정은 7~8분이라, 실제 CI 시간은 dev에 합친 뒤 첫 실행으로 확인한다.
 
-남은 비용은 두 가지다.
+그 뒤 남은 비용은 두 가지였다. 다음 절의 시험 전용 반복 수가 둘을 줄인다.
 
-- 제품 쓰기·검증·복원 경로의 키 유도. 바쁜 CPU의 약 47%다.
+- 제품 쓰기·검증·복원 경로의 키 유도. 바쁜 CPU의 약 47%였다.
 - `OneLibraryFixture`의 문자열 키 열기
+
+### 시험 전용 키 유도 반복 수
+
+시험 프로세스에서만 SQLCipher 기본 키 유도 반복 수를 낮춘다(2026-10-10 결정). 제품 코드는 그대로다.
+
+- 장치: `Tests/Support/CipherKDF/`의 `CipherTestKDF`다. 시험 묶음이 올라올 때 constructor가 한 번 `PRAGMA cipher_default_kdf_iter = 1`을 실행한다. 키, KDF·HMAC 알고리즘, 쪽 크기는 SQLCipher 4 기본값 그대로다. 실행이 실패하면 시험 프로세스를 멈춘다.
+- 링크 범위: DB를 여는 시험 타깃 넷만 이 타깃에 의존한다. 그 넷은 RekordboxKit, Storage, Adapters, 앱의 시험 타깃이다. 제품 타깃, 앱, djc, djcTests는 의존하지 않는다. `nm -m`으로 실행 파일에 장치 기호(`djc_test_kdf_iterations`)가 없는지 확인할 수 있다.
+- 같은 반복 수: 장치가 있는 묶음이 만드는 DB는 모두 1번을 쓴다. 픽스처 템플릿과 제품이 만드는 OneLibrary가 그렇다. `FixtureConnection`의 원시 키도 프로세스 기본값(`CipherKDF.processDefaultIterations`)으로 유도한다.
+- 기본값을 두는 경우: 환경에 시험 기본 변수 밖의 `DJC_` 변수가 있으면 장치는 반복 수를 낮추지 않는다. 실험 재현 시험과 캡처 시험이 그런 변수로 켜진다. 실험 재현 시험은 rekordbox가 만든 사본을 읽는다. 캡처 시험은 앱 자가 테스트·외부 파서에 넘길 사본을 만든다(CIP-13·14).
+- djc를 띄우는 시험: djcTests에 둔다. djcTests는 256,000번으로 픽스처를 만들므로 djc가 그 픽스처를 연다.
+- 지키는 시험: `CipherTestKDFTests`와 `CipherTestKDFLinkTests`는 장치가 켜졌는지 본다. `CipherDefaultKDFTests`는 djc가 만든 OneLibrary가 256,000번으로 열리는지 본다. `CipherColdOpenTests`는 djc 새 프로세스에서 기본값으로 연다.
+- 실제 라이브러리: 시험 프로세스의 기본 폴더는 `TestProcess.sandbox`다. 1번으로 유도한 키로는 실제 `master.db`를 풀지 못한다. 새 DB는 rekordbox 라이브러리 폴더 아래에 만들지 않는다(`OpenMode.create`).
 
 비싼 시험 준비는 프로세스에서 한 번만 만든다. 시험은 그 결과를 복사해 쓴다.
 

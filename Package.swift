@@ -95,20 +95,23 @@ let package = Package(
             resources: [.copy("Resources")],
             swiftSettings: swiftSettings
         ),
+        // 시험 전용 SQLCipher 키 유도 반복 수(docs/ci.md "테스트 준비 비용"). 프로세스가 올라올 때 constructor가 기본 반복 수를 낮춘다.
+        // 제품 연결이 많은 시험 타깃만 의존한다. 제품 타깃·실행 파일과 djc를 띄우는 djcTests는 의존하지 않아 SQLCipher 4 기본값 그대로다.
+        .target(name: "CipherTestKDF", dependencies: ["SQLCipher"], path: "Tests/Support/CipherKDF"),
         // 포트 시험 재료(실제 구현·인프라를 모른다): 피동 포트의 가짜(메모리 구현)와 공용 계약 함수. 유스케이스 시험은 가짜에,
         // 어댑터 시험은 실제 구현에 같은 계약 함수를 돌린다(adv4 T7: 가짜와 실제가 갈라져도 모르고 통과했다).
         .target(name: "PortTestKit", dependencies: ["DJCApplication", "DJCDomain", "DJCTestKit"], path: "Tests/Support/Ports", swiftSettings: swiftSettings),
         // 시험 타깃은 시험하는 층과 그 아래 층, 필요한 재료만 의존한다.
         .testTarget(name: "DJCDomainTests", dependencies: ["DJCDomain", "DJCEnvironment", "DJCTestKit"], swiftSettings: swiftSettings),
-        .testTarget(name: "RekordboxKitTests", dependencies: ["RekordboxKit", "DJCDomain", "DJCEnvironment", "RekordboxFixtures", "DJCTestKit"], swiftSettings: swiftSettings),
+        .testTarget(name: "RekordboxKitTests", dependencies: ["RekordboxKit", "DJCDomain", "DJCEnvironment", "RekordboxFixtures", "DJCTestKit", "CipherTestKDF"], swiftSettings: swiftSettings),
         .testTarget(name: "DJCAnalysisTests", dependencies: ["DJCAnalysis", "DJCDomain", "DJCEnvironment", "DJCTestKit"], swiftSettings: swiftSettings),
         // DJCrate 자신의 파일(초안·USB 세션·볼륨·도구 실행·iTunes 읽기). 가짜 도구 실행기(FakeToolRunner)는 이 타깃 안에 있다.
         .testTarget(
             name: "DJCStorageTests",
-            dependencies: ["DJCStorage", "DJCApplication", "DJCAnalysis", "RekordboxKit", "DJCDomain", "RekordboxFixtures", "DJCTestKit"],
+            dependencies: ["DJCStorage", "DJCApplication", "DJCAnalysis", "RekordboxKit", "DJCDomain", "RekordboxFixtures", "DJCTestKit", "CipherTestKDF"],
             swiftSettings: swiftSettings
         ),
-        // CLI 인자·출력과 `.build/debug/djc`를 띄우는 프로세스 시험
+        // CLI 인자·출력과 `.build/debug/djc`를 띄우는 프로세스 시험. djc에 넘길 픽스처를 djc와 같은 키 유도(256,000번)로 만들게 CipherTestKDF에 의존하지 않는다.
         .testTarget(
             name: "djcTests",
             dependencies: ["djc", "DJCStorage", "DJCApplication", "DJCAdapters", "DJCAnalysis", "RekordboxKit", "DJCDomain", "DJCEnvironment", "RekordboxFixtures", "DJCTestKit"],
@@ -117,7 +120,8 @@ let package = Package(
         // 앱 화면 모델(덱·목록·반영 흐름)을 가짜 오디오·저장소로 시험한다.
         .testTarget(
             name: "DJCrateTests",
-            dependencies: ["DJCrate", "DJCStorage", "DJCApplication", "DJCAdapters", "DJCAnalysis", "RekordboxKit", "DJCDomain", "DJCEnvironment", "RekordboxFixtures", "DJCTestKit"],
+            dependencies: ["DJCrate", "DJCStorage", "DJCApplication", "DJCAdapters", "DJCAnalysis", "RekordboxKit", "DJCDomain", "DJCEnvironment", "RekordboxFixtures", "DJCTestKit",
+                           "CipherTestKDF"],
             swiftSettings: swiftSettings
         ),
         // 유스케이스 시험: 가짜 포트(PortTestKit)와 DJCTestKit만 쓴다(DB·인프라 없이). 포트 계약 함수를 가짜에 돌린다.
@@ -125,6 +129,6 @@ let package = Package(
                     swiftSettings: swiftSettings),
         // 어댑터 시험: 실제 구현(.live)을 합성 픽스처·임시 폴더로 시험한다(실제 rekordbox·사용자 폴더 없이). 포트 계약 함수를 실제 구현에 돌린다.
         .testTarget(name: "DJCAdaptersTests", dependencies: ["DJCAdapters", "DJCApplication", "DJCDomain", "DJCEnvironment", "DJCStorage", "RekordboxKit",
-                                                     "RekordboxFixtures", "DJCTestKit", "PortTestKit"], swiftSettings: swiftSettings),
+                                                     "RekordboxFixtures", "DJCTestKit", "PortTestKit", "CipherTestKDF"], swiftSettings: swiftSettings),
     ]
 )
