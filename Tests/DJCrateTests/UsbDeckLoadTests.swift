@@ -85,7 +85,7 @@ struct UsbDeckLoadTests {
     @Test("재생 기록 보존 줄(usb:history:)은 USB 볼륨 곡으로 풀지 않고 같은 안내를 한다")
     func archivedHistoryRowIsNotUsbVolumeTrack() async throws {
         let s = try await setUp()
-        let archived = TrackListTagEditTests.row(LibraryStore.archivedTrackIDPrefix + "\(s.key):1")
+        let archived = TrackListTagEditTests.row(HistoryStore.archivedTrackIDPrefix + "\(s.key):1")
         #expect(archived.isUsb)
         s.store.loadToDeck(archived)
         #expect(s.store.deckTrackID == nil)

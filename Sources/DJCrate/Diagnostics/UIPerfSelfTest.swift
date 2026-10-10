@@ -399,7 +399,7 @@ final class UIPerfRunner {
 
     private func sidebarItems() async {
         let playlists = store.playlistIndex.values.filter { !$0.isFolder && !$0.isSmart }.sorted { $0.trackIDs.count > $1.trackIDs.count }
-        let history = store.histories.first
+        let history = store.history.histories.first
         var targets: [(String, SidebarItem)] = [("전체", .filter(.all))]
         if let big = playlists.first { targets.append(("큰 재생 목록(\(big.trackIDs.count)곡)", .playlist(big.id))) }
         if let small = playlists.last { targets.append(("작은 재생 목록(\(small.trackIDs.count)곡)", .playlist(small.id))) }

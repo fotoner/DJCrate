@@ -201,12 +201,12 @@ struct PlaylistSidebarMenu: ViewModifier {
                 Button(.ui("재생 목록으로 만들기")) { store.createPlaylist(fromHistory: id) }
                     .disabled(!store.writeLockPolicy.allowsLibraryInteraction || store.historyPlaylistSource(id)?.rows.isEmpty != false)
                 // USB에서 보존한 기록(#43): rekordbox 쓰기 대기에서 빼거나 다시 넣는다(편집 › 실행 취소로 되돌린다)
-                if let archived = store.archivedHistory(id) {
-                    if store.pendingHistoryIDs.contains(id) {
-                        Button(.ui("rekordbox 쓰기 대기에서 빼기")) { store.setHistoriesExcluded([id], excluded: true) }
+                if let archived = store.history.archivedHistory(id) {
+                    if store.history.pendingHistoryIDs.contains(id) {
+                        Button(.ui("rekordbox 쓰기 대기에서 빼기")) { store.history.setHistoriesExcluded([id], excluded: true) }
                             .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
-                    } else if archived.excludedFromRekordbox, store.writesHistories {
-                        Button(.ui("rekordbox 쓰기 대기에 넣기")) { store.setHistoriesExcluded([id], excluded: false) }
+                    } else if archived.excludedFromRekordbox, store.history.writesHistories {
+                        Button(.ui("rekordbox 쓰기 대기에 넣기")) { store.history.setHistoriesExcluded([id], excluded: false) }
                             .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
                     }
                 }

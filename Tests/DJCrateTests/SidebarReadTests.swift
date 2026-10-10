@@ -21,7 +21,7 @@ struct SidebarReadTests {
         let fixture = try historyFixture()
         let store = LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
         await store.load(snapshot: fixture.database)
-        #expect(store.histories.map(\.id) == ["new-a", "new-b", "old", "undated"])
+        #expect(store.history.histories.map(\.id) == ["new-a", "new-b", "old", "undated"])
         store.sidebar = .history("new-a")
         #expect(store.sortOrder.isEmpty)
         #expect(store.sidebarTitle.contains("2025-02-03"))

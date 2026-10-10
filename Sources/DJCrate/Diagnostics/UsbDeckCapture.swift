@@ -61,7 +61,7 @@ enum UsbDeckCapture {
         let host = SystemUsbHost(io: UsbAppComposition.hostIO(snapshots: DJCPaths.userData.appending(path: "deck-usb-snapshots")), events: events,
                                  current: { [volume] })
         // 짝짓기 키는 읽은 합성 사본의 것(앱의 `UsbAppSetup.attach`와 같다)
-        let keys = store.historyLocalKeys
+        let keys = store.history.historyLocalKeys
         let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: UsbAppComposition.writeService(), localLibrary: { keys })
         store.usb = usb
         await usb.refresh()

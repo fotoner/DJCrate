@@ -146,7 +146,7 @@ struct HideStreamingTests {
         #expect(store.count(playlist: node) == 5)
         store.sidebar = .playlist("P")
         #expect(Self.ids(store) == ["1", "2", "3", "4", "5"])
-        let history = try #require(store.histories.first)
+        let history = try #require(store.history.histories.first)
         #expect(store.count(history: history) == 3)
         store.hideStreaming = true
         #expect(Self.ids(store) == ["1", "3", "5"])

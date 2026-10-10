@@ -21,7 +21,7 @@ extension LibraryStore {
                                playlistImports: playlistImports, playlistImportsLoadFailed: playlistImportsLoadFailed, unreadableDraftKinds: unreadableDraftKinds, failedTagSaves: failedTagSaves(),
                                staged: staged, estimatingGrids: gridJob != nil, iTunesSelection: isITunesSelection,
                                deckStagedUUID: deckTrackID.flatMap { rowsByID[$0] }.flatMap { $0.isStaged ? $0.track.uuid : nil },
-                               lastError: lastError, pendingHistories: pendingHistoryImports)
+                               lastError: lastError, pendingHistories: history.pendingHistoryImports)
     }
 
     /// 세션이 알린 결과로 메모리 초안·표시를 맞춘다
@@ -51,7 +51,7 @@ extension LibraryStore {
         case let .lastWriteBackup(url): lastWriteBackup = url
         case let .followUp(notes): writeFollowUp = notes
         case .writeBackupsChanged: refreshWriteBackups()
-        case let .historyMarkFailed(warning): toast = .notice(Self.historyQueueSaveFailureTitle, warning)
+        case let .historyMarkFailed(warning): toast = .notice(ArchiveUsbHistories.queueSaveFailureTitle, warning)
         }
     }
 

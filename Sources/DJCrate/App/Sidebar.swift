@@ -39,7 +39,7 @@ struct Sidebar: View {
                 PlaylistSection(store: store)
                 ITunesPlaylistSection(store: store)
             }
-            SidebarHistorySection(store: store)
+            SidebarHistorySection(history: store.history)
             if let usb = store.usb {
                 UsbSidebarSection(store: store, usb: usb)
             }
@@ -135,22 +135,23 @@ struct SidebarXMLExportRow: View {
 
 /// 재생 기록 구역: rekordbox Histories처럼 연 › 월 › 기록(모두 오래된 것부터). rekordbox 기록과 USB에서 보존한 기록을 섞는다(#43).
 /// 본문은 트리 구조(`historyTree`)만 읽고, 곡 수·USB 표시는 줄 뷰가 읽는다(#141). 구역 펼침 설정은 여기서 읽는다.
+/// 구역과 줄은 저장소 대신 재생 기록 조각(`HistoryStore`)만 받는다(줄이 읽는 값을 부모로 올리지 않게 값 대신 좁은 조각을 넘긴다).
 struct SidebarHistorySection: View {
-    let store: LibraryStore
+    let history: HistoryStore
     @AppStorage(SettingKeys.sidebarHistoriesExpanded.name) private var isExpanded = SettingKeys.sidebarHistoriesExpanded.defaultValue
 
     var body: some View {
         Section(isExpanded: $isExpanded) {
-            let tree = store.historyTree
+            let tree = history.historyTree
             if tree.isEmpty {
                 Text(.ui("재생 기록이 없습니다")).foregroundStyle(.secondary)
             }
             ForEach(tree.years) { year in
-                SidebarHistoryYearRow(store: store, year: year)
+                SidebarHistoryYearRow(history: history, year: year)
             }
             // 연·월을 모르는 기록은 트리 아래에 바로 둔다
             ForEach(tree.undated) { item in
-                SidebarHistoryRow(store: store, item: item)
+                SidebarHistoryRow(history: history, item: item)
                     .tag(SidebarItem.history(item.id))
             }
         } header: {
@@ -159,18 +160,18 @@ struct SidebarHistorySection: View {
     }
 }
 
-/// 연 폴더. 펼침은 스토어에 둔다(기록을 고르면 그 폴더를 펼친다). 폴더는 고르는 대상이 아니라 태그를 달지 않는다
+/// 연 폴더. 펼침은 재생 기록 조각에 둔다(기록을 고르면 그 폴더를 펼친다). 폴더는 고르는 대상이 아니라 태그를 달지 않는다
 struct SidebarHistoryYearRow: View {
-    let store: LibraryStore
+    let history: HistoryStore
     let year: HistoryTree.Year
 
     var body: some View {
         DisclosureGroup(isExpanded: Binding(
-            get: { store.expandedHistoryFolders.contains(year.id) },
-            set: { store.setHistoryFolder(year.id, expanded: $0) }
+            get: { history.expandedHistoryFolders.contains(year.id) },
+            set: { history.setHistoryFolder(year.id, expanded: $0) }
         )) {
             ForEach(year.months) { month in
-                SidebarHistoryMonthRow(store: store, month: month)
+                SidebarHistoryMonthRow(history: history, month: month)
             }
         } label: {
             Text(verbatim: String(year.year))
@@ -180,16 +181,16 @@ struct SidebarHistoryYearRow: View {
 
 /// 월 폴더(이름은 앱 화면 언어의 월 이름)
 struct SidebarHistoryMonthRow: View {
-    let store: LibraryStore
+    let history: HistoryStore
     let month: HistoryTree.Month
 
     var body: some View {
         DisclosureGroup(isExpanded: Binding(
-            get: { store.expandedHistoryFolders.contains(month.id) },
-            set: { store.setHistoryFolder(month.id, expanded: $0) }
+            get: { history.expandedHistoryFolders.contains(month.id) },
+            set: { history.setHistoryFolder(month.id, expanded: $0) }
         )) {
             ForEach(month.items) { item in
-                SidebarHistoryRow(store: store, item: item)
+                SidebarHistoryRow(history: history, item: item)
                     .tag(SidebarItem.history(item.id))
             }
         } label: {
@@ -208,12 +209,12 @@ struct SidebarHistoryMonthRow: View {
 
 /// 기록 줄. 곡 수와 USB 보존·쓰기 대기 표시는 이 뷰만 읽는다
 struct SidebarHistoryRow: View {
-    let store: LibraryStore
+    let history: HistoryStore
     let item: HistoryTree.Item
 
     var body: some View {
-        let archived = store.archivedHistory(item.id)
-        let pending = archived != nil && store.pendingHistoryIDs.contains(item.id)
+        let archived = history.archivedHistory(item.id)
+        let pending = archived != nil && history.pendingHistoryIDs.contains(item.id)
         HStack(spacing: 4) {
             Text(verbatim: item.name)
                 .lineLimit(1)
@@ -231,8 +232,8 @@ struct SidebarHistoryRow: View {
                     .accessibilityLabel(.ui("rekordbox 쓰기 대기"))
             }
         }
-        .badge(store.historyCount(item.id))
-        .help(archived.map { archivedHelp($0, pending: pending) } ?? store.historyIndex[item.id].map { store.historyTitle($0) } ?? item.name)
+        .badge(history.historyCount(item.id))
+        .help(archived.map { archivedHelp($0, pending: pending) } ?? history.historyIndex[item.id].map(\.title) ?? item.name)
     }
 
     /// 보존 기록의 도움말: 어디서 가져왔는지와 rekordbox 쓰기 상태
@@ -244,7 +245,7 @@ struct SidebarHistoryRow: View {
         if archived.excludedFromRekordbox {
             return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
         }
-        if let id = archived.rekordboxHistoryID, store.historyIndex[id] != nil {
+        if let id = archived.rekordboxHistoryID, history.historyIndex[id] != nil {
             return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에 썼습니다")
         }
         if HistoryWriteQueue.hasRepeatedTracks(archived) {
@@ -335,7 +336,7 @@ struct ListActionBar: View {
             bar {
                 let targets = store.selection.isEmpty ? store.displayRows : store.selectedRows
                 let playlistEdits = store.playlistDraft.steps.count
-                let histories = store.pendingHistories.count
+                let histories = store.history.pendingHistories.count
                 Button { reflection?.startWrite(rows: targets) } label: {
                     Label(Self.pendingWriteTitle(tracks: targets.count, playlistEdits: playlistEdits, histories: histories),
                           systemImage: "square.and.arrow.up.on.square")
@@ -346,12 +347,12 @@ struct ListActionBar: View {
                 if histories > 0 {
                     // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 이 메뉴에서 보고(고르면 그 기록으로) 뺀다
                     Menu {
-                        ForEach(store.pendingHistories) { history in
+                        ForEach(store.history.pendingHistories) { history in
                             Button(history.name) { store.sidebar = .history(history.id) }
                         }
                         Divider()
                         Button(.ui("모두 rekordbox 쓰기 대기에서 빼기")) {
-                            store.setHistoriesExcluded(store.pendingHistories.map(\.id), excluded: true)
+                            store.history.setHistoriesExcluded(store.history.pendingHistories.map(\.id), excluded: true)
                         }
                         .disabled(store.isWritingRekordbox)
                     } label: {

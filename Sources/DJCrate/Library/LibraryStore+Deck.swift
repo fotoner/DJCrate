@@ -51,7 +51,7 @@ extension LibraryStore {
 
     /// USB 곡 줄의 짝 로컬 ContentID. 재생 기록 보존 곡 줄(`usb:history:`)은 USB 볼륨 곡이 아니라 짝이 없다
     private func localTrackID(ofUsb row: TrackRow) -> String? {
-        guard !row.track.id.hasPrefix(Self.archivedTrackIDPrefix), let matches = usb?.localMatches else { return nil }
+        guard !row.track.id.hasPrefix(HistoryStore.archivedTrackIDPrefix), let matches = usb?.localMatches else { return nil }
         return UsbDeckLoad.localContentID(usbTrackID: row.track.id, matches: matches)
     }
 
