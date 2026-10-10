@@ -62,24 +62,31 @@ private struct DeckDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         highlight.drop()
         let library = library
-        if let provider = info.itemProviders(for: [DeckDragType.track]).first {
+        switch DeckDropPayload.read(info.itemProviders(for: Self.trackTypes + [.fileURL])) {
+        case let .track(provider):
             // 여러 곡을 끌었으면 첫 곡을 올린다.
             _ = provider.loadDataRepresentation(forTypeIdentifier: DeckDragType.track.identifier) { data, _ in
                 let id = data.flatMap { String(data: $0, encoding: .utf8) }
                 Task { @MainActor in library.loadDroppedTracks(id.map { [$0] } ?? []) }
             }
             return true
-        }
-        if let provider = info.itemProviders(for: [PlaylistDragType.usbTracks]).first {
+        case let .usbTrack(provider):
             // USB 곡도 첫 곡만 올린다(짝인 로컬 곡, 없으면 이유를 알린다)
             _ = provider.loadDataRepresentation(forTypeIdentifier: PlaylistDragType.usbTracks.identifier) { data, _ in
                 let dragged = data.flatMap { String(data: $0, encoding: .utf8) }.flatMap(UsbTrackDrag.init(pasteboardString:))
                 Task { @MainActor in library.loadDroppedUsbTracks(dragged.map { [$0] } ?? []) }
             }
             return true
+        case let .files(files):
+            addFiles(files)
+            return true
+        case .none:
+            return false
         }
-        let files = info.itemProviders(for: [.fileURL])
-        guard !files.isEmpty else { return false }
+    }
+
+    private func addFiles(_ files: [NSItemProvider]) {
+        let library = library
         let box = URLBox()
         let group = DispatchGroup()
         for provider in files {
@@ -93,7 +100,24 @@ private struct DeckDropDelegate: DropDelegate {
             let urls = box.values
             Task { @MainActor in library.startAddingDroppedFiles(urls) }
         }
-        return true
+    }
+}
+
+/// 덱 위에 놓은 것. SwiftUI(macOS 27)의 `DropInfo.itemProviders(for:)`는 요청한 형식이 없는 항목에도 형식 없는 빈 제공자를 준다.
+/// 그 제공자를 로컬 곡으로 읽으면 USB 곡을 끌어도 빈 곡으로 끝나 덱에 오르지 않았다(#255). 그래서 형식이 실제로 있는 제공자만 고른다
+enum DeckDropPayload: Equatable {
+    case track(NSItemProvider)
+    case usbTrack(NSItemProvider)
+    case files([NSItemProvider])
+    case none
+
+    /// 로컬 곡 → USB 곡 → 음원 파일 차례(로컬 곡 줄은 음원 파일 주소도 싣는다)
+    static func read(_ providers: [NSItemProvider]) -> DeckDropPayload {
+        func having(_ type: UTType) -> [NSItemProvider] { providers.filter { $0.hasItemConformingToTypeIdentifier(type.identifier) } }
+        if let provider = having(DeckDragType.track).first { return .track(provider) }
+        if let provider = having(PlaylistDragType.usbTracks).first { return .usbTrack(provider) }
+        let files = having(.fileURL)
+        return files.isEmpty ? .none : .files(files)
     }
 }
 
