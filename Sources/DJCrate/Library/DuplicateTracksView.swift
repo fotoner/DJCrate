@@ -4,7 +4,12 @@ import SwiftUI
 /// 기존 곡 표의 열·정렬 설정을 바꾸지 않고 후보끼리 비교한다.
 struct DuplicateTracksView: View {
     @Bindable var store: LibraryStore
-    @State private var preparing = false
+    @State private var model: DuplicateTracksModel
+
+    init(store: LibraryStore) {
+        self.store = store
+        _model = State(initialValue: DuplicateTracksModel(store: store))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -102,14 +107,10 @@ struct DuplicateTracksView: View {
                     .lineLimit(1).truncationMode(.middle).help(member.track.path)
                 Spacer()
                 Button(.ui("이 곡을 남기고 합치기…")) {
-                    preparing = true
-                    Task {
-                        await store.prepareMerge(keeping: member.id, removing: group.tracks.filter { $0.id != member.id }.map(\.id))
-                        preparing = false
-                    }
+                    model.startMerge(keeping: member.id, removing: group.tracks.filter { $0.id != member.id }.map(\.id))
                 }
                 .buttonStyle(.borderless)
-                .disabled(preparing || group.tracks.contains { store.pendingUUIDs.contains($0.track.uuid) })
+                .disabled(model.isPreparing || group.tracks.contains { store.pendingUUIDs.contains($0.track.uuid) })
             }
         }
     }
@@ -136,11 +137,11 @@ private struct ArtworkThumbnail: View {
     let id: String
     let shareRoot: URL
     let thumbnails: Thumbnails
-    @State private var artwork: Thumbnails.Box?
+    @State private var loader = ArtworkThumbnailLoader()
 
     var body: some View {
         ZStack {
-            if let artwork {
+            if let artwork = loader.box {
                 Image(decorative: artwork.image, scale: 1).resizable().scaledToFit()
             } else {
                 Color(nsColor: .quaternarySystemFill)
@@ -149,11 +150,8 @@ private struct ArtworkThumbnail: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 3))
         .accessibilityElement()
-        .accessibilityLabel(artwork == nil ? Text(.ui("앨범아트 없음")) : Text(.ui("앨범아트")))
+        .accessibilityLabel(loader.box == nil ? Text(.ui("앨범아트 없음")) : Text(.ui("앨범아트")))
         // 스크롤로 지나친 줄은 작업이 취소되어 디코딩하지 않는다(`Thumbnails`).
-        .task(id: ArtworkRevisions.key(id)) {
-            let box = await thumbnails.image(imagePath: imagePath, root: shareRoot, key: ArtworkRevisions.key(id))
-            if !Task.isCancelled { artwork = box }
-        }
+        .task(id: ArtworkRevisions.key(id)) { await loader.load(imagePath, root: shareRoot, key: ArtworkRevisions.key(id), from: thumbnails) }
     }
 }

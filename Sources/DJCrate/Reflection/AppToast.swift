@@ -77,7 +77,7 @@ struct AppToastView: View {
     var onDetails: (() -> Void)?
     var onAction: (() -> Void)?
     var onClose: () -> Void
-    @State private var hovering = false
+    @State private var timer = AppToastTimer()
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -121,18 +121,8 @@ struct AppToastView: View {
         .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
         .selfTestFrame("toast.\(toast.id)")
         .onDisappear { SelfTestFrames.frames.removeValue(forKey: "toast.\(toast.id)") }
-        .onHover { hovering = $0 }
-        .task(id: toast.id) {
-            // 올려 둔 동안은 기다린다.
-            guard toast.automaticallyDismisses(voiceOverEnabled: NSWorkspace.shared.isVoiceOverEnabled) else { return }
-            var remaining = toast.duration
-            while remaining > 0 {
-                try? await Task.sleep(for: .milliseconds(250))
-                if Task.isCancelled || NSWorkspace.shared.isVoiceOverEnabled { return }
-                if !hovering { remaining -= 0.25 }
-            }
-            onClose()
-        }
+        .onHover { timer.hovering = $0 }
+        .task(id: toast.id) { await timer.run(toast, close: onClose) }
     }
 
 

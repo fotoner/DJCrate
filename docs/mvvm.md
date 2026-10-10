@@ -184,10 +184,10 @@ func start() {
 }
 ```
 
-틀린 예: 뷰가 `Task`를 만들어 저장소를 부른다. 진행 상태도 뷰가 든다.
+틀린 예: 뷰가 `Task`를 만들어 저장소를 부른다. 진행 상태도 뷰가 든다. 아래는 #244에서 고치기 전의 코드다.
 
 ```swift
-// Sources/DJCrate/Library/DuplicateTracksView.swift
+// Sources/DJCrate/Library/DuplicateTracksView.swift(#244 전)
 Button(.ui("이 곡을 남기고 합치기…")) {
     preparing = true                       // ✗ 진행 상태가 뷰의 @State다
     Task {                                 // ✗ 뷰가 Task를 시작한다
@@ -196,6 +196,29 @@ Button(.ui("이 곡을 남기고 합치기…")) {
     }
 }
 ```
+
+고친 코드: 단추는 화면 모델의 동기 메서드를 부른다. 진행 상태와 `Task` 손잡이는 화면 모델이 든다.
+
+```swift
+// Sources/DJCrate/Library/DuplicateTracksView.swift
+Button(.ui("이 곡을 남기고 합치기…")) {
+    model.startMerge(keeping: member.id, removing: …)
+}
+.disabled(model.isPreparing || …)
+
+// Sources/DJCrate/Library/DuplicateTracksModel.swift
+func startMerge(keeping: String, removing: [String]) {
+    isPreparing = true
+    task = Task {
+        await prepare(keeping, removing)
+        isPreparing = false
+    }
+}
+```
+
+- 단추가 시작하는 일의 이름은 `start…`로 짓는다. 화면 모델은 마지막 일의 손잡이를 `task`에 든다. 시험은 그 손잡이를 기다린다.
+- 단추의 일은 화면이 사라져도 취소하지 않는다. 화면과 함께 멈출 일은 `.task` 한 줄로 부른다.
+- 공유 저장소 `LibraryStore`의 단추 입구는 `LibraryStore+Actions.swift`에 모은다. 입구는 시작한 `Task`를 돌려준다.
 
 `scripts/check-imports.py`의 `view-task` 규칙이 이 규칙을 검사한다.
 

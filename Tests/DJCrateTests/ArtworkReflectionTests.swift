@@ -51,6 +51,41 @@ struct ArtworkReflectionTests {
         fixture.shareRoot.appending(path: "PIONEER/Artwork/\(spec.uuid.prefix(3))/\(spec.uuid.dropFirst(3))")
     }
 
+    // MARK: - 그림 칸(#244: 뷰의 .task에서 옮긴 읽기)
+
+    @Test func 그림_칸은_초안과_rekordbox_그림을_읽고_취소된_읽기는_그림을_바꾸지_않는다() async throws {
+        let (fixture, spec) = try library()
+        let store = await makeStore(fixture)
+        let row = try #require(store.rowsByUUID[spec.uuid])
+        // 인스펙터 그림 칸: 초안이 있으면 초안 그림, 없으면 rekordbox 그림(이 곡은 없음)
+        let well = ArtworkWellLoader()
+        store.setArtwork(image, name: "표지.jpg", rows: [row])
+        await well.load(row, store: store)
+        #expect(well.image != nil)
+        store.discardArtworkDrafts(rows: [row])
+        let cancelled = Task { await well.load(row, store: store) }
+        cancelled.cancel()
+        await cancelled.value
+        #expect(well.image != nil, "취소된 읽기는 그림을 바꾸지 않는다")
+        await well.load(row, store: store)
+        #expect(well.image == nil)
+
+        // 중복 후보 줄의 썸네일: rekordbox 그림(작은 그림)
+        let path = "/PIONEER/Artwork/00001/a.jpg"
+        let small = try #require(RekordboxShare.artworkURL(path, size: .small, root: fixture.shareRoot))
+        try FileManager.default.createDirectory(at: small.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try image.write(to: small)
+        let thumbnail = ArtworkThumbnailLoader()
+        await thumbnail.load(path, root: fixture.shareRoot, key: "a", from: store.thumbnails)
+        #expect(thumbnail.box != nil)
+        let skipped = Task { await thumbnail.load(nil, root: fixture.shareRoot, key: "b", from: store.thumbnails) }
+        skipped.cancel()
+        await skipped.value
+        #expect(thumbnail.box != nil, "스크롤로 지나쳐 취소된 줄은 그림을 바꾸지 않는다")
+        await thumbnail.load(nil, root: fixture.shareRoot, key: "b", from: store.thumbnails)
+        #expect(thumbnail.box == nil)
+    }
+
     @Test func 그림을_고르면_사본과_초안을_두고_쓰기_대기가_된다() async throws {
         let (fixture, spec) = try library()
         let store = await makeStore(fixture)
