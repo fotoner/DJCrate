@@ -5,13 +5,15 @@ import SwiftUI
 /// 쓰기 대기 목록 위: 라이브러리·추가 목록에 없는 곡의 초안이 있으면 알리고 목록을 연다(#175).
 struct UnlinkedDraftsBar: View {
     let store: LibraryStore
+    /// 시트를 띄우는 주 창 모델
+    let window: LibraryWindowModel
 
     var body: some View {
         HStack(spacing: 12) {
             Label(String(ui: "rekordbox 라이브러리와 추가 목록에 없는 곡의 초안이 \(store.unlinkedDraftUUIDs.count)곡 있습니다."),
                   systemImage: "questionmark.folder")
             Spacer(minLength: 0)
-            Button(.ui("연결되지 않은 초안 보기…")) { store.openUnlinkedDrafts() }
+            Button(.ui("연결되지 않은 초안 보기…")) { window.openUnlinkedDrafts() }
                 .disabled(store.isWritingRekordbox)
         }
         .font(.callout)

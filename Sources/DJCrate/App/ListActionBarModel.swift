@@ -129,7 +129,8 @@ final class ListActionBarModel {
         store.usb?.infos[key].map({ $0.consistency.playlistMismatches > 0 }) == true
     }
 
-    func startRefreshUsbLocalChanges(volumeKey key: String) { store.startRefreshUsbLocalChanges(volumeKey: key) }
+    /// '로컬 변경을 USB에 반영'. USB 초안 편집 흐름의 입구로 시작한다(기다리지 않는다)
+    func startRefreshUsbLocalChanges(volumeKey key: String) { store.usbEdits?.start(.refreshLocalChanges(volumeKey: key)) }
     func showUsbPending(volumeKey key: String) { store.sidebar = .usb(.pending(volumeKey: key)) }
 
     // MARK: - BPM 없는 곡

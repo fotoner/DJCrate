@@ -112,7 +112,7 @@ extension DevSelfTests {
             check(store.selectedRows.map(\.track.id) == ["2"] && store.primaryRow?.track.id == "2", "반복 행 선택을 기존 곡에 연결")
             check(store.music.library.index["itunes:A"]?.unavailableTrackCount == 1, "미연결 곡 안내")
             check(store.playlists.editablePlaylistID == nil && !store.playlists.canReorderDisplayedTracks
-                  && !LibraryMenuAction.removeTracks.isEnabled(in: store), "순서 변경·목록 삭제·컬렉션 삭제 차단")
+                  && !LibraryMenuAction.removeTracks.isEnabled(in: LibraryWindowModel(store: store)), "순서 변경·목록 삭제·컬렉션 삭제 차단")
             guard let row = store.displayRows.first else { log("실패 · 곡 선택"); exit(1) }
             store.tags.setTag(.comment, "iTunes 시험 초안", rows: [row])
             check(store.tagDrafts[row.track.uuid]?.fields.comment == "iTunes 시험 초안", "기존 곡에 태그 초안")

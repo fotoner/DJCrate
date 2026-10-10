@@ -15,6 +15,8 @@ struct LibraryDetail: View {
     let sidebarVisible: ObservedSetting<Bool>
     /// 목록 아래 작업 막대의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 막대에 넘긴다
     let listActionBar: ListActionBarModel
+    /// 주 창 화면 모델(연결되지 않은 초안 시트·파일 끌어 놓기). 본문은 읽지 않고 넘긴다
+    let window: LibraryWindowModel
     @AppStorage(SettingKeys.waveformHeight.name) private var waveformHeight = SettingKeys.waveformHeight.defaultValue
     @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
     @State private var sidebarAutoCollapse = SidebarVisibility()
@@ -46,7 +48,7 @@ struct LibraryDetail: View {
                     AppMessageView(message: message, onClose: { store.draftFileMessage = nil })
                 }
                 if store.sidebar == .pending, !store.unlinkedDraftUUIDs.isEmpty {
-                    UnlinkedDraftsBar(store: store)
+                    UnlinkedDraftsBar(store: store, window: window)
                 }
                 if let message = store.reflectionMessage {
                     AppMessageView(message: message, onClose: { store.reflectionMessage = nil })
@@ -87,7 +89,7 @@ struct LibraryDetail: View {
                 }
             }
             // 내부 곡 끌기는 재생 목록·덱이 맡으므로 파일 추가가 가로채지 않는다.
-            .onDrop(of: [.fileURL], delegate: LibraryFileDropDelegate(store: store, highlight: $fileDropHighlight))
+            .onDrop(of: [.fileURL], delegate: LibraryFileDropDelegate(window: window, highlight: $fileDropHighlight))
             .overlay {
                 if fileDropHighlight.isTargeted {
                     RoundedRectangle(cornerRadius: 8)

@@ -5,7 +5,7 @@ import DJCDomain
 extension DevSelfTests {
     /// 읽지 못한 초안 안내(#174)와 연결되지 않은 초안 줄·목록(#175)을 캡처한다(`--draft-notice-capture=<폴더>`).
     /// 창을 앞으로 가져오지 않고 이 앱의 창 번호로만 찍는다. 합성 사본(곡 제목이 "합성 곡"으로 시작)에서만 돈다.
-    static func runDraftNoticeCaptureIfRequested(store: LibraryStore) {
+    static func runDraftNoticeCaptureIfRequested(store: LibraryStore, libraryWindow: LibraryWindowModel) {
         guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--draft-notice-capture=") }),
               ProcessInfo.processInfo.environment["DJC_HOME"] != nil else { return }
         let directory = String(argument.dropFirst("--draft-notice-capture=".count))
@@ -37,7 +37,7 @@ extension DevSelfTests {
             store.sidebar = .pending
             await wait(1.5)
             capture(window, "after-pending")
-            store.openUnlinkedDrafts()
+            libraryWindow.openUnlinkedDrafts()
             await wait(2)
             if let sheet = window.attachedSheet ?? NSApp.windows.first(where: { $0.isSheet && $0.isVisible }) {
                 capture(sheet, "after-sheet")

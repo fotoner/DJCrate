@@ -12,6 +12,8 @@ struct ContentView: View {
     @Bindable var deck: DeckModel
     /// 저장소·덱·창을 잇는 조립 지점(처음 나타날 때 한 번 잇는다)
     let app: AppComposition
+    /// 주 창 화면 모델(시트와 단추·메뉴 입구). 조립 지점이 한 번 만든다
+    private var window: LibraryWindowModel { app.libraryWindow }
     /// 저장된 창 프레임을 적용했는지. 그 전의 기본 크기 폭으로는 사이드바를 접지 않는다(#119).
     var windowFrameRestored = true
     @AppStorage(SettingKeys.showTagEditor.name) private var showTagEditor = SettingKeys.showTagEditor.defaultValue
@@ -57,8 +59,8 @@ struct ContentView: View {
                     if let toast = store.toast {
                         AppToastView(toast: toast,
                                      onUndo: toast.undoBackup.map { url in { store.toast = nil; app.reflection.startRestore(backupURL: url) } },
-                                     onDetails: toast.showsResult ? { store.showingWriteResult = true } : nil,
-                                     onAction: toast.action.map { action in { store.performToastAction(action) } },
+                                     onDetails: toast.showsResult ? { window.showWriteResult() } : nil,
+                                     onAction: toast.action.map { action in { window.performToastAction(action) } },
                                      onClose: { if store.toast?.id == toast.id { store.toast = nil } })
                             .padding(.bottom, 16)
                             .padding(.horizontal, 16)
@@ -92,23 +94,27 @@ struct ContentView: View {
                 UsbExportSheet(store: store, usb: usb, request: request)
             }
         }
-        .sheet(isPresented: $store.showingWriteResult) { WriteResultView(history: store.resultHistory) }
+        // 주 창만 쓰는 시트는 주 창 모델이, 다른 화면이 여는 시트(재생 목록 고르기·USB·복구)는 그 주인이 든다
+        .sheet(isPresented: Binding(get: { window.showingWriteResult }, set: { window.showingWriteResult = $0 })) {
+            WriteResultView(history: store.resultHistory)
+        }
         .sheet(item: Binding(get: { store.playlists.playlistPicker }, set: { store.playlists.playlistPicker = $0 })) { PlaylistPickerView(model: $0) }
-        .sheet(item: $store.unlinkedDraftsSheet) { UnlinkedDraftsView(model: $0) }
-        .sheet(item: Binding(get: { store.xmlImport.preview }, set: { store.xmlImport.preview = $0 })) { preview in
-            XMLImportSheet(model: store.xmlImport, preview: preview)
+        .sheet(item: Binding(get: { window.unlinkedDrafts }, set: { window.unlinkedDrafts = $0 })) { UnlinkedDraftsView(model: $0) }
+        .sheet(item: Binding(get: { window.xmlImport.preview }, set: { window.xmlImport.preview = $0 })) { preview in
+            XMLImportSheet(model: window.xmlImport, preview: preview)
         }
         .modifier(RecoverySheetHost(store: store, anchor: .library))
         .animation(.easeInOut(duration: 0.15), value: store.writeStage)
         .searchable(text: $store.search, placement: .toolbar, prompt: Text(.ui("제목·아티스트·코멘트")))
         .toolbar(id: "main") { toolbarContent }
-        .focusedSceneValue(\.appCommands, AppCommandContext(store: store, deck: deck, windows: app.windows, reflection: app.reflection,
+        .focusedSceneValue(\.appCommands, AppCommandContext(window: window, deck: deck, windows: app.windows, reflection: app.reflection,
                                                             showTagEditor: $showTagEditor))
         .onAppear { setUp() }
         // 보조 창·목록 메뉴 동작은 조립 지점이 한 번 만든 것을 내려 준다(값이 바뀌지 않아 본문을 다시 계산하지 않는다).
         .environment(\.appWindows, app.windows)
         .environment(\.trackListActions, app.trackListActions)
         .environment(\.reflection, app.reflection)
+        .environment(\.libraryWindow, window)
         .onChange(of: undoManager, initial: true) {
             deck.undoManager = undoManager
             store.undoManager = undoManager
@@ -119,7 +125,7 @@ struct ContentView: View {
         .task { await app.runAutoPointSnapshots() }
         // rekordbox에서 곡을 지우거나 고치고 돌아오면 새로 읽는다(옛 목록에 지워진 곡이 남지 않게)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            store.startRefreshIfRekordboxChanged()
+            window.startRefreshIfRekordboxChanged()
         }
     }
 
@@ -127,14 +133,14 @@ struct ContentView: View {
             switch store.phase {
             case .loaded:
                 LibraryDetail(store: store, deck: deck, windowFrameRestored: windowFrameRestored, sidebarVisible: sidebarVisible,
-                              listActionBar: app.listActionBar)
+                              listActionBar: app.listActionBar, window: window)
             case .idle:
                 ContentUnavailableView {
                     Label(.ui("스냅샷이 없습니다"), systemImage: "externaldrive.badge.questionmark")
                 } description: {
                     Text(.ui("rekordbox를 종료한 뒤 master.db 사본을 떠 주세요. 원본은 읽기만 합니다."))
                 } actions: {
-                    Button(.ui("스냅샷 뜨기")) { store.startTakeSnapshot() }
+                    Button(.ui("스냅샷 뜨기")) { window.startTakeSnapshot() }
                 }
             case let .loading(message):
                 ProgressView(message)
@@ -144,8 +150,8 @@ struct ContentView: View {
                 } description: {
                     Text(message)
                 } actions: {
-                    Button(.ui("다시 시도")) { store.startLoadInitial() }
-                    Button(.ui("실행 중이어도 읽기용 스냅샷 뜨기")) { store.startTakeSnapshot(force: true) }
+                    Button(.ui("다시 시도")) { window.startLoadInitial() }
+                    Button(.ui("실행 중이어도 읽기용 스냅샷 뜨기")) { window.startTakeSnapshot(force: true) }
                 }
             }
     }
@@ -181,7 +187,7 @@ struct ContentView: View {
                 } label: {
                     Label(.ui("곡 추가"), systemImage: "plus")
                 }
-                .disabled(!LibraryMenuAction.addFiles.isEnabled(in: store))
+                .disabled(!LibraryMenuAction.addFiles.isEnabled(in: window))
                 .help(.ui("음원 파일·폴더를 추가합니다. 창에 끌어다 놓아도 됩니다."))
             }
             ToolbarItem(id: "tagEditor") {
@@ -196,15 +202,15 @@ struct ContentView: View {
             ToolbarItem(id: "snapshot") {
                 Button {
                     // rekordbox가 켜져 있어도 읽기용 사본을 뜬다(최근 변경이 담긴 WAL까지 사본 안에서 합친다).
-                    store.startSynchronizeLibrary()
+                    window.startSynchronizeLibrary()
                 } label: {
                     Label(.ui("rekordbox와 동기화"), systemImage: "arrow.clockwise")
                 }
-                .disabled(!LibraryMenuAction.snapshot.isEnabled(in: store))
-                .help(LibraryMenuAction.snapshot.disabledReason(in: store) ?? String(ui: "rekordbox 내용을 새로 읽고 편집 중인 초안을 보존합니다(⌘R)."))
+                .disabled(!LibraryMenuAction.snapshot.isEnabled(in: window))
+                .help(LibraryMenuAction.snapshot.disabledReason(in: window) ?? String(ui: "rekordbox 내용을 새로 읽고 편집 중인 초안을 보존합니다(⌘R)."))
             }
             ToolbarItem(id: "reflection", placement: .primaryAction) {
-                ReflectionMenu(store: store)
+                ReflectionMenu(store: store, window: window)
             }
     }
 
@@ -374,7 +380,8 @@ struct SplitHandle: View {
 
 /// 파일 URL과 내부 곡 ID를 함께 싣는 드래그를 구별해야 하므로 형식을 검사할 수 있는 delegate를 쓴다.
 struct LibraryFileDropDelegate: DropDelegate {
-    let store: LibraryStore
+    /// 주 창 화면 모델(받을지 판정과 곡 추가 입구)
+    let window: LibraryWindowModel
     @Binding var highlight: DropHighlight
 
     static func accepts(_ providers: [NSItemProvider]) -> Bool {
@@ -385,10 +392,7 @@ struct LibraryFileDropDelegate: DropDelegate {
     }
 
     func validateDrop(info: DropInfo) -> Bool {
-        store.writeLockPolicy.allowsLibraryInteraction
-            && !store.isITunesSelection
-            && !store.isUsbSelection
-            && Self.accepts(info.itemProviders(for: [.fileURL, DeckDragType.track, PlaylistDragType.tracks]))
+        window.acceptsFileDrop && Self.accepts(info.itemProviders(for: [.fileURL, DeckDragType.track, PlaylistDragType.tracks]))
     }
 
     func dropEntered(info: DropInfo) { highlight.enter(accepted: validateDrop(info: info)) }
@@ -403,7 +407,13 @@ struct LibraryFileDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         highlight.drop()
         guard validateDrop(info: info) else { return false }
-        store.addDroppedFiles(info.itemProviders(for: [.fileURL]))
+        window.addDroppedFiles(info.itemProviders(for: [.fileURL]))
         return true
     }
+}
+
+extension EnvironmentValues {
+    /// 주 창 화면 모델. 사이드바 줄처럼 부모 본문에 클로저를 넣으면 다시 계산이 늘어나는 잎 뷰가 받는다.
+    /// 조립 지점이 붙이지 않은 화면(시험·미리 보기)에서는 nil이다.
+    @Entry var libraryWindow: LibraryWindowModel? = nil
 }

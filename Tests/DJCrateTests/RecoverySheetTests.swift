@@ -384,15 +384,15 @@ struct RecoverySheetTests {
         let store = scenario.store, a = try #require(scenario.rows["A"])
         store.selection = [a.id]
         let reflect = LibraryMenuAction.reflect, remove = LibraryMenuAction.removeTracks
-        #expect(reflect.isEnabled(in: store) && remove.isEnabled(in: store), "시트가 없으면 열려 있어야 한다")
+        #expect(reflect.isEnabled(in: LibraryWindowModel(store: store)) && remove.isEnabled(in: LibraryWindowModel(store: store)), "시트가 없으면 열려 있어야 한다")
         let sheet = RecoverySheetModel(host: store, requests: [Self.request(scenario, .draft("A", .tags))], anchor: .editWindow,
                                        dependencies: .init())
         store.recoverySheet = sheet
-        #expect(!reflect.isEnabled(in: store) && !remove.isEnabled(in: store) && !LibraryMenuAction.restore.isEnabled(in: store))
-        #expect(reflect.disabledReason(in: store) == LibraryStore.writesBlockedBySheetReason)
+        #expect(!reflect.isEnabled(in: LibraryWindowModel(store: store)) && !remove.isEnabled(in: LibraryWindowModel(store: store)) && !LibraryMenuAction.restore.isEnabled(in: LibraryWindowModel(store: store)))
+        #expect(reflect.disabledReason(in: LibraryWindowModel(store: store)) == LibraryStore.writesBlockedBySheetReason)
         let reflection = ReflectionCoordinator.test(store: store)
         for entry in [{ reflection.startWrite(rows: [a]) }, { reflection.startAddTracks(rows: [a]) },
-                      { reflection.startDeleteTracks(rows: [a]) }, { reflect.perform(in: store, reflection: reflection) }] {
+                      { reflection.startDeleteTracks(rows: [a]) }, { reflect.perform(in: LibraryWindowModel(store: store), reflection: reflection) }] {
             store.toast = nil
             entry()
             #expect(store.toast?.isNotice == true, "쓰지 않은 까닭을 안내한다")
@@ -403,7 +403,7 @@ struct RecoverySheetTests {
         reflection.startRecovery(row: a, kind: .tags)
         #expect(store.toast?.isNotice == true && store.writeTask == nil)
         sheet.cancel()
-        #expect(reflect.isEnabled(in: store) && reflect.disabledReason(in: store) == nil)
+        #expect(reflect.isEnabled(in: LibraryWindowModel(store: store)) && reflect.disabledReason(in: LibraryWindowModel(store: store)) == nil)
     }
 
     @Test func 곡_편집_창이_닫히면_그_창에_붙은_시트만_닫는다() async throws {

@@ -38,14 +38,14 @@ struct LibraryXMLExportTests {
     @Test func 불러온_라이브러리에서만_메뉴가_켜지고_내보내는_동안은_꺼진다() async throws {
         let fixture = try library()
         let empty = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
-        #expect(!LibraryMenuAction.exportLibraryXML.isEnabled(in: empty))
-        #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: empty)?.contains("불러온") == true)
+        #expect(!LibraryMenuAction.exportLibraryXML.isEnabled(in: LibraryWindowModel(store: empty)))
+        #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: LibraryWindowModel(store: empty))?.contains("불러온") == true)
         let store = await loadedStore(fixture)
-        #expect(LibraryMenuAction.exportLibraryXML.isEnabled(in: store))
-        #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: store) == nil)
+        #expect(LibraryMenuAction.exportLibraryXML.isEnabled(in: LibraryWindowModel(store: store)))
+        #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: LibraryWindowModel(store: store)) == nil)
         store.staging.xmlExportJob = LibraryXMLExportJob()
-        #expect(store.staging.hasXMLExportJob && !LibraryMenuAction.exportLibraryXML.isEnabled(in: store))
-        #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: store)?.contains("끝난 뒤") == true)
+        #expect(store.staging.hasXMLExportJob && !LibraryMenuAction.exportLibraryXML.isEnabled(in: LibraryWindowModel(store: store)))
+        #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: LibraryWindowModel(store: store))?.contains("끝난 뒤") == true)
     }
 
     @Test func 내보내면_파일을_쓰고_진행_줄을_거둔_뒤_완료를_알린다() async throws {
@@ -64,7 +64,7 @@ struct LibraryXMLExportTests {
         #expect(message.text.contains("export.xml") && message.text.contains("뺀 것: 스트리밍 곡 1"))
         #expect(message.text.contains("쓰지 않은 초안은 넣지 않았습니다"))
         #expect(try Data(contentsOf: fixture.database) == before, "라이브러리 사본은 바뀌지 않는다")
-        #expect(LibraryMenuAction.exportLibraryXML.isEnabled(in: store), "끝나면 다시 켜진다")
+        #expect(LibraryMenuAction.exportLibraryXML.isEnabled(in: LibraryWindowModel(store: store)), "끝나면 다시 켜진다")
     }
 
     @Test func 쓰지_않은_초안은_넣지_않는다() async throws {

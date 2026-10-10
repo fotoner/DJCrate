@@ -11,7 +11,7 @@ extension DevSelfTests {
     /// 사본을 내보낸 XML을 고쳐(제목·핫큐·그리드·새 재생 목록) 가져오고, 모든 차이를 초안으로 만든 뒤
     /// 초안이 생겼는지와 사본 DB가 그대로인지 본다("rekordbox XML 가져오기 시험 통과" 줄).
     /// 창을 앞으로 가져오지 않고 이 앱의 창 번호로만 찍는다. 합성 사본(곡 제목이 "합성 곡"으로 시작)과 사본 폴더(`DJC_REKORDBOX_DIR`)·임시 `DJC_HOME`에서만 돈다.
-    static func runXMLImportCaptureIfRequested(store: LibraryStore) {
+    static func runXMLImportCaptureIfRequested(store: LibraryStore, libraryWindow: LibraryWindowModel) {
         guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--xml-import-capture=") }),
               ProcessInfo.processInfo.environment["DJC_HOME"] != nil,
               ProcessInfo.processInfo.environment["DJC_REKORDBOX_DIR"]?.isEmpty == false else { return }
@@ -60,10 +60,10 @@ extension DevSelfTests {
             do { try Data(xml.utf8).write(to: url) } catch { log("XML을 쓰지 못했습니다"); exit(1) }
 
             store.sidebar = .filter(.all)
-            store.xmlImport.start(from: url)
-            check(store.xmlImport.isReading, "시작하자마자 읽는 중이어야 합니다")
-            await store.xmlImport.task?.value
-            guard let preview = store.xmlImport.preview else {
+            libraryWindow.xmlImport.start(from: url)
+            check(libraryWindow.xmlImport.isReading, "시작하자마자 읽는 중이어야 합니다")
+            await libraryWindow.xmlImport.task?.value
+            guard let preview = libraryWindow.xmlImport.preview else {
                 log("미리 보기가 열리지 않았습니다: \(store.staging.stagingMessage?.text ?? "")")
                 exit(1)
             }
@@ -78,10 +78,10 @@ extension DevSelfTests {
                 exit(1)
             }
             capture("preview", sheet)
-            await store.xmlImport.makeDrafts(preview, selection: .all)
+            await libraryWindow.xmlImport.makeDrafts(preview, selection: .all)
             await wait(1.5)
             capture("result", window.attachedSheet ?? sheet)
-            let result = store.xmlImport.result
+            let result = libraryWindow.xmlImport.result
             check(result?.failure == nil, "실패 없음(\(result?.failure ?? ""))")
             check(result?.tags == 2 && result?.cues == 1 && result?.grids == 1 && result?.playlists == 1,
                   "초안 수 \(String(describing: result))")

@@ -149,7 +149,7 @@ struct UsbSidebarTests {
         #expect(store.selectedRows.isEmpty)
         // 덱 불러오기는 막지 않고 누르면 짝이 없다고 알린다(#255, 이 USB의 곡은 로컬에 없다)
         #expect(store.canLoadSelectionToDeck)
-        #expect(!LibraryMenuAction.removeTracks.isEnabled(in: store))
+        #expect(!LibraryMenuAction.removeTracks.isEnabled(in: LibraryWindowModel(store: store)))
 
         _ = NSApplication.shared
         let coordinator = TrackListCoordinator(store: store, actions: .live(store: store))

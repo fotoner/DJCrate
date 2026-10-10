@@ -45,7 +45,6 @@ final class LibraryStore {
 
     let resultHistory: WriteResultHistory
     @ObservationIgnored var feedback: AppFeedback
-    var showingWriteResult = false
     @ObservationIgnored var writeTask: Task<Void, Never>?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
 
@@ -174,8 +173,6 @@ final class LibraryStore {
     @ObservationIgnored var damagedStagedList = false
     /// 스냅샷 곡·추가한 곡 어디에도 이어지지 않는 초안이 있는 곡(#175). 쓰기 대기 목록에서 보여 주고 고른 것만 버린다.
     var unlinkedDraftUUIDs: Set<String> = []
-    /// 연결되지 않은 초안 시트의 화면 모델(띄울 때 만든다, `openUnlinkedDrafts`)
-    var unlinkedDraftsSheet: UnlinkedDraftsModel?
     /// 개발용 실행 인자(처음 읽은 뒤 한 번 곡을 고르거나 곡을 추가한다)
     @ObservationIgnored let launch: LibraryLaunchOptions
     /// 재생 기록 상태와 USB 기록 보존 연결(기능 조각, `HistoryStore`). 조각이 핵심(곡·사이드바·알림·되돌리기)을 붙들어 처음 쓸 때 만든다.
@@ -237,8 +234,6 @@ final class LibraryStore {
     /// 추가한 곡·그리드 일괄 추정·XML 내보내기(기능 조각, `TrackStagingStore`). 조각이 핵심(곡·사이드바·선택·초안 표시)을 붙들어 처음 쓸 때 만든다.
     /// 관찰하지 않는다: 화면은 조각의 값을 읽는다
     @ObservationIgnored private(set) lazy var staging = TrackStagingStore(library: self)
-    /// rekordbox XML 가져오기(읽는 중·미리 보기 시트·초안 결과, `XMLImportModel`). 메뉴가 읽는 중인지 보므로 시트를 닫아도 남는다
-    @ObservationIgnored private(set) lazy var xmlImport = XMLImportModel(store: self)
     /// 덱에 올린 곡과 그 그리드 초안을 덱에서 바꿨는지(가져오기가 덱 곡의 그리드 초안을 덱에 넘길지 정한다)
     @ObservationIgnored var deckGridDraftState: (() -> (uuid: String, hasChanges: Bool)?)?
     /// 가져온 그리드 초안을 덱이 받아 저장한다. 받지 못하면(덱에서 고쳤거나 다른 곡) false.

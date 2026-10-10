@@ -36,12 +36,14 @@ enum LibraryMenuAction: CaseIterable {
         }
     }
 
-    @MainActor func menuTitle(in store: LibraryStore) -> String { title }
+    @MainActor func menuTitle(in window: LibraryWindowModel) -> String { title }
 
     /// rekordbox 라이브러리에 쓰는 동작(막힌 초안 비교 창이 열려 있는 동안은 막는다, #232)
     private var writesLibrary: Bool { self == .reflect || self == .restore || self == .removeTracks }
 
-    @MainActor func isEnabled(in store: LibraryStore) -> Bool {
+    /// 메뉴 막대·툴바는 주 창 모델로 메뉴 항목을 보고 부른다. 판정은 공유 핵심의 값을, XML 가져오기는 주 창 모델이 든 가져오기를 본다
+    @MainActor func isEnabled(in window: LibraryWindowModel) -> Bool {
+        let store = window.store
         guard store.writeLockPolicy.allowsLibraryInteraction else { return false }
         if writesLibrary, store.writesBlockedBySheet { return false }
         switch self {
@@ -54,7 +56,7 @@ enum LibraryMenuAction: CaseIterable {
             return store.snapshotURL != nil && !store.isLoading && !store.staging.hasXMLExportJob
         case .importRekordboxXML:
             guard case .loaded = store.phase else { return false }
-            return store.snapshotURL != nil && !store.isLoading && !store.xmlImport.isBusy
+            return store.snapshotURL != nil && !store.isLoading && !window.xmlImport.isBusy
         case .reflect: return store.pendingLibraryCount > 0 || store.playlists.hasPlaylistDrafts || store.hasHistoryDrafts
         case .pending, .writeResult: return true
         case .restore: return store.hasWriteBackup
@@ -66,32 +68,34 @@ enum LibraryMenuAction: CaseIterable {
     /// - Parameters:
     ///   - windows: 창을 여는 항목(Apple Music 가져오기·시점 스냅샷)이 쓸 앱 창. 메뉴 막대는 늘 준다.
     ///   - reflection: rekordbox 쓰기 항목(쓰기·복원·빼기·시점 스냅샷)이 부를 화면 쪽. 없으면(조립 지점 없이 띄운 화면) 그 항목은 아무것도 하지 않는다.
-    @MainActor func perform(in store: LibraryStore, windows: AppWindows? = nil, reflection: ReflectionCoordinator? = nil) {
+    @MainActor func perform(in window: LibraryWindowModel, windows: AppWindows? = nil, reflection: ReflectionCoordinator? = nil) {
+        let store = window.store
         if writesLibrary, store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return }
-        guard isEnabled(in: store) else {
-            if let reason = disabledReason(in: store) { store.staging.stagingMessage = AppMessage(kind: .warning, text: reason) }
+        guard isEnabled(in: window) else {
+            if let reason = disabledReason(in: window) { store.staging.stagingMessage = AppMessage(kind: .warning, text: reason) }
             return
         }
         switch self {
         case .addFiles: StagingPanels.chooseFiles(store: store)
         case .importAppleMusic: windows?.appleMusicImport.open(store: store)
-        case .snapshot: Task { await store.synchronizeLibrary() }
+        case .snapshot: window.startSynchronizeLibrary()
         case .exportXML:
             if store.sidebar == .staged { StagingPanels.exportXML(store: store) }
             else { ReflectionPanels.export(store: store, rows: store.reflectionPreviewRows) }
         case .exportLibraryXML: LibraryXMLPanels.export(store: store)
-        case .importRekordboxXML: LibraryXMLPanels.importXML(into: store.xmlImport)
+        case .importRekordboxXML: LibraryXMLPanels.importXML(into: window.xmlImport)
         case .reflect: reflection?.startWrite(rows: store.reflectionPreviewRows)
         case .pending: store.sidebar = .pending
-        case .writeResult: store.showingWriteResult = true
+        case .writeResult: window.showWriteResult()
         case .restore: reflection?.startRestoreLatest()
         case .pointSnapshots: if let reflection { windows?.pointSnapshots.open(store: store, reflection: reflection) }
         case .removeTracks: reflection?.startDeleteTracks(rows: store.selectedRows)
         }
     }
 
-    @MainActor func disabledReason(in store: LibraryStore) -> String? {
-        guard !isEnabled(in: store) else { return nil }
+    @MainActor func disabledReason(in window: LibraryWindowModel) -> String? {
+        guard !isEnabled(in: window) else { return nil }
+        let store = window.store
         if !store.writeLockPolicy.allowsLibraryInteraction { return String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") }
         if writesLibrary, store.writesBlockedBySheet { return LibraryStore.writesBlockedBySheetReason }
         switch self {
@@ -106,7 +110,7 @@ enum LibraryMenuAction: CaseIterable {
         case .exportLibraryXML:
             return store.staging.hasXMLExportJob ? String(ui: "라이브러리 XML 내보내기가 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 내보내세요")
         case .importRekordboxXML:
-            return store.xmlImport.isBusy
+            return window.xmlImport.isBusy
                 ? String(ui: "지금 가져오는 XML이 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 가져오세요")
         case .restore: return String(ui: "쓰기 전 백업이 없으니 마지막 쓰기 결과를 확인하세요")
         case .addFiles, .importAppleMusic: return String(ui: "라이브러리를 먼저 불러온 뒤 곡을 추가하세요")

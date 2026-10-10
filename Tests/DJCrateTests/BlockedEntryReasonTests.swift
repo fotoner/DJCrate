@@ -60,21 +60,22 @@ struct BlockedEntryReasonTests {
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil,
                                  stagingSaver: { _ in }, draftHome: folder.url.appending(path: "drafts"),
                                  rekordboxDatabase: folder.url.appending(path: "master.db"), rekordboxShareRoot: folder.url.appending(path: "share"))
-        #expect(LibraryMenuAction.snapshot.disabledReason(in: store) == nil)
+        let window = LibraryWindowModel(store: store)
+        #expect(LibraryMenuAction.snapshot.disabledReason(in: window) == nil)
         store.phase = .loading("합성 읽기")
-        let reading = try #require(LibraryMenuAction.snapshot.disabledReason(in: store))
+        let reading = try #require(LibraryMenuAction.snapshot.disabledReason(in: window))
         store.phase = .idle
         store.allowsLibrarySync = { false }
-        let unconfirmed = try #require(LibraryMenuAction.snapshot.disabledReason(in: store))
+        let unconfirmed = try #require(LibraryMenuAction.snapshot.disabledReason(in: window))
         #expect(reading != unconfirmed, "읽는 중과 덱 입력 미확정을 다른 이유로 알린다")
-        #expect(LibraryMenuAction.reflect.disabledReason(in: store)?.contains("초안") == true)
-        #expect(LibraryMenuAction.exportXML.disabledReason(in: store)?.contains("큐·그리드") == true)
-        #expect(LibraryMenuAction.restore.disabledReason(in: store)?.contains("백업") == true)
-        #expect(LibraryMenuAction.removeTracks.disabledReason(in: store)?.contains("고르세요") == true)
-        LibraryMenuAction.reflect.perform(in: store)
-        #expect(store.staging.stagingMessage?.text == LibraryMenuAction.reflect.disabledReason(in: store))
+        #expect(LibraryMenuAction.reflect.disabledReason(in: window)?.contains("초안") == true)
+        #expect(LibraryMenuAction.exportXML.disabledReason(in: window)?.contains("큐·그리드") == true)
+        #expect(LibraryMenuAction.restore.disabledReason(in: window)?.contains("백업") == true)
+        #expect(LibraryMenuAction.removeTracks.disabledReason(in: window)?.contains("고르세요") == true)
+        LibraryMenuAction.reflect.perform(in: window)
+        #expect(store.staging.stagingMessage?.text == LibraryMenuAction.reflect.disabledReason(in: window))
         store.isWritingRekordbox = true
-        #expect(LibraryMenuAction.snapshot.disabledReason(in: store)?.contains("쓰기") == true)
+        #expect(LibraryMenuAction.snapshot.disabledReason(in: window)?.contains("쓰기") == true)
     }
 
     @Test func 루프_길이_한도와_곡_끝을_알리고_기존_값을_보존한다() async throws {
