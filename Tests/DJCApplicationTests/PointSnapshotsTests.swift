@@ -1,5 +1,6 @@
 import DJCApplication
 import DJCDomain
+import DJCTestKit
 import Foundation
 import PortTestKit
 import Synchronization
@@ -26,7 +27,8 @@ struct PointSnapshotsTests {
         }
     }
 
-    @Test func 목록은_시점_스냅샷과_쓰기_전_백업을_최근_것부터_한데_보이고_복원_직전은_무엇으로_되돌리기_전인지_적는다() {
+    /// 목록 읽기(폴더·파일 크기·클론 가능 여부)는 협력 풀 밖에서 한다(가짜가 `expectBlockingOffPool`로 본다)
+    @Test func 목록은_시점_스냅샷과_쓰기_전_백업을_최근_것부터_한데_보이고_복원_직전은_무엇으로_되돌리기_전인지_적는다() async {
         let files = MemoryPointSnapshotFiles()
         files.add("정리 전", at: now.addingTimeInterval(-300))
         files.add("", at: now, kind: .beforeRestore, restoredFrom: "정리 전")
@@ -34,7 +36,9 @@ struct PointSnapshotsTests {
                                           gridOutcomes: [.init(trackUUID: "1", title: "그리드 곡", status: .written, removed: 0, added: 1)])
         let backups = [RekordboxWriteBackup(url: URL(filePath: "/backups/a-write"), createdAt: now.addingTimeInterval(-100), isWrite: true, report: report),
                        RekordboxWriteBackup(url: URL(filePath: "/backups/b-before-restore"), createdAt: now.addingTimeInterval(-600), isWrite: false)]
-        let rows = points(files, backups: backups).rows()
+        let loaded = await points(files, backups: backups).load()
+        let rows = loaded.rows
+        #expect(loaded.canClone)
         #expect(rows.map(\.kind) == ["복원 직전", "쓰기 전 백업", "수동", "복원 직전 백업"])
         #expect(rows[0].name == "‘정리 전’ 복원 전")
         #expect(rows[1].name == "그리드 곡" && rows[1].entry == nil && !rows[1].pinned)
@@ -159,7 +163,7 @@ struct PointSnapshotsTests {
         var files = memory.port
         let entry = RekordboxPointSnapshotEntry(url: URL(filePath: "/points/auto"),
                                                 metadata: .init(name: "", kind: .auto, createdAt: now))
-        files.takeAutoIfDue = { _, _, _, _, _, _, _ in .took(entry) }
+        files.takeAutoIfDue = { _, _, _, _, _, _, _ in expectBlockingOffPool(); return .took(entry) }
         let discarded = Mutex<[URL]>([])
         files.discard = { url in discarded.withLock { $0.append(url) } }
         let probe = AutoProbe()

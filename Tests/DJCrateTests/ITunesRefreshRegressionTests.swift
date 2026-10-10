@@ -1,5 +1,6 @@
 import DJCAdapters
 import DJCApplication
+import DJCTestKit
 @testable import DJCrate
 import DJCStorage
 import DJCDomain

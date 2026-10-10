@@ -240,7 +240,8 @@ final class AppComposition {
             let removed = await LoudnessCache.shared.prune(keeping: libraryPaths)
             if removed > 0 { FileHandle.standardError.write(Data("음량 캐시 정리 \(removed)개\n".utf8)) }
         }
-        Task.detached(priority: .background) {
+        // 파일을 지우는 동기 입출력이라 협력 풀이 아닌 GCD에서 돌린다(기다리지 않는다)
+        DispatchQueue.global(qos: .background).async {
             CacheMaintenance.prune()
             _ = tempCleanupOnce
         }

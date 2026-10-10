@@ -1,5 +1,6 @@
 import DJCApplication
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Synchronization
 import Testing
@@ -43,10 +44,12 @@ struct StageEditTests {
                         self.record("read")
                         return StagedTrack(uuid: "new", path: url.path, title: "태그 제목", duration: 8, addedOn: addedOn)
                     },
+                    // 초안 파일 쓰기·되돌리기는 동기 입출력이라 협력 풀 밖에서 불려야 한다
                     writeDrafts: { drafts in
+                        expectBlockingOffPool()
                         self.record("drafts")
                         self.drafts.withLock { $0.append(drafts) }
-                        return { self.record("rollback") }
+                        return { expectBlockingOffPool(); self.record("rollback") }
                     }),
                 // 2026-10-09 23:30 UTC
                 now: { Date(timeIntervalSince1970: 1_791_588_600) })

@@ -1,10 +1,13 @@
 import DJCApplication
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Synchronization
+import Testing
 
 /// 시점 스냅샷 파일의 메모리 가짜: 만든 스냅샷을 기억하고 부른 차례를 남긴다. 실제(`PointSnapshotFiles.live`)처럼 목록은 최근 것부터,
 /// 찾기는 폴더 이름(ID) 또는 겹치지 않는 이름, 고정한 것과 스냅샷 폴더 밖의 항목은 지우지 않는다(`pointSnapshotFilesContract`).
+/// 만들기·지우기·비교·클론 확인·자동 뜨기는 실제로 디스크를 오래 쓰는 일이라 협력 풀 밖에서 불려야 한다(`expectBlockingOffPool`).
 public final class MemoryPointSnapshotFiles: Sendable {
     public struct State: Sendable {
         public var entries: [RekordboxPointSnapshotEntry] = []
@@ -52,7 +55,8 @@ public final class MemoryPointSnapshotFiles: Sendable {
     public var port: PointSnapshotFiles {
         PointSnapshotFiles(
             create: { name, _, _, directory, _, now in
-                self.state.withLock { state in
+                expectBlockingOffPool()
+                return self.state.withLock { state in
                     state.calls.append("create \(name)")
                     let entry = RekordboxPointSnapshotEntry(url: Self.folder(in: directory, &state),
                                                             metadata: RekordboxPointSnapshotMetadata(name: name, kind: .manual, createdAt: now))
@@ -77,6 +81,7 @@ public final class MemoryPointSnapshotFiles: Sendable {
                 }
             },
             delete: { url, directory in
+                expectBlockingOffPool()
                 try self.state.withLock { state in
                     let index = try Self.owned(url, in: directory, state)
                     state.calls.append("delete \(state.entries[index].metadata.name)")
@@ -85,17 +90,18 @@ public final class MemoryPointSnapshotFiles: Sendable {
                 }
             },
             compare: { _, _, _ in
-                try self.state.withLock { state in
+                expectBlockingOffPool()
+                return try self.state.withLock { state in
                     state.calls.append("compare")
                     if state.compareFails { throw DJCError.writeRefused("비교 실패") }
                     return state.diff
                 }
             },
             size: { _ in 10 },
-            canClone: { _, _ in true },
+            canClone: { _, _ in expectBlockingOffPool(); return true },
             isLiveAndRunning: { _ in self.state.withLock { $0.liveAndRunning } },
             isRekordboxRunning: { false },
-            takeAutoIfDue: { _, _, _, _, _, _, _ in .skipped(.unchanged) },
+            takeAutoIfDue: { _, _, _, _, _, _, _ in expectBlockingOffPool(); return .skipped(.unchanged) },
             discard: { _ in })
     }
 }

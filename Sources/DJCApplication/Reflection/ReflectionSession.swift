@@ -127,12 +127,11 @@ public struct ReflectionSession {
     /// 사본을 떠서 그 사본에서 관문을 시험한다(미리 보기 1/2 → 사본 → 2/2 → 관문). 백업은 이 위치의 백업 폴더(사용자 백업을 밀어내지 않게)
     func onSnapshotCopy<Report: Sendable>(_ body: @escaping @Sendable (RekordboxWriteTarget) throws -> Report) async throws -> Report {
         stage(WriteStage(String(ui: "미리 보기 1/2단계 · 사본을 만드는 중…"), completed: 0, total: 2, cancellable: true))
-        let take = ports.snapshots.take, stage = ports.lock.stage, backups = location.backupDirectory
-        return try await Task.detached(priority: .userInitiated) {
-            let copy = try take(false)
-            await stage(WriteStage(String(ui: "미리 보기 2/2단계 · 바꿀 내용을 검사하는 중…"), completed: 1, total: 2, cancellable: true))
-            return try body(RekordboxWriteTarget(database: copy, shareRoot: nil, backups: backups))
-        }.value
+        // 사본 뜨기와 관문 시험은 DB를 통째로 다루는 동기 입출력이라 협력 풀 밖에서 한다
+        let take = ports.snapshots.take, backups = location.backupDirectory
+        let copy = try await BlockingWork.run { try take(false) }
+        stage(WriteStage(String(ui: "미리 보기 2/2단계 · 바꿀 내용을 검사하는 중…"), completed: 1, total: 2, cancellable: true))
+        return try await BlockingWork.run { try body(RekordboxWriteTarget(database: copy, shareRoot: nil, backups: backups)) }
     }
 }
 

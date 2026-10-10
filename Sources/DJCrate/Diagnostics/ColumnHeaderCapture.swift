@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import Foundation
@@ -43,7 +44,7 @@ enum ColumnHeaderCapture {
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain && $0.isVisible }) else {
             throw Failure(description: "주 창을 확인하세요")
         }
-        let volume = try await Task.detached { try UsbVolumes.info(root: URL(filePath: mount)) }.value
+        let volume = try await BlockingWork.run(qos: .default) { try UsbVolumes.info(root: URL(filePath: mount)) }
         guard volume.isDiskImage else { throw Failure(description: "합성 디스크 이미지가 아님") }
         let (events, continuation) = AsyncStream.makeStream(of: [UsbVolumeInfo].self)
         defer { continuation.finish() }

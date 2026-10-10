@@ -26,11 +26,32 @@ struct ImportXMLTests {
                                    diff: XMLLibraryDiff.compute(xml: xml, library: library))
     }
 
-    static func importer(files: MemoryDraftFiles, drafts: DraftStore = MemoryDrafts().store) -> ImportXML {
+    static func importer(files: MemoryDraftFiles, drafts: DraftStore = MemoryDrafts().store, xml: XMLFiles = .unused) -> ImportXML {
         let library = RekordboxLibrary(allTracks: ["1", "2", "3"].map { track($0, title: "곡 \($0)") }, cues: [], playCounts: [:])
         let counter = Mutex(0)
-        return ImportXML(files: .unused, source: .memory([snapshot: library]), drafts: drafts, draftFiles: files.files,
+        return ImportXML(files: xml, source: .memory([snapshot: library]), drafts: drafts, draftFiles: files.files,
                          newKey: { counter.withLock { $0 += 1; return "key-\($0)" } })
+    }
+
+    /// 부른 작업을 취소하면 XML 읽기 안에까지 취소가 닿고(실제 읽기는 조각마다 작업 취소를 본다) 사본은 읽지 않는다.
+    /// 그래서 비교는 `BlockingWork`(GCD, 지금 작업 없음)로 옮기지 않는다. 읽기 시작을 기다리지 않고 바로 취소한다
+    /// (기다리면 읽기가 붙잡은 풀 스레드 때문에 좁은 풀에서 신호가 돌아오지 못한다).
+    @Test func 비교를_취소하면_읽기_안까지_닿고_사본은_읽지_않는다() async throws {
+        let sawCancel = Mutex(false), libraryRead = Mutex(false)
+        var xml = XMLFiles.unused
+        xml.read = { _ in
+            // 안전망: 취소가 닿지 않는 잘못된 구현에서 멈춰 있지 않게 한다(판정은 시각이 아니라 본 취소로 한다)
+            let deadline = ContinuousClock.now + .seconds(30)
+            while !Task.isCancelled, ContinuousClock.now < deadline { usleep(1_000) }
+            sawCancel.withLock { $0 = Task.isCancelled }
+            throw CancellationError()
+        }
+        xml.library = { _, _, _ in libraryRead.withLock { $0 = true }; return XMLLibrary(tracks: []) }
+        let importer = Self.importer(files: MemoryDraftFiles(), xml: xml)
+        let task = Task { try await importer.compareInBackground(xml: URL(filePath: "/fake/a.xml"), snapshot: Self.snapshot, share: nil) }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(sawCancel.withLock { $0 } && !libraryRead.withLock { $0 })
     }
 
     @Test func 고른_태그_차이를_초안으로_만들고_재생_목록_초안을_저장한다() throws {

@@ -18,7 +18,6 @@ Sources/DJCrate/App/Sidebar.swift	view-task	Task 1곳
 Sources/DJCrate/App/Sidebar.swift	view-task	await 1곳
 Sources/DJCrate/Edit/TrackEditWindow.swift	view-task	Task 2곳
 Sources/DJCrate/Edit/TrackEditWindow.swift	view-task	await 3곳
-Sources/DJCrate/Library/ArtworkInspectorSection.swift	view-task	Task 1곳
 Sources/DJCrate/Library/ArtworkInspectorSection.swift	view-task	await 2곳
 Sources/DJCrate/Library/DuplicateTracksView.swift	view-task	Task 1곳
 Sources/DJCrate/Library/DuplicateTracksView.swift	view-task	await 2곳
@@ -30,7 +29,7 @@ Sources/DJCrate/Reflection/PointSnapshotWindow.swift	view-task	await 18곳
 Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	Task 1곳
 Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	await 1곳
 Sources/DJCrate/Settings/ShortcutSettingsView.swift	view-task	Task 2곳
-Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	Task 4곳
+Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	Task 2곳
 Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	await 6곳
 Sources/DJCrate/Usb/UsbExportSheet.swift	view-task	Task 2곳
 Sources/DJCrate/Usb/UsbExportSheet.swift	view-task	await 3곳

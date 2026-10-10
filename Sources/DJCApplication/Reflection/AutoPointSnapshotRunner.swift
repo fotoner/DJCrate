@@ -85,9 +85,9 @@ public final class AutoPointSnapshotRunner {
         let env = environment, database = env.database(), share = env.shareRoot(), days = env.autoDays(), now = env.now()
         let snapshots = env.snapshots, calendar = env.calendar, files = env.files
         let writesBefore = env.writeCount()
-        let result = await Task.detached(priority: .utility) {
+        let result = await BlockingWork.run(qos: .utility) {
             Result { try files.takeAutoIfDue(database, share, snapshots, days, now, calendar, files.canClone) }
-        }.value
+        }
         switch result {
         case let .success(outcome):
             // 뜨는 동안 DJCrate가 rekordbox에 쓰기 시작했으면 DB와 분석 파일이 어긋났을 수 있다(다음에 다시 뜬다)

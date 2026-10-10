@@ -105,6 +105,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | api | 핵심부는 `Bundle` 타입, `Date()`·`Date.now`, `UUID()`도 직접 쓰지 않는다. `.init()` 꼴도 같다. 시계·ID·환경·파일·번들은 포트나 주입으로 받는다 |
 | api | 핵심부는 `Locale`·`TimeZone`·`Calendar`의 `.current`·`.autoupdatingCurrent`를 쓰지 않는다. 타입 없이 쓴 `.main`·`.current`·`.now`도 쓰지 않는다 |
 | api | 핵심부에는 화면 상태가 없다. `import Observation`과 `@Observable`을 쓰지 않는다 |
+| api | 핵심부는 `Task.detached`를 쓰지 않는다. 막는 입출력은 `BlockingWork.run`으로, 취소를 보는 계산은 `@concurrent`로 부른다 |
 | view-task | 앱의 뷰 파일은 `Task`를 시작하지 않는다. `await`도 하지 않는다. 허용 꼴은 [MVVM-4](mvvm.md#mvvm-4-뷰-본문에서-유스케이스task를-시작하지-않는다)에 있다 |
 | test-defaults | 시험은 `UserDefaults(suiteName:)`을 직접 만들지 않는다. `TestDefaults`를 쓴다 |
 | 시험 타깃 | 시험하는 층과 그 아래 층, 시험 재료만 import한다 |
@@ -133,7 +134,8 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 
 - **포트는 핵심부(DJCApplication)가 정의한다.** 실제 구현은 DJCAdapters가 `static func live(…)`로 만든다. 핵심부와 화면 모델에는 실제 구현을 고르는 기본 인자를 두지 않는다. 고르는 일은 조립 지점만 한다.
 - **기본 모양은 `Sendable` 클로저 struct다.** 포트는 메인 스레드 밖에서 부른다. 시험은 클로저를 바꿔 넣는다.
-- 동기 포트(파일·USB·DB 입출력)는 `BlockingWork.run`으로 GCD 스레드에서 부르고 기다린다. `Task.detached`·`@concurrent`로 협력 스레드 풀에서 막으면 코어가 적은 기계(CI 러너)에서 풀이 바닥나 다른 비동기 일까지 멈춘다. 시험 훅은 `waitOffPool`로 막아 이것을 확인한다.
+- 동기 포트(파일·USB·DB 입출력)는 `BlockingWork.run`으로 GCD 스레드에서 부르고 기다린다. `Task.detached`·`@concurrent`로 협력 스레드 풀에서 막으면 코어가 적은 기계(CI 러너)에서 풀이 바닥나 다른 비동기 일까지 멈춘다. 시험 가짜는 동기 포트 클로저에서 `expectBlockingOffPool`을 부른다. 막을 때는 `waitOffPool`을 쓴다(DJCTestKit).
+- 작업 취소를 조각마다 보는 일은 협력 풀에 둔다. 음원 분석과 XML 파싱이 그 예다. GCD에는 지금 작업이 없어 `Task.isCancelled`가 늘 거짓이다. 그래서 옮기면 취소가 닿지 않는다.
 - 메인 액터 상태를 읽는 포트만 `@MainActor` 클로저 struct로 쓴다. 그 상태는 쓰기 잠금, 저장 대기, 화면 알림이다.
 - **반영 세션의 화면 상태 포트는 세 가지뿐이다.** 읽기 하나(`state`), 결과 적용 하나(`apply`), 쓰기 전 저장이다. 지울 초안과 되살릴 초안은 세션이 정한다. 라이브러리 저장소는 메모리 초안과 표시만 맞춘다.
 - 라이브러리 저장소는 이 포트를 채택하지 않는다. 조립 지점이 저장소 메서드를 클로저로 묶는다.

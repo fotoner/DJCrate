@@ -66,16 +66,10 @@ extension ReflectionSession {
         let inputs = try await analysisInputs(for: batch.grids, measuringLoudness: false)
         try requireDraftSaves(for: uuids)
         stage(WriteStage(String(ui: "미리 보기 1/2단계 · 사본을 만드는 중…"), completed: 0, total: 2, cancellable: true))
+        // 미리 보기 포트는 async라 이 작업의 취소를 그대로 받는다. 사본 뜨기·시험 쓰기의 막는 입출력은 실제 구현이 맡는다
         let gate = ports.gate, stage = ports.lock.stage, source = target
-        let task = Task.detached(priority: .userInitiated) {
-            try await gate.preview(batch, inputs, source) {
-                await stage(WriteStage(String(ui: "미리 보기 2/2단계 · 바꿀 내용을 검사하는 중…"), completed: 1, total: 2, cancellable: true))
-            }
-        }
-        let report = try await withTaskCancellationHandler {
-            try await task.value
-        } onCancel: {
-            task.cancel()
+        let report = try await gate.preview(batch, inputs, source) {
+            await stage(WriteStage(String(ui: "미리 보기 2/2단계 · 바꿀 내용을 검사하는 중…"), completed: 1, total: 2, cancellable: true))
         }
         try Task.checkCancellation()
         let present = (report.historyOutcomes ?? []).filter { $0.status == .unchanged }
@@ -104,9 +98,7 @@ extension ReflectionSession {
         try requireDraftSaves(for: uuids)
         stage(WriteStage(String(ui: "rekordbox에 쓰는 중…")))
         let gate = ports.gate
-        let report = try await Task.detached(priority: .userInitiated) {
-            try gate.write(batch, inputs, target, dryRun)
-        }.value
+        let report = try await BlockingWork.run { try gate.write(batch, inputs, target, dryRun) }
         guard options.followsUp else { return (report, []) }
         return (report, await finishWrite(report, batch: batch))
     }

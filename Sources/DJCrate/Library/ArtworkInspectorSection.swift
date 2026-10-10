@@ -114,7 +114,7 @@ private struct ArtworkWell: View {
             return
         }
         let path = row.track.imagePath, artwork = store.useCases.artwork
-        let box = await Task.detached(priority: .userInitiated) { Thumbnails.downsampled(artwork, imagePath: path, maxPixels: 240) }.value
+        let box = await BlockingWork.run { Thumbnails.downsampled(artwork, imagePath: path, maxPixels: 240) }
         guard !Task.isCancelled else { return }
         image = box.map { NSImage(cgImage: $0.image, size: NSSize(width: $0.image.width, height: $0.image.height)) }
     }

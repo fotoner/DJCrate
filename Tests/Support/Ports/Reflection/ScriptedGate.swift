@@ -1,7 +1,9 @@
 import DJCApplication
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Synchronization
+import Testing
 
 /// 반영 세션 시험의 쓰기 관문 가짜: 정해 둔 결과(`GateScript`)를 돌려주고 받은 것을 남긴다(`GateCalls`).
 /// 실제 관문(`RekordboxWriteGate.live`)과 같은 계약을 지키는지는 DJCAdaptersTests의 계약 시험이 같은 시험 함수로 본다.
@@ -68,9 +70,11 @@ extension RekordboxWriteGate {
     /// 정해 둔 결과를 돌려주는 관문. 계약(실제 관문과 같다): 미리 보기는 사본을 만든 뒤 `copied`를 한 번 부르고 시험 결과(dryRun)를 돌려준다,
     /// 쓰기·넣기·빼기·재생 목록 쓰기는 `dryRun`을 결과에 그대로 적는다, 쓰면(dryRun 아님) 대상의 백업 폴더에 백업을 남긴다,
     /// 복원은 되돌리기 직전 상태를 대상의 백업 폴더에 남긴 백업을 돌려준다.
+    /// 동기 입구(쓰기·복원·넣기·빼기·시점 복원·재생 목록·동기화)는 협력 풀 밖에서 불려야 한다(`expectBlockingOffPool`, 세션은 `BlockingWork`).
     public static func scripted(_ script: GateScript, calls: GateCalls = GateCalls(), hold: PreviewHold = PreviewHold()) -> Self {
         RekordboxWriteGate(
             write: { batch, inputs, target, dryRun in
+                expectBlockingOffPool()
                 calls.record {
                     $0.writes.append(batch); $0.writeInputs.append(inputs); $0.writeTargets.append(target); $0.dryRuns.append(dryRun)
                     $0.order.append("write")
@@ -91,11 +95,13 @@ extension RekordboxWriteGate {
                 return report
             },
             restore: { backup, target in
+                expectBlockingOffPool()
                 calls.record { $0.restores.append(backup); $0.restoreTargets.append(target); $0.order.append("restore") }
                 if let error = script.restoreError { throw error }
                 return target.backups.appending(path: "before-restore")
             },
             addTracks: { batch, target, dryRun in
+                expectBlockingOffPool()
                 calls.record { $0.adds.append(batch); $0.addTargets.append(target); $0.dryRuns.append(dryRun); $0.order.append(dryRun ? "add preview" : "add") }
                 if !dryRun, let error = script.addError { throw error }
                 var report = dryRun ? script.addPreview : script.add ?? script.addPreview
@@ -103,6 +109,7 @@ extension RekordboxWriteGate {
                 return report
             },
             deleteTracks: { ids, target, dryRun in
+                expectBlockingOffPool()
                 calls.record {
                     $0.deletes.append(ids); $0.deleteTargets.append(target); $0.dryRuns.append(dryRun)
                     $0.order.append(dryRun ? "delete preview" : "delete")
@@ -113,15 +120,18 @@ extension RekordboxWriteGate {
                 return report
             },
             restorePointSnapshot: { entry, _, _, _, _ in
+                expectBlockingOffPool()
                 calls.record { $0.points.append(entry); $0.order.append("point") }
                 if let error = script.pointError { throw error }
                 return RekordboxPointRestoreReport(restored: pointEntry(entry), beforeRestore: pointEntry(URL(filePath: "/tmp/before")))
             },
             writePlaylists: { edits, _, dryRun in
+                expectBlockingOffPool()
                 calls.record { $0.playlistWrites.append(edits); $0.dryRuns.append(dryRun) }
                 return RekordboxWriteReport(outcomes: [], backup: nil, dryRun: dryRun, createdAt: "", finalUpdateCount: nil)
             },
             syncITunes: { _, target in
+                expectBlockingOffPool()
                 calls.record { $0.iTunesTargets.append(target) }
                 return script.syncData
             })

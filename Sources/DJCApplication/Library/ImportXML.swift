@@ -35,10 +35,11 @@ public struct ImportXML: Sendable {
                                    diff: XMLLibraryDiff.compute(xml: document, library: library))
     }
 
-    /// 메인 밖에서 비교한다. 부른 작업을 취소하면 읽기도 단계 사이에서 멈춘다(`CancellationError`)
+    /// 메인 밖에서 비교한다. 부른 작업을 취소하면 읽기도 멈춘다(`CancellationError`).
+    /// XML 파싱과 분석 파일 읽기가 조각마다 작업 취소를 보므로 `BlockingWork`(GCD)가 아니라 이 작업 안에서 돈다.
+    @concurrent
     public func compareInBackground(xml: URL, snapshot: URL, share: URL?) async throws -> XMLImportComparison {
-        let work = Task.detached(priority: .userInitiated) { [self] in try compare(xml: xml, snapshot: snapshot, share: share) }
-        return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+        try compare(xml: xml, snapshot: snapshot, share: share)
     }
 
     /// 분석 파일 뿌리로 쓸 폴더: 있는 폴더면 그대로, 아니면 nil(없는 폴더면 그리드를 비교하지 않는다)
