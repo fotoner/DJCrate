@@ -364,6 +364,19 @@ struct ArchiveUsbHistoriesTests {
                                                 "DJCrate 데이터 폴더의 usb-histories 쓰기 권한을 확인한 뒤 다시 시도하세요")])
     }
 
+    @Test func USB_기록의_후보와_계획은_메인_액터_밖에서_세운다() async {
+        // 곡이 많은 USB에서도 메인이 멈추지 않게 후보·계획·짝 다시 검증은 메인 밖에서 한다(계획이 새 ID를 그 자리에서 짓는다)
+        let threads = ThreadLog()
+        let archive = ArchiveUsbHistories(files: MemoryUsbHistoryFiles().files, now: { Self.now },
+                                          newID: { threads.record(Thread.isMainThread); return UUID().uuidString })
+        let screen = FakeUsbHistoryScreen()
+        archive.screen = screen.port
+        startImport(archive)
+        await archive.waitUntilIdle()
+        #expect(screen.state.archived.count == 2)
+        #expect(threads.onMain == [false, false])
+    }
+
     @Test func 보존_파일을_붙이지_않으면_읽기·보존·저장을_하지_않는다() async {
         let screen = FakeUsbHistoryScreen()
         let archive = Self.flow(nil, screen: screen)
@@ -376,6 +389,13 @@ struct ArchiveUsbHistoriesTests {
         #expect(await archive.importFrom(volumeKey: "SYNTH", volumeName: "합성 USB", library: Self.library(), matches: [:], existing: [],
                                          local: nil, calendar: Self.utc) == nil)
     }
+}
+
+/// 새 ID를 지은 스레드가 메인이었는지(차례대로)
+private final class ThreadLog: Sendable {
+    private let value = Mutex<[Bool]>([])
+    func record(_ onMain: Bool) { value.withLock { $0.append(onMain) } }
+    var onMain: [Bool] { value.withLock { $0 } }
 }
 
 /// 새 ID 뒷부분(차례대로 1, 2, …)

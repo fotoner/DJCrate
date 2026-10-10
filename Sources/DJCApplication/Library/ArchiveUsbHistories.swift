@@ -198,10 +198,11 @@ public final class ArchiveUsbHistories {
 
     public static var queueSaveFailureTitle: String { String(ui: "재생 기록의 쓰기 대기 상태를 저장하지 못했습니다") }
 
-    // MARK: - 파일
+    // MARK: - 파일(메인 밖)
+    // 아래는 메인 액터에 묶지 않는다: 곡이 많은 USB의 후보·계획·짝 다시 검증이 메인을 멈추지 않게 한다
 
     /// 보존한 기록을 읽는다(메인 밖에서)
-    public func load() async -> ArchivedHistoryLoad {
+    public nonisolated func load() async -> ArchivedHistoryLoad {
         guard let files else { return ArchivedHistoryLoad() }
         return (try? await LoadLibrary.background(qos: .utility) { files.load() }) ?? ArchivedHistoryLoad()
     }
@@ -225,8 +226,8 @@ public final class ArchiveUsbHistories {
     ///   - existing: 지금 보존한 기록 전부(앞선 보존이 끝난 뒤의 상태)
     ///   - local: 채택한 스냅샷의 짝짓기 키(짝을 다시 검증한다)
     ///   - calendar: 가져온 날짜를 정할 달력(앱은 이 Mac의 달력)
-    public func importFrom(volumeKey: String, volumeName: String, library: UsbLibrary, matches: [Int: String], existing: [ArchivedHistory],
-                           local: LocalLibraryKeys?, calendar: Calendar) async -> Imported? {
+    public nonisolated func importFrom(volumeKey: String, volumeName: String, library: UsbLibrary, matches: [Int: String],
+                                       existing: [ArchivedHistory], local: LocalLibraryKeys?, calendar: Calendar) async -> Imported? {
         guard let files else { return nil }
         let candidates = UsbHistoryCandidates.make(library: library, volumeKey: volumeKey, volumeName: volumeName, matches: matches)
         guard !candidates.isEmpty else { return nil }
@@ -248,7 +249,7 @@ public final class ArchiveUsbHistories {
 
     /// 보존본을 기록마다 따로 내구 쓰기한다(메인 밖에서). 저장하지 못한 기록 수.
     /// 화면에는 이미 이 상태가 있다. 파일 일치 확인이 돼도 실패로 세어 경고를 남기고, 상태는 되돌리지 않는다
-    public func save(_ histories: [ArchivedHistory]) async -> Int {
+    public nonisolated func save(_ histories: [ArchivedHistory]) async -> Int {
         guard let files, !histories.isEmpty else { return 0 }
         return (try? await LoadLibrary.background(qos: .utility) { () -> Int in
             histories.reduce(0) { failed, history in Self.saveOne(history, files: files).failed ? failed + 1 : failed }
