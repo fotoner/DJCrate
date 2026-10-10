@@ -147,7 +147,8 @@ struct UsbSidebarTests {
         #expect(store.displayRows.allSatisfy { $0.track.analysisDataPath == nil && $0.track.imagePath == nil })
         store.selection = Set(store.displayRows.map(\.id))
         #expect(store.selectedRows.isEmpty)
-        #expect(!store.canLoadSelectionToDeck)
+        // 덱 불러오기는 막지 않고 누르면 짝이 없다고 알린다(#255, 이 USB의 곡은 로컬에 없다)
+        #expect(store.canLoadSelectionToDeck)
         #expect(!LibraryMenuAction.removeTracks.isEnabled(in: store))
 
         _ = NSApplication.shared
@@ -186,16 +187,20 @@ struct UsbSidebarTests {
         coordinator.menuNeedsUpdate(menu)
         let actions = Set(menu.items.compactMap(\.action).map(NSStringFromSelector))
         let writes: Set<String> = ["reflectSelected", "exportReflectionXML", "addToRekordbox", "exportStaged", "deleteFromRekordbox",
-                                   "pickPlaylist", "createPlaylistFromTracks", "removeFromPlaylist", "loadMenuRow"]
+                                   "pickPlaylist", "createPlaylistFromTracks", "removeFromPlaylist"]
         #expect(actions.isDisjoint(with: writes))
         #expect(!menu.items.contains { $0.title == "재생 목록에 넣기" })
-        #expect(menu.items.first { $0.title == "덱에 불러오기" }?.action == nil)
-        #expect(coordinator.tableView(table, pasteboardWriterForRow: 0) == nil)
+        // 덱 불러오기는 누를 수 있다(#255, 짝이 없으면 누른 뒤 이유를 알린다)
+        #expect(menu.items.first { $0.title == "덱에 불러오기" }?.action == #selector(TrackListCoordinator.loadMenuRow))
+        // 끌기는 USB 곡 형식만 싣는다(덱에 놓기, #255). 로컬 목록·덱 ID 형식은 싣지 않는다
+        let dragged = try #require(coordinator.tableView(table, pasteboardWriterForRow: 0) as? NSPasteboardItem)
+        #expect(dragged.types == [PlaylistDragType.pasteboardUsbTracks])
         #expect(!coordinator.beginEditing(row: 0, column: "title"))
         store.setTag(.title, "고친 제목", rows: store.displayRows)
         #expect(!store.tagDrafts.keys.contains { $0.hasPrefix(UsbLibraryRows.idPrefix) })
         store.loadToDeck(store.displayRows.first)
         #expect(store.deckTrackID == nil)
+        #expect(store.stagingMessage?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
         // 로컬 목록으로 돌아오면 들어가기 전 칸 숨김 상태로 돌린다(갱신 상태 칸만 숨김)
         coordinator.updateUsbMode(false)
         #expect(visible() == ids.filter { $0 != "album" && $0 != "usbSync" })

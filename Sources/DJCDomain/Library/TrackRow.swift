@@ -41,7 +41,7 @@ public struct TrackRow: Identifiable, Hashable, Sendable {
     public var id: String { historyEntry.map { "history:\($0.id)" } ?? playlistOccurrence?.id ?? track.id }
     /// USB에서 읽은 곡의 ID 머리(`usb:<볼륨>:<ContentID>`)
     public static let usbIDPrefix = "usb:"
-    /// USB에서 읽은 곡(읽기 전용: 편집·쓰기·덱 불러오기를 막는다)
+    /// USB에서 읽은 곡(읽기 전용: 편집·쓰기를 막는다. 덱에는 짝인 로컬 곡을 올린다, #255)
     public var isUsb: Bool { track.id.hasPrefix(Self.usbIDPrefix) }
     /// DJCrate에 추가했지만 아직 rekordbox 컬렉션에 없는 곡.
     public var isStaged: Bool { track.id.hasPrefix("djc-") }

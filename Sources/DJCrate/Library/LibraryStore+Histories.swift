@@ -7,7 +7,7 @@ import Foundation
 /// (USB에는 쓰지 않는다), 다른 초안처럼 "rekordbox 쓰기 대기"에 올려(`pendingHistories`) rekordbox에 쓰기(⇧⌘E) 때 반영 세션이
 /// rekordbox Histories에 넣는다. 판정은 `UsbHistoryRules`·`UsbHistoryImport`에 있고, 이 확장은 보존·저장을 한 줄로 세우고 결과를 화면 상태에 넣는다.
 extension LibraryStore {
-    /// 컬렉션에 없는 보존 기록 곡의 줄 ID 접두사. `usb:`로 시작해 `isUsb`가 참이라 편집·덱·쓰기·끌기가 막힌다
+    /// 컬렉션에 없는 보존 기록 곡의 줄 ID 접두사. `usb:`로 시작해 `isUsb`가 참이라 편집·쓰기·끌기가 막히고, 덱에는 짝이 없다고 알린다(#255)
     static let archivedTrackIDPrefix = UsbLibraryRows.idPrefix + "history:"
 
     func archivedHistory(_ id: String) -> ArchivedHistory? { archivedHistoryIndex[id] }
