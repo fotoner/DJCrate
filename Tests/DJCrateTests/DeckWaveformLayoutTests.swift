@@ -29,7 +29,7 @@ struct DeckWaveformLayoutTests {
             SelfTestFrames.frames.removeValue(forKey: zoomKey)
             SelfTestFrames.frames.removeValue(forKey: groupKey)
         }
-        let controller = NSHostingController(rootView: DeckView(store: store, deck: deck, widthClass: DeckWidthClass(width: 1300))
+        let controller = NSHostingController(rootView: DeckView(library: store, tags: store.tags, deck: deck, widthClass: DeckWidthClass(width: 1300))
             .environment(\.deckWaveformHeight, requested)
             .environment(\.textScale, scale).defaultAppStorage(defaults)
             .fixedSize(horizontal: false, vertical: true))

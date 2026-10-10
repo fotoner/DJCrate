@@ -63,7 +63,7 @@ struct TrackListDragTests {
         _ = NSApplication.shared
         let store = Self.playlistStore(count: 60)
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
-        let host = NSHostingView(rootView: TrackTable(store: store, deck: deck))
+        let host = NSHostingView(rootView: TrackTable(source: store, deck: deck))
         let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 900, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
