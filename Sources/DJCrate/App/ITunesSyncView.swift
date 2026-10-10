@@ -15,7 +15,7 @@ struct ITunesSyncView: View {
                 Text(.ui("iTunes 동기화")).font(.title2.bold())
                 Spacer()
                 Button {
-                    Task { await model.load(store: store, forceRefresh: true) }
+                    model.startLoad(store: store, forceRefresh: true)
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -75,7 +75,7 @@ struct ITunesSyncView: View {
                 Button(.ui("취소")) { dismiss() }.keyboardShortcut(.cancelAction)
                     .disabled(model.isSyncing)
                 Button(.ui("동기화")) {
-                    Task { if await model.sync(store: store) { dismiss() } }
+                    model.startSync(store: store) { dismiss() }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!model.canSync || store.isLoading || store.isWritingRekordbox)

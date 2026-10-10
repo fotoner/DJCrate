@@ -4,19 +4,11 @@
 # 빚을 갚으면 그 줄을 지운다(남겨 두면 검사가 "지워도 됨"으로 실패한다). 새 위반은 여기 더하지 말고 고친다.
 # 다시 만들기: scripts/check-imports.py --write-debt
 Sources/DJCApplication/Usb/UsbWriteSession.swift	api	Observation
-Sources/DJCrate/App/ITunesSyncView.swift	view-task	Task 2곳
-Sources/DJCrate/App/ITunesSyncView.swift	view-task	await 2곳
 Sources/DJCrate/Library/ArtworkInspectorSection.swift	view-task	await 2곳
 Sources/DJCrate/Library/DuplicateTracksView.swift	view-task	Task 1곳
 Sources/DJCrate/Library/DuplicateTracksView.swift	view-task	await 2곳
 Sources/DJCrate/Reflection/AppToast.swift	view-task	await 1곳
-Sources/DJCrate/Reflection/AppleMusicImportWindow.swift	view-task	Task 2곳
-Sources/DJCrate/Reflection/AppleMusicImportWindow.swift	view-task	await 5곳
-Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	Task 1곳
-Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	await 1곳
 Sources/DJCrate/Settings/ShortcutSettingsView.swift	view-task	Task 2곳
-Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	Task 2곳
-Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	await 6곳
 Sources/DJCrate/Usb/UsbExportSheet.swift	view-task	Task 2곳
 Sources/DJCrate/Usb/UsbExportSheet.swift	view-task	await 3곳
 Sources/DJCrate/Usb/UsbPendingView.swift	view-task	Task 4곳

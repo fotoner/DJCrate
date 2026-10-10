@@ -272,6 +272,26 @@ struct ITunesSyncSourceCacheTests {
         #expect(untouched.selection.selectedIDs == ["B"])
     }
 
+    @Test func 새로고침과_동기화_단추는_일을_시작하고_그_손잡이를_모델이_든다() async throws {
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        try syncA.write(to: folder.url.appending(path: "playlists3.sync"))
+        let store = store(folder)
+        await store.load(snapshot: folder.database)
+        store.presentITunesSync()
+        let model = store.iTunesSync
+        let fresh = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "첫 목록"), .init(id: "B", name: "둘째 목록")])
+            .applyingRekordboxSelection(syncA)
+        model.startLoad(store: store, forceRefresh: true, captureITunes: { fresh })
+        await model.task?.value
+        #expect(model.source.sourcePlaylists?.map(\.id) == ["A", "B"] && !model.isLoading)
+        // 쓸 수 없는 상태면 동기화하지 않고 창도 닫지 않는다
+        model.isWaitingForMusic = true
+        var dismissed = false
+        model.startSync(store: store) { dismissed = true }
+        await model.task?.value
+        #expect(!dismissed && !model.isSyncing)
+    }
+
     @Test func 새로고침_실패는_체크박스를_보존하고_다음_성공에서_되살린다() async throws {
         let folder = try TemporaryFolder.withEmptyDatabase()
         try syncA.write(to: folder.url.appending(path: "playlists3.sync"))

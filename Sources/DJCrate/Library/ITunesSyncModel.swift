@@ -14,6 +14,8 @@ final class ITunesSyncModel {
     var isWaitingForMusic = false
     var error: String?
     @ObservationIgnored private var loadSequence = 0
+    /// 새로고침·동기화 단추가 마지막으로 시작한 일. 시트를 닫아도 끝까지 간다. 시험은 이것을 기다린다
+    @ObservationIgnored private(set) var task: Task<Void, Never>?
     var canSync: Bool {
         !isLoading && !isSyncing && !isWaitingForMusic && source.status == .ready && source.syncData != nil && database != nil
     }
@@ -83,6 +85,15 @@ final class ITunesSyncModel {
         isWaitingForMusic = false
         guard !Task.isCancelled, store.iTunesSync === self, store.showingITunesSync else { return }
         await load(store: store, captureITunes: captureITunes)
+    }
+
+    func startLoad(store: LibraryStore, forceRefresh: Bool = false, captureITunes: (@Sendable () -> ITunesLibrarySnapshot)? = nil) {
+        task = Task { await load(store: store, forceRefresh: forceRefresh, captureITunes: captureITunes) }
+    }
+
+    /// 동기화를 마치면 `done`(시트 닫기)을 부른다. 쓰지 못했으면 시트를 남겨 이유를 보인다
+    func startSync(store: LibraryStore, done: @escaping @MainActor () -> Void) {
+        task = Task { if await sync(store: store) { done() } }
     }
 
     func sync(store: LibraryStore) async -> Bool {
