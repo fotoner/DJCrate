@@ -12,6 +12,8 @@ paths:
   - "Sources/DJCrate/App/AppComposition.swift"
   - "Sources/DJCrate/Library/LibraryStore+ReflectionState.swift"
   - "Sources/DJCrate/Library/LibraryStore+ITunesSync.swift"
+  - "Sources/DJCrate/Library/MusicLibraryStore.swift"
+  - "Sources/DJCApplication/Library/LibraryReadFlow+Music.swift"
   - "Sources/DJCrate/Reflection/**"
   - "Sources/djc/CLIComposition.swift"
   - "Sources/djc/Commands/CLIWriteTarget.swift"

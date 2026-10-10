@@ -23,7 +23,7 @@ struct UsbSyncReadEpochTests {
     }
 
     private func context(_ store: LibraryStore, lease: UsbSyncSnapshotLease) -> UsbExportSyncSourceContext {
-        .init(source: UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.iTunesLibrary),
+        .init(source: UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.music.library),
               catalogRevision: store.previewRevision, readEpoch: store.snapshotReadEpoch, snapshot: lease.reference)
     }
 

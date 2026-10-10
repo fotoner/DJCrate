@@ -9,9 +9,10 @@ extension TrackListCoordinator {
     /// 추가한 곡은 아직 rekordbox에 없어 재생 목록용으로는 싣지 않는다(덱에는 올릴 수 있다).
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
         guard rows.indices.contains(row), !isEditing else { return nil }
-        // USB 곡은 USB 곡 형식만 싣는다: 같은 USB의 목록에 넣기·목록 안 순서 바꾸기(초안). 덱·로컬 목록·앱 밖으로는 끌지 않는다(#240)
+        // USB 곡은 USB 곡 형식만 싣는다: 같은 USB의 목록에 넣기·목록 안 순서 바꾸기(초안, #240), 덱에 놓아 짝인 로컬 곡 올리기(#255).
+        // 로컬 목록·앱 밖으로는 끌지 않는다. USB 목록 쪽 놓기는 받는 곳이 초안을 받는 볼륨인지 본다(`acceptsUsbDrop`·`usbReorderPlaylist`)
         if rows[row].isUsb {
-            guard case let .usb(target) = store.sidebar, store.usb?.acceptsEdits(target.volumeKey) == true else { return nil }
+            guard case let .usb(target) = store.sidebar else { return nil }
             return UsbTrackDrag(row: rows[row], target: target)?.pasteboardItem
         }
         let item = NSPasteboardItem()

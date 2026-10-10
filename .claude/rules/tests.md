@@ -46,7 +46,7 @@ paths:
 
 - 덱: 곡 불러오기, 분석
 - 반영: 반영 세션, 시점 스냅샷, 곡 넣기·빼기·복원, 편집본 쓰기
-- 라이브러리: 읽기, 초안 지켜보기, 추가한 곡, XML 가져오기, 막힌 초안 복구, 옮긴 곡 찾기, `djc draft`
+- 라이브러리: 읽기, 읽기 순서, 초안 지켜보기, 추가한 곡, XML 가져오기, 막힌 초안 복구, 옮긴 곡 찾기, `djc draft`
 - 태그: 초안 편집(`EditTags`)
 - USB: 세션, 읽기, 큐 그리드 가져오기, 동기화, 쓰기 흐름, 초안 고치기
 - 순수 USB 규칙: 동기화 계획, 초안 편집 규칙
@@ -57,6 +57,7 @@ paths:
 - 포트별 가짜와 공용 계약 함수: `PortTestKit`
 - USB: `FakeUsbPorts`
 - 덱·라이브러리: 포트의 클로저, DJCApplication의 메모리 구현 `Memory…`(예: `MemoryDrafts`, `MemoryAnalysisStore`), `LibrarySource.memory`
+- 라이브러리 읽기 화면: `FakeLibraryReadScreen`(PortTestKit). 읽기 순서 `LibraryReadFlow`가 보는 화면의 가짜다
 
 `DJCrateTests`의 재료는 아래와 같다.
 

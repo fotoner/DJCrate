@@ -103,7 +103,7 @@ final class AppComposition {
                                     confirmation: UserConfirmation(confirm: { prompter.show($0) }, choose: { prompter.choose($0) }),
                                     results: ReflectionResults { presenter.publish($0) }, runningApps: runningApps)
         let session = ReflectionSession(location: store.location, ports: ports, options: options)
-        store.syncITunesWrite = { try await session.syncITunes($0) }
+        store.music.write = { try await session.syncITunes($0) }
         return ReflectionCoordinator(session: session, store: store, prompter: prompter)
     }
 

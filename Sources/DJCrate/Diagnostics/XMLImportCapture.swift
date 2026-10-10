@@ -60,10 +60,10 @@ extension DevSelfTests {
             do { try Data(xml.utf8).write(to: url) } catch { log("XML을 쓰지 못했습니다"); exit(1) }
 
             store.sidebar = .filter(.all)
-            store.importRekordboxXML(from: url)
-            check(store.isReadingXMLImport, "시작하자마자 읽는 중이어야 합니다")
-            await store.xmlImportTask?.value
-            guard let preview = store.xmlImportPreview else {
+            store.xmlImport.start(from: url)
+            check(store.xmlImport.isReading, "시작하자마자 읽는 중이어야 합니다")
+            await store.xmlImport.task?.value
+            guard let preview = store.xmlImport.preview else {
                 log("미리 보기가 열리지 않았습니다: \(store.stagingMessage?.text ?? "")")
                 exit(1)
             }
@@ -78,10 +78,10 @@ extension DevSelfTests {
                 exit(1)
             }
             capture("preview", sheet)
-            await store.makeXMLImportDrafts(preview, selection: .all)
+            await store.xmlImport.makeDrafts(preview, selection: .all)
             await wait(1.5)
             capture("result", window.attachedSheet ?? sheet)
-            let result = store.xmlImportResult
+            let result = store.xmlImport.result
             check(result?.failure == nil, "실패 없음(\(result?.failure ?? ""))")
             check(result?.tags == 2 && result?.cues == 1 && result?.grids == 1 && result?.playlists == 1,
                   "초안 수 \(String(describing: result))")

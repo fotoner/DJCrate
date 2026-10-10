@@ -77,11 +77,9 @@ extension TrackListCoordinator {
         return indexes.contains { rows.indices.contains($0) && rows[$0].isUsb }
     }
 
-    /// USB 곡은 직접 고치지 않는다: 덱 불러오기도 아직 닫혀 있음을 비활성 항목으로 알리고, 고치기는 USB 초안 항목으로만 한다
+    /// USB 곡은 직접 고치지 않는다: 고치기는 USB 초안 항목으로만 한다. 덱에는 짝인 로컬 곡을 올리고, 짝이 없으면 누른 뒤 이유를 알린다(#255)
     func addReadOnlyItems(to menu: NSMenu) {
-        let load = NSMenuItem(title: String(ui: "덱에 불러오기"), action: nil, keyEquivalent: "")
-        load.isEnabled = false
-        menu.addItem(load)
+        menu.addItem(LoadToDeckCommand.menuItem(action: loadMenuRowIndex == nil ? nil : #selector(loadMenuRow), target: self))
         guard !addUsbEditItems(to: menu) else { return }
         let note = NSMenuItem(title: String(ui: "USB 곡은 읽기만 합니다"), action: nil, keyEquivalent: "")
         note.isEnabled = false
@@ -142,12 +140,11 @@ extension TrackListCoordinator {
         menu.addItem(.sectionHeader(title: String(ui: "보일 칸")))
         for spec in TrackColumn.all {
             if spec.id == "class", commentPreset?.rule == nil { continue }
-            // 갱신 상태 칸은 USB 목록이 정한다
+            // 갱신 상태 칸은 USB 목록이 정한다. 다른 칸은 USB 목록에서도 같은 배치라 여기서 고른다(#256)
             if spec.id == TrackColumn.usbSyncID { continue }
             guard let column = table.tableColumns.first(where: { $0.identifier.rawValue == spec.id }) else { continue }
             let title = spec.title.isEmpty ? String(ui: "앨범아트") : spec.id == "edited" ? String(ui: "초안 표시") : spec.title == "#" ? String(ui: "# 번호") : spec.title
-            // USB 목록의 칸은 정해져 있다(상태만 보이고 바꾸지 않는다)
-            let item = NSMenuItem(title: title, action: usbMode == true ? nil : #selector(toggleColumn(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: title, action: #selector(toggleColumn(_:)), keyEquivalent: "")
             item.target = self
             item.state = column.isHidden ? .off : .on
             item.representedObject = spec.id
@@ -156,7 +153,7 @@ extension TrackListCoordinator {
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let reset = NSMenuItem(title: String(ui: "모든 칸 보이기"), action: usbMode == true ? nil : #selector(showAllColumns), keyEquivalent: "")
+        let reset = NSMenuItem(title: String(ui: "모든 칸 보이기"), action: #selector(showAllColumns), keyEquivalent: "")
         reset.target = self
         menu.addItem(reset)
     }
@@ -164,18 +161,18 @@ extension TrackListCoordinator {
     @objc func toggleColumn(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String,
               let column = table?.tableColumns.first(where: { $0.identifier.rawValue == id }) else { return }
-        guard id != "class" || commentPreset?.rule != nil, usbMode != true else { return }
+        guard id != "class" || commentPreset?.rule != nil, id != TrackColumn.usbSyncID else { return }
         finishEditing(commit: true, restoreFocus: true)
         column.isHidden.toggle()
         if id == "class" { store.settings.set(SettingKeys.commentClassColumnHidden, column.isHidden) }
     }
 
     @objc func showAllColumns() {
-        guard usbMode != true else { return }
         finishEditing(commit: true, restoreFocus: true)
         table?.tableColumns.forEach {
             let id = $0.identifier.rawValue
-            $0.isHidden = (id == "class" && commentPreset?.rule == nil) || id == TrackColumn.usbSyncID
+            // 갱신 상태 칸은 USB 목록에서만 보인다
+            $0.isHidden = (id == "class" && commentPreset?.rule == nil) || (id == TrackColumn.usbSyncID && usbMode != true)
         }
         if commentPreset?.rule != nil { store.settings.set(SettingKeys.commentClassColumnHidden, false) }
     }

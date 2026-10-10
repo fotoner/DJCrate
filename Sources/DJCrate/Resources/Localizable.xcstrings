@@ -6007,6 +6007,22 @@
         }
       }
     },
+    "USB 곡과 짝인 로컬 곡을 찾을 수 없으니 라이브러리를 다시 읽은 뒤 덱에 불러오세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The local track matching this USB track can’t be found, so reload the library and then load it to the deck"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このUSBの曲に対応するローカルの曲が見つからないため、ライブラリを読み込み直してからデッキに読み込んでください"
+          }
+        }
+      }
+    },
     "USB 곡은 이 라이브러리의 초안 쓰기를 지원하지 않으니 라이브러리에서 곡을 고르세요" : {
       "localizations" : {
         "en" : {
@@ -22735,6 +22751,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ローカルのrekordboxのバージョン（%@）ではUSBへのエクスポートを確認していません。確認済みのバージョン（7.2.x）のrekordboxで解析したライブラリからエクスポートしてください"
+          }
+        }
+      }
+    },
+    "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This USB track isn’t in your local rekordbox, so it can’t be loaded to the deck; add it to the rekordbox collection first"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ローカルのrekordboxにないUSBの曲のためデッキに読み込めません。先にrekordboxのコレクションに追加してください"
           }
         }
       }

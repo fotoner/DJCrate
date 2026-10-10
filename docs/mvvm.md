@@ -82,10 +82,10 @@ struct RelocateView: View {
 }
 ```
 
-틀린 예: 시트에 화면 모델이 없다. 뷰가 화면 상태와 흐름을 든다.
+틀린 예: 시트에 화면 모델이 없다. 뷰가 화면 상태와 흐름을 든다. 아래는 #249에서 고치기 전의 코드다.
 
 ```swift
-// Sources/DJCrate/Library/UnlinkedDraftsView.swift
+// Sources/DJCrate/Library/UnlinkedDraftsView.swift(#249 전)
 struct UnlinkedDraftsView: View {
     let store: LibraryStore
     @State private var drafts: [UnlinkedDraft] = []   // ✗ 화면 상태가 뷰에 있다
@@ -97,6 +97,21 @@ struct UnlinkedDraftsView: View {
     }
 }
 ```
+
+고친 코드: 시트를 띄울 때 화면 모델을 한 번 만든다. 뷰는 그 모델만 받는다.
+
+```swift
+// Sources/DJCrate/Library/LibraryStore+UnlinkedDrafts.swift
+func openUnlinkedDrafts() { unlinkedDraftsSheet = UnlinkedDraftsModel(store: self) }
+
+// Sources/DJCrate/App/ContentView.swift
+.sheet(item: $store.unlinkedDraftsSheet) { UnlinkedDraftsView(model: $0) }
+
+// Sources/DJCrate/Library/UnlinkedDraftsView.swift
+Button(.ui("초안 버리기"), role: .destructive) { model.discard() }
+```
+
+- 시트 모델을 `body`나 시트 내용 클로저에서 만들지 않는다. 본문을 다시 계산할 때마다 새 모델이 생겨 입력과 선택을 잃는다.
 
 ### MVVM-2 화면 모델은 유스케이스를 부른다
 
@@ -119,10 +134,10 @@ func choose(_ path: String?, for trackID: String) {
 }
 ```
 
-틀린 예: 뷰가 고르기 규칙을 직접 계산한다.
+틀린 예: 뷰가 고르기 규칙을 직접 계산한다. 아래는 #249에서 고치기 전의 코드다. 지금은 DJCDomain 값 `PlaylistChoices`가 이 규칙을 맡는다.
 
 ```swift
-// Sources/DJCrate/Library/PlaylistPickerView.swift
+// Sources/DJCrate/Library/PlaylistPickerView.swift(#249 전)
 private var choices: [Choice] {
     let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
     // ✗ 찾기 규칙과 "최근 목록 먼저" 순서가 뷰에 있다
@@ -219,6 +234,7 @@ func startMerge(keeping: String, removing: [String]) {
 - 단추가 시작하는 일의 이름은 `start…`로 짓는다. 화면 모델은 마지막 일의 손잡이를 `task`에 든다. 시험은 그 손잡이를 기다린다.
 - 단추의 일은 화면이 사라져도 취소하지 않는다. 화면과 함께 멈출 일은 `.task` 한 줄로 부른다.
 - 공유 저장소 `LibraryStore`의 단추 입구는 `LibraryStore+Actions.swift`에 모은다. 입구는 시작한 `Task`를 돌려준다.
+- 기능 조각(예: `MusicLibraryStore`)의 단추 입구는 그 조각에 둔다.
 
 `scripts/check-imports.py`의 `view-task` 규칙이 이 규칙을 검사한다.
 
@@ -274,8 +290,10 @@ try await h.loaded()
 
 - **덱 재생 경로**: `DeckModel`은 오디오 엔진 포트 `DeckAudioEngine`을 직접 부른다. 매 프레임 재생 위치와 샘플 단위 예약을 유스케이스 한 겹 뒤로 미루지 않으려는 것이다. 이유는 [구조 문서의 경계 규칙](architecture.md#경계-규칙)에 있다.
 - **공유 저장소 `LibraryStore`**: 사이드바, 곡 목록, 인스펙터, 태그 시트가 함께 쓴다. 나누기 전까지 이 모양을 둔다. 새 화면은 자기 화면 모델을 만든다. 그 화면 모델이 `LibraryStore`의 값을 읽는다.
-  - 나누기는 #248에서 한다. 한 기능의 상태와 흐름은 기능 조각(`…Store`)으로 옮긴다. 기능 조각은 `LibraryStore`의 속성이다(예: `store.tags`).
-  - 태그 인스펙터가 그 모양이다. 화면 모델 `TagInspectorModel`은 태그 편집 조각 `TagEditStore`를 부른다. 규칙은 유스케이스 `EditTags`에 있다.
+  - 저장소의 흐름 순서도 유스케이스로 옮긴다. 예: 읽기 순번·요청 합치기·Music 최신화 잇기는 `LibraryReadFlow`에 있다. 저장소는 화면 포트 `LibraryReadScreen`으로 상태를 넘긴다. 저장소는 흐름이 알린 결과를 표시한다.
+  - 기능 하나의 상태는 기능 조각(`…Store`)으로 뗀다(#248). 조각은 저장소의 속성이다. 저장소는 조각을 관찰하지 않는다. 화면은 조각의 값을 읽는다.
+  - 조각 속성은 `let`으로 둔다. 조각이 저장소를 붙들면 `@ObservationIgnored lazy var`로 둔다.
+  - 예: Music 목록과 동기화 창은 `MusicLibraryStore`(`store.music`)가 든다. 태그 인스펙터의 화면 모델 `TagInspectorModel`은 태그 편집 조각 `TagEditStore`(`store.tags`)를 부른다. 규칙은 유스케이스 `EditTags`에 있다.
 
 ```swift
 // Sources/DJCrate/Deck/DeckModel+Transport.swift — 예외: 화면 모델이 엔진 포트를 직접 부른다
@@ -321,7 +339,7 @@ func tick() {
 | `MVVM-4` | 빚 0줄. 2026-10-10에 #243·#244로 갚았다 | `python3 scripts/check-imports.py --summary` |
 | `MVVM-3` | 35개 파일이 `LibraryStore`를 통째로 받는다 | `grep -lE '(let\|var) store: LibraryStore'` |
 | `MVVM-3` | 20개 파일이 `DeckModel`을 통째로 받는다 | `grep -lE '(let\|var) deck: DeckModel'` |
-| `MVVM-1` | 화면 모델 없는 시트가 있다(예: `UnlinkedDraftsView`, `PlaylistPickerView`, `XMLImportSheet`) | 사람이 본다 |
+| `MVVM-1` | 화면 모델 없는 화면이 있다. 시트 셋(`UnlinkedDraftsView`, `PlaylistPickerView`, `XMLImportSheet`)은 2026-10-10에 #249로 갚았다 | 사람이 본다 |
 
 - `MVVM-3` 수는 잎 뷰와 묶음 뷰를 가리지 않는다. 묶음 뷰가 모델을 받는 것은 규칙 위반이 아니다.
 - 이 빚은 손대는 화면부터 조금씩 갚는다. 빚 때문에 큰 화면을 한 번에 나누지 않는다.

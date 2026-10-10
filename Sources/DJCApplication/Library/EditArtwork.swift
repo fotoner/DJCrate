@@ -13,15 +13,20 @@ public struct ArtworkFiles: Sendable {
     public var thumbnail: @Sendable (_ imagePath: String?, _ shareRoot: URL?, _ maxPixels: Int) -> CGImage?
     /// 곡 목록 칸의 작은 그림(rekordbox가 만든 작은 그림을 64픽셀로). share 뿌리가 nil이면 기본 rekordbox 폴더. 메인 밖에서 부른다
     public var listThumbnail: @Sendable (_ imagePath: String?, _ shareRoot: URL?) -> CGImage?
+    /// USB 곡의 그림: 마운트한 볼륨(`root`) 안 그림 파일(볼륨 뿌리 기준 경로)을 긴 변이 `maxPixels` 이하가 되게 읽는다(읽기 전용).
+    /// 링크를 거치거나 열지 않는 자리(`UsbLayout.neverRead`)면 열지 않고 nil. 메인 밖에서 부른다
+    public var volumeThumbnail: @Sendable (_ root: URL, _ path: String, _ maxPixels: Int) -> CGImage?
 
     public init(unsupportedReason: @escaping @Sendable (Data) -> String?,
                 edit: @escaping @Sendable (_ trackUUID: String, _ base: ArtworkBase, _ image: Data, _ imageName: String?) -> ArtworkEdit,
                 thumbnail: @escaping @Sendable (_ imagePath: String?, _ shareRoot: URL?, _ maxPixels: Int) -> CGImage?,
-                listThumbnail: @escaping @Sendable (_ imagePath: String?, _ shareRoot: URL?) -> CGImage?) {
+                listThumbnail: @escaping @Sendable (_ imagePath: String?, _ shareRoot: URL?) -> CGImage?,
+                volumeThumbnail: @escaping @Sendable (_ root: URL, _ path: String, _ maxPixels: Int) -> CGImage?) {
         self.unsupportedReason = unsupportedReason
         self.edit = edit
         self.thumbnail = thumbnail
         self.listThumbnail = listThumbnail
+        self.volumeThumbnail = volumeThumbnail
     }
 }
 
@@ -95,4 +100,7 @@ public struct EditArtwork: Sendable {
 
     /// 목록 칸의 작은 그림(rekordbox가 만든 작은 그림 파일). 없거나 읽지 못하면 nil
     public func listThumbnail(imagePath: String?, shareRoot: URL?) -> CGImage? { artwork.listThumbnail(imagePath, shareRoot) }
+
+    /// USB 곡 목록 칸의 작은 그림(마운트한 볼륨 안 그림 파일, 링크를 거치면 읽지 않는다). 없거나 읽지 못하면 nil
+    public func volumeThumbnail(root: URL, path: String) -> CGImage? { artwork.volumeThumbnail(root, path, 64) }
 }

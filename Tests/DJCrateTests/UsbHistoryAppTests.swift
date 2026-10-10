@@ -147,8 +147,12 @@ struct UsbHistoryAppTests {
         // 읽기 전용 줄은 편집·덱 대상이 아니다. 반복 재생 줄을 함께 골라도 컬렉션 곡은 한 번만
         store.selection = Set(rows.map(\.id))
         #expect(store.selectedRows.map(\.id) == ["102", "101"])
+        // 덱 불러오기는 막지 않고 누르면 짝이 없다고 알린다(#255, 보존 기록 줄은 USB 볼륨 곡으로 풀지 않는다)
         store.selection = [unmatched.id]
-        #expect(!store.canLoadSelectionToDeck)
+        #expect(store.canLoadSelectionToDeck)
+        store.loadSelectionToDeck()
+        #expect(store.deckTrackID == nil)
+        #expect(store.stagingMessage?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
 
         // 재생 목록으로 만들기: 짝 있는 곡만 튼 순서대로(같은 곡은 처음 한 번), 이름은 기록 이름
         store.createPlaylist(fromHistory: archived.id)

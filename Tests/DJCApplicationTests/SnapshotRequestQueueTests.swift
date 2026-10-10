@@ -1,4 +1,4 @@
-@testable import DJCrate
+import DJCApplication
 import Testing
 
 private actor SnapshotPauseGate {

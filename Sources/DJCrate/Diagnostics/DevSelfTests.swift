@@ -25,6 +25,7 @@ enum DevSelfTests {
         Issue237Capture.runIfRequested(store: store)
         ColumnHeaderCapture.runIfRequested(store: store)
         UsbDragCapture.runIfRequested(store: store)
+        UsbDeckCapture.runIfRequested(store: store)
         runDuplicateLayoutIfRequested(store: store)
         runDraftNoticeCaptureIfRequested(store: store)
         runXMLExportCaptureIfRequested(store: store)

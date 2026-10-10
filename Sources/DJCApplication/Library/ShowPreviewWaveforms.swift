@@ -25,6 +25,9 @@ public struct ShowPreviewWaveforms: Sendable {
     /// 분석 파일에 파형이 없을 때 채울 음원 파형(400칸). 무거운 일이라 부르는 쪽이 한 번에 하나씩 부른다. 읽지 못하면 nil
     public var audioColumns: @Sendable (_ audio: URL, _ key: String) -> [WaveformColumn]? { previews.audioColumns }
 
+    /// USB 곡의 분석 파일 자리(볼륨 안, 링크를 거치거나 열지 않는 자리면 nil). 막는 입출력이라 메인 밖에서 부른다
+    public func volumeFile(root: URL, path: String) -> URL? { previews.volumeFile(root, path) }
+
     /// 캐시를 비운다(메모리와 파일). 다음 읽기·채우기가 분석 파일에서 다시 만든다
     public func clear() async { await previews.clear() }
 }

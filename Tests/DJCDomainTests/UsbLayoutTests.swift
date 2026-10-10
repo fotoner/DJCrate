@@ -41,6 +41,24 @@ struct UsbLayoutTests {
         #expect(UsbLayout.isNeverRead("PIONEER/./CDP"))
     }
 
+    /// 곡 목록은 USB DB에 적힌 그림·분석 파일 경로를 그대로 읽는다(#256). 손상됐거나 꾸민 경로가 그 폴더 밖을 가리키면 읽지 않는다
+    @Test("목록이 읽는 그림·분석 파일 경로는 그 폴더 아래 파일만 받는다")
+    func readablePathStaysUnderRoot() {
+        #expect(UsbLayout.readablePath("/PIONEER/Artwork/00001/b7.jpg", under: UsbLayout.artworkRoot) == "PIONEER/Artwork/00001/b7.jpg")
+        #expect(UsbLayout.readablePath("PIONEER/Artwork/00001/a7.jpg", under: UsbLayout.artworkRoot) == "PIONEER/Artwork/00001/a7.jpg")
+        // FAT는 대소문자를 가리지 않는다
+        #expect(UsbLayout.readablePath("/pioneer/usbanlz/P016/0000875E/ANLZ0000.DAT", under: UsbLayout.analysisRoot)
+            == "pioneer/usbanlz/P016/0000875E/ANLZ0000.DAT")
+        let refused = ["", "/", "/PIONEER/Artwork", "/PIONEER/Artwork/", "/PIONEER/Artwork//a1.jpg", "/PIONEER/Artwork/./00001/a1.jpg",
+                       "/PIONEER/Artwork/../../etc/hosts", "/PIONEER/Artwork/00001/../../CDP/a1.jpg", "/PIONEER/Artwork/00001/._a1.jpg",
+                       "/PIONEER/Artwork/00001/a\u{0}.jpg", "/PIONEER/ArtworkX/a1.jpg", "/Contents/a1.jpg",
+                       "/PIONEER/USBANLZ/P016/0000875E/ANLZ0000.DAT"]
+        for path in refused { #expect(UsbLayout.readablePath(path, under: UsbLayout.artworkRoot) == nil, "\(path)") }
+        // 열지 않는 자리(SAFE-24)는 어느 뿌리로도 받지 않는다
+        #expect(UsbLayout.readablePath("/PIONEER/CDP/x.DAT", under: "PIONEER/CDP") == nil)
+        #expect(UsbLayout.readablePath("/PIONEER/extracted/x.jpg", under: "PIONEER") == nil)
+    }
+
     @Test("macOS가 만드는 폴더는 비교에서 뺀다")
     func systemIgnoredPaths() {
         #expect(UsbLayout.isSystemIgnored(".fseventsd"))

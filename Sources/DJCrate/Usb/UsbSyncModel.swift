@@ -205,7 +205,7 @@ final class UsbSyncModel {
                                     provenance: store.snapshotForUsbSync, share: store.shareRoot, isLoading: store.isLoading,
                                     isWriting: store.isWritingRekordbox, allowsInteraction: store.writeLockPolicy.allowsLibraryInteraction)
             },
-            sources: { UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.iTunesLibrary) },
+            sources: { UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.music.library) },
             leaseSnapshot: { await store.leaseUsbSyncSnapshot() },
             localSkip: { skip($0) },
             volume: {

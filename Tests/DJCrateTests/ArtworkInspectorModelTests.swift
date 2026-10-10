@@ -41,7 +41,8 @@ struct ArtworkInspectorModelTests {
                                              ArtworkEdit(draft: ArtworkDraft(trackUUID: uuid, change: .set, base: base, imageName: name,
                                                                              imageSHA256: "해시-\(image.count)"), image: image)
                                          },
-                                         thumbnail: { _, _, _ in nil }, listThumbnail: { _, _ in nil })
+                                         thumbnail: { _, _, _ in nil }, listThumbnail: { _, _ in nil },
+                                         volumeThumbnail: { _, _, _ in nil })
             ports.files.read = { url in
                 guard url.lastPathComponent == "표지.jpg" else { throw CocoaError(.fileReadNoSuchFile) }
                 return ImageFixture.image(width: 8, height: 8)

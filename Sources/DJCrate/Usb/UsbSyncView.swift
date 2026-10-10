@@ -100,7 +100,7 @@ struct UsbSyncView: View {
                 Text(verbatim: skipped).font(.caption).foregroundStyle(.orange).lineLimit(3).help(skipped)
                     .accessibilityIdentifier("usb-sync-skipped")
             }
-            if let message = store.iTunesLibrary.status.message {
+            if let message = store.music.library.status.message {
                 Text(message).font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

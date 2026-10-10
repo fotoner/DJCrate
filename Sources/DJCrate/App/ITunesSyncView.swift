@@ -2,9 +2,8 @@ import DJCDomain
 import SwiftUI
 
 struct ITunesSyncView: View {
-    let store: LibraryStore
+    let model: ITunesSyncModel
     @Environment(\.dismiss) private var dismiss
-    private var model: ITunesSyncModel { store.iTunesSync }
 
     var body: some View {
         let tree = model.tree
@@ -15,11 +14,11 @@ struct ITunesSyncView: View {
                 Text(.ui("iTunes 동기화")).font(.title2.bold())
                 Spacer()
                 Button {
-                    model.startLoad(store: store, forceRefresh: true)
+                    model.startLoad(forceRefresh: true)
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .disabled(model.isLoading || model.isSyncing || model.isWaitingForMusic || store.isLoading || store.isWritingRekordbox)
+                .disabled(model.isLoading || model.isSyncing || model.isWaitingForMusic || model.isLibraryBusy)
                 .help(.ui("iTunes 동기화 목록 새로고침"))
                 .accessibilityLabel(.ui("iTunes 동기화 목록 새로고침"))
                 .accessibilityIdentifier("itunes-sync-refresh")
@@ -75,17 +74,17 @@ struct ITunesSyncView: View {
                 Button(.ui("취소")) { dismiss() }.keyboardShortcut(.cancelAction)
                     .disabled(model.isSyncing)
                 Button(.ui("동기화")) {
-                    model.startSync(store: store) { dismiss() }
+                    model.startSync { dismiss() }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(!model.canSync || store.isLoading || store.isWritingRekordbox)
+                .disabled(!model.canSync || model.isLibraryBusy)
                 .accessibilityIdentifier("itunes-sync-apply")
             }
         }
         .padding(24)
         .frame(width: 860, height: 560)
         .interactiveDismissDisabled(model.isSyncing)
-        .task { await model.load(store: store) }
+        .task { await model.load() }
     }
 }
 
