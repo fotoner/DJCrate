@@ -387,7 +387,7 @@ enum UsbDragCapture {
         init(_ value: T) { self.value = value }
     }
 
-    private static func views(in view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views(in:)) }
+    static func views(in view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views(in:)) }
 
     /// 손쉬운 사용 요소 아래의 이름·값 글자(SwiftUI 요소는 비공식 속성 API로만 읽힌다)
     private static func axTexts(_ element: Any, depth: Int = 0) -> [String] {
@@ -406,7 +406,7 @@ enum UsbDragCapture {
         return condition()
     }
 
-    private static func captureWindow(_ window: NSWindow, to path: String) throws {
+    static func captureWindow(_ window: NSWindow, to path: String) throws {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/sbin/screencapture")
         process.arguments = ["-x", "-o", "-t", "jpg", "-l", String(window.windowNumber), path]
