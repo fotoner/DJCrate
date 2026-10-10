@@ -37,7 +37,14 @@ extension PreviewWaveforms {
             revision: { key, file in await store.revision(for: PreviewWaveformStore.Source(uuid: key, url: file)) },
             waveform: { key, file in await store.waveform(for: PreviewWaveformStore.Source(uuid: key, url: file)) },
             audioColumns: { audio, key in (try? WaveformCache.load(fileAt: audio, key: key))?.downsampled(to: 400).colorColumns },
-            clear: { await store.clear() })
+            clear: { await store.clear() },
+            // 미리 보기는 .DAT와 옆 .EXT를 연다. 둘 다 성분마다 lstat으로 링크를 거른다(UsbRoot)
+            volumeFile: { root, path in
+                let volume = UsbRoot(root)
+                guard let dat = try? volume.url(for: path),
+                      (try? volume.url(for: (path as NSString).deletingPathExtension + ".EXT")) != nil else { return nil }
+                return dat
+            })
     }
 }
 
@@ -60,6 +67,14 @@ extension ArtworkFiles {
             return CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceThumbnailMaxPixelSize: 64,
+            ] as CFDictionary)
+        },
+        // 볼륨 안 경로는 성분마다 lstat으로 링크를 거른다(UsbRoot). 문자열 검사만으로는 링크를 따라 열지 않는 자리에 닿는다
+        volumeThumbnail: { root, path, maxPixels in
+            guard let url = try? UsbRoot(root).url(for: path), let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+            return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixels,
             ] as CFDictionary)
         })
 }

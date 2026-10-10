@@ -55,7 +55,8 @@ extension LibraryStore {
             if let history = historyIndex[id] { .history(history.entries) } else { .rows(archivedHistoryRows(id)) }
         case .staged: .rows(stagedRows)
         case .pending: .pending(pendingUUIDs)
-        case let .usb(target): .rows(usb?.rows(for: target) ?? [])
+        // 분류 칸은 로컬 줄과 같은 코멘트 규칙(지금 프리셋)으로 가른다(#256)
+        case let .usb(target): .rows(usb?.rows(for: target, commentPreset: commentPreset) ?? [])
         case .duplicates: .duplicates(duplicateGroups.flatMap { $0.tracks.map(\.id) })
         }
     }

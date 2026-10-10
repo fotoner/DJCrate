@@ -1,5 +1,6 @@
 import AppKit
 import DJCApplication
+import DJCDomain
 import Foundation
 
 /// rekordbox에 그림을 쓰거나 되돌린 곡(ContentID)마다 올리는 번호(#66). 그림 바꾸기는 `ImagePath`가 그대로라 ContentID만 열쇠로 쓰면
@@ -20,6 +21,9 @@ enum ArtworkRevisions {
 /// rekordbox가 만들어 둔 그림(`share/PIONEER/Artwork`)은 유스케이스(`EditArtwork`)로 읽는다. 덱의 그림(파일 내장 그림 포함)은 `TrackAssetReader`가 읽는다.
 actor Thumbnails {
     private let artwork: EditArtwork
+    /// 그림 파일을 여는 막는 입출력이라(느린 USB 포함) 협력 풀이 아닌 제 직렬 큐에서 돈다. 실행기만 바꿔 작업 취소는 그대로 본다
+    private let queue = DispatchSerialQueue(label: "DJCrate.Thumbnails")
+    nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
 
     init(artwork: EditArtwork) { self.artwork = artwork }
 
@@ -37,6 +41,16 @@ actor Thumbnails {
         guard !Task.isCancelled else { return nil }
         let box = artwork.listThumbnail(imagePath: imagePath, shareRoot: root).map(Box.init)
         // 아트워크가 없는 곡도 기억해 파일을 다시 열지 않는다.
+        cache.setObject(Entry(box), forKey: key as NSString)
+        return box
+    }
+
+    /// USB 곡의 그림(#256): 마운트한 볼륨의 작은 그림(`a{id}.jpg`·`b{id}.jpg`, rekordbox `artwork_s.jpg`와 같은 바이트)을 목록 크기로 읽는다(읽기 전용).
+    /// 그림이 없으면 파일을 열지 않는다. 링크를 거치는 경로는 포트가 열지 않는다
+    func usbImage(_ files: TrackRow.UsbFiles, key: String) -> Box? {
+        if let hit = cache.object(forKey: key as NSString) { return hit.box }
+        guard !Task.isCancelled, let path = files.artwork else { return nil }
+        let box = artwork.volumeThumbnail(root: files.root, path: path).map(Box.init)
         cache.setObject(Entry(box), forKey: key as NSString)
         return box
     }

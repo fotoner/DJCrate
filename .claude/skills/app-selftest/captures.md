@@ -93,10 +93,13 @@
 - 이때 창은 보고 있는 데스크톱으로 옮겨 다른 창 뒤에 둔다.
 - 앱을 쓰는 중에는 돌리지 않는다.
 
-### 곡 목록 머리글(#241 전·후)
+### 곡 목록 칸 배치·머리글(#241·#256 전·후)
 
 - 인자는 `--column-header-capture=<임시 폴더> --column-header-usb-mount=<합성 디스크 이미지 마운트>`다.
-- `UsbMigrateAppFixtureCapture`의 합성 사본(`local`)을 `--db`·`DJC_REKORDBOX_DIR`로 연다.
-- 그 사본을 한 번 더 복사해 `usb-export`로 디스크 이미지에 내보낸다. 그 볼륨 하나만 USB 절로 읽는다.
-- 로컬 → USB 목록 → USB 쓰기 대기 → USB 목록 → 로컬로 오간다.
+- `UsbColumnsFixtureCapture`의 합성 사본(`local`)을 `--db`·`DJC_REKORDBOX_DIR`로 연다. 사본은 `DJC_USB_COLUMNS_FIXTURE=<임시 폴더>`로 만든다. 이 사본에는 앨범아트, 미리 보기 파형, 평점, 곡 색이 있다.
+- 그 사본을 한 번 더 복사해 `usb-export --playlist 1`로 디스크 이미지에 내보낸다. 그 볼륨 하나만 USB 절로 읽는다.
+- 캡처의 사용자 배치는 미리 보기 칸을 켠 배치다. 앞쪽 칸 순서도 정해 둔다.
+- 로컬 → USB 컬렉션 → USB 재생 목록 → USB 쓰기 대기 → USB 목록 → 로컬로 오간다.
 - 오가는 동안 창만 `screencapture -l`로 찍는다. 칸 순서와 머리글 자리를 출력한다.
+- `[칸 비교]` 줄은 USB 목록이 컬렉션과 같은 칸·순서·폭인지 보인다. 로그는 `grep -a`로 읽는다.
+- 디버그 앱은 칸 배치를 환경설정 영역 `DJCrate`에 자동 저장한다. 실행 전에 그 영역을 보관한다. 끝난 뒤 바뀐 키만 되돌린다("설정 보관·복원").

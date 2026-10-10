@@ -91,6 +91,7 @@ private struct TrackListView: NSViewRepresentable {
         table.headerView?.menu = context.coordinator.makeColumnMenu(table)
         TrackColumn.placeNewColumns(in: table)
         TrackColumn.migrateRatingWidth(in: table, remember: !PerfProbe.enabled)
+        TrackColumn.placeUsbSyncColumn(in: table, remember: !PerfProbe.enabled)
         if let show = PerfProbe.previewColumnVisible {
             table.tableColumns.first(where: { $0.identifier.rawValue == "preview" })?.isHidden = !show
         }

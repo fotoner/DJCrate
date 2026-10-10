@@ -6,7 +6,7 @@ import DJCTestKit
 import Foundation
 import Testing
 
-/// USB 목록에 들어갔다 나올 때 곡 목록 칸 배치·머리글(#241)
+/// USB 목록에 들어갔다 나올 때 곡 목록 칸 배치·머리글(#241, #256)
 @MainActor
 @Suite("곡 목록 칸 배치")
 struct TrackListColumnLayoutTests {
@@ -114,30 +114,41 @@ struct TrackListColumnLayoutTests {
         withExtendedLifetime(window) {}
     }
 
-    @Test("USB 목록에서 나오면 칸 순서·너비·숨김·제목이 들어가기 전과 같다")
-    func usbRoundTripRestoresLayout() {
-        let (window, table, coordinator) = makeTable()
-        // 사용자가 옮기고 넓힌 칸
+    /// 사용자가 옮기고 넓히고 숨긴 칸 배치(미리 보기 칸을 켜고 코멘트를 앞으로, 제목 폭, 앨범 숨김)
+    private func arrangeLikeUser(_ table: NSTableView) {
         table.moveColumn(table.column(withIdentifier: .init("comment")), toColumn: 2)
         table.tableColumns.first { $0.identifier.rawValue == "title" }?.width = 148
         table.tableColumns.first { $0.identifier.rawValue == "album" }?.isHidden = true
-        let before = Layout(table)
-
-        coordinator.updateUsbMode(true)
-        expectFreshGeometry(table)
-        window.displayIfNeeded()
-        let usbOrder = table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue }
-        #expect(usbOrder == ["index", "title", "artist", "bpm", "key", TrackColumn.usbSyncID])
-
-        coordinator.updateUsbMode(false)
-        expectFreshGeometry(table)
-        window.displayIfNeeded()
-        #expect(Layout(table) == before)
+        table.tableColumns.first { $0.identifier.rawValue == "preview" }?.isHidden = false
     }
 
-    /// 자동 저장을 다시 켜면 AppKit이 저장된 배치를 읽어 moveColumn 없이 칸 순서·너비를 바꾼다(#241).
-    /// 나올 때 순서를 먼저 되돌리고, 마지막으로 머리글 전체를 다시 그리게 할 때 칸 순서가 최종 순서여야 한다.
-    @Test("자동 저장 중인 표도 USB 목록에서 나오면 칸 배치가 같고 머리글을 다시 그린다")
+    /// USB 목록은 컬렉션과 같은 칸 배치를 쓴다(#256). 다른 점은 갱신 상태 칸이 보이는 것뿐이다
+    @Test("USB 목록을 몇 번 드나들어도 칸 순서·너비·숨김이 그대로이고 갱신 상태 칸만 켜졌다 꺼진다")
+    func usbRoundTripsKeepUserLayout() {
+        let (window, table, coordinator) = makeTable()
+        arrangeLikeUser(table)
+        window.displayIfNeeded()
+        let before = Layout(table)
+        var usb = before
+        usb.hidden[TrackColumn.usbSyncID] = false
+
+        for _ in 0..<3 {
+            coordinator.updateUsbMode(true)
+            expectFreshGeometry(table)
+            window.displayIfNeeded()
+            #expect(Layout(table) == usb)
+
+            coordinator.updateUsbMode(false)
+            expectFreshGeometry(table)
+            window.displayIfNeeded()
+            #expect(Layout(table) == before)
+        }
+        withExtendedLifetime(window) {}
+    }
+
+    /// 자동 저장을 멈췄다 다시 켜면 AppKit이 저장된 배치를 읽어 머리글만 낡은 칸 순서로 남았다(#241).
+    /// USB 목록도 같은 배치를 쓰므로 자동 저장을 멈추지 않고, 갱신 상태 칸을 켜고 끈 뒤 머리글 전체를 지금 칸 순서로 다시 그린다
+    @Test("자동 저장 중인 표도 USB 목록을 드나들면 칸 배치가 그대로이고 머리글을 지금 칸 순서로 다시 그린다")
     func usbRoundTripWithAutosaveRedrawsHeader() throws {
         let name = "djc.test.trackList.\(UUID().uuidString)"
         defer {
@@ -146,17 +157,65 @@ struct TrackListColumnLayoutTests {
             }
         }
         let (window, table, coordinator) = makeTable(autosaveName: name)
-        table.moveColumn(table.column(withIdentifier: .init("comment")), toColumn: 2)
+        arrangeLikeUser(table)
         window.displayIfNeeded()
         let before = Layout(table)
-
-        coordinator.updateUsbMode(true)
-        window.displayIfNeeded()
         let header = try #require(table.headerView as? RecordingHeaderView)
+
+        header.orderAtFullRedraw = nil
+        coordinator.updateUsbMode(true)
+        #expect(table.autosaveTableColumns)
+        #expect(header.orderAtFullRedraw == table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue })
+        #expect(header.orderAtFullRedraw?.contains(TrackColumn.usbSyncID) == true)
+        window.displayIfNeeded()
+
         header.orderAtFullRedraw = nil
         coordinator.updateUsbMode(false)
+        #expect(table.autosaveTableColumns)
         #expect(Layout(table) == before)
         #expect(header.orderAtFullRedraw == table.tableColumns.filter { !$0.isHidden }.map { $0.identifier.rawValue })
+        withExtendedLifetime(window) {}
+    }
+
+    @Test("갱신 상태 칸은 처음 한 번만 키 칸 바로 뒤로 옮기고 그 뒤로는 사용자가 옮긴 자리를 지킨다")
+    func usbSyncColumnPlacedOnceAfterKey() {
+        let (window, table, coordinator) = makeTable()
+        let defaults = TestDefaults.make("usb-sync-column")
+        func position(_ id: String) -> Int { table.column(withIdentifier: .init(id)) }
+
+        TrackColumn.placeUsbSyncColumn(in: table, defaults: defaults)
+        #expect(position(TrackColumn.usbSyncID) == position("key") + 1)
+
+        table.moveColumn(position(TrackColumn.usbSyncID), toColumn: 1)
+        TrackColumn.placeUsbSyncColumn(in: table, defaults: defaults)
+        coordinator.updateUsbMode(true)
+        coordinator.updateUsbMode(false)
+        coordinator.updateUsbMode(true)
+        #expect(position(TrackColumn.usbSyncID) == 1)
+        #expect(!table.tableColumns[1].isHidden)
+        withExtendedLifetime(window) {}
+    }
+
+    /// 같은 배치라 USB 목록에서도 칸 메뉴로 칸을 고른다. 고른 칸은 나와도 그대로다. 갱신 상태 칸은 메뉴에 없고 USB 목록이 정한다
+    @Test("USB 목록에서 고른 칸은 컬렉션에도 그대로이고 모든 칸 보이기는 갱신 상태 칸을 USB 목록에서만 보인다")
+    func columnMenuWorksInUsbList() throws {
+        let (window, table, coordinator) = makeTable()
+        func hidden(_ id: String) -> Bool { table.tableColumns.first { $0.identifier.rawValue == id }?.isHidden ?? false }
+        coordinator.updateUsbMode(true)
+        let menu = coordinator.makeColumnMenu(table)
+        coordinator.menuNeedsUpdate(menu)
+        #expect(!menu.items.contains { $0.representedObject as? String == TrackColumn.usbSyncID })
+        let genre = try #require(menu.items.first { $0.representedObject as? String == "genre" })
+        #expect(genre.action != nil)
+        coordinator.toggleColumn(genre)
+        #expect(hidden("genre"))
+
+        coordinator.showAllColumns()
+        #expect(!hidden("genre") && !hidden("preview") && !hidden(TrackColumn.usbSyncID))
+        coordinator.updateUsbMode(false)
+        #expect(!hidden("genre") && !hidden("preview") && hidden(TrackColumn.usbSyncID))
+        coordinator.showAllColumns()
+        #expect(hidden(TrackColumn.usbSyncID))
         withExtendedLifetime(window) {}
     }
 }

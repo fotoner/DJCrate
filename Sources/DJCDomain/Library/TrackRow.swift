@@ -38,6 +38,27 @@ public struct TrackRow: Identifiable, Hashable, Sendable {
     public var playlistTrackNumber: Int? { playlistOccurrence?.number }
     /// USB 곡의 로컬 대비 갱신 상태(USB 목록에서만, `UsbLibraryRows`)
     public var usbSync: UsbSyncStatus?
+    /// USB 곡의 그림·분석 파일(마운트한 볼륨 안, 읽기 전용, `UsbLibraryRows`). 목록의 앨범아트·미리 보기 칸이 이 뿌리로 읽는다.
+    /// 경로는 문자열만 거른 값이다. 열 때는 링크를 거르는 포트(`ArtworkFiles.volumeThumbnail`·`PreviewWaveforms.volumeFile`)로 연다.
+    /// 로컬 share 기준 경로(`track.imagePath`·`analysisDataPath`)는 비워 둔다. 로컬 share로 찾는 곳(덱·반영·미리 데우기)이 다른 파일을 읽지 않게
+    public var usbFiles: UsbFiles?
+    public struct UsbFiles: Hashable, Sendable {
+        /// 볼륨 뿌리(마운트 지점)
+        public let root: URL
+        /// 볼륨 뿌리 기준 아트워크 작은 그림(`PIONEER/Artwork/nnnnn/[ab]n.jpg`). 없거나 아트워크 폴더 밖이면 nil
+        public let artwork: String?
+        /// 볼륨 뿌리 기준 분석 파일(`PIONEER/USBANLZ/…/ANLZnnnn.DAT`). 없거나 분석 폴더 밖이면 nil
+        public let analysis: String?
+        /// 그 볼륨을 읽은 판. 다시 읽으면 오른다(쓰기가 같은 자리 그림을 덮어써도 썸네일을 새로 읽게)
+        public let revision: Int
+
+        public init(root: URL, artwork: String?, analysis: String?, revision: Int) {
+            self.root = root
+            self.artwork = artwork
+            self.analysis = analysis
+            self.revision = revision
+        }
+    }
     public var id: String { historyEntry.map { "history:\($0.id)" } ?? playlistOccurrence?.id ?? track.id }
     /// USB에서 읽은 곡의 ID 머리(`usb:<볼륨>:<ContentID>`)
     public static let usbIDPrefix = "usb:"

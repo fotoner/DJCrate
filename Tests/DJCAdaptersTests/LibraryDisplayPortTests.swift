@@ -75,6 +75,53 @@ struct LibraryDisplayPortTests {
         #expect(ArtworkFiles.live.thumbnail(nil, share, 240) == nil && ArtworkFiles.live.listThumbnail("/PIONEER/Artwork/없음.jpg", share) == nil)
     }
 
+    /// 곡 목록은 USB DB에 적힌 경로로 USB 파일을 읽는다(#256). 링크를 거치면 열지 않는 자리(SAFE-24)나 이 Mac의 다른 파일에 닿으므로 열지 않는다
+    @Test("USB 곡 그림·분석 파일: 볼륨 안 파일만 읽고 링크를 거치거나 열지 않는 자리면 열지 않는다")
+    func volumeFilesRefuseLinks() throws {
+        let folder = try TemporaryFolder()
+        let fm = FileManager.default
+        let volume = folder.url.appending(path: "volume")
+        let outside = folder.url.appending(path: "outside.jpg")
+        try ImageFixture.image(width: 80, height: 80).write(to: outside)
+        let artwork = volume.appending(path: "PIONEER/Artwork/00001")
+        try fm.createDirectory(at: artwork, withIntermediateDirectories: true)
+        try ImageFixture.image(width: 80, height: 80).write(to: artwork.appending(path: "b1.jpg"))
+        try fm.createSymbolicLink(at: artwork.appending(path: "b2.jpg"), withDestinationURL: outside)
+        try fm.createSymbolicLink(at: volume.appending(path: "PIONEER/Artwork/00002"), withDestinationURL: folder.url)
+        let cdp = volume.appending(path: "PIONEER/CDP")
+        try fm.createDirectory(at: cdp, withIntermediateDirectories: true)
+        try ImageFixture.image(width: 80, height: 80).write(to: cdp.appending(path: "b3.jpg"))
+
+        let small = try #require(ArtworkFiles.live.volumeThumbnail(volume, "PIONEER/Artwork/00001/b1.jpg", 64))
+        #expect(max(small.width, small.height) == 64)
+        #expect(ArtworkFiles.live.volumeThumbnail(volume, "PIONEER/Artwork/00001/b2.jpg", 64) == nil)
+        #expect(ArtworkFiles.live.volumeThumbnail(volume, "PIONEER/Artwork/00002/outside.jpg", 64) == nil)
+        #expect(ArtworkFiles.live.volumeThumbnail(volume, "PIONEER/CDP/b3.jpg", 64) == nil)
+
+        let previews = PreviewWaveforms.live(store: PreviewWaveformStore(file: nil))
+        func analysis(_ folderName: String) throws -> URL {
+            let url = volume.appending(path: "PIONEER/USBANLZ/P016/\(folderName)")
+            try fm.createDirectory(at: url, withIntermediateDirectories: true)
+            return url
+        }
+        let plain = try analysis("0000875E")
+        try Data("DAT".utf8).write(to: plain.appending(path: "ANLZ0000.DAT"))
+        try Data("EXT".utf8).write(to: plain.appending(path: "ANLZ0000.EXT"))
+        #expect(previews.volumeFile(volume, "PIONEER/USBANLZ/P016/0000875E/ANLZ0000.DAT")?.path
+            == volume.appending(path: "PIONEER/USBANLZ/P016/0000875E/ANLZ0000.DAT").path)
+        // 미리 보기는 옆 .EXT도 연다. .EXT가 링크면 .DAT도 읽지 않는다
+        let linkedExt = try analysis("00000001")
+        try Data("DAT".utf8).write(to: linkedExt.appending(path: "ANLZ0000.DAT"))
+        try fm.createSymbolicLink(at: linkedExt.appending(path: "ANLZ0000.EXT"), withDestinationURL: outside)
+        #expect(previews.volumeFile(volume, "PIONEER/USBANLZ/P016/00000001/ANLZ0000.DAT") == nil)
+        let linkedDat = try analysis("00000002")
+        try fm.createSymbolicLink(at: linkedDat.appending(path: "ANLZ0000.DAT"), withDestinationURL: outside)
+        #expect(previews.volumeFile(volume, "PIONEER/USBANLZ/P016/00000002/ANLZ0000.DAT") == nil)
+        try fm.createSymbolicLink(at: volume.appending(path: "PIONEER/USBANLZ/P017"), withDestinationURL: plain.deletingLastPathComponent())
+        #expect(previews.volumeFile(volume, "PIONEER/USBANLZ/P017/0000875E/ANLZ0000.DAT") == nil)
+        #expect(previews.volumeFile(volume, "PIONEER/CDP/ANLZ0000.DAT") == nil)
+    }
+
     @Test("공유 설정: 적는 이름만 파일에 남기고 다른 값은 그대로 둔다(CLI가 같은 파일을 읽는다)")
     func sharedSettings() throws {
         let folder = try TemporaryFolder()
