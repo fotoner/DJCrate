@@ -165,11 +165,16 @@ struct WriteFollowUpTests {
         // 읽기만으로는 아무것도 지우지 않는다.
         #expect(store.unlinkedDraftUUIDs == [orphan, other, gainOnly])
         #expect(CueDraftStore.load(trackUUID: orphan, directory: cues) != nil)
-        let listed = Dictionary(uniqueKeysWithValues: store.unlinkedDrafts().map { ($0.uuid, $0) })
+        let sheet = UnlinkedDraftsModel(store: store)
+        sheet.reload()
+        let listed = Dictionary(uniqueKeysWithValues: sheet.drafts.map { ($0.uuid, $0) })
         #expect(listed[orphan]?.kinds == [.cue, .tag] && listed[orphan]?.title == "사라진 곡")
         #expect(listed[other]?.kinds == [.grid] && listed[gainOnly]?.kinds == [.gain])
         // 라이브러리에 있는 곡은 골라도 버리지 않는다.
-        #expect(store.discardUnlinkedDrafts([orphan, gainOnly, spec.uuid]) == nil)
+        for uuid in [orphan, gainOnly, spec.uuid] { sheet.setSelected(uuid, true) }
+        sheet.discard()
+        #expect(sheet.failure == nil)
+        #expect(sheet.drafts.map(\.uuid) == [other] && sheet.selected.isEmpty)
         #expect(CueDraftStore.load(trackUUID: orphan, directory: cues) == nil && TagDraftStore.load(trackUUID: orphan, directory: tags) == nil)
         #expect(GainDraftStore.load(trackUUID: gainOnly, url: gain) == nil)
         #expect(CueDraftStore.load(trackUUID: spec.uuid, directory: cues) != nil)

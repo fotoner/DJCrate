@@ -54,7 +54,7 @@ enum LibraryMenuAction: CaseIterable {
             return store.snapshotURL != nil && !store.isLoading && !store.hasXMLExportJob
         case .importRekordboxXML:
             guard case .loaded = store.phase else { return false }
-            return store.snapshotURL != nil && !store.isLoading && !store.isReadingXMLImport && store.xmlImportPreview == nil
+            return store.snapshotURL != nil && !store.isLoading && !store.xmlImport.isBusy
         case .reflect: return store.pendingLibraryCount > 0 || store.hasPlaylistDrafts || store.hasHistoryDrafts
         case .pending, .writeResult: return true
         case .restore: return store.hasWriteBackup
@@ -80,7 +80,7 @@ enum LibraryMenuAction: CaseIterable {
             if store.sidebar == .staged { StagingPanels.exportXML(store: store) }
             else { ReflectionPanels.export(store: store, rows: store.reflectionPreviewRows) }
         case .exportLibraryXML: LibraryXMLPanels.export(store: store)
-        case .importRekordboxXML: LibraryXMLPanels.importXML(store: store)
+        case .importRekordboxXML: LibraryXMLPanels.importXML(into: store.xmlImport)
         case .reflect: reflection?.startWrite(rows: store.reflectionPreviewRows)
         case .pending: store.sidebar = .pending
         case .writeResult: store.showingWriteResult = true
@@ -106,7 +106,7 @@ enum LibraryMenuAction: CaseIterable {
         case .exportLibraryXML:
             return store.hasXMLExportJob ? String(ui: "라이브러리 XML 내보내기가 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 내보내세요")
         case .importRekordboxXML:
-            return store.isReadingXMLImport || store.xmlImportPreview != nil
+            return store.xmlImport.isBusy
                 ? String(ui: "지금 가져오는 XML이 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 가져오세요")
         case .restore: return String(ui: "쓰기 전 백업이 없으니 마지막 쓰기 결과를 확인하세요")
         case .addFiles, .importAppleMusic: return String(ui: "라이브러리를 먼저 불러온 뒤 곡을 추가하세요")

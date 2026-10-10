@@ -214,12 +214,17 @@ final class LibraryStore {
     @ObservationIgnored var damagedStagedList = false
     /// 스냅샷 곡·추가한 곡 어디에도 이어지지 않는 초안이 있는 곡(#175). 쓰기 대기 목록에서 보여 주고 고른 것만 버린다.
     var unlinkedDraftUUIDs: Set<String> = []
-    var showingUnlinkedDrafts = false
+    /// 연결되지 않은 초안 시트의 화면 모델(띄울 때 만든다, `openUnlinkedDrafts`)
+    var unlinkedDraftsSheet: UnlinkedDraftsModel?
     /// 개발용 실행 인자(처음 읽은 뒤 한 번 곡을 고르거나 곡을 추가한다)
     @ObservationIgnored let launch: LibraryLaunchOptions
     /// '재생 목록에 넣기…' 창과 넣을 곡(연 때 고른 곡)
     var showingPlaylistPicker = false
-    var playlistPickerTracks: [TrackRow] = []
+    var playlistPickerTracks: [TrackRow] = [] {
+        // 열 때마다 새 화면 모델(찾는 말·고른 줄을 처음부터). 시트 본문이 다시 그려져도 같은 모델을 쓴다
+        didSet { playlistPicker = PlaylistPickerModel(store: self, tracks: playlistPickerTracks) }
+    }
+    @ObservationIgnored private(set) var playlistPicker: PlaylistPickerModel?
     var histories: [RekordboxHistory] = [] {
         didSet {
             guard histories != oldValue else { return }
@@ -350,16 +355,8 @@ final class LibraryStore {
     }
     private(set) var hasXMLExportJob = false
     @ObservationIgnored var xmlExportTask: Task<Void, Never>?
-    /// rekordbox XML 가져오기(`LibraryStore+XMLImport.swift`): XML·라이브러리를 읽는 중인지와 차이 미리 보기 시트
-    var isReadingXMLImport = false
-    var xmlImportPreview: XMLImportPreview? {
-        didSet { if oldValue?.id != xmlImportPreview?.id { xmlImportResult = nil } }
-    }
-    /// 미리 보기에서 만든 초안 결과(시트가 결과 화면으로 바뀐다)
-    var xmlImportResult: XMLImportDraftResult?
-    var isMakingXMLImportDrafts = false
-    @ObservationIgnored var xmlImportTask: Task<Void, Never>?
-    @ObservationIgnored var xmlImportDraftTask: Task<Void, Never>?
+    /// rekordbox XML 가져오기(읽는 중·미리 보기 시트·초안 결과, `XMLImportModel`). 메뉴가 읽는 중인지 보므로 시트를 닫아도 남는다
+    @ObservationIgnored private(set) lazy var xmlImport = XMLImportModel(store: self)
     /// 덱에 올린 곡과 그 그리드 초안을 덱에서 바꿨는지(가져오기가 덱 곡의 그리드 초안을 덱에 넘길지 정한다)
     @ObservationIgnored var deckGridDraftState: (() -> (uuid: String, hasChanges: Bool)?)?
     /// 가져온 그리드 초안을 덱이 받아 저장한다. 받지 못하면(덱에서 고쳤거나 다른 곡) false.

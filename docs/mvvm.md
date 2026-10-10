@@ -82,10 +82,10 @@ struct RelocateView: View {
 }
 ```
 
-틀린 예: 시트에 화면 모델이 없다. 뷰가 화면 상태와 흐름을 든다.
+틀린 예: 시트에 화면 모델이 없다. 뷰가 화면 상태와 흐름을 든다. 아래는 #249에서 고치기 전의 코드다.
 
 ```swift
-// Sources/DJCrate/Library/UnlinkedDraftsView.swift
+// Sources/DJCrate/Library/UnlinkedDraftsView.swift(#249 전)
 struct UnlinkedDraftsView: View {
     let store: LibraryStore
     @State private var drafts: [UnlinkedDraft] = []   // ✗ 화면 상태가 뷰에 있다
@@ -97,6 +97,21 @@ struct UnlinkedDraftsView: View {
     }
 }
 ```
+
+고친 코드: 시트를 띄울 때 화면 모델을 한 번 만든다. 뷰는 그 모델만 받는다.
+
+```swift
+// Sources/DJCrate/Library/LibraryStore+UnlinkedDrafts.swift
+func openUnlinkedDrafts() { unlinkedDraftsSheet = UnlinkedDraftsModel(store: self) }
+
+// Sources/DJCrate/App/ContentView.swift
+.sheet(item: $store.unlinkedDraftsSheet) { UnlinkedDraftsView(model: $0) }
+
+// Sources/DJCrate/Library/UnlinkedDraftsView.swift
+Button(.ui("초안 버리기"), role: .destructive) { model.discard() }
+```
+
+- 시트 모델을 `body`나 시트 내용 클로저에서 만들지 않는다. 본문을 다시 계산할 때마다 새 모델이 생겨 입력과 선택을 잃는다.
 
 ### MVVM-2 화면 모델은 유스케이스를 부른다
 
@@ -119,10 +134,10 @@ func choose(_ path: String?, for trackID: String) {
 }
 ```
 
-틀린 예: 뷰가 고르기 규칙을 직접 계산한다.
+틀린 예: 뷰가 고르기 규칙을 직접 계산한다. 아래는 #249에서 고치기 전의 코드다. 지금은 DJCDomain 값 `PlaylistChoices`가 이 규칙을 맡는다.
 
 ```swift
-// Sources/DJCrate/Library/PlaylistPickerView.swift
+// Sources/DJCrate/Library/PlaylistPickerView.swift(#249 전)
 private var choices: [Choice] {
     let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
     // ✗ 찾기 규칙과 "최근 목록 먼저" 순서가 뷰에 있다
@@ -319,7 +334,7 @@ func tick() {
 | `MVVM-4` | 빚 0줄. 2026-10-10에 #243·#244로 갚았다 | `python3 scripts/check-imports.py --summary` |
 | `MVVM-3` | 35개 파일이 `LibraryStore`를 통째로 받는다 | `grep -lE '(let\|var) store: LibraryStore'` |
 | `MVVM-3` | 20개 파일이 `DeckModel`을 통째로 받는다 | `grep -lE '(let\|var) deck: DeckModel'` |
-| `MVVM-1` | 화면 모델 없는 시트가 있다(예: `UnlinkedDraftsView`, `PlaylistPickerView`, `XMLImportSheet`) | 사람이 본다 |
+| `MVVM-1` | 화면 모델 없는 화면이 있다. 시트 셋(`UnlinkedDraftsView`, `PlaylistPickerView`, `XMLImportSheet`)은 2026-10-10에 #249로 갚았다 | 사람이 본다 |
 
 - `MVVM-3` 수는 잎 뷰와 묶음 뷰를 가리지 않는다. 묶음 뷰가 모델을 받는 것은 규칙 위반이 아니다.
 - 이 빚은 손대는 화면부터 조금씩 갚는다. 빚 때문에 큰 화면을 한 번에 나누지 않는다.
