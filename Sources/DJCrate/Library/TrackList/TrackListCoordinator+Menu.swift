@@ -77,11 +77,9 @@ extension TrackListCoordinator {
         return indexes.contains { rows.indices.contains($0) && rows[$0].isUsb }
     }
 
-    /// USB 곡은 직접 고치지 않는다: 덱 불러오기도 아직 닫혀 있음을 비활성 항목으로 알리고, 고치기는 USB 초안 항목으로만 한다
+    /// USB 곡은 직접 고치지 않는다: 고치기는 USB 초안 항목으로만 한다. 덱에는 짝인 로컬 곡을 올리고, 짝이 없으면 누른 뒤 이유를 알린다(#255)
     func addReadOnlyItems(to menu: NSMenu) {
-        let load = NSMenuItem(title: String(ui: "덱에 불러오기"), action: nil, keyEquivalent: "")
-        load.isEnabled = false
-        menu.addItem(load)
+        menu.addItem(LoadToDeckCommand.menuItem(action: loadMenuRowIndex == nil ? nil : #selector(loadMenuRow), target: self))
         guard !addUsbEditItems(to: menu) else { return }
         let note = NSMenuItem(title: String(ui: "USB 곡은 읽기만 합니다"), action: nil, keyEquivalent: "")
         note.isEnabled = false

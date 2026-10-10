@@ -320,11 +320,12 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     /// 덱에 올린 곡이나 재생 상태가 바뀌면 그 곡의 # 칸만 다시 그린다.
     func updateDeck(trackID: String?, playing: Bool) {
         guard trackID != deckTrackID || playing != deckPlaying, let table else { return }
-        let changed = Set([deckTrackID, trackID].compactMap { $0 })
+        let old = deckTrackID
         deckTrackID = trackID
         deckPlaying = playing
         guard let column = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "index" }) else { return }
-        let indexes = IndexSet(rows.indices.filter { changed.contains(rows[$0].track.id) })
+        // USB 줄은 짝인 로컬 곡으로 덱 곡과 견준다(#255)
+        let indexes = IndexSet(rows.indices.filter { store.isDeckTrack(rows[$0], deckTrackID: old) || store.isDeckTrack(rows[$0], deckTrackID: trackID) })
         if !indexes.isEmpty { table.reloadData(forRowIndexes: indexes, columnIndexes: IndexSet(integer: column)) }
     }
 

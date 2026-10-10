@@ -50,7 +50,7 @@ extension TrackListCoordinator {
             cell.configure(edited: edited.contains(row.track.uuid))
         case let cell as TrackIndexCell:
             cell.configure(number: "\(row.historyTrackNumber ?? row.playlistTrackNumber ?? (index + 1))", font: fonts.digits,
-                           deck: row.track.id == deckTrackID ? .init(playing: deckPlaying) : nil)
+                           deck: store.isDeckTrack(row, deckTrackID: deckTrackID) ? .init(playing: deckPlaying) : nil)
         case let cell as TrackTextCell:
             cell.fonts = fonts
             configure(cell, column: id, row: row, index: index)

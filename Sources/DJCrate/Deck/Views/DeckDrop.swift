@@ -16,7 +16,7 @@ struct DeckDropTarget: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onDrop(of: [DeckDragType.track, .fileURL], delegate: DeckDropDelegate(store: store, highlight: $highlight))
+            .onDrop(of: [DeckDragType.track, PlaylistDragType.usbTracks, .fileURL], delegate: DeckDropDelegate(store: store, highlight: $highlight))
             .overlay {
                 if highlight.isTargeted {
                     RoundedRectangle(cornerRadius: 8)
@@ -40,15 +40,18 @@ private struct DeckDropDelegate: DropDelegate {
     let store: LibraryStore
     @Binding var highlight: DropHighlight
 
+    /// 곡 목록에서 끈 곡: 로컬 곡 ID, USB 곡(#255, 짝인 로컬 곡을 올린다)
+    static let trackTypes = [DeckDragType.track, PlaylistDragType.usbTracks]
+
     /// 덱 표시는 곡을 끌 때만(음원 파일은 덱에 올리지 않고 추가한다)
     func dropEntered(info: DropInfo) {
-        highlight.enter(accepted: info.hasItemsConforming(to: [DeckDragType.track]) && store.writeLockPolicy.allowsLibraryInteraction)
+        highlight.enter(accepted: info.hasItemsConforming(to: Self.trackTypes) && store.writeLockPolicy.allowsLibraryInteraction)
     }
 
     func dropExited(info: DropInfo) { highlight.exit() }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: info.hasItemsConforming(to: [DeckDragType.track]) ? .move : .copy)
+        DropProposal(operation: info.hasItemsConforming(to: Self.trackTypes) ? .move : .copy)
     }
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -63,6 +66,14 @@ private struct DeckDropDelegate: DropDelegate {
             _ = provider.loadDataRepresentation(forTypeIdentifier: DeckDragType.track.identifier) { data, _ in
                 let id = data.flatMap { String(data: $0, encoding: .utf8) }
                 Task { @MainActor in store.loadDroppedTracks(id.map { [$0] } ?? []) }
+            }
+            return true
+        }
+        if let provider = info.itemProviders(for: [PlaylistDragType.usbTracks]).first {
+            // USB 곡도 첫 곡만 올린다(짝인 로컬 곡, 없으면 이유를 알린다)
+            _ = provider.loadDataRepresentation(forTypeIdentifier: PlaylistDragType.usbTracks.identifier) { data, _ in
+                let dragged = data.flatMap { String(data: $0, encoding: .utf8) }.flatMap(UsbTrackDrag.init(pasteboardString:))
+                Task { @MainActor in store.loadDroppedUsbTracks(dragged.map { [$0] } ?? []) }
             }
             return true
         }
