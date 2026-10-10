@@ -23,13 +23,13 @@ struct ITunesPlaylistIntegrationTests {
                                       playlistImportURL: nil, stagingSaver: { _ in }, arguments: arguments, environment: environment,
                                       ports: { $0.source = .withoutDatabase })
         await store.load(snapshot: database)
-        #expect(store.iTunesLibrary.index["itunes:A"]?.name == "이전 목록")
+        #expect(store.music.library.index["itunes:A"]?.name == "이전 목록")
         let dbBefore = try Data(contentsOf: database)
         try ITunesLibrarySnapshot(playlists: [.init(id: "B", name: "새 목록")]).save(for: database)
-        await store.refreshITunesPlaylists()
+        await store.music.refreshPlaylists()
         #expect(store.snapshotURL == database)
-        #expect(store.iTunesLibrary.index["itunes:B"]?.name == "새 목록")
-        #expect(store.iTunesLibrary.index["itunes:A"] == nil)
+        #expect(store.music.library.index["itunes:B"]?.name == "새 목록")
+        #expect(store.music.library.index["itunes:A"] == nil)
         #expect(try Data(contentsOf: database) == dbBefore)
     }
 
@@ -118,7 +118,7 @@ struct ITunesPlaylistIntegrationTests {
         store.rowsByID = [a.id: a, b.id: b]
         store.rowsByUUID = [a.track.uuid: a, b.track.uuid: b]
         store.phase = .loaded
-        store.iTunesLibrary = SyncedITunesLibrary(snapshot: ITunesLibrarySnapshot(playlists: [
+        store.music.library = SyncedITunesLibrary(snapshot: ITunesLibrarySnapshot(playlists: [
             .init(id: "A", name: "동기화 목록", paths: [b.track.folderPath, nil, a.track.folderPath, b.track.folderPath]),
         ]), tracks: [a.track, b.track])
         store.sidebar = .itunesPlaylist("itunes:A")
@@ -130,7 +130,7 @@ struct ITunesPlaylistIntegrationTests {
         #expect(store.primaryRow?.track.id == a.id)
         let retained = store.displayRows[2].id
         store.selection = [retained]
-        store.iTunesLibrary = SyncedITunesLibrary(snapshot: ITunesLibrarySnapshot(playlists: [
+        store.music.library = SyncedITunesLibrary(snapshot: ITunesLibrarySnapshot(playlists: [
             .init(id: "A", name: "동기화 목록", paths: [a.track.folderPath, b.track.folderPath, b.track.folderPath]),
         ]), tracks: [a.track, b.track])
         store.refreshBase()

@@ -63,6 +63,10 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - CLI 쓰기 명령도 같은 세션을 쓴다. CLI는 세션 옵션으로 쓴 뒤의 초안 정리와 되살리기를 끈다.
 - 라이브러리 쪽(`Library/`)은 여러 흐름을 유스케이스로 둔다. 읽기, 초안 지켜보기, 추가한 곡이 유스케이스다. XML 가져오기와 내보내기, 막힌 초안 복구도 유스케이스다. 바깥 일은 포트 묶음 `LibraryPorts`로 받는다.
 - 공유 저장소 `LibraryStore`는 유스케이스 묶음 `LibraryUseCases`를 받는다. 저장소는 유스케이스 결과를 화면 상태에 적용한다.
+- **Music(iTunes) 표시 상태는 기능 조각 `MusicLibraryStore`가 든다(#253).** 조각은 저장소의 `let music` 속성이다. 조각이 드는 것은 아래와 같다.
+  - 사이드바 iTunes 목록과 지금 보이는 Music 목록
+  - iTunes 동기화 창의 화면 모델과 동기화 쓰기 연결
+- 동기화 창 화면 모델 `ITunesSyncModel`은 저장소 대신 좁은 포트(`ITunesSyncModel.Ports`)를 받는다. Music 결과에 맞춰 곡 목록·사이드바 선택을 고치는 일은 저장소가 한다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
   - 읽기 순번: 늦게 끝난 옛 결과를 버린다
@@ -393,7 +397,7 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
 
 ### 다시 읽기와 Music 조회
 
-아래 순서는 유스케이스 `LibraryReadFlow`에 있다. 앱의 저장소와 동기화 창 화면 모델(`ITunesSyncModel`)은 그 결과를 표시만 한다.
+아래 순서는 유스케이스 `LibraryReadFlow`에 있다. 앱의 저장소, Music 조각(`MusicLibraryStore`), 동기화 창 화면 모델(`ITunesSyncModel`)은 그 결과를 표시만 한다.
 
 - **반영 뒤에는 조용히 다시 읽는다.** 화면을 로딩으로 바꾸지 않은 채 스냅샷을 새로 떠서 목록을 바꾼다. 덱은 소리·파형·분석을 그대로 둔다. `DeckModel.softReload`가 초안·그리드·게인만 새 값으로 맞춘다.
 - **쓰기 완료는 Music 조회를 기다리지 않는다(#130).** 쓰기·복원 뒤와 곡 추가·삭제 뒤에는 새 DB에 출처가 같은 기존 iTunes 사본을 결합한다. 결합한 사본은 새 스냅샷 옆에도 보존한다.

@@ -141,7 +141,7 @@ struct UsbExportJobLayoutTests {
                                  draftHome: fixture.root.appending(path: "drafts"), rekordboxShareRoot: fixture.shareRoot)
         await store.load(snapshot: fixture.database)
         let lease = try #require(await store.leaseUsbSyncSnapshot(directory: fixture.root.appending(path: "copies")))
-        let source = UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.iTunesLibrary)
+        let source = UsbSyncSource.make(rekordbox: store.rekordboxPlaylists, iTunes: store.music.library)
         let context = UsbExportSyncSourceContext(source: source, catalogRevision: store.previewRevision,
                                                 readEpoch: store.snapshotReadEpoch, snapshot: lease.reference)
         var volume = FakeUsbVolume.diskImageFAT32(name: "합성 재시도 USB")

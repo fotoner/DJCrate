@@ -136,7 +136,7 @@ struct WriteReloadQueueRegressionTests {
             backgroundReturned.withLock { $0 = true }
         }
         // Music 조회가 시작될 때까지 기다린다. 시간 제한은 없다. 시작하지 않고 끝난 구현이면 더 기다릴 것이 없다.
-        let captureStarted = await waitForState(giveUp: { backgroundReturned.withLock { $0 } && store.iTunesRefresh == nil },
+        let captureStarted = await waitForState(giveUp: { backgroundReturned.withLock { $0 } && store.music.refresh == nil },
                                                 until: { musicStarted.withLock { $0 } })
         guard captureStarted else {
             resume.signal()
@@ -169,18 +169,18 @@ struct WriteReloadQueueRegressionTests {
         _ = await waitForState(until: { postWriteCompleted.withLock { $0 } })
         let copiedBeforeMusicReturned = writeCopyStarted.withLock { $0 }
         let loadedBeforeMusicReturned = postWriteCompleted.withLock { $0 } && store.rows.count == 2
-        let reusedBeforeMusicReturned = store.iTunesSnapshot.playlists == cached.playlists
+        let reusedBeforeMusicReturned = store.music.snapshot.playlists == cached.playlists
         resume.signal()
         await postWrite.value
         await background.value
         // 쓰기로 버려진 Music 결과는 새 사본에서 이어받는다(같은 조회를 다시 하지 않는다).
-        await store.iTunesRefresh?.task.value
+        await store.music.refresh?.task.value
         store.isWritingRekordbox = false
         #expect(copiedBeforeMusicReturned)
         #expect(loadedBeforeMusicReturned)
         #expect(reusedBeforeMusicReturned)
         #expect(store.snapshotURL == copiedURL.withLock { $0 })
-        #expect(store.iTunesSnapshot.playlists == late.playlists)
+        #expect(store.music.snapshot.playlists == late.playlists)
         #expect(ITunesLibrarySnapshot.load(for: try #require(copiedURL.withLock { $0 })).playlists == late.playlists)
     }
 }

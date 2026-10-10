@@ -361,10 +361,10 @@ struct AsyncFailureGuidanceTests {
         try fixture.add(TrackSpec())
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
-        let before = store.iTunesSnapshot
+        let before = store.music.snapshot
         let gate = DispatchSemaphore(value: 0)
         let (started, signal) = AsyncStream<Void>.makeStream()
-        let task = try #require(store.startSimulatedITunesRefresh(quiet: false) {
+        let task = try #require(store.music.startSimulatedRefresh(quiet: false) {
             signal.yield(())
             gate.waitOffPool()
             return ITunesLibrarySnapshot(status: .unavailable)
@@ -374,8 +374,8 @@ struct AsyncFailureGuidanceTests {
         if cancelled { task.cancel() }
         gate.signal()
         await task.value
-        #expect(store.iTunesSnapshot == (cancelled ? before : ITunesLibrarySnapshot(status: .unavailable)))
-        #expect(store.iTunesRefresh == nil)
+        #expect(store.music.snapshot == (cancelled ? before : ITunesLibrarySnapshot(status: .unavailable)))
+        #expect(store.music.refresh == nil)
         #expect(store.lastError == nil)
         if case .loaded = store.phase { } else { Issue.record("Music 취소가 로딩 상태를 남김") }
     }

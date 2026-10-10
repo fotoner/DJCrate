@@ -12,7 +12,7 @@ struct ITunesSyncOutlineTests {
             .init(id: "B", name: "둘째 목록", parentID: "D", paths: ["/합성/곡 2"]),
             .init(id: "C", name: "최상위 목록", paths: ["/합성/곡 3"]),
         ]
-        let model = ITunesSyncModel()
+        let model = ITunesSyncModel(ports: .closed)
         model.source = ITunesLibrarySnapshot(playlists: source, sourcePlaylists: source)
 
         #expect(model.tree.map(\.id) == ["itunes:F", "itunes:D", "itunes:C"])
@@ -37,7 +37,7 @@ struct ITunesSyncOutlineTests {
     }
 
     @MainActor @Test func 선택_창_노드는_곡_연결을_담지_않는다() {
-        let model = ITunesSyncModel()
+        let model = ITunesSyncModel(ports: .closed)
         model.source = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "목록", paths: ["/합성/곡"])])
         model.selection = .init(selectedIDs: ["0"])
         let node: ITunesSyncOutline.Node? = model.preview.tree.first

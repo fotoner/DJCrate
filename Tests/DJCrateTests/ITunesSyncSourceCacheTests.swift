@@ -40,7 +40,7 @@ struct ITunesSyncSourceCacheTests {
         let store = store(folder)
         await store.load(snapshot: folder.database)
         let calls = Mutex(0)
-        let source = await store.iTunesSyncSource(captureITunes: {
+        let source = await store.music.syncSource(captureITunes: {
             calls.withLock { $0 += 1 }
             return .init(status: .unavailable)
         })
@@ -60,7 +60,7 @@ struct ITunesSyncSourceCacheTests {
         await store.load(snapshot: folder.database)
         let calls = Mutex(0)
         let newer = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "새 내용")])
-        let refreshed = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
+        let refreshed = await store.music.syncSource(forceRefresh: true, captureITunes: {
             calls.withLock { $0 += 1 }
             return newer
         })
@@ -68,7 +68,7 @@ struct ITunesSyncSourceCacheTests {
         #expect(calls.withLock { $0 } == 1)
 
         try (syncA + Data("\n".utf8)).write(to: folder.url.appending(path: "playlists3.sync"))
-        let changed = await store.iTunesSyncSource(captureITunes: {
+        let changed = await store.music.syncSource(captureITunes: {
             calls.withLock { $0 += 1 }
             return newer
         })
@@ -84,7 +84,7 @@ struct ITunesSyncSourceCacheTests {
         let store = store(folder, arguments: arguments)
         await store.load(snapshot: folder.database)
         let calls = Mutex(0)
-        let source = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
+        let source = await store.music.syncSource(forceRefresh: true, captureITunes: {
             calls.withLock { $0 += 1 }
             return .init(status: .unavailable)
         })
@@ -102,7 +102,7 @@ struct ITunesSyncSourceCacheTests {
         let captured = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "새 목록")])
         let firstReturned = Mutex(false)
         let first = Task {
-            let value = await store.iTunesSyncSource(captureITunes: {
+            let value = await store.music.syncSource(captureITunes: {
                 calls.withLock { $0 += 1 }
                 started.withLock { $0 = true }
                 resume.waitOffPool()
@@ -119,7 +119,7 @@ struct ITunesSyncSourceCacheTests {
             return
         }
         let second = Task {
-            await store.iTunesSyncSource(captureITunes: {
+            await store.music.syncSource(captureITunes: {
                 calls.withLock { $0 += 1 }
                 return .init(status: .unavailable)
             })
@@ -145,7 +145,7 @@ struct ITunesSyncSourceCacheTests {
         let refreshReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let refresh = Task {
-            let value = await store.iTunesSyncSource(forceRefresh: true, captureITunes: {
+            let value = await store.music.syncSource(forceRefresh: true, captureITunes: {
                 started.withLock { $0 = true }
                 resume.waitOffPool()
                 return cached
@@ -161,7 +161,7 @@ struct ITunesSyncSourceCacheTests {
         }
         let completed = Mutex(false)
         let reopen = Task {
-            let value = await store.iTunesSyncSource(captureITunes: {
+            let value = await store.music.syncSource(captureITunes: {
                 Issue.record("유효한 캐시 대신 Music을 읽었습니다")
                 return .init(status: .unavailable)
             })
@@ -185,11 +185,11 @@ struct ITunesSyncSourceCacheTests {
         await store.load(snapshot: folder.database)
         let old = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "옛 목록")])
             .applyingRekordboxSelection(syncA)
-        _ = await store.iTunesSyncSource(captureITunes: { old })
+        _ = await store.music.syncSource(captureITunes: { old })
         let newer = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "새 목록")])
             .applyingRekordboxSelection(syncA)
-        store.iTunesSnapshot = newer
-        let result = await store.iTunesSyncSource(captureITunes: {
+        store.music.snapshot = newer
+        let result = await store.music.syncSource(captureITunes: {
             Issue.record("새 store 카탈로그 대신 Music을 읽었습니다")
             return .init(status: .unavailable)
         })
@@ -209,7 +209,7 @@ struct ITunesSyncSourceCacheTests {
         let loadingReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let loading = Task {
-            let value = await store.iTunesSyncSource(captureITunes: {
+            let value = await store.music.syncSource(captureITunes: {
                 started.withLock { $0 = true }
                 resume.waitOffPool()
                 return old
@@ -223,11 +223,11 @@ struct ITunesSyncSourceCacheTests {
             Issue.record("Music 캡처가 시작되지 않았습니다")
             return
         }
-        store.iTunesSnapshot = newer
+        store.music.snapshot = newer
         resume.signal()
         let lateResult = await loading.value
         #expect(lateResult.sourcePlaylists?.first?.name == "최신 목록")
-        let reopened = await store.iTunesSyncSource(captureITunes: {
+        let reopened = await store.music.syncSource(captureITunes: {
             Issue.record("최신 Store 캐시 대신 Music을 읽었습니다")
             return .init(status: .unavailable)
         })
@@ -245,9 +245,9 @@ struct ITunesSyncSourceCacheTests {
         try old.save(for: folder.database)
         let store = store(folder)
         await store.load(snapshot: folder.database)
-        store.presentITunesSync()
-        let model = store.iTunesSync
-        await model.load(store: store, captureITunes: {
+        store.music.presentSyncWindow()
+        let model = store.music.syncWindow
+        await model.load(captureITunes: {
             Issue.record("정상 캐시에서 Music을 다시 읽었습니다")
             return .init(status: .unavailable)
         })
@@ -255,19 +255,19 @@ struct ITunesSyncSourceCacheTests {
         model.selection = .init(selectedIDs: ["B"])
         let fresh = try ITunesLibrarySnapshot(sourcePlaylists: catalog + [.init(id: "C", name: "새 목록")])
             .applyingRekordboxSelection(syncA)
-        await model.load(store: store, forceRefresh: true,
+        await model.load(forceRefresh: true,
                          captureITunes: { fresh })
         #expect(model.selection.selectedIDs == ["B"])
         #expect(model.source.sourcePlaylists?.map(\.id) == ["A", "B", "C"])
 
-        store.presentITunesSync()
-        let untouched = store.iTunesSync
-        await untouched.load(store: store, captureITunes: { fresh })
+        store.music.presentSyncWindow()
+        let untouched = store.music.syncWindow
+        await untouched.load(captureITunes: { fresh })
         #expect(untouched.selection.selectedIDs == ["A"])
         let syncB = Data(String(decoding: syncA, as: UTF8.self).replacingOccurrences(of: "Id=\"A\"", with: "Id=\"B\"").utf8)
         try syncB.write(to: sync)
         let externallyChanged = try ITunesLibrarySnapshot(sourcePlaylists: catalog).applyingRekordboxSelection(syncB)
-        await untouched.load(store: store, forceRefresh: true,
+        await untouched.load(forceRefresh: true,
                              captureITunes: { externallyChanged })
         #expect(untouched.selection.selectedIDs == ["B"])
     }
@@ -277,17 +277,17 @@ struct ITunesSyncSourceCacheTests {
         try syncA.write(to: folder.url.appending(path: "playlists3.sync"))
         let store = store(folder)
         await store.load(snapshot: folder.database)
-        store.presentITunesSync()
-        let model = store.iTunesSync
+        store.music.presentSyncWindow()
+        let model = store.music.syncWindow
         let fresh = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "첫 목록"), .init(id: "B", name: "둘째 목록")])
             .applyingRekordboxSelection(syncA)
-        model.startLoad(store: store, forceRefresh: true, captureITunes: { fresh })
+        model.startLoad(forceRefresh: true, captureITunes: { fresh })
         await model.task?.value
         #expect(model.source.sourcePlaylists?.map(\.id) == ["A", "B"] && !model.isLoading)
         // 쓸 수 없는 상태면 동기화하지 않고 창도 닫지 않는다
         model.isWaitingForMusic = true
         var dismissed = false
-        model.startSync(store: store) { dismissed = true }
+        model.startSync { dismissed = true }
         await model.task?.value
         #expect(!dismissed && !model.isSyncing)
     }
@@ -302,14 +302,14 @@ struct ITunesSyncSourceCacheTests {
         try cached.save(for: folder.database)
         let store = store(folder)
         await store.load(snapshot: folder.database)
-        store.presentITunesSync()
-        let model = store.iTunesSync
-        await model.load(store: store, captureITunes: {
+        store.music.presentSyncWindow()
+        let model = store.music.syncWindow
+        await model.load(captureITunes: {
             Issue.record("기존 카탈로그를 다시 읽었습니다")
             return .init(status: .unavailable)
         })
         model.selection = .init(selectedIDs: ["B"])
-        await model.load(store: store, forceRefresh: true,
+        await model.load(forceRefresh: true,
                          captureITunes: { .init(status: .unavailable) })
         #expect(model.source.status == .stale)
         #expect(model.source.sourcePlaylists?.map(\.id) == ["A", "B"])
@@ -317,7 +317,7 @@ struct ITunesSyncSourceCacheTests {
         #expect(!model.canSync)
         let recovered = try ITunesLibrarySnapshot(sourcePlaylists: catalog + [.init(id: "C", name: "셋째 목록")])
             .applyingRekordboxSelection(syncA)
-        await model.load(store: store, forceRefresh: true,
+        await model.load(forceRefresh: true,
                          captureITunes: { recovered })
         #expect(model.source.status == .ready)
         #expect(model.selection.selectedIDs == ["B"])
@@ -327,13 +327,13 @@ struct ITunesSyncSourceCacheTests {
         let folder = try TemporaryFolder.withEmptyDatabase()
         let store = store(folder)
         await store.load(snapshot: folder.database)
-        store.presentITunesSync()
-        let model = store.iTunesSync
+        store.music.presentSyncWindow()
+        let model = store.music.syncWindow
         let started = Mutex(false)
         let loadingReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let loading = Task {
-            await model.load(store: store, captureITunes: {
+            await model.load(captureITunes: {
                 started.withLock { $0 = true }
                 resume.waitOffPool()
                 return ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "늦은 목록")])
@@ -359,13 +359,13 @@ struct ITunesSyncSourceCacheTests {
         let folder = try TemporaryFolder.withEmptyDatabase()
         let store = store(folder)
         await store.load(snapshot: folder.database)
-        store.presentITunesSync()
-        let old = store.iTunesSync
+        store.music.presentSyncWindow()
+        let old = store.music.syncWindow
         let started = Mutex(false)
         let loadingReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
         let loading = Task {
-            await old.load(store: store, captureITunes: {
+            await old.load(captureITunes: {
                 started.withLock { $0 = true }
                 resume.waitOffPool()
                 return ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "늦은 목록")])
@@ -378,9 +378,9 @@ struct ITunesSyncSourceCacheTests {
             Issue.record("Music 캡처가 시작되지 않았습니다")
             return
         }
-        store.showingITunesSync = false
-        store.presentITunesSync()
-        let reopened = store.iTunesSync
+        store.music.showingSyncWindow = false
+        store.music.presentSyncWindow()
+        let reopened = store.music.syncWindow
         resume.signal()
         await loading.value
         #expect(old.source.status == .loading)
