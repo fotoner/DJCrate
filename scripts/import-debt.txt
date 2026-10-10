@@ -24,8 +24,6 @@ Sources/DJCrate/Library/DuplicateTracksView.swift	view-task	await 2곳
 Sources/DJCrate/Reflection/AppToast.swift	view-task	await 1곳
 Sources/DJCrate/Reflection/AppleMusicImportWindow.swift	view-task	Task 2곳
 Sources/DJCrate/Reflection/AppleMusicImportWindow.swift	view-task	await 5곳
-Sources/DJCrate/Reflection/PointSnapshotWindow.swift	view-task	Task 7곳
-Sources/DJCrate/Reflection/PointSnapshotWindow.swift	view-task	await 18곳
 Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	Task 1곳
 Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	await 1곳
 Sources/DJCrate/Settings/ShortcutSettingsView.swift	view-task	Task 2곳
