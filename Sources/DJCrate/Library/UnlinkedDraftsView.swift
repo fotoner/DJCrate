@@ -11,7 +11,7 @@ struct UnlinkedDraftsBar: View {
             Label(String(ui: "rekordbox 라이브러리와 추가 목록에 없는 곡의 초안이 \(store.unlinkedDraftUUIDs.count)곡 있습니다."),
                   systemImage: "questionmark.folder")
             Spacer(minLength: 0)
-            Button(.ui("연결되지 않은 초안 보기…")) { store.showingUnlinkedDrafts = true }
+            Button(.ui("연결되지 않은 초안 보기…")) { store.openUnlinkedDrafts() }
                 .disabled(store.isWritingRekordbox)
         }
         .font(.callout)
@@ -22,12 +22,8 @@ struct UnlinkedDraftsBar: View {
 
 /// 연결되지 않은 초안 목록. 어디서 왔는지 모르므로 자동으로 지우지 않고, 고른 것만 확인한 뒤 버린다.
 struct UnlinkedDraftsView: View {
-    let store: LibraryStore
+    @Bindable var model: UnlinkedDraftsModel
     @Environment(\.dismiss) private var dismiss
-    @State private var drafts: [UnlinkedDraft] = []
-    @State private var selected: Set<String> = []
-    @State private var confirming = false
-    @State private var failure: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -35,13 +31,12 @@ struct UnlinkedDraftsView: View {
             Text(.ui("지금 rekordbox 라이브러리와 추가 목록에 없는 곡의 초안입니다. rekordbox에서 뺀 곡이나 다른 라이브러리에서 만든 초안일 수 있으니 필요 없는 것만 골라 버리세요."))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if drafts.isEmpty {
+            if model.drafts.isEmpty {
                 Text(.ui("연결되지 않은 초안이 없습니다.")).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(drafts) { draft in
-                    Toggle(isOn: Binding(get: { selected.contains(draft.uuid) },
-                                         set: { if $0 { selected.insert(draft.uuid) } else { selected.remove(draft.uuid) } })) {
+                List(model.drafts) { draft in
+                    Toggle(isOn: Binding(get: { model.isSelected(draft.uuid) }, set: { model.setSelected(draft.uuid, $0) })) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(verbatim: draft.title ?? String(draft.uuid.prefix(8)))
                             Text(verbatim: Self.detail(draft)).font(.caption).foregroundStyle(.secondary)
@@ -50,35 +45,27 @@ struct UnlinkedDraftsView: View {
                     .accessibilityLabel(Text(verbatim: draft.title ?? draft.uuid))
                 }
             }
-            if let failure {
+            if let failure = model.failure {
                 Label(failure, systemImage: "exclamationmark.triangle").foregroundStyle(UIColors.warning.color)
             }
             HStack {
-                Button(.ui("모두 고르기")) { selected = Set(drafts.map(\.uuid)) }
-                    .disabled(drafts.isEmpty || selected.count == drafts.count)
+                Button(.ui("모두 고르기")) { model.chooseAll() }
+                    .disabled(!model.canChooseAll)
                 Spacer()
                 Button(.ui("닫기")) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(.ui("선택한 초안 버리기…")) { confirming = true }
-                    .disabled(selected.isEmpty || store.isWritingRekordbox)
+                Button(.ui("선택한 초안 버리기…")) { model.askDiscard() }
+                    .disabled(!model.canDiscard)
             }
         }
         .padding(24)
         .frame(width: 560, height: 460)
-        .onAppear(perform: reload)
-        .alert(Text(verbatim: String(ui: "선택한 \(selected.count)곡의 초안을 버릴까요?")), isPresented: $confirming) {
-            Button(.ui("초안 버리기"), role: .destructive) {
-                failure = store.discardUnlinkedDrafts(selected)
-                reload()
-            }
+        .onAppear { model.reload() }
+        .alert(Text(verbatim: String(ui: "선택한 \(model.selected.count)곡의 초안을 버릴까요?")), isPresented: $model.confirming) {
+            Button(.ui("초안 버리기"), role: .destructive) { model.discard() }
             Button(.ui("취소"), role: .cancel) {}
         } message: {
             Text(.ui("큐·그리드·게인·태그 초안을 모두 버리며 되돌릴 수 없습니다."))
         }
-    }
-
-    private func reload() {
-        drafts = store.unlinkedDrafts()
-        selected.formIntersection(drafts.map(\.uuid))
     }
 
     /// "큐·태그 · 2026. 10. 2. 오후 3:00 · UUID"

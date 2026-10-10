@@ -39,21 +39,25 @@ struct RekordboxXMLImportTests {
         #expect(LibraryMenuAction.fileActions.contains(.importRekordboxXML))
         let empty = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
         #expect(!LibraryMenuAction.importRekordboxXML.isEnabled(in: empty))
-        let store = await loadedStore(try library())
+        let fixture = try library()
+        let store = await loadedStore(fixture)
         #expect(LibraryMenuAction.importRekordboxXML.isEnabled(in: store))
-        store.isReadingXMLImport = true
+        store.xmlImport.start(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
         #expect(!LibraryMenuAction.importRekordboxXML.isEnabled(in: store))
         #expect(LibraryMenuAction.importRekordboxXML.disabledReason(in: store)?.contains("끝난 뒤") == true)
+        // 미리 보기 시트가 열려 있는 동안도 막는다
+        await store.xmlImport.task?.value
+        #expect(store.xmlImport.preview != nil && !LibraryMenuAction.importRekordboxXML.isEnabled(in: store))
     }
 
     @Test func 읽으면_차이_미리_보기를_연다() async throws {
         let fixture = try library()
         let store = await loadedStore(fixture)
-        store.importRekordboxXML(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
-        #expect(store.isReadingXMLImport, "시작하자마자 읽는 중이 되고 메인 스레드를 막지 않는다")
-        await store.xmlImportTask?.value
-        #expect(!store.isReadingXMLImport)
-        let preview = try #require(store.xmlImportPreview)
+        store.xmlImport.start(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
+        #expect(store.xmlImport.isReading, "시작하자마자 읽는 중이 되고 메인 스레드를 막지 않는다")
+        await store.xmlImport.task?.value
+        #expect(!store.xmlImport.isReading)
+        let preview = try #require(store.xmlImport.preview)
         #expect(preview.fileName == "import.xml")
         #expect(preview.diff.counts.cueTracks == 1 && preview.diff.counts.tagTracks == 1 && preview.diff.counts.missingPlaylists == 1)
         #expect(preview.diff.matching.matched == 1)
@@ -64,12 +68,12 @@ struct RekordboxXMLImportTests {
         let store = await loadedStore(fixture)
         let home = fixture.root.appending(path: "home")
         let before = try Data(contentsOf: fixture.database)
-        store.importRekordboxXML(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
-        await store.xmlImportTask?.value
-        let preview = try #require(store.xmlImportPreview)
+        store.xmlImport.start(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
+        await store.xmlImport.task?.value
+        let preview = try #require(store.xmlImport.preview)
         var selection = XMLImportDrafts.Selection.all
         selection.kinds = [.tag, .playlist]
-        let result = await store.makeXMLImportDrafts(preview, selection: selection)
+        let result = await store.xmlImport.makeDrafts(preview, selection: selection)
         #expect(result.tags == 1 && result.cues == 0 && result.playlists == 1)
         #expect(store.tagDrafts["uuid-101"]?.fields.title == "가져온 제목", "만든 태그 초안을 바로 다시 읽는다")
         #expect(store.playlistDraft.project(onto: store.rekordboxPlaylists).layout.children(of: PlaylistLayout.root)
@@ -85,10 +89,10 @@ struct RekordboxXMLImportTests {
         var draft = TagDraft(track: row.track)
         draft.fields.comment = "편집 중"
         store.tagDrafts[row.track.uuid] = draft
-        store.importRekordboxXML(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
-        await store.xmlImportTask?.value
-        let preview = try #require(store.xmlImportPreview)
-        let result = await store.makeXMLImportDrafts(preview, selection: XMLImportDrafts.Selection(kinds: [.tag]))
+        store.xmlImport.start(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
+        await store.xmlImport.task?.value
+        let preview = try #require(store.xmlImport.preview)
+        let result = await store.xmlImport.makeDrafts(preview, selection: XMLImportDrafts.Selection(kinds: [.tag]))
         #expect(result.tags == 0 && result.skipped.count == 1)
         #expect(store.tagDrafts[row.track.uuid]?.fields.comment == "편집 중")
     }
@@ -109,11 +113,11 @@ struct RekordboxXMLImportTests {
         var adopted: GridDraft?
         store.deckGridDraftState = { (uuid: "uuid-101", hasChanges: false) }
         store.adoptImportedGridDraft = { adopted = $0; return true }
-        store.importRekordboxXML(from: try gridXML(fixture), shareRoot: fixture.shareRoot)
-        await store.xmlImportTask?.value
-        let preview = try #require(store.xmlImportPreview)
+        store.xmlImport.start(from: try gridXML(fixture), shareRoot: fixture.shareRoot)
+        await store.xmlImport.task?.value
+        let preview = try #require(store.xmlImport.preview)
         #expect(preview.diff.counts.gridTracks == 1)
-        let result = await store.makeXMLImportDrafts(preview, selection: XMLImportDrafts.Selection(kinds: [.grid]))
+        let result = await store.xmlImport.makeDrafts(preview, selection: XMLImportDrafts.Selection(kinds: [.grid]))
         #expect(result.grids == 1)
         #expect(adopted?.trackUUID == "uuid-101" && adopted?.segments.first?.bpm == 130)
         // 덱이 자기 저장 경로로 쓴다(가져오기가 따로 쓰면 덱의 다음 편집이 그 파일을 덮는다)
@@ -127,10 +131,10 @@ struct RekordboxXMLImportTests {
         var adopted = false
         store.deckGridDraftState = { (uuid: "uuid-101", hasChanges: true) }
         store.adoptImportedGridDraft = { _ in adopted = true; return true }
-        store.importRekordboxXML(from: try gridXML(fixture), shareRoot: fixture.shareRoot)
-        await store.xmlImportTask?.value
-        let preview = try #require(store.xmlImportPreview)
-        let result = await store.makeXMLImportDrafts(preview, selection: XMLImportDrafts.Selection(kinds: [.grid]))
+        store.xmlImport.start(from: try gridXML(fixture), shareRoot: fixture.shareRoot)
+        await store.xmlImport.task?.value
+        let preview = try #require(store.xmlImport.preview)
+        let result = await store.xmlImport.makeDrafts(preview, selection: XMLImportDrafts.Selection(kinds: [.grid]))
         #expect(result.grids == 0 && !adopted)
         #expect(result.skipped.map(\.kind) == [.grid] && result.skipped.first?.subject == "합성 곡 A")
         #expect(!FileManager.default.fileExists(atPath: home.appending(path: "grid-drafts/uuid-101.json").path))
@@ -139,10 +143,10 @@ struct RekordboxXMLImportTests {
     @Test func 가져오기를_취소하면_미리_보기를_열지_않는다() async throws {
         let fixture = try library()
         let store = await loadedStore(fixture)
-        store.importRekordboxXML(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
-        store.cancelXMLImport()
-        await store.xmlImportTask?.value
-        #expect(store.xmlImportPreview == nil && !store.isReadingXMLImport)
+        store.xmlImport.start(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
+        store.xmlImport.cancel()
+        await store.xmlImport.task?.value
+        #expect(store.xmlImport.preview == nil && !store.xmlImport.isReading)
         #expect(store.stagingMessage == nil, "취소는 실패로 알리지 않는다")
     }
 
@@ -151,9 +155,9 @@ struct RekordboxXMLImportTests {
         let store = await loadedStore(fixture)
         let bad = fixture.root.appending(path: "bad.xml")
         try Data("<plist/>".utf8).write(to: bad)
-        store.importRekordboxXML(from: bad, shareRoot: fixture.shareRoot)
-        await store.xmlImportTask?.value
-        #expect(store.xmlImportPreview == nil && !store.isReadingXMLImport)
+        store.xmlImport.start(from: bad, shareRoot: fixture.shareRoot)
+        await store.xmlImport.task?.value
+        #expect(store.xmlImport.preview == nil && !store.xmlImport.isReading)
         #expect(store.stagingMessage?.kind == .failure && store.stagingMessage?.text.contains("DJ_PLAYLISTS") == true)
     }
 }
