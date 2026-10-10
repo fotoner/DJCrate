@@ -54,23 +54,25 @@ struct MusicLibraryStoreObservationTests {
     }
 
     @Test(.tags(.perfContract)) func 동기화_창은_사이드바_목록이_바뀌어도_다시_계산하지_않고_쓰기_잠금과_창_상태는_따른다() {
-        let window: (LibraryStore) -> ITunesSyncView = { ITunesSyncView(model: $0.music.syncWindow) }
+        let window: (LibraryStore) -> ITunesSyncView = { ITunesSyncView(model: $0.music.syncWindow!) }
         // 목록을 다 읽은 창: 읽는 중이면 단추 막힘 식이 앞에서 끝나 잠금 값을 읽지 않는다
-        let open: (LibraryStore) -> Void = { $0.music.presentSyncWindow(); $0.music.syncWindow.isLoading = false }
+        let open: (LibraryStore) -> Void = { $0.music.presentSyncWindow(); $0.music.syncWindow?.isLoading = false }
         #expect(!reads(window, before: open) { $0.music.library = library })
         #expect(!reads(window, before: open) { $0.music.snapshot = snapshot })
         #expect(reads(window, before: open) { $0.isWritingRekordbox = true })
-        #expect(reads(window, before: open) { $0.music.syncWindow.isSyncing = true })
+        #expect(reads(window, before: open) { $0.music.syncWindow?.isSyncing = true })
     }
 
-    @Test func 조각은_핵심이_한_번_만들어_들고_창은_띄울_때마다_새_모델이다() {
+    @Test func 조각은_핵심이_한_번_만들어_들고_창은_띄울_때마다_새_모델이다() throws {
         let store = store()
         #expect(store.music === store.music)
+        // 창 모델이 있으면 창이 떠 있다(`.sheet(item:)`). 닫으면 모델을 버린다
+        #expect(store.music.syncWindow == nil)
         store.music.presentSyncWindow()
-        let first = store.music.syncWindow
-        #expect(store.music.showingSyncWindow)
-        store.music.showingSyncWindow = false
+        let first = try #require(store.music.syncWindow)
+        store.music.syncWindow = nil
         store.music.presentSyncWindow()
-        #expect(store.music.syncWindow !== first && store.music.showingSyncWindow)
+        let second = try #require(store.music.syncWindow)
+        #expect(second !== first)
     }
 }

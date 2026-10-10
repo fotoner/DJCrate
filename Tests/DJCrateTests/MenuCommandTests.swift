@@ -177,18 +177,19 @@ struct MenuCommandTests {
     @Test func 빈_라이브러리와_쓰기_잠금에서_명령의_활성_조건을_지킨다() {
         let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString))
-        #expect(LibraryMenuAction.snapshot.isEnabled(in: store))
-        #expect(!LibraryMenuAction.addFiles.isEnabled(in: store))
-        #expect(!LibraryMenuAction.reflect.isEnabled(in: store))
-        #expect(!LibraryMenuAction.restore.isEnabled(in: store))
-        #expect(!LibraryMenuAction.removeTracks.isEnabled(in: store))
-        #expect(!LibraryMenuAction.exportXML.isEnabled(in: store))
-        #expect(!LibraryMenuAction.exportLibraryXML.isEnabled(in: store))
-        #expect(LibraryMenuAction.pointSnapshots.isEnabled(in: store), "라이브러리를 읽기 전에도 스냅샷 목록은 본다")
+        let window = LibraryWindowModel(store: store)
+        #expect(LibraryMenuAction.snapshot.isEnabled(in: window))
+        #expect(!LibraryMenuAction.addFiles.isEnabled(in: window))
+        #expect(!LibraryMenuAction.reflect.isEnabled(in: window))
+        #expect(!LibraryMenuAction.restore.isEnabled(in: window))
+        #expect(!LibraryMenuAction.removeTracks.isEnabled(in: window))
+        #expect(!LibraryMenuAction.exportXML.isEnabled(in: window))
+        #expect(!LibraryMenuAction.exportLibraryXML.isEnabled(in: window))
+        #expect(LibraryMenuAction.pointSnapshots.isEnabled(in: window), "라이브러리를 읽기 전에도 스냅샷 목록은 본다")
         store.phase = .loading("시험")
-        #expect(!LibraryMenuAction.snapshot.isEnabled(in: store))
+        #expect(!LibraryMenuAction.snapshot.isEnabled(in: window))
         store.phase = .loaded
         store.isWritingRekordbox = true
-        for action in LibraryMenuAction.allCases { #expect(!action.isEnabled(in: store)) }
+        for action in LibraryMenuAction.allCases { #expect(!action.isEnabled(in: window)) }
     }
 }

@@ -16,7 +16,7 @@ struct WriteBackupAvailabilityTests {
         try backup("2026-01-02-write", in: root)
         let reopened = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), backupDirectory: root)
         #expect(reopened.hasWriteBackup)
-        #expect(LibraryMenuAction.restore.isEnabled(in: reopened))
+        #expect(LibraryMenuAction.restore.isEnabled(in: LibraryWindowModel(store: reopened)))
     }
 
     @Test func 쓰기와_되돌리기_종료마다_백업_상태를_다시_읽는다() throws {
@@ -26,16 +26,16 @@ struct WriteBackupAvailabilityTests {
         store.setWriteLock(true)
         try backup("2026-01-02-write", in: root)
         #expect(!store.hasWriteBackup)
-        #expect(!LibraryMenuAction.restore.isEnabled(in: store))
+        #expect(!LibraryMenuAction.restore.isEnabled(in: LibraryWindowModel(store: store)))
         store.setWriteLock(false)
         #expect(store.hasWriteBackup)
-        #expect(LibraryMenuAction.restore.isEnabled(in: store))
+        #expect(LibraryMenuAction.restore.isEnabled(in: LibraryWindowModel(store: store)))
         store.setWriteLock(true)
         try FileManager.default.removeItem(at: root.appending(path: "2026-01-02-write"))
         try backup("2026-01-03-before-restore", in: root)
         store.setWriteLock(false)
         #expect(!store.hasWriteBackup)
-        #expect(!LibraryMenuAction.restore.isEnabled(in: store))
+        #expect(!LibraryMenuAction.restore.isEnabled(in: LibraryWindowModel(store: store)))
     }
 
     private func backup(_ name: String, in root: URL) throws {

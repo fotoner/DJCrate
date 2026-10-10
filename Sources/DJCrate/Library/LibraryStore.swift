@@ -45,7 +45,6 @@ final class LibraryStore {
 
     let resultHistory: WriteResultHistory
     @ObservationIgnored var feedback: AppFeedback
-    var showingWriteResult = false
     @ObservationIgnored var writeTask: Task<Void, Never>?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
 
@@ -121,8 +120,11 @@ final class LibraryStore {
     private(set) var duplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var displayDuplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var filterCounts: [LibraryFilter: Int] = [:]
-    /// 파일 없음 확인(#126)을 맡은 곳. 목록 아래 막대 화면 모델(`ListActionBarModel`)이 붙인다. 확인 결과·진행 표시는 그 모델이 든다
-    @ObservationIgnored var onCheckMissingFiles: (() -> Void)?
+    /// 마지막 파일 확인 결과(#126). 연결되지 않은 외장 디스크는 목록 아래 막대가 알린다.
+    private(set) var missingFiles = MissingFiles()
+    private(set) var isCheckingFiles = false
+    /// 마지막으로 시작한 파일 확인. 시험은 이것을 기다린다
+    @ObservationIgnored private(set) var missingFileTask: Task<Void, Never>?
     /// 지난 확인에서 없던 경로. 다시 읽은 직후 확인이 끝날 때까지 이것으로 표시해 개수가 0으로 깜빡이지 않게 한다.
     @ObservationIgnored private var missingPathCache: Set<String> = []
     var isLoading: Bool { if case .loading = phase { true } else { false } }
@@ -174,16 +176,11 @@ final class LibraryStore {
     @ObservationIgnored var damagedStagedList = false
     /// 스냅샷 곡·추가한 곡 어디에도 이어지지 않는 초안이 있는 곡(#175). 쓰기 대기 목록에서 보여 주고 고른 것만 버린다.
     var unlinkedDraftUUIDs: Set<String> = []
-    /// 연결되지 않은 초안 시트의 화면 모델(띄울 때 만든다, `openUnlinkedDrafts`)
-    var unlinkedDraftsSheet: UnlinkedDraftsModel?
     /// 개발용 실행 인자(처음 읽은 뒤 한 번 곡을 고르거나 곡을 추가한다)
     @ObservationIgnored let launch: LibraryLaunchOptions
     /// 재생 기록 상태와 USB 기록 보존 연결(기능 조각, `HistoryStore`). 조각이 핵심(곡·사이드바·알림·되돌리기)을 붙들어 처음 쓸 때 만든다.
     /// 관찰하지 않는다: 화면은 조각의 값을 읽는다
     @ObservationIgnored private(set) lazy var history = HistoryStore(library: self, archive: useCases.histories)
-    // 다른 작업이 맡은 파일(주 창·목록 메뉴)이 아직 핵심 이름으로 읽는 재생 기록 값. 그 파일을 옮길 때 `history.…`로 바꾸고 지운다
-    var pendingHistories: [ArchivedHistory] { history.pendingHistories }
-    var hasHistoryDrafts: Bool { history.hasHistoryDrafts }
 
     var search = "" { didSet { if search != oldValue { refreshFiltered() } } }
     var sortOrder = [KeyPathComparator(\TrackRow.importedOn, order: .reverse)] {
@@ -237,8 +234,6 @@ final class LibraryStore {
     /// 추가한 곡·그리드 일괄 추정·XML 내보내기(기능 조각, `TrackStagingStore`). 조각이 핵심(곡·사이드바·선택·초안 표시)을 붙들어 처음 쓸 때 만든다.
     /// 관찰하지 않는다: 화면은 조각의 값을 읽는다
     @ObservationIgnored private(set) lazy var staging = TrackStagingStore(library: self)
-    /// rekordbox XML 가져오기(읽는 중·미리 보기 시트·초안 결과, `XMLImportModel`). 메뉴가 읽는 중인지 보므로 시트를 닫아도 남는다
-    @ObservationIgnored private(set) lazy var xmlImport = XMLImportModel(store: self)
     /// 덱에 올린 곡과 그 그리드 초안을 덱에서 바꿨는지(가져오기가 덱 곡의 그리드 초안을 덱에 넘길지 정한다)
     @ObservationIgnored var deckGridDraftState: (() -> (uuid: String, hasChanges: Bool)?)?
     /// 가져온 그리드 초안을 덱이 받아 저장한다. 받지 못하면(덱에서 고쳤거나 다른 곡) false.
@@ -451,11 +446,29 @@ final class LibraryStore {
         rowsByID[row.track.id] = row
     }
 
-    /// 음원 파일이 있는지 다시 확인한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때 부른다. 확인은 붙인 막대 화면 모델이 메인 스레드 밖에서 한다
-    func checkMissingFiles() { onCheckMissingFiles?() }
+    /// 음원 파일이 있는지 뒤에서 확인해 행·'파일 없음' 개수에 반영한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때·막대의 다시 확인 단추에서 부른다.
+    /// 확인 결과는 곡 행·배지·필터 수를 바꾸므로 화면 모델이 아니라 핵심이 한다. 큰 라이브러리의 확인(곡마다 파일 시스템 조회)이 메인 스레드를 막지 않게 한다.
+    func checkMissingFiles() {
+        missingFileTask?.cancel()
+        let generation = reads.generation
+        let tracks = rows.map(\.track), useCases = useCases
+        isCheckingFiles = true
+        missingFileTask = Task { [weak self] in
+            let result = await useCases.missingFiles(tracks)
+            guard let self, !Task.isCancelled else { return }
+            // 그사이 다시 읽기 시작했으면 버린다(새로 읽은 뒤 다시 확인한다).
+            guard reads.isCurrent(generation) else {
+                isCheckingFiles = false
+                return
+            }
+            applyMissingFiles(result)
+        }
+    }
 
     /// 파일 확인 결과를 행·'파일 없음' 개수에 넣는다(#126)
-    func applyMissingFiles(_ result: MissingFiles) {
+    private func applyMissingFiles(_ result: MissingFiles) {
+        isCheckingFiles = false
+        missingFiles = result
         // 사본을 고쳐 한 번에 넣는다(곡마다 고치면 관찰 알림이 곡 수만큼 나간다).
         var updated = rows, byID = rowsByID, byUUID = rowsByUUID
         var changed = false

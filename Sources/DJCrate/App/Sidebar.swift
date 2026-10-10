@@ -95,9 +95,11 @@ struct SidebarPendingRow: View {
 
 struct SidebarLastWriteResultRow: View {
     let store: LibraryStore
+    /// 쓰기 결과 시트를 든 주 창 모델(사이드바 본문에 클로저를 넣지 않으려고 환경 값으로 받는다)
+    @Environment(\.libraryWindow) private var window
 
     var body: some View {
-        Button { store.showingWriteResult = true } label: {
+        Button { window?.showWriteResult() } label: {
             Label(.ui("마지막 쓰기 결과…"), systemImage: "doc.text.magnifyingglass")
         }
         .buttonStyle(.plain)

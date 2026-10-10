@@ -57,7 +57,7 @@ model = next
 | `MVVM-3` | 잎 뷰는 값과 클로저만 받는다 |
 | `MVVM-4` | 뷰 본문에서 유스케이스나 `Task`를 시작하지 않는다 |
 | `MVVM-5` | 화면 모델은 가짜 포트로 시험한다. 잎 뷰는 값으로 시험한다 |
-| `MVVM-6` | 예외는 덱 재생 경로와 `LibraryStore`뿐이다 |
+| `MVVM-6` | 예외는 덱 재생 경로와 공유 핵심 `LibraryStore`뿐이다 |
 
 ### MVVM-1 화면마다 화면 모델 하나
 
@@ -98,14 +98,14 @@ struct UnlinkedDraftsView: View {
 }
 ```
 
-고친 코드: 시트를 띄울 때 화면 모델을 한 번 만든다. 뷰는 그 모델만 받는다.
+고친 코드: 시트를 띄울 때 화면 모델을 한 번 만든다. 뷰는 그 모델만 받는다. 시트 모델은 띄우는 화면의 화면 모델이 든다. 여기서는 주 창 모델이다.
 
 ```swift
-// Sources/DJCrate/Library/LibraryStore+UnlinkedDrafts.swift
-func openUnlinkedDrafts() { unlinkedDraftsSheet = UnlinkedDraftsModel(store: self) }
+// Sources/DJCrate/App/LibraryWindowModel.swift
+func openUnlinkedDrafts() { unlinkedDrafts = UnlinkedDraftsModel(store: store) }
 
 // Sources/DJCrate/App/ContentView.swift
-.sheet(item: $store.unlinkedDraftsSheet) { UnlinkedDraftsView(model: $0) }
+.sheet(item: Binding(get: { window.unlinkedDrafts }, set: { window.unlinkedDrafts = $0 })) { UnlinkedDraftsView(model: $0) }
 
 // Sources/DJCrate/Library/UnlinkedDraftsView.swift
 Button(.ui("초안 버리기"), role: .destructive) { model.discard() }
@@ -167,6 +167,9 @@ struct DeckSuggestionBar: View {
     }
 }
 ```
+
+- 성능 때문에 잎 뷰로 내려 둔 읽기(#129·#141·#155)는 값으로 바꾸지 않는다. 부모가 값을 꺼내면 그 읽기가 부모 본문으로 올라가 본문 횟수가 는다.
+  이런 잎 뷰는 화면 모델 전체 대신 좁은 기능 조각이나 프로토콜을 받는다. 예: 사이드바 추가한 곡 줄(`TrackStagingStore`), 덱의 이전·다음 단추(`DeckLibrarySource`), 곡 목록 표(`TrackListSource`).
 
 틀린 예: 단추 하나가 덱 모델 전체를 받는다.
 
@@ -233,8 +236,8 @@ func startMerge(keeping: String, removing: [String]) {
 
 - 단추가 시작하는 일의 이름은 `start…`로 짓는다. 화면 모델은 마지막 일의 손잡이를 `task`에 든다. 시험은 그 손잡이를 기다린다.
 - 단추의 일은 화면이 사라져도 취소하지 않는다. 화면과 함께 멈출 일은 `.task` 한 줄로 부른다.
-- 공유 저장소 `LibraryStore`의 단추 입구는 `LibraryStore+Actions.swift`에 모은다. 입구는 시작한 `Task`를 돌려준다.
-- 기능 조각(예: `MusicLibraryStore`)의 단추 입구는 그 조각에 둔다.
+- 주 창의 단추 입구는 주 창 화면 모델 `LibraryWindowModel`에 둔다(#254). 알림 단추, 끌어 놓기, 메뉴도 이 입구를 부른다. 입구는 시작한 `Task`를 돌려준다.
+- 기능 조각의 단추 입구는 그 조각에 둔다. 예: `TrackStagingStore.startAddingFiles`, `MusicLibraryStore.startRefreshPlaylists`.
 
 `scripts/check-imports.py`의 `view-task` 규칙이 이 규칙을 검사한다.
 
@@ -289,14 +292,18 @@ try await h.loaded()
 아래 둘은 이 패턴의 예외다.
 
 - **덱 재생 경로**: `DeckModel`은 오디오 엔진 포트 `DeckAudioEngine`을 직접 부른다. 매 프레임 재생 위치와 샘플 단위 예약을 유스케이스 한 겹 뒤로 미루지 않으려는 것이다. 이유는 [구조 문서의 경계 규칙](architecture.md#경계-규칙)에 있다.
-- **공유 저장소 `LibraryStore`**: 사이드바, 곡 목록, 인스펙터, 태그 시트가 함께 쓴다. 나누기 전까지 이 모양을 둔다. 새 화면은 자기 화면 모델을 만든다. 그 화면 모델이 `LibraryStore`의 값을 읽는다.
-  - 저장소의 흐름 순서도 유스케이스로 옮긴다. 예: 읽기 순번·요청 합치기·Music 최신화 잇기는 `LibraryReadFlow`에 있다. 저장소는 화면 포트 `LibraryReadScreen`으로 상태를 넘긴다. 저장소는 흐름이 알린 결과를 표시한다.
-  - 기능 하나의 상태는 기능 조각(`…Store`)으로 뗀다(#248). 조각은 저장소의 속성이다. 저장소는 조각을 관찰하지 않는다. 화면은 조각의 값을 읽는다.
-  - 조각 속성은 `let`으로 둔다. 조각이 저장소를 붙들면 `@ObservationIgnored lazy var`로 둔다.
+- **공유 핵심 `LibraryStore`**: 화면 여럿이 같은 값을 봐야 하는 상태만 든다(#248). 읽은 곡과 목록 줄, 사이드바·선택·덱 곡, 초안 표시, 쓰기 잠금, 알림, 파일 없음 확인이 그 상태다. 라이브러리 상태는 세 겹으로 나눈다.
+  - 공유 핵심: 위 상태를 든다. 화면 모델과 기능 조각은 핵심의 값을 읽는다. 핵심의 메서드도 부른다. 묶음 뷰와 성능 때문에 잎으로 내려 둔 읽기는 핵심을 직접 읽는다. 예: 사이드바 줄, 창 제목, 빈 목록 안내.
+  - 기능 조각(`…Store`): 기능 하나의 상태와 흐름을 든다. 조각은 핵심의 속성이다. 핵심은 조각을 관찰하지 않는다. 화면은 조각의 값을 읽는다.
+  - 화면 모델(`…Model`): 화면 하나의 상태와 단추 입구를 든다. 패널 모델은 조립 지점이 한 번 만든다(`AppComposition`). 시트 모델은 띄울 때 한 번 만든다.
+  - 핵심의 흐름 순서도 유스케이스로 옮긴다. 예: 읽기 순번·요청 합치기·Music 최신화 잇기는 `LibraryReadFlow`에 있다. 핵심은 화면 포트 `LibraryReadScreen`으로 상태를 넘긴다. 핵심은 흐름이 알린 결과를 표시한다.
+  - 조각 속성은 `let`으로 둔다. 조각이 핵심을 붙들면 `@ObservationIgnored lazy var`로 둔다.
+  - 예: 주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다. 메뉴 막대 항목(`LibraryMenuAction`)도 이 모델을 받는다.
+  - 예: 곡 목록 표와 덱 묶음은 핵심을 통째로 받지 않는다. 표는 프로토콜 `TrackListSource`를, 덱 묶음은 `DeckLibrarySource`와 태그 편집 조각을 받는다.
   - 예: Music 목록과 동기화 창은 `MusicLibraryStore`(`store.music`)가 든다. 태그 인스펙터의 화면 모델 `TagInspectorModel`은 태그 편집 조각 `TagEditStore`(`store.tags`)를 부른다. 규칙은 유스케이스 `EditTags`에 있다.
   - 예: 재생 기록 트리와 보존본은 `HistoryStore`(`store.history`)가 든다. 보존의 줄 세우기와 실패 알림은 유스케이스 `ArchiveUsbHistories`에 있다.
   - 예: 재생 목록 트리와 초안은 `PlaylistEditStore`(`store.playlists`)가 든다. 사이드바 펼침과 이름 바꾸기는 화면 모델 `PlaylistSidebarModel`이 든다.
-  - 예: 추가한 곡과 그리드 일괄 추정은 `TrackStagingStore`(`store.staging`)가 든다. 목록 아래 막대의 단추와 막힘 이유는 화면 모델 `ListActionBarModel`이 든다.
+  - 예: 추가한 곡과 그리드 일괄 추정은 `TrackStagingStore`(`store.staging`)가 든다. 목록 아래 막대의 단추와 막힘 이유는 화면 모델 `ListActionBarModel`이 든다. 파일 없음 확인은 곡 행을 바꾸므로 핵심이 한다. 막대는 그 결과를 읽는다.
 
 ```swift
 // Sources/DJCrate/Deck/DeckModel+Transport.swift — 예외: 화면 모델이 엔진 포트를 직접 부른다
@@ -335,20 +342,20 @@ func tick() {
 
 ## 남은 빚
 
-지금 코드는 이 규칙과 다른 곳이 있다. `MVVM-3`·`MVVM-1` 수는 2026-10-09에 잰 값이다. 대상은 `Sources/DJCrate`에서 `Diagnostics/`를 뺀 뷰 파일 59개다. 뷰 파일은 `some View`나 `NSViewRepresentable`이 있는 파일이다. `MVVM-4` 수는 2026-10-10 `view-task` 검사의 값이다.
+지금 코드는 이 규칙과 다른 곳이 있다. `MVVM-3`·`MVVM-1` 수는 2026-10-11에 잰 값이다. 대상은 `Sources/DJCrate`에서 `Diagnostics/`를 뺀 파일이다. 그중 뷰 파일은 60개다. 뷰 파일은 `some View`나 `NSViewRepresentable`이 있는 파일이다. `MVVM-4` 수는 2026-10-10 `view-task` 검사의 값이다.
 
 | 규칙 | 지금 | 잰 방법 |
 |---|---|---|
 | `MVVM-4` | 빚 0줄. 2026-10-10에 #243·#244로 갚았다 | `python3 scripts/check-imports.py --summary` |
-| `MVVM-3` | 35개 파일이 `LibraryStore`를 통째로 받는다 | `grep -lE '(let\|var) store: LibraryStore'` |
-| `MVVM-3` | 20개 파일이 `DeckModel`을 통째로 받는다 | `grep -lE '(let\|var) deck: DeckModel'` |
+| `MVVM-3` | 33개 파일(뷰 파일 21개)이 `LibraryStore`를 통째로 받는다. #248 전 44개(뷰 32개), #254 전 35개(뷰 24개)였다 | `grep -lE '(let\|var) store: LibraryStore'` |
+| `MVVM-3` | 27개 파일(뷰 파일 20개)이 `DeckModel`을 통째로 받는다 | `grep -lE '(let\|var) deck: DeckModel'` |
 | `MVVM-1` | 화면 모델 없는 화면이 있다. 시트 셋(`UnlinkedDraftsView`, `PlaylistPickerView`, `XMLImportSheet`)은 2026-10-10에 #249로 갚았다 | 사람이 본다 |
 
 - `MVVM-3` 수는 잎 뷰와 묶음 뷰를 가리지 않는다. 묶음 뷰가 모델을 받는 것은 규칙 위반이 아니다.
 - 이 빚은 손대는 화면부터 조금씩 갚는다. 빚 때문에 큰 화면을 한 번에 나누지 않는다.
 - 뷰가 인프라를 import하는 빚은 0이다. 이것은 `scripts/check-imports.py`가 막는다.
 - 뷰의 `Task`·`await` 빚은 0이다. 새 위반은 `view-task` 규칙이 막는다.
-- `MVVM-3`·`MVVM-1` 빚을 검사로 막는 장치는 아직 없다.
+- `MVVM-3`·`MVVM-1` 빚을 검사로 막는 장치는 두지 않는다(#254, D9). 파일 단위 grep은 규칙이 허락한 묶음 뷰와 빚인 잎 뷰를 가르지 못한다. 리뷰가 `MVVM-3`·`MVVM-6`을 본다.
 
 ## 더 보기
 

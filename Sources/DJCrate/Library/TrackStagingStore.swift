@@ -101,6 +101,12 @@ final class TrackStagingStore {
     @discardableResult
     func startAddingFiles(_ urls: [URL]) -> Task<Void, Never> { Task { [library] in await library.staging.addFiles(urls) } }
 
+    /// 사이드바 재생 목록에 놓은 파일을 그 목록으로 추가하기 시작한다(MVVM-4). 고칠 수 없는 목록이면 추가하지 않는다
+    @discardableResult
+    func startAddingFiles(_ urls: [URL], toPlaylist playlistID: String) -> Task<Void, Never> {
+        Task { [library] in await library.staging.addFiles(urls, toPlaylist: playlistID) }
+    }
+
     /// 파일·폴더를 추가한다. 이미 rekordbox 컬렉션에 있는 파일은 건너뛴다
     /// (XML로 다시 가져오면 rekordbox의 기존 큐·그리드를 덮을 수 있다).
     func addFiles(_ urls: [URL], appleMusicOrigins: [String: [AppleMusicOrigin]] = [:],

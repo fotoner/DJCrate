@@ -141,7 +141,7 @@ struct ITunesPlaylistIntegrationTests {
         store.selection = [store.displayRows[0].id]
         #expect(store.sidebarTitle == "동기화 목록")
         #expect(store.playlists.editablePlaylistID == nil && !store.playlists.canReorderDisplayedTracks)
-        #expect(!LibraryMenuAction.removeTracks.isEnabled(in: store))
+        #expect(!LibraryMenuAction.removeTracks.isEnabled(in: LibraryWindowModel(store: store)))
         #expect(store.deleteTargets([a]).isEmpty)
         store.playlists.removeSelectedFromPlaylist()
         store.playlists.addTracks([a], toPlaylist: "itunes:A")

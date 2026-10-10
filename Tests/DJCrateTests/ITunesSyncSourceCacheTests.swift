@@ -246,7 +246,7 @@ struct ITunesSyncSourceCacheTests {
         let store = store(folder)
         await store.load(snapshot: folder.database)
         store.music.presentSyncWindow()
-        let model = store.music.syncWindow
+        let model = try #require(store.music.syncWindow)
         await model.load(captureITunes: {
             Issue.record("정상 캐시에서 Music을 다시 읽었습니다")
             return .init(status: .unavailable)
@@ -261,7 +261,7 @@ struct ITunesSyncSourceCacheTests {
         #expect(model.source.sourcePlaylists?.map(\.id) == ["A", "B", "C"])
 
         store.music.presentSyncWindow()
-        let untouched = store.music.syncWindow
+        let untouched = try #require(store.music.syncWindow)
         await untouched.load(captureITunes: { fresh })
         #expect(untouched.selection.selectedIDs == ["A"])
         let syncB = Data(String(decoding: syncA, as: UTF8.self).replacingOccurrences(of: "Id=\"A\"", with: "Id=\"B\"").utf8)
@@ -278,7 +278,7 @@ struct ITunesSyncSourceCacheTests {
         let store = store(folder)
         await store.load(snapshot: folder.database)
         store.music.presentSyncWindow()
-        let model = store.music.syncWindow
+        let model = try #require(store.music.syncWindow)
         let fresh = try ITunesLibrarySnapshot(sourcePlaylists: [.init(id: "A", name: "첫 목록"), .init(id: "B", name: "둘째 목록")])
             .applyingRekordboxSelection(syncA)
         model.startLoad(forceRefresh: true, captureITunes: { fresh })
@@ -303,7 +303,7 @@ struct ITunesSyncSourceCacheTests {
         let store = store(folder)
         await store.load(snapshot: folder.database)
         store.music.presentSyncWindow()
-        let model = store.music.syncWindow
+        let model = try #require(store.music.syncWindow)
         await model.load(captureITunes: {
             Issue.record("기존 카탈로그를 다시 읽었습니다")
             return .init(status: .unavailable)
@@ -328,7 +328,7 @@ struct ITunesSyncSourceCacheTests {
         let store = store(folder)
         await store.load(snapshot: folder.database)
         store.music.presentSyncWindow()
-        let model = store.music.syncWindow
+        let model = try #require(store.music.syncWindow)
         let started = Mutex(false)
         let loadingReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
@@ -360,7 +360,7 @@ struct ITunesSyncSourceCacheTests {
         let store = store(folder)
         await store.load(snapshot: folder.database)
         store.music.presentSyncWindow()
-        let old = store.music.syncWindow
+        let old = try #require(store.music.syncWindow)
         let started = Mutex(false)
         let loadingReturned = Mutex(false)
         let resume = DispatchSemaphore(value: 0)
@@ -378,9 +378,9 @@ struct ITunesSyncSourceCacheTests {
             Issue.record("Music 캡처가 시작되지 않았습니다")
             return
         }
-        store.music.showingSyncWindow = false
+        store.music.syncWindow = nil
         store.music.presentSyncWindow()
-        let reopened = store.music.syncWindow
+        let reopened = try #require(store.music.syncWindow)
         resume.signal()
         await loading.value
         #expect(old.source.status == .loading)

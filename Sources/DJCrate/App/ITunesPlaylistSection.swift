@@ -54,6 +54,6 @@ struct ITunesPlaylistSection: View {
             }
             .sidebarSectionHeader()
         }
-        .sheet(isPresented: $music.showingSyncWindow) { ITunesSyncView(model: music.syncWindow) }
+        .sheet(item: $music.syncWindow) { ITunesSyncView(model: $0) }
     }
 }

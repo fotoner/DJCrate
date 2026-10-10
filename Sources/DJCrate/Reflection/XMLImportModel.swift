@@ -17,7 +17,7 @@ struct XMLImportPreview: Identifiable, Sendable {
 
 /// 파일 메뉴의 "rekordbox XML 가져오기…"(#72) 화면 모델(#249). 다른 도구가 만든 rekordbox XML을 메인 스레드 밖에서 읽어 지금 라이브러리와 비교하고,
 /// 미리 보기 시트에서 고른 차이를 초안으로만 만든다(유스케이스 `ImportXML`, CLI `xml-diff --draft`와 같은 규칙). rekordbox에는 쓰지 않는다.
-/// 메뉴가 읽는 중인지 보므로 `LibraryStore`가 하나를 들고 있는다(`store.xmlImport`).
+/// 메뉴가 읽는 중인지 보므로 주 창 모델이 하나를 들고 있는다(`LibraryWindowModel.xmlImport`).
 @MainActor @Observable
 final class XMLImportModel {
     struct Ports {

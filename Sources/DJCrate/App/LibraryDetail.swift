@@ -15,6 +15,8 @@ struct LibraryDetail: View {
     let sidebarVisible: ObservedSetting<Bool>
     /// 목록 아래 작업 막대의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 막대에 넘긴다
     let listActionBar: ListActionBarModel
+    /// 주 창 화면 모델(연결되지 않은 초안 시트·파일 끌어 놓기). 본문은 읽지 않고 넘긴다
+    let window: LibraryWindowModel
     @AppStorage(SettingKeys.waveformHeight.name) private var waveformHeight = SettingKeys.waveformHeight.defaultValue
     @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
     @State private var sidebarAutoCollapse = SidebarVisibility()
@@ -46,7 +48,7 @@ struct LibraryDetail: View {
                     AppMessageView(message: message, onClose: { store.draftFileMessage = nil })
                 }
                 if store.sidebar == .pending, !store.unlinkedDraftUUIDs.isEmpty {
-                    UnlinkedDraftsBar(store: store)
+                    UnlinkedDraftsBar(store: store, window: window)
                 }
                 if let message = store.reflectionMessage {
                     AppMessageView(message: message, onClose: { store.reflectionMessage = nil })
@@ -60,7 +62,7 @@ struct LibraryDetail: View {
             }
             .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureNotice($0) }
             // 파형은 본문 높이가 바뀔 때만 맞추고, 덱 내용이 늘면 덱만 스크롤한다(PR #151).
-            LibraryDeckViewport(store: store, deck: deck, layout: layout, widthClass: widthClass)
+            LibraryDeckViewport(library: store, tags: store.tags, deck: deck, layout: layout, widthClass: widthClass)
             LibrarySplitHandle(layout: layout, height: $waveformHeight)
             VStack(spacing: 0) {
                 ListActionBar(model: listActionBar)
@@ -81,13 +83,13 @@ struct LibraryDetail: View {
                         .frame(minWidth: 0, maxWidth: .infinity, minHeight: DeckLayout.minimumLibraryHeight, maxHeight: .infinity)
                         .overlay { EmptyLibraryOverlay(store: store) }
                 } else {
-                    TrackTable(store: store, deck: deck)
+                    TrackTable(source: store, deck: deck)
                         .frame(minWidth: 0, maxWidth: .infinity, minHeight: DeckLayout.minimumLibraryHeight, maxHeight: .infinity)
                         .overlay { EmptyLibraryOverlay(store: store) }
                 }
             }
             // 내부 곡 끌기는 재생 목록·덱이 맡으므로 파일 추가가 가로채지 않는다.
-            .onDrop(of: [.fileURL], delegate: LibraryFileDropDelegate(store: store, highlight: $fileDropHighlight))
+            .onDrop(of: [.fileURL], delegate: LibraryFileDropDelegate(window: window, highlight: $fileDropHighlight))
             .overlay {
                 if fileDropHighlight.isTargeted {
                     RoundedRectangle(cornerRadius: 8)
@@ -148,7 +150,9 @@ private struct DetailGeometry: Equatable {
 
 /// 높이 적용값이 바뀔 때만 덱·핸들·메뉴를 갱신하고, 곡 목록까지 다시 만들지 않는다.
 private struct LibraryDeckViewport: View {
-    let store: LibraryStore
+    /// 덱 묶음이 쓰는 라이브러리 입력과 태그 편집 조각(본문은 읽지 않고 넘긴다)
+    let library: any DeckLibrarySource
+    let tags: TagEditStore
     let deck: DeckModel
     let layout: LibraryLayoutMetrics
     var widthClass: DeckWidthClass
@@ -157,7 +161,7 @@ private struct LibraryDeckViewport: View {
         let _ = PerfProbe.body(Self.self)
         let height = layout.waveformHeight
         ScrollView(.vertical) {
-            DeckView(store: store, deck: deck, widthClass: widthClass)
+            DeckView(library: library, tags: tags, deck: deck, widthClass: widthClass)
                 .environment(\.deckWaveformHeight, height)
                 .frame(maxWidth: .infinity, alignment: .top)
                 .fixedSize(horizontal: false, vertical: true)
@@ -166,7 +170,7 @@ private struct LibraryDeckViewport: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .frame(height: layout.viewportHeight)
-        .modifier(DeckDropTarget(store: store))
+        .modifier(DeckDropTarget(library: library))
     }
 }
 

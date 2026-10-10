@@ -2,11 +2,14 @@ import DJCDomain
 import SwiftUI
 
 struct AppCommandContext {
-    var store: LibraryStore
+    /// 주 창 화면 모델. 파일·rekordbox 메뉴 항목(`LibraryMenuAction`)은 이 모델로 보고 부른다
+    var window: LibraryWindowModel
     var deck: DeckModel
     var windows: AppWindows
     var reflection: ReflectionCoordinator
     var showTagEditor: Binding<Bool>
+
+    var store: LibraryStore { window.store }
 }
 
 private struct AppCommandContextKey: FocusedValueKey {
@@ -138,12 +141,12 @@ struct AppCommands: Commands {
     }
 
     private func libraryButton(_ action: LibraryMenuAction) -> some View {
-        Button(context.map { action.menuTitle(in: $0.store) } ?? action.title) {
-            if let context { action.perform(in: context.store, windows: context.windows, reflection: context.reflection) }
+        Button(context.map { action.menuTitle(in: $0.window) } ?? action.title) {
+            if let context { action.perform(in: context.window, windows: context.windows, reflection: context.reflection) }
         }
         .keyboardShortcut(action.shortcut)
-        .disabled(context.map { !action.isEnabled(in: $0.store) } ?? true)
-        .help(context.flatMap { action.disabledReason(in: $0.store) } ?? action.title)
+        .disabled(context.map { !action.isEnabled(in: $0.window) } ?? true)
+        .help(context.flatMap { action.disabledReason(in: $0.window) } ?? action.title)
     }
 
     private func deckButton(_ command: DeckMenuCommand) -> some View {

@@ -29,8 +29,10 @@ final class AppComposition {
     let tagInspector: TagInspectorModel
     /// 사이드바 재생 목록 칸 화면 모델(폴더 펼침·이름 바꾸기). 사이드바를 다시 그려도 같은 모델을 쓴다.
     let playlistSidebar: PlaylistSidebarModel
-    /// 목록 아래 작업 막대 화면 모델(단추·막힘 이유·파일 없음 확인). 핵심이 읽은 뒤 파일 확인을 이 모델에 맡긴다.
+    /// 목록 아래 작업 막대 화면 모델(단추·막힘 이유, 파일 없음 확인의 결과·다시 확인)
     let listActionBar: ListActionBarModel
+    /// 주 창 화면 모델(주 창이 띄우는 시트와 단추·메뉴 입구). 주 창을 다시 그려도 같은 모델을 쓴다.
+    let libraryWindow: LibraryWindowModel
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
@@ -45,6 +47,7 @@ final class AppComposition {
         tagInspector = TagInspectorModel(store: store)
         playlistSidebar = PlaylistSidebarModel(playlists: store.playlists)
         listActionBar = ListActionBarModel(store: store)
+        libraryWindow = LibraryWindowModel(store: store)
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
@@ -188,7 +191,8 @@ final class AppComposition {
         windows.trackEdit.attach(editLinks)
         windows.flip.attach(editLinks)
         #if DEBUG
-        DevSelfTests.runIfRequested(store: store, deck: deck, windows: windows, reflection: reflection, playlistSidebar: playlistSidebar)
+        DevSelfTests.runIfRequested(store: store, deck: deck, windows: windows, reflection: reflection, playlistSidebar: playlistSidebar,
+                                    libraryWindow: libraryWindow)
         DevSelfTests.runAsyncGuidanceCaptureIfRequested(store: store, deck: deck)
         UsbMigrateCapture.runIfRequested(store: store)
         DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows)

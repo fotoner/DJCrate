@@ -215,7 +215,7 @@ struct UsbHistoryWriteTests {
         #expect(store.history.hasHistoryDrafts)
         // 사이드바 배지는 쓸 곡 수에 대기 기록 수를 더하고, 곡 초안이 없어도 rekordbox에 쓰기를 누를 수 있다
         #expect(store.pendingWriteCount == store.pendingLibraryCount + 2)
-        #expect(LibraryMenuAction.reflect.isEnabled(in: store))
+        #expect(LibraryMenuAction.reflect.isEnabled(in: LibraryWindowModel(store: store)))
 
         // 쓰기 입력: 컬렉션 짝이 있는 곡만 재생 순서대로(반복 재생 포함), 이름·만든 시각은 보존본 그대로
         let imports = store.history.pendingHistoryImports

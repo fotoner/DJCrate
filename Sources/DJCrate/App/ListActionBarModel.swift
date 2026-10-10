@@ -3,10 +3,10 @@ import DJCDomain
 import Foundation
 import Observation
 
-/// 목록 아래 작업 막대(`ListActionBar`)의 화면 모델(#252): 사이드바 항목마다 보일 단추의 대상·막힘 이유와 단추가 부르는 일,
-/// 파일이 없는 곡 확인(#126)의 진행과 결과. 상태는 공유 핵심(`LibraryStore`: 사이드바·선택·목록·쓰기 잠금)과 기능 조각
-/// (추가 목록·재생 목록·재생 기록·Music)에 있다. 본문이 읽는 관찰 속성은 옛 막대와 같다(다시 계산 횟수가 같다).
-/// 조립 지점(`AppComposition`)이 한 번 만든다. 핵심이 읽은 뒤·디스크를 연결하거나 뺄 때 파일 확인을 이 모델에 맡긴다(`onCheckMissingFiles`, 핵심 하나에 모델 하나).
+/// 목록 아래 작업 막대(`ListActionBar`)의 화면 모델(#252): 사이드바 항목마다 보일 단추의 대상·막힘 이유와 단추가 부르는 일.
+/// 상태는 공유 핵심(`LibraryStore`: 사이드바·선택·목록·쓰기 잠금·파일 없음 확인)과 기능 조각(추가 목록·재생 목록·재생 기록·Music)에 있다.
+/// 본문이 읽는 관찰 속성은 옛 막대와 같다(다시 계산 횟수가 같다). 조립 지점(`AppComposition`)이 한 번 만든다.
+/// 파일이 없는 곡 확인(#126)은 곡 행을 바꾸는 라이브러리 전체의 일이라 핵심이 한다(#254). 이 모델은 결과·진행을 읽고 다시 확인 단추만 부른다.
 @MainActor
 @Observable
 final class ListActionBarModel {
@@ -24,15 +24,8 @@ final class ListActionBarModel {
     @ObservationIgnored let store: LibraryStore
     private var staging: TrackStagingStore { store.staging }
 
-    /// 마지막 파일 확인 결과(#126). 연결되지 않은 외장 디스크는 막대에 알린다.
-    private(set) var missingFiles = MissingFiles()
-    private(set) var isCheckingFiles = false
-    /// 마지막으로 시작한 파일 확인. 시험은 이것을 기다린다
-    @ObservationIgnored private(set) var missingFileTask: Task<Void, Never>?
-
     init(store: LibraryStore) {
         self.store = store
-        store.onCheckMissingFiles = { [weak self] in self?.checkMissingFiles() }
     }
 
     var sidebar: SidebarItem { store.sidebar }
@@ -129,7 +122,8 @@ final class ListActionBarModel {
         store.usb?.infos[key].map({ $0.consistency.playlistMismatches > 0 }) == true
     }
 
-    func startRefreshUsbLocalChanges(volumeKey key: String) { store.startRefreshUsbLocalChanges(volumeKey: key) }
+    /// '로컬 변경을 USB에 반영'. USB 초안 편집 흐름의 입구로 시작한다(기다리지 않는다)
+    func startRefreshUsbLocalChanges(volumeKey key: String) { store.usbEdits?.start(.refreshLocalChanges(volumeKey: key)) }
     func showUsbPending(volumeKey key: String) { store.sidebar = .usb(.pending(volumeKey: key)) }
 
     // MARK: - BPM 없는 곡
@@ -140,24 +134,9 @@ final class ListActionBarModel {
 
     // MARK: - 파일 없음(#126)
 
-    /// 음원 파일이 있는지 뒤에서 확인해 행·'파일 없음' 개수에 반영한다. 읽은 뒤·디스크를 연결하거나 뺄 때(핵심 `checkMissingFiles`)·다시 확인 단추에서 부른다.
-    /// 큰 라이브러리의 확인(곡마다 파일 시스템 조회)이 메인 스레드를 막지 않게 한다.
-    func checkMissingFiles() {
-        missingFileTask?.cancel()
-        let generation = store.reads.generation
-        let tracks = store.rows.map(\.track), useCases = store.useCases
-        isCheckingFiles = true
-        missingFileTask = Task { [weak self] in
-            let result = await useCases.missingFiles(tracks)
-            guard let self, !Task.isCancelled else { return }
-            // 그사이 다시 읽기 시작했으면 버린다(새로 읽은 뒤 다시 확인한다).
-            guard store.reads.isCurrent(generation) else {
-                isCheckingFiles = false
-                return
-            }
-            isCheckingFiles = false
-            missingFiles = result
-            store.applyMissingFiles(result)
-        }
-    }
+    /// 마지막 파일 확인 결과(핵심이 확인한다). 연결되지 않은 외장 디스크는 막대에 알린다.
+    var missingFiles: MissingFiles { store.missingFiles }
+    var isCheckingFiles: Bool { store.isCheckingFiles }
+    /// '다시 확인' 단추
+    func checkMissingFiles() { store.checkMissingFiles() }
 }
