@@ -44,6 +44,8 @@ import Observation
     /// 볼륨별 잠금(쓰기 중 표시). 잠긴 볼륨은 다시 읽거나 꺼내지 않는다. `beginWrite`·`endWrite`로만 바꾼다
     var busyVolumes: Set<String> { write.busyVolumes }
     private(set) var ejecting: Set<String> = []
+    /// 마지막 꺼내기 단추가 실패한 이유와 할 일(성공하면 지운다)
+    private(set) var ejectMessage: String?
     /// 지금 쓰는 볼륨과 진행(덮개가 읽는다). 앱은 한 번에 한 볼륨에만 쓴다
     var activeWrite: UsbActiveWrite? { write.activeWrite }
     /// 열 내보내기 시트(볼륨·다시 미리 보기 결과)
@@ -207,6 +209,10 @@ import Observation
         await enqueue(force: true)
     }
 
+    /// 사이드바 "USB 다시 읽기" 단추. 뷰는 기다리지 않는다
+    @discardableResult
+    func refreshTapped() -> Task<Void, Never> { Task { await refresh() } }
+
     /// 볼륨 이벤트의 목록을 채택한다. 중간 분리 알림이 합쳐져도 같은 정보의 재연결 USB를 다시 읽는다.
     func watch() async {
         await enqueue(force: false)
@@ -350,6 +356,12 @@ import Observation
     }
 
     // MARK: - 꺼내기
+
+    /// 사이드바 꺼내기 단추. 실패하면 이유를 `ejectMessage`에 남긴다(성공하면 지운다)
+    @discardableResult
+    func ejectTapped(_ volumeKey: String) -> Task<Void, Never> {
+        Task { ejectMessage = await eject(volumeKey) }
+    }
 
     /// 볼륨을 꺼낸다. 실패하면 이유와 할 일(nil = 성공)
     func eject(_ volumeKey: String) async -> String? {

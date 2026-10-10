@@ -818,6 +818,8 @@ DJCApplication 유스케이스 `UsbMigrateSession`이 아래 순서를 부른다
   3. 시트에서 미리 본 결과로 쓴다. 미리 본 결과가 없으면 미리 보기를 한 뒤 확인 창을 띄운다(#212).
   4. 쓰는 동안 취소는 DB 교체 전까지 받는다.
   5. 끝나면 [꺼내기] 단추가 달린 토스트를 띄운다.
+- **잠금과 진행은 핵심부 `UsbWriteSession`이 든다.** 한 볼륨은 한 번만 잠근다. 한 볼륨에 쓰는 동안 다른 볼륨도 잠그지 않는다. 앱 `UsbWriteModel`이 그 상태를 덮개와 사이드바에 보인다.
+- **시트와 쓰기 대기의 단추는 화면 모델을 부른다.** 시트는 `UsbExportSheetModel`, 쓰기 대기는 `UsbPendingModel`이다. 사이드바 메뉴는 `UsbEditActions.start`와 `UsbWriteCoordinator`의 시작 메서드를 부른다. 뷰는 일을 기다리지 않는다.
 - **아래 경우는 창 대신 경고 토스트로 알린다.** 시트가 떠 있으면 시트 안에도 보인다.
   - rekordbox가 켜져 있다.
   - 이미 쓰는 중이다.

@@ -344,7 +344,7 @@ struct UsbEditActionsTests {
         #expect(service.current.calls == ["draftBase"])
         #expect(prompter.shown.isEmpty && host.toast?.title == UsbWriteFlow.Text.notWrittenTitle
             && host.toast?.detail == UsbWriteFlow.Text.connectFirstDetail)
-        let model = UsbPendingModel(volumeName: "B13T", isConnected: false, edits: try #require(try draft()).edits,
+        let model = UsbPendingList(volumeName: "B13T", isConnected: false, edits: try #require(try draft()).edits,
                                     library: usb.editLibrary(key), summary: nil, busy: false, blockReason: { _, _ in nil })
         #expect(!model.canWrite)
         #expect(model.writeHelp == UsbWriteFlow.Text.connectFirstDetail)
@@ -485,6 +485,37 @@ struct UsbEditActionsTests {
         #expect(actions.siblingPosition(3, volumeKey: key) == nil)
         #expect(!actions.canMovePlaylist(3, by: 1, volumeKey: key))
         #expect(order(1) == [.id("1"), .id("7"), .new("n1")])
+    }
+
+    @Test("사이드바·대기 목록의 편집은 기다리지 않는 시작(start)으로 같은 편집을 쌓는다: 만들기·이름·순서·지우기·끌어 놓기·빼기·반영·버리기")
+    func startIntentsAppendSameEdits() async throws {
+        defer { cleanUp() }
+        let library = UsbEditTestData.siblingLibrary()
+        let (usb, _, actions) = await setUp(library)
+        names.answers = ["새 폴더", "새 이름"]
+        await actions.start(.createPlaylist(isFolder: true, parent: nil, volumeKey: key)).value
+        await actions.start(.renamePlaylist(1, volumeKey: key)).value
+        await actions.start(.movePlaylist(2, by: -1, volumeKey: key)).value
+        await actions.start(.deletePlaylist(3, volumeKey: key)).value
+        await actions.startDrop(["11"], on: .collection(volumeKey: key), rows: ["11": UsbEditTestData.localRow("11")]).value
+        let created = UsbLibraryEdit.playlist(edit: .create(key: "k1", name: "새 폴더", isFolder: true, parent: .root))
+        let renamed = UsbLibraryEdit.playlist(edit: .rename(playlist: .id("1"), name: "새 이름"))
+        let deleted = UsbLibraryEdit.playlist(edit: .delete(playlist: .id("3")))
+        let added = UsbLibraryEdit.addTracks(localContentIDs: ["11"], playlist: nil)
+        let edits = try #require(try draft()).edits
+        #expect(edits.count == 5 && edits[0] == created && edits[1] == renamed && edits[3] == deleted && edits[4] == added)
+        guard case .playlist(edit: .reorder(playlist: .id("2"), _)) = edits[2] else { Issue.record("순서 편집"); return }
+
+        // 보고 있던 편집과 다르면 빼지 않는다
+        await actions.start(.removeEdit(1, volumeKey: key, matching: renamed)).value
+        #expect(try draft()?.edits.count == 5)
+        await actions.start(.removeEdit(1, volumeKey: key, matching: created)).value
+        #expect(try draft()?.edits.first == renamed)
+        // 갱신할 곡이 없으면 알리기만 한다
+        await actions.start(.refreshLocalChanges(volumeKey: key)).value
+        #expect(host.toast?.title == UsbEditActions.Text.nothingNewerTitle && usb.draftCounts[key] == 4)
+        await actions.start(.discardDraft(volumeKey: key)).value
+        #expect(try draft() == nil && usb.draftCounts[key] == nil)
     }
 
     // MARK: - 목록에서 빼기

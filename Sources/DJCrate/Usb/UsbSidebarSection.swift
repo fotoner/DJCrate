@@ -164,7 +164,6 @@ struct UsbSidebarSection: View {
     let usb: UsbStore
     @State private var isExpanded = true
     @State private var collapsed: Set<String> = []
-    @State private var ejectMessage: String?
 
     var body: some View {
         Section(isExpanded: $isExpanded) {
@@ -179,7 +178,7 @@ struct UsbSidebarSection: View {
                     header(of: volume)
                 }
             }
-            if let ejectMessage {
+            if let ejectMessage = usb.ejectMessage {
                 Text(ejectMessage).font(.caption).foregroundStyle(UIColors.warning.color).lineLimit(3)
             }
         } header: {
@@ -187,7 +186,7 @@ struct UsbSidebarSection: View {
                 Text(verbatim: "USB")
                 Spacer(minLength: 0)
                 Button {
-                    Task { await usb.refresh() }
+                    usb.refreshTapped()
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -232,7 +231,7 @@ struct UsbSidebarSection: View {
             }
             if usb.volume(volume.id) != nil {
                 Button {
-                    Task { ejectMessage = await usb.eject(volume.id) }
+                    usb.ejectTapped(volume.id)
                 } label: {
                     Image(systemName: "eject")
                 }
@@ -251,7 +250,7 @@ struct UsbSidebarSection: View {
     @ViewBuilder private func migrationButtons(_ volume: UsbSidebarVolume) -> some View {
         if volume.showsMigration {
             Button {
-                if let info = usb.volume(volume.id) { Task { await store.usbCoordinator?.migrate(info) } }
+                store.usbCoordinator?.startMigrate(volumeKey: volume.id)
             } label: {
                 Label(.ui("OneLibrary 더하기…"), systemImage: "plus.rectangle.on.folder")
             }
@@ -261,7 +260,7 @@ struct UsbSidebarSection: View {
         }
         if volume.showsMigrationRestore {
             Button(.ui("쓰기 전으로 되돌리기…")) {
-                if let info = usb.volume(volume.id) { Task { await store.usbCoordinator?.restoreMigration(info) } }
+                store.usbCoordinator?.startRestoreMigration(volumeKey: volume.id)
             }
             .buttonStyle(.plain)
             .disabled(usb.activeWrite != nil)
@@ -377,7 +376,7 @@ enum UsbDrop {
         let tracks = providers.filter { $0.hasItemConformingToTypeIdentifier(PlaylistDragType.tracks.identifier) }
         guard !tracks.isEmpty else { return false }
         PlaylistDrop.loadStrings(tracks, type: PlaylistDragType.tracks) { ids in
-            Task { await actions.drop(ids, on: target, rows: store.rowsByID) }
+            actions.startDrop(ids, on: target, rows: store.rowsByID)
         }
         return true
     }
@@ -404,27 +403,22 @@ struct UsbSidebarMenu: View {
                 if let playlist = actions.usb.editLibrary(key)?.playlists.first(where: { $0.id == id }) {
                     createButtons(parent: playlist.attribute == 1 ? id : (playlist.parentID == 0 ? nil : playlist.parentID))
                     Divider()
-                    edit(String(ui: "이름 바꾸기…"), .playlist(edit: .rename(playlist: .id(String(id)), name: playlist.name))) {
-                        await actions.renamePlaylist(id, volumeKey: key)
-                    }
+                    edit(String(ui: "이름 바꾸기…"), .playlist(edit: .rename(playlist: .id(String(id)), name: playlist.name)),
+                         .renamePlaylist(id, volumeKey: key))
                     moveButton(String(ui: "위로 옮기기"), id: id, step: -1)
                     moveButton(String(ui: "아래로 옮기기"), id: id, step: 1)
                     Divider()
                     edit(playlist.attribute == 1 ? String(ui: "폴더 지우기") : String(ui: "재생 목록 지우기"),
-                         .playlist(edit: .delete(playlist: .id(String(id))))) {
-                        await actions.deletePlaylist(id, volumeKey: key)
-                    }
+                         .playlist(edit: .delete(playlist: .id(String(id)))), .deletePlaylist(id, volumeKey: key))
                     Divider()
                     pendingButton
                 }
             case .pending:
                 Button(.ui("USB에 쓰기…")) {
-                    Task {
-                        await store.usbCoordinator?.writeDraft(volumeKey: key, database: store.snapshotURL, share: store.shareRoot)
-                    }
+                    store.usbCoordinator?.startWriteDraft(volumeKey: key, database: store.snapshotURL, share: store.shareRoot)
                 }
                 .disabled(actions.usb.volume(key) == nil || (actions.usb.draftCounts[key] ?? 0) == 0)
-                Button(.ui("초안 버리기"), role: .destructive) { Task { await actions.discardDraft(volumeKey: key) } }
+                Button(.ui("초안 버리기"), role: .destructive) { actions.start(.discardDraft(volumeKey: key)) }
                     .disabled((actions.usb.draftCounts[key] ?? 0) == 0)
             }
         }
@@ -432,18 +426,16 @@ struct UsbSidebarMenu: View {
 
     @ViewBuilder private func createButtons(parent: Int?) -> some View {
         let parentRef: PlaylistRef = parent.map { .id(String($0)) } ?? .root
-        edit(String(ui: "새 재생 목록…"), .playlist(edit: .create(key: "menu", name: "menu", isFolder: false, parent: parentRef))) {
-            await actions.createPlaylist(isFolder: false, parent: parent, volumeKey: key)
-        }
-        edit(String(ui: "새 폴더…"), .playlist(edit: .create(key: "menu", name: "menu", isFolder: true, parent: parentRef))) {
-            await actions.createPlaylist(isFolder: true, parent: parent, volumeKey: key)
-        }
+        edit(String(ui: "새 재생 목록…"), .playlist(edit: .create(key: "menu", name: "menu", isFolder: false, parent: parentRef)),
+             .createPlaylist(isFolder: false, parent: parent, volumeKey: key))
+        edit(String(ui: "새 폴더…"), .playlist(edit: .create(key: "menu", name: "menu", isFolder: true, parent: parentRef)),
+             .createPlaylist(isFolder: true, parent: parent, volumeKey: key))
     }
 
     private var refreshButton: some View {
         let count = actions.updatableTracks(volumeKey: key).count
         let reason = count == 0 ? nil : actions.refreshBlockReason(volumeKey: key)
-        return Button(.ui("로컬 변경을 USB에 반영 (\(count)곡)")) { Task { await actions.refreshLocalChanges(volumeKey: key) } }
+        return Button(.ui("로컬 변경을 USB에 반영 (\(count)곡)")) { actions.start(.refreshLocalChanges(volumeKey: key)) }
             .disabled(count == 0 || reason != nil)
             .help(reason ?? String(ui: "로컬에서 더 고친 곡(갱신 가능)을 USB 쓰기 대기에 더합니다. USB는 ‘USB에 쓰기…’를 누를 때 바뀝니다."))
     }
@@ -451,7 +443,7 @@ struct UsbSidebarMenu: View {
     /// 같은 부모 안에서 한 칸 옮기기: 초안을 적용한 자리에서 옮길 곳이 없거나 막히면 누를 수 없고, 막힌 이유를 도움말로
     private func moveButton(_ title: String, id: Int, step: Int) -> some View {
         let reason = actions.moveBlockReason(id, by: step, volumeKey: key)
-        return Button(title) { Task { await actions.movePlaylist(id, by: step, volumeKey: key) } }
+        return Button(title) { actions.start(.movePlaylist(id, by: step, volumeKey: key)) }
             .disabled(!actions.canMovePlaylist(id, by: step, volumeKey: key) || reason != nil)
             .help(reason ?? title)
     }
@@ -460,10 +452,10 @@ struct UsbSidebarMenu: View {
         Button(.ui("USB 쓰기 대기 목록 보기")) { store.sidebar = .usb(.pending(volumeKey: key)) }
     }
 
-    /// 막힐 편집이면 누를 수 없게 하고 이유를 도움말로
-    private func edit(_ title: String, _ edit: UsbLibraryEdit, perform: @escaping @MainActor () async -> Void) -> some View {
+    /// 막힐 편집이면 누를 수 없게 하고 이유를 도움말로. 누르면 그 편집 동작을 시작한다(뷰는 기다리지 않는다)
+    private func edit(_ title: String, _ edit: UsbLibraryEdit, _ intent: UsbEditActions.Intent) -> some View {
         let reason = actions.blockReason(edit, volumeKey: key)
-        return Button(title) { Task { await perform() } }
+        return Button(title) { actions.start(intent) }
             .disabled(reason != nil)
             .help(reason ?? title)
     }

@@ -30,9 +30,3 @@ Sources/DJCrate/Reflection/RecoverySheetView.swift	view-task	await 1곳
 Sources/DJCrate/Settings/ShortcutSettingsView.swift	view-task	Task 2곳
 Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	Task 2곳
 Sources/DJCrate/Settings/StorageSettingsView.swift	view-task	await 6곳
-Sources/DJCrate/Usb/UsbExportSheet.swift	view-task	Task 2곳
-Sources/DJCrate/Usb/UsbExportSheet.swift	view-task	await 3곳
-Sources/DJCrate/Usb/UsbPendingView.swift	view-task	Task 4곳
-Sources/DJCrate/Usb/UsbPendingView.swift	view-task	await 9곳
-Sources/DJCrate/Usb/UsbSidebarSection.swift	view-task	Task 10곳
-Sources/DJCrate/Usb/UsbSidebarSection.swift	view-task	await 14곳
