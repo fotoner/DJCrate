@@ -109,6 +109,8 @@ final class LibraryStore {
         self.resultHistory = resultHistory
         self.feedback = feedback
         self.launch = launch
+        readFlow = LibraryReadFlow(loader: useCases.load, location: location)
+        readFlow.screen = readScreen
         refreshWriteBackups()
         loadRecentPlaylists()
         loadPlaylistImports()
@@ -153,16 +155,10 @@ final class LibraryStore {
     var playlistTree: [PlaylistOutlineNode] = []
     var iTunesLibrary = SyncedITunesLibrary()
     var iTunesSnapshot = ITunesLibrarySnapshot(status: .notCaptured) {
-        didSet {
-            iTunesSyncCatalogEpoch &+= 1
-            iTunesSyncCatalogCache = nil
-        }
+        didSet { readFlow.musicChanged() }
     }
     var showingITunesSync = false
     var iTunesSync = ITunesSyncModel()
-    @ObservationIgnored var iTunesSyncCatalogCache: ITunesSyncCatalogCache?
-    @ObservationIgnored var iTunesSyncCapture: ITunesSyncCapture?
-    @ObservationIgnored var iTunesSyncCatalogEpoch: UInt64 = 0
     /// iTunes 동기화 선택을 rekordbox에 쓴다(반영 세션 `syncITunes`, 조립 지점이 붙인다. 없으면 쓰지 않는다)
     @ObservationIgnored var syncITunesWrite: ((ITunesSyncWrite) async throws -> (target: URL, syncData: Data))?
     var isITunesSelection: Bool { if case .itunesPlaylist = sidebar { true } else { false } }
@@ -431,7 +427,10 @@ final class LibraryStore {
     /// 필터·플레이리스트·정렬까지 적용한 줄(검색 전). 검색은 이 순서를 그대로 걸러 쓴다.
     private(set) var sortedBase: [TrackRow] = []
     private var suppressRefresh = false
-    /// 읽기 세대·요청 순번(`LibraryStore+Loading`). 늦게 끝난 읽기·Music 최신화·파일 확인·USB 사본 출처를 이것으로 가른다.
+    /// 읽기 순서(유스케이스): 처음 열기·바뀜 확인·사본 뜨기 요청 합치기·Music 최신화·동기화 창 목록. 화면은 `readScreen`으로 붙인다
+    @ObservationIgnored let readFlow: LibraryReadFlow
+    /// 읽기 세대·요청 순번(`readFlow`가 세어 알린다). 늦게 끝난 읽기·Music 최신화·파일 확인·USB 사본 출처를 이것으로 가른다.
+    /// 뷰가 쓰기 판정 단추(`usbSyncSourceIsCurrent`)에서 읽으므로 관찰하는 값으로 둔다.
     private(set) var reads = LibraryReadSequence()
     /// 결과 채택 전에도 조용한 다시 읽기 시작을 native USB 작업에서 구분한다.
     var snapshotReadEpoch: Int { reads.generation }
@@ -439,15 +438,8 @@ final class LibraryStore {
     @ObservationIgnored private(set) var usbSnapshotStamp: UsbSyncSnapshotProvenance?
     @ObservationIgnored private(set) var usbSnapshotEpoch: Int?
 
-    @ObservationIgnored let snapshotRequests = SnapshotRequestQueue()
-    /// 뒤에서 도는 Music 최신화. 쓰기 뒤 다시 읽기가 버리면 새 사본이 같은 조회를 이어받는다.
-    struct ITunesRefresh {
-        let id: UUID
-        let generation: Int
-        let capture: Task<ITunesLibrarySnapshot, Never>
-        let task: Task<Void, Never>
-    }
-    @ObservationIgnored private(set) var iTunesRefresh: ITunesRefresh?
+    /// 뒤에서 도는 Music 최신화(`readFlow`가 든다). 쓰기 뒤 다시 읽기가 버리면 새 사본이 같은 조회를 이어받는다.
+    var iTunesRefresh: LibraryReadFlow.MusicRefresh? { readFlow.musicRefresh }
     private(set) var lastError: String? {
         didSet { lastErrorDismissed = false }
     }
@@ -464,14 +456,12 @@ final class LibraryStore {
     var tagRevision = 0
 
     // MARK: - 상태 바꾸기
-    // 읽은 곡·목록 줄·초안 표시·읽기 순번·오류는 이 파일에서만 바꾼다. 확장(+Loading·+List·+DraftIndex …)도 아래 메서드로 고쳐,
+    // 읽은 곡·목록 줄·초안 표시·오류는 이 파일에서만 바꾼다(읽기 순번은 `readFlow`가 바꾼다). 확장(+Loading·+List·+DraftIndex …)도 아래 메서드로 고쳐,
     // 저장소를 받는 다른 코드(USB 화면 등)가 쓰기 판정의 근거(`snapshotURL`·`previewRevision` …)를 실수로 바꾸지 못하게 한다.
 
-    /// 사본을 다 뜬 뒤(또는 사본을 바로 열 때) 새 읽기를 시작한다
-    func beginLoad() -> Int { reads.beginLoad() }
-    /// 사본 뜨기를 시작한다(기다리던 읽기를 버린다)
-    func beginSnapshotRead() -> (generation: Int, request: Int) { reads.beginSnapshot() }
-    func invalidatePendingLoads() { reads.invalidate() }
+    func invalidatePendingLoads() { readFlow.invalidate() }
+    /// 읽기 순번이 바뀌었다(`readFlow`가 알린다)
+    func setReads(_ sequence: LibraryReadSequence) { reads = sequence }
 
     /// 읽은 곡 행을 넣는다. 지난 확인에서 없던 파일은 새 확인이 끝날 때까지 '파일 없음'으로 둔다.
     /// 초안 파일 시각도 잊어 다음 바깥 확인이 다시 읽게 한다.
@@ -538,14 +528,6 @@ final class LibraryStore {
         isSynchronizingLibrary = true
         defer { isSynchronizingLibrary = false }
         await body()
-    }
-
-    func beginITunesRefresh(_ refresh: ITunesRefresh) { iTunesRefresh = refresh }
-    /// 이 Music 최신화가 아직 마지막 것이면 지우고 참
-    func endITunesRefresh(id: UUID) -> Bool {
-        guard iTunesRefresh?.id == id else { return false }
-        iTunesRefresh = nil
-        return true
     }
 
     /// 덱의 곡을 정하고 덱에 알린다(nil이면 내리기)
