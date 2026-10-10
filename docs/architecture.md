@@ -71,6 +71,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - iTunes 동기화 창의 화면 모델과 동기화 쓰기 연결
 - 동기화 창 화면 모델 `ITunesSyncModel`은 저장소 대신 좁은 포트(`ITunesSyncModel.Ports`)를 받는다. Music 결과에 맞춰 곡 목록·사이드바 선택을 고치는 일은 저장소가 한다.
 - **재생 기록 트리·보존본·쓰기 대기는 기능 조각 `HistoryStore`가 든다(#251).** 조각은 저장소의 `history` 속성이다. 보존의 줄 세우기·채택·실패 알림은 유스케이스 `ArchiveUsbHistories`가 정한다. 유스케이스는 화면 포트 `UsbHistoryScreen`으로 조각의 값을 읽는다. 결과도 그 포트로 알린다.
+- **재생 목록 트리·초안·연결 기록은 기능 조각 `PlaylistEditStore`가 든다(#251).** 조각은 저장소의 `playlists` 속성이다. 최근 목록·넣기 전 나누기·기록 원본 고르기의 규칙은 유스케이스 `EditPlaylists`가 정한다. 사이드바의 폴더 펼침과 이름 바꾸기는 화면 모델 `PlaylistSidebarModel`이 든다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
   - 읽기 순번: 늦게 끝난 옛 결과를 버린다
@@ -302,7 +303,7 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
   - 쓰기 모듈은 트랜잭션 안에서 처음 상태와 지금 상태를 비교해 바뀐 목록의 편집만 막는다. 앱은 쓴 편집만 초안에서 뺀다.
   - 쓰기를 되돌리면 그때 쓴 편집을 되돌린 상태 위에 다시 쌓는다.
 - **인텔리전트 재생 목록은 읽기만, 실험실 설정 뒤에 둔다(#68).** 조건 칸인 `SmartList` XML은 `SmartPlaylistSource`가 읽는다(`DJCDomain/Playlist/SmartPlaylist.swift`). 순수 규칙 `SmartPlaylistEvaluator`가 컬렉션 곡에서 목록의 곡을 계산한다. 모르는 항목·연산자·단위가 있는 목록은 곡을 보이지 않는다.
-  - 설정 › 실험실의 `lab.smartPlaylists`를 켰을 때만 사이드바 트리에 계산한 곡을 채운다(`LibraryStore+SmartPlaylists`). 이 설정의 기본값은 끔이다.
+  - 설정 › 실험실의 `lab.smartPlaylists`를 켰을 때만 사이드바 트리에 계산한 곡을 채운다(`PlaylistEditStore+Smart`). 이 설정의 기본값은 끔이다.
   - 쓰기·USB 내보내기·XML 경로는 `PlaylistLayout`의 `isSmart` 거름을 그대로 쓴다.
   - 규칙 근거와 확인하지 않은 것은 `docs/rekordbox-internals.md`에 있다.
 

@@ -33,9 +33,9 @@ struct MusicLibraryStoreObservationTests {
     private var library: SyncedITunesLibrary { SyncedITunesLibrary(snapshot: snapshot, tracks: []) }
 
     @Test(.tags(.perfContract)) func 사이드바_본문은_Music_목록과_동기화_창을_읽지_않는다() {
-        #expect(!reads({ Sidebar(store: $0) }) { $0.music.library = library })
-        #expect(!reads({ Sidebar(store: $0) }) { $0.music.snapshot = snapshot })
-        #expect(!reads({ Sidebar(store: $0) }) { $0.music.presentSyncWindow() })
+        #expect(!reads({ Sidebar(store: $0, playlistSidebar: PlaylistSidebarModel(playlists: $0.playlists)) }) { $0.music.library = library })
+        #expect(!reads({ Sidebar(store: $0, playlistSidebar: PlaylistSidebarModel(playlists: $0.playlists)) }) { $0.music.snapshot = snapshot })
+        #expect(!reads({ Sidebar(store: $0, playlistSidebar: PlaylistSidebarModel(playlists: $0.playlists)) }) { $0.music.presentSyncWindow() })
     }
 
     @Test(.tags(.perfContract)) func iTunes_절은_Music_목록이_바뀌면_다시_계산한다() {

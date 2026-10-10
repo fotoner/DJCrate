@@ -117,7 +117,7 @@ enum UsbDragCapture {
         var dropped = try await drop(dragged, at: targets[local]!, in: window)
         try await settle()
         await dragged.end()
-        log("1 로컬 곡 → 로컬 목록: 놓기 \(dropped) · '빈 목록' 곡 \(store.playlistItem("2403")?.entries.count ?? -1)개")
+        log("1 로컬 곡 → 로컬 목록: 놓기 \(dropped) · '빈 목록' 곡 \(store.playlists.playlistItem("2403")?.entries.count ?? -1)개")
 
         // 2. 로컬 곡 두 개 → USB '목록 나'
         table.selectRowIndexes([6, 7], byExtendingSelection: false)
@@ -170,11 +170,11 @@ enum UsbDragCapture {
         log("5 USB 곡 → 다른 USB 목록: 끌기 \(dragged.summary) · 놓기 \(dropped) · USB 초안 \(before)→\(usbDrafts().count)건 \(lastEdit(usbDrafts(), library))")
 
         // 6·7. 받지 않을 곳: 로컬 목록, 같은 USB 컬렉션
-        let localBefore = store.playlistItem("2403")?.entries.count ?? -1
+        let localBefore = store.playlists.playlistItem("2403")?.entries.count ?? -1
         before = usbDrafts().count
         dropped = try await drop(dragged, at: targets[local]!, in: window)
         try await settle()
-        log("6 USB 곡 → 로컬 목록: 놓기 \(dropped) · '빈 목록' 곡 \(localBefore)→\(store.playlistItem("2403")?.entries.count ?? -1)개 · USB 초안 \(usbDrafts().count)건")
+        log("6 USB 곡 → 로컬 목록: 놓기 \(dropped) · '빈 목록' 곡 \(localBefore)→\(store.playlists.playlistItem("2403")?.entries.count ?? -1)개 · USB 초안 \(usbDrafts().count)건")
         dropped = try await drop(dragged, at: targets[usbCollection]!, in: window)
         try await settle()
         await dragged.end()

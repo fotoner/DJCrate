@@ -9,6 +9,8 @@ import SwiftUI
 /// 본문이 새로 계산된다.
 struct Sidebar: View {
     @Bindable var store: LibraryStore
+    /// 재생 목록 칸의 폴더 펼침·이름 바꾸기(조립 지점이 한 번 만든 화면 모델). 본문은 읽지 않고 재생 목록 구역·메뉴에 넘긴다
+    let playlistSidebar: PlaylistSidebarModel
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
@@ -36,7 +38,7 @@ struct Sidebar: View {
                 Text(verbatim: "DJCrate").sidebarSectionHeader()
             }
             if case .loaded = store.phase {
-                PlaylistSection(store: store)
+                PlaylistSection(store: store, sidebar: playlistSidebar)
                 ITunesPlaylistSection(store: store)
             }
             SidebarHistorySection(history: store.history)
@@ -45,7 +47,7 @@ struct Sidebar: View {
             }
             SidebarStatusSections(store: store)
         }
-        .modifier(PlaylistSidebarMenu(store: store))
+        .modifier(PlaylistSidebarMenu(store: store, sidebar: playlistSidebar))
     }
 }
 
@@ -335,7 +337,7 @@ struct ListActionBar: View {
         case .pending:
             bar {
                 let targets = store.selection.isEmpty ? store.displayRows : store.selectedRows
-                let playlistEdits = store.playlistDraft.steps.count
+                let playlistEdits = store.playlists.playlistDraft.steps.count
                 let histories = store.history.pendingHistories.count
                 Button { reflection?.startWrite(rows: targets) } label: {
                     Label(Self.pendingWriteTitle(tracks: targets.count, playlistEdits: playlistEdits, histories: histories),
@@ -399,11 +401,11 @@ struct ListActionBar: View {
             }
         case let .playlist(id):
             // 실험실에서 보는 인텔리전트 목록: 읽기 전용이고 곡은 DJCrate가 조건으로 계산한 것(#68)
-            if let result = store.selectedSmartPlaylistResult { smartPlaylistNote(result) }
+            if let result = store.playlists.selectedSmartPlaylistResult { smartPlaylistNote(result) }
             // 숨긴 스트리밍 곡 때문에 끌어 옮길 수 없는 목록은 이유를 알린다(`canReorderDisplayedTracks`).
             // 줄이 하나도 안 남았으면 목록 가운데 안내(`EmptyLibraryOverlay`)가 같은 말을 한다.
-            let hiddenNote = store.streamingHiddenInView > 0 && store.editablePlaylistID == id && !store.displayRows.isEmpty
-            if let node = store.playlistIndex[id], node.isDraft || node.blockedReason != nil {
+            let hiddenNote = store.streamingHiddenInView > 0 && store.playlists.editablePlaylistID == id && !store.displayRows.isEmpty
+            if let node = store.playlists.playlistIndex[id], node.isDraft || node.blockedReason != nil {
                 bar {
                     if let reason = node.blockedReason {
                         Label(.ui("이 목록의 초안 일부를 쓸 수 없습니다: \(reason)"), systemImage: WarningMark.symbol)
@@ -418,7 +420,7 @@ struct ListActionBar: View {
                             .fixedSize()
                             .disabled(store.isWritingRekordbox || store.isRecoveringDraft || store.writeTask != nil)
                     } else {
-                        Button(.ui("이 목록의 초안 버리기")) { store.discardPlaylistDraft(id) }
+                        Button(.ui("이 목록의 초안 버리기")) { store.playlists.discardPlaylistDraft(id) }
                             .disabled(store.isWritingRekordbox)
                     }
                     if hiddenNote { hiddenStreamingNote }

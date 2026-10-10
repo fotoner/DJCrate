@@ -16,9 +16,9 @@ extension LibraryStore {
     /// 세션이 읽는 지금 상태(메모리 초안·표시·추가 목록)
     func reflectionState() -> ReflectionLibraryState {
         ReflectionLibraryState(rows: rowsByUUID, cueDraftUUIDs: cueDraftUUIDs, gridDraftUUIDs: gridDraftUUIDs, gainDraftUUIDs: gainDraftUUIDs,
-                               tagDrafts: tagDrafts, artworkDrafts: artworkDrafts, mergeDrafts: mergeDrafts, playlistDraft: playlistDraft,
-                               playlistDraftUnsaved: playlistDraftUnsaved, rekordboxPlaylists: rekordboxPlaylists,
-                               playlistImports: playlistImports, playlistImportsLoadFailed: playlistImportsLoadFailed, unreadableDraftKinds: unreadableDraftKinds, failedTagSaves: failedTagSaves(),
+                               tagDrafts: tagDrafts, artworkDrafts: artworkDrafts, mergeDrafts: mergeDrafts, playlistDraft: playlists.playlistDraft,
+                               playlistDraftUnsaved: playlists.playlistDraftUnsaved, rekordboxPlaylists: playlists.rekordboxPlaylists,
+                               playlistImports: playlists.playlistImports, playlistImportsLoadFailed: playlists.playlistImportsLoadFailed, unreadableDraftKinds: unreadableDraftKinds, failedTagSaves: failedTagSaves(),
                                staged: staged, estimatingGrids: gridJob != nil, iTunesSelection: isITunesSelection,
                                deckStagedUUID: deckTrackID.flatMap { rowsByID[$0] }.flatMap { $0.isStaged ? $0.track.uuid : nil },
                                lastError: lastError, pendingHistories: history.pendingHistoryImports)
@@ -34,13 +34,13 @@ extension LibraryStore {
             }
         case let .tagDrafts(drafts): replaceTagDrafts(drafts)
         case let .mergeDrafts(drafts, failure, moved): applyMergeDraftsAfterWrite(drafts, failure: failure, moved: moved)
-        case let .playlistWritten(cleanup): applyPlaylistWrite(cleanup)
+        case let .playlistWritten(cleanup): playlists.applyPlaylistWrite(cleanup)
         case let .artworkCleared(uuids, failed): clearWrittenArtwork(uuids, failed: failed)
         case let .artworkRestored(drafts, touched): showRestoredArtwork(drafts, touched: touched)
         case let .unstaged(uuids): _ = unstage(uuids: uuids)
         case let .restaged(tracks): _ = restage(tracks)
         case let .deckTrackMoved(id): moveDeckTrack(to: id)
-        case let .playlistImportsReset(reset): applyPlaylistImportsReset(reset)
+        case let .playlistImportsReset(reset): playlists.applyPlaylistImportsReset(reset)
         case .unlinkedDraftsChanged: refreshUnlinkedDrafts()
         case let .libraryError(text): reportLibraryError(text)
         case let .showAdded(id):
@@ -64,7 +64,7 @@ extension LibraryStore {
     /// 쓰기·복원 뒤 조용히 다시 읽는다. 쓴 곡은 새 스냅샷을 읽은 뒤 덱에 알리고, 되살린 재생 목록 편집은 읽은 뒤 쌓는다(읽지 못하면 다음 읽기 뒤에).
     func reloadAfterWrite(written: Set<String>, playlistEdits: [PlaylistEdit]) async -> Bool {
         writtenAwaitingReload.formUnion(written)
-        playlistEditsAwaitingReload += playlistEdits
+        playlists.playlistEditsAwaitingReload += playlistEdits
         return await reloadAfterWrite()
     }
 

@@ -37,7 +37,11 @@ struct SidebarObservationTests {
     }
 
     private func sidebarReads(before: (LibraryStore) -> Void = { _ in }, _ change: (LibraryStore) -> Void) -> Bool {
-        reads({ Sidebar(store: $0) }, before: before, change: change)
+        reads({ Sidebar(store: $0, playlistSidebar: PlaylistSidebarModel(playlists: $0.playlists)) }, before: before, change: change)
+    }
+
+    private func section(_ store: LibraryStore) -> PlaylistSection {
+        PlaylistSection(store: store, sidebar: PlaylistSidebarModel(playlists: store.playlists))
     }
 
     // MARK: - 사이드바 본문
@@ -104,9 +108,32 @@ struct SidebarObservationTests {
     // MARK: - 재생 목록 구역
 
     @Test func 재생_목록_구역은_곡_수_배지와_선택을_읽지_않는다() {
-        #expect(!reads({ PlaylistSection(store: $0) }) { $0.playlistCounts = ["x": 1] })
-        #expect(!reads({ PlaylistSection(store: $0) }) { $0.selection = ["1"] })
-        #expect(!reads({ PlaylistSection(store: $0) }) { $0.rowsByID = ["y": row("y")] })
+        #expect(!reads(section) { $0.playlists.playlistCounts = ["x": 1] })
+        #expect(!reads(section) { $0.selection = ["1"] })
+        #expect(!reads(section) { $0.rowsByID = ["y": row("y")] })
+    }
+
+    @Test(.tags(.perfContract)) func 재생_목록_조각과_화면_모델의_값은_사이드바_본문이_읽지_않는다() {
+        // 재생 목록 상태는 핵심에서 재생 목록 조각(`PlaylistEditStore`)으로, 펼침·이름 바꾸기는 화면 모델로 옮겼다(#251).
+        // 재생 목록 구역·줄만 읽는다(`PlaylistEditStoreObservationTests`). 구역은 읽은 뒤에만 그리므로 읽은 상태에서 본다
+        let layout = PlaylistLayout([(PlaylistLayout.Item(id: "A", name: "합성 목록"), 1)])
+        let loaded: (LibraryStore) -> Void = { $0.phase = .loaded }
+        #expect(!sidebarReads(before: loaded) { $0.playlists.playlistMessage = AppMessage(text: "합성 안내") })
+        #expect(!sidebarReads(before: loaded) { $0.playlists.rekordboxPlaylists = layout })
+        #expect(!sidebarReads(before: loaded) { $0.playlists.recentPlaylistIDs = ["A"] })
+        #expect(!sidebarReads(before: loaded) { $0.playlists.playlistCounts = ["A": 1] })
+        #expect(!sidebarReads(before: loaded) {
+            $0.playlists.rekordboxPlaylists = layout
+            $0.playlists.refreshPlaylists()
+        })
+        let store = store()
+        store.phase = .loaded
+        let model = PlaylistSidebarModel(playlists: store.playlists)
+        let flag = Flag()
+        withObservationTracking { _ = Sidebar(store: store, playlistSidebar: model).body } onChange: { flag.fired = true }
+        model.setExpanded("A", true)
+        model.startRenaming("A")
+        #expect(!flag.fired)
     }
 
     // MARK: - 재생 기록 구역
@@ -123,7 +150,8 @@ struct SidebarObservationTests {
     /// `@AppStorage`를 든 뷰는 부모가 다시 계산될 때마다 값이 바뀐 것으로 보여 본문이 다시 계산된다(#141: 덱에 곡을 올리면 ContentView가
     /// 다시 계산돼 사이드바 List 전체를 다시 비교했다). 설정값은 줄·구역 뷰가 들고 있어야 한다.
     @Test func 사이드바_본문은_부모가_다시_계산돼도_새로_계산되지_않도록_AppStorage를_들지_않는다() {
-        let sidebar = Sidebar(store: store())
+        let store = store()
+        let sidebar = Sidebar(store: store, playlistSidebar: PlaylistSidebarModel(playlists: store.playlists))
         let held = Mirror(reflecting: sidebar).children.map { String(describing: type(of: $0.value)) }
         #expect(!held.contains { $0.hasPrefix("AppStorage") }, "사이드바가 든 값: \(held)")
     }

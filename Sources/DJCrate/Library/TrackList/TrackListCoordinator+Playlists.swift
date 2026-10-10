@@ -12,8 +12,8 @@ extension TrackListCoordinator {
         menu.addItem(.separator())
         let add = NSMenuItem(title: String(ui: "재생 목록에 넣기"), action: nil, keyEquivalent: "")
         let submenu = NSMenu()
-        let recent = store.recentPlaylists
-        for item in recent { submenu.addItem(playlistItem(item, path: store.playlistProjection.layout.ancestors(of: item.id).map(\.name))) }
+        let recent = store.playlists.recentPlaylists
+        for item in recent { submenu.addItem(playlistItem(item, path: store.playlists.playlistProjection.layout.ancestors(of: item.id).map(\.name))) }
         if !recent.isEmpty { submenu.addItem(.separator()) }
         fillPlaylistTree(submenu, parent: PlaylistLayout.root)
         if submenu.items.last?.isSeparatorItem == false { submenu.addItem(.separator()) }
@@ -25,7 +25,7 @@ extension TrackListCoordinator {
         submenu.addItem(create)
         add.submenu = submenu
         menu.addItem(add)
-        if let id = store.editablePlaylistID, let name = store.playlistItem(id)?.name {
+        if let id = store.playlists.editablePlaylistID, let name = store.playlists.playlistItem(id)?.name {
             let remove = NSMenuItem(title: String(ui: "‘\(name)’에서 빼기 (\(tracks.count)곡)"), action: #selector(removeFromPlaylist), keyEquivalent: "\u{8}")
             remove.keyEquivalentModifierMask = []
             remove.target = self
@@ -34,7 +34,7 @@ extension TrackListCoordinator {
     }
 
     func fillPlaylistTree(_ menu: NSMenu, parent: String) {
-        for item in store.playlistProjection.layout.children(of: parent) where !item.isSmart {
+        for item in store.playlists.playlistProjection.layout.children(of: parent) where !item.isSmart {
             if item.isFolder {
                 let folder = NSMenuItem(title: item.name, action: nil, keyEquivalent: "")
                 folder.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
@@ -64,19 +64,19 @@ extension TrackListCoordinator {
 
     @objc func addToPlaylist(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
-        store.addTracks(menuTargets(), toPlaylist: id)
+        store.playlists.addTracks(menuTargets(), toPlaylist: id)
     }
 
     @objc func removeFromPlaylist() {
-        guard let id = store.editablePlaylistID else { return }
-        store.removeTracks(menuTargets(), fromPlaylist: id)
+        guard let id = store.playlists.editablePlaylistID else { return }
+        store.playlists.removeTracks(menuTargets(), fromPlaylist: id)
     }
 
     @objc func pickPlaylist() {
-        store.openPlaylistPicker(tracks: menuTargets())
+        store.playlists.openPlaylistPicker(tracks: menuTargets())
     }
 
     @objc func createPlaylistFromTracks() {
-        store.createPlaylist(isFolder: false, tracks: menuTargets())
+        store.playlists.createPlaylist(isFolder: false, tracks: menuTargets())
     }
 }

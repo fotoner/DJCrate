@@ -8,12 +8,12 @@ extension LibraryStore {
     func xmlImportContext() -> ImportXML.Context {
         ImportXML.Context(
             existing: [.tag: Set(tagDrafts.keys)],
-            playlists: ImportXML.PlaylistTarget(current: { [weak self] in self?.playlistDraft ?? PlaylistDraft() },
+            playlists: ImportXML.PlaylistTarget(current: { [weak self] in self?.playlists.playlistDraft ?? PlaylistDraft() },
                                                 save: { [weak self] draft in
                                                     guard let self else { return }
-                                                    playlistDraft = draft
-                                                    savePlaylistDraft()
-                                                    refreshPlaylists()
+                                                    playlists.playlistDraft = draft
+                                                    playlists.savePlaylistDraft()
+                                                    playlists.refreshPlaylists()
                                                 }),
             deck: ImportXML.DeckGrid(state: { [weak self] in self?.deckGridDraftState?() },
                                      adopt: { [weak self] in self?.adoptImportedGridDraft?($0) ?? false }))

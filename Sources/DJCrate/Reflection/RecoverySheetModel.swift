@@ -121,8 +121,8 @@ final class RecoveryLine: Identifiable {
 }
 
 /// 막힌 초안 복구 시트의 모델(#232). 곡·종류별, 재생 목록별 줄을 한 시트에 모아 줄마다 "내 편집 유지·다시 적용 / 현재값 사용 / 나중에"를
-/// 고른 뒤 한 번에 저장한다. 비교·적용은 `LibraryStore`의 기존 규칙(`prepareDraftRecovery`·`applyDraftRecovery`·`preparePlaylistRecovery`·
-/// `applyPlaylistRecovery`)을 줄마다 그대로 부르므로, 같은 선택은 예전 연속 창 흐름과 같은 초안 상태를 만든다.
+/// 고른 뒤 한 번에 저장한다. 비교·적용은 `LibraryStore`의 기존 규칙(`prepareDraftRecovery`·`applyDraftRecovery`)과 재생 목록 조각의 규칙
+/// (`playlists.preparePlaylistRecovery`·`applyPlaylistRecovery`)을 줄마다 그대로 부르므로, 같은 선택은 예전 연속 창 흐름과 같은 초안 상태를 만든다.
 @MainActor @Observable
 final class RecoverySheetModel: Identifiable {
     struct Dependencies {
@@ -153,7 +153,7 @@ final class RecoverySheetModel: Identifiable {
         var seen = Set<String>()
         lines = requests.filter { seen.insert($0.id).inserted }.map(RecoveryLine.init)
         // 비교를 마치기 전에도 재생 목록 줄에 이름이 보이게(비교 뒤에는 rekordbox의 현재 이름으로 바뀐다)
-        for line in lines { if case let .playlist(id) = line.request { line.title = host.playlistItem(id)?.name ?? "" } }
+        for line in lines { if case let .playlist(id) = line.request { line.title = host.playlists.playlistItem(id)?.name ?? "" } }
     }
 
     var canSave: Bool {
@@ -201,7 +201,7 @@ final class RecoverySheetModel: Identifiable {
 
     private func prefetchPlaylists() async -> Result<PlaylistRecoveryCurrent, any Error>? {
         guard lines.contains(where: \.isPlaylist) else { return nil }
-        do { return .success(try await host.readPlaylistRecoveryPrefetch()) } catch { return .failure(error) }
+        do { return .success(try await host.playlists.readPlaylistRecoveryPrefetch()) } catch { return .failure(error) }
     }
 
     private func loadDraft(_ line: RecoveryLine, row: TrackRow, kind: DraftRecoveryKind,
@@ -239,7 +239,7 @@ final class RecoverySheetModel: Identifiable {
 
     private func loadPlaylist(_ line: RecoveryLine, id: String, current: Result<PlaylistRecoveryCurrent, any Error>?) async {
         do {
-            let review = try await host.preparePlaylistRecovery(playlist: id, prefetched: try current?.get())
+            let review = try await host.playlists.preparePlaylistRecovery(playlist: id, prefetched: try current?.get())
             line.title = RecoverySummary.playlistTitle(review)
             line.playlistReview = review
             line.canKeep = !review.recovery.reapplied.isEmpty
@@ -368,7 +368,7 @@ final class RecoverySheetModel: Identifiable {
         }
         var playlists: Result<PlaylistRecoveryCurrent, any Error>?
         if chosen.contains(where: \.isPlaylist) {
-            do { playlists = .success(try await host.readPlaylistRecoveryPrefetch()) } catch { playlists = .failure(error) }
+            do { playlists = .success(try await host.playlists.readPlaylistRecoveryPrefetch()) } catch { playlists = .failure(error) }
         }
         return (drafts, playlists)
     }
@@ -384,19 +384,19 @@ final class RecoverySheetModel: Identifiable {
     private func savePlaylist(_ line: RecoveryLine, id: String, current: Result<PlaylistRecoveryCurrent, any Error>?) async throws {
         guard var review = line.playlistReview else { throw DJCError.writeRefused(String(ui: "복구할 초안을 확인하지 못했으니 편집을 저장하고 곡을 다시 선택하세요.")) }
         let latest = try current?.get()
-        if host.playlistDraft != review.original {
-            guard host.blockedPlaylistRecoveryIDs.contains(id) else {
+        if host.playlists.playlistDraft != review.original {
+            guard host.playlists.blockedPlaylistRecoveryIDs.contains(id) else {
                 // 이미 해결됐으니 줄은 저장한 것으로 보고 안내만 남긴다.
                 line.resultNote = String(ui: "앞에서 저장하면서 이미 해결됐습니다.")
                 return
             }
-            let fresh = try await host.preparePlaylistRecovery(playlist: id, prefetched: latest)
+            let fresh = try await host.playlists.preparePlaylistRecovery(playlist: id, prefetched: latest)
             guard Self.sameComparison(fresh, review, shownDetails: line.details) else {
                 throw DJCError.writeRefused(String(ui: "앞에서 저장하면서 이 목록의 비교 내용이 바뀌어 초안을 그대로 남겼으니 다시 열어 확인하세요."))
             }
             review = fresh
         }
-        try await host.applyPlaylistRecovery(review, reapply: line.choice == .keep && line.canKeep, latest: latest)
+        try await host.playlists.applyPlaylistRecovery(review, reapply: line.choice == .keep && line.canKeep, latest: latest)
     }
 
     /// 고를 때 본 비교와 같은지. 편집 번호는 앞 목록을 버리면 당겨지므로 번호가 아니라 편집 내용으로 견준다.

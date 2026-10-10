@@ -106,10 +106,10 @@ final class KeyRouter {
             // 덱을 보고 있을 때 처리하지 않은 키는 받을 곳이 없어 경고음(뚱)이 난다. 삼킨다.
             return nil
         }
-        if focus == .trackList, let store, store.editablePlaylistID != nil,
+        if focus == .trackList, let store, store.playlists.editablePlaylistID != nil,
            [.delete, .deleteForward, .backspace].contains(event.specialKey) {
             // 재생 목록을 볼 때 ⌫는 이 목록에서만 뺀다(초안). 컬렉션에서 빼기는 메뉴의 확인 창을 거친다.
-            store.removeSelectedFromPlaylist()
+            store.playlists.removeSelectedFromPlaylist()
             return nil
         }
         if !(responder is NSOutlineView) {

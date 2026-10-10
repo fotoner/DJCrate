@@ -18,7 +18,8 @@ import Foundation
 /// 결과는 `$DJC_HOME/logs/audio.log`(없으면 `~/Library/Logs/DJCrate/audio.log`)와 표준 오류에 남는다.
 @MainActor
 enum DevSelfTests {
-    static func runIfRequested(store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator) {
+    static func runIfRequested(store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
+                               playlistSidebar: PlaylistSidebarModel) {
         runITunesSelfTestIfRequested(store: store, deck: deck)
         runSearchLayoutIfRequested()
         runReflectionLayoutIfRequested(store: store)
@@ -31,12 +32,12 @@ enum DevSelfTests {
         runXMLExportCaptureIfRequested(store: store)
         runXMLImportCaptureIfRequested(store: store)
         runPlaylistRecoveryIfRequested(store: store, reflection: reflection)
-        runWriteSelfTestIfRequested(store: store, deck: deck, reflection: reflection)
+        runWriteSelfTestIfRequested(store: store, deck: deck, reflection: reflection, playlistSidebar: playlistSidebar)
         HistorySelfTest.runIfRequested(store: store, reflection: reflection)
         runTrackSelfTestIfRequested(store: store)
         runLoopSelfTestIfRequested(deck: deck)
         runScrollPerfIfRequested(deck: deck)
-        UIPerfSelfTest.runIfRequested(store: store, deck: deck, windows: windows, reflection: reflection)
+        UIPerfSelfTest.runIfRequested(store: store, deck: deck, windows: windows, reflection: reflection, playlistSidebar: playlistSidebar)
         ResizePerfSelfTest.runIfRequested(store: store, deck: deck)
         runLoopAudioSelfTestIfRequested()
         runHotCueClickSelfTestIfRequested(store: store, deck: deck)
@@ -90,7 +91,8 @@ enum DevSelfTests {
     /// 개발용: 사본 rekordbox 폴더(`DJC_REKORDBOX_DIR`)와 사본 초안(`DJC_HOME`)으로
     /// 미리 보기 → 쓰기 → 다시 읽기 → 되돌리기 → 초안 복구를 앱 흐름 그대로 해 본다(`--write-selftest`).
     /// 재생 목록 초안도 만들어(맨 위에 폴더 → 그 안에 목록 + 곡, 있던 목록에 곡 하나) 함께 쓰고 되돌린다.
-    static func runWriteSelfTestIfRequested(store: LibraryStore, deck: DeckModel, reflection: ReflectionCoordinator) {
+    static func runWriteSelfTestIfRequested(store: LibraryStore, deck: DeckModel, reflection: ReflectionCoordinator,
+                                            playlistSidebar: PlaylistSidebarModel) {
         let session = reflection.session
         guard ProcessInfo.processInfo.arguments.contains("--write-selftest") else { return }
         func log(_ text: String) { FileHandle.standardError.write(Data("[쓰기 시험] \(text)\n".utf8)) }
@@ -139,16 +141,16 @@ enum DevSelfTests {
             log("반영 대기 \(store.pendingLibraryCount)곡 · 대상 \(targets.count)곡")
             // 재생 목록 초안: 새 폴더 안에 새 목록(곡 셋), 있던 목록 하나에 곡 하나
             let playable = store.rows.filter { !$0.isStaged && !$0.track.isStreaming }
-            let folder = store.createPlaylist(isFolder: true, in: PlaylistLayout.root, name: "DJC 시험 폴더")
-            let list = folder.flatMap { store.createPlaylist(isFolder: false, in: $0, name: "DJC 시험 목록", tracks: Array(playable.prefix(3))) }
+            let folder = store.playlists.createPlaylist(isFolder: true, in: PlaylistLayout.root, name: "DJC 시험 폴더")
+            let list = folder.flatMap { store.playlists.createPlaylist(isFolder: false, in: $0, name: "DJC 시험 목록", tracks: Array(playable.prefix(3))) }
             var extended: (id: String, before: [String], added: String)?
-            if let existing = store.rekordboxPlaylists.outline.first(where: { $0.holdsTracks }),
+            if let existing = store.playlists.rekordboxPlaylists.outline.first(where: { $0.holdsTracks }),
                let track = playable.first(where: { !existing.trackIDs.contains($0.track.id) }) {
-                store.addTracks([track], toPlaylist: existing.id)
+                store.playlists.addTracks([track], toPlaylist: existing.id)
                 extended = (existing.id, existing.trackIDs, track.track.id)
             }
-            store.renamingPlaylistID = nil
-            let playlistEdits = store.playlistDraft.edits.count
+            playlistSidebar.cancelRenaming()
+            let playlistEdits = store.playlists.playlistDraft.edits.count
             log("재생 목록 초안: 편집 \(playlistEdits)건 · 새 목록 \(list ?? "-") · 있던 목록에 넣기 \(extended == nil ? "없음" : "있음")")
             // 덱에 대상 곡 하나를 올려 둔다(쓴 뒤 덱이 새 큐로 다시 읽는지 본다).
             if let first = targets.first { store.selection = [first.id]; store.loadToDeck(first) }
@@ -189,12 +191,12 @@ enum DevSelfTests {
                                             playlists: preview.report.playlistWritten.isEmpty ? nil : preview.batch.playlists)
                 let report = try await session.writeDrafts(batch, to: session.target)
                 // 재생 목록: 다시 읽은 rekordbox에 새 폴더·목록(곡 셋)과 넣은 곡이 있고 초안이 비었는지
-                let rekordbox = store.rekordboxPlaylists
+                let rekordbox = store.playlists.rekordboxPlaylists
                 let newFolder = rekordbox.outline.first { $0.name == "DJC 시험 폴더" && $0.isFolder && $0.parentID == PlaylistLayout.root }
                 let newList = newFolder.flatMap { folder in rekordbox.children(of: folder.id).first { $0.name == "DJC 시험 목록" } }
                 let expectedTracks = Array(playable.prefix(3)).map(\.track.id)
                 let extendedOK = extended.map { rekordbox.item($0.id)?.trackIDs == $0.before + [$0.added] }
-                log("재생 목록 쓰기: \(report.playlistWritten.count)/\(playlistEdits)건 · 새 폴더 \(newFolder == nil ? "없음" : "있음") · 새 목록 곡이 같음 \(newList?.trackIDs == expectedTracks) · 있던 목록 곡 \(extendedOK.map { "\($0)" } ?? "-") · 남은 초안 \(store.playlistDraft.edits.count)건")
+                log("재생 목록 쓰기: \(report.playlistWritten.count)/\(playlistEdits)건 · 새 폴더 \(newFolder == nil ? "없음" : "있음") · 새 목록 곡이 같음 \(newList?.trackIDs == expectedTracks) · 있던 목록 곡 \(extendedOK.map { "\($0)" } ?? "-") · 남은 초안 \(store.playlists.playlistDraft.edits.count)건")
                 for outcome in report.gainWritten {
                     let now = store.rowsByUUID[outcome.trackUUID]?.autoGain?.gainDB
                     log(String(format: "게인 쓰기: %@ → 다시 읽은 rekordbox 오토게인 %+.2f dB(초안 %+.2f)", outcome.title, now ?? .nan, Double(outcome.added) / 100))
@@ -282,10 +284,10 @@ enum DevSelfTests {
                     guard ratedWritten, ratedFields == ["rating", "color"], restored, redrafted else { log("평점·곡 색 시험 실패"); exit(1) }
                     log("평점·곡 색 시험 통과")
                 }
-                let rolledBack = !store.rekordboxPlaylists.outline.contains { $0.name == "DJC 시험 폴더" }
-                let extendedBack = extended.map { store.rekordboxPlaylists.item($0.id)?.trackIDs == $0.before }
-                let redrafted = store.playlistProjection.layout.outline.contains { $0.name == "DJC 시험 목록" && $0.isNew }
-                log("재생 목록 되돌림: rekordbox에서 새 폴더 사라짐 \(rolledBack) · 있던 목록 곡 원래대로 \(extendedBack.map { "\($0)" } ?? "-") · 초안 복구 \(store.playlistDraft.edits.count)/\(report.playlistWritten.count)건 · 초안에 새 목록 \(redrafted)")
+                let rolledBack = !store.playlists.rekordboxPlaylists.outline.contains { $0.name == "DJC 시험 폴더" }
+                let extendedBack = extended.map { store.playlists.rekordboxPlaylists.item($0.id)?.trackIDs == $0.before }
+                let redrafted = store.playlists.playlistProjection.layout.outline.contains { $0.name == "DJC 시험 목록" && $0.isNew }
+                log("재생 목록 되돌림: rekordbox에서 새 폴더 사라짐 \(rolledBack) · 있던 목록 곡 원래대로 \(extendedBack.map { "\($0)" } ?? "-") · 초안 복구 \(store.playlists.playlistDraft.edits.count)/\(report.playlistWritten.count)건 · 초안에 새 목록 \(redrafted)")
                 let addedLeft = artworkAdd.map { artworkFiles($0).filter { FileManager.default.fileExists(atPath: $0.path) }.count } ?? 0
                 let deletedBack = artworkDelete.map { zip(artworkFiles($0), deletedOriginals).filter { (try? Data(contentsOf: $0.0)) == $0.1 }.count } ?? 0
                 let artworkRedrafted = [artworkAdd, artworkDelete].compactMap { $0 }.filter { store.artworkDrafts[$0.track.uuid] != nil }.count

@@ -325,7 +325,7 @@ struct RecoverySheetTests {
         let saved = await model.save()
         #expect(p2.phase == .saved, "둘째 저장에서 P2: \(p2.phase)")
         #expect(saved && !model.isClosed, "고른 줄은 모두 저장했고, 앞서 실패한 A 태그가 남아 시트는 열려 있다")
-        #expect(scenario.store.blockedPlaylistEditCount == 0)
+        #expect(scenario.store.playlists.blockedPlaylistEditCount == 0)
     }
 
     @Test func 고르는_사이_비교_내용이_바뀐_재생_목록_줄은_적용하지_않고_초안을_남긴다() async throws {
@@ -334,9 +334,9 @@ struct RecoverySheetTests {
         let model = model(scenario, [first, second])
         await model.load()
         // 고르는 사이 P2의 편집이 하나 늘었다. P1은 그대로라 다시 비교해 적용하고, P2는 본 것과 다르니 적용하지 않는다.
-        var changed = scenario.store.playlistDraft
-        try changed.append(.addTracks(playlist: .id("P2"), contentIDs: ["91"]), rekordbox: scenario.store.rekordboxPlaylists)
-        scenario.store.playlistDraft = changed
+        var changed = scenario.store.playlists.playlistDraft
+        try changed.append(.addTracks(playlist: .id("P2"), contentIDs: ["91"]), rekordbox: scenario.store.playlists.rekordboxPlaylists)
+        scenario.store.playlists.playlistDraft = changed
         let saved = await model.save()
         let p1 = try line(model, scenario, first), p2 = try line(model, scenario, second)
         #expect(!saved && !model.isClosed)
@@ -345,7 +345,7 @@ struct RecoverySheetTests {
             Issue.record("본 것과 달라진 줄이 적용됨"); return
         }
         #expect(reason.contains("다시 열어 확인하세요"))
-        let kept = scenario.store.playlistDraft.steps.filter { $0.edit.playlist.layoutID == "P2" }
+        let kept = scenario.store.playlists.playlistDraft.steps.filter { $0.edit.playlist.layoutID == "P2" }
         #expect(kept.count == 2, "P2의 막힌 편집이 초안에 그대로 남아야 한다")
     }
 
@@ -546,16 +546,16 @@ enum LegacyRecoveryFlow {
     static func recoverPlaylists(_ scenario: RecoveryScenario, choices: [(String, RecoveryChoice)]) async throws {
         let store = scenario.store
         for (id, choice) in choices {
-            if !store.blockedPlaylistRecoveryIDs.contains(id) { continue }
+            if !store.playlists.blockedPlaylistRecoveryIDs.contains(id) { continue }
             let prompter = ScriptedPrompter()
             prompter.choices = [choice == .keep ? .confirm : choice == .useCurrent ? .alternate : .cancel]
-            let review = try await store.preparePlaylistRecovery(playlist: id)
+            let review = try await store.playlists.preparePlaylistRecovery(playlist: id)
             let canReapply = !review.recovery.reapplied.isEmpty
             switch prompter.choose(ReflectionPrompt(title: "비교", text: "", confirm: canReapply ? "다시 적용" : "초안 버리기",
                                                    destructive: !canReapply, alternate: canReapply ? "초안 버리기" : nil, cancel: "선택하지 않고 남기기")) {
             case .cancel: continue
-            case .confirm: try await store.applyPlaylistRecovery(review, reapply: canReapply)
-            case .alternate: try await store.applyPlaylistRecovery(review, reapply: false)
+            case .confirm: try await store.playlists.applyPlaylistRecovery(review, reapply: canReapply)
+            case .alternate: try await store.playlists.applyPlaylistRecovery(review, reapply: false)
             }
         }
     }

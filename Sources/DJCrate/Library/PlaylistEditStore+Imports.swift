@@ -4,7 +4,7 @@ import Foundation
 
 /// 재생 목록 연결 기록(컬렉션에 들어간 뒤 만들 목록 연결). 읽기·저장·연결 맞추기의 순서(초안 → 연결 기록)는 유스케이스 `EditPlaylists`가 정하고,
 /// 여기서는 돌려받은 초안·연결 기록을 메모리와 안내에 맞춘다.
-extension LibraryStore {
+extension PlaylistEditStore {
     /// 곡 넣기를 되돌린 뒤: 반영 세션이 그 곡의 연결 기록과 초안 편집을 잊어 저장한 결과를 맞춘다
     func applyPlaylistImportsReset(_ reset: EditPlaylists.ImportsReset) {
         if let error = reset.draftError {
@@ -20,7 +20,7 @@ extension LibraryStore {
     }
 
     func loadPlaylistImports() {
-        do { playlistImports = try useCases.playlists.loadImports() }
+        do { playlistImports = try library.useCases.playlists.loadImports() }
         catch {
             playlistImportsLoadFailed = true
             playlistMessage = AppMessage(kind: .warning, text: String(ui: "재생 목록 연결을 읽지 못했습니다. DJCrate 데이터 폴더의 playlist-imports.json을 확인한 뒤 앱을 다시 여세요."))
@@ -30,7 +30,7 @@ extension LibraryStore {
     /// 연결 기록을 저장한다(바뀌었을 때만, 읽지 못했으면 저장하지 않는다). 저장했거나 바뀐 것이 없으면 true
     @discardableResult
     func savePlaylistImports(_ imports: PlaylistImports) -> Bool {
-        applyImportsChange(useCases.playlists.saveImports(imports, over: playlistImports, loadFailed: playlistImportsLoadFailed))
+        applyImportsChange(library.useCases.playlists.saveImports(imports, over: playlistImports, loadFailed: playlistImportsLoadFailed))
     }
 
     /// 연결 기록 저장 결과를 메모리와 안내에 맞춘다. 디스크가 그 기록과 같으면 true
@@ -50,9 +50,9 @@ extension LibraryStore {
     /// 초안 저장에 실패하면 연결은 남기며, 연결 저장만 실패하면 다음 읽기에서 중복 없이 다시 확인한다.
     func resolvePlaylistImports(contentIDsByPath: [String: String]? = nil) {
         guard !playlistImportsLoadFailed, playlistImports.pendingCount > 0 else { return }
-        let ids = contentIDsByPath ?? Dictionary(rows.map { (PlaylistImports.pathKey($0.track.folderPath), $0.track.id) },
+        let ids = contentIDsByPath ?? Dictionary(library.rows.map { (PlaylistImports.pathKey($0.track.folderPath), $0.track.id) },
                                                  uniquingKeysWith: { first, _ in first })
-        guard let resolution = useCases.playlists.resolveImports(playlistImports, draft: playlistDraft, rekordbox: rekordboxPlaylists,
+        guard let resolution = library.useCases.playlists.resolveImports(playlistImports, draft: playlistDraft, rekordbox: rekordboxPlaylists,
                                                                  contentIDsByPath: ids, loadFailed: playlistImportsLoadFailed) else { return }
         if let error = resolution.draftError {
             playlistMessage = AppMessage(kind: .warning,

@@ -112,16 +112,17 @@ extension LibraryStore {
 extension LibraryStore {
     /// 시험: 반영 세션이 쓴 뒤 하는 재생 목록 정리(쓴 편집을 뺀 초안·새 목록 ID를 이은 연결 기록 저장, `EditPlaylists.finishWrite`)와 화면 맞추기
     func finishPlaylistWrite(_ written: PlaylistDraft, outcomes: [PlaylistOutcome]) {
-        applyReflection(.playlistWritten(useCases.playlists.finishWrite(written, outcomes: outcomes, current: playlistDraft, imports: playlistImports,
-                                                                         importsLoadFailed: playlistImportsLoadFailed)))
+        applyReflection(.playlistWritten(useCases.playlists.finishWrite(written, outcomes: outcomes, current: playlists.playlistDraft,
+                                                                         imports: playlists.playlistImports,
+                                                                         importsLoadFailed: playlists.playlistImportsLoadFailed)))
     }
 
     /// 시험: 곡 넣기를 되돌린 뒤 반영 세션이 하는 연결 기록·초안 편집 잊기(`EditPlaylists.resetImports`)와 화면 맞추기
     func resetPlaylistImports(contentIDs: Set<String>) {
         guard !contentIDs.isEmpty else { return }
-        applyReflection(.playlistImportsReset(useCases.playlists.resetImports(contentIDs: contentIDs, draft: playlistDraft,
-                                                                               rekordbox: rekordboxPlaylists, imports: playlistImports,
-                                                                               importsLoadFailed: playlistImportsLoadFailed)))
+        applyReflection(.playlistImportsReset(useCases.playlists.resetImports(contentIDs: contentIDs, draft: playlists.playlistDraft,
+                                                                               rekordbox: playlists.rekordboxPlaylists, imports: playlists.playlistImports,
+                                                                               importsLoadFailed: playlists.playlistImportsLoadFailed)))
     }
 
     /// 시험: 쓴 뒤·복원 뒤 반영 세션이 하는 태그 초안 저장(`ReflectionSession.replaceTagDrafts`, 넘길 초안이 있을 때만)과 화면 맞추기

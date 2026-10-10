@@ -23,7 +23,7 @@ extension DevSelfTests {
                     try await Task.sleep(for: .milliseconds(100))
                 }
                 guard case .loaded = store.phase, store.rows.allSatisfy({ $0.title.hasPrefix("합성 곡 ") }),
-                      store.playlistDraft.steps.count == 2, store.blockedPlaylistEditCount == 2,
+                      store.playlists.playlistDraft.steps.count == 2, store.playlists.blockedPlaylistEditCount == 2,
                       let window = NSApp.windows.first(where: { $0.canBecomeMain }) else {
                     throw DJCError.writeRefused("합성 목록의 막힌 편집을 확인하지 못했습니다")
                 }
@@ -46,12 +46,12 @@ extension DevSelfTests {
                 sheet.choose(.keep, for: line)
                 guard await sheet.save() else { throw DJCError.writeRefused("비교 뒤 초안을 저장하지 못했습니다") }
                 let prompter = PlaylistCapturePrompter(directory: directory)
-                guard store.blockedPlaylistEditCount == 0, store.playlistItem("179")?.name == "합성 내 목록",
-                      store.playlistItem("179")?.trackIDs == ["1", "2", "3"] else {
+                guard store.playlists.blockedPlaylistEditCount == 0, store.playlists.playlistItem("179")?.name == "합성 내 목록",
+                      store.playlists.playlistItem("179")?.trackIDs == ["1", "2", "3"] else {
                     throw DJCError.writeRefused("비교 뒤 초안을 다시 적용하지 못했습니다")
                 }
                 let saved = PlaylistDraftStore.load()
-                guard saved == store.playlistDraft else { throw DJCError.writeRefused("다시 적용한 초안을 저장하지 못했습니다") }
+                guard saved == store.playlists.playlistDraft else { throw DJCError.writeRefused("다시 적용한 초안을 저장하지 못했습니다") }
                 try await Task.sleep(for: .milliseconds(700))
                 try capturePlaylistWindow(window, at: directory.appending(path: "after-reapplied.jpg"))
                 store.setWriteLock(true)

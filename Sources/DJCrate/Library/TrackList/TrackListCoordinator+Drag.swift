@@ -45,7 +45,7 @@ extension TrackListCoordinator {
     /// 끌기 강조 모양. 간격 표시는 끄는 동안 끄는 줄을 숨긴다. 숨긴 채 덱에 곡이 올라가 목록 높이가 바뀌면 표 높이가 틀어지고(#143),
     /// 끌 항목이 없어 끌기가 시작되지 않으면 숨긴 줄이 돌아오지 않아 고른 줄이 사라졌다(#240). 목록 안에 놓아 순서를 바꿀 수 있을 때만 쓴다
     var dragFeedbackStyle: NSTableView.DraggingDestinationFeedbackStyle {
-        store.canReorderDisplayedTracks || store.usbReorderPlaylist != nil ? .gap : .regular
+        store.playlists.canReorderDisplayedTracks || store.usbReorderPlaylist != nil ? .gap : .regular
     }
 
     /// 끄는 줄을 숨긴 채 목록 높이가 바뀌면 AppKit이 표 높이를 줄 끝보다 짧게 잡고, 끌기가 끝나 줄을 다시 보여도 다시 재지 않는다.
@@ -63,7 +63,7 @@ extension TrackListCoordinator {
         if store.usbReorderPlaylist != nil {
             guard !usbEntries(info).isEmpty else { return [] }
         } else {
-            guard store.canReorderDisplayedTracks else { return [] }
+            guard store.playlists.canReorderDisplayedTracks else { return [] }
         }
         if dropOperation == .on { tableView.setDropRow(row, dropOperation: .above) }
         return .move
@@ -87,13 +87,13 @@ extension TrackListCoordinator {
             Task { await actions.moveEntries(dragged, before: before, volumeKey: target.volumeKey, playlist: target.id) }
             return true
         }
-        guard let id = store.editablePlaylistID, store.canReorderDisplayedTracks else { return false }
+        guard let id = store.playlists.editablePlaylistID, store.playlists.canReorderDisplayedTracks else { return false }
         let ids = (info.draggingPasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: PlaylistDragType.pasteboardTracks) }
         guard !ids.isEmpty else { return false }
         let moving = Set(ids)
         // 놓은 자리 아래에서 옮기지 않는 첫 곡 앞으로(없으면 맨 끝)
         let before = rows[min(row, rows.count)...].first { !moving.contains($0.track.id) }?.track.id
-        store.moveTracks(ids, inPlaylist: id, before: before)
+        store.playlists.moveTracks(ids, inPlaylist: id, before: before)
         return true
     }
 }

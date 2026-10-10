@@ -3,9 +3,10 @@ import Foundation
 import Observation
 
 /// '재생 목록에 넣기…' 시트의 화면 모델(#249). 연 때 고른 곡과 찾는 말·고른 줄을 들고, 고른 목록에 곡을 넣는다.
-/// 고를 목록 규칙(찾기, 최근 목록 먼저)은 DJCDomain `PlaylistChoices`가 한다.
+/// 고를 목록 규칙(찾기, 최근 목록 먼저)은 DJCDomain `PlaylistChoices`가 한다. 재생 목록 조각이 열 때 한 번 만들고(`openPlaylistPicker`),
+/// 주 창이 `.sheet(item:)`로 띄운다.
 @MainActor @Observable
-final class PlaylistPickerModel {
+final class PlaylistPickerModel: Identifiable {
     var query = ""
     var selection: String?
     @ObservationIgnored let tracks: [TrackRow]
@@ -20,14 +21,14 @@ final class PlaylistPickerModel {
         addTracks = add
     }
 
-    /// 넣는 길은 아직 `LibraryStore`의 재생 목록 메서드다(재생 목록 조각은 다음 단계에서 나눈다).
-    convenience init(store: LibraryStore, tracks: [TrackRow]) {
+    /// 고를 목록과 넣는 길은 재생 목록 조각이다
+    convenience init(playlists: PlaylistEditStore, tracks: [TrackRow]) {
         self.init(tracks: tracks,
-                  choices: { [weak store] in
-                      guard let store else { return PlaylistChoices(playlists: [], recentIDs: []) }
-                      return PlaylistChoices(playlists: store.trackPlaylists, recentIDs: store.recentPlaylists.map(\.id))
+                  choices: { [weak playlists] in
+                      guard let playlists else { return PlaylistChoices(playlists: [], recentIDs: []) }
+                      return PlaylistChoices(playlists: playlists.trackPlaylists, recentIDs: playlists.recentPlaylists.map(\.id))
                   },
-                  add: { [weak store] tracks, id in store?.addTracks(tracks, toPlaylist: id) })
+                  add: { [weak playlists] tracks, id in playlists?.addTracks(tracks, toPlaylist: id) })
     }
 
     var trackCount: Int { tracks.count }

@@ -63,23 +63,23 @@ struct SmartPlaylistAppTests {
         let fixture = try Self.fixture()
         let store = await Self.makeStore(fixture)
         #expect(!store.showSmartPlaylists)
-        #expect(store.smartPlaylistResults.isEmpty)
+        #expect(store.playlists.smartPlaylistResults.isEmpty)
         for id in ["S1", "S2", "S3"] {
-            let node = try #require(store.playlistIndex[id])
-            #expect(node.isSmart && node.trackIDs.isEmpty && store.playlistCounts[id] == 0, "\(id)")
+            let node = try #require(store.playlists.playlistIndex[id])
+            #expect(node.isSmart && node.trackIDs.isEmpty && store.playlists.playlistCounts[id] == 0, "\(id)")
         }
         store.sidebar = .playlist("S1")
         #expect(store.displayRows.isEmpty)
         // 일반 목록·폴더는 그대로
-        #expect(store.playlistIndex["P"]?.trackIDs == ["1", "2"] && store.playlistCounts["P"] == 2)
-        #expect(store.playlistIndex["F"]?.trackIDs == ["1", "2"])
+        #expect(store.playlists.playlistIndex["P"]?.trackIDs == ["1", "2"] && store.playlists.playlistCounts["P"] == 2)
+        #expect(store.playlists.playlistIndex["F"]?.trackIDs == ["1", "2"])
     }
 
     @Test func 꺼져_있으면_인텔리전트_목록을_고쳐_보려_해도_조용하다() async throws {
         let fixture = try Self.fixture()
         let store = await Self.makeStore(fixture)
-        #expect(!store.blockSmartPlaylistEdit("S1"))
-        #expect(store.playlistMessage == nil)
+        #expect(!store.playlists.blockSmartPlaylistEdit("S1"))
+        #expect(store.playlists.playlistMessage == nil)
     }
 
     // MARK: 켬
@@ -90,8 +90,8 @@ struct SmartPlaylistAppTests {
         let fixture = try Self.fixture()
         let store = await Self.makeStore(fixture, lab: true)
         for id in ["S2", "S3"] {
-            #expect(store.playlistIndex[id]?.trackIDs.isEmpty == true && store.playlistCounts[id] == 0, "\(id)")
-            #expect(store.smartPlaylistResults[id]?.unsupportedReasons.isEmpty == false, "\(id)")
+            #expect(store.playlists.playlistIndex[id]?.trackIDs.isEmpty == true && store.playlists.playlistCounts[id] == 0, "\(id)")
+            #expect(store.playlists.smartPlaylistResults[id]?.unsupportedReasons.isEmpty == false, "\(id)")
         }
         store.sidebar = .playlist("S2")
         #expect(store.displayRows.isEmpty)
@@ -100,15 +100,15 @@ struct SmartPlaylistAppTests {
     @Test func 켜도_일반_목록과_폴더는_그대로고_껐다_켜면_처음_모양으로_돌아온다() async throws {
         let fixture = try Self.fixture()
         let store = await Self.makeStore(fixture)
-        let off = store.playlistTree, offCounts = store.playlistCounts
+        let off = store.playlists.playlistTree, offCounts = store.playlists.playlistCounts
         store.showSmartPlaylists = true
-        #expect(store.playlistTree != off)
-        let folder = try #require(store.playlistIndex["F"])
+        #expect(store.playlists.playlistTree != off)
+        let folder = try #require(store.playlists.playlistIndex["F"])
         #expect(folder.trackIDs == ["1", "2"], "폴더 곡 모음에는 인텔리전트 목록 곡을 넣지 않는다")
-        #expect(store.playlistIndex["P"]?.trackIDs == ["1", "2"])
+        #expect(store.playlists.playlistIndex["P"]?.trackIDs == ["1", "2"])
         store.showSmartPlaylists = false
-        #expect(store.playlistTree == off && store.playlistCounts == offCounts)
-        #expect(store.smartPlaylistResults.isEmpty)
+        #expect(store.playlists.playlistTree == off && store.playlists.playlistCounts == offCounts)
+        #expect(store.playlists.smartPlaylistResults.isEmpty)
     }
 
     @Test func 목록을_보는_중에_설정을_바꾸면_곧바로_곡이_바뀐다() async throws {
@@ -126,9 +126,9 @@ struct SmartPlaylistAppTests {
         let fixture = try Self.fixture()
         try fixture.execute("UPDATE djmdContent SET FolderPath = 'spotify:track:abc' WHERE ID = '3'")
         let store = await Self.makeStore(fixture, lab: true)
-        #expect(store.playlistCounts["S1"] == 3)
+        #expect(store.playlists.playlistCounts["S1"] == 3)
         store.hideStreaming = true
-        #expect(store.playlistCounts["S1"] == 2)
+        #expect(store.playlists.playlistCounts["S1"] == 2)
         store.sidebar = .playlist("S1")
         #expect(Self.ids(store) == ["2", "4"])
     }
@@ -139,29 +139,29 @@ struct SmartPlaylistAppTests {
         let fixture = try Self.fixture()
         let store = await Self.makeStore(fixture, lab: true)
         let row = try #require(store.rowsByID["1"])
-        store.renamePlaylist("S1", to: "다른 이름")
-        store.addTracks([row], toPlaylist: "S1")
-        store.movePlaylist("S1", into: PlaylistLayout.root)
-        store.deletePlaylist("S1")
-        #expect(store.playlistDraft.isEmpty)
-        #expect(!store.canEditTracks(of: "S1"))
+        store.playlists.renamePlaylist("S1", to: "다른 이름")
+        store.playlists.addTracks([row], toPlaylist: "S1")
+        store.playlists.movePlaylist("S1", into: PlaylistLayout.root)
+        store.playlists.deletePlaylist("S1")
+        #expect(store.playlists.playlistDraft.isEmpty)
+        #expect(!store.playlists.canEditTracks(of: "S1"))
         store.sidebar = .playlist("S1")
-        #expect(store.editablePlaylistID == nil && !store.canReorderDisplayedTracks)
-        #expect(!store.trackPlaylists.contains { $0.item.id == "S1" })
-        #expect(store.applyPlaylistEdits([.rename(playlist: .id("S1"), name: "x")], actionName: "시험") == false)
-        #expect(store.playlistDraft.isEmpty)
+        #expect(store.playlists.editablePlaylistID == nil && !store.playlists.canReorderDisplayedTracks)
+        #expect(!store.playlists.trackPlaylists.contains { $0.item.id == "S1" })
+        #expect(store.playlists.applyPlaylistEdits([.rename(playlist: .id("S1"), name: "x")], actionName: "시험") == false)
+        #expect(store.playlists.playlistDraft.isEmpty)
     }
 
     @Test func 켜져_있으면_고쳐_보려_할_때_이유를_알린다() async throws {
         let fixture = try Self.fixture()
         let store = await Self.makeStore(fixture, lab: true)
-        #expect(store.blockSmartPlaylistEdit("S1"))
-        let message = try #require(store.playlistMessage)
+        #expect(store.playlists.blockSmartPlaylistEdit("S1"))
+        let message = try #require(store.playlists.playlistMessage)
         #expect(message.text == "인텔리전트 재생 목록은 아직 쓰지 않습니다(rekordbox에서 고치세요)")
         // 일반 목록은 막지 않는다
-        store.playlistMessage = nil
-        #expect(!store.blockSmartPlaylistEdit("P"))
-        #expect(store.playlistMessage == nil)
+        store.playlists.playlistMessage = nil
+        #expect(!store.playlists.blockSmartPlaylistEdit("P"))
+        #expect(store.playlists.playlistMessage == nil)
     }
 
     @Test func 켜도_rekordbox_목록_상태와_USB_내보내기_후보는_인텔리전트_목록을_그대로_다룬다() async throws {
@@ -170,10 +170,10 @@ struct SmartPlaylistAppTests {
             let store = await Self.makeStore(fixture, lab: lab)
             // 초안을 얹기 전 rekordbox 목록 상태(쓰기·USB 후보가 보는 모양)에는 계산한 곡이 들어오지 않는다
             for id in ["S1", "S2", "S3"] {
-                let item = try #require(store.rekordboxPlaylists.item(id))
+                let item = try #require(store.playlists.rekordboxPlaylists.item(id))
                 #expect(item.isSmart && !item.holdsTracks && item.entries.isEmpty, "\(id) lab=\(lab)")
             }
-            let rows = UsbExportSelection.rows(store.rekordboxPlaylists)
+            let rows = UsbExportSelection.rows(store.playlists.rekordboxPlaylists)
             #expect(rows.first { $0.id == "S1" }?.isSmart == true && rows.first { $0.id == "S1" }?.trackCount == 0, "lab=\(lab)")
             #expect(rows.first { $0.id == "P" }?.trackCount == 2)
         }
@@ -195,7 +195,7 @@ struct SmartPlaylistAppTests {
         #expect(SettingsStore(defaults: defaults, persist: true).value(SettingKeys.labSmartPlaylists))
         let reopened = await Self.makeStore(fixture, lab: true, persist: true, defaults: defaults)
         #expect(reopened.showSmartPlaylists)
-        #expect(Set(reopened.playlistIndex["S1"]?.trackIDs ?? []) == ["2", "3", "4"])
+        #expect(Set(reopened.playlists.playlistIndex["S1"]?.trackIDs ?? []) == ["2", "3", "4"])
         store.showSmartPlaylists = false
         #expect(!SettingsStore(defaults: defaults, persist: true).value(SettingKeys.labSmartPlaylists))
     }

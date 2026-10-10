@@ -5,7 +5,7 @@ import Foundation
 extension LibraryStore {
     func stageMerge(_ draft: DuplicateMergeDraft) throws {
         guard !isWritingRekordbox else { return }
-        try setMergeDrafts(MergeDuplicates.staging(draft, onto: mergeDrafts, pending: pendingUUIDs, playlistDraftEmpty: playlistDraft.isEmpty))
+        try setMergeDrafts(MergeDuplicates.staging(draft, onto: mergeDrafts, pending: pendingUUIDs, playlistDraftEmpty: playlists.playlistDraft.isEmpty))
     }
 
     func setMergeDrafts(_ drafts: [DuplicateMergeDraft]) throws {

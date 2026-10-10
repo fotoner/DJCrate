@@ -76,7 +76,7 @@ struct RekordboxXMLImportTests {
         let result = await store.xmlImport.makeDrafts(preview, selection: selection)
         #expect(result.tags == 1 && result.cues == 0 && result.playlists == 1)
         #expect(store.tagDrafts["uuid-101"]?.fields.title == "가져온 제목", "만든 태그 초안을 바로 다시 읽는다")
-        #expect(store.playlistDraft.project(onto: store.rekordboxPlaylists).layout.children(of: PlaylistLayout.root)
+        #expect(store.playlists.playlistDraft.project(onto: store.playlists.rekordboxPlaylists).layout.children(of: PlaylistLayout.root)
             .contains { $0.name == "가져온 목록" && $0.trackIDs == ["101"] })
         #expect(!FileManager.default.fileExists(atPath: home.appending(path: "cue-drafts/uuid-101.json").path))
         #expect(try Data(contentsOf: fixture.database) == before)

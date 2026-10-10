@@ -266,25 +266,25 @@ struct DraftFileFailureTests {
                                  draftHome: FileManager.default.temporaryDirectory.appending(path: "djc-playlist-save-\(UUID())"))
         store.phase = .loaded
         for id in ["1", "2", "3", "4"] { store.rowsByID[id] = PlaylistEditingTests.row(id) }
-        store.rekordboxPlaylists = PlaylistEditingTests.rekordbox
-        store.refreshPlaylists()
+        store.playlists.rekordboxPlaylists = PlaylistEditingTests.rekordbox
+        store.playlists.refreshPlaylists()
         return store
     }
 
     @Test @MainActor func 재생_목록_저장_실패는_넣은_결과에_가리지_않고_쓰기_전에_다시_저장한다() async throws {
         let saver = FlakySaver()
         let store = playlistStore(saver)
-        store.addTracks([PlaylistEditingTests.row("4")], toPlaylist: "A")
+        store.playlists.addTracks([PlaylistEditingTests.row("4")], toPlaylist: "A")
         // 입력은 메모리에 남고, 넣은 결과 안내가 저장 실패 경고를 덮지 않는다.
-        #expect(store.playlistDraft.edits == [.addTracks(playlist: .id("A"), contentIDs: ["4"])])
-        #expect(store.playlistDraftUnsaved)
-        #expect(store.playlistMessage?.kind == .warning)
-        #expect(store.playlistMessage?.text.contains(LibraryStore.playlistSaveFailureText) == true)
+        #expect(store.playlists.playlistDraft.edits == [.addTracks(playlist: .id("A"), contentIDs: ["4"])])
+        #expect(store.playlists.playlistDraftUnsaved)
+        #expect(store.playlists.playlistMessage?.kind == .warning)
+        #expect(store.playlists.playlistMessage?.text.contains(PlaylistEditStore.playlistSaveFailureText) == true)
         // 쓰기 전 확인은 다시 저장해 보고, 그래도 안 되면 쓰지 않는다.
-        #expect(!store.ensurePlaylistDraftSaved())
+        #expect(!store.playlists.ensurePlaylistDraftSaved())
         saver.fails = false
-        #expect(store.ensurePlaylistDraftSaved())
-        #expect(!store.playlistDraftUnsaved && saver.last == store.playlistDraft)
+        #expect(store.playlists.ensurePlaylistDraftSaved())
+        #expect(!store.playlists.playlistDraftUnsaved && saver.last == store.playlists.playlistDraft)
     }
 
     @Test @MainActor func 저장하지_못한_재생_목록_초안을_다시_읽기가_덮지_않는다() async throws {
@@ -296,11 +296,11 @@ struct DraftFileFailureTests {
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, draftHome: try home(),
                                  arguments: ["test", "--db", fixture.database.path], environment: [:])
         await store.load(snapshot: fixture.database)
-        _ = store.createPlaylist(isFolder: false, name: "새 목록")
-        let draft = store.playlistDraft
-        #expect(!draft.isEmpty && store.playlistDraftUnsaved)
+        _ = store.playlists.createPlaylist(isFolder: false, name: "새 목록")
+        let draft = store.playlists.playlistDraft
+        #expect(!draft.isEmpty && store.playlists.playlistDraftUnsaved)
         await store.load(snapshot: fixture.database)
-        #expect(store.playlistDraft == draft)
+        #expect(store.playlists.playlistDraft == draft)
     }
 
     // MARK: - 편집본 넣기

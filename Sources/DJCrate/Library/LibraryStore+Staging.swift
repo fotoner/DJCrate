@@ -21,7 +21,7 @@ extension LibraryStore {
         if let summary = reload.summary, stagingMessage?.kind != .failure {
             stagingMessage = AppMessage(kind: summary.allMatched ? .success : .warning, text: summary.text)
         }
-        resolvePlaylistImports()
+        playlists.resolvePlaylistImports()
         rebuildStagedRows()
         // 지난번에 추정을 마치지 못한 곡(그리드·키)을 이어서 한다.
         enqueueGrid(staged.filter { $0.bpm == nil || $0.needsKey }.map {
@@ -64,7 +64,7 @@ extension LibraryStore {
     func addFiles(_ urls: [URL], appleMusicOrigins: [String: [AppleMusicOrigin]] = [:],
                   createPlaylists: Bool = false, toPlaylist playlistID: String? = nil) async {
         guard writeLockPolicy.allowsLibraryInteraction,
-              playlistID.map({ canEditTracks(of: $0) }) ?? true else { return }
+              playlistID.map({ playlists.canEditTracks(of: $0) }) ?? true else { return }
         let stage = useCases.stage
         let files = stage.audioFiles(in: urls)
         guard !files.isEmpty else {
@@ -80,7 +80,7 @@ extension LibraryStore {
         let commit = useCases.stage.commit(addition, onto: staged,
                                            link: linksPlaylists ? StageTracks.PlaylistLink(createPlaylists: createPlaylists, playlistID: playlistID,
                                                                                           origins: appleMusicOrigins) : nil,
-                                           imports: playlistImports, importsLoadFailed: playlistImportsLoadFailed,
+                                           imports: playlists.playlistImports, importsLoadFailed: playlists.playlistImportsLoadFailed,
                                            takingMovedFiles: location.movesDamagedDrafts)
         if let list = commit.list {
             staged = list
@@ -88,10 +88,10 @@ extension LibraryStore {
             rebuildStagedRows()
         }
         if let link = commit.link {
-            if applyImportsChange(link) {
-                resolvePlaylistImports()
+            if playlists.applyImportsChange(link) {
+                playlists.resolvePlaylistImports()
             } else {
-                stagingMessage = AppMessage(kind: .failure, text: playlistMessage?.text ?? String(ui: "재생 목록 연결을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하고 다시 시도하세요."))
+                stagingMessage = AppMessage(kind: .failure, text: playlists.playlistMessage?.text ?? String(ui: "재생 목록 연결을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하고 다시 시도하세요."))
             }
         }
         let summary = addition.summary(linksPlaylists: linksPlaylists)
@@ -114,9 +114,9 @@ extension LibraryStore {
     func removeStaged(_ ids: Set<TrackRow.ID>) {
         let removing = staged.filter { ids.contains($0.id) }
         guard !removing.isEmpty else { return }
-        var imports = playlistImports
+        var imports = playlists.playlistImports
         imports.removePending(paths: Set(removing.map(\.path)))
-        guard savePlaylistImports(imports) else { return }
+        guard playlists.savePlaylistImports(imports) else { return }
         let uuids = Set(removing.map(\.uuid))
         gridQueue.removeAll { uuids.contains($0.uuid) }
         stagingMessage = nil
