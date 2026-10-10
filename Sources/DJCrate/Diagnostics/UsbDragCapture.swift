@@ -234,7 +234,7 @@ enum UsbDragCapture {
 
     /// 표의 줄을 눌러 끈다: mouseDown 추적 루프가 읽을 끌기·떼기 이벤트를 먼저 넣고 mouseDown을 부른다.
     /// 표가 끌기를 시작하면 창 서버 세션 대신 표가 만든 끌 항목을 받는다
-    private static func drag(_ table: TrackListTableView, row: Int) async -> Dragged {
+    static func drag(_ table: TrackListTableView, row: Int) async -> Dragged {
         let box = await onRunLoop { UncheckedBox(dragNow(table, row: row)) }
         return box.value
     }
@@ -280,11 +280,17 @@ enum UsbDragCapture {
     // MARK: 놓기
 
     /// 끈 항목을 담은 페이스트보드로 그 자리의 놓기 대상(등록한 형식이 있는 가장 안쪽 뷰)에 끌어 들어가 놓는다. 받았는지 글로 돌려준다
-    private static func drop(_ dragged: Dragged, at point: NSPoint, in window: NSWindow, source: Any? = nil) async throws -> String {
+    static func drop(_ dragged: Dragged, at point: NSPoint, in window: NSWindow, source: Any? = nil) async throws -> String {
         guard dragged.started else { return "끌 항목 없음" }
         guard let content = window.contentView else { throw Failure("창 내용이 없습니다") }
         var view = content.hitTest(point)
         while let current = view, current.registeredDraggedTypes.isEmpty { view = current.superview }
+        // SwiftUI `onDrop`은 감싼 뷰의 조상이 아니라 그 자리에 겹친 형제 뷰(`_PlatformDraggingDestinationView`)로 받는다. 가장 앞의 것
+        if view == nil, let root = content.superview {
+            view = views(in: root).last {
+                String(describing: type(of: $0)).contains("DraggingDestinationView") && $0.convert($0.bounds, to: nil).contains(point)
+            }
+        }
         guard let destination = view else { return "놓기 대상 없음" }
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("com.djcrate.drag-capture.\(UUID().uuidString)"))
         defer { pasteboard.releaseGlobally() }
