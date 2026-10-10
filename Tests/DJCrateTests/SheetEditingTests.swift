@@ -28,7 +28,7 @@ struct SheetEditingTests {
         window.contentView?.layoutSubtreeIfNeeded()
         let table = try #require(findTable(in: controller.view))
         let coordinator = try #require(table.coordinator)
-        let tagsAfterLoad = coordinator.rows.map { store.tagDraft(for: $0).fields }
+        let tagsAfterLoad = coordinator.rows.map { store.tags.tagDraft(for: $0).fields }
         coordinator.select(.init(row: 1, column: 1), extend: false)
         window.makeFirstResponder(table)
         coordinator.beginEditing()
@@ -43,7 +43,7 @@ struct SheetEditingTests {
         #expect(!coordinator.isEditing)
         #expect(store.tagRevision == revisionAfterLoad)
         #expect(store.tagDrafts == draftsAfterLoad)
-        #expect(coordinator.rows.map { store.tagDraft(for: $0).fields } == tagsAfterLoad)
+        #expect(coordinator.rows.map { store.tags.tagDraft(for: $0).fields } == tagsAfterLoad)
     }
 
     @Test(arguments: ["더블클릭", "Return", "타이핑"])
@@ -77,7 +77,7 @@ struct SheetEditingTests {
         #expect(h.coordinator.control(field, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
         h.window.contentView?.layoutSubtreeIfNeeded()
         #expect(!h.coordinator.isEditing)
-        #expect(h.store.tagCell(h.coordinator.rows[1], .title) == "합성 곡 2")
+        #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == "합성 곡 2")
         #expect(h.store.tagRevision == revisionBeforeEditing)
         #expect(h.store.tagDrafts == draftsBeforeEditing)
         #expect(h.store.selection == ["2"])
@@ -90,7 +90,7 @@ struct SheetEditingTests {
         defer { h.window.close() }
         let column = try #require(SheetColumn.all.firstIndex { $0.key == .comment })
         let row = h.coordinator.rows[1]
-        let title = h.store.tagCell(row, .title)
+        let title = h.store.tags.tagCell(row, .title)
         let revisionBeforeEditing = h.store.tagRevision
         h.coordinator.select(.init(row: 1, column: column), extend: false)
         h.table.keyDown(with: try h.key("\r", code: 36))
@@ -103,8 +103,8 @@ struct SheetEditingTests {
         #expect(h.coordinator.control(field, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
         h.coordinator.update(rows: h.coordinator.rows, revision: h.store.tagRevision)
         #expect(!h.coordinator.isEditing)
-        #expect(h.store.tagCell(row, .comment) == comment)
-        #expect(h.store.tagCell(row, .title) == title)
+        #expect(h.store.tags.tagCell(row, .comment) == comment)
+        #expect(h.store.tags.tagCell(row, .title) == title)
         let draft = try #require(h.store.tagDrafts[row.track.uuid])
         #expect(draft.changedKeys == [.comment] && draft.fields.comment == comment)
         #expect(h.store.tagRevision > revisionBeforeEditing)
@@ -119,8 +119,8 @@ struct SheetEditingTests {
         reopenedEditor.insertText("取り消す合成コメント", replacementRange: NSRange(location: 0, length: (reopenedEditor.string as NSString).length))
         #expect(h.coordinator.control(reopened, textView: reopenedEditor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
         #expect(!h.coordinator.isEditing && h.window.firstResponder === h.table)
-        #expect(h.store.tagCell(row, .comment) == comment)
-        #expect(h.store.tagCell(row, .title) == title)
+        #expect(h.store.tags.tagCell(row, .comment) == comment)
+        #expect(h.store.tags.tagCell(row, .title) == title)
         #expect(h.store.tagRevision == revisionAfterCommit)
         #expect(h.store.tagDrafts == draftsAfterCommit)
     }
@@ -147,17 +147,17 @@ struct SheetEditingTests {
         #expect(h.coordinator.control(field, textView: editor, doCommandBy: selector))
         h.coordinator.update(rows: h.coordinator.rows, revision: h.store.tagRevision)
         h.window.contentView?.layoutSubtreeIfNeeded()
-        #expect(h.store.tagCell(h.coordinator.rows[1], .title) == "확정한 제목")
-        #expect(h.store.tagCell(h.coordinator.rows[0], .title) == "합성 곡 1")
+        #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == "확정한 제목")
+        #expect(h.store.tags.tagCell(h.coordinator.rows[0], .title) == "합성 곡 1")
         let expected = command == "Return" ? CellPosition(row: 2, column: 1)
             : CellPosition(row: 1, column: command == "Tab" ? 2 : 0)
         #expect(h.coordinator.cursor == expected)
         #expect(!h.coordinator.isEditing && h.window.firstResponder === h.table)
         #expect(undo.canUndo)
         undo.undo()
-        #expect(h.store.tagCell(h.coordinator.rows[1], .title) == "합성 곡 2")
+        #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == "합성 곡 2")
         undo.redo()
-        #expect(h.store.tagCell(h.coordinator.rows[1], .title) == "확정한 제목")
+        #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == "확정한 제목")
     }
 
     @Test func 포커스를_옮기면_긴_제목을_확정하고_입력_칸을_남기지_않는다() throws {
@@ -174,7 +174,7 @@ struct SheetEditingTests {
         #expect(editor.string == title)
         h.window.makeFirstResponder(h.table)
         #expect(!h.coordinator.isEditing)
-        #expect(h.store.tagCell(h.coordinator.rows[1], .title) == title)
+        #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == title)
         #expect(field.superview == nil)
         h.coordinator.update(rows: h.coordinator.rows, revision: h.store.tagRevision)
         h.coordinator.select(.init(row: 2, column: 1), extend: false)

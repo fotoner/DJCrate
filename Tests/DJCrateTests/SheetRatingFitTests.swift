@@ -156,7 +156,7 @@ struct SheetRatingFitTests {
         let column = try #require(h.table.tableColumns.firstIndex { $0.identifier.rawValue == "rating" })
         #expect(h.coordinator.text(row: 2, column: column) == "★★★☆☆")
         // 초안: 값이 바뀌어도(5개) 값이 같은 모양으로 읽힌다
-        h.coordinator.store.setTag(.rating, "5", rows: [h.rows[2]])
+        h.coordinator.store.tags.setTag(.rating, "5", rows: [h.rows[2]])
         h.coordinator.update(rows: h.rows, revision: h.coordinator.store.tagRevision)
         h.relayout()
         let edited = try #require(h.cell(row: 2, column: "rating"))

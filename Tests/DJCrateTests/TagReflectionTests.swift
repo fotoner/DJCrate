@@ -18,7 +18,7 @@ struct TagReflectionTests {
         let row = Self.row("t")
         store.rowsByUUID[row.track.uuid] = row
         #expect(store.writeTargets([row]).isEmpty)
-        store.applyTagEdits([(row, .title, "새 제목")])
+        store.tags.applyTagEdits([(row, .title, "새 제목")])
         #expect(store.pendingUUIDs == ["t"] && store.writeTargets([row]).map(\.track.uuid) == ["t"])
     }
 
@@ -27,7 +27,7 @@ struct TagReflectionTests {
         let store = LibraryStore.test(saveTagDrafts: { saved.append($0) })
         let row = Self.row("t")
         store.rowsByUUID[row.track.uuid] = row
-        store.applyTagEdits([(row, .title, "새 제목"), (row, .comment, "코멘트")])
+        store.tags.applyTagEdits([(row, .title, "새 제목"), (row, .comment, "코멘트")])
         let written: TagDraft = try #require(store.tagDrafts["t"])
         let revision = store.tagRevision
 
@@ -64,8 +64,8 @@ struct TagReflectionTests {
         await store.load(snapshot: fixture.database)
         let row = try #require(store.rowsByUUID[spec.uuid])
         let comment = "합성 코멘트 日本語\n둘째 줄"
-        if tableCell { store.applyTagEdits([(row, .comment, comment)]) }
-        else { store.setTag(.comment, comment, rows: [row]) }
+        if tableCell { store.tags.applyTagEdits([(row, .comment, comment)]) }
+        else { store.tags.setTag(.comment, comment, rows: [row]) }
         store.testDrafts.flush()
         let saved = try #require(TagDraftStore.load(trackUUID: spec.uuid, directory: drafts.appending(path: "tag-drafts")))
         #expect(saved.changedKeys == [.comment] && saved.fields.comment == comment)

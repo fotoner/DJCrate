@@ -111,7 +111,7 @@ enum DevSelfTests {
             for _ in 0..<600 { if loaded() { break }; await wait(0.1) }
             guard loaded() else { log("라이브러리를 읽지 못했습니다"); exit(1) }
             // 그림 초안(#66): 그림 없는 분석한 곡에 넣기, 그림 있는 곡에 지우기(지울 옛 그림 바이트는 되돌린 뒤 비교한다)
-            let analysed = store.rows.filter { store.canEditArtwork($0) && !($0.track.analysisDataPath ?? "").isEmpty }
+            let analysed = store.rows.filter { EditArtwork.canEdit($0) && !($0.track.analysisDataPath ?? "").isEmpty }
             let artworkAdd = analysed.first { !store.artworkBase(for: $0).hasArtwork }
             let artworkDelete = analysed.first { store.artworkBase(for: $0).hasArtwork }
             let artworkNames = ["artwork.jpg", "artwork_m.jpg", "artwork_s.jpg"]
@@ -120,8 +120,10 @@ enum DevSelfTests {
                 return artworkNames.map { folder.appending(path: $0) }
             }
             let deletedOriginals = artworkDelete.map { artworkFiles($0).map { try? Data(contentsOf: $0) } } ?? []
-            if let row = artworkAdd { store.setArtwork(Self.selfTestArtwork(), name: "DJC 시험 그림.jpg", rows: [row]) }
-            if let row = artworkDelete { store.deleteArtwork(rows: [row]) }
+            // 인스펙터 그림 칸과 같은 화면 모델로 만든다(안내는 쓰지 않는다)
+            let artwork = ArtworkInspectorModel(store: store)
+            if let row = artworkAdd { artwork.setArtwork(Self.selfTestArtwork(), name: "DJC 시험 그림.jpg", rows: [row]) }
+            if let row = artworkDelete { artwork.deleteArtwork(rows: [row]) }
             log("그림 초안: 넣기 \(artworkAdd.map { _ in "1곡" } ?? "없음") · 지우기 \(artworkDelete.map { _ in "1곡" } ?? "없음") · 초안 \(store.artworkDrafts.count)곡")
             // 평점·곡 색 초안(#65): 쓰기를 확인한 곡(상태 0·256·257, 재생 목록에 든 곡도 R65로 열림) 하나에 별 4개·두 번째 색(rekordbox Red)
             let rated = store.rows.first { !$0.isStaged && !$0.track.isStreaming && TrackListTagEditing.unavailableReason($0, key: .rating) == nil }
@@ -129,8 +131,8 @@ enum DevSelfTests {
             // 지금 값과 다른 값을 고른다(같으면 초안이 생기지 않는다)
             let ratingValue = rated?.track.rating == 4 ? "5" : "4", colorValue = rated?.track.colorID == "2" ? "7" : "2"
             if let rated {
-                store.setTag(.rating, ratingValue, rows: [rated])
-                store.setTag(.color, colorValue, rows: [rated])
+                store.tags.setTag(.rating, ratingValue, rows: [rated])
+                store.tags.setTag(.color, colorValue, rows: [rated])
             }
             log("평점·곡 색 초안: \(rated.map { _ in "1곡(별 \(ratingValue)개·색 \(colorValue))" } ?? "쓸 수 있는 곡 없음")")
             let targets = store.writeTargets(store.rows)
@@ -316,8 +318,8 @@ enum DevSelfTests {
         let staged = try await StagedTrack.make(fileAt: url, addedOn: String(ISO8601DateFormatter().string(from: .now).prefix(10)))
         _ = store.restage([staged])
         guard let row = store.rowsByID[staged.id] else { log("넣기+키: 추가한 곡을 목록에서 찾지 못했습니다"); return false }
-        store.setTag(.musicalKey, key, rows: [row])
-        let picked = store.confirmedStagedKey(uuid: staged.uuid)
+        store.tags.setTag(.musicalKey, key, rows: [row])
+        let picked = store.tags.confirmedStagedKey(uuid: staged.uuid)
         store.setWriteLock(true)
         let preview = try await session.previewAdd(rows: [row])
         let previewKey = preview.report.added.first?.keyWritten
@@ -334,7 +336,7 @@ enum DevSelfTests {
         _ = try await session.restoreBackup(backup, to: session.target)
         let gone = store.rowsByUUID[uuid] == nil
         let restaged = store.staged.contains { $0.uuid == staged.uuid }
-        let kept = store.confirmedStagedKey(uuid: staged.uuid)
+        let kept = store.tags.confirmedStagedKey(uuid: staged.uuid)
         log("넣기+키 되돌림: 넣은 곡 빠짐 \(gone) · 추가 목록에 돌아옴 \(restaged) · 키 초안 \(kept ?? "없음") · 새 곡 키 초안 남음 \(store.tagDrafts[uuid] != nil)")
         let passed = picked == key && previewKey == key && outcome.keyWritten == key && reread == key && gone && restaged && kept == key
             && store.tagDrafts[uuid] == nil

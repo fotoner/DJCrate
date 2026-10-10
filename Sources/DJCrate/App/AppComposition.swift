@@ -25,6 +25,8 @@ final class AppComposition {
     let reflection: ReflectionCoordinator
     /// 곡 목록 오른쪽 클릭 메뉴가 시작하는 흐름(쓰기·XML·USB 초안)
     let trackListActions: TrackListActions
+    /// 태그 인스펙터 화면 모델. 인스펙터를 닫았다 열어도 같은 모델을 쓴다(그림 칸 안내가 남는다).
+    let tagInspector: TagInspectorModel
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
@@ -36,6 +38,7 @@ final class AppComposition {
         self.windows = windows
         self.reflection = reflection
         trackListActions = .live(store: store, reflection: reflection)
+        tagInspector = TagInspectorModel(store: store)
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
@@ -163,7 +166,7 @@ final class AppComposition {
         store.adoptImportedGridDraft = { [weak deck] draft in deck?.adoptImportedGridDraft(draft) ?? false }
         deck.onStagedGridChange = { [weak store] uuid, bpm in store?.stagedGridChanged(uuid: uuid, bpm: bpm) }
         deck.onCueDraftChange = { [weak store] draft in store?.cueDraftChanged(draft) }
-        deck.onReanalyze = { [weak store] uuid in store?.restoreKeySuggestion(uuid: uuid) }
+        deck.onReanalyze = { [weak store] uuid in store?.tags.restoreKeySuggestion(uuid: uuid) }
         store.onWriteLock = { [weak deck] locked in deck?.isWriteLocked = locked }
         store.onRekordboxWritten = { [weak deck, weak store] uuids in
             // 처음부터 다시 불러오지 않고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다(소리·파형은 그대로).

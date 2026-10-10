@@ -46,7 +46,7 @@ struct ContentView: View {
                 // 본문(덱·목록)에 바로 붙이면 인스펙터를 연 뒤 임시 높이의 본문 사본이 생겨, 창 크기를 바꿀 때마다
                 // 크기 측정이 진짜 본문과 번갈아 와서 본문을 두 번씩 다시 계산했다(#138). 상세 열 전체에 붙인다.
                 .inspector(isPresented: inspectorPresented) {
-                    Group { if inspectorContentShown { TagInspector(store: store) } }
+                    Group { if inspectorContentShown { TagInspector(model: app.tagInspector) } }
                         .inspectorColumnWidth(min: 300, ideal: 340, max: 460)
                 }
                 .task(id: showTagEditor) { await InspectorReveal.follow(showTagEditor, shown: $inspectorContentShown) }

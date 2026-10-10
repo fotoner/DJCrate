@@ -3,13 +3,14 @@ import DJCDomain
 import SwiftUI
 
 /// Mp3tag처럼 여러 곡을 한꺼번에 편집하는 인스펙터. 초안에 저장하고 반영 때 rekordbox 곡 정보에 쓴다(음원 파일에는 쓰지 않는다).
+/// 값과 동작은 화면 모델(`TagInspectorModel`)이 준다.
 struct TagInspector: View {
     @Environment(\.textScale) private var textScale
     @Environment(\.reflection) private var reflection
-    @Bindable var store: LibraryStore
+    let model: TagInspectorModel
 
     var body: some View {
-        let rows = store.selectedRows
+        let rows = model.rows
         Form {
             if rows.isEmpty {
                 Text(.ui("목록에서 곡을 선택하세요. 여러 곡을 고르면 한꺼번에 편집합니다."))
@@ -21,7 +22,7 @@ struct TagInspector: View {
                         HStack {
                             Text(.ui("\(rows.count)곡 선택")).font(.scaled(.headline, textScale)).lineLimit(1)
                             Spacer()
-                            let changed = rows.filter { store.tagDrafts[$0.track.uuid] != nil }.count
+                            let changed = model.draftCount(rows)
                             if changed > 0 {
                                 Text(.ui("초안 \(changed)곡")).font(.scaled(.caption, textScale).bold()).foregroundStyle(UIColors.draft.color)
                             }
@@ -29,39 +30,36 @@ struct TagInspector: View {
                     }
                 }
                 Section(.ui("곡 정보")) {
-                    if let row = rows.first(where: { $0.isUsb || $0.track.isStreaming }),
-                       let reason = TrackListTagEditing.unavailableReason(row, key: .title) {
+                    if let reason = model.lockReason(rows) {
                         Label(reason, systemImage: "lock")
                             .font(.scaled(.caption, textScale)).foregroundStyle(UIColors.warning.color)
                     }
                     ForEach(TagFields.Key.allCases.filter { $0 != .comment }) { key in
                         // 키·평점·곡 색은 글자를 쓰지 않고 목록(rekordbox 키, 별 1~5개, rekordbox 색)에서 고른다
                         switch key {
-                        case .musicalKey: MusicalKeyField(store: store, rows: rows)
-                        case .rating, .color: TagChoiceField(store: store, rows: rows, key: key)
+                        case .musicalKey: MusicalKeyField(model: model, rows: rows)
+                        case .rating, .color: TagChoiceField(model: model, rows: rows, key: key)
                         default: field(key, rows: rows)
                         }
                     }
                 }
-                ArtworkInspectorSection(store: store, rows: rows)
+                ArtworkInspectorSection(model: model.artwork, rows: rows)
                 Section(.ui("코멘트")) {
                     field(.comment, rows: rows, axis: .vertical)
-                    let comment = store.tagValue(.comment, rows: rows)
-                    if !comment.mixed, let rule = store.commentPreset.rule {
-                        CommentPreview(result: rule.evaluate(comment.value))
+                    if let evaluation = model.commentEvaluation(rows) {
+                        CommentPreview(result: evaluation)
                     }
                 }
                 Section {
-                    let issues = rows.compactMap { store.tagDrafts[$0.track.uuid] }.flatMap(\.issues)
-                    if !issues.isEmpty {
-                        Label(Set(issues).sorted().joined(separator: " · "), systemImage: "exclamationmark.triangle")
+                    if let issues = model.issues(rows) {
+                        Label(issues, systemImage: "exclamationmark.triangle")
                             .foregroundStyle(UIColors.warning.color).font(.scaled(.caption, textScale))
                     }
-                    if rows.count == 1, let row = rows.first, store.tagDrafts[row.track.uuid] != nil {
+                    if let row = model.recoverableRow(rows) {
                         Button(.ui("태그 현재값 가져오기…")) { reflection?.startRecovery(row: row, kind: .tags) }
-                            .disabled(store.isRecoveringDraft)
+                            .disabled(model.isRecoveringDraft)
                     }
-                    Button(.ui("태그 초안 버리기")) { store.revertTags(rows: rows) }
+                    Button(.ui("태그 초안 버리기")) { model.revert(rows: rows) }
                     // 반영(⌘⇧E)하면 rekordbox 곡 정보에 쓴다. 음원 파일은 읽기만 한다(#1 결정).
                     Text(.ui("rekordbox에 쓸 때 라이브러리에만 저장합니다. 음원 파일의 태그는 바뀌지 않습니다."))
                         .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
@@ -73,16 +71,15 @@ struct TagInspector: View {
     }
 
     private func field(_ key: TagFields.Key, rows: [TrackRow], axis: Axis = .horizontal) -> some View {
-        let current = store.tagValue(key, rows: rows)
-        let edited = rows.contains { store.isTagEdited($0, key) }
+        let current = model.field(key, rows: rows)
         return VStack(alignment: .leading, spacing: 4) {
-            CommitTextField(label: key.label, value: current.value, mixed: current.mixed, edited: edited, axis: axis) { text in
-                store.setTag(key, text, rows: rows)
+            CommitTextField(label: key.label, value: current.value, mixed: current.mixed, edited: current.edited, axis: axis) { text in
+                model.setText(key, text, rows: rows)
             }
-            .id("\(key.rawValue)-\(store.selection.hashValue)")
-            .disabled(rows.allSatisfy { $0.isUsb || $0.track.isStreaming })
-            .help(rows.first.flatMap { TrackListTagEditing.unavailableReason($0, key: key) } ?? key.label)
-            TagConflictView(store: store, rows: rows, key: key)
+            .id(model.fieldID(key))
+            .disabled(model.isTextLocked(rows))
+            .help(model.textHelp(key, rows: rows))
+            TagConflictView(conflict: model.conflict(key, rows: rows)) { model.resolveConflict(key, keepingDraft: $0, rows: rows) }
         }
     }
 }

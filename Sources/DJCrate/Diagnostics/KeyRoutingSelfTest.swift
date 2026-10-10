@@ -188,14 +188,14 @@ extension DevSelfTests {
                 await send(window, code: 36, text: "\r")
                 check(!coordinator.isEditing && window.firstResponder === sheet
                       && coordinator.cursor == .init(row: 1, column: 2)
-                      && store.tagCell(coordinator.rows[0], .artist) == "m", "태그 Return은 칸 확정으로")
+                      && store.tags.tagCell(coordinator.rows[0], .artist) == "m", "태그 Return은 칸 확정으로")
                 capture(window, "tag-return-after")
                 coordinator.select(.init(row: 0, column: 2), extend: false)
                 await send(window, code: 24, text: "=")
                 capture(window, "tag-escape-before")
                 await send(window, code: 53, text: "\u{1b}")
                 check(!coordinator.isEditing && window.firstResponder === sheet
-                      && store.tagCell(coordinator.rows[0], .artist) == "m" && deck.zoomSeconds == zoom,
+                      && store.tags.tagCell(coordinator.rows[0], .artist) == "m" && deck.zoomSeconds == zoom,
                       "태그 Esc는 칸 취소로")
                 capture(window, "tag-escape-after")
             } else { check(false, "실제 태그 시트 찾기") }

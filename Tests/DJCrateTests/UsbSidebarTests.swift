@@ -190,7 +190,7 @@ struct UsbSidebarTests {
         let dragged = try #require(coordinator.tableView(table, pasteboardWriterForRow: 0) as? NSPasteboardItem)
         #expect(dragged.types == [PlaylistDragType.pasteboardUsbTracks])
         #expect(!coordinator.beginEditing(row: 0, column: "title"))
-        store.setTag(.title, "고친 제목", rows: store.displayRows)
+        store.tags.setTag(.title, "고친 제목", rows: store.displayRows)
         #expect(!store.tagDrafts.keys.contains { $0.hasPrefix(UsbLibraryRows.idPrefix) })
         store.loadToDeck(store.displayRows.first)
         #expect(store.deckTrackID == nil)

@@ -166,7 +166,7 @@ struct UsbStoreTests {
         // 보통 USB UUID는 로컬과 겹치지 않지만, 같은 키의 초안이 이미 있어도 읽기 전용 경로는 바꾸지 않는다.
         store.tagDrafts[row.track.uuid] = draft
         store.rowsByUUID[row.track.uuid] = row
-        store.resolveTagConflict(.comment, keepingDraft: keepingDraft, rows: [row])
+        store.tags.resolveTagConflict(.comment, keepingDraft: keepingDraft, rows: [row])
         #expect(store.tagDrafts[row.track.uuid] == draft)
         #expect(saves == 0)
         #expect(!undo.canUndo)

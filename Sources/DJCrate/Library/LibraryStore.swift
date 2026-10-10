@@ -98,7 +98,6 @@ final class LibraryStore {
     init(settings: SettingsStore, location: LibraryLocation, useCases: LibraryUseCases, resultHistory: WriteResultHistory,
          feedback: AppFeedback = AppFeedback(), launch: LibraryLaunchOptions = LibraryLaunchOptions()) {
         self.settings = settings
-        self.dismissedKeySuggestions = settings.strings(SettingKeys.dismissedKeySuggestions)
         self.commentPreset = settings.commentPreset
         self.hideStreaming = settings.value(SettingKeys.hideStreaming)
         self.showSmartPlaylists = settings.value(SettingKeys.labSmartPlaylists)
@@ -299,14 +298,12 @@ final class LibraryStore {
 
     /// 초안 상태(메모리). 표의 ✎ 표시는 디스크를 다시 읽지 않고 이것으로 계산한다.
     var tagDrafts: [String: TagDraft] = [:]
-    /// 무시한 키 제안(곡 UUID). 게인·그리드 제안처럼 곡마다 기억하고, 덱 제안 줄에 바로 반영한다.
-    var dismissedKeySuggestions: Set<String> = []
+    /// 태그 편집 조각(인스펙터·태그 시트·목록 칸·덱 제안 줄). 위 태그 초안을 바꾼다. 조각이 이 핵심을 붙들어야 해서 처음 쓸 때 만든다(관찰하지 않는다).
+    @ObservationIgnored private(set) lazy var tags = TagEditStore(library: self)
     /// 그림 초안(곡 UUID별, 그림 바이트 없이). 그림 사본은 `ArtworkDraftStore`에 있다(#66).
     var artworkDrafts: [String: ArtworkDraft] = [:]
     /// 곡의 살아 있는 그림 파일 행(ContentID별). 그림 초안의 base로 쓴다(스냅샷에서 읽음).
     @ObservationIgnored var artworkFileRows: [String: [ArtworkFileRow]] = [:]
-    /// 그림 초안 안내(읽지 못한 그림·쓸 수 없는 곡)
-    var artworkMessage: AppMessage?
     /// rekordbox 곡 색 목록(이름·순서, #65). 라이브러리에서 읽지 못하면 rekordbox 기본 여덟 색이다.
     var trackColors: [TrackColor] = TrackColor.rekordboxDefaults
     /// 목록 거르기: 평점 이 별 수 이상(0이면 끔)과 곡 색(nil이면 끔). rekordbox 값(초안 전)으로 거른다(정렬과 같다).
@@ -445,7 +442,7 @@ final class LibraryStore {
     private(set) var lastReadFailure: LibraryReadFailure?
     var unreadableDraftKinds: [String: Set<WritePart>] = [:]
 
-    // 태그 시트 되돌리기(LibraryStore+Tags). 편집이 반영될 때마다 tagRevision이 올라 시트가 보이는 줄을 다시 그린다.
+    // 태그 시트 되돌리기(`TagEditStore`). 편집이 반영될 때마다 tagRevision이 올라 시트가 보이는 줄을 다시 그린다.
     var canFillDownTags = false
     var tagRevision = 0
 
@@ -604,11 +601,6 @@ final class LibraryStore {
     }
 
     // 초안 표시(`LibraryStore+DraftIndex`)
-
-    func persistTagDrafts(_ tags: [TagDraft]) {
-        rememberTagSaves(tags)
-        useCases.watch.saveTags(tags)
-    }
 
     /// 저장을 맡긴 태그 초안 곡을 기억한다(저장 실패를 이 저장소 것만 본다). 유스케이스·반영 세션이 저장한 초안도 여기에 센다
     func rememberTagSaves(_ tags: [TagDraft]) { tagSaveAttempts.formUnion(tags.map(\.trackUUID)) }

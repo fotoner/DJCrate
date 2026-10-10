@@ -156,11 +156,11 @@ private var choices: [Choice] {
 ```swift
 // Sources/DJCrate/Deck/Views/DeckSuggestionBar.swift
 struct DeckSuggestionBar: View {
-    let store: LibraryStore
+    let tags: TagEditStore
     let deck: DeckModel
 
     var body: some View {
-        let suggestions = DeckSuggestions(deck: deck, store: store)
+        let suggestions = DeckSuggestions(deck: deck, tags: tags)
         DeckSuggestionBarContent(list: suggestions.list, gridStatus: suggestions.gridStatus, isLocked: suggestions.isLocked,
                                  apply: suggestions.apply, dismiss: suggestions.dismiss,
                                  restore: suggestions.restoreDismissed, reanalyze: deck.reanalyze)
@@ -291,7 +291,9 @@ try await h.loaded()
 - **덱 재생 경로**: `DeckModel`은 오디오 엔진 포트 `DeckAudioEngine`을 직접 부른다. 매 프레임 재생 위치와 샘플 단위 예약을 유스케이스 한 겹 뒤로 미루지 않으려는 것이다. 이유는 [구조 문서의 경계 규칙](architecture.md#경계-규칙)에 있다.
 - **공유 저장소 `LibraryStore`**: 사이드바, 곡 목록, 인스펙터, 태그 시트가 함께 쓴다. 나누기 전까지 이 모양을 둔다. 새 화면은 자기 화면 모델을 만든다. 그 화면 모델이 `LibraryStore`의 값을 읽는다.
   - 저장소의 흐름 순서도 유스케이스로 옮긴다. 예: 읽기 순번·요청 합치기·Music 최신화 잇기는 `LibraryReadFlow`에 있다. 저장소는 화면 포트 `LibraryReadScreen`으로 상태를 넘긴다. 저장소는 흐름이 알린 결과를 표시한다.
-  - 기능 하나의 상태는 기능 조각(`…Store`)으로 뗀다. 조각은 저장소의 `let` 속성이라 관찰하지 않는다. 화면은 조각의 값을 읽는다. 예: Music 목록과 동기화 창은 `MusicLibraryStore`(`store.music`)가 든다.
+  - 기능 하나의 상태는 기능 조각(`…Store`)으로 뗀다(#248). 조각은 저장소의 속성이다. 저장소는 조각을 관찰하지 않는다. 화면은 조각의 값을 읽는다.
+  - 조각 속성은 `let`으로 둔다. 조각이 저장소를 붙들면 `@ObservationIgnored lazy var`로 둔다.
+  - 예: Music 목록과 동기화 창은 `MusicLibraryStore`(`store.music`)가 든다. 태그 인스펙터의 화면 모델 `TagInspectorModel`은 태그 편집 조각 `TagEditStore`(`store.tags`)를 부른다. 규칙은 유스케이스 `EditTags`에 있다.
 
 ```swift
 // Sources/DJCrate/Deck/DeckModel+Transport.swift — 예외: 화면 모델이 엔진 포트를 직접 부른다
@@ -321,7 +323,7 @@ func tick() {
 | 접미사 | 뜻 | 예 |
 |---|---|---|
 | `…Model` | 화면 하나 전용 화면 모델 | `RelocateModel`, `TrackEditModel`, `StorageSettingsModel` |
-| `…Store` | 여러 화면이 함께 쓰는 저장소 | `LibraryStore`, `UsbStore` |
+| `…Store` | 여러 화면이 함께 쓰는 저장소·기능 조각 | `LibraryStore`, `UsbStore`, `TagEditStore` |
 | `…Coordinator` | 화면 여러 개를 잇는 흐름 | `ReflectionCoordinator`, `UsbWriteCoordinator` |
 | `…Coordinator`(AppKit) | `NSViewRepresentable`의 대리자 | `TrackListCoordinator`, `SheetCoordinator` |
 

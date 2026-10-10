@@ -127,7 +127,7 @@ extension TrackListCoordinator {
         }
         let selected = table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0] : nil }
         let targets = TrackListTagEditing.targets(anchor: rows[index], selection: selected)
-        guard let session = TrackListTagEditing.Session(key: key, targets: targets, value: { store.tagCell($0, key) }) else { return false }
+        guard let session = TrackListTagEditing.Session(key: key, targets: targets, value: { store.tags.tagCell($0, key) }) else { return false }
         table.scrollRowToVisible(index)
         table.scrollColumnToVisible(columnIndex)
         guard let cell = table.view(atColumn: columnIndex, row: index, makeIfNecessary: true) as? TrackTextCell else { return false }
@@ -160,7 +160,7 @@ extension TrackListCoordinator {
         edit.cell?.endEditing()
         if commit {
             let targets = TrackListTagEditing.changes(edit.session, committing: value)
-            if !targets.isEmpty { store.setTag(edit.session.key, value, rows: targets) }
+            if !targets.isEmpty { store.tags.setTag(edit.session.key, value, rows: targets) }
         }
         refreshTagCells(table)
         if let forward, let next = TrackListTagEditing.column(after: edit.column, forward: forward, in: visibleColumnIDs(table)) {
@@ -211,7 +211,7 @@ extension TrackListCoordinator {
         let selected = table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0] : nil }
         let targets = TagChoice.targets(key, TrackListTagEditing.targets(anchor: rows[index], selection: selected))
         guard !targets.isEmpty else { return nil }
-        return TagChoice.menu(key, current: store.tagValue(key, rows: targets), colors: store.trackColors, targetCount: targets.count,
+        return TagChoice.menu(key, current: store.tags.tagValue(key, rows: targets), colors: store.trackColors, targetCount: targets.count,
                               action: #selector(pickKey(_:)), target: self) { Choice(key: key, targets: targets, value: $0) }
     }
 
@@ -228,7 +228,7 @@ extension TrackListCoordinator {
             if firstIndex.count == wanted.count { break }
         }
         let targets = choice.targets.compactMap { target in firstIndex[target.id].map { rows[$0] } }
-        store.setTag(choice.key, choice.value, rows: TagChoice.targets(choice.key, targets))
+        store.tags.setTag(choice.key, choice.value, rows: TagChoice.targets(choice.key, targets))
         if let table { refreshTagCells(table) }
     }
 }

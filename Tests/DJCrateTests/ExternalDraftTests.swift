@@ -39,8 +39,8 @@ struct ExternalDraftTests {
         store.rowsByUUID[row.track.uuid] = row
         let directory = home.appending(path: "tag-drafts")
         h.deck.pressHotCue(slot: 0)
-        store.setTag(.title, "첫 제목", rows: [row])
-        store.setTag(.title, "둘째 제목", rows: [row])
+        store.tags.setTag(.title, "첫 제목", rows: [row])
+        store.tags.setTag(.title, "둘째 제목", rows: [row])
         if undoFirst { undo.undo() }
         var external = try #require(store.tagDrafts[row.track.uuid])
         try TagDraftStore.save(external, directory: directory)
@@ -80,7 +80,7 @@ struct ExternalDraftTests {
         store.rowsByUUID[row.track.uuid] = row
         store.onCueDraftsReloaded = { drafts in h.deck.reloadExternalCueDraft(drafts[row.track.uuid]) }
         let directory = home.appending(path: "cue-drafts")
-        store.setTag(.title, "앱에서 고친 제목", rows: [row])
+        store.tags.setTag(.title, "앱에서 고친 제목", rows: [row])
         let tag = try #require(store.tagDrafts[row.track.uuid])
         try TagDraftStore.save(tag, directory: home.appending(path: "tag-drafts"))
         h.deck.pressHotCue(slot: 0)

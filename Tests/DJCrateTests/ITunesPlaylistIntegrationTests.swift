@@ -148,7 +148,7 @@ struct ITunesPlaylistIntegrationTests {
         store.renamePlaylist("itunes:A", to: "바꿀 수 없음")
         store.deletePlaylist("itunes:A")
         #expect(store.playlistDraft.isEmpty)
-        store.setTag(.comment, "메모 초안", rows: [a])
+        store.tags.setTag(.comment, "메모 초안", rows: [a])
         #expect(store.tagDrafts[a.track.uuid]?.fields.comment == "메모 초안")
         #expect(store.displayRows.map(\.track.id) == [a.id, b.id, b.id])
         store.sidebar = .filter(.all)
