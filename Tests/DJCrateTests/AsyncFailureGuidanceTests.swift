@@ -23,15 +23,17 @@ struct AsyncFailureGuidanceTests {
                                     comment: t.comment, importedOn: t.importedOn, analysisDataPath: t.analysisDataPath,
                                     imagePath: t.imagePath, isDeleted: t.isDeleted), cues: row.cues, playCount: row.playCount)
     }
-    private func store(_ fixture: RekordboxFixture) -> LibraryStore {
+    private func store(_ fixture: RekordboxFixture) -> LibraryStore { store(root: fixture.root) }
+    /// DB를 열지 않는 시험은 임시 폴더만 준다(경로만 쓰고 파일은 만들지 않는다)
+    private func store(root: URL) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("async"), persist: false),
                                  resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
-                                 backupDirectory: fixture.backups, playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in },
-                                 playlistImportURL: nil, stagingSaver: { _ in }, draftHome: fixture.root.appending(path: "drafts"),
-                                 rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot,
+                                 backupDirectory: root.appending(path: "backups"), playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in },
+                                 playlistImportURL: nil, stagingSaver: { _ in }, draftHome: root.appending(path: "drafts"),
+                                 rekordboxDatabase: root.appending(path: "master.db"), rekordboxShareRoot: root.appending(path: "share"),
                                  // 명시한 사본으로 열고 사본 rekordbox 폴더를 준 개발 실행(스냅샷도 그 폴더에서만 뜬다)
-                                 arguments: ["test", "--db", fixture.database.path],
-                                 environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
+                                 arguments: ["test", "--db", root.appending(path: "master.db").path],
+                                 environment: ["DJC_REKORDBOX_DIR": root.path])
         return store
     }
 
@@ -50,8 +52,8 @@ struct AsyncFailureGuidanceTests {
 
     /// 목록 위 오류 줄은 닫을 수 있다(#230). 닫아도 오류 상태(`lastError`)는 남아 그 상태를 보는 흐름은 그대로이고, 새 오류가 오면 다시 보인다.
     @Test func 목록_위_오류_줄을_닫아도_상태는_남고_새_오류는_다시_보인다() throws {
-        let fixture = try RekordboxFixture()
-        let store = store(fixture)
+        let folder = try TemporaryFolder()
+        let store = store(root: folder.url)
         #expect(store.visibleLastError == nil)
         store.reportLibraryError("라이브러리를 열지 못했습니다")
         #expect(store.visibleLastError == "라이브러리를 열지 못했습니다")
@@ -124,7 +126,7 @@ struct AsyncFailureGuidanceTests {
     }
 
     @Test func XML_미리_보기는_변경_없는_선택도_이유와_함께_남긴다() throws {
-        let fixture = try RekordboxFixture(), store = store(fixture)
+        let folder = try TemporaryFolder(), store = store(root: folder.url)
         let row = ReflectionPresenterTests.row("unchanged")
         let plans = store.reflectionPlans(for: [row])
         #expect(plans.count == 1)
@@ -288,7 +290,7 @@ struct AsyncFailureGuidanceTests {
 
     @Test
     func 제외_이유는_곡과_종류별로_보이고_XML의_지원_범위를_유지한다() throws {
-        let fixture = try RekordboxFixture(), store = store(fixture)
+        let folder = try TemporaryFolder(), store = store(root: folder.url)
         let row = ReflectionPresenterTests.row("exclusions-\(UUID())")
         let staged = replacing(row, id: "djc-synthetic")
         #expect(store.draftExclusionReasons(for: [staged]).first?.contains("추가한 곡") == true)
@@ -314,7 +316,7 @@ struct AsyncFailureGuidanceTests {
     /// 쓰기 확인 목록에는 막힌 초안만 남긴다. 고르기만 한 곡·추가한 곡·바꿀 것 없는 초안은 줄로 넣지 않는다(#211).
     @Test
     func 쓰기_미리_보기의_제외_줄은_막힌_초안만_남긴다() throws {
-        let fixture = try RekordboxFixture(), store = store(fixture)
+        let folder = try TemporaryFolder(), store = store(root: folder.url)
         let row = ReflectionPresenterTests.row("blocked-only-\(UUID())")
         let staged = replacing(row, id: "djc-synthetic")
         #expect(store.draftExclusionReasons(for: [staged, row], blockedOnly: true).isEmpty)
@@ -330,7 +332,7 @@ struct AsyncFailureGuidanceTests {
     }
 
     @Test func 사라진_선택으로_실행한_현재_불러오기_명령만_다시_선택을_안내한다() throws {
-        let fixture = try RekordboxFixture(), store = store(fixture)
+        let folder = try TemporaryFolder(), store = store(root: folder.url)
         let row = ReflectionPresenterTests.row("selected")
         store.loadToDeck(row)
         store.selection = ["deleted"]

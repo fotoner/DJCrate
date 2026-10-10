@@ -36,11 +36,7 @@ struct MusicalKeyEditingTests {
     }
 
     // MARK: 고르기 규칙
-
-    @Test func 고르기에서_옛_표기_값은_맨_앞에_보인다() {
-        // 고를 수 있는 이름(없음·Camelot 24개)은 곡 목록 키 메뉴 시험(`TrackListKeyEditTests`)이 본다.
-        #expect(KeyPicker.choices(current: "Em").first == "Em" && KeyPicker.choices(current: "").first == "1A")
-    }
+    // 고르기 목록(옛 표기 현재값을 맨 앞에)은 Domain `MusicalKeyTagTests`가, 메뉴에 보이는 이름은 `TrackListKeyEditTests`가 본다.
 
     @Test func 스트리밍_곡은_키를_고를_수_없고_추가한_곡은_고를_수_있다() throws {
         // 추가한 곡의 키는 곡을 rekordbox에 넣을 때 함께 쓴다(#5). 스트리밍 곡은 여전히 막는다.

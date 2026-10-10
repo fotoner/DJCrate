@@ -48,10 +48,10 @@ struct ITunesMissingCacheReloadTests {
     }
 
     @Test func 명시한_DB에_캐시가_없으면_미캡처_상태를_유지한다() throws {
-        let fixture = try RekordboxFixture()
-        let loaded = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: false,
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let loaded = try LoadedLibrary.load(snapshot: folder.database, refreshITunes: false,
                                             fallbackDirectory: LibrarySnapshot.defaultDirectory,
-                                            drafts: .dataFolder(),
+                                            drafts: .dataFolder(), source: .withoutDatabase,
                                             captureITunes: {
                                                 Issue.record("명시한 DB를 읽을 때 Music을 조회했습니다")
                                                 return ITunesLibrarySnapshot()
@@ -64,14 +64,14 @@ struct ITunesMissingCacheReloadTests {
     /// 읽는 중은 이제 `.loading`이 따로 있어 `.notCaptured`는 "읽기가 끝났는데 캡처한 목록이 없다"만 뜻한다(#197).
     /// 그래서 Music을 조회한 적 없는 사본(`DJC_REKORDBOX_DIR`·`--db`)의 쓰기 후 재로드를 "Music 접근 권한을 확인하세요"(`.unavailable`)로 바꾸지 않는다.
     @Test func 이전도_미캡처인_완료된_재로드는_진행중이나_접근_권한_안내로_표시하지_않는다() throws {
-        let fixture = try RekordboxFixture()
-        let previous = fixture.root.appending(path: "previous.db")
-        let loaded = try LoadedLibrary.load(snapshot: fixture.database,
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let previous = folder.url.appending(path: "previous.db")
+        let loaded = try LoadedLibrary.load(snapshot: folder.database,
                                             previousITunesSnapshot: .init(source: previous,
                                                 contents: ITunesLibrarySnapshot(status: .notCaptured),
                                                 preferOverCurrent: true),
                                             fallbackDirectory: LibrarySnapshot.defaultDirectory,
-                                            drafts: .dataFolder(),
+                                            drafts: .dataFolder(), source: .withoutDatabase,
                                             captureITunes: {
                                                 Issue.record("쓰기 후 Music을 다시 조회했습니다")
                                                 return ITunesLibrarySnapshot()
@@ -80,39 +80,39 @@ struct ITunesMissingCacheReloadTests {
         #expect(loaded.iTunesLibrary.status == .notCaptured)
         #expect(loaded.iTunesLibrary.status.message == String(ui: "이 사본에는 캡처한 iTunes 목록이 없습니다"))
         #expect(loaded.iTunesLibrary.status.message?.contains("Music 접근 권한") != true)
-        #expect(ITunesLibrarySnapshot.load(for: fixture.database).status == .notCaptured)
+        #expect(ITunesLibrarySnapshot.load(for: folder.database).status == .notCaptured)
     }
 
     @Test func 이전_Music_조회가_실패였으면_완료된_재로드도_실패로_남는다() throws {
         // 실제로 조회해 실패한 사본은 쓰기 뒤 다시 읽어도(Music은 다시 조회하지 않는다) 접근 권한 안내가 남는다.
-        let fixture = try RekordboxFixture()
-        let previous = fixture.root.appending(path: "previous.db")
-        let loaded = try LoadedLibrary.load(snapshot: fixture.database,
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let previous = folder.url.appending(path: "previous.db")
+        let loaded = try LoadedLibrary.load(snapshot: folder.database,
                                             previousITunesSnapshot: .init(source: previous,
                                                 contents: ITunesLibrarySnapshot(status: .unavailable),
                                                 preferOverCurrent: true),
                                             fallbackDirectory: LibrarySnapshot.defaultDirectory,
-                                            drafts: .dataFolder(),
+                                            drafts: .dataFolder(), source: .withoutDatabase,
                                             captureITunes: {
                                                 Issue.record("쓰기 후 Music을 다시 조회했습니다")
                                                 return ITunesLibrarySnapshot()
                                             })
         #expect(loaded.iTunesSnapshot.status == .unavailable)
         #expect(loaded.iTunesLibrary.status.message?.contains("Music 접근 권한") == true)
-        #expect(ITunesLibrarySnapshot.load(for: fixture.database).status == .notCaptured)
+        #expect(ITunesLibrarySnapshot.load(for: folder.database).status == .notCaptured)
     }
 
     @Test(arguments: [ITunesLibrarySnapshot.Status.ready, .stale])
     func 현재_사용가능한_캐시는_이전_실패나_미캡처보다_우선한다(status: ITunesLibrarySnapshot.Status) throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder.withEmptyDatabase()
         let current = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "현재 목록")], status: status)
-        try current.save(for: fixture.database)
-        let previous = fixture.root.appending(path: "previous.db")
+        try current.save(for: folder.database)
+        let previous = folder.url.appending(path: "previous.db")
         for oldStatus in [ITunesLibrarySnapshot.Status.unavailable, .notCaptured] {
-            let loaded = try LoadedLibrary.load(snapshot: fixture.database,
+            let loaded = try LoadedLibrary.load(snapshot: folder.database,
                                                 previousITunesSnapshot: .init(source: previous,
                                                     contents: ITunesLibrarySnapshot(status: oldStatus),
-                                                    preferOverCurrent: true), fallbackDirectory: LibrarySnapshot.defaultDirectory, drafts: .dataFolder())
+                                                    preferOverCurrent: true), fallbackDirectory: LibrarySnapshot.defaultDirectory, drafts: .dataFolder(), source: .withoutDatabase)
             #expect(loaded.iTunesSnapshot.status == status)
             #expect(loaded.iTunesSnapshot.playlists == current.playlists)
         }

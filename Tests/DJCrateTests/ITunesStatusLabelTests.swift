@@ -12,17 +12,19 @@ import Testing
 @MainActor
 @Suite("iTunes 목록 안내 문구")
 struct ITunesStatusLabelTests {
-    private func store(_ fixture: RekordboxFixture) -> LibraryStore {
+    private func store(_ fixture: RekordboxFixture) -> LibraryStore { store(root: fixture.root) }
+    /// DB를 읽지 않는 시험은 임시 폴더만 준다(master.db 경로만 쓰고 파일은 만들지 않는다)
+    private func store(root: URL) -> LibraryStore {
         let defaults = TestDefaults.make("itunes-status-label")
         return LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
                             resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
-                            backupDirectory: fixture.backups, playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in },
-                            playlistImportURL: nil, stagingSaver: { _ in }, draftHome: fixture.root.appending(path: "drafts"),
-                            arguments: ["test", "--db", fixture.database.path], environment: [:])
+                            backupDirectory: root.appending(path: "backups"), playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in },
+                            playlistImportURL: nil, stagingSaver: { _ in }, draftHome: root.appending(path: "drafts"),
+                            arguments: ["test", "--db", root.appending(path: "master.db").path], environment: [:])
     }
 
     @Test func 아직_읽기_전에는_미캡처가_아니라_진행_안내를_보인다() throws {
-        #expect(store(try RekordboxFixture()).iTunesLibrary.status == .loading)
+        #expect(store(root: try TemporaryFolder().url).iTunesLibrary.status == .loading)
         #expect(SyncedITunesLibrary().status == .loading)
     }
 
@@ -72,24 +74,24 @@ struct ITunesStatusLabelTests {
 
     @Test(arguments: ["ready", "stale", "notCaptured", "unavailable"])
     func 옛_사본의_상태_이름은_그대로_읽힌다(raw: String) throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder()
         let json = #"{"version":1,"playlists":[],"status":"\#(raw)","unavailablePlaylistCount":0}"#
-        try Data(json.utf8).write(to: ITunesLibrarySnapshot.url(for: fixture.database))
-        let loaded = ITunesLibrarySnapshot.load(for: fixture.database)
+        try Data(json.utf8).write(to: ITunesLibrarySnapshot.url(for: folder.url.appending(path: "master.db")))
+        let loaded = ITunesLibrarySnapshot.load(for: folder.url.appending(path: "master.db"))
         #expect(loaded.status.rawValue == raw)
         #expect((loaded.status.message == nil) == (raw == "ready"), "준비된 사본만 안내가 없다")
     }
 
     @Test func 사본_파일에_적힌_읽는_중은_읽지_못한_것으로_본다() throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder()
         let json = #"{"version":1,"playlists":[],"status":"loading","unavailablePlaylistCount":0}"#
-        try Data(json.utf8).write(to: ITunesLibrarySnapshot.url(for: fixture.database))
-        #expect(ITunesLibrarySnapshot.load(for: fixture.database).status == .unavailable)
+        try Data(json.utf8).write(to: ITunesLibrarySnapshot.url(for: folder.url.appending(path: "master.db")))
+        #expect(ITunesLibrarySnapshot.load(for: folder.url.appending(path: "master.db")).status == .unavailable)
     }
 
     @Test func 사본_파일이_없으면_이전과_같이_미캡처다() throws {
-        let fixture = try RekordboxFixture()
-        let loaded = ITunesLibrarySnapshot.load(for: fixture.database)
+        let folder = try TemporaryFolder()
+        let loaded = ITunesLibrarySnapshot.load(for: folder.url.appending(path: "master.db"))
         #expect(loaded.status == .notCaptured)
     }
 }

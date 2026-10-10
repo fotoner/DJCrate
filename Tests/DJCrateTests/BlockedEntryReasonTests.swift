@@ -54,12 +54,12 @@ struct BlockedEntryReasonTests {
     }
 
     @Test func 동기화_미확정_입력과_쓰기_대기_없음을_구분한다() throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder()
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("entry"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), backupDirectory: fixture.backups,
+                                 resultHistory: WriteResultHistory(url: nil), backupDirectory: folder.url.appending(path: "backups"),
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil,
-                                 stagingSaver: { _ in }, draftHome: fixture.root.appending(path: "drafts"),
-                                 rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
+                                 stagingSaver: { _ in }, draftHome: folder.url.appending(path: "drafts"),
+                                 rekordboxDatabase: folder.url.appending(path: "master.db"), rekordboxShareRoot: folder.url.appending(path: "share"))
         #expect(LibraryMenuAction.snapshot.disabledReason(in: store) == nil)
         store.phase = .loading("합성 읽기")
         let reading = try #require(LibraryMenuAction.snapshot.disabledReason(in: store))
@@ -95,12 +95,12 @@ struct BlockedEntryReasonTests {
     }
 
     @Test func 목록의_셀에도_읽기_전용_도움말이_남는다() throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder()
         let stream = TrackListTagEditTests.row("1", streaming: true)
-        let store = LibraryStore.test(saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+        let store = LibraryStore.test(saveTagDrafts: { _ in }, backupDirectory: folder.url.appending(path: "backups"),
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil,
-                                 stagingSaver: { _ in }, draftHome: fixture.root.appending(path: "drafts"),
-                                 rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
+                                 stagingSaver: { _ in }, draftHome: folder.url.appending(path: "drafts"),
+                                 rekordboxDatabase: folder.url.appending(path: "master.db"), rekordboxShareRoot: folder.url.appending(path: "share"))
         let h = ListHarness(rows: [stream], selection: [stream.id], store: store)
         defer { h.close() }
         let reason = try #require(TrackListTagEditing.unavailableReason(stream, key: .title))

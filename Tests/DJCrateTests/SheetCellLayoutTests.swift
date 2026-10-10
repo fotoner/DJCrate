@@ -1,6 +1,7 @@
 @testable import DJCrate
 import AppKit
 import DJCDomain
+import DJCTestKit
 import RekordboxFixtures
 import Testing
 
@@ -174,11 +175,11 @@ struct SheetCellLayoutTests {
     }
 
     @Test func 스트리밍_칸의_전체_글자와_편집_불가_이유를_표_툴팁으로_알린다() throws {
-        let fixture = try RekordboxFixture()
-        let store = LibraryStore.test(saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+        let folder = try TemporaryFolder()
+        let store = LibraryStore.test(saveTagDrafts: { _ in }, backupDirectory: folder.url.appending(path: "backups"),
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil,
-                                 stagingSaver: { _ in }, draftHome: fixture.root.appending(path: "drafts"),
-                                 rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
+                                 stagingSaver: { _ in }, draftHome: folder.url.appending(path: "drafts"),
+                                 rekordboxDatabase: folder.url.appending(path: "master.db"), rekordboxShareRoot: folder.url.appending(path: "share"))
         let h = SheetCellLayoutHarness(store: store)
         defer { h.window.close() }
         let stream = TrackListTagEditTests.row("stream", streaming: true)

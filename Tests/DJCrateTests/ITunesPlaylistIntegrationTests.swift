@@ -5,7 +5,6 @@ import DJCDomain
 import DJCStorage
 import DJCTestKit
 import Foundation
-import RekordboxFixtures
 import RekordboxKit
 import Testing
 
@@ -14,8 +13,8 @@ import Testing
 struct ITunesPlaylistIntegrationTests {
     @Test(arguments: [false, true])
     func 명시한_DB의_iTunes_새로고침은_현재_사본과_옆_목록만_다시_읽는다(environmentOverride: Bool) async throws {
-        let fixture = try RekordboxFixture()
-        let database = fixture.database
+        let folder = try TemporaryFolder.withEmptyDatabase()
+        let database = folder.database
         try ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "이전 목록")]).save(for: database)
         let arguments = environmentOverride ? ["DJCrate"] : ["DJCrate", "--db", database.path]
         let environment = environmentOverride ? ["DJC_DB": database.path] : [String: String]()
@@ -35,24 +34,24 @@ struct ITunesPlaylistIntegrationTests {
     }
 
     @Test func 실패한_갱신은_기존_정상_사본을_보존하고_새_스냅샷은_낡음을_알린다() throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder.withEmptyDatabase()
         let good = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "마지막 정상 목록")])
-        try good.save(for: fixture.database)
-        let original = try Data(contentsOf: ITunesLibrarySnapshot.url(for: fixture.database))
-        let same = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: true,
+        try good.save(for: folder.database)
+        let original = try Data(contentsOf: ITunesLibrarySnapshot.url(for: folder.database))
+        let same = try LoadedLibrary.load(snapshot: folder.database, refreshITunes: true,
                                           fallbackDirectory: LibrarySnapshot.defaultDirectory,
                                           drafts: .dataFolder(), source: .withoutDatabase,
                                           captureITunes: { ITunesLibrarySnapshot(status: .unavailable) })
         #expect(same.iTunesLibrary.status == .stale)
         #expect(same.iTunesLibrary.index["itunes:A"]?.name == "마지막 정상 목록")
-        #expect(ITunesLibrarySnapshot.load(for: fixture.database).status == .ready)
-        #expect(try Data(contentsOf: ITunesLibrarySnapshot.url(for: fixture.database)) == original)
-        let directory = fixture.root.appending(path: "snapshots")
+        #expect(ITunesLibrarySnapshot.load(for: folder.database).status == .ready)
+        #expect(try Data(contentsOf: ITunesLibrarySnapshot.url(for: folder.database)) == original)
+        let directory = folder.url.appending(path: "snapshots")
         let moment = Date(timeIntervalSince1970: 1_800_000_000)
-        let first = try LibrarySnapshot.take(from: fixture.database, into: directory, force: true, now: moment)
+        let first = try LibrarySnapshot.take(from: folder.database, into: directory, force: true, now: moment)
         let previous = LoadedLibrary.ITunesFallback(source: first, contents: ITunesLibrarySnapshot.load(for: first))
-        try FileManager.default.removeItem(at: ITunesLibrarySnapshot.url(for: fixture.database))
-        let fresh = try LibrarySnapshot.take(from: fixture.database, into: directory, force: true, now: moment.addingTimeInterval(60))
+        try FileManager.default.removeItem(at: ITunesLibrarySnapshot.url(for: folder.database))
+        let fresh = try LibrarySnapshot.take(from: folder.database, into: directory, force: true, now: moment.addingTimeInterval(60))
         #expect(ITunesLibrarySnapshot.load(for: fresh).status == .notCaptured)
         let new = try LoadedLibrary.load(snapshot: fresh, refreshITunes: true,
                                          previousITunesSnapshot: previous,
@@ -65,7 +64,7 @@ struct ITunesPlaylistIntegrationTests {
 
         // 같은 초의 이름을 다시 쓰면 기존 sidecar가 지워진다. 메모리에 보관한 값을 쓴다.
         let reused = LoadedLibrary.ITunesFallback(source: fresh, contents: ITunesLibrarySnapshot.load(for: fresh))
-        let repeated = try LibrarySnapshot.take(from: fixture.database, into: directory, force: true, now: moment.addingTimeInterval(60))
+        let repeated = try LibrarySnapshot.take(from: folder.database, into: directory, force: true, now: moment.addingTimeInterval(60))
         #expect(repeated == fresh)
         let recovered = try LoadedLibrary.load(snapshot: repeated, refreshITunes: true,
                                                previousITunesSnapshot: reused,
@@ -75,7 +74,7 @@ struct ITunesPlaylistIntegrationTests {
         #expect(recovered.iTunesLibrary.index["itunes:A"]?.name == "마지막 정상 목록")
         #expect(recovered.iTunesLibrary.status == .stale)
 
-        let foreign = LoadedLibrary.ITunesFallback(source: fixture.database, contents: good)
+        let foreign = LoadedLibrary.ITunesFallback(source: folder.database, contents: good)
         try FileManager.default.removeItem(at: ITunesLibrarySnapshot.url(for: repeated))
         let unrelated = try LoadedLibrary.load(snapshot: repeated, refreshITunes: true,
                                                previousITunesSnapshot: foreign,
@@ -86,22 +85,22 @@ struct ITunesPlaylistIntegrationTests {
     }
 
     @Test func 성공한_빈_목록은_이전_사본을_비우고_저장_실패는_기존_자료로_알린다() throws {
-        let fixture = try RekordboxFixture()
+        let folder = try TemporaryFolder.withEmptyDatabase()
         let good = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "이전 목록")])
-        try good.save(for: fixture.database)
-        let empty = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: true,
+        try good.save(for: folder.database)
+        let empty = try LoadedLibrary.load(snapshot: folder.database, refreshITunes: true,
                                            fallbackDirectory: LibrarySnapshot.defaultDirectory,
                                            drafts: .dataFolder(), source: .withoutDatabase,
                                            captureITunes: { ITunesLibrarySnapshot() })
         #expect(empty.iTunesLibrary.status == .ready)
         #expect(empty.iTunesLibrary.tree.isEmpty)
-        #expect(ITunesLibrarySnapshot.load(for: fixture.database).playlists.isEmpty)
+        #expect(ITunesLibrarySnapshot.load(for: folder.database).playlists.isEmpty)
 
-        let sidecar = ITunesLibrarySnapshot.url(for: fixture.database)
+        let sidecar = ITunesLibrarySnapshot.url(for: folder.database)
         try FileManager.default.removeItem(at: sidecar)
         try FileManager.default.createDirectory(at: sidecar, withIntermediateDirectories: false)
-        let previous = LoadedLibrary.ITunesFallback(source: fixture.root.appending(path: "previous.db"), contents: good)
-        let failed = try LoadedLibrary.load(snapshot: fixture.database, refreshITunes: true,
+        let previous = LoadedLibrary.ITunesFallback(source: folder.url.appending(path: "previous.db"), contents: good)
+        let failed = try LoadedLibrary.load(snapshot: folder.database, refreshITunes: true,
                                             previousITunesSnapshot: previous,
                                             fallbackDirectory: LibrarySnapshot.defaultDirectory,
                                             drafts: .dataFolder(), source: .withoutDatabase,

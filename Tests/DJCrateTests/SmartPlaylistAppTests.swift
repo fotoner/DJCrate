@@ -83,17 +83,8 @@ struct SmartPlaylistAppTests {
     }
 
     // MARK: 켬
-
-    @Test func 켜면_조건에_맞는_곡을_계산해_보인다() async throws {
-        let fixture = try Self.fixture()
-        let store = await Self.makeStore(fixture, lab: true)
-        let node = try #require(store.playlistIndex["S1"])
-        #expect(Set(node.trackIDs) == ["2", "3", "4"])
-        #expect(store.playlistCounts["S1"] == 3)
-        #expect(store.smartPlaylistResults["S1"]?.unsupportedReasons.isEmpty == true)
-        store.sidebar = .playlist("S1")
-        #expect(Self.ids(store) == ["2", "3", "4"])
-    }
+    // 조건 계산(제목 포함·연도 범위 2015~2020 → 2,3,4)은 DJCDomainTests `SmartPlaylistEvaluatorTests`가 본다.
+    // 켠 저장소가 계산한 곡을 목록·곡 수·보기에 넣는 연결은 아래 설정 바꾸기·스트리밍·저장 유지 시험이 본다.
 
     @Test func 켜도_계산하지_못하는_목록은_곡을_보이지_않고_이유를_든다() async throws {
         let fixture = try Self.fixture()

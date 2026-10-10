@@ -146,8 +146,10 @@ jobs:
               if [[ -n "$CHANGED_BASE" ]]; then
                 scripts/check.sh --changed --base "$CHANGED_BASE" 2>&1 | tee "$RUNNER_TEMP/djc-check.log"
               else
-                echo "▸ 전체 검사로 넓힙니다: $BASE_REASON" | tee "$RUNNER_TEMP/djc-check.log"
-                scripts/check.sh 2>&1 | tee -a "$RUNNER_TEMP/djc-check.log"
+                # 넓힌 --changed처럼 릴리스 앱 빌드는 빼고(릴리스 검사의 몫) 전체 시험·커버리지를 돈다.
+                echo "▸ 전체 검사로 넓힙니다(릴리스 앱 빌드 뺌): $BASE_REASON" | tee "$RUNNER_TEMP/djc-check.log"
+                scripts/check.sh --coverage 2>&1 | tee -a "$RUNNER_TEMP/djc-check.log"
+                echo "▸ 릴리스 빌드는 릴리스 검사에서 합니다(scripts/check.sh·--release)" | tee -a "$RUNNER_TEMP/djc-check.log"
               fi ;;
             coverage) scripts/check.sh --coverage 2>&1 | tee "$RUNNER_TEMP/djc-check.log" ;;
             release) scripts/check.sh --release 2>&1 | tee "$RUNNER_TEMP/djc-check.log" ;;
