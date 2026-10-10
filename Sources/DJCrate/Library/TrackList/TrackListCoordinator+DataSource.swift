@@ -120,10 +120,10 @@ extension TrackListCoordinator {
             return
         }
         if key == .musicalKey {
-            let edited = store.isTagEdited(row, key)
+            let edited = store.tags.isTagEdited(row, key)
             // 키를 고치지 않은 추가 곡은 다른 태그 초안이 있어도 음원 태그·추정 제안을 그대로 보인다(#5).
             let estimated = !edited && row.keyEstimated
-            cell.set(edited ? store.tagCell(row, key) : row.keyName,
+            cell.set(edited ? store.tags.tagCell(row, key) : row.keyName,
                      color: edited ? UIColors.draft.nsColor : estimated ? UIColors.suggestion.nsColor : .secondaryLabelColor,
                      draft: edited, estimated: estimated)
             if let reason = KeyPicker.unavailableReason(row) { cell.toolTip = reason }

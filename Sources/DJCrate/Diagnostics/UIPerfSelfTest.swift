@@ -598,7 +598,7 @@ final class UIPerfRunner {
 
     private func drafts() async {
         let rows = Array(store.rows.prefix(600))
-        await measure("태그 초안 600곡 만들기", repeats: 1, window: 1.5) { _ in self.store.setTag(.comment, "성능 측정 초안", rows: rows) }
+        await measure("태그 초안 600곡 만들기", repeats: 1, window: 1.5) { _ in self.store.tags.setTag(.comment, "성능 측정 초안", rows: rows) }
         log("쓰기 대기 \(store.pendingLibraryCount)곡")
     }
 

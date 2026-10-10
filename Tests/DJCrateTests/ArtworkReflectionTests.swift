@@ -58,16 +58,16 @@ struct ArtworkReflectionTests {
         let store = await makeStore(fixture)
         let row = try #require(store.rowsByUUID[spec.uuid])
         // 인스펙터 그림 칸: 초안이 있으면 초안 그림, 없으면 rekordbox 그림(이 곡은 없음)
-        let well = ArtworkWellLoader()
-        store.setArtwork(image, name: "표지.jpg", rows: [row])
-        await well.load(row, store: store)
+        let well = ArtworkInspectorModel(store: store)
+        well.setArtwork(image, name: "표지.jpg", rows: [row])
+        await well.loadImage(row)
         #expect(well.image != nil)
-        store.discardArtworkDrafts(rows: [row])
-        let cancelled = Task { await well.load(row, store: store) }
+        well.discardDrafts(rows: [row])
+        let cancelled = Task { await well.loadImage(row) }
         cancelled.cancel()
         await cancelled.value
         #expect(well.image != nil, "취소된 읽기는 그림을 바꾸지 않는다")
-        await well.load(row, store: store)
+        await well.loadImage(row)
         #expect(well.image == nil)
 
         // 중복 후보 줄의 썸네일: rekordbox 그림(작은 그림)
@@ -91,14 +91,15 @@ struct ArtworkReflectionTests {
         let store = await makeStore(fixture)
         let row = try #require(store.rowsByUUID[spec.uuid])
         #expect(store.writeTargets([row]).isEmpty && !store.artworkBase(for: row).hasArtwork)
-        store.setArtwork(image, name: "표지.jpg", rows: [row])
+        let artwork = ArtworkInspectorModel(store: store)
+        artwork.setArtwork(image, name: "표지.jpg", rows: [row])
         let draft = try #require(store.artworkDrafts[spec.uuid])
         #expect(draft.kind == .add && draft.imageName == "표지.jpg" && draft.base == ArtworkBase(imagePath: ""))
         #expect(store.pendingUUIDs.contains(spec.uuid) && store.editedUUIDs.contains(spec.uuid))
         #expect(store.writeTargets([row]).map(\.track.uuid) == [spec.uuid])
-        #expect(store.artworkDraftImage(trackUUID: spec.uuid) == image, "원본을 옮겨도 사본이 남는다")
+        #expect(artwork.draftImage(trackUUID: spec.uuid) == image, "원본을 옮겨도 사본이 남는다")
         // 그림이 없는 곡의 지우기는 남은 초안만 버린다
-        store.deleteArtwork(rows: [row])
+        artwork.deleteArtwork(rows: [row])
         #expect(store.artworkDrafts.isEmpty && !store.pendingUUIDs.contains(spec.uuid))
         #expect(ArtworkDraftStore.uuids(directory: store.artworkDirectory).isEmpty)
     }
@@ -107,10 +108,11 @@ struct ArtworkReflectionTests {
         let (fixture, spec) = try library()
         let store = await makeStore(fixture)
         let row = try #require(store.rowsByUUID[spec.uuid])
-        store.setArtwork(ImageFixture.image(width: 40, height: 40, type: .gif), name: "움짤.gif", rows: [row])
-        #expect(store.artworkDrafts.isEmpty && store.artworkMessage?.text.contains("JPEG") == true)
-        store.setArtwork(fileAt: fixture.root.appending(path: "없는 그림.jpg"), rows: [row])
-        #expect(store.artworkDrafts.isEmpty && store.artworkMessage?.text.contains("다시 고르세요") == true)
+        let artwork = ArtworkInspectorModel(store: store)
+        artwork.setArtwork(ImageFixture.image(width: 40, height: 40, type: .gif), name: "움짤.gif", rows: [row])
+        #expect(store.artworkDrafts.isEmpty && artwork.message?.text.contains("JPEG") == true)
+        artwork.setArtwork(fileAt: fixture.root.appending(path: "없는 그림.jpg"), rows: [row])
+        #expect(store.artworkDrafts.isEmpty && artwork.message?.text.contains("다시 고르세요") == true)
     }
 
     @Test(.enabled(if: LiveDraftHome.isIsolated))
@@ -118,7 +120,8 @@ struct ArtworkReflectionTests {
         let (fixture, spec) = try library()
         let store = await makeStore(fixture)
         var row = try #require(store.rowsByUUID[spec.uuid])
-        store.setArtwork(image, name: "표지.jpg", rows: [row])
+        let artwork = ArtworkInspectorModel(store: store)
+        artwork.setArtwork(image, name: "표지.jpg", rows: [row])
 
         // 미리 보기: 넣기만 있고 막힘이 없으니 묻지 않고 쓴다(#210)
         let preview = try await store.session.previewWrite(rows: [row], playlists: false)
@@ -138,7 +141,7 @@ struct ArtworkReflectionTests {
         // 다시 읽은 곡은 그림이 있다 → 지우기 초안
         row = try #require(store.rowsByUUID[spec.uuid])
         #expect(store.artworkBase(for: row).hasArtwork && store.artworkBase(for: row).files.count == 1)
-        store.deleteArtwork(rows: [row])
+        artwork.deleteArtwork(rows: [row])
         #expect(store.artworkDrafts[spec.uuid]?.kind == .delete)
         let deletion = try await store.session.previewWrite(rows: [row], playlists: false)
         let removed = try await store.session.writeToRekordbox([], artworks: deletion.batch.artworks)
@@ -155,7 +158,7 @@ struct ArtworkReflectionTests {
         #expect(store.artworkBase(for: row).hasArtwork)
 
         // 그 뒤 다른 초안(넣기·바꾸기)을 만들면 같은 백업의 복원은 충돌로 알린다
-        store.setArtwork(image, name: "다른 표지.jpg", rows: [row])
+        artwork.setArtwork(image, name: "다른 표지.jpg", rows: [row])
         #expect(store.session.restoreConflicts(backup).map(\.kind) == [.artwork])
         #expect(store.session.restoreConflictDetails(backup).first?.contains(RestoreDraftConflict(kind: .artwork, uuid: spec.uuid).label) == true)
     }
@@ -184,10 +187,11 @@ struct ArtworkReflectionTests {
         try FileManager.default.createDirectory(at: store.artworkDirectory.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("폴더 자리의 파일".utf8).write(to: store.artworkDirectory)
         let rows = try [spec.uuid, art.uuid].map { try #require(store.rowsByUUID[$0]) }
-        store.deleteArtwork(rows: rows)
-        #expect(store.artworkDrafts.isEmpty && store.artworkMessage?.text.contains("저장하지 못했으니") == true)
-        store.setArtwork(image, name: nil, rows: rows)
-        #expect(store.artworkMessage?.text.contains("2곡") == true)
+        let artwork = ArtworkInspectorModel(store: store)
+        artwork.deleteArtwork(rows: rows)
+        #expect(store.artworkDrafts.isEmpty && artwork.message?.text.contains("저장하지 못했으니") == true)
+        artwork.setArtwork(image, name: nil, rows: rows)
+        #expect(artwork.message?.text.contains("2곡") == true)
     }
 
     @Test func 되살리지_못한_그림_초안은_알리고_복원_확인_창은_그림도_적는다() async throws {

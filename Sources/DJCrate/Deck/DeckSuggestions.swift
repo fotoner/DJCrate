@@ -2,7 +2,7 @@ import DJCDomain
 import Foundation
 
 /// 덱 제안 줄의 상태와 동작: 덱에 올린 곡의 게인·그리드·키 제안을 한곳에 모은다(문구 규칙은 `DeckSuggestion`).
-/// 게인·그리드 제안은 덱 초안이라 덱이, 키 제안은 태그 초안이라 목록(`LibraryStore`)이 가진다. 어느 쪽이든 [적용]해야만
+/// 게인·그리드 제안은 덱 초안이라 덱이, 키 제안은 태그 초안이라 태그 편집 조각(`TagEditStore`)이 가진다. 어느 쪽이든 [적용]해야만
 /// 초안이 되고(실행 취소 가능), [무시]한 제안은 곡마다 기억해 "무시한 제안 다시 보기"로 한 번에 되살린다.
 /// 덱 본문이 목록 상태를 읽지 않도록 제안 줄 뷰 안에서만 만든다(태그를 고칠 때마다 덱 전체를 다시 그리지 않게).
 @MainActor
@@ -18,7 +18,7 @@ struct DeckSuggestions {
     }
 
     let deck: DeckModel
-    let store: LibraryStore
+    let tags: TagEditStore
 
     var list: DeckSuggestionList {
         var candidates: [DeckSuggestion] = []
@@ -34,9 +34,9 @@ struct DeckSuggestions {
         if let row = keyRow {
             let estimate = keyEstimate(row)
             let fromFileTag = KeyPicker.suggestionSource([row]) == .fileTag
-            if let key = store.keySuggestion(estimate: estimate, rows: [row]) {
+            if let key = tags.keySuggestion(estimate: estimate, rows: [row]) {
                 candidates.append(.key(key, fromFileTag: fromFileTag))
-            } else if let key = store.dismissedKeySuggestion(estimate: estimate, rows: [row]) {
+            } else if let key = tags.dismissedKeySuggestion(estimate: estimate, rows: [row]) {
                 candidates.append(.key(key, fromFileTag: fromFileTag))
                 dismissed.insert(.key)
             }
@@ -51,7 +51,7 @@ struct DeckSuggestions {
     }
 
     /// rekordbox에 쓰는 동안: 줄은 그대로 두고 단추만 막는다(쓰는 동안 줄이 접혔다 펴지지 않게).
-    var isLocked: Bool { deck.isWriteLocked || store.isWritingRekordbox }
+    var isLocked: Bool { deck.isWriteLocked || tags.isWritingRekordbox }
 
     func apply(_ kind: DeckSuggestion.Kind) {
         guard !isLocked else { return }
@@ -60,7 +60,7 @@ struct DeckSuggestions {
         case .grid: deck.applyGridSuggestion()
         case .key:
             guard let row = keyRow else { return }
-            store.applyKeySuggestion(estimate: keyEstimate(row), rows: [row])
+            tags.applyKeySuggestion(estimate: keyEstimate(row), rows: [row])
         }
     }
 
@@ -69,7 +69,7 @@ struct DeckSuggestions {
         switch kind {
         case .gain: deck.dismissGainSuggestion()
         case .grid: deck.dismissGridSuggestion()
-        case .key: if let row = keyRow { store.dismissKeySuggestion(rows: [row]) }
+        case .key: if let row = keyRow { tags.dismissKeySuggestion(rows: [row]) }
         }
     }
 
@@ -78,7 +78,7 @@ struct DeckSuggestions {
         guard !isLocked, let uuid = deck.row?.track.uuid else { return }
         deck.restoreGainSuggestion()
         deck.restoreGridSuggestion()
-        store.restoreKeySuggestion(uuid: uuid)
+        tags.restoreKeySuggestion(uuid: uuid)
     }
 
     // MARK: 키 제안
@@ -87,7 +87,7 @@ struct DeckSuggestions {
     /// 덱의 옛 행으로 제안하지 않고, 초안의 기준도 새 값이 되게).
     private var keyRow: TrackRow? {
         guard let row = deck.row else { return nil }
-        if let fresh = store.rowsByUUID[row.track.uuid], fresh.id == row.id { return fresh }
+        if let fresh = tags.listedRow(uuid: row.track.uuid), fresh.id == row.id { return fresh }
         return row
     }
 

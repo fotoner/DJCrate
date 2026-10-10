@@ -43,7 +43,7 @@ extension SheetCoordinator {
         cell?.endEditing()
         table.window?.makeFirstResponder(table)
         if commit, value != editingOriginal, let key = editableKey(row: position.row, column: position.column) {
-            store.applyTagEdits([(row: rows[position.row], key: key, value: value)])
+            store.tags.applyTagEdits([(row: rows[position.row], key: key, value: value)])
         } else {
             reloadVisible()
         }
@@ -132,7 +132,7 @@ extension SheetCoordinator {
         var changes: [(row: TrackRow, key: TagFields.Key, value: String)] = []
         for c in rect.columns {
             guard let key = spec(atColumn: c)?.key else { continue }
-            let value = store.tagCell(rows[rect.rows.lowerBound], key)
+            let value = store.tags.tagCell(rows[rect.rows.lowerBound], key)
             for r in rect.rows.dropFirst() where editableKey(row: r, column: c) != nil {
                 changes.append((rows[r], key, value))
             }
@@ -145,16 +145,16 @@ extension SheetCoordinator {
         // 지금 값과 같은 칸은 건드리지 않으니 세지 않는다.
         var skipped: [TagFields.Key: Int] = [:]
         let changes: [(row: TrackRow, key: TagFields.Key, value: String)] = requested.compactMap { change in
-            guard TagChoice.keys.contains(change.key), store.tagCell(change.row, change.key) != change.value else { return change }
+            guard TagChoice.keys.contains(change.key), store.tags.tagCell(change.row, change.key) != change.value else { return change }
             guard let value = TagChoice.accepted(change.key, change.value, colors: store.trackColors) else {
                 skipped[change.key, default: 0] += 1
                 return nil
             }
             return (change.row, change.key, value)
         }
-        let before = changes.map { store.tagCell($0.row, $0.key) }
-        store.applyTagEdits(changes)
-        let changed = zip(changes, before).filter { store.tagCell($0.0.row, $0.0.key) != $0.1 }.count
+        let before = changes.map { store.tags.tagCell($0.row, $0.key) }
+        store.tags.applyTagEdits(changes)
+        let changed = zip(changes, before).filter { store.tags.tagCell($0.0.row, $0.0.key) != $0.1 }.count
         reloadVisible()
         syncAccessibilitySelection(announceFocus: false)
         if changed > 0 || !skipped.isEmpty {
@@ -183,7 +183,7 @@ extension SheetCoordinator {
         // 열이 어디에 놓였든 같은 곡의 그 칸을 고칠 수 있는지만 본다(열 위치는 상관없다)
         guard rows.indices.contains(row), TrackListTagEditing.unavailableReason(rows[row], key: key) == nil else { return nil }
         let id = rows[row].id
-        return TagChoice.menu(key, current: (store.tagCell(rows[row], key), false), colors: store.trackColors, targetCount: 1,
+        return TagChoice.menu(key, current: (store.tags.tagCell(rows[row], key), false), colors: store.trackColors, targetCount: 1,
                               action: #selector(pickKey(_:)), target: self) { KeyChoice(key: key, rowID: id, value: $0) }
     }
 

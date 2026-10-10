@@ -214,7 +214,7 @@ struct RatingColumnFitTests {
         let row = h.rows[2]
         let cell = try #require(h.cell(row: 2, column: "rating"))
         #expect(cell.text == "3★" && cell.label.accessibilityValue() as? String == "별 3개")
-        h.coordinator.store.setTag(.rating, "5", rows: [row])
+        h.coordinator.store.tags.setTag(.rating, "5", rows: [row])
         h.coordinator.updateTagRevision(h.coordinator.store.tagRevision)
         h.relayout()
         #expect(cell.text == "5★" && cell.showsDraftMark && cell.label.accessibilityValue() as? String == "별 5개, 초안")

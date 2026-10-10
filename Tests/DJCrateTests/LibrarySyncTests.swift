@@ -39,7 +39,7 @@ struct LibrarySyncTests {
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
         let row = try #require(store.rowsByUUID[spec.uuid])
-        store.setTag(.comment, "내 코멘트", rows: [row])
+        store.tags.setTag(.comment, "내 코멘트", rows: [row])
         writer.flush()
         let before = try #require(TagDraftStore.load(trackUUID: spec.uuid, directory: tags(fixture)))
         try fixture.execute("UPDATE djmdContent SET Title = '최신 제목' WHERE ID = ?", [.text(spec.id)])
@@ -64,7 +64,7 @@ struct LibrarySyncTests {
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
         let row = try #require(store.rowsByUUID[spec.uuid])
-        store.setTag(.comment, "내 코멘트", rows: [row])
+        store.tags.setTag(.comment, "내 코멘트", rows: [row])
         writer.flush()
         var grid = GridDraft(trackUUID: spec.uuid, base: [.init(start: 0.2, bpm: 120, firstBeatNumber: 1)],
                              segments: [.init(start: 0.3, bpm: 120, firstBeatNumber: 1)])
@@ -91,7 +91,7 @@ struct LibrarySyncTests {
         try fixture.execute("UPDATE djmdContent SET rb_data_status = 0 WHERE ID = ?", [.text(spec.id)])
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
-        store.setTag(.comment, "내 코멘트", rows: [try #require(store.rowsByUUID[spec.uuid])])
+        store.tags.setTag(.comment, "내 코멘트", rows: [try #require(store.rowsByUUID[spec.uuid])])
         writer.flush()
         let before = try #require(TagDraftStore.load(trackUUID: spec.uuid, directory: tags(fixture)))
         await store.load(snapshot: fixture.root.appending(path: "없는.db"), quiet: true, synchronizingDrafts: true)
@@ -105,14 +105,14 @@ struct LibrarySyncTests {
         try fixture.execute("UPDATE djmdContent SET rb_data_status = 0 WHERE ID = ?", [.text(spec.id)])
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
-        store.setTag(.comment, "내 코멘트", rows: [try #require(store.rowsByUUID[spec.uuid])])
+        store.tags.setTag(.comment, "내 코멘트", rows: [try #require(store.rowsByUUID[spec.uuid])])
         writer.flush()
         try fixture.execute("UPDATE djmdContent SET Commnt = '현재 코멘트', Title = '최신 제목' WHERE ID = ?", [.text(spec.id)])
         await store.load(snapshot: fixture.database, synchronizingDrafts: true)
         let stale = try #require(store.tagDrafts[spec.uuid])
         let undo = UndoManager()
         store.undoManager = undo
-        store.resolveTagConflict(.comment, keepingDraft: keepingDraft, rows: [try #require(store.rowsByUUID[spec.uuid])])
+        store.tags.resolveTagConflict(.comment, keepingDraft: keepingDraft, rows: [try #require(store.rowsByUUID[spec.uuid])])
         writer.flush()
         if keepingDraft {
             let resolved = try #require(TagDraftStore.load(trackUUID: spec.uuid, directory: tags(fixture)))
@@ -140,7 +140,7 @@ struct LibrarySyncTests {
         store.phase = .loaded
         let row = ReflectionPresenterTests.row(UUID().uuidString)
         store.rowsByUUID[row.track.uuid] = row
-        store.setTag(.comment, "저장할 코멘트", rows: [row])
+        store.tags.setTag(.comment, "저장할 코멘트", rows: [row])
         writer.flush()
         let before = try #require(store.tagDrafts[row.track.uuid])
         defer {
@@ -158,7 +158,7 @@ struct LibrarySyncTests {
         let other = LibraryStore.test(backupDirectory: fixture.backups, draftHome: otherHome, movesDamagedDrafts: false, writer: writer)
         other.phase = .loaded
         other.rowsByUUID[row.track.uuid] = row
-        other.setTag(.comment, "다른 홈 코멘트", rows: [row])
+        other.tags.setTag(.comment, "다른 홈 코멘트", rows: [row])
         writer.flush()
         await other.refreshExternalDrafts()
         #expect(other.lastError == nil && other.tagDrafts[row.track.uuid]?.fields.comment == "다른 홈 코멘트")
@@ -171,14 +171,14 @@ struct LibrarySyncTests {
         #expect(TagDraftStore.load(trackUUID: row.track.uuid, directory: directory)?.fields.comment == "저장할 코멘트")
         try FileManager.default.removeItem(at: directory)
         try Data([0]).write(to: directory)
-        store.setTag(.comment, "또 실패한 코멘트", rows: [row])
+        store.tags.setTag(.comment, "또 실패한 코멘트", rows: [row])
         // 실패한 버리기도 메모리의 삭제 의도를 되살리지 않는다.
-        store.revertTags(rows: [row])
+        store.tags.revertTags(rows: [row])
         writer.flush()
         await store.refreshExternalDrafts()
         #expect(store.tagDrafts[row.track.uuid] == nil)
         try FileManager.default.removeItem(at: directory)
-        store.setTag(.comment, "재시도 코멘트", rows: [row])
+        store.tags.setTag(.comment, "재시도 코멘트", rows: [row])
         writer.flush()
         await store.refreshExternalDrafts()
         #expect(store.lastError == nil && writer.failedTagSaveUUIDs(in: directory).isEmpty)
@@ -241,7 +241,7 @@ struct LibrarySyncTests {
         try fixture.add(spec)
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
-        store.setTag(.comment, "보존할 코멘트", rows: [try #require(store.rowsByUUID[spec.uuid])])
+        store.tags.setTag(.comment, "보존할 코멘트", rows: [try #require(store.rowsByUUID[spec.uuid])])
         writer.flush()
         let before = try #require(TagDraftStore.load(trackUUID: spec.uuid, directory: tags(fixture)))
         try fixture.execute("UPDATE djmdContent SET Title = '쓰는 중 최신 제목' WHERE ID = ?", [.text(spec.id)])
@@ -301,7 +301,7 @@ struct LibrarySyncTests {
         try fixture.execute("UPDATE djmdContent SET rb_data_status = 0 WHERE ID = ?", [.text(spec.id)])
         let store = store(fixture)
         await store.load(snapshot: fixture.database)
-        store.setTag(.comment, "내 코멘트", rows: [try #require(store.rowsByUUID[spec.uuid])])
+        store.tags.setTag(.comment, "내 코멘트", rows: [try #require(store.rowsByUUID[spec.uuid])])
         let orphans = [UUID().uuidString, UUID().uuidString]
         for uuid in orphans { writeOrphanTagDraft(uuid, comment: "곡이 없는 초안", in: fixture) }
         writer.flush()

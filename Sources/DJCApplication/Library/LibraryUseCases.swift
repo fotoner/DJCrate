@@ -115,6 +115,8 @@ public struct LibraryUseCases: Sendable {
     public let playlists: EditPlaylists
     /// 앨범아트 초안
     public let artwork: EditArtwork
+    /// 태그 초안 편집(받는 값·충돌 고르기·저장)
+    public let tags: EditTags
     /// 같은 음원 곡 합치기
     public let merge: MergeDuplicates
     /// 파일 없는 곡의 새 위치 찾기(#62)
@@ -143,6 +145,7 @@ public struct LibraryUseCases: Sendable {
         recover = RecoverDrafts(reader: ports.recovery, drafts: ports.drafts)
         playlists = EditPlaylists(imports: ports.playlistImports, drafts: ports.drafts)
         artwork = EditArtwork(artwork: ports.artwork, files: ports.files, drafts: ports.drafts)
+        tags = EditTags(drafts: ports.drafts)
         merge = MergeDuplicates(prepare: ports.prepareMerge, drafts: ports.drafts)
         relocate = RelocateTracks(source: ports.relocate)
         queries = QueryLibrary(source: ports.source, query: ports.query, liveShare: ports.liveShare)

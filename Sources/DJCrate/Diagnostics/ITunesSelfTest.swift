@@ -114,7 +114,7 @@ extension DevSelfTests {
             check(store.editablePlaylistID == nil && !store.canReorderDisplayedTracks
                   && !LibraryMenuAction.removeTracks.isEnabled(in: store), "순서 변경·목록 삭제·컬렉션 삭제 차단")
             guard let row = store.displayRows.first else { log("실패 · 곡 선택"); exit(1) }
-            store.setTag(.comment, "iTunes 시험 초안", rows: [row])
+            store.tags.setTag(.comment, "iTunes 시험 초안", rows: [row])
             check(store.tagDrafts[row.track.uuid]?.fields.comment == "iTunes 시험 초안", "기존 곡에 태그 초안")
             store.loadToDeck(row)
             for _ in 0..<150 {

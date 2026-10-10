@@ -70,7 +70,7 @@ struct SheetColumnLookupTests {
                 let expected: String = switch spec.id {
                 case "index": "\(row + 1)"
                 case "file": (h.coordinator.rows[row].track.folderPath as NSString).lastPathComponent
-                default: spec.key.map { h.store.tagCell(h.coordinator.rows[row], $0) } ?? ""
+                default: spec.key.map { h.store.tags.tagCell(h.coordinator.rows[row], $0) } ?? ""
                 }
                 #expect(h.coordinator.text(row: row, column: c) == expected, "\(spec.id) 줄 \(row)")
                 let cell = try #require(h.coordinator.tableView(h.table, viewFor: tableColumn, row: row) as? SheetCell)
@@ -117,8 +117,8 @@ struct SheetColumnLookupTests {
         h.coordinator.select(.init(row: 1, column: h.column("key")), extend: true)
         h.coordinator.fillDown()
         let second = h.coordinator.rows[1]
-        #expect(h.store.tagCell(second, .comment) == "코멘트 하나", "코멘트 열이 채워졌다")
-        #expect(h.store.tagCell(second, .title) == "곡 둘" && h.store.tagCell(second, .musicalKey) == "", "제목·키는 그대로(키는 빈칸을 그대로 채워 바뀌지 않는다)")
+        #expect(h.store.tags.tagCell(second, .comment) == "코멘트 하나", "코멘트 열이 채워졌다")
+        #expect(h.store.tags.tagCell(second, .title) == "곡 둘" && h.store.tags.tagCell(second, .musicalKey) == "", "제목·키는 그대로(키는 빈칸을 그대로 채워 바뀌지 않는다)")
         #expect(h.store.tagDrafts[second.track.uuid]?.changedKeys == [.comment])
     }
 
@@ -128,7 +128,7 @@ struct SheetColumnLookupTests {
         let first = h.coordinator.rows[0]
         h.coordinator.select(.init(row: 0, column: h.column("comment")), extend: false)
         h.coordinator.clearSelection()
-        #expect(h.store.tagCell(first, .comment) == "" && h.store.tagCell(first, .title) == "곡 하나")
+        #expect(h.store.tags.tagCell(first, .comment) == "" && h.store.tags.tagCell(first, .title) == "곡 하나")
         #expect(h.store.tagDrafts[first.track.uuid]?.changedKeys == [.comment])
     }
 

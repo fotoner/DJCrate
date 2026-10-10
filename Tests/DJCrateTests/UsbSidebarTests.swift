@@ -192,7 +192,7 @@ struct UsbSidebarTests {
         #expect(menu.items.first { $0.title == "덱에 불러오기" }?.action == nil)
         #expect(coordinator.tableView(table, pasteboardWriterForRow: 0) == nil)
         #expect(!coordinator.beginEditing(row: 0, column: "title"))
-        store.setTag(.title, "고친 제목", rows: store.displayRows)
+        store.tags.setTag(.title, "고친 제목", rows: store.displayRows)
         #expect(!store.tagDrafts.keys.contains { $0.hasPrefix(UsbLibraryRows.idPrefix) })
         store.loadToDeck(store.displayRows.first)
         #expect(store.deckTrackID == nil)

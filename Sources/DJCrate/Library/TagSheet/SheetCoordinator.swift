@@ -117,9 +117,9 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
         let position = CellPosition(row: row, column: column)
         cell.font = font
         // 평점은 별 다섯 칸이 칸 자리에 안 들어가면 "5★"로 줄여 보인다(잘린 "★★★…"은 3·4·5가 같아 보인다, #65). VoiceOver는 늘 "별 N개".
-        let rating = spec.key == .rating ? store.tagCell(rows[row], .rating) : nil
+        let rating = spec.key == .rating ? store.tags.tagCell(rows[row], .rating) : nil
         cell.configure(text: text(row: row, column: column),
-                       edited: spec.key.map { store.isTagEdited(rows[row], $0) } ?? false,
+                       edited: spec.key.map { store.tags.isTagEdited(rows[row], $0) } ?? false,
                        readOnly: editableKey(row: row, column: column) == nil,
                        selected: isSelected(position),
                        active: position == cursor,
@@ -141,7 +141,7 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
     func text(row: Int, column: Int) -> String {
         guard rows.indices.contains(row), let spec = spec(atColumn: column) else { return "" }
         if spec.key == .title, rows[row].isEncrypted { return rows[row].title }
-        if let key = spec.key { return TagChoice.display(key, store.tagCell(rows[row], key), colors: store.trackColors) }
+        if let key = spec.key { return TagChoice.display(key, store.tags.tagCell(rows[row], key), colors: store.trackColors) }
         switch spec.id {
         case "index": return "\(row + 1)"
         case "file": return (rows[row].track.folderPath as NSString).lastPathComponent

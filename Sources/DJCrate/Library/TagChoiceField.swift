@@ -5,7 +5,7 @@ import SwiftUI
 /// 값은 고르는 순간에만 초안에 넣는다. 고칠 수 없는 곡(추가한 곡, 상태 258처럼 쓰기를 확인하지 않은 곡)은 빼고 쓰며 이유를 보인다.
 struct TagChoiceField: View {
     @Environment(\.textScale) private var textScale
-    @Bindable var store: LibraryStore
+    let model: TagInspectorModel
     let rows: [TrackRow]
     let key: TagFields.Key
 
@@ -13,14 +13,14 @@ struct TagChoiceField: View {
     static let mixedTag = "\u{1}mixed"
 
     var body: some View {
-        let current = store.tagValue(key, rows: rows)
-        let edited = rows.contains { store.isTagEdited($0, key) }
+        let current = model.field(key, rows: rows)
+        let edited = current.edited
         let reasons = rows.compactMap { TrackListTagEditing.unavailableReason($0, key: key) }
         let editable = reasons.count < rows.count
         VStack(alignment: .leading, spacing: 4) {
             Picker(selection: Binding(get: { current.mixed ? Self.mixedTag : current.value }, set: { choose($0) })) {
                 if current.mixed { Text(String(ui: "(여러 값)")).tag(Self.mixedTag) }
-                ForEach(TagChoice.options(key, current: current.mixed ? "" : current.value, colors: store.trackColors), id: \.value) { option in
+                ForEach(TagChoice.options(key, current: current.mixed ? "" : current.value, colors: model.trackColors), id: \.value) { option in
                     label(option).tag(option.value).disabled(!option.enabled)
                 }
             } label: {
@@ -40,7 +40,7 @@ struct TagChoiceField: View {
                 // 고를 수 없거나(모든 곡) 고른 곡 가운데 일부만 못 고칠 때: 그 곡은 빼고 쓴다는 것을 알린다
                 Label(reason, systemImage: "lock").font(.scaled(.caption, textScale)).foregroundStyle(UIColors.warning.color)
             }
-            TagConflictView(store: store, rows: rows, key: key)
+            TagConflictView(conflict: model.conflict(key, rows: rows)) { model.resolveConflict(key, keepingDraft: $0, rows: rows) }
         }
     }
 
@@ -48,7 +48,7 @@ struct TagChoiceField: View {
         if key == .color, let image = TagChoice.swatchImage(option.value) {
             Label { Text(verbatim: option.title) } icon: { Image(nsImage: image) }
         } else if key == .rating, !option.value.isEmpty {
-            Text(verbatim: option.title).accessibilityLabel(TagChoice.spoken(key, option.value, colors: store.trackColors))
+            Text(verbatim: option.title).accessibilityLabel(TagChoice.spoken(key, option.value, colors: model.trackColors))
         } else {
             Text(verbatim: option.title)
         }
@@ -57,6 +57,6 @@ struct TagChoiceField: View {
     /// 사용자가 고른 값만 초안에 넣는다(여러 값 표식은 값이 아니다).
     private func choose(_ value: String) {
         guard value != Self.mixedTag else { return }
-        store.setTag(key, value, rows: TagChoice.targets(key, rows))
+        model.pick(key, value, rows: rows)
     }
 }

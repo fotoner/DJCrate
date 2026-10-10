@@ -14,8 +14,8 @@ struct SheetAccessibilityTests {
         h.coordinator.select(.init(row: 2, column: 1), extend: true)
         h.coordinator.fillDown()
         #expect(announcements == ["1칸 바뀜"])
-        #expect(h.store.tagCell(h.coordinator.rows[1], .title) == "A")
-        #expect(h.store.tagCell(h.coordinator.rows[2], .title) == "C")
+        #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == "A")
+        #expect(h.store.tags.tagCell(h.coordinator.rows[2], .title) == "C")
         h.coordinator.fillDown()
         #expect(announcements.count == 1)
         h.store.isWritingRekordbox = true
@@ -44,7 +44,7 @@ struct SheetAccessibilityTests {
     @Test func 선택한_칸은_머리글과_초안_값을_함께_읽는다() throws {
         let h = SheetAccessibilityHarness()
         let row = h.coordinator.rows[0]
-        h.store.applyTagEdits([(row, .title, "새 제목")])
+        h.store.tags.applyTagEdits([(row, .title, "새 제목")])
         h.coordinator.update(rows: h.coordinator.rows, revision: h.store.tagRevision)
         let cell = try #require(h.coordinator.tableView(h.table, viewFor: h.table.tableColumns[1], row: 0) as? SheetCell)
         #expect(cell.label.accessibilityLabel() == "제목")

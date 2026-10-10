@@ -236,7 +236,7 @@ struct TrackWritePathTests {
         let staged = try stagedTrack(path: try TestResources.url("mp3-notag-cbr.mp3").path)
         store.staged = [staged]
         let row = TrackRow(track: staged.track, cues: [], playCount: 0)
-        store.setTag(.musicalKey, key, rows: [row])
+        store.tags.setTag(.musicalKey, key, rows: [row])
         return (store, staged, row)
     }
 
@@ -263,7 +263,7 @@ struct TrackWritePathTests {
         let backup = try #require(RekordboxWriter.backups(in: fixture.backups).first)
         try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         #expect(try fixture.rows("SELECT ID FROM djmdContent WHERE ID = ?", [.text(id)]).isEmpty)
-        #expect(store.staged.map(\.uuid) == [staged.uuid] && store.confirmedStagedKey(uuid: staged.uuid) == "8A")
+        #expect(store.staged.map(\.uuid) == [staged.uuid] && store.tags.confirmedStagedKey(uuid: staged.uuid) == "8A")
         #expect(store.tagDrafts[uuid] == nil)
     }
 
@@ -331,7 +331,7 @@ struct TrackWritePathTests {
         try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         writer.flush()
         #expect(store.staged.map(\.uuid) == [staged.uuid])
-        #expect(store.confirmedStagedKey(uuid: staged.uuid) == "8A", "고른 키가 다시 넣을 수 있게 돌아온다")
+        #expect(store.tags.confirmedStagedKey(uuid: staged.uuid) == "8A", "고른 키가 다시 넣을 수 있게 돌아온다")
         #expect(CueDraftStore.load(trackUUID: staged.uuid, directory: store.draftLocations.cue) == original, "큐 초안도 돌아온다")
         #expect(!store.unlinkedDraftUUIDs.contains(staged.uuid), "되돌린 곡이 추가 목록에 있어 이어진 초안이다")
     }
@@ -353,7 +353,7 @@ struct TrackWritePathTests {
         try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         writer.flush()
         #expect(store.tagDrafts[uuid] == nil && TagDraftStore.load(trackUUID: uuid, directory: store.tagDraftDirectory) == nil)
-        #expect(store.confirmedStagedKey(uuid: staged.uuid) == "12B", "고른 키는 추가 목록 곡에 돌아온다")
+        #expect(store.tags.confirmedStagedKey(uuid: staged.uuid) == "12B", "고른 키는 추가 목록 곡에 돌아온다")
         #expect(!store.unlinkedDraftUUIDs.contains(uuid) && !store.writeFollowUp.contains { $0.contains("연결되지 않은 초안") })
     }
 
@@ -368,12 +368,12 @@ struct TrackWritePathTests {
         let uuid = try #require(report.added.first?.uuid)
         owned.append(uuid)
         let backup = try #require(RekordboxWriter.backups(in: fixture.backups).first)
-        store.setTag(.comment, "넣은 뒤 고친 코멘트", rows: [try #require(store.rowsByUUID[uuid])])
+        store.tags.setTag(.comment, "넣은 뒤 고친 코멘트", rows: [try #require(store.rowsByUUID[uuid])])
         writer.flush()
 
         try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
         writer.flush()
-        #expect(store.staged.map(\.uuid) == [staged.uuid] && store.confirmedStagedKey(uuid: staged.uuid) == "12B")
+        #expect(store.staged.map(\.uuid) == [staged.uuid] && store.tags.confirmedStagedKey(uuid: staged.uuid) == "12B")
         #expect(store.tagDrafts[uuid]?.fields.comment == "넣은 뒤 고친 코멘트", "사용자가 만든 초안은 지우지 않는다")
         #expect(TagDraftStore.load(trackUUID: uuid, directory: store.tagDraftDirectory)?.fields.comment == "넣은 뒤 고친 코멘트", "디스크에도 남아 있다")
         #expect(store.unlinkedDraftUUIDs.contains(uuid), "연결 안 된 초안으로 남아 쓰기 대기 목록에서 버릴 수 있다")

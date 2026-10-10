@@ -55,7 +55,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 |---|---|
 | `Deck/` | `LoadDeckTrack`, `AnalyzeDeckTrack`, `SaveDeckDrafts` |
 | `Edit/` | `RenderEdit`, `StageEdit` |
-| `Library/` | `LoadLibrary`, `ImportXML`, `RecoverDrafts`, `RelocateTracks`, `StageTracks`, `EditPlaylists`, `ArchiveUsbHistories` |
+| `Library/` | `LoadLibrary`, `ImportXML`, `RecoverDrafts`, `RelocateTracks`, `StageTracks`, `EditPlaylists`, `EditTags`, `ArchiveUsbHistories` |
 | `Reflection/` | `ReflectionSession`, `CompatibilityCheck` |
 | `Usb/` | `UsbSync`, `UsbExportSession`, `UsbWriteFlow` |
 
@@ -63,6 +63,9 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - CLI 쓰기 명령도 같은 세션을 쓴다. CLI는 세션 옵션으로 쓴 뒤의 초안 정리와 되살리기를 끈다.
 - 라이브러리 쪽(`Library/`)은 여러 흐름을 유스케이스로 둔다. 읽기, 초안 지켜보기, 추가한 곡이 유스케이스다. XML 가져오기와 내보내기, 막힌 초안 복구도 유스케이스다. 바깥 일은 포트 묶음 `LibraryPorts`로 받는다.
 - 공유 저장소 `LibraryStore`는 유스케이스 묶음 `LibraryUseCases`를 받는다. 저장소는 유스케이스 결과를 화면 상태에 적용한다.
+- 한 기능의 상태와 흐름은 기능 조각에 둔다. 기능 조각은 공유 저장소의 속성이다(#248). 태그 편집 조각 `TagEditStore`가 그 예다.
+  - 태그 초안 색인(`tagDrafts`)은 공유 저장소에 남는다. 곡 목록, 인스펙터, 반영이 같은 색인을 보기 때문이다.
+  - 받는 값과 충돌 해결의 규칙과 순서는 유스케이스 `EditTags`가 맡는다. 조각에는 되돌리기 등록과 색인 반영만 남는다.
 - **화면 모델은 포트를 들지 않는다.** `LibraryUseCases.ports`는 모듈 밖에 공개하지 않는다. 화면에 보일 값은 묶음의 읽기 메서드로 받는다.
   - `linkedXML`, `hasWriteBackup`, `writeBackups`
   - `missingFiles`, `log`
@@ -429,7 +432,7 @@ rekordbox는 압축 음원 앞의 인코더 지연을 잘라 내지 않는다. �
 
 - **분석 결과는 `analysis/`에 캐시해 음원 파일이 바뀔 때만 다시 계산한다.**
 - **오토게인은 약 −10 LUFS 기준인 rekordbox 값을 기본으로 쓴다.** DJCrate가 잰 음량과 1.5dB 넘게 다르면 새 값을 제안한다.
-- **게인·그리드·키 제안은 덱 제안 줄 `DeckSuggestionBar` 한 곳에 모은다.** 문구는 `DeckSuggestion` 한 규칙으로 만든 "이름 · 값 · [적용] [무시]" 모양이다. 적용하면 게인·그리드 제안은 덱 초안이, 키 제안은 태그 초안(`LibraryStore`)이 된다.
+- **게인·그리드·키 제안은 덱 제안 줄 `DeckSuggestionBar` 한 곳에 모은다.** 문구는 `DeckSuggestion` 한 규칙으로 만든 "이름 · 값 · [적용] [무시]" 모양이다. 적용하면 게인·그리드 제안은 덱 초안이, 키 제안은 태그 초안이 된다. 키 제안과 그 무시 표시는 태그 편집 조각 `TagEditStore`가 맡는다.
 - **무시 표시는 종류마다 따로 저장한다.** 저장 키는 `SettingKeys` 하단에 있다. 되살리기는 "무시한 제안 다시 보기" 하나다.
 
 ## 덱 오디오 (`DeckAudio`)

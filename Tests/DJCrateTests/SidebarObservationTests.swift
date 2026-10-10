@@ -66,6 +66,11 @@ struct SidebarObservationTests {
         #expect(!sidebarReads(before: { $0.draftChanged(trackUUID: "y", kind: .cue, exists: true) }) { $0.rowsByUUID = ["y": other] })
     }
 
+    @Test(.tags(.perfContract)) func 태그_편집_조각의_키_제안_무시는_본문이_읽지_않는다() {
+        // 무시한 키 제안은 핵심에서 태그 편집 조각(`TagEditStore`)으로 옮겼다(#250). 덱 제안 줄만 읽는다.
+        #expect(!sidebarReads { $0.tags.dismissKeySuggestion(rows: [row("x")]) })
+    }
+
     @Test(.tags(.perfContract)) func 쓰기_중_표시는_본문이_읽지_않는다() {
         #expect(!sidebarReads { $0.isWritingRekordbox = true })
     }

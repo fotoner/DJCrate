@@ -5,12 +5,12 @@ import SwiftUI
 /// 보류 중인 제안만 보이고, 없으면 그리드 상태 안내와 [재분석]만 남는다. 목록 상태(태그 초안·무시한 키 제안)는
 /// 이 뷰 안에서만 읽는다: 덱 본문이 읽으면 태그를 고칠 때마다 덱 전체를 다시 계산한다(#129).
 struct DeckSuggestionBar: View {
-    let store: LibraryStore
+    let tags: TagEditStore
     let deck: DeckModel
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
-        let suggestions = DeckSuggestions(deck: deck, store: store)
+        let suggestions = DeckSuggestions(deck: deck, tags: tags)
         DeckSuggestionBarContent(list: suggestions.list, gridStatus: suggestions.gridStatus, isLocked: suggestions.isLocked,
                                  apply: suggestions.apply, dismiss: suggestions.dismiss,
                                  restore: suggestions.restoreDismissed, reanalyze: deck.reanalyze)
