@@ -93,9 +93,11 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $store.showingWriteResult) { WriteResultView(history: store.resultHistory) }
-        .sheet(isPresented: $store.showingPlaylistPicker) { PlaylistPickerView(store: store) }
-        .sheet(isPresented: $store.showingUnlinkedDrafts) { UnlinkedDraftsView(store: store) }
-        .sheet(item: $store.xmlImportPreview) { preview in XMLImportSheet(store: store, preview: preview) }
+        .sheet(isPresented: $store.showingPlaylistPicker) { if let picker = store.playlistPicker { PlaylistPickerView(model: picker) } }
+        .sheet(item: $store.unlinkedDraftsSheet) { UnlinkedDraftsView(model: $0) }
+        .sheet(item: Binding(get: { store.xmlImport.preview }, set: { store.xmlImport.preview = $0 })) { preview in
+            XMLImportSheet(model: store.xmlImport, preview: preview)
+        }
         .modifier(RecoverySheetHost(store: store, anchor: .library))
         .animation(.easeInOut(duration: 0.15), value: store.writeStage)
         .searchable(text: $store.search, placement: .toolbar, prompt: Text(.ui("제목·아티스트·코멘트")))

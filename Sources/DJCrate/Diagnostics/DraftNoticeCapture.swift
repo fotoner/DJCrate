@@ -37,7 +37,7 @@ extension DevSelfTests {
             store.sidebar = .pending
             await wait(1.5)
             capture(window, "after-pending")
-            store.showingUnlinkedDrafts = true
+            store.openUnlinkedDrafts()
             await wait(2)
             if let sheet = window.attachedSheet ?? NSApp.windows.first(where: { $0.isSheet && $0.isVisible }) {
                 capture(sheet, "after-sheet")

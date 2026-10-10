@@ -166,8 +166,12 @@ struct ArtworkReflectionTests {
         let edit = ArtworkDraftStore.edit(trackUUID: "없는-곡", base: ArtworkBase(imagePath: ""), image: image, imageName: nil)
         try ArtworkDraftStore.save(edit, directory: store.artworkDirectory)
         store.refreshUnlinkedDrafts()
-        #expect(store.unlinkedDrafts().first { $0.uuid == "없는-곡" }?.kinds == [.artwork])
-        #expect(store.discardUnlinkedDrafts(["없는-곡"]) == nil)
+        let sheet = UnlinkedDraftsModel(store: store)
+        sheet.reload()
+        #expect(sheet.drafts.first { $0.uuid == "없는-곡" }?.kinds == [.artwork])
+        sheet.setSelected("없는-곡", true)
+        sheet.discard()
+        #expect(sheet.failure == nil)
         #expect(ArtworkDraftStore.uuids(directory: store.artworkDirectory).isEmpty)
     }
 

@@ -4,28 +4,11 @@ import SwiftUI
 
 /// rekordbox XML 가져오기(#72)의 차이 미리 보기. 종류별 탭에서 고른 차이만 초안으로 만든다(rekordbox에는 쓰지 않는다).
 struct XMLImportSheet: View {
-    let store: LibraryStore
+    @Bindable var model: XMLImportModel
     let preview: XMLImportPreview
     @Environment(\.dismiss) private var dismiss
 
-    enum Tab: Hashable, CaseIterable {
-        case cue, grid, tag, playlist, unmatched
-
-        var kind: XMLImportDrafts.Kind? {
-            switch self {
-            case .cue: .cue
-            case .grid: .grid
-            case .tag: .tag
-            case .playlist: .playlist
-            case .unmatched: nil
-            }
-        }
-    }
-
-    @State private var tab: Tab = .cue
-    /// 종류별로 고른 곡(라이브러리 키)
-    @State private var chosen: [XMLImportDrafts.Kind: Set<String>] = [:]
-    @State private var chosenLists: Set<[String]> = []
+    typealias Tab = XMLImportModel.Tab
 
     private var diff: XMLLibraryDiff.Result { preview.diff }
 
@@ -33,13 +16,12 @@ struct XMLImportSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(.ui("rekordbox XML 가져오기")).font(.title2.bold())
             Text(verbatim: preview.fileName).foregroundStyle(.secondary)
-            if let result = store.xmlImportResult { resultView(result) } else { previewView }
+            if let result = model.result { resultView(result) } else { previewView }
         }
         .padding(24)
         .frame(width: 680, height: 540)
-        .onAppear(perform: chooseAll)
         // 닫으면 계획 중인 초안 만들기를 멈춘다(저장을 시작한 초안은 끝까지 쓴다).
-        .onDisappear { store.cancelXMLImport() }
+        .onDisappear { model.cancel() }
     }
 
     // MARK: 미리 보기
@@ -61,7 +43,7 @@ struct XMLImportSheet: View {
         .font(.callout).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
 
-        Picker(.ui("차이 종류"), selection: $tab) {
+        Picker(.ui("차이 종류"), selection: $model.tab) {
             ForEach(Tab.allCases, id: \.self) { tab in Text(verbatim: label(tab)).tag(tab) }
         }
         .pickerStyle(.segmented)
@@ -73,27 +55,28 @@ struct XMLImportSheet: View {
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         HStack {
-            if tab != .unmatched {
-                Button(.ui("이 탭 모두 고르기")) { setAll(true) }
-                Button(.ui("이 탭 모두 빼기")) { setAll(false) }
+            if model.tab != .unmatched {
+                Button(.ui("이 탭 모두 고르기")) { model.setAll(true) }
+                Button(.ui("이 탭 모두 빼기")) { model.setAll(false) }
             }
             Spacer()
-            if store.isMakingXMLImportDrafts { ProgressView().controlSize(.small) }
+            if model.isMakingDrafts { ProgressView().controlSize(.small) }
             Button(.ui("취소")) { dismiss() }.keyboardShortcut(.cancelAction)
-            Button(.ui("초안으로 만들기")) { make() }
+            Button(.ui("초안으로 만들기")) { model.startDrafts() }
                 .keyboardShortcut(.defaultAction)
-                .disabled(store.isMakingXMLImportDrafts || chosenCount == 0 || store.isWritingRekordbox)
+                .disabled(!model.canMakeDrafts)
         }
     }
 
     @ViewBuilder private var list: some View {
-        switch tab {
+        switch model.tab {
         case .cue, .grid, .tag:
-            let kind = tab.kind!
-            let rows = tracks(for: kind)
+            let kind = model.tab.kind!
+            let rows = model.tracks(for: kind)
             if rows.isEmpty { empty } else {
                 List(rows, id: \.libraryKey) { track in
-                    Toggle(isOn: binding(kind, track.libraryKey)) {
+                    Toggle(isOn: Binding(get: { model.isChosen(kind: kind, key: track.libraryKey) },
+                                         set: { model.setChosen($0, kind: kind, key: track.libraryKey) })) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(verbatim: track.title.isEmpty ? track.path : track.title)
                             Text(verbatim: Self.detail(track, kind: kind)).font(.caption).foregroundStyle(.secondary)
@@ -106,8 +89,7 @@ struct XMLImportSheet: View {
         case .playlist:
             if diff.playlists.isEmpty { empty } else {
                 List(diff.playlists, id: \.path) { change in
-                    Toggle(isOn: Binding(get: { chosenLists.contains(change.path) },
-                                         set: { if $0 { chosenLists.insert(change.path) } else { chosenLists.remove(change.path) } })) {
+                    Toggle(isOn: Binding(get: { model.isChosen(list: change.path) }, set: { model.setChosen($0, list: change.path) })) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(verbatim: change.path.joined(separator: " / "))
                             Text(verbatim: Self.detail(change)).font(.caption).foregroundStyle(.secondary)
@@ -116,7 +98,7 @@ struct XMLImportSheet: View {
                 }
             }
         case .unmatched:
-            let rows = unmatched
+            let rows = model.unmatched
             if rows.isEmpty { empty } else {
                 List(rows, id: \.key) { row in
                     VStack(alignment: .leading, spacing: 2) {
@@ -170,31 +152,6 @@ struct XMLImportSheet: View {
 
     // MARK: 값
 
-    private func tracks(for kind: XMLImportDrafts.Kind) -> [XMLLibraryDiff.TrackDiff] {
-        diff.tracks.filter { track in
-            switch kind {
-            case .cue: track.cues != nil
-            case .grid: track.grid != nil
-            case .tag: !track.tags.isEmpty
-            case .playlist: false
-            }
-        }
-    }
-
-    private struct UnmatchedRow { var key: String; var title: String; var detail: String }
-
-    private var unmatched: [UnmatchedRow] {
-        let byKey = Dictionary(preview.xml.tracks.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
-        func rows(_ keys: [String], _ reason: String) -> [UnmatchedRow] {
-            keys.map { key in
-                let track = byKey[key]
-                return UnmatchedRow(key: key, title: track?.title.isEmpty == false ? track!.title : key,
-                                    detail: "\(reason) · \(track?.path ?? String(ui: "파일이 아닌 위치"))")
-            }
-        }
-        return rows(diff.matches.unmatched, String(ui: "라이브러리에 없음")) + rows(diff.matches.ambiguous, String(ui: "여러 곡에 맞음"))
-    }
-
     private func label(_ tab: Tab) -> String {
         switch tab {
         case .cue: String(ui: "큐 \(diff.counts.cueTracks)")
@@ -238,45 +195,5 @@ struct XMLImportSheet: View {
                 ? String(ui: "곡이 다른 목록 · XML \(change.xmlEntries.count)곡 · 라이브러리 \(change.libraryEntries.count)곡 · 못 맞춘 곡 \(change.unmatchedEntries)(바꾸지 않음)")
                 : String(ui: "곡이 다른 목록 · XML \(change.xmlEntries.count)곡 · 라이브러리 \(change.libraryEntries.count)곡")
         }
-    }
-
-    private func binding(_ kind: XMLImportDrafts.Kind, _ key: String) -> Binding<Bool> {
-        Binding(get: { chosen[kind]?.contains(key) == true },
-                set: { if $0 { chosen[kind, default: []].insert(key) } else { chosen[kind]?.remove(key) } })
-    }
-
-    private var chosenCount: Int { chosen.values.reduce(0) { $0 + $1.count } + chosenLists.count }
-
-    private func chooseAll() {
-        // 빼기만 있는 큐는 처음에 고르지 않는다(큐를 내보내지 않은 도구일 수 있다)
-        chosen = XMLImportDrafts.defaultChoice(diff)
-        // 못 맞춘 곡이 든 "곡이 다른 목록"은 바꾸지 않으니 처음에 고르지 않는다
-        chosenLists = Set(diff.playlists.filter { $0.kind == .missing || $0.unmatchedEntries == 0 }.map(\.path))
-        if let first = [Tab.cue, .grid, .tag, .playlist].first(where: { count($0) > 0 }) { tab = first }
-    }
-
-    private func count(_ tab: Tab) -> Int {
-        switch tab {
-        case .cue: diff.counts.cueTracks
-        case .grid: diff.counts.gridTracks
-        case .tag: diff.counts.tagTracks
-        case .playlist: diff.playlists.count
-        case .unmatched: diff.matching.unmatched + diff.matching.ambiguous
-        }
-    }
-
-    private func setAll(_ on: Bool) {
-        switch tab {
-        case .cue, .grid, .tag:
-            let kind = tab.kind!
-            chosen[kind] = on ? Set(tracks(for: kind).map(\.libraryKey)) : []
-        case .playlist: chosenLists = on ? Set(diff.playlists.map(\.path)) : []
-        case .unmatched: break
-        }
-    }
-
-    private func make() {
-        let selection = XMLImportDrafts.Selection(playlistPaths: chosenLists, tracksByKind: chosen)
-        store.startXMLImportDrafts(preview, selection: selection)
     }
 }
