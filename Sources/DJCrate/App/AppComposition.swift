@@ -65,12 +65,14 @@ final class AppComposition {
         // 초안 저장 큐는 하나다: 저장소·덱·반영·복구·그리드 추정이 모두 같은 큐로 쓴다(게인 초안은 모든 곡이 파일 하나라 순서가 지켜져야 한다).
         let drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome)
         let places = DraftLocations(home: location.draftHome)
-        let ports = LibraryPorts.live(location: location, drafts: drafts, batches: .live(url: places.reflection))
+        var ports = LibraryPorts.live(location: location, drafts: drafts, batches: .live(url: places.reflection))
+        // USB 기기 재생 기록 보존(#43)은 앱만 붙인다(시험 저장소·CLI는 보존하지 않는다)
+        ports.usbHistories = UsbAppComposition.historyFiles()
         let store = LibraryStore(settings: settings, location: location, useCases: LibraryUseCases(ports: ports),
                                  resultHistory: WriteResultHistory(url: places.writeResult),
                                  launch: LibraryLaunchOptions(arguments: info.arguments))
         // 재생 기록 쓰기 관문(#43): 사본 재현으로 연 쓰기 경로. 닫혀 있으면 보존·보기만 하고 쓰기 대기에 올리지 않는다
-        store.writesHistories = RekordboxWriter.writesHistories
+        store.history.writesHistories = RekordboxWriter.writesHistories
         // 덱은 저장소와 같은 초안 저장소(같은 저장 큐)·설정을 쓴다(읽기는 메인 밖에서 실제 파일을 본다).
         let storage = DeckStorage(drafts: drafts, settings: settings)
         let deck = DeckModel(audio: DeckAudio(), storage: storage, assets: .live(drafts: drafts), analysis: deckAnalysis(), runsAnalysis: true)
@@ -90,7 +92,7 @@ final class AppComposition {
                                         retryTagSaves: { [weak store] in store?.retryFailedTagSaves() },
                                         preserveDamagedDrafts: { [weak store] in store?.preserveDamagedDraftFiles() ?? [] },
                                         savePlaylistDraft: { [weak store] in store?.ensurePlaylistDraftSaved() ?? true },
-                                        recordHistories: { [weak store] in await store?.recordWrittenHistories($0) })
+                                        recordHistories: { [weak store] in await store?.history.recordWrittenHistories($0) })
         let lock = WriteLock(isLocked: { [weak store] in store?.isWritingRekordbox ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
                              stage: { [weak store] in store?.writeStage = $0 })

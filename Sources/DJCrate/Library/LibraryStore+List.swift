@@ -52,7 +52,7 @@ extension LibraryStore {
             .iTunesPlaylist(id: id, trackIDs: music.library.index[id]?.trackIDs ?? [], numbers: music.library.index[id]?.trackNumbers ?? [])
         case let .history(id):
             // USB에서 보존한 기록(#43)은 컬렉션 짝이 없는 곡도 읽기 전용 줄로 보인다
-            if let history = historyIndex[id] { .history(history.entries) } else { .rows(archivedHistoryRows(id)) }
+            if let history = self.history.historyIndex[id] { .history(history.entries) } else { .rows(self.history.archivedHistoryRows(id)) }
         case .staged: .rows(stagedRows)
         case .pending: .pending(pendingUUIDs)
         // 분류 칸은 로컬 줄과 같은 코멘트 규칙(지금 프리셋)으로 가른다(#256)
@@ -131,7 +131,7 @@ extension LibraryStore {
         case let .filter(filter): filter.title
         case let .playlist(id): playlistIndex[id]?.name ?? String(ui: "플레이리스트")
         case let .itunesPlaylist(id): music.library.index[id]?.name ?? String(ui: "iTunes 동기화 목록")
-        case let .history(id): historyIndex[id].map(historyTitle) ?? archivedHistoryIndex[id]?.name ?? String(ui: "재생 기록")
+        case let .history(id): history.historyIndex[id].map(historyTitle) ?? history.archivedHistoryIndex[id]?.name ?? String(ui: "재생 기록")
         case .duplicates: String(ui: "중복 후보")
         case .staged: String(ui: "추가한 곡")
         case .pending: String(ui: "rekordbox 쓰기 대기")

@@ -49,6 +49,8 @@ public struct LibraryPorts: Sendable {
     public var snapshots: SnapshotTaker
     /// 읽은 사본의 USB 짝짓기 키(보존한 기기 재생 기록의 짝·쓴 표시 검증, #43)
     public var localKeys: LocalLibraryKeysSource
+    /// USB에서 보존한 기기 재생 기록 파일(#43). nil이면 보존하지 않는다(시험 기본·CLI: 사용자 폴더를 건드리지 않게 앱의 조립 지점만 붙인다)
+    public var usbHistories: UsbHistoryFiles?
     /// 같은 음원 곡 합치기 초안 만들기(사본에서 읽는다)
     public var prepareMerge: @Sendable (_ keeping: String, _ removing: [String], _ snapshot: URL) throws -> DuplicateMergeDraft
     /// 시계(반영 묶음 시각 등)·오늘 날짜(`yyyy-MM-dd`)와 새 열쇠(재생 목록 초안)
@@ -131,6 +133,8 @@ public struct LibraryUseCases: Sendable {
     public let previews: ShowPreviewWaveforms
     /// USB 큐·그리드를 이 라이브러리 초안으로 넣기
     public let usbCueGrid: ImportUsbCueGridDrafts
+    /// USB 기기 재생 기록 보존(#43). 보존 파일 포트가 없으면 아무것도 하지 않는다
+    public let histories: ArchiveUsbHistories
 
     public init(ports: LibraryPorts) {
         self.ports = ports
@@ -153,6 +157,7 @@ public struct LibraryUseCases: Sendable {
         appleMusic = ImportAppleMusic(files: ports.appleMusic)
         previews = ShowPreviewWaveforms(previews: ports.previews)
         usbCueGrid = ImportUsbCueGridDrafts(drafts: ports.drafts, files: ports.draftFiles, newKey: ports.newKey)
+        histories = ArchiveUsbHistories(files: ports.usbHistories, now: ports.now, newID: ports.newKey)
     }
 
     // MARK: - 표시용 읽기

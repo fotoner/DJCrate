@@ -151,11 +151,11 @@ extension LibraryStore {
         refreshPlaylists(refreshList: false)
         applyMovedDrafts(opened.moved, previousTags: previousTags, previousPlaylist: previousPlaylist, reporting: false)
         restoreAwaitingPlaylistEdits()
-        setHistories(loaded.histories, localKeys: opened.localKeys)
+        history.setHistories(loaded.histories, localKeys: opened.localKeys)
         adoptSnapshot(snapshot, usb: opened.usbSnapshot, generation: generation)
         // 스냅샷을 채택한 뒤에야 쓰기 대기를 고른다(쓴 기록이 rekordbox에 있는지 그 전에는 모른다). 처음 한 번 가장 최근 연·월을 펼친다
-        refreshHistoryTree()
-        seedHistoryFolders()
+        history.refreshHistoryTree()
+        history.seedHistoryFolders()
         loadStaged()
         // 기다리는 동안 설정이 바뀌었으면 최신 프리셋으로 맞춘다.
         if preset != commentPreset { refreshCommentRule() }

@@ -203,7 +203,7 @@ struct PlaylistEditingTests {
     }
 
     @Test func 재생_기록으로_재생_목록을_만든다() throws {
-        store.histories = [RekordboxHistory(id: "h", name: "", dateCreated: "2026-09-20 21:00:00",
+        store.history.histories = [RekordboxHistory(id: "h", name: "", dateCreated: "2026-09-20 21:00:00",
                                             entries: [.init(id: "e2", contentID: "3", trackNumber: 2), .init(id: "e1", contentID: "1", trackNumber: 1),
                                                       .init(id: "e3", contentID: "1", trackNumber: 3), .init(id: "e4", contentID: "없는 곡", trackNumber: 4)])]
         store.createPlaylist(fromHistory: "h")

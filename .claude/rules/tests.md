@@ -58,6 +58,7 @@ paths:
 - USB: `FakeUsbPorts`
 - 덱·라이브러리: 포트의 클로저, DJCApplication의 메모리 구현 `Memory…`(예: `MemoryDrafts`, `MemoryAnalysisStore`), `LibrarySource.memory`
 - 라이브러리 읽기 화면: `FakeLibraryReadScreen`(PortTestKit). 읽기 순서 `LibraryReadFlow`가 보는 화면의 가짜다
+- 재생 기록 화면: `FakeUsbHistoryScreen`(PortTestKit). 보존 흐름 `ArchiveUsbHistories`가 보는 화면의 가짜다
 
 `DJCrateTests`의 재료는 아래와 같다.
 

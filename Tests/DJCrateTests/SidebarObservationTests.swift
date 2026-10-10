@@ -109,6 +109,15 @@ struct SidebarObservationTests {
         #expect(!reads({ PlaylistSection(store: $0) }) { $0.rowsByID = ["y": row("y")] })
     }
 
+    // MARK: - 재생 기록 구역
+
+    @Test(.tags(.perfContract)) func 재생_기록_조각의_값은_사이드바_본문이_읽지_않는다() {
+        // 재생 기록 상태는 핵심에서 재생 기록 조각(`HistoryStore`)으로 옮겼다(#251). 기록 구역·줄만 읽는다(`HistoryStoreObservationTests`).
+        #expect(!sidebarReads { $0.history.histories = [HistoryStoreObservationTests.history("h")] })
+        #expect(!sidebarReads { $0.history.archivedHistories = [UsbHistoryWriteTests.archived("s", ["1"], sequence: 1)] })
+        #expect(!sidebarReads { $0.history.setHistoryFolder(HistoryTree.yearID(2025), expanded: true) })
+    }
+
     // MARK: - 부모가 다시 계산될 때
 
     /// `@AppStorage`를 든 뷰는 부모가 다시 계산될 때마다 값이 바뀐 것으로 보여 본문이 다시 계산된다(#141: 덱에 곡을 올리면 ContentView가

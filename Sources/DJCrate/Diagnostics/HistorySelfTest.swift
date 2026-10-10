@@ -84,12 +84,11 @@ enum HistorySelfTest {
                                     fileName: UsbPathRules.audioFileName(sourcePath: key.folderPath, fileNameL: key.fileNameL))])
                 let archiveStore = UsbHistoryStore(directory: URL(filePath: home).appending(path: "usb-histories"), home: URL(filePath: home))
                 try await BlockingWork.run(qos: .default) { try archiveStore.save([archive]) }
-                store.usbHistories = ArchiveUsbHistories(files: .live(directory: archiveStore.directory, home: URL(filePath: home)),
-                                                         now: { Date() }, newID: { UUID().uuidString })
-                await store.loadArchivedHistories()
-                store.writesHistories = true
+                // 앱의 보존 파일(`UsbAppComposition.historyFiles`)도 DJC_HOME의 같은 폴더다
+                await store.history.loadArchivedHistories()
+                store.history.writesHistories = true
                 store.sidebar = .history(archive.id)
-                guard store.pendingHistoryIDs == [archive.id], store.displayRows.count == 1 else {
+                guard store.history.pendingHistoryIDs == [archive.id], store.displayRows.count == 1 else {
                     log("실패: 보존본 표시·쓰기 대기"); exit(1)
                 }
                 @MainActor func capture(_ name: String) async throws {
@@ -112,8 +111,8 @@ enum HistorySelfTest {
                     log("실패: 미리 보기·DB 불변"); exit(1)
                 }
                 let report = try await session.writeDrafts(preview.writableBatch, to: session.target)
-                guard report.historyWritten.count == 1, store.pendingHistories.isEmpty,
-                      let id = report.historyWritten.first?.historyID, store.histories.contains(where: { $0.id == id }),
+                guard report.historyWritten.count == 1, store.history.pendingHistories.isEmpty,
+                      let id = report.historyWritten.first?.historyID, store.history.histories.contains(where: { $0.id == id }),
                       let backup = session.writeBackups().first(where: \.isWrite) else {
                     log("실패: 쓰기·다시 읽기·보존 표시"); exit(1)
                 }
@@ -121,7 +120,7 @@ enum HistorySelfTest {
                 try await capture("written")
                 _ = try await session.restoreBackup(backup, to: session.target)
                 store.setWriteLock(false)
-                guard store.pendingHistoryIDs == [archive.id], try Data(contentsOf: database) == before,
+                guard store.history.pendingHistoryIDs == [archive.id], try Data(contentsOf: database) == before,
                       archiveStore.load().histories.count == 1 else {
                     log("실패: 복원·재대기·보존본 유지"); exit(1)
                 }

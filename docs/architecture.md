@@ -70,6 +70,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 사이드바 iTunes 목록과 지금 보이는 Music 목록
   - iTunes 동기화 창의 화면 모델과 동기화 쓰기 연결
 - 동기화 창 화면 모델 `ITunesSyncModel`은 저장소 대신 좁은 포트(`ITunesSyncModel.Ports`)를 받는다. Music 결과에 맞춰 곡 목록·사이드바 선택을 고치는 일은 저장소가 한다.
+- **재생 기록 트리·보존본·쓰기 대기는 기능 조각 `HistoryStore`가 든다(#251).** 조각은 저장소의 `history` 속성이다. 보존의 줄 세우기·채택·실패 알림은 유스케이스 `ArchiveUsbHistories`가 정한다. 유스케이스는 화면 포트 `UsbHistoryScreen`으로 조각의 값을 읽는다. 결과도 그 포트로 알린다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
   - 읽기 순번: 늦게 끝난 옛 결과를 버린다
@@ -957,13 +958,13 @@ DJCApplication 유스케이스 `UsbMigrateSession`이 아래 순서를 부른다
 
 ### 기기 재생 기록 보존 (#43)
 
-- **기기 재생 기록은 Mac에 보존한다. USB에는 쓰지 않는다.** 사이드바가 USB를 읽으면 `UsbStore.onLibraryEvaluated`가 저장소에 알린다. 저장소는 보존을 한 줄(`historyImports`)에 세운다.
+- **기기 재생 기록은 Mac에 보존한다. USB에는 쓰지 않는다.** 사이드바가 USB를 읽으면 `UsbStore.onLibraryEvaluated`가 재생 기록 조각에 알린다. 유스케이스 `ArchiveUsbHistories`가 보존과 보존본 저장을 한 줄에 세운다.
 - **보존 흐름은 유스케이스 `ArchiveUsbHistories`가 정한다.** 순서는 아래와 같다.
   1. 후보: `UsbHistoryCandidates`
   2. 계획: `UsbHistoryImport.plan`
   3. 짝 다시 검증: `UsbHistoryRules.rematch`
   4. 기록마다 저장: 포트 `UsbHistoryFiles`
-- **보존 파일의 실제 구현은 DJCStorage `UsbHistoryStore`다.** 어댑터 `UsbHistoryFiles.live`가 이것을 감싼다. 조립 지점 `UsbAppSetup`이 `usb-histories/`를 정해 붙인다. 시험 저장소는 붙이지 않으므로 보존하지 않는다.
+- **보존 파일의 실제 구현은 DJCStorage `UsbHistoryStore`다.** 어댑터 `UsbHistoryFiles.live`가 이것을 감싼다. 조립 지점이 `usb-histories/`를 정해 라이브러리 포트 `LibraryPorts.usbHistories`에 붙인다. 시험 저장소는 붙이지 않으므로 보존하지 않는다.
 - **트리·숨김·쓰기 대기는 `UsbHistoryRules.view` 하나가 정한다.** 저장소는 기록이나 보존본이 바뀔 때만 이 값을 다시 계산한다(#141).
 - **rekordbox에는 다른 초안처럼 반영 세션으로 쓴다.** 저장소는 쓰기 대기 기록을 `HistoryImport`로 바꿔 `ReflectionLibraryState.pendingHistories`에 싣는다. 세션은 이것을 `DraftWriteBatch.histories`로 묶어 관문 `RekordboxWriteGate`에 넘긴다. 관문의 실제 구현은 `RekordboxWriter.write(histories:)`를 부른다.
 - **쓴 기록은 다시 읽기 전에 보존본에 표시한다.** 세션은 포트 `ReflectionLibrary.recordHistories`로 결과를 넘긴다. 미리 보기에서 최신 대상에 이미 있던 기록도 같은 길로 표시한다. 쓰기 전으로 복원해 그 기록이 사라지면 다시 쓰기 대기에 오른다.

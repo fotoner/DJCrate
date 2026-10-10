@@ -53,9 +53,9 @@ struct UsbHistoryWriteTests {
         }
         try fixture.execute("UPDATE djmdProperty SET DBID = '2'")
         let (store, _) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
-        #expect(store.archivedHistory(target.id)?.rekordboxLibraryID == "1")
-        #expect(store.pendingHistoryIDs == [target.id])
-        #expect(!store.shadowedArchiveIDs.contains(target.id))
+        #expect(store.history.archivedHistory(target.id)?.rekordboxLibraryID == "1")
+        #expect(store.history.pendingHistoryIDs == [target.id])
+        #expect(!store.history.shadowedArchiveIDs.contains(target.id))
     }
 
     @Test("라이브러리 ID 없는 옛 쓴 표시는 ID만으로 믿지 않고 이름·검증된 전체 곡 순서가 같을 때만 인정한다")
@@ -67,12 +67,12 @@ struct UsbHistoryWriteTests {
         target.rekordboxLibraryID = nil
         let (store, saved) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
         #expect(Self.savedHistory(saved, target.id)?.rekordboxLibraryID == nil)
-        #expect(store.pendingHistoryIDs == [target.id])
-        store.histories = [.init(id: "new-a", name: target.name, dateCreated: nil, entries: [
+        #expect(store.history.pendingHistoryIDs == [target.id])
+        store.history.histories = [.init(id: "new-a", name: target.name, dateCreated: nil, entries: [
             .init(id: "same-1", contentID: "102", trackNumber: 1),
             .init(id: "same-2", contentID: "101", trackNumber: 2),
         ])]
-        #expect(store.pendingHistories.isEmpty)
+        #expect(store.history.pendingHistories.isEmpty)
     }
 
     @Test("쓰기 입력은 짝 없음과 현재 컬렉션에 없는 항목을 함께 제외 수에 남긴다")
@@ -82,13 +82,14 @@ struct UsbHistoryWriteTests {
         let fixture = try historyFixture()
         let target = Self.archived("skipped", ["102", nil, "missing", "101"], sequence: 1)
         let (store, _) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
-        let input = try #require(store.pendingHistoryImports.first)
+        let input = try #require(store.history.pendingHistoryImports.first)
         #expect(input.contentIDs == ["102", "101"])
         #expect(input.skippedBeforeMatching == 2)
     }
 
-    /// 합성 rekordbox 사본에 쓰고 다시 읽는 저장소(라이브 스냅샷 대신 사본 DB를 그대로 읽는다). 쓰기·복원 대상도 그 사본이다. 아직 읽지 않았다
-    static func newStore(_ fixture: RekordboxFixture) throws -> LibraryStore {
+    /// 합성 rekordbox 사본에 쓰고 다시 읽는 저장소(라이브 스냅샷 대신 사본 DB를 그대로 읽는다). 쓰기·복원 대상도 그 사본이다. 아직 읽지 않았다.
+    /// `histories`는 보존 파일이다(주지 않으면 시험 기본처럼 보존하지 않는다)
+    static func newStore(_ fixture: RekordboxFixture, histories: UsbHistoryFiles? = nil) throws -> LibraryStore {
         try fixture.execute("UPDATE djmdContent SET MasterSongID = ID, FileNameL = 'history-' || ID || '.mp3', MasterDBID = (SELECT DBID FROM djmdProperty LIMIT 1) WHERE ID IN ('101', '102')")
         let database = fixture.database
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("historywrite"), persist: false),
@@ -97,28 +98,25 @@ struct UsbHistoryWriteTests {
                                       mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                       draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: database,
                                       rekordboxShareRoot: fixture.shareRoot, arguments: ["test"], environment: [:],
-                                      takeLiveSnapshot: { _ in database })
+                                      takeLiveSnapshot: { _ in database }, ports: { $0.usbHistories = histories })
         // 쓰기 대기·쓰기 흐름을 보려고 관문을 연다(시험 저장소의 기본은 닫힘이다, `closedGateKeepsQueueEmpty`)
-        store.writesHistories = true
+        store.history.writesHistories = true
         return store
     }
 
-    /// 임시 폴더의 보존 유스케이스(조립 지점과 같은 실제 파일 구현). `fileSystem`으로 저장 실패를 만든다
-    static func histories(_ scratch: URL, home: URL? = nil, fileSystem: any UsbFileSystem = PosixUsbFileSystem()) -> ArchiveUsbHistories {
-        let fixed = now
-        return ArchiveUsbHistories(files: .live(directory: scratch.appending(path: "usb-histories"), home: home ?? scratch.appending(path: "home"),
-                                                fileSystem: fileSystem),
-                                   now: { fixed }, newID: { UUID().uuidString })
+    /// 임시 폴더의 보존 파일(조립 지점과 같은 실제 파일 구현). 저장소를 만들 때 라이브러리 포트로 준다. `fileSystem`으로 저장 실패를 만든다
+    static func histories(_ scratch: URL, home: URL? = nil, fileSystem: any UsbFileSystem = PosixUsbFileSystem()) -> UsbHistoryFiles {
+        .live(directory: scratch.appending(path: "usb-histories"), home: home ?? scratch.appending(path: "home"), fileSystem: fileSystem)
     }
 
-    /// 사본을 읽고, 임시 폴더의 보존 파일에 `archived`를 저장해 앱처럼 읽어 들인 저장소
-    static func makeStore(_ fixture: RekordboxFixture, scratch: URL, archived: [ArchivedHistory]) async throws -> (LibraryStore, UsbHistoryStore) {
-        let store = try newStore(fixture)
+    /// 사본을 읽고, 임시 폴더의 보존 파일에 `archived`를 저장해 앱처럼 읽어 들인 저장소. 보존 파일의 `home`·`fileSystem`을 바꿀 수 있다
+    static func makeStore(_ fixture: RekordboxFixture, scratch: URL, archived: [ArchivedHistory], home: URL? = nil,
+                          fileSystem: any UsbFileSystem = PosixUsbFileSystem()) async throws -> (LibraryStore, UsbHistoryStore) {
+        let store = try newStore(fixture, histories: histories(scratch, home: home, fileSystem: fileSystem))
         await store.load(snapshot: fixture.database)
         let historyStore = UsbHistoryStore(directory: scratch.appending(path: "usb-histories"), home: scratch.appending(path: "home"))
         try historyStore.save(archived)
-        store.usbHistories = histories(scratch)
-        await store.loadArchivedHistories()
+        await store.history.loadArchivedHistories()
         return (store, historyStore)
     }
 
@@ -150,7 +148,7 @@ struct UsbHistoryWriteTests {
         defer { try? FileManager.default.removeItem(at: scratch) }
         let target = Self.archived("identity", ["101"], sequence: 1)
         let (store, _) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
-        let input = store.pendingHistoryImports
+        let input = store.history.pendingHistoryImports
         #expect(input.first?.trackIdentities.first?.contentID == "101" && input.first?.expectedLibraryID == "1")
         try fixture.execute("UPDATE djmdContent SET MasterSongID = '999', FileNameL = 'other.mp3', FolderPath = '/synthetic/other.mp3' WHERE ID = '101'")
         let before = try Data(contentsOf: fixture.database)
@@ -179,7 +177,7 @@ struct UsbHistoryWriteTests {
         let before = try Data(contentsOf: fixture.database)
         let preview = try await store.session.previewWrite(rows: [], playlists: true)
         #expect(preview.report.historyOutcomes?.first?.status == .unchanged)
-        #expect(store.pendingHistories.isEmpty)
+        #expect(store.history.pendingHistories.isEmpty)
         #expect(Self.savedHistory(archiveStore, target.id)?.rekordboxHistoryID == "9876543")
         #expect(try Data(contentsOf: fixture.database) == before)
     }
@@ -197,30 +195,30 @@ struct UsbHistoryWriteTests {
         // 같은 곡이 두 번 든 기록은 rekordbox 쓰기가 늘 막아 대기에 두지 않는다
         let repeated = Self.archived("repeated", ["101", "102", "101"], sequence: 7)
         let shadowed = Self.archived("shadowed", ["101", "102"], sequence: 6, name: UsbHistoryAppTests.expectedName())
-        store.archivedHistories = [repeated, shadowed, restored, written, excluded, noMatch, pending]
+        store.history.archivedHistories = [repeated, shadowed, restored, written, excluded, noMatch, pending]
         // 읽기 전에는 rekordbox에 이미 쓴 기록인지 몰라 올리지 않는다
-        #expect(store.pendingHistories.isEmpty && !store.hasHistoryDrafts)
+        #expect(store.history.pendingHistories.isEmpty && !store.history.hasHistoryDrafts)
 
         await store.load(snapshot: fixture.database)
-        #expect(store.pendingHistories.map(\.id) == [pending.id, restored.id, shadowed.id])
+        #expect(store.history.pendingHistories.map(\.id) == [pending.id, restored.id, shadowed.id])
 
         // rekordbox도 같은 USB 기록을 가져왔으면(짝 곡 순서가 같은 "HISTORY …" 기록) 숨기고 대기에서도 뺀다
-        store.histories.append(RekordboxHistory(id: "rb-usb", name: UsbHistoryAppTests.expectedName(),
+        store.history.histories.append(RekordboxHistory(id: "rb-usb", name: UsbHistoryAppTests.expectedName(),
                                                 dateCreated: String(UsbHistoryAppTests.expectedName().dropFirst(8)) + " 23:00:00",
                                                 folderNames: ["2026", "9"], seq: 1, entries: [
                                                     .init(id: "rb-1", contentID: "101", trackNumber: 1),
                                                     .init(id: "rb-2", contentID: "102", trackNumber: 2),
                                                 ]))
-        #expect(store.shadowedArchiveIDs == [shadowed.id])
-        #expect(store.pendingHistories.map(\.id) == [pending.id, restored.id])
-        #expect(store.pendingHistoryIDs == [pending.id, restored.id])
-        #expect(store.hasHistoryDrafts)
+        #expect(store.history.shadowedArchiveIDs == [shadowed.id])
+        #expect(store.history.pendingHistories.map(\.id) == [pending.id, restored.id])
+        #expect(store.history.pendingHistoryIDs == [pending.id, restored.id])
+        #expect(store.history.hasHistoryDrafts)
         // 사이드바 배지는 쓸 곡 수에 대기 기록 수를 더하고, 곡 초안이 없어도 rekordbox에 쓰기를 누를 수 있다
         #expect(store.pendingWriteCount == store.pendingLibraryCount + 2)
         #expect(LibraryMenuAction.reflect.isEnabled(in: store))
 
         // 쓰기 입력: 컬렉션 짝이 있는 곡만 재생 순서대로(반복 재생 포함), 이름·만든 시각은 보존본 그대로
-        let imports = store.pendingHistoryImports
+        let imports = store.history.pendingHistoryImports
         #expect(imports.map(\.id) == [pending.id, restored.id])
         #expect(imports.map(\.contentIDs) == [["102", "101"], ["102", "101"]])
         #expect(imports.map(\.skippedBeforeMatching) == [1, 0])
@@ -234,40 +232,40 @@ struct UsbHistoryWriteTests {
         let fixture = try historyFixture()
         let target = Self.archived("toggle", ["102", "101"], sequence: 1)
         let (store, saved) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
-        #expect(store.pendingHistoryIDs == [target.id])
+        #expect(store.history.pendingHistoryIDs == [target.id])
         let undo = UndoManager()
         undo.groupsByEvent = false
         store.undoManager = undo
 
-        store.setHistoriesExcluded([target.id], excluded: true)
-        #expect(store.pendingHistories.isEmpty && !store.hasHistoryDrafts)
-        #expect(store.archivedHistory(target.id)?.excludedFromRekordbox == true)
+        store.history.setHistoriesExcluded([target.id], excluded: true)
+        #expect(store.history.pendingHistories.isEmpty && !store.history.hasHistoryDrafts)
+        #expect(store.history.archivedHistory(target.id)?.excludedFromRekordbox == true)
         #expect(undo.undoActionName == "rekordbox 쓰기 대기에서 빼기")
-        await store.waitForHistoryImports()
+        await store.history.waitForHistoryImports()
         #expect(Self.savedHistory(saved, target.id)?.excludedFromRekordbox == true)
         // 보존본은 그대로 트리에 남는다
-        #expect(Self.treeIDs(store.historyTree).contains(target.id))
+        #expect(Self.treeIDs(store.history.historyTree).contains(target.id))
 
         undo.undo()
-        #expect(store.pendingHistoryIDs == [target.id])
-        await store.waitForHistoryImports()
+        #expect(store.history.pendingHistoryIDs == [target.id])
+        await store.history.waitForHistoryImports()
         #expect(Self.savedHistory(saved, target.id)?.excludedFromRekordbox == false)
         undo.redo()
-        #expect(store.pendingHistories.isEmpty)
-        await store.waitForHistoryImports()
+        #expect(store.history.pendingHistories.isEmpty)
+        await store.history.waitForHistoryImports()
         #expect(Self.savedHistory(saved, target.id)?.excludedFromRekordbox == true)
 
         // 뺀 기록의 "rekordbox 쓰기 대기에 넣기"
-        store.setHistoriesExcluded([target.id], excluded: false)
+        store.history.setHistoriesExcluded([target.id], excluded: false)
         #expect(undo.undoActionName == "rekordbox 쓰기 대기에 넣기")
-        #expect(store.pendingHistoryIDs == [target.id])
-        await store.waitForHistoryImports()
+        #expect(store.history.pendingHistoryIDs == [target.id])
+        await store.history.waitForHistoryImports()
         #expect(Self.savedHistory(saved, target.id)?.excludedFromRekordbox == false)
 
         // 쓰는 동안은 바꾸지 않는다
         store.isWritingRekordbox = true
-        store.setHistoriesExcluded([target.id], excluded: true)
-        #expect(store.pendingHistoryIDs == [target.id])
+        store.history.setHistoriesExcluded([target.id], excluded: true)
+        #expect(store.history.pendingHistoryIDs == [target.id])
         store.isWritingRekordbox = false
         #expect(store.toast == nil)
     }
@@ -281,16 +279,16 @@ struct UsbHistoryWriteTests {
         let (store, saved) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
         let outcome = RekordboxWriter.HistoryOutcome(id: target.id, name: target.name, historyID: "rb-new", status: .written,
                                                      reason: nil, entries: 2, skipped: 0)
-        #expect(await store.recordWrittenHistories([outcome]) == nil)
-        #expect(store.archivedHistory(target.id)?.rekordboxHistoryID == "rb-new")
-        #expect(store.pendingHistories.isEmpty)
+        #expect(await store.history.recordWrittenHistories([outcome]) == nil)
+        #expect(store.history.archivedHistory(target.id)?.rekordboxHistoryID == "rb-new")
+        #expect(store.history.pendingHistories.isEmpty)
         #expect(Self.savedHistory(saved, target.id)?.rekordboxHistoryID == "rb-new")
-        #expect(store.archivedHistory(target.id)?.rekordboxLibraryID == "1")
+        #expect(store.history.archivedHistory(target.id)?.rekordboxLibraryID == "1")
         #expect(Self.savedHistory(saved, target.id)?.rekordboxLibraryID == "1")
 
         // 사본에는 그 기록이 없다(복원으로 사라진 것과 같다): 새로 읽으면 다시 쓰기 대기
         await store.load(snapshot: fixture.database)
-        #expect(store.pendingHistoryIDs == [target.id])
+        #expect(store.history.pendingHistoryIDs == [target.id])
 
         // 표시를 저장하지 못하면 알릴 문장을 돌려주고, 이번 실행 동안은 쓴 것으로 둔다
         let folder = scratch.appending(path: "usb-histories")
@@ -298,14 +296,14 @@ struct UsbHistoryWriteTests {
         try Data().write(to: folder)
         let again = RekordboxWriter.HistoryOutcome(id: target.id, name: target.name, historyID: "rb-again", status: .written,
                                                    reason: nil, entries: 2, skipped: 0)
-        #expect(await store.recordWrittenHistories([again]) == LibraryStore.historyMarkFailureText(1))
-        #expect(store.archivedHistory(target.id)?.rekordboxHistoryID == "rb-again")
-        #expect(store.pendingHistories.isEmpty)
+        #expect(await store.history.recordWrittenHistories([again]) == ArchiveUsbHistories.markFailureText(1))
+        #expect(store.history.archivedHistory(target.id)?.rekordboxHistoryID == "rb-again")
+        #expect(store.history.pendingHistories.isEmpty)
         // 막힌 결과는 표시하지 않는다
         let blocked = RekordboxWriter.HistoryOutcome(id: target.id, name: target.name, historyID: nil, status: .blocked,
                                                      reason: "막힘", entries: 0, skipped: 0)
-        #expect(await store.recordWrittenHistories([blocked]) == nil)
-        #expect(store.archivedHistory(target.id)?.rekordboxHistoryID == "rb-again")
+        #expect(await store.history.recordWrittenHistories([blocked]) == nil)
+        #expect(store.history.archivedHistory(target.id)?.rekordboxHistoryID == "rb-again")
     }
 
     @Test("쓰기 대기 상태 저장의 rename 뒤 fsync가 실패해도 같은 파일의 상태를 유지하고 실패를 알린다")
@@ -314,16 +312,16 @@ struct UsbHistoryWriteTests {
         defer { try? FileManager.default.removeItem(at: scratch) }
         let fixture = try historyFixture()
         let target = Self.archived("toggle-fsync", ["102", "101"], sequence: 1)
-        let (store, _) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
         let fileSystem = FaultyUsbFileSystem(root: scratch)
+        let (store, _) = try await Self.makeStore(fixture, scratch: scratch, archived: [target], home: scratch, fileSystem: fileSystem)
+        // 읽은 뒤의 저장(쓰기 대기에서 빼기)부터 실패하게 한다
         fileSystem.failAt = (.syncDirectory, 1, .error)
         let saved = UsbHistoryStore(directory: scratch.appending(path: "usb-histories"), home: scratch, fileSystem: fileSystem)
-        store.usbHistories = Self.histories(scratch, home: scratch, fileSystem: fileSystem)
-        store.setHistoriesExcluded([target.id], excluded: true)
-        await store.waitForHistoryImports()
+        store.history.setHistoriesExcluded([target.id], excluded: true)
+        await store.history.waitForHistoryImports()
         try #require(await waitUntil(timeout: .seconds(5)) { store.toast?.kind == .warning })
-        let current = try #require(store.archivedHistory(target.id))
-        #expect(current.excludedFromRekordbox && store.pendingHistories.isEmpty)
+        let current = try #require(store.history.archivedHistory(target.id))
+        #expect(current.excludedFromRekordbox && store.history.pendingHistories.isEmpty)
         #expect(saved.containsExact(current))
         #expect(saved.load().histories.map(\.id) == [target.id])
         #expect(store.toast?.title == "재생 기록의 쓰기 대기 상태를 저장하지 못했습니다")
@@ -379,10 +377,10 @@ struct UsbHistoryWriteTests {
         let fixture = try Self.writableFixture()
         let target = Self.archived("closed", ["102", "101"], sequence: 1, name: "HISTORY 2026-09-22")
         let (store, saved) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
-        #expect(store.pendingHistoryIDs == [target.id])
-        store.writesHistories = false
-        #expect(store.pendingHistories.isEmpty && store.pendingHistoryIDs.isEmpty && !store.hasHistoryDrafts)
-        #expect(store.archivedHistories.map(\.id) == [target.id])
+        #expect(store.history.pendingHistoryIDs == [target.id])
+        store.history.writesHistories = false
+        #expect(store.history.pendingHistories.isEmpty && store.history.pendingHistoryIDs.isEmpty && !store.history.hasHistoryDrafts)
+        #expect(store.history.archivedHistories.map(\.id) == [target.id])
         let histories = try fixture.rows("SELECT ID FROM djmdHistory ORDER BY ID")
         let songs = try fixture.rows("SELECT ID FROM djmdSongHistory ORDER BY ID")
         let counter = try fixture.localUpdateCount()
@@ -396,8 +394,8 @@ struct UsbHistoryWriteTests {
         #expect(Self.savedHistory(saved, target.id)?.rekordboxHistoryID == nil)
         #expect(!store.isWritingRekordbox)
         // 관문을 열면(사본 재현 뒤) 보존해 둔 기록이 대기에 오른다
-        store.writesHistories = true
-        #expect(store.pendingHistoryIDs == [target.id])
+        store.history.writesHistories = true
+        #expect(store.history.pendingHistoryIDs == [target.id])
     }
 
     @Test("관문을 열면 사본에 쓰고 기록·라이브러리 ID와 제외 수를 남기며, 짝 없는 항목이 든 보존본은 계속 보인다. 복원하면 다시 대기다",
@@ -408,8 +406,8 @@ struct UsbHistoryWriteTests {
         let fixture = try Self.writableFixture()
         let target = Self.archived("write", ["102", nil, "101"], sequence: 1, name: "HISTORY 2026-09-21")
         let (store, saved) = try await Self.makeStore(fixture, scratch: scratch, archived: [target])
-        store.writesHistories = true
-        #expect(store.pendingHistoryIDs == [target.id])
+        store.history.writesHistories = true
+        #expect(store.history.pendingHistoryIDs == [target.id])
         let plays = (store.rowsByID["101"]?.playCount ?? 0, store.rowsByID["102"]?.playCount ?? 0)
         let preview = try await store.session.previewWrite(rows: [], playlists: true)
         #expect(preview.report.historyWritten.first?.skipped == 1)
@@ -425,16 +423,16 @@ struct UsbHistoryWriteTests {
         #expect(store.toast?.undoBackup != nil)
 
         // 보존본(화면·파일)에 rekordbox 기록 ID를 남겼다
-        let historyID = try #require(store.archivedHistory(target.id)?.rekordboxHistoryID)
+        let historyID = try #require(store.history.archivedHistory(target.id)?.rekordboxHistoryID)
         #expect(Self.savedHistory(saved, target.id)?.rekordboxHistoryID == historyID)
         #expect(Self.savedHistory(saved, target.id)?.rekordboxLibraryID == "1")
         // 다시 읽은 rekordbox 기록에는 짝 있는 곡만 있다. 짝 없는 곡이 든 보존본은 보이고 쓴 표시는 중복 쓰기를 막는다.
-        let written = try #require(store.historyIndex[historyID])
+        let written = try #require(store.history.historyIndex[historyID])
         #expect(written.name == target.name)
         #expect(written.entries.sorted { $0.trackNumber < $1.trackNumber }.map(\.contentID) == ["102", "101"])
-        #expect(Self.treeIDs(store.historyTree).contains(historyID))
-        #expect(store.shadowedArchiveIDs.isEmpty && Self.treeIDs(store.historyTree).contains(target.id))
-        #expect(store.pendingHistories.isEmpty && store.pendingWriteCount == store.pendingLibraryCount)
+        #expect(Self.treeIDs(store.history.historyTree).contains(historyID))
+        #expect(store.history.shadowedArchiveIDs.isEmpty && Self.treeIDs(store.history.historyTree).contains(target.id))
+        #expect(store.history.pendingHistories.isEmpty && store.pendingWriteCount == store.pendingLibraryCount)
         // 그 기록의 곡은 rekordbox처럼 재생 횟수(DJPlayCount)가 1 늘고, 재생 기록 줄도 하나씩 늘었다(목록의 재생 횟수)
         let counts = try fixture.rows("SELECT ID, DJPlayCount FROM djmdContent WHERE ID IN ('101', '102') ORDER BY ID")
         #expect(counts.map { $0["DJPlayCount"] } == ["1", "1"])
@@ -445,9 +443,9 @@ struct UsbHistoryWriteTests {
         let backup = try #require(RekordboxWriter.backups(in: fixture.backups).first { $0.isWrite })
         #expect(WriteResult.restored(backup, saved: backup.url).text.contains("• \(target.name)"))
         try await store.session.restoreRekordbox(backup, keepingCurrentDrafts: true)
-        #expect(store.historyIndex[historyID] == nil)
+        #expect(store.history.historyIndex[historyID] == nil)
         #expect(try fixture.rows("SELECT ID FROM djmdHistory WHERE ID = ?", [.text(historyID)]).isEmpty)
-        #expect(store.shadowedArchiveIDs.isEmpty && Self.treeIDs(store.historyTree).contains(target.id))
-        #expect(store.pendingHistoryIDs == [target.id])
+        #expect(store.history.shadowedArchiveIDs.isEmpty && Self.treeIDs(store.history.historyTree).contains(target.id))
+        #expect(store.history.pendingHistoryIDs == [target.id])
     }
 }

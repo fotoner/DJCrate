@@ -60,25 +60,25 @@ struct UsbHistoryVolumeEventTests {
         let scratch = UsbHistoryAppTests.scratch()
         defer { try? FileManager.default.removeItem(at: scratch) }
         let fixture = try historyFixture()
-        let store = try await UsbHistoryAppTests.libraryStore(fixture)
+        let store = try await UsbHistoryAppTests.libraryStore(fixture, histories: UsbHistoryAppTests.histories(scratch))
         let volume = FakeUsbVolume.diskImageFAT32()
         let host = UsbHistoryEventHost([volume])
         host.base.serve(volume, library: UsbHistoryAppTests.usbLibrary())
         let local = UsbHistoryAppTests.localKeys()
         let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: FakeUsbWriteService(), localLibrary: { local })
-        await UsbHistoryAppTests.connect(store, usb, scratch: scratch)
+        await UsbHistoryAppTests.connect(store, usb)
         await usb.refresh()
-        await store.waitForHistoryImports()
-        #expect(store.archivedHistories.count == 1)
+        await store.history.waitForHistoryImports()
+        #expect(store.history.archivedHistories.count == 1)
 
         host.base.serve(volume, library: Self.changedLibrary())
         host.emit([])
         host.emit([volume])
         host.continuation.finish()
         await usb.watch()
-        await store.waitForHistoryImports()
+        await store.history.waitForHistoryImports()
         #expect(host.base.libraryCalls == [volume.usbKey, volume.usbKey])
-        #expect(store.archivedHistories.count == 2)
+        #expect(store.history.archivedHistories.count == 2)
         #expect(usb.libraries[volume.usbKey]?.histories.count == 2)
     }
 
@@ -87,7 +87,7 @@ struct UsbHistoryVolumeEventTests {
         let scratch = UsbHistoryAppTests.scratch()
         defer { try? FileManager.default.removeItem(at: scratch) }
         let fixture = try historyFixture()
-        let store = try await UsbHistoryAppTests.libraryStore(fixture)
+        let store = try await UsbHistoryAppTests.libraryStore(fixture, histories: UsbHistoryAppTests.histories(scratch))
         var first = FakeUsbVolume.diskImageFAT32()
         first.name = "A 시험 USB"
         var second = FakeUsbVolume.diskImageFAT32()
@@ -99,9 +99,9 @@ struct UsbHistoryVolumeEventTests {
         host.base.serve(second, library: UsbTestData.library(formats: [.oneLibrary]))
         let local = UsbHistoryAppTests.localKeys()
         let usb = UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: FakeUsbWriteService(), localLibrary: { local })
-        await UsbHistoryAppTests.connect(store, usb, scratch: scratch)
+        await UsbHistoryAppTests.connect(store, usb)
         await usb.refresh()
-        await store.waitForHistoryImports()
+        await store.history.waitForHistoryImports()
         host.base.mounted = [first, second]
         host.delayedKey = second.usbKey
         let watch = Task { await usb.watch() }
@@ -117,9 +117,9 @@ struct UsbHistoryVolumeEventTests {
         host.resume()
         host.continuation.finish()
         await watch.value
-        await store.waitForHistoryImports()
+        await store.history.waitForHistoryImports()
         #expect(host.base.libraryCalls.filter { $0 == first.usbKey }.count == 2)
-        #expect(store.archivedHistories.count == 2)
+        #expect(store.history.archivedHistories.count == 2)
         #expect(usb.libraries[first.usbKey]?.histories.count == 2)
     }
 }

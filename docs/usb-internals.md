@@ -2313,11 +2313,11 @@ rekordbox는 USB를 연결하면 기기가 남긴 재생 기록을 Histories로 
 
 | 일 | 자리 |
 |---|---|
-| 보존 흐름: 후보 → 계획 → 짝 다시 검증 → 저장 | 유스케이스 `ArchiveUsbHistories` |
+| 보존 흐름: 후보 → 계획 → 짝 다시 검증 → 저장, 줄 세우기·채택·실패 알림 | 유스케이스 `ArchiveUsbHistories` |
 | 후보·계획 | `UsbHistoryCandidates`, `UsbHistoryImport` (DJCDomain) |
 | 트리·숨김·쓰기 대기·쓰기 입력 | `UsbHistoryRules`, `HistoryDuplicates`, `HistoryWriteQueue` (DJCDomain) |
 | 보존 파일 | 포트 `UsbHistoryFiles`. 실제 구현은 DJCStorage `UsbHistoryStore`다 |
-| 화면 상태와 보존 줄 | `LibraryStore+Histories` |
+| 화면 상태 | 재생 기록 조각 `HistoryStore` |
 
 **언제**
 
@@ -2373,7 +2373,7 @@ rekordbox는 USB를 연결하면 기기가 남긴 재생 기록을 Histories로 
 
 - 기록마다 따로 내구 쓰기를 한다(`UsbDurableFile`). 메인 액터 밖에서 한다.
 - 저장에 성공한 기록만 화면 상태에 넣는다. 그래서 중간에 실패해도 다음 시도가 같은 기록을 새 ID로 또 저장하지 않는다.
-- 보존과 보존본 저장은 한 줄로 선다(`LibraryStore.historyImports`).
+- 보존과 보존본 저장은 한 줄로 선다(`ArchiveUsbHistories`).
   - USB 읽기와 로컬 짝 다시 계산이 겹쳐도 같은 기록을 두 번 보존하지 않는다.
 
 **손상**
