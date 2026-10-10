@@ -114,6 +114,12 @@ struct RatingColorTagTests {
         #expect(draft.issues.contains { $0.contains("곡 색") && $0.contains("rekordbox에 쓰세요") })
         draft.fields.color = "7"
         #expect(draft.issues.isEmpty)
+        // 여덟 색 밖(번호 0·이름)과 1~5 밖 평점(음수·별 표기)도 초안 문제다(RekordboxTagRatingColorTests에서 옮김)
+        for (key, value, word) in [(TagFields.Key.color, "0", "곡 색"), (.color, "Red", "곡 색"), (.rating, "-1", "평점"), (.rating, "★", "평점")] {
+            var other = TagDraft(trackUUID: "u", base: TagFields())
+            other.fields[key] = value
+            #expect(other.issues.contains { $0.contains(word) }, "\(value)")
+        }
     }
 
     // MARK: 옛 초안

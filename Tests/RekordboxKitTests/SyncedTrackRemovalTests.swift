@@ -27,7 +27,8 @@ struct SyncedTrackRemovalTests {
 
     // MARK: 곡 빼기
 
-    @Test(arguments: [256, 257, 258, 262])
+    /// 0이 아니면 모두 같은 판정(`isSynced`: `ifnull(rb_data_status, 1) != 0`)이라 동기화를 마친 곡(256)과 삭제 처리 뒤 상태(262)만 본다.
+    @Test(arguments: [256, 262])
     func 동기화_상태_곡은_빼지_않고_행도_파일도_번호도_그대로_둔다(_ status: Int) throws {
         let (fixture, a, _) = try writer.deleteFixture()
         try setStatus(fixture, "djmdContent", "ID", a.id, status)
@@ -72,7 +73,8 @@ struct SyncedTrackRemovalTests {
         #expect(try fixture.localUpdateCount() == 2000)
     }
 
-    @Test(arguments: ["djmdCue", "contentCue", "contentFile", "djmdMixerParam", "djmdSongPlaylist", "djmdSongHistory"])
+    /// 딸린 행 표는 한 목록(`ownRowTables`)을 같은 판정으로 돈다. 목록 전체는 아래 시험이, DB 판정은 처음과 끝 표가 본다.
+    @Test(arguments: ["djmdCue", "djmdSongHistory"])
     func 상태_0_곡도_딸린_행이_동기화_상태면_막는다(_ table: String) throws {
         let (fixture, a, _) = try writer.deleteFixture()
         try setStatus(fixture, table, "ContentID", a.id, 256)
@@ -81,6 +83,10 @@ struct SyncedTrackRemovalTests {
         #expect(report.deleted.first?.written == false && report.deleted.first?.reason == RekordboxTrackWriter.syncedRowsReason)
         #expect(try snapshot(fixture) == before)
         #expect(try fixture.localUpdateCount() == 2000)
+    }
+
+    @Test func 곡과_함께_지우는_딸린_행_표_여섯을_모두_본다() {
+        #expect(RekordboxTrackWriter.ownRowTables == ["djmdCue", "contentCue", "contentFile", "djmdMixerParam", "djmdSongPlaylist", "djmdSongHistory"])
     }
 
     /// 지우는 앨범·아티스트 행이 동기화 상태이면(상태 0 곡이 동기화된 기존 아티스트·앨범을 쓰는 건 흔하다) 곡도 막는다.
@@ -411,7 +417,8 @@ struct SyncedTrackRemovalTests {
         expectBlockedDraft(fixture, reason: sourceReason(RekordboxTrackWriter.syncedRenumberReason))
     }
 
-    @Test(arguments: [(before: 0, after: 0), (before: 256, after: 257), (before: 257, after: 257)])
+    /// 257 → 257은 곡 빼기의 같은 상태 표(`순번을_당기는_뒤_항목은_256만_257로_올린다`)가 본다.
+    @Test(arguments: [(before: 0, after: 0), (before: 256, after: 257)])
     func 합치면_원본_이력_뒤_항목의_순번을_당기고_256만_257로_올린다(_ status: (before: Int, after: Int)) throws {
         let fixture = try merge.fixture()
         try insertHistory(fixture, id: "h1", contentID: "200", trackNo: 1)

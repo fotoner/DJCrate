@@ -66,6 +66,12 @@ struct MusicalKeyTagTests {
         #expect(draft.issues.isEmpty)
         draft.fields.musicalKey = ""
         #expect(draft.issues.isEmpty && draft.changedKeys.contains(.musicalKey))
+        // Camelot 스물네 이름이 아니면(소문자·범위 밖·다른 표기) 초안 문제다(RekordboxTagKeyTests에서 옮김)
+        for name in ["C", "8a", "13A", "0A", "키"] {
+            var other = TagDraft(trackUUID: "u", base: TagFields())
+            other.fields.musicalKey = name
+            #expect(other.issues.contains { $0.contains("1A~12B") }, "\(name)")
+        }
     }
 
     @Test func 키만_고친_초안과_섞인_초안을_가린다() {

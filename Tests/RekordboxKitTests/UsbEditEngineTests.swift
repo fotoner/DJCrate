@@ -10,17 +10,10 @@ import Testing
 /// USB는 임시 폴더(디스크 이미지로 보이는 가짜 가드)이고 모든 값은 지어낸 것이다.
 @Suite("USB 수정 엔진")
 struct UsbEditEngineTests {
-    /// 로컬 곡 셋(101·102·103, 아티스트·앨범 하나)과 그 곡의 목록(900)을 내보낸 USB. USB 목록 id 1, 곡 id 1·2·3
+    /// 로컬 곡 셋(101·102·103, 아티스트·앨범 하나)과 그 곡의 목록(900)을 내보낸 USB. USB 목록 id 1, 곡 id 1·2·3.
+    /// 같은 설정의 USB는 프로세스에서 한 번만 내보내고 복사한다(`UsbEditFixture.exported`).
     static func exported(_ ids: [String] = ["101", "102", "103"], playlist: Bool = true) throws -> UsbEditFixture {
-        let env = try UsbEditFixture()
-        try env.addLocal(ids)
-        if playlist {
-            try env.local.local.addPlaylist(id: "900", name: "합성 목록", seq: 1, contentIDs: ids)
-            try env.export(tracks: [], playlists: ["900"])
-        } else {
-            try env.export(tracks: ids)
-        }
-        return env
+        try UsbEditFixture.exported(ids, playlist: playlist)
     }
 
     /// rekordbox가 만든 것 같은 합성 USB(Device Library My Tag 연결은 DJCrate가 다시 쓸 수 없어 기본으로 뺀다)
