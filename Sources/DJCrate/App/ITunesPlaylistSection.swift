@@ -38,7 +38,7 @@ struct ITunesPlaylistSection: View {
                     }
                     .disabled(store.isLoading || store.isWritingRekordbox || store.snapshotURL == nil)
                     Button {
-                        Task { await store.refreshITunesPlaylists() }
+                        store.startRefreshITunesPlaylists()
                     } label: {
                         Label(.ui("iTunes 동기화 목록 새로고침"), systemImage: "arrow.clockwise")
                     }

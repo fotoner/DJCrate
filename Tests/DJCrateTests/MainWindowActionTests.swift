@@ -64,6 +64,19 @@ struct MainWindowActionTests {
         #expect(store.stagingMessage?.text.contains("추가할 음원이 없습니다") == true, "\(store.stagingMessage?.text ?? "")")
     }
 
+    @Test func 재생_목록에_놓은_파일도_그_목록으로_곡_추가에_넘긴다() async throws {
+        let folder = try TemporaryFolder()
+        let text = folder.url.appending(path: "메모.txt")
+        try Data("음원이 아님".utf8).write(to: text)
+        let store = TrackListDragTests.playlistStore(count: 1)
+        await store.startAddingFiles([text], toPlaylist: "A").value
+        #expect(store.stagingMessage?.text.contains("추가할 음원이 없습니다") == true, "\(store.stagingMessage?.text ?? "")")
+        // 고칠 수 없는 목록이면 곡 추가 전에 멈춘다
+        store.stagingMessage = nil
+        await store.startAddingFiles([text], toPlaylist: "없는 목록").value
+        #expect(store.stagingMessage == nil)
+    }
+
     @Test func rekordbox에_쓰는_중에_놓은_파일은_넣지_않는다() async throws {
         let folder = try TemporaryFolder()
         let text = folder.url.appending(path: "메모.txt")

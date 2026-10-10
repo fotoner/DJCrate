@@ -437,7 +437,7 @@ struct ListActionBar: View {
                     let updatable = actions.updatableTracks(volumeKey: key).count
                     // 막힐 반영이면(실물 USB 등) 누를 수 없게 하고 이유를 도움말로
                     let reason = updatable == 0 ? nil : actions.refreshBlockReason(volumeKey: key)
-                    Button { Task { await actions.refreshLocalChanges(volumeKey: key) } } label: {
+                    Button { store.startRefreshUsbLocalChanges(volumeKey: key) } label: {
                         Label(.ui("로컬 변경을 USB에 반영 (\(updatable)곡)"), systemImage: "arrow.triangle.2.circlepath")
                     }
                     .disabled(updatable == 0 || reason != nil)
