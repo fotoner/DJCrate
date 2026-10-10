@@ -62,6 +62,37 @@ struct UsbEditActions {
     /// 새 목록의 key(같은 초안 안에서 겹치지 않게)
     var newKey: () -> String = { "djc-" + UUID().uuidString.prefix(8).lowercased() }
 
+    /// 사이드바 메뉴·쓰기 대기 단추가 시작하는 편집(`start`). 뷰는 기다리지 않는다
+    enum Intent: Equatable {
+        case createPlaylist(isFolder: Bool, parent: Int?, volumeKey: String)
+        case renamePlaylist(Int, volumeKey: String)
+        case deletePlaylist(Int, volumeKey: String)
+        case movePlaylist(Int, by: Int, volumeKey: String)
+        case refreshLocalChanges(volumeKey: String)
+        /// 번호(1부터)의 편집 빼기. `matching`이 있으면 그 자리의 편집이 같을 때만 뺀다
+        case removeEdit(Int, volumeKey: String, matching: UsbLibraryEdit?)
+        case discardDraft(volumeKey: String)
+    }
+
+    /// 편집 동작을 시작한다(누른 차례대로 초안 줄에 선다)
+    @discardableResult
+    func start(_ intent: Intent) -> Task<Void, Never> {
+        let actions = self
+        return Task { await actions.perform(intent) }
+    }
+
+    func perform(_ intent: Intent) async {
+        switch intent {
+        case let .createPlaylist(isFolder, parent, key): await createPlaylist(isFolder: isFolder, parent: parent, volumeKey: key)
+        case let .renamePlaylist(id, key): await renamePlaylist(id, volumeKey: key)
+        case let .deletePlaylist(id, key): await deletePlaylist(id, volumeKey: key)
+        case let .movePlaylist(id, step, key): await movePlaylist(id, by: step, volumeKey: key)
+        case let .refreshLocalChanges(key): await refreshLocalChanges(volumeKey: key)
+        case let .removeEdit(number, key, expected): await removeEdit(number, volumeKey: key, matching: expected)
+        case let .discardDraft(key): await discardDraft(volumeKey: key)
+        }
+    }
+
     // MARK: - 대상
 
     /// 편집을 더할 수 있는 볼륨: 읽은 rekordbox USB, 이번 실행에서 읽은 뒤 빠진 초안 볼륨
@@ -288,6 +319,13 @@ struct UsbEditActions {
         case let .playlist(_, id): return library.playlists.first { $0.id == id }?.attribute == 0
         case .pending: return false
         }
+    }
+
+    /// 사이드바 줄에 놓은 로컬 곡을 더하기 시작한다(놓기 대리자는 기다리지 않는다)
+    @discardableResult
+    func startDrop(_ ids: [String], on target: UsbSidebarTarget, rows: [String: TrackRow]) -> Task<Void, Never> {
+        let actions = self
+        return Task { await actions.drop(ids, on: target, rows: rows) }
     }
 
     /// 끌어다 놓은 곡 ID(로컬 ContentID) → 곡 더하기 초안(편집 › 실행 취소로 뺀다)

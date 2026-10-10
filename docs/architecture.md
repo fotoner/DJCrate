@@ -144,7 +144,8 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 본보기는 USB 동기화다. `UsbSync`는 흐름 상태를 값 `UsbSyncState`로 든다. 바깥에서는 읽기만 한다.
   - `UsbSync`는 출력 포트 `UsbSyncOutput`으로 바뀜과 알림 `UsbSyncNotice`를 내보낸다. 닫기 결과는 값 `UsbSyncCloseResult`다.
   - 앱 `UsbSyncModel`이 이것을 관찰 상태로 바꾼다. 표시 트리, 흐리게, 빈 목록 문구도 화면 모델이 만든다.
-  - 남은 예외는 `UsbWriteSession`(`@Observable`) 하나다. 빚 목록에 고정해 두었다.
+  - USB 쓰기 세션도 같은 모양이다. `UsbWriteSession`은 잠금·진행·옮기기 상태를 값 `UsbWriteSessionState`로 든다. 바뀌면 출력 포트 `UsbWriteSessionOutput`으로 내보낸다.
+  - 앱 `UsbWriteModel`이 그 값을 칸마다 관찰 상태로 옮긴다. Observation은 같은 값이면 알리지 않는다. 그래서 진행이 바뀌어도 잠금만 보는 화면은 다시 그리지 않는다.
 - **예외로 프로토콜인 포트는 아래와 같다.**
   - USB 파일 연산 `UsbFileSystem`: RekordboxKit의 USB 형식 코드가 쓰는 계약이다.
   - USB 쓰기 유스케이스 경계 `UsbWriting`: 실제는 `UsbWriteService`다. 앱 쓰기 흐름 시험은 가짜를 쓴다.
@@ -818,6 +819,8 @@ DJCApplication 유스케이스 `UsbMigrateSession`이 아래 순서를 부른다
   3. 시트에서 미리 본 결과로 쓴다. 미리 본 결과가 없으면 미리 보기를 한 뒤 확인 창을 띄운다(#212).
   4. 쓰는 동안 취소는 DB 교체 전까지 받는다.
   5. 끝나면 [꺼내기] 단추가 달린 토스트를 띄운다.
+- **잠금과 진행은 핵심부 `UsbWriteSession`이 든다.** 한 볼륨은 한 번만 잠근다. 한 볼륨에 쓰는 동안 다른 볼륨도 잠그지 않는다. 앱 `UsbWriteModel`이 그 상태를 덮개와 사이드바에 보인다.
+- **시트와 쓰기 대기의 단추는 화면 모델을 부른다.** 시트는 `UsbExportSheetModel`, 쓰기 대기는 `UsbPendingModel`이다. 사이드바 메뉴는 `UsbEditActions.start`와 `UsbWriteCoordinator`의 시작 메서드를 부른다. 뷰는 일을 기다리지 않는다.
 - **아래 경우는 창 대신 경고 토스트로 알린다.** 시트가 떠 있으면 시트 안에도 보인다.
   - rekordbox가 켜져 있다.
   - 이미 쓰는 중이다.

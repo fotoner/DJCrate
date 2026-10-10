@@ -173,7 +173,7 @@ struct SmartPlaylistAppTests {
                 let item = try #require(store.rekordboxPlaylists.item(id))
                 #expect(item.isSmart && !item.holdsTracks && item.entries.isEmpty, "\(id) lab=\(lab)")
             }
-            let rows = UsbExportSheetModel.rows(store.rekordboxPlaylists)
+            let rows = UsbExportSelection.rows(store.rekordboxPlaylists)
             #expect(rows.first { $0.id == "S1" }?.isSmart == true && rows.first { $0.id == "S1" }?.trackCount == 0, "lab=\(lab)")
             #expect(rows.first { $0.id == "P" }?.trackCount == 2)
         }

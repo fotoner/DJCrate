@@ -288,6 +288,25 @@ struct UsbStoreTests {
         #expect(store.volumes.isEmpty && store.shapes.isEmpty)
     }
 
+    @Test("사이드바 단추: 다시 읽기는 볼륨을 모두 다시 읽고, 꺼내기는 실패 이유를 남겼다가 성공하면 지운다")
+    func sidebarButtons() async {
+        let image = FakeUsbVolume.diskImageFAT32()
+        let host = FakeUsbHost([image])
+        host.serveEmpty(image)
+        let store = UsbTestData.store(host)
+        await store.refreshTapped().value
+        #expect(host.infoCalls == [image.usbKey] && store.shapes[image.usbKey] == .emptyExportable)
+        await store.refreshTapped().value
+        #expect(host.infoCalls == [image.usbKey, image.usbKey])
+
+        host.ejectError = UsbError.readFailed(detail: "busy")
+        await store.ejectTapped(image.usbKey).value
+        #expect(store.ejectMessage == "USB를 꺼내지 못했습니다. 사용 중인 앱을 닫고 Finder에서 꺼내세요")
+        host.ejectError = nil
+        await store.ejectTapped(image.usbKey).value
+        #expect(store.ejectMessage == nil && store.volumes.isEmpty)
+    }
+
     // MARK: - 백그라운드 읽기
 
     @Test("볼륨 읽기(정보·라이브러리)는 메인 스레드 밖에서 한다")
