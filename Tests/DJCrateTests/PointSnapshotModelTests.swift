@@ -3,7 +3,6 @@ import DJCDomain
 import Foundation
 @testable import DJCrate
 import DJCAdapters
-import DJCTestKit
 import RekordboxFixtures
 import RekordboxKit
 import Testing
@@ -17,21 +16,14 @@ struct PointSnapshotModelTests {
 
     func model(_ fixture: RekordboxFixture, prompter: ScriptedPrompter = ScriptedPrompter(), busy: String? = nil,
                guard writeGuard: RekordboxWriteGuard = copyGuard, clock: Date? = nil) -> PointSnapshotModel {
-        model(root: fixture.root, prompter: prompter, busy: busy, guard: writeGuard, clock: clock)
-    }
-
-    /// DB 파일을 열기 전에 끝나는 시험은 임시 폴더 경로만 준다(master.db는 만들지 않는다)
-    func model(root: URL, prompter: ScriptedPrompter = ScriptedPrompter(), busy: String? = nil,
-               guard writeGuard: RekordboxWriteGuard = copyGuard, clock: Date? = nil) -> PointSnapshotModel {
-        let database = root.appending(path: "master.db"), shareRoot = root.appending(path: "share"), backups = root.appending(path: "backups")
-        let points = PointSnapshots(database: database, shareRoot: shareRoot, directory: root.appending(path: "point-snapshots"),
-                                    backupDirectory: backups, files: .live(guard: writeGuard), backups: .live())
+        let points = PointSnapshots(database: fixture.database, shareRoot: fixture.shareRoot, directory: fixture.root.appending(path: "point-snapshots"),
+                                    backupDirectory: fixture.backups, files: .live(guard: writeGuard), backups: .live())
         return PointSnapshotModel(points: points, busyReason: { busy }, prompter: prompter, now: { clock ?? now },
                            restore: { entry, _ in
                                // 저장소 없이 연 창: 같은 쓰기 관문으로 사본을 되돌린다(앱은 반영 세션이 잠금·다시 읽기까지 한다).
                                try RekordboxWriteGate.live(guard: writeGuard).restorePointSnapshot(
-                                   entry.url, .init(database: database, shareRoot: shareRoot, backups: backups),
-                                   root.appending(path: "point-snapshots"), Int(SettingKeys.pointSnapshotAutoDays.defaultValue), clock ?? now)
+                                   entry.url, .init(database: fixture.database, shareRoot: fixture.shareRoot, backups: fixture.backups),
+                                   fixture.root.appending(path: "point-snapshots"), Int(SettingKeys.pointSnapshotAutoDays.defaultValue), clock ?? now)
                            })
     }
 
@@ -102,23 +94,23 @@ struct PointSnapshotModelTests {
     }
 
     @Test func rekordbox가_켜져_있으면_이유를_알리고_남기지_않는다() async throws {
-        let folder = try TemporaryFolder()
+        let fixture = try RekordboxFixture()
         let running = RekordboxWriteGuard(isLive: { _ in true }, isRekordboxRunning: { true }, appVersion: { "7.2.18" })
-        let model = model(root: folder.url, guard: running)
+        let model = model(fixture, guard: running)
         await model.create()
         #expect(model.isError)
         // 안내는 시점 스냅샷 만들기가 거부한 이유 그대로다
         let refusal = #expect(throws: (any Error).self) {
-            try RekordboxPointSnapshot.create(name: "", database: folder.url.appending(path: "master.db"), shareRoot: folder.url.appending(path: "share"),
-                                              in: folder.url.appending(path: "point-snapshots"), autoDays: 7, now: now, guard: running)
+            try RekordboxPointSnapshot.create(name: "", database: fixture.database, shareRoot: fixture.shareRoot,
+                                              in: fixture.root.appending(path: "point-snapshots"), autoDays: 7, now: now, guard: running)
         }
         #expect(model.message == refusal.map { AppErrorMessage.message(for: $0) }, "\(model.message ?? "")")
         #expect(model.rows.isEmpty)
     }
 
     @Test func 쓰는_중에는_막는다() async throws {
-        let folder = try TemporaryFolder()
-        let model = model(root: folder.url, busy: "rekordbox에 쓰는 중입니다")
+        let fixture = try RekordboxFixture()
+        let model = model(fixture, busy: "rekordbox에 쓰는 중입니다")
         await model.create()
         #expect(model.isError && model.rows.isEmpty)
     }

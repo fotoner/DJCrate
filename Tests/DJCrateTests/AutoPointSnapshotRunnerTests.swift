@@ -29,27 +29,20 @@ struct AutoPointSnapshotRunnerTests {
     }
 
     func runner(_ fixture: RekordboxFixture, enabled: Bool = true, probe: Probe = Probe()) -> AutoPointSnapshotRunner {
-        runner(root: fixture.root, enabled: enabled, probe: probe)
-    }
-
-    /// DB 내용을 읽기 전에 끝나는 시험은 임시 폴더 경로만 준다
-    func runner(root: URL, enabled: Bool = true, probe: Probe = Probe()) -> AutoPointSnapshotRunner {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let now = now
         var files = PointSnapshotFiles.live(guard: Self.copyGuard)
         files.canClone = { _, _ in true }
         return AutoPointSnapshotRunner(environment: .init(
-            database: { root.appending(path: "master.db") }, shareRoot: { nil }, snapshots: root.appending(path: "point-snapshots"),
+            database: { fixture.database }, shareRoot: { nil }, snapshots: fixture.root.appending(path: "point-snapshots"),
             enabled: { enabled }, autoDays: { 7 }, busy: { probe.busy }, writeCount: { probe.writeCount() }, files: files, now: { now },
             calendar: calendar),
             onFailure: { title, _ in probe.toasts.append(title) })
     }
 
-    func snapshots(_ fixture: RekordboxFixture) -> [RekordboxPointSnapshot.Entry] { snapshots(root: fixture.root) }
-
-    func snapshots(root: URL) -> [RekordboxPointSnapshot.Entry] {
-        RekordboxPointSnapshot.list(in: root.appending(path: "point-snapshots"))
+    func snapshots(_ fixture: RekordboxFixture) -> [RekordboxPointSnapshot.Entry] {
+        RekordboxPointSnapshot.list(in: fixture.root.appending(path: "point-snapshots"))
     }
 
     @Test func 켜져_있으면_뒤에서_뜨고_같은_날_다시_불러도_하나뿐이다() async throws {
@@ -61,9 +54,9 @@ struct AutoPointSnapshotRunnerTests {
     }
 
     @Test func 설정에서_끄면_뜨지_않는다() async throws {
-        let folder = try TemporaryFolder()
-        #expect(await runner(root: folder.url, enabled: false).runIfDue() == nil)
-        #expect(snapshots(root: folder.url).isEmpty)
+        let fixture = try RekordboxFixture()
+        #expect(await runner(fixture, enabled: false).runIfDue() == nil)
+        #expect(snapshots(fixture).isEmpty)
     }
 
     @Test func rekordbox에_쓰는_중이면_미루고_끝나면_뜬다() async throws {
@@ -87,19 +80,17 @@ struct AutoPointSnapshotRunnerTests {
     }
 
     @Test func 실패는_확인_창_없이_한_번만_작은_알림으로_알린다() async throws {
-        let root = try TemporaryFolder()
-        // 링크 거부는 DB 내용을 읽기 전에 일어나 DB는 복사만 되는 아무 바이트 파일이면 된다
-        try Data("fake".utf8).write(to: root.url.appending(path: "master.db"))
+        let fixture = try RekordboxFixture()
         // 분석 폴더 안의 심볼릭 링크는 스냅샷이 거부한다(다시 해도 같은 실패)
-        let folder = root.url.appending(path: "share/PIONEER/USBANLZ/abc")
+        let folder = fixture.shareRoot.appending(path: "PIONEER/USBANLZ/abc")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(at: folder.appending(path: "link"), withDestinationURL: URL(filePath: "/etc/hosts"))
         let probe = Probe()
-        let runner = runner(root: root.url, probe: probe)
+        let runner = runner(fixture, probe: probe)
         #expect(await runner.runIfDue() == nil)
         #expect(await runner.runIfDue() == nil)
         #expect(probe.toasts == ["자동 시점 스냅샷을 남기지 못했습니다"])
-        #expect(snapshots(root: root.url).isEmpty)
+        #expect(snapshots(fixture).isEmpty)
     }
 
     @Test func 자동_스냅샷은_기본으로_켜져_있다() {
