@@ -26,6 +26,6 @@ extension RunningApps {
 extension ReflectionSession.Options {
     /// 앱: 쓴 뒤 처리·되살리기를 하고, 분석 붙이기·앨범아트 쓰기는 쓰기 관문이 지금 연 것을 따른다
     public static var liveApp: Self { .app(attachesAnalysis: RekordboxWriter.attachesAnalysis, writesArtwork: RekordboxTrackWriter.writesArtwork) }
-    /// CLI: 쓴 뒤 처리·되살리기를 하지 않는다(사용자 결정 대기)
+    /// CLI: 쓴 뒤 처리·되살리기를 하지 않는다(사용자 결정 2026-10-10, `Options.cli`)
     public static var liveCLI: Self { .cli(attachesAnalysis: RekordboxWriter.attachesAnalysis, writesArtwork: RekordboxTrackWriter.writesArtwork) }
 }

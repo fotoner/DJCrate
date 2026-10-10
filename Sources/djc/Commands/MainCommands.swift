@@ -79,7 +79,7 @@ enum MainCommands {
         let composition = CLIComposition.live
         let uuids = value(after: "--uuid", in: args).map { $0.components(separatedBy: ",") } ?? composition.drafts.cueDraftUUIDs().sorted()
         let drafts = uuids.compactMap(composition.drafts.cueDraft)
-        // 앱과 같은 반영 세션. 쓴 초안은 지우지 않는다(앱과 다름, 사용자 결정 대기: 세션 옵션 `liveCLI`가 끈다).
+        // 앱과 같은 반영 세션. 쓴 초안은 지우지 않는다(앱과 다름, 사용자 결정 2026-10-10: 세션 옵션 `liveCLI`가 끈다).
         let report = try await composition.reflection().writeDrafts(DraftWriteBatch(drafts: drafts), to: target, dryRun: args.contains("--dry-run"))
         for outcome in report.outcomes {
             let mark = switch outcome.status { case .written: "✓"; case .blocked: "✗"; case .unchanged: "·" }
@@ -164,7 +164,7 @@ enum MainCommands {
             }
             throw UsageError()
         }
-        // 앱과 같은 반영 세션. 초안은 되살리지 않는다(앱과 다름, 사용자 결정 대기: 세션 옵션 `liveCLI`가 끈다). 백업은 폴더만 안다.
+        // 앱과 같은 반영 세션. 초안은 되살리지 않는다(앱과 다름, 사용자 결정 2026-10-10: 세션 옵션 `liveCLI`가 끈다). 백업은 폴더만 안다.
         let backup = RekordboxWriteBackup(url: URL(filePath: folder), createdAt: .distantPast, isWrite: true)
         let saved = try await CLIComposition.live.reflection().restoreBackup(backup, to: target)
         print(String(ui: "되돌림 완료 · 되돌리기 전 상태 백업: \(saved.path)"))

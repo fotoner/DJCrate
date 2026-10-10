@@ -7,7 +7,7 @@ import Foundation
 ///
 /// 화면은 흐름(`write`·`addTracks`·`deleteTracks`·`restore`)을 부르고 결과(`ReflectionOutcome`)를 보이기만 한다.
 /// CLI와 자가 테스트는 같은 세션의 단계(`writeDrafts`·`restoreBackup`·`addTracks(_:to:dryRun:)` …)를 부른다.
-/// 쓴 뒤 처리·되살리기는 옵션이다: 앱은 켜고, CLI는 끈다(사용자 결정 대기, `Options.cli`).
+/// 쓴 뒤 처리·되살리기는 옵션이다: 앱은 켜고, CLI는 끈다(사용자 결정 2026-10-10, `Options.cli`).
 /// 쓰는 동안은 잠가서(`WriteLock`) 덱이 재생을 멈추고 조작을 막는다.
 @MainActor
 public struct ReflectionSession {
@@ -33,7 +33,8 @@ public struct ReflectionSession {
             Self(followsUp: true, revivesDrafts: true, attachesAnalysis: attachesAnalysis, writesArtwork: writesArtwork)
         }
 
-        /// CLI: 쓴 초안을 지우지 않고 복원 때 초안을 되살리지 않는다(앱과 다름, 사용자 결정 대기)
+        /// CLI: 쓴 초안을 지우지 않고 복원 때 초안을 되살리지 않는다(앱과 다름, 사용자 결정 2026-10-10).
+        /// CLI는 대개 사본(`--db`)에 쓴다. 앱처럼 지우면 라이브에 반영하지 않은 초안이 사라진다
         public static func cli(attachesAnalysis: Bool, writesArtwork: Bool) -> Self {
             Self(followsUp: false, revivesDrafts: false, attachesAnalysis: attachesAnalysis, writesArtwork: writesArtwork)
         }
