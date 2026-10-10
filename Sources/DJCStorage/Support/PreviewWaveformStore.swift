@@ -6,18 +6,30 @@ import RekordboxKit
 public actor PreviewWaveformStore {
     public static let shared = PreviewWaveformStore()
 
+    /// 곡마다 파일 상태를 읽는 막는 입출력이라 협력 풀이 아닌 제 직렬 큐에서 돈다(코어가 적으면 풀이 바닥난다).
+    /// GCD로 넘기는 대신 실행기를 바꿔, 미리 데우기가 보는 작업 취소와 칸 사이 양보는 그대로다.
+    private let queue = DispatchSerialQueue(label: "DJCrate.PreviewWaveformStore")
+    public nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
+
     public struct Source: Sendable {
         public let uuid: String
         public let url: URL?
         public init(uuid: String, url: URL?) { self.uuid = uuid; self.url = url }
     }
 
+    /// 분석 파일의 크기·수정 시각(시험이 어느 스레드에서 읽는지 본다)
+    typealias StatFile = @Sendable (URL) -> (size: UInt64, modified: Date)?
+    static let statFile: StatFile = { url in
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? UInt64, let modified = attributes[.modificationDate] as? Date else { return nil }
+        return (size, modified)
+    }
+
     private struct FileStamp: Codable, Hashable {
         let size: UInt64
         let modified: Date
-        init?(_ url: URL) {
-            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-                  let size = attributes[.size] as? UInt64, let modified = attributes[.modificationDate] as? Date else { return nil }
+        init?(_ url: URL, stat: StatFile) {
+            guard let (size, modified) = stat(url) else { return nil }
             self.size = size; self.modified = modified
         }
     }
@@ -25,10 +37,10 @@ public actor PreviewWaveformStore {
     private struct Stamp: Codable, Hashable {
         let path: String?
         let dat, ext: FileStamp?
-        init(_ url: URL?) {
+        init(_ url: URL?, stat: StatFile) {
             path = url?.standardizedFileURL.path
-            dat = url.flatMap(FileStamp.init)
-            ext = url.flatMap { FileStamp($0.deletingPathExtension().appendingPathExtension("EXT")) }
+            dat = url.flatMap { FileStamp($0, stat: stat) }
+            ext = url.flatMap { FileStamp($0.deletingPathExtension().appendingPathExtension("EXT"), stat: stat) }
         }
     }
 
@@ -79,18 +91,23 @@ public actor PreviewWaveformStore {
 
     private let file: URL?
     private let read: @Sendable (URL?) -> AnlzPreviewWaveform?
+    private let stat: StatFile
     private var cache = Cache()
     private var loaded = false
     private var dirty = false
 
     public init(file: URL? = DJCPaths.previewWaveforms,
                 read: @escaping @Sendable (URL?) -> AnlzPreviewWaveform? = AnlzPreviewWaveform.readAnalysis) {
-        self.file = file; self.read = read
+        self.init(file: file, read: read, stat: Self.statFile)
+    }
+
+    init(file: URL?, read: @escaping @Sendable (URL?) -> AnlzPreviewWaveform?, stat: @escaping StatFile) {
+        self.file = file; self.read = read; self.stat = stat
     }
 
     public func waveform(for source: Source) -> AnlzPreviewWaveform? {
         loadIfNeeded()
-        let stamp = Stamp(source.url)
+        let stamp = Stamp(source.url, stat: stat)
         if let entry = cache.entries[source.uuid], entry.stamp == stamp {
             if entry.waveform == nil { return nil }
             if let value = entry.waveform?.unpack() { return value }
@@ -102,7 +119,7 @@ public actor PreviewWaveformStore {
     }
 
     /// 메모리 비트맵도 파일 변경을 따라 무효화한다. 해시는 프로세스 안에서만 쓴다.
-    public func revision(for source: Source) -> Int { Stamp(source.url).hashValue }
+    public func revision(for source: Source) -> Int { Stamp(source.url, stat: stat).hashValue }
 
     /// 전체 목록을 조용히 채우되 셀의 요청이 사이에 들어올 수 있도록 칸마다 양보한다.
     /// 음원은 읽지 않고 ANLZ만 읽는다. 새 로드가 시작되면 이전 작업은 취소한다.
@@ -110,7 +127,7 @@ public actor PreviewWaveformStore {
         loadIfNeeded()
         for source in sources {
             if Task.isCancelled { save(); return }
-            if cache.entries[source.uuid]?.stamp != Stamp(source.url) { _ = waveform(for: source) }
+            if cache.entries[source.uuid]?.stamp != Stamp(source.url, stat: stat) { _ = waveform(for: source) }
             await Task.yield()
         }
         guard !Task.isCancelled else { save(); return }

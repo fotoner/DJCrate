@@ -79,6 +79,9 @@ enum PreviewWaveformSource {
 /// 라이브러리 저장소가 하나 들고(`LibraryStore.previewImages`) 목록 칸이 나눠 쓴다.
 actor PreviewWaveformCache {
     private let previews: ShowPreviewWaveforms
+    /// 음원 대체 디코딩은 막는 일이라 협력 풀이 아닌 제 직렬 큐에서 돈다. 실행기만 바꿔 작업 취소는 그대로 본다.
+    private let queue = DispatchSerialQueue(label: "DJCrate.PreviewWaveformCache")
+    nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
 
     init(previews: ShowPreviewWaveforms) { self.previews = previews }
     private final class Entry {

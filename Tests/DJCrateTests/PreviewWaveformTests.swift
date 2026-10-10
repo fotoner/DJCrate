@@ -7,9 +7,27 @@ import DJCDomain
 import DJCAdapters
 import DJCApplication
 import DJCStorage
+import DJCTestKit
+import Synchronization
 @testable import DJCrate
 
 struct PreviewWaveformTests {
+    /// 분석 파일에 파형이 없으면 음원 전체를 풀어 채운다. 무거운 동기 일이라 협력 풀 밖에서 돈다(코어가 적으면 풀이 바닥난다)
+    @Test func 음원_파형_대체는_협력_풀_밖에서_푼다() async throws {
+        let calls = Mutex(0)
+        let previews = PreviewWaveforms(warm: { _, _ in }, revision: { _, _ in 0 }, waveform: { _, _ in nil }, audioColumns: { _, _ in
+            expectBlockingOffPool()
+            calls.withLock { $0 += 1 }
+            return [WaveformColumn(low: 1, mid: 0.5, high: 0.2)]
+        }, clear: {})
+        let cache = PreviewWaveformCache(previews: ShowPreviewWaveforms(previews: previews))
+        var request = PreviewWaveformRequest(url: nil, revision: "r", appearance: NSAppearance.Name.aqua.rawValue)
+        request.audioURL = URL(filePath: "/missing/audio.wav")
+        request.trackKey = "key"
+        _ = await cache.image(for: request)
+        #expect(calls.withLock { $0 } == 1)
+    }
+
     @Test func modeChangesInvalidateCachedImagesAndUsePWV4() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
