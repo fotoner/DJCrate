@@ -85,7 +85,7 @@ grep "루프 시험" /tmp/djc-loop.log
 - `--perf-trace-body`는 본문을 다시 계산한 이유를 찍는다.
 - `grid`·`drafts`·`capture`는 `all`에 없다.
 - `--ui-perf-delay=<초>`는 `xctrace record --attach <PID>`를 붙일 시간을 준다.
-- 옛 빌드와 전후를 잴 때 앱 바이너리만 다른 폴더로 복사하면 `@rpath`의 SQLCipher를 못 찾는다. 그러면 종료 코드 70으로 바로 끝난다. `.build/out/Products/Debug/SQLCipher.framework`를 바이너리 옆에 함께 복사한다.
+- 옛 빌드와 전후를 잴 때 앱 바이너리만 다른 폴더로 복사하면 `@rpath`의 SQLCipher를 못 찾는다. 그러면 종료 코드 70으로 바로 끝난다. `.build/out/Products/Debug/SQLCipher.framework`와 `DJCrate_DJCrate.bundle`을 바이너리 옆에 함께 복사한다.
 
 `--edit-selftest`
 
