@@ -233,6 +233,18 @@ final class AppComposition {
         AutoPointSnapshotRunner(store: store, snapshots: DJCPaths.pointSnapshots, files: .live())
     }
 
+    /// 주 창이 떠 있는 동안 자동 시점 스냅샷을 돌린다(창이 사라지면 `.task`가 취소한다)
+    func runAutoPointSnapshots() async { await autoPointSnapshots().loop() }
+
+    /// 주 창이 떠 있는 동안 CLI·다른 앱이 바꾼 초안 파일을 다시 읽는다(창이 사라지면 `.task`가 취소해 멈춘다).
+    func watchExternalDrafts(every interval: Duration = .seconds(1)) async {
+        while !Task.isCancelled {
+            // 끄는 중인 큐·그리드는 손을 놓아 저장한 뒤에 다시 읽는다.
+            if !deck.hasUncommittedCueEdits, deck.cueDragBase == nil, deck.gridDragBase == nil { await store.refreshExternalDrafts() }
+            do { try await Task.sleep(for: interval) } catch { break }
+        }
+    }
+
     /// 라이브러리를 읽을 때마다: 라이브러리에 없는 곡의 음량 항목(#217, 추가한 곡의 경로는 남긴다)과 캐시 용량 상한(최근 사용 순)을
     /// 뒤에서 조용히 정리한다. 비정상 종료 뒤 남은 임시 파일·폴더(#219)는 처음 한 번만 치운다.
     static func maintainCaches(keeping libraryPaths: Set<String>) {

@@ -6,8 +6,6 @@
 Sources/DJCApplication/Usb/UsbWriteSession.swift	api	Observation
 Sources/DJCrate/App/AppCommands.swift	view-task	Task 1곳
 Sources/DJCrate/App/AppCommands.swift	view-task	await 1곳
-Sources/DJCrate/App/ContentView.swift	view-task	Task 7곳
-Sources/DJCrate/App/ContentView.swift	view-task	await 12곳
 Sources/DJCrate/App/ITunesPlaylistSection.swift	view-task	Task 1곳
 Sources/DJCrate/App/ITunesPlaylistSection.swift	view-task	await 1곳
 Sources/DJCrate/App/ITunesSyncView.swift	view-task	Task 2곳
