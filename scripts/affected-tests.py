@@ -24,6 +24,7 @@
 (main·release/* CI)가 덮는다.
 """
 import argparse
+import difflib
 import fnmatch
 import hashlib
 import json
@@ -56,7 +57,6 @@ CHECKS = ["imports", "translations", "write-coverage", "docs", "harness", "scrip
 TOP_DECLARATION = re.compile(
     r"^(?:@[\w.]+(?:\([^)]*\))?\s+)*(?:(?:public|internal|package|private|fileprivate|open|final|indirect|"
     r"nonisolated|sealed)\s+)*(struct|class|enum|protocol|actor|typealias|extension)\s+([A-Za-z_][\w]*)", re.M)
-UI_STRING = re.compile(r"String\(ui:|\.ui\(|\bui:")
 
 
 class PlanError(Exception):
@@ -347,12 +347,171 @@ def changed_files(base):
     return [n for n in candidates if n not in same]
 
 
+# 카탈로그에 키를 내는 호출. 종류를 키 앞에 붙인다(`.ui("재생")`을 `Text("재생")`으로 바꾸면 번역 검사가 막으므로 고른다).
+UI_CALL = re.compile(r"(?P<ui>\.ui\(|\bui:)|(?P<key>\bString\(localized:|\bLocalizedStringResource\()|(?P<value>\bdefaultValue:)"
+                     # SwiftUI가 리터럴을 지역화 키로 받는 곳. 번역 검사가 .ui 밖 문구로 막는다.
+                     r"|(?P<swiftui>\b(?:Text|Button|Label|Toggle|Picker|Section|Menu|Link|TextField|SecureField|Stepper|LabeledContent|GroupBox|"
+                     r"DisclosureGroup|ControlGroup|ProgressView|ContentUnavailableView|Window|WindowGroup|CommandMenu|Tab|NavigationLink|"
+                     r"DatePicker|ColorPicker|MenuBarExtra|ShareLink)\("
+                     r"|\.(?:help|accessibility(?:Label|Hint|Value)|navigationTitle|navigationSubtitle|badge|alert|confirmationDialog)\("
+                     r"|\bprompt:)")
+LITERAL_START = re.compile(r'#*"')
+IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
+# 확장 정규식 리터럴(`#/…/#`). 안의 `//`·`"`를 주석·문자열로 읽지 않게 통째로 건너뛴다.
+REGEX_LITERAL = re.compile(r"(#+)/.*?/\1", re.S)
+PLAIN_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
+
+
+def swift_literal(text, i):
+    """i에서 시작하는 Swift 문자열 리터럴(`"…"`·`\"\"\"…\"\"\"`·`#"…"#`)을 읽어 (카탈로그 키 모양, 끝 위치, 보간 식 원문들)을 낸다.
+    보간은 빈칸을 뺀 식 그대로 남긴다. diff로는 식의 형(Int `%lld`·String `%@`)을 몰라 식이 바뀌면 키가 바뀐 것으로 본다."""
+    start = i
+    while i < len(text) and text[i] == "#":
+        i += 1
+    pounds = text[start:i]
+    multiline = text.startswith('"""', i)
+    if not text.startswith('"', i):
+        raise ValueError("문자열 리터럴이 아님")
+    i += 3 if multiline else 1
+    if multiline:
+        if text.find("\n", i) < 0 or text[i:text.find("\n", i)].strip():
+            raise ValueError("여러 줄 문자열의 여는 따옴표 뒤에 글이 있음")
+        i = text.find("\n", i) + 1
+    close = ('"""' if multiline else '"') + pounds
+    escape = "\\" + pounds
+    out, expressions = [], []
+    while True:
+        if i >= len(text) or (not multiline and text[i] == "\n"):
+            raise ValueError("닫히지 않은 문자열")
+        if text.startswith(close, i):
+            i += len(close)
+            break
+        if text.startswith(escape + "(", i):
+            begin = i + len(escape) + 1
+            expression, i = swift_interpolation(text, begin)
+            out.append("\\(" + expression + ")")
+            expressions.append(text[begin:i - 1])
+        elif text.startswith(escape, i) and i + len(escape) < len(text):
+            out.append(text[i:i + len(escape) + 1])
+            i += len(escape) + 1
+        else:
+            out.append(text[i])
+            i += 1
+    key = "".join(out)
+    if multiline:
+        # 닫는 따옴표 앞의 들여쓰기는 키에 들지 않는다(줄마다 그만큼 뗀다).
+        *lines, indent = key.split("\n")
+        if indent.strip():
+            raise ValueError("여러 줄 문자열의 닫는 따옴표가 줄 처음에 있지 않음")
+        key = "\n".join(l[len(indent):] if l.startswith(indent) else l for l in lines)
+    return pounds + key, i, expressions
+
+
+def swift_interpolation(text, i):
+    """`\\(` 뒤에서 짝 맞는 `)`까지 읽는다. 식 안의 빈칸은 키에 닿지 않으므로 뺀다(식 안 문자열 리터럴은 그대로)."""
+    out, depth = [], 0
+    while True:
+        if i >= len(text):
+            raise ValueError("닫히지 않은 보간")
+        c = text[i]
+        if LITERAL_START.match(text, i):
+            literal, i, _ = swift_literal(text, i)
+            out.append('"' + literal + '"')
+            continue
+        if c == ")" and depth == 0:
+            return "".join(out), i + 1
+        depth += {"(": 1, ")": -1}.get(c, 0)
+        if not c.isspace():
+            out.append(c)
+        i += 1
+
+
+def ui_scan(text, keys=None, names=None):
+    """문구 호출마다 카탈로그 키 모양을 모은다. 주석과 일반 문자열은 건너뛰되 일반 문자열 보간 안의 호출은 본다.
+    (키 집합, 문구 보간에 쓴 이름, 문구 리터럴을 `""`로 가린 원문)을 낸다."""
+    keys = set() if keys is None else keys
+    names = set() if names is None else names
+    masked, start, i = [], 0, 0
+    while i < len(text):
+        regex = REGEX_LITERAL.match(text, i)
+        if regex:
+            i = regex.end()
+            continue
+        if text.startswith("//", i):
+            end = text.find("\n", i)
+            i = len(text) if end < 0 else end
+            continue
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = len(text) if end < 0 else end + 2
+            continue
+        if LITERAL_START.match(text, i):
+            _, i, expressions = swift_literal(text, i)
+            for expression in expressions:
+                ui_scan(expression, keys, names)
+            continue
+        match = UI_CALL.match(text, i)
+        if not match:
+            i += 1
+            continue
+        kind, i = match.lastgroup, match.end()
+        j = i
+        while j < len(text) and text[j].isspace():
+            j += 1
+        if LITERAL_START.match(text, j):
+            key, i, expressions = swift_literal(text, j)
+            keys.add(kind + ":" + key)
+            for expression in expressions:
+                # `\($0)`처럼 이름 없는 값 하나면 형을 정한 선언을 이름으로 못 찾는다("$"로 적어 둔다).
+                names.update(IDENTIFIER.findall(PLAIN_LITERAL.sub("", expression))
+                             or (["$"] if re.fullmatch(r"\s*\$\d+\s*", expression) else []))
+                ui_scan(expression, keys, names)
+            masked.append(text[start:j] + '""')
+            start = i
+        elif kind in ("ui", "key"):
+            end = text.find("\n", j)
+            keys.add(kind + ":?" + text[j:len(text) if end < 0 else end].strip())
+    masked.append(text[start:])
+    return keys, names, "".join(masked)
+
+
 def ui_string_changed(path, base):
-    if base is not None:
-        diff = git("diff", "-U0", base, "--", path, check=False).stdout
-        if diff.strip():
-            return any(UI_STRING.search(l) for l in diff.splitlines() if l[:1] in "+-" and l[:3] not in ("+++", "---"))
-    return bool(UI_STRING.search(read(path) or ""))
+    """카탈로그 키가 바뀔 수 있는 변경만 참(#245). 기준과 지금 파일에서 문구 키 모양의 집합을 맞대므로 문구 호출 줄의 다른
+    인자·수식어, 줄 합치기·나누기, 들여쓰기는 고르지 않는다. 여러 줄 문자열 안의 줄처럼 `ui` 글자가 없는 줄의 변경도 잡는다.
+    마지막 사용처를 지우면 집합이 바뀌어 고른다("안 쓰는 문구" 검사). 리터럴을 못 읽으면 고른다.
+    보간 식의 형은 선언에서 정해지므로, 문구를 가린 원문에서 보간에 쓴 이름을 선언하는 줄(`let 이름`·`이름: 형`·`이름 in`)이
+    바뀌어도 고른다. 다른 파일의 선언은 보지 않는다(릴리스 전체 검사의 몫)."""
+    now = read(path) or ""
+    before = git("show", f"{base}:{path}", check=False) if base is not None else None
+    return ui_text_changed(before.stdout if before is not None and before.returncode == 0 else None, now)
+
+
+def ui_text_changed(before, now):
+    """ui_string_changed의 판정. before가 None이면(새 파일·기준 없음) 문구가 하나라도 있으면 참."""
+    try:
+        new_keys, new_names, new_masked = ui_scan(now)
+        if before is None:
+            return bool(new_keys)
+        old_keys, old_names, old_masked = ui_scan(before)
+    except ValueError:
+        return True
+    if old_keys != new_keys:
+        return True
+    names = old_names | new_names
+    if not names:
+        return False
+    # 이름 없는 보간(`\($0)`)은 형을 정한 선언을 이름으로 못 찾으므로 문구 밖 줄이 하나라도 바뀌면 고른다.
+    anonymous = "$" in names
+    names = names - {"$"}
+    old_lines = [l.strip() for l in old_masked.splitlines()]
+    new_lines = [l.strip() for l in new_masked.splitlines()]
+    alternatives = "|".join(sorted(map(re.escape, names))) or r"(?!)"
+    declared = re.compile(rf"\b(?:let|var|func|case|for)\s+\(?\s*(?:{alternatives})\b"
+                          rf"|\b(?:{alternatives})\s*:\s*(?:[A-Z\[(]|some\b|any\b|inout\b)|\b(?:{alternatives})\s+in\b")
+    for tag, a1, a2, b1, b2 in difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False).get_opcodes():
+        if tag != "equal" and (anonymous or any(declared.search(l) for l in old_lines[a1:a2] + new_lines[b1:b2])):
+            return True
+    return False
 
 
 # ── 고르기 ────────────────────────────────────────────────────

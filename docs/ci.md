@@ -74,7 +74,7 @@ Swift 소스를 바꾸면 그 파일이 선언한 타입을 쓰는 Suite를 고�
 | Suite가 없는 시험 파일(가짜·하네스·도우미) | 그 시험 타깃 전체 |
 | 시험이 닿지 않는 소스 | 그 모듈에 의존하는 시험 타깃 전체 |
 | `Sources/djc/**`, `Sources/djcExecutable/**`, `Sources/DJCAdapters/**` | djcTests 전체를 더한다(시험 실행 약 6초) |
-| 화면 문구, `Localizable.xcstrings`, `scripts/i18n.swift` | 번역 검사 |
+| 화면 문구의 키, `Localizable.xcstrings`, `scripts/i18n.swift` | 번역 검사(아래 문구 판정) |
 | 쓰기 커버리지 그룹 파일 | 쓰기 그룹 커버리지(80%). 코어 60%는 전체 검사·CI만 본다 |
 | 문서, `skills/**` | `scripts/check-docs.py`와 문장 규칙 |
 | 하네스: `scripts/hooks/**`, `.claude/**`, `scripts/test-harness.py`, `scripts/check-docs.py`, `scripts/check-prose.py`, `scripts/prose-*.txt`, `scripts/worker-lock.sh` | `scripts/test-harness.py`와 `scripts/check-docs.py`. 이것만 바뀌면 넓히지 않는다 |
@@ -84,6 +84,8 @@ Swift 소스를 바꾸면 그 파일이 선언한 타입을 쓰는 Suite를 고�
 고른 Suite가 전체의 절반을 넘어도 전체 검사로 넓힌다. 넓힐 때는 이유를 담아 `▸ 전체 검사로 넓힙니다: <이유>`를 출력한다. 넓힌 실행은 문서·훅 검사를 포함해 전체 검사와 같은 단계를 돈다. 검사 스크립트가 바뀌었으면 `scripts/test-check.py`도 돈다. 전체 검사만으로는 이 검사가 돌지 않는다.
 
 넓힌 실행은 릴리스 앱 빌드를 뺀다. 릴리스 빌드는 릴리스 검사의 몫이다. 끝 요약에는 "릴리스 빌드는 릴리스 검사에서"가 남는다. 그 통과 기록은 인자 없는 전체 검사가 재사용하지 않는다.
+
+화면 문구 판정은 기준과 지금 파일에서 카탈로그 키 모양을 맞댄다. 키 모양은 원문, 보간 식, 형식 지정이다. 키를 따로 준 문구와 SwiftUI 리터럴도 넣는다. 같은 파일에서 보간에 쓴 이름의 선언이 바뀌어도 고른다. 보간이 `$0` 하나뿐이면 문구 밖 줄이 바뀌어도 고른다. 문구 호출 줄의 다른 인자, 줄 나눔, 들여쓰기만 바뀌면 고르지 않는다.
 
 djcTests는 `.build/debug/djc`를 명령 문자열로 띄워서 기호 grep이 닿지 않으므로 경로로 고른다.
 
