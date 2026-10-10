@@ -9665,6 +9665,22 @@
         }
       }
     },
+    "iTunes 동기화를 rekordbox에 썼습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wrote the iTunes sync to rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iTunes同期をrekordboxに書き込みました"
+          }
+        }
+      }
+    },
     "iTunes 목록 갱신에 실패해 이전 사본을 표시합니다. Music 접근 권한과 rekordbox의 iTunes 읽기 설정을 확인한 뒤 새로고침하세요." : {
       "localizations" : {
         "en" : {
@@ -39813,6 +39829,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "復元ポイントを作成"
+          }
+        }
+      }
+    },
+    "지금 연 사본(--db)에는 보이지 않으니 --db 없이 다시 열어 확인하세요." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The copy open now (--db) doesn't show it. Reopen without --db to check."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今開いているコピー（--db）には表示されません。--dbなしで開き直して確認してください。"
+          }
+        }
+      }
+    },
+    "지금 연 사본(--db)의 동기화 선택이 rekordbox와 다르니 --db 없이 다시 열어 동기화하세요." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The sync selection in the copy open now (--db) differs from rekordbox. Reopen without --db, then sync."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今開いているコピー（--db）の同期選択がrekordboxと異なります。--dbなしで開き直してから同期してください。"
           }
         }
       }

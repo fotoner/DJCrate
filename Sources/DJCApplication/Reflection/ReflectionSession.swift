@@ -39,7 +39,7 @@ public struct ReflectionSession {
         }
     }
 
-    /// 라이브러리 위치(쓰기·복원 대상·백업 폴더·스냅샷을 뜰 수 있는지·iTunes 동기화 대상)
+    /// 라이브러리 위치(쓰기·복원 대상·백업 폴더·스냅샷을 뜰 수 있는지)
     public var location: LibraryLocation
     public var ports: ReflectionPorts
     public var options: Options

@@ -38,7 +38,7 @@ struct InitialITunesCacheLoadingTests {
             """.utf8)
     }
 
-    /// 위치는 CI의 사본 경로 설정과 무관하게 정한다(기본은 명시 사본도 사본 rekordbox 폴더도 없는 실행).
+    /// 위치는 CI의 사본 경로 설정과 무관하게 정한다(기본은 명시 사본도 사본 rekordbox 폴더도 없는 실행). 쓰기 대상은 `root`의 master.db.
     /// 기본은 사본 옆 iTunes 파일만 본다(DB를 열지 않는 원본). 곡 행을 보는 시험만 `liveDatabase`로 DB를 연다.
     private func store(_ root: URL, arguments: [String] = ["test"], environment: [String: String] = [:],
                        liveDatabase: Bool = false) -> LibraryStore {
@@ -47,6 +47,7 @@ struct InitialITunesCacheLoadingTests {
                           resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
                           backupDirectory: root.appending(path: "backups"), playlistDraftSaver: { _ in },
                           mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
+                          rekordboxDatabase: root.appending(path: "master.db"),
                           arguments: arguments, environment: environment,
                           ports: ports)
     }
@@ -238,7 +239,7 @@ struct InitialITunesCacheLoadingTests {
         _ = await waitForState(until: { !model.isLoading })
         let shownName = model.source.sourcePlaylists?.first?.name
         let blockedWhileRefreshing = !model.canSync
-        // 창을 거치지 않은 쓰기도 막는다. 막지 못하면 명시한 임시 사본에만 쓴다.
+        // 창을 거치지 않은 쓰기도 막는다. 막지 못해도 쓰기 대상은 임시 폴더의 합성 사본이다.
         var refused: String?
         let opened = try #require(store.snapshotURL)
         do {

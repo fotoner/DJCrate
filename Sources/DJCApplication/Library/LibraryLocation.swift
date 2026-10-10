@@ -3,7 +3,7 @@ import Foundation
 
 /// rekordbox 라이브러리를 어디서 읽고 어디에 쓰는지와 DJCrate 초안 폴더(#182).
 /// 조립 지점(앱 `AppComposition`, CLI `CLIComposition`)이 실행 인자·환경을 한 번 풀어 만든다(`LibraryLocation.resolve`, DJCAdapters).
-/// 화면 모델·명령은 프로세스 인자·환경을 다시 읽지 않고 이 값만 본다: 읽기 출처·변경 확인·복구 출처·iTunes 동기화 대상이 모두 여기서 나온다.
+/// 화면 모델·명령은 프로세스 인자·환경을 다시 읽지 않고 이 값만 본다: 읽기 출처·변경 확인·복구 출처·쓰기 대상이 모두 여기서 나온다.
 public struct LibraryLocation: Sendable, Equatable {
     /// rekordbox 라이브러리 폴더(라이브 master.db·share). `DJC_REKORDBOX_DIR`이면 그 사본 폴더, 시험 프로세스는 임시 폴더(#182)
     public var rekordboxDirectory: URL
@@ -15,7 +15,7 @@ public struct LibraryLocation: Sendable, Equatable {
     public var opensExplicitCopy: Bool
     /// 명시한 사본 경로(`--db` 뒤의 값, 없으면 `DJC_DB`)
     public var explicitCopy: URL?
-    /// 쓰기·복원 대상 rekordbox DB(앱은 라이브 master.db, 시험은 합성 사본)
+    /// 쓰기·복원 대상 rekordbox DB(앱은 라이브 master.db, 시험은 합성 사본). iTunes 동기화도 여기에 쓴다: 명시한 사본(`--db`)은 읽기 출처만 바꾼다
     public var database: URL
     /// 쓰기 대상의 분석 파일 뿌리. nil이면 대상 옆 share(쓰기 관문이 고른다)
     public var shareRoot: URL?
@@ -51,9 +51,6 @@ public struct LibraryLocation: Sendable, Equatable {
 
     /// Music(iTunes) 목록을 조회해도 되는지(사본 rekordbox 폴더로 띄웠으면 조회하지 않는다)
     public var mayCaptureMusic: Bool { !rekordboxDirectoryOverridden }
-
-    /// iTunes 동기화가 쓰는 rekordbox DB: 명시한 사본으로 열었으면 그 사본(`opened`), 아니면 라이브 master.db
-    public func iTunesSyncTarget(opened: URL) -> URL { opensExplicitCopy ? opened : liveDatabase }
 }
 
 /// 라이브 rekordbox DB에서 읽기용 스냅샷 사본을 뜨는 일(포트). 실제 구현은 DJCAdapters(`SnapshotTaker.live(_:)`)가 주고 조립 지점이 고른다.

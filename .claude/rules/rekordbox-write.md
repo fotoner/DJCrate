@@ -51,7 +51,7 @@ AGENTS.md "안전 불변식"의 rekordbox 줄을 자세히 적은 규칙이다. 
 - **RBW-12** 실제 구현 `RekordboxWriteGate.live()`는 입구를 감싸기만 한다. RBW-4의 안전 단계를 다시 만들지 않는다.
 - **RBW-13** 이 실제 구현은 `Sources/DJCAdapters/Reflection/RekordboxWriteGate+Live.swift`에 있다. 이 파일도 쓰기 커버리지 그룹이다. 조립 지점만 이 구현을 고른다.
 - **RBW-14** 쓰기·복원 API에 라이브 DB 기본 인자를 두지 않는다. 대상은 부르는 쪽이 적는다.
-- **RBW-15** 앱의 쓰기와 되돌리기 대상은 하나다. 조립 지점 `AppComposition.live()`가 위치 값 `LibraryLocation`으로 그 대상을 정한다.
+- **RBW-15** 앱의 쓰기와 되돌리기 대상은 하나다. 조립 지점 `AppComposition.live()`가 위치 값 `LibraryLocation`으로 그 대상을 정한다. iTunes 동기화도 이 대상에 쓴다. 명시한 사본(`--db`)은 읽기 출처만 바꾼다.
 - **RBW-16** 그 대상은 반영 세션의 `target`이다. `LibraryStore.rekordboxDatabase`와 같은 곳이다.
 - **RBW-17** CLI의 대상은 `RekordboxWriteTarget.cli`가 `--live`·`--db`를 풀어 정한다.
 
