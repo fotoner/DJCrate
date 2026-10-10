@@ -2,7 +2,7 @@ import DJCAnalysis
 import DJCDomain
 import DJCTestKit
 import Foundation
-import DJCStorage
+@testable import DJCStorage
 import Testing
 
 /// #217: 지금 라이브러리에 없는 경로의 음량 항목을 정리한다. 캐시 파일은 임시 폴더로 주입한다(사용자 폴더를 열지 않는다).
@@ -66,6 +66,20 @@ struct LoudnessCachePruneTests {
         _ = await cache.prune(keeping: [a.path])
         await cache.waitForSave()
         #expect(LoudnessCache(url: url).value(for: b) == nil)
+    }
+
+    @Test func 파일_상태는_협력_풀_밖에서_읽는다() async throws {
+        // 잠든 외장 볼륨이면 파일 상태 읽기가 오래 막힌다. 풀 스레드를 붙잡지 않아야 다른 비동기 일이 멈추지 않는다
+        let (root, a, b, url) = try scene()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = LoudnessCache(url: url, saveDelay: .milliseconds(10)) { file in
+            expectBlockingOffPool()
+            return LoudnessCache.fileKey(file)
+        }
+        let loudness = Loudness(integrated: -9, peak: -1, clippedRuns: 0)
+        cache.store(loudness, for: a)
+        cache.store(loudness, for: b)
+        #expect(await cache.prune(keeping: [a.path, b.path]) == 0)
     }
 
     @Test func 파일을_못_읽는_라이브러리_곡의_항목은_남긴다() async throws {
