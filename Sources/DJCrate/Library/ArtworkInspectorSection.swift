@@ -78,7 +78,7 @@ private struct ArtworkWell: View {
     @Bindable var store: LibraryStore
     let row: TrackRow?
     let targeted: Bool
-    @State private var image: NSImage?
+    @State private var loader = ArtworkWellLoader()
 
     private var draft: ArtworkDraft? { row.flatMap { store.artworkDrafts[$0.track.uuid] } }
     /// 초안(그림 사본의 해시)과 rekordbox 그림이 바뀔 때만 다시 읽는다.
@@ -91,7 +91,7 @@ private struct ArtworkWell: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .quaternarySystemFill))
-            if let image {
+            if let image = loader.image {
                 Image(nsImage: image).resizable().scaledToFit()
             } else {
                 Image(systemName: "photo").font(.title2).foregroundStyle(.tertiary)
@@ -102,20 +102,7 @@ private struct ArtworkWell: View {
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(targeted ? Color.accentColor : (draft != nil ? UIColors.draft.color : .clear), lineWidth: 2))
         .help(String(ui: "앨범아트 파일(JPEG·PNG)을 끌어다 놓으면 앨범아트 초안을 만듭니다"))
         .accessibilityElement()
-        .accessibilityLabel(image == nil ? Text(.ui("앨범아트 없음")) : Text(.ui("앨범아트")))
-        .task(id: key) { await load() }
-    }
-
-    private func load() async {
-        guard let row else { image = nil; return }
-        if let draft {
-            let data = draft.change == .set ? store.artworkDraftImage(trackUUID: row.track.uuid) : nil
-            image = data.flatMap(NSImage.init(data:))
-            return
-        }
-        let path = row.track.imagePath, artwork = store.useCases.artwork
-        let box = await BlockingWork.run { Thumbnails.downsampled(artwork, imagePath: path, maxPixels: 240) }
-        guard !Task.isCancelled else { return }
-        image = box.map { NSImage(cgImage: $0.image, size: NSSize(width: $0.image.width, height: $0.image.height)) }
+        .accessibilityLabel(loader.image == nil ? Text(.ui("앨범아트 없음")) : Text(.ui("앨범아트")))
+        .task(id: key) { await loader.load(row, store: store) }
     }
 }

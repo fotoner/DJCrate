@@ -128,6 +128,16 @@ struct StorageSettingsTests {
         #expect(scene.exists("rekordbox-backups/20260101-write/master.db"), "백업은 읽기만 한다")
     }
 
+    @Test func 비우기_단추는_일을_시작하고_그_손잡이를_모델이_든다() async throws {
+        let scene = try scene()
+        defer { try? FileManager.default.removeItem(at: scene.root) }
+        let model = StorageSettingsModel(paths: scene.paths, files: .live)
+        model.startClear([.waveforms])
+        await model.task?.value
+        #expect(!scene.exists("waveforms/a-1.json") && scene.exists("analysis/chroma/a-1.bin"))
+        #expect(model.message?.contains("파형") == true && !model.isWorking, "\(model.message ?? "")")
+    }
+
     @Test func 앱이_연_스냅샷은_남긴다() async throws {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }

@@ -63,6 +63,18 @@ struct AppleMusicImportModelTests {
         #expect(model.message != nil)
     }
 
+    @Test func 추가_단추는_일을_시작하고_그_손잡이를_모델이_든다() async throws {
+        let model = model()
+        model.library = try AppleMusicLibrary.parse(AppleMusicXMLFixture.xml(tracks: ["1": AppleMusicXMLFixture.track(1, [
+            "Location": "file:///nonexistent-djc-fixture/\(UUID()).mp3"
+        ])]), isReadableFile: { _ in true })
+        model.selected = [1]
+        model.startAddSelected()
+        await model.task?.value
+        #expect(model.library?.tracks.first?.exclusion == .unavailableFile)
+        #expect(model.selected.isEmpty && !model.isBusy && model.message != nil)
+    }
+
     @Test func 반영_중에는_가져오기를_시작하지_않는다() async throws {
         let model = model()
         model.library = try AppleMusicLibrary.parse(AppleMusicXMLFixture.xml(tracks: ["1": AppleMusicXMLFixture.track(1)]), isReadableFile: { _ in true })

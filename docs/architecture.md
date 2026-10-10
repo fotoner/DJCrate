@@ -117,12 +117,10 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - `Sources/djc/Commands/CLIWriteTarget.swift`
 - `Sources/djc/CLI.swift`는 예외가 아니다. 이 파일에는 명령 표만 있다. `compat` 본문은 유스케이스 `CompatibilityCheck`와 명령 파일 `CompatCommand.swift`로 옮겼다.
 - **넓은 예외 폴더는 더 받을 import를 적는다.** 목록 밖 import는 위반이다. 폴더의 어느 파일도 쓰지 않는 허용이 남아도 실패한다.
-- 넓은 예외의 크기는 `--summary`의 예외 표로 본다. 2026-10 기준 두 폴더는 앱·CLI 소스 줄의 26%다.
+- 넓은 예외의 크기는 `--summary`의 예외 표로 본다. 2026-10 기준 두 폴더는 앱·CLI 소스 줄의 27%다.
 - **남은 위반은 빚 목록에 고정한다.** 빚 목록은 `scripts/import-debt.txt`이고 줄 모양은 `파일<TAB>규칙<TAB>대상`이다. 목록 밖 위반이 생기면 검사가 실패한다. 이미 해소한 항목이 목록에 남아도 실패한다. 그래서 빚이 줄면 목록도 줄어든다.
 - `view-task` 빚은 대상 칸에 파일마다 곳 수를 적는다(예: `Task 3곳`). 곳 수가 늘면 새 위반으로 실패한다. 줄어도 빚 목록을 고치라고 실패한다.
-- 2026-10 기준 빚은 35줄이다. 모두 새 규칙이 찾아낸 옛 코드다.
-  - `api` 1줄: `DJCApplication/Usb/UsbWriteSession.swift`의 `@Observable`
-  - `view-task` 34줄: 뷰 18파일의 `Task` 49곳과 `await` 82곳
+- 2026-10-10 기준 빚은 0줄이다. 옛 `api` 1줄(#243)과 `view-task` 34줄(#244)을 갚았다.
 - 개수는 `python3 scripts/check-imports.py --summary`로 본다. 새 위반은 빚 목록에 더하지 않는다. 위반은 그 자리에서 고친다.
 - **모든 Swift 타깃에 `MemberImportVisibility`(SE-0444)를 켠다.** 그러면 전이 의존으로 새어 들어오는 확장 멤버를 컴파일러가 막는다. 그래서 import 줄 검사가 실제 사용과 맞는다.
 - SwiftPM은 목록에 없는 아래층 모듈의 `import`를 막지 않는다. 그래서 의존 방향은 `Package.swift`와 이 검사로 지킨다.

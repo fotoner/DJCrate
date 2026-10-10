@@ -335,7 +335,7 @@ enum PlaylistDrop {
             }
             loadStrings(files, type: .fileURL) { strings in
                 let urls = strings.compactMap(URL.init(string:)).filter(\.isFileURL)
-                Task { await store.addFiles(urls, toPlaylist: node.id) }
+                store.startAddingFiles(urls, toPlaylist: node.id)
             }
             return true
         }

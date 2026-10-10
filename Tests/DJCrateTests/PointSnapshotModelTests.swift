@@ -93,6 +93,54 @@ struct PointSnapshotModelTests {
         #expect(prompter.shown.last?.destructive == true)
     }
 
+    // MARK: - 창의 단추(#244): 뷰는 동기 메서드만 부르고, 일과 그 손잡이는 모델이 든다
+
+    @Test func 단추가_시작한_일은_모델이_들고_끝나면_같은_결과를_남긴다() async throws {
+        let fixture = try RekordboxFixture()
+        let prompter = ScriptedPrompter()
+        let model = model(fixture, prompter: prompter)
+        model.newName = "단추로"
+        model.startCreate()
+        await model.task?.value
+        let row = try #require(model.rows.first)
+        #expect(row.name == "단추로" && model.selection == row.id && model.newName.isEmpty)
+        model.startTogglePin(row)
+        await model.task?.value
+        #expect(model.rows.first?.pinned == true)
+        model.startTogglePin(try #require(model.rows.first))
+        await model.task?.value
+        #expect(model.rows.first?.pinned == false)
+        model.startCompare()
+        await model.task?.value
+        #expect(model.comparedID == row.id && model.comparison != nil)
+        prompter.answer = false
+        model.startRestore()
+        await model.task?.value
+        #expect(prompter.shown.count == 1 && prompter.shown.last?.destructive == true)
+        model.startDelete()
+        await model.task?.value
+        #expect(prompter.shown.count == 2 && model.rows.count == 1, "취소하면 그대로 둔다")
+        // 창을 다시 앞에 두면 다른 곳에서 남긴 스냅샷까지 다시 읽는다
+        let other = self.model(fixture)
+        other.startRefresh()
+        await other.task?.value
+        #expect(other.rows.map(\.id) == model.rows.map(\.id))
+    }
+
+    @Test func 고른_줄이_없으면_비교·복원·지우기_단추는_일을_시작하지_않는다() {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "point-\(UUID().uuidString)")
+        // 일을 시작하지 않으므로 아무 파일도 열지 않는다
+        let points = PointSnapshots(database: folder.appending(path: "master.db"), shareRoot: nil, directory: folder,
+                                    backupDirectory: folder, files: .live(guard: Self.copyGuard), backups: .live())
+        let prompter = ScriptedPrompter()
+        let model = PointSnapshotModel(points: points, prompter: prompter, restore: { _, _ in throw CancellationError() })
+        model.startCompare()
+        model.startRestore()
+        model.startDelete()
+        #expect(model.task == nil && prompter.shown.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: folder.path))
+    }
+
     @Test func rekordbox가_켜져_있으면_이유를_알리고_남기지_않는다() async throws {
         let fixture = try RekordboxFixture()
         let running = RekordboxWriteGuard(isLive: { _ in true }, isRekordboxRunning: { true }, appVersion: { "7.2.18" })

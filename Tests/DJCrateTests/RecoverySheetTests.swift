@@ -196,6 +196,17 @@ struct RecoverySheetTests {
         #expect(!model.canSave)
     }
 
+    @Test func 저장_단추는_일을_시작하고_그_손잡이를_모델이_든다() async throws {
+        let scenario = try await RecoveryScenario.make()
+        let targets: [Target] = [.draft("B", .grid)]
+        let model = model(scenario, targets)
+        await model.load()
+        model.startSave()
+        await model.task?.value
+        #expect(try line(model, scenario, targets[0]).phase == .saved)
+        #expect(model.isClosed, "고른 줄을 모두 저장하면 닫는다")
+    }
+
     @Test func 나중에만_고르면_저장할_수_없다() async throws {
         let scenario = try await RecoveryScenario.make()
         let model = model(scenario, [.draft("A", .tags)])

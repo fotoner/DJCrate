@@ -143,6 +143,18 @@ struct FlipWindowTests {
 @MainActor
 @Suite("곡 편집 창 열기")
 struct TrackEditWindowOpenTests {
+    @Test func 메뉴와_덱_단추는_여는_일을_시작하고_창이_그_손잡이를_든다() async throws {
+        let h = try DeckHarness()
+        let window = TrackEditWindow()
+        window.attach(EditWindowLinks(deck: h.deck, store: nil, writer: FlipWindowTests.SourceCheckGate().writer,
+                                      makeAudio: { EditAudioPlayer() }, showStaged: { _, _ in }))
+        // 곡을 올리지 않은 덱은 열 수 없는 이유를 알린다
+        let reason = try #require(h.deck.trackEditUnavailableReason)
+        window.startOpen()
+        await window.opening?.value
+        #expect(h.deck.toast?.text == reason && window.model == nil)
+    }
+
     @Test func 창을_여는_사이_곡이_바뀌면_열지_않고_알린다() async throws {
         let h = try DeckHarness()
         try await h.loaded()

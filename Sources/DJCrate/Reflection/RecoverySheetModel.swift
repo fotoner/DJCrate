@@ -142,6 +142,8 @@ final class RecoverySheetModel: Identifiable {
     private(set) var hasSaved = false
     @ObservationIgnored private var waiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var loadStarted = false
+    /// 저장 단추가 시작한 일. 시트가 내려가도 끝까지 간다. 시험은 이것을 기다린다
+    @ObservationIgnored private(set) var task: Task<Void, Never>?
 
     init(host: LibraryStore, requests: [RecoveryRequest], anchor: RecoverySheetAnchor = .library, dependencies: Dependencies = Dependencies()) {
         self.host = host
@@ -311,6 +313,8 @@ final class RecoverySheetModel: Identifiable {
     /// 고른 줄을 차례로 저장한다. 줄마다 기존 규칙이 지금 상태를 다시 확인하므로, 실패한 줄은 초안을 그대로 두고 이유를 줄에 남기며
     /// 다른 줄은 그대로 저장한다. 실패한 줄이 남지 않았으면 시트를 닫는다. 저장 직전의 현재값은 곡 줄 전체에 사본 하나, 재생 목록 줄 전체에 사본 하나로 읽는다.
     /// - Returns: 고른 줄이 모두 저장됐는지(저장할 줄이 없으면 false)
+    func startSave() { task = Task { await save() } }
+
     @discardableResult
     func save() async -> Bool {
         guard canSave else { return false }

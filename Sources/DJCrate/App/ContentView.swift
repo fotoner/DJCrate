@@ -49,12 +49,7 @@ struct ContentView: View {
                     Group { if inspectorContentShown { TagInspector(store: store) } }
                         .inspectorColumnWidth(min: 300, ideal: 340, max: 460)
                 }
-                .task(id: showTagEditor) {
-                    if showTagEditor { inspectorContentShown = true; return }
-                    // 접히는 애니메이션이 끝난 뒤에 지운다(빈 패널이 미끄러지지 않게).
-                    try? await Task.sleep(for: .milliseconds(400))
-                    if !Task.isCancelled { inspectorContentShown = false }
-                }
+                .task(id: showTagEditor) { await InspectorReveal.follow(showTagEditor, shown: $inspectorContentShown) }
                 .modifier(LibraryWindowTitle(store: store))
                 .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
                 // 위쪽 알림 줄(스냅샷 오류·반영·곡 추가)과 겹치지 않게 아래에 띄운다(#122).
@@ -63,7 +58,7 @@ struct ContentView: View {
                         AppToastView(toast: toast,
                                      onUndo: toast.undoBackup.map { url in { store.toast = nil; app.reflection.startRestore(backupURL: url) } },
                                      onDetails: toast.showsResult ? { store.showingWriteResult = true } : nil,
-                                     onAction: toast.action.map { action in { Task { await store.usbCoordinator?.perform(action) } } },
+                                     onAction: toast.action.map { action in { store.performToastAction(action) } },
                                      onClose: { if store.toast?.id == toast.id { store.toast = nil } })
                             .padding(.bottom, 16)
                             .padding(.horizontal, 16)
@@ -116,18 +111,13 @@ struct ContentView: View {
             deck.undoManager = undoManager
             store.undoManager = undoManager
         }
-        .task {
-            while !Task.isCancelled {
-                // 끄는 중인 큐·그리드는 손을 놓아 저장한 뒤에 다시 읽는다.
-                if !deck.hasUncommittedCueEdits, deck.cueDragBase == nil, deck.gridDragBase == nil { await store.refreshExternalDrafts() }
-                do { try await Task.sleep(for: .seconds(1)) } catch { break }
-            }
-        }
+        // CLI·다른 앱이 바꾼 초안 파일을 1초마다 다시 읽는다
+        .task { await app.watchExternalDrafts() }
         // 하루 한 번 자동 시점 스냅샷(#228): rekordbox가 꺼져 있고 라이브러리가 바뀌었으면 뒤에서 조용히 남긴다
-        .task { await app.autoPointSnapshots().loop() }
+        .task { await app.runAutoPointSnapshots() }
         // rekordbox에서 곡을 지우거나 고치고 돌아오면 새로 읽는다(옛 목록에 지워진 곡이 남지 않게)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await store.refreshIfRekordboxChanged() }
+            store.startRefreshIfRekordboxChanged()
         }
     }
 
@@ -141,7 +131,7 @@ struct ContentView: View {
                 } description: {
                     Text(.ui("rekordbox를 종료한 뒤 master.db 사본을 떠 주세요. 원본은 읽기만 합니다."))
                 } actions: {
-                    Button(.ui("스냅샷 뜨기")) { Task { await store.takeSnapshot() } }
+                    Button(.ui("스냅샷 뜨기")) { store.startTakeSnapshot() }
                 }
             case let .loading(message):
                 ProgressView(message)
@@ -151,8 +141,8 @@ struct ContentView: View {
                 } description: {
                     Text(message)
                 } actions: {
-                    Button(.ui("다시 시도")) { Task { await store.loadInitial() } }
-                    Button(.ui("실행 중이어도 읽기용 스냅샷 뜨기")) { Task { await store.takeSnapshot(force: true) } }
+                    Button(.ui("다시 시도")) { store.startLoadInitial() }
+                    Button(.ui("실행 중이어도 읽기용 스냅샷 뜨기")) { store.startTakeSnapshot(force: true) }
                 }
             }
     }
@@ -203,7 +193,7 @@ struct ContentView: View {
             ToolbarItem(id: "snapshot") {
                 Button {
                     // rekordbox가 켜져 있어도 읽기용 사본을 뜬다(최근 변경이 담긴 WAL까지 사본 안에서 합친다).
-                    Task { await store.synchronizeLibrary() }
+                    store.startSynchronizeLibrary()
                 } label: {
                     Label(.ui("rekordbox와 동기화"), systemImage: "arrow.clockwise")
                 }
@@ -410,18 +400,7 @@ struct LibraryFileDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         highlight.drop()
         guard validateDrop(info: info) else { return false }
-        let providers = info.itemProviders(for: [.fileURL])
-        Task { @MainActor in
-            var urls: [URL] = []
-            for provider in providers {
-                let url: URL? = await withCheckedContinuation { continuation in
-                    _ = provider.loadObject(ofClass: URL.self) { url, _ in continuation.resume(returning: url) }
-                }
-                if let url, url.isFileURL { urls.append(url) }
-            }
-            guard !urls.isEmpty, store.writeLockPolicy.allowsLibraryInteraction else { return }
-            await store.addFiles(urls)
-        }
+        store.addDroppedFiles(info.itemProviders(for: [.fileURL]))
         return true
     }
 }

@@ -115,7 +115,7 @@ struct AppCommands: Commands {
                 }
             }
             Divider()
-            Button(.ui("곡 편집…")) { Task { await context?.windows.trackEdit.open() } }
+            Button(.ui("곡 편집…")) { context?.windows.trackEdit.startOpen() }
                 .disabled(context.map { !$0.deck.canOpenTrackEdit } ?? true)
                 .help(context.flatMap { $0.deck.trackEditUnavailableReason } ?? String(ui: "덱에 올린 곡으로 편집 창을 엽니다"))
             Button(context?.deck.isFlipRecording == true ? String(ui: "Flip 기록 마치기…")
