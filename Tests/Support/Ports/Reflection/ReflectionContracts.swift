@@ -38,6 +38,8 @@ public func backupsSaveFailureContract(_ backups: RekordboxBackups, backup: URL)
 
 /// 쓰기 관문(`RekordboxWriteGate`): 미리 보기는 사본을 만든 뒤 `copied`를 한 번 부르고 시험 결과를 돌려준다. 쓰기·넣기·빼기·재생 목록 쓰기는
 /// `dryRun`을 결과에 적는다. 쓰면 대상의 백업 폴더에 백업을 남기고, 그 백업으로 복원하면 되돌리기 직전 상태를 같은 폴더에 남긴다.
+/// 동기 입구는 협력 풀 밖에서 불려야 하므로(가짜·실제의 `expectBlockingOffPool`) 메인 액터에서 부른다.
+@MainActor
 public func writeGateContract(_ gate: RekordboxWriteGate, target: RekordboxWriteTarget, batch: DraftWriteBatch) async throws {
     let copied = Mutex(0)
     let preview = try await gate.preview(batch, [:], target) { copied.withLock { $0 += 1 } }

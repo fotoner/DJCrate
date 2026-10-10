@@ -71,7 +71,7 @@ paths:
   - `Tests/Support/Kit`(`DJCTestKit`): DJCDomain만 안다. SQLCipher를 빌드하지 않는다.
   - `Tests/Support/Fixtures`(`RekordboxFixtures`): rekordbox DB, ANLZ, pdb, USB 트리
   - `Tests/Support/Ports`(`PortTestKit`): DJCApplication, DJCDomain, DJCTestKit만 안다.
-- **TEST-11** `DJCTestKit`에는 가짜 볼륨, DiskArbitration 사전, 합성 음원, 그림이 있다. `TemporaryFolder`·`TestDefaults`·`FixtureError`도 있다.
+- **TEST-11** `DJCTestKit`에는 가짜 볼륨, DiskArbitration 사전, 합성 음원, 그림이 있다. `TemporaryFolder`·`TestDefaults`·`FixtureError`도 있다. 협력 풀 검사 `expectBlockingOffPool`·`waitOffPool`도 여기 있다.
 - **TEST-12** `PortTestKit`에는 포트별 가짜와 공용 계약 함수 `<포트>Contract`가 있다.
 - **TEST-13** 같은 계약 함수를 두 타깃에서 돌린다. DJCApplicationTests의 `PortContractTests`는 가짜에 돌린다. DJCAdaptersTests는 실제 구현에 돌린다.
 - **TEST-14** 새 포트를 만들면 `PortTestKit`에 계약 함수와 가짜를 둔다. 그 계약을 두 시험 타깃에서 돌린다.

@@ -55,7 +55,7 @@ enum UsbDragCapture {
               let window = NSApp.windows.first(where: { $0.canBecomeMain && $0.isVisible }), let content = window.contentView else {
             throw Failure("합성 라이브러리(UsbDragFixtureCapture)·주 창을 확인하세요")
         }
-        let volume = try await Task.detached { try UsbVolumes.info(root: URL(filePath: mount)) }.value
+        let volume = try await BlockingWork.run(qos: .default) { try UsbVolumes.info(root: URL(filePath: mount)) }
         guard volume.isDiskImage, volume.name == "DJCDRAG" else { throw Failure("합성 디스크 이미지(DJCDRAG)가 아님") }
         let (events, continuation) = AsyncStream.makeStream(of: [UsbVolumeInfo].self)
         defer { continuation.finish() }

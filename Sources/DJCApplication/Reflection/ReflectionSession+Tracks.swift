@@ -131,9 +131,7 @@ extension ReflectionSession {
         let batch = TrackAddBatch(plans: plans, analyses: analyses, cues: preview.cues.filter { accepted.contains($0.key) },
                                   keys: preview.keys.filter { accepted.contains($0.key) })
         let gate = ports.gate
-        let report = try await Task.detached(priority: .userInitiated) {
-            try gate.addTracks(batch, target, false)
-        }.value
+        let report = try await BlockingWork.run { try gate.addTracks(batch, target, false) }
         guard options.followsUp else { return (report, []) }
         return (report, await finishAdd(report, preview: preview, analysed: Set(analyses.keys)))
     }
@@ -275,9 +273,7 @@ extension ReflectionSession {
         stage(WriteStage(String(ui: "rekordbox에서 곡을 빼는 중…")))
         defer { stage(nil) }
         let gate = ports.gate
-        let report = try await Task.detached(priority: .userInitiated) {
-            try gate.deleteTracks(ids, target, false)
-        }.value
+        let report = try await BlockingWork.run { try gate.deleteTracks(ids, target, false) }
         guard options.followsUp else { return report }
         apply(.deselected(Set(report.deleted.filter(\.written).compactMap(\.contentID))))
         stage(WriteStage(String(ui: "라이브러리를 다시 읽는 중…")))

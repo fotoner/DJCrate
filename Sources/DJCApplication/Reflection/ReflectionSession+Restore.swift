@@ -66,9 +66,7 @@ extension ReflectionSession {
         // 복원 전에: 남길 지금 초안을 정해 둔다(복원 뒤 덱이 다시 저장하는 값과 섞지 않게)
         let kept = options.revivesDrafts && keepingCurrentDrafts ? restoreConflicts(backup) : []
         let gate = ports.gate
-        let saved = try await Task.detached(priority: .userInitiated) {
-            try gate.restore(backup.url, target)
-        }.value
+        let saved = try await BlockingWork.run { try gate.restore(backup.url, target) }
         guard options.revivesDrafts else { return (saved, []) }
         return (saved, await reviveDrafts(from: backup, keeping: kept))
     }
@@ -78,10 +76,10 @@ extension ReflectionSession {
     public func libraryChangedSince(_ backup: RekordboxWriteBackup) async -> Bool? {
         guard location.allowsSnapshot, let expected = backup.finalUpdateCount else { return nil }
         let take = ports.snapshots.take, count = ports.backups.updateCount
-        return try? await Task.detached {
+        return try? await BlockingWork.run(qos: .default) {
             let snapshot = try take(false)
             return try count(snapshot) != expected
-        }.value
+        }
     }
 
     // MARK: - 복원 충돌
@@ -277,9 +275,7 @@ extension ReflectionSession {
         stage(WriteStage(String(ui: "시점 스냅샷으로 복원하는 중…")))
         defer { stage(nil) }
         let gate = ports.gate
-        let report = try await Task.detached(priority: .userInitiated) {
-            try gate.restorePointSnapshot(entry, target, snapshots, autoDays, now)
-        }.value
+        let report = try await BlockingWork.run { try gate.restorePointSnapshot(entry, target, snapshots, autoDays, now) }
         stage(WriteStage(String(ui: "복원한 라이브러리를 읽는 중…")))
         _ = await ports.reload.reload(changedTracks, [])
         apply(.writeBackupsChanged)
@@ -297,9 +293,7 @@ extension ReflectionSession {
         ports.lock.set(true, false)
         defer { ports.lock.set(false, false) }
         let gate = ports.gate
-        let data = try await Task.detached(priority: .userInitiated) {
-            try gate.syncITunes(change, target)
-        }.value
+        let data = try await BlockingWork.run { try gate.syncITunes(change, target) }
         return (target.database, data)
     }
 }

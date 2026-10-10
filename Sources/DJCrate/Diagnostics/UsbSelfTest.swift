@@ -60,7 +60,7 @@ enum UsbSelfTest {
 
     private static func run(store: LibraryStore) async {
         let environment = ProcessInfo.processInfo.environment
-        if await Task.detached(operation: { LibrarySnapshot.isRekordboxRunning() }).value {
+        if await BlockingWork.run(qos: .default, { LibrarySnapshot.isRekordboxRunning() }) {
             finish(0, "USB 시험 건너뜀: rekordbox 켜짐")
         }
         if let refusal = launchRefusal(arguments: CommandLine.arguments, environment: environment) { finish(2, refusal) }
@@ -130,14 +130,14 @@ struct UsbSelfTestScenario {
             throw Failure("\(base.path)가 이미 있습니다. 새 DJC_HOME으로 다시 띄우세요")
         }
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: false)
-        let library = try await detached { [base, schemaSource] in
+        let library = try await offPool { [base, schemaSource] in
             try UsbSelfTestLibrary.make(in: base.appending(path: "local"), schemaFrom: schemaSource)
         }
         log("USB 시험 합성 라이브러리: 곡 \(library.trackIDs.count) · 재생 목록 1")
         let (image, mount, name) = (self.image.path, self.mountPoint.path, volumeName)
-        let created = try await detached { try UsbDiskImage.create(image: image, size: 4 << 30, name: name) }
+        let created = try await offPool { try UsbDiskImage.create(image: image, size: 4 << 30, name: name) }
         log("USB 시험 이미지: \(created.summary)")
-        _ = try await detached { try UsbDiskImage.attach(image: image, mountPoint: mount) }
+        _ = try await offPool { try UsbDiskImage.attach(image: image, mountPoint: mount) }
         do {
             let result = try await exercise(usb: usb, host: host, library: library)
             try await detach()
@@ -150,7 +150,7 @@ struct UsbSelfTestScenario {
 
     private func detach() async throws {
         let image = self.image.path
-        if try await detached({ try UsbDiskImage.detach(image: image) }) { log("USB 시험: 이미지를 뗐습니다") }
+        if try await offPool({ try UsbDiskImage.detach(image: image) }) { log("USB 시험: 이미지를 뗐습니다") }
     }
 
     private func exercise(usb: UsbStore, host: any UsbWriteHost, library: UsbSelfTestLibrary.Made) async throws -> String {
@@ -163,8 +163,8 @@ struct UsbSelfTestScenario {
         var volume = try await waitForVolume(usb)
         guard volume.isDiskImage else { throw Failure("시험 볼륨이 디스크 이미지로 보이지 않습니다") }
         let root = UsbRoot(URL(filePath: volume.mountPoint))
-        let before = try await detached { try UsbTree.walk(root) }
-        let doublesBefore = try await detached { try UsbInvariantVerifier.appleDoubles(on: root) }
+        let before = try await offPool { try UsbTree.walk(root) }
+        let doublesBefore = try await offPool { try UsbInvariantVerifier.appleDoubles(on: root) }
 
         // 미리 보기(두 번 해도 같다) → 확인 창(자동 확인) → 쓰기
         let snapshotTime = ISO8601DateFormatter().string(from: Date().addingTimeInterval(60))
@@ -175,7 +175,7 @@ struct UsbSelfTestScenario {
         }
         log("USB 시험 미리 보기: 곡 \(first.trackCount) · 재생 목록 \(first.playlistCount) · 막힘 \(first.blockCounts.count) · CDJ 확인 항목 \(first.rules.count) · 두 번째 같음 \(first == second)")
         guard first.canWrite, first == second else { throw Failure("미리 보기로 쓸 수 없습니다(\(UsbWriteFlow.stoppingText(first)))") }
-        let journal = await detached { service.journal(volumeKey: job.volumeKey) }
+        let journal = await offPool { service.journal(volumeKey: job.volumeKey) }
         log("USB 시험 미리 보기 뒤 저널: \(Self.journalText(journal)) · 끝나지 않은 쓰기 \(journal.isPending)")
         await coordinator.export(job)
         guard let report = service.lastWrite, report.outcome == .written else { throw Failure("쓰지 못했습니다(\(prompter.lastText))") }
@@ -184,7 +184,7 @@ struct UsbSelfTestScenario {
         }
         guard let toast = host.toast, toast.action == .ejectUsb(volumeKey: job.volumeKey) else { throw Failure("쓰기 토스트가 없습니다") }
         log("USB 시험 쓰기: \(toast.title) · 만든 파일 \(report.filesCreated) · 지운 ._ \(report.appleDoubleRemoved)")
-        let written = try await detached { try UsbTree.walk(root) }
+        let written = try await offPool { try UsbTree.walk(root) }
         let beforePaths = Set(before.map(\.relativePath))
         let appFiles = written.filter { !$0.isDirectory && !beforePaths.contains($0.relativePath)
             && !UsbLayout.isAppleDouble(($0.relativePath as NSString).lastPathComponent) }
@@ -197,15 +197,15 @@ struct UsbSelfTestScenario {
         try await waitDetached()
         log("USB 시험 꺼내기: 이미지가 떨어졌습니다")
         let (image, mount) = (self.image.path, self.mountPoint.path)
-        _ = try await detached { try UsbDiskImage.attach(image: image, mountPoint: mount) }
+        _ = try await offPool { try UsbDiskImage.attach(image: image, mountPoint: mount) }
         volume = try await waitForVolume(usb)
-        let doublesAfter = try await detached { try UsbInvariantVerifier.appleDoubles(on: root) }
+        let doublesAfter = try await offPool { try UsbInvariantVerifier.appleDoubles(on: root) }
         let left = doublesAfter.subtracting(doublesBefore).count
         // ._ 생김 = 앱이 쓴 최종 파일 옆에 생겨 쓰기 절차가 지운 ._ 수, 쓸기 뒤 = 꺼냈다 다시 붙인 USB에 남은 새 ._ 수
         log("USB 시험 provenance: 앱이 쓴 파일 \(appFiles.count)개 중 ._ 생김 \(doubled)개, 쓸기 뒤 \(left)개")
         let reattached = volume
         let scratch = base.appending(path: "info-\(UUID().uuidString)")
-        let info = try await detached {
+        let info = try await offPool {
             try UsbRead.live.info(root: URL(filePath: reattached.mountPoint), scratch: scratch, volume: reattached)
         }
         let formats = Set(info.formats)
@@ -225,12 +225,12 @@ struct UsbSelfTestScenario {
         // 되돌리기(이 쓰기의 백업으로) → 트리가 쓰기 전과 같다
         guard usb.beginWrite(reattached, title: "USB 시험: 되돌리는 중", cancellable: false) != nil else { throw Failure("볼륨을 잠그지 못했습니다") }
         let writtenBackup = report.backup.map { URL(filePath: $0) }
-        let restored = await detached { Result { try service.restore(reattached, backup: writtenBackup, discardDeviceChanges: false) } }
+        let restored = await offPool { Result { try service.restore(reattached, backup: writtenBackup, discardDeviceChanges: false) } }
         usb.endWrite(reattached.usbKey)
         guard case let .success(restoreReport) = restored, restoreReport.outcome == .restored else {
             throw Failure("되돌리지 못했습니다(\(restored))")
         }
-        let after = try await detached { try UsbTree.walk(root) }
+        let after = try await offPool { try UsbTree.walk(root) }
         let differ = Set(before).symmetricDifference(Set(after)).map(\.relativePath).sorted()
         log("USB 시험 되돌리기: 트리 차이 \(differ.count)" + (differ.isEmpty ? "" : " (\(differ.prefix(5).joined(separator: ", ")))"))
         guard differ.isEmpty else { throw Failure("되돌린 트리가 쓰기 전과 다릅니다") }
@@ -244,26 +244,26 @@ struct UsbSelfTestScenario {
                                    prompter: UsbSelfTestPrompter, volume: UsbVolumeInfo, library: UsbSelfTestLibrary.Made,
                                    snapshotTime: String) async throws -> String {
         let root = UsbRoot(URL(filePath: volume.mountPoint))
-        let empty = try await detached { try UsbTree.fingerprint(root).files }
+        let empty = try await offPool { try UsbTree.fingerprint(root).files }
         let job = UsbExportJob(database: library.database, share: library.share, volume: volume, selection: .playlists([library.playlistID]),
                                formats: [.deviceLibrary], snapshotTime: snapshotTime)
         await coordinator.export(job)
         guard let exported = service.lastWrite, exported.outcome == .written else { throw Failure("Device Library만 내보내지 못했습니다") }
-        let before = try await detached { try UsbTree.fingerprint(root).files }
+        let before = try await offPool { try UsbTree.fingerprint(root).files }
         guard let first = await coordinator.previewMigration(volume), let second = await coordinator.previewMigration(volume),
               first.canWrite, first == second, first.rules.allSatisfy(\.needsDeviceCheck) else { throw Failure("옮기기 미리 보기 실패") }
-        let previewTree = try await detached { try UsbTree.fingerprint(root).files }
+        let previewTree = try await offPool { try UsbTree.fingerprint(root).files }
         guard before == previewTree else { throw Failure("옮기기 미리 보기가 USB를 바꿈") }
         log("USB 시험 옮기기 미리 보기: 곡 \(first.trackCount) · 목록 \(first.playlistCount) · 아트워크 \(first.artworkFiles) · CDJ 확인 항목 \(first.rules.count) · 트리 그대로")
         await coordinator.migrate(volume)
         guard service.lastMigration?.outcome == .written, usb.migrationBackups[volume.usbKey] != nil,
               host.toast?.action == .ejectUsb(volumeKey: volume.usbKey) else { throw Failure("옮기기 쓰기 실패(\(prompter.lastText))") }
-        let after = try await detached { try UsbTree.fingerprint(root).files }
+        let after = try await offPool { try UsbTree.fingerprint(root).files }
         guard before.allSatisfy({ after[$0.key] == $0.value }) else { throw Failure("옮기기가 원래 파일을 바꿈") }
         await coordinator.perform(.ejectUsb(volumeKey: volume.usbKey))
         try await waitDetached()
         let (image, mount) = (self.image.path, self.mountPoint.path)
-        _ = try await detached { try UsbDiskImage.attach(image: image, mountPoint: mount) }
+        _ = try await offPool { try UsbDiskImage.attach(image: image, mountPoint: mount) }
         let current = try await waitForVolume(usb)
         guard usb.libraries[current.usbKey]?.formats == UsbFormat.defaultSet,
               let info = usb.infos[current.usbKey], info.oneLibrary?.integrityOK == true, info.deviceLibrary?.roundTripOK == true,
@@ -271,11 +271,11 @@ struct UsbSelfTestScenario {
             throw Failure("옮긴 USB를 다시 붙여 읽은 결과가 다름")
         }
         await coordinator.restoreMigration(current)
-        let restored = try await detached { try UsbTree.fingerprint(root).files }
+        let restored = try await offPool { try UsbTree.fingerprint(root).files }
         guard usb.migrationBackups[current.usbKey] == nil, before == restored else { throw Failure("옮기기 되돌림 트리가 다름") }
         let backup = exported.backup.map { URL(filePath: $0) }
-        _ = try await detached { try service.restore(current, backup: backup, discardDeviceChanges: false) }
-        let final = try await detached { try UsbTree.fingerprint(root).files }
+        _ = try await offPool { try service.restore(current, backup: backup, discardDeviceChanges: false) }
+        let final = try await offPool { try UsbTree.fingerprint(root).files }
         guard final == empty else { throw Failure("Device Library 내보내기 되돌림 트리가 다름") }
         return "USB 시험 옮기기 통과 · 곡 \(first.trackCount) · 목록 \(first.playlistCount) · 아트워크 \(first.artworkFiles) · 원래 파일 그대로 · 왕복 true · 되돌림 차이 0"
     }
@@ -292,7 +292,7 @@ struct UsbSelfTestScenario {
               let removed = read.tracks.first else {
             throw Failure("편집할 USB 라이브러리를 읽지 못했습니다")
         }
-        let before = try await detached { try UsbTree.walk(root) }
+        let before = try await offPool { try UsbTree.walk(root) }
         let names = UsbSelfTestNamePrompter(answers: ["DJC 시험 새 목록", "DJC 시험 목록 2"])
         let actions = UsbEditActions(usb: usb, host: host, prompter: prompter, namePrompter: names)
         let rows = UsbLibraryRows.collection(library: read, volumeKey: key, mountPoint: volume.mountPoint, badges: [:])
@@ -311,7 +311,7 @@ struct UsbSelfTestScenario {
         guard preview.canWrite, preview.writtenCount == 3 else {
             throw Failure("편집 미리 보기로 쓸 수 없습니다(\((preview.stopping + UsbWriteFlow.editLines(preview)).joined(separator: " / ")))")
         }
-        let journal = await detached { service.journal(volumeKey: key) }
+        let journal = await offPool { service.journal(volumeKey: key) }
         log("USB 시험 편집 미리 보기 뒤 저널: \(Self.journalText(journal)) · 끝나지 않은 쓰기 \(journal.isPending)")
         await coordinator.writeDraft(volumeKey: key, database: library.database, share: library.share, snapshotTime: snapshotTime,
                                      reusing: preview)
@@ -327,7 +327,7 @@ struct UsbSelfTestScenario {
 
         // 다시 읽기: 두 형식 곡 2 · 목록 2, 새 이름
         let scratch = base.appending(path: "info-\(UUID().uuidString)")
-        let info = try await detached {
+        let info = try await offPool {
             try UsbRead.live.info(root: URL(filePath: volume.mountPoint), scratch: scratch, volume: volume)
         }
         let oneLibrary = info.oneLibrary, deviceLibrary = info.deviceLibrary
@@ -343,12 +343,12 @@ struct UsbSelfTestScenario {
         // 이 편집의 백업으로 되돌리기 → 트리가 편집 전과 같다
         guard usb.beginWrite(volume, title: "USB 시험: 편집을 되돌리는 중", cancellable: false) != nil else { throw Failure("볼륨을 잠그지 못했습니다") }
         let backup = report.backup.map { URL(filePath: $0) }
-        let restored = await detached { Result { try service.restore(volume, backup: backup, discardDeviceChanges: false) } }
+        let restored = await offPool { Result { try service.restore(volume, backup: backup, discardDeviceChanges: false) } }
         usb.endWrite(key)
         guard case let .success(restoreReport) = restored, restoreReport.outcome == .restored else {
             throw Failure("편집을 되돌리지 못했습니다(\(restored))")
         }
-        let after = try await detached { try UsbTree.walk(root) }
+        let after = try await offPool { try UsbTree.walk(root) }
         let differ = Set(before).symmetricDifference(Set(after)).map(\.relativePath).sorted()
         log("USB 시험 편집 되돌리기: 트리 차이 \(differ.count)" + (differ.isEmpty ? "" : " (\(differ.prefix(5).joined(separator: ", ")))"))
         guard differ.isEmpty else { throw Failure("되돌린 트리가 편집 전과 다릅니다") }
@@ -379,7 +379,7 @@ struct UsbSelfTestScenario {
     private func waitDetached() async throws {
         let image = self.image.path
         for _ in 0..<40 {
-            let lines = try await detached { try UsbDiskImage.info(image: image) }
+            let lines = try await offPool { try UsbDiskImage.info(image: image) }
             if lines.contains("붙어 있지 않음") { return }
             try await Task.sleep(for: .milliseconds(250))
         }
@@ -402,12 +402,13 @@ struct UsbSelfTestScenario {
         }.count
     }
 
-    private func detached<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
-        try await Task.detached(priority: .userInitiated, operation: body).value
+    /// 디스크 이미지·USB 트리 입출력은 협력 풀 밖에서 한다(`BlockingWork`)
+    private func offPool<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+        try await BlockingWork.run(body)
     }
 
-    private func detached<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
-        await Task.detached(priority: .userInitiated, operation: body).value
+    private func offPool<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
+        await BlockingWork.run(body)
     }
 }
 

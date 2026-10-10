@@ -647,6 +647,11 @@ IMPORT_CASES = {
     # 핵심부에는 화면 상태가 없다: 관찰(Observation)은 앱 화면 모델에 둔다.
     "imports-core-observable": ({"Sources/DJCApplication/Session.swift": "import Observation\n@Observable final class Session {}\n"}, "", 1,
                                 "Session.swift\tapi\tObservation", False),
+    # 핵심부는 동기 일을 Task.detached로 협력 풀에 올리지 않는다(막는 입출력은 BlockingWork.run, 취소를 보는 계산은 @concurrent).
+    "imports-core-detached": ({"Sources/DJCApplication/Reader.swift":
+                               "let v = try await Task.detached(priority: .utility) { try read() }.value\n"
+                               "// Task.detached 대신 BlockingWork.run\nlet w = await BlockingWork.run { read() }\n"}, "", 1,
+                              "Reader.swift\tapi\tTask.detached", False),
     # 뷰 규칙(MVVM): View를 채택한 타입이 든 앱 파일은 Task를 시작하지 않고 await하지 않는다(화면 모델 메서드를 부른다).
     "imports-view-task": ({"Sources/DJCrate/Library/LibraryView.swift":
                            """%sButton("저장") { Task { await model.save() } }\n    }\n}\n""" % VIEW_HEAD}, "", 1,

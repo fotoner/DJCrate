@@ -107,6 +107,8 @@ FORBIDDEN_API = [
     ("Locale·TimeZone·Calendar.current", re.compile(r"\b(?:Locale|TimeZone|Calendar)\s*\.\s*(?:current|autoupdatingCurrent)\b")),
     # 화면 상태(관찰)는 앱 화면 모델에 둔다. 핵심부는 값·결과·이벤트를 돌려준다
     ("Observation", re.compile(r"\bimport\s+Observation\b|@Observable\b")),
+    # 협력 스레드 풀에서 막지 않는다. 동기 입출력(포트)은 BlockingWork.run, 취소를 보는 계산은 @concurrent로 부른다(docs/architecture.md 포트 절)
+    ("Task.detached", re.compile(r"\bTask\s*\.\s*detached\b")),
 ]
 IMPLICIT_API = ".main·.current·.now(암묵 멤버)"
 # 타입 없이 쓴 환경 멤버(Mutex<Locale>(.current), locale: Locale = .current, queue: .main). 앞이 식의 끝이면 멤버 접근이다

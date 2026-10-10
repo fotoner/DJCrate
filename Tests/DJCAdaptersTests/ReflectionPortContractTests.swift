@@ -13,7 +13,9 @@ import Testing
 @MainActor
 @Suite("반영 포트 계약(실제)")
 struct ReflectionPortContractTests {
-    static let copyGuard = RekordboxWriteGuard(isLive: { _ in false }, isRekordboxRunning: { false }, appVersion: { "7.2.18" })
+    /// 입구는 대상이 라이브인지 먼저 본다. 그 자리에서 협력 풀 밖인지도 본다(미리 보기의 사본 쓰기도 `BlockingWork`로 돈다)
+    static let copyGuard = RekordboxWriteGuard(isLive: { _ in expectBlockingOffPool(); return false }, isRekordboxRunning: { false },
+                                               appVersion: { "7.2.18" })
 
     @Test func 백업_폴더_실제_구현() throws {
         let folder = try TemporaryFolder(prefix: "djc-backups-contract")

@@ -1,8 +1,10 @@
 import DJCApplication
 import DJCDomain
+import DJCTestKit
 import Foundation
 import PortTestKit
 import Synchronization
+import Testing
 
 /// 반영 세션 시험의 가짜 포트 묶음. 화면 상태(`state`)·초안(`drafts`, 메모리)·관문 결과(`gate`)를 정해 두고 세션을 만들면,
 /// 세션이 부른 것(관문 호출·화면 변경·확인 창·잠금·다시 읽기·결과)을 남긴다. DB·디스크·앱 없이 흐름과 판정을 본다.
@@ -159,7 +161,9 @@ final class ReflectionHarness {
 
     private var snapshots: SnapshotTaker {
         let log = log
+        // 사본 뜨기는 DB를 통째로 복사하는 일이라 세션은 협력 풀 밖에서 부른다
         return SnapshotTaker { _ in
+            expectBlockingOffPool()
             log.record("snapshot")
             return URL(filePath: "/snapshots/copy.db")
         }

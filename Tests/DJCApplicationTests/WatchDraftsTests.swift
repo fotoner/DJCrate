@@ -1,5 +1,6 @@
 import DJCApplication
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Synchronization
 import Testing
@@ -37,9 +38,10 @@ struct WatchDraftsTests {
         /// 색인이 읽는 것만 기록하는 초안 저장소(나머지는 메모리 구현)
         var repository: DraftStore {
             var store = MemoryDrafts().store
-            store.flush = { self.record("flush") }
+            // 저장 대기 끝내기와 파일 시각 읽기는 실제로 막는 일이라 협력 풀 밖에서 불려야 한다
+            store.flush = { expectBlockingOffPool(); self.record("flush") }
             store.saveRevision = { self.state.withLock { $0.revision } }
-            store.fileStamps = { self.record("stamps"); return self.state.withLock { $0.stamps } }
+            store.fileStamps = { expectBlockingOffPool(); self.record("stamps"); return self.state.withLock { $0.stamps } }
             store.preserveDamaged = { self.record("damaged"); return self.state.withLock { $0.damaged } }
             store.cueDraftUUIDs = { self.record("cueUUIDs"); return Set(self.state.withLock { $0.cues.keys }) }
             store.cueDraft = { uuid in self.record("cue"); return self.state.withLock { $0.cues[uuid] } }

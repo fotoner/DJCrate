@@ -38,11 +38,13 @@ public struct StageEdit: Sendable {
         let addedOn = String(ISO8601DateFormatter().string(from: now()).prefix(10))
         let read = try await files.readTrack(request.file, addedOn)
         let drafts = StagedEditDrafts(track: read, grid: request.grid, cues: request.cues, source: request.source, title: request.title)
-        let rollBack = try files.writeDrafts(drafts)
+        // 초안 파일 쓰기·되돌리기는 동기 입출력이라 협력 풀 밖에서 한다
+        let writeDrafts = files.writeDrafts
+        let rollBack = try await BlockingWork.run { try writeDrafts(drafts) }
         do {
             try await append(drafts.track)
         } catch {
-            rollBack()
+            await BlockingWork.run { rollBack() }
             throw error
         }
         return drafts.track

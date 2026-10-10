@@ -1,5 +1,6 @@
 import DJCAdapters
 import DJCAnalysis
+import DJCApplication
 import DJCDomain
 import DJCStorage
 import DJCTestKit
@@ -83,7 +84,8 @@ struct StorageSettingsTests {
     @Test func 다른_디스크라_클론이_안_되면_자동_스냅샷을_뜨지_않는다고_알린다() async throws {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }
-        let cloning = StorageSettingsModel(paths: scene.paths, files: .live, canClone: { true })
+        // 용량 읽기·클론 확인은 폴더를 훑는 동기 입출력이라 협력 풀 밖에서 한다
+        let cloning = StorageSettingsModel(paths: scene.paths, files: .live, canClone: { expectBlockingOffPool(); return true })
         await cloning.refresh()
         #expect(cloning.autoSnapshotNote == nil)
         let other = StorageSettingsModel(paths: scene.paths, files: .live, canClone: { false })
@@ -108,7 +110,11 @@ struct StorageSettingsTests {
     @Test func 종류를_비우면_확인_없이_지우고_한_줄로_알리고_용량을_다시_읽는다() async throws {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }
-        let model = StorageSettingsModel(paths: scene.paths, files: .live)
+        // 비우기는 파일을 지우는 동기 입출력이라 협력 풀 밖에서 한다
+        var files = CacheFiles.live
+        let clear = files.clear
+        files.clear = { kinds, paths, keeping, dryRun in expectBlockingOffPool(); return clear(kinds, paths, keeping, dryRun) }
+        let model = StorageSettingsModel(paths: scene.paths, files: files)
         await model.refresh()
         await model.clear([.waveforms])
         #expect(!scene.exists("waveforms/a-1.json"))

@@ -62,9 +62,13 @@ public struct WatchDrafts: Sendable {
     }
 
     /// 바깥에서 바꾼 초안 파일을 확인한다. 파일 수정 시각이 `stamps`와 같고 저장 대기 입력이 없으면 내용을 읽지 않는다.
+    /// 저장 대기 끝내기(`flush`)와 파일 읽기가 막으므로 협력 풀 밖에서 한다(`BlockingWork`).
     /// - Parameter preservingDamaged: 읽지 못하는 파일을 옮겨 보관할지(앱 데이터 폴더를 정한 저장소만)
-    @concurrent
     public func refresh(since stamps: [String: Date]?, preservingDamaged: Bool) async -> Refresh {
+        await BlockingWork.run { [self] in refreshNow(since: stamps, preservingDamaged: preservingDamaged) }
+    }
+
+    private func refreshNow(since stamps: [String: Date]?, preservingDamaged: Bool) -> Refresh {
         let revision = drafts.saveRevision()
         drafts.flush()
         let unsaved = drafts.unsaved()

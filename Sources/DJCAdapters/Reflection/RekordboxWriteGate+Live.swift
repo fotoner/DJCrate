@@ -19,11 +19,14 @@ extension RekordboxWriteGate {
                                                         artworks: batch.artworks.map(\.trackUUID)) { snapshot, share in
                     await copied()
                     try Task.checkCancellation()
-                    return try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags,
-                                                     artworks: batch.artworks, analysisInputs: inputs, playlistDraft: batch.playlists,
-                                                     merges: batch.merges, histories: batch.histories, to: snapshot, dryRun: true,
-                                                     backups: snapshot.deletingLastPathComponent().appending(path: "backups"), shareRoot: share,
-                                                     guard: writeGuard)
+                    // 사본에 끝까지 써 보는 일은 오래 막는 DB 입출력이라 협력 풀 밖에서 한다(사본 뜨기는 작업 취소를 보며 풀에서 한다)
+                    return try await BlockingWork.run {
+                        try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags,
+                                                  artworks: batch.artworks, analysisInputs: inputs, playlistDraft: batch.playlists,
+                                                  merges: batch.merges, histories: batch.histories, to: snapshot, dryRun: true,
+                                                  backups: snapshot.deletingLastPathComponent().appending(path: "backups"), shareRoot: share,
+                                                  guard: writeGuard)
+                    }
                 }
             },
             restore: { backup, target in

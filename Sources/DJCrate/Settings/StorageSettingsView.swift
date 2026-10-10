@@ -73,9 +73,10 @@ final class StorageSettingsModel {
 
     func refresh() async {
         let paths = paths, files = files, keep = [openSnapshot()].compactMap { $0 }, canClone = canClone
-        let result = await Task.detached(priority: .userInitiated) {
+        // 폴더를 훑는 동기 입출력이라 협력 풀 밖에서 한다
+        let result = await BlockingWork.run {
             (files.usage(paths), files.backupUsage(paths.root), files.clear(DJCCacheKind.allCases, paths, keep, true), canClone())
-        }.value
+        }
         usage = result.0
         backups = result.1
         clearable = Dictionary(uniqueKeysWithValues: result.2.map { ($0.kind, $0.freedBytes) })
@@ -89,9 +90,7 @@ final class StorageSettingsModel {
         defer { isWorking = false }
         let paths = paths, files = files, keep = [openSnapshot()].compactMap { $0 }
         await clearMemory(kinds)
-        let outcomes = await Task.detached(priority: .userInitiated) {
-            files.clear(kinds, paths, keep, false)
-        }.value
+        let outcomes = await BlockingWork.run { files.clear(kinds, paths, keep, false) }
         rebuild(kinds)
         message = Self.summary(outcomes)
         await refresh()

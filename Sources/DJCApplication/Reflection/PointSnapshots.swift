@@ -175,12 +175,12 @@ public struct PointSnapshots: Sendable {
         return (points + writes).sorted { $0.date > $1.date }
     }
 
-    /// 목록과 클론 가능 여부(메인 액터 밖에서 읽는다)
+    /// 목록과 클론 가능 여부(메인 액터와 협력 풀 밖에서 읽는다)
     public func load() async -> (rows: [PointSnapshotRow], canClone: Bool) {
         let points = self
-        return await Task.detached(priority: .userInitiated) {
+        return await BlockingWork.run {
             (points.rows(), points.files.canClone(points.database.deletingLastPathComponent(), points.directory))
-        }.value
+        }
     }
 
     /// 복원 직전 스냅샷은 이름 대신 무엇으로 되돌리기 전인지 보인다
@@ -210,9 +210,9 @@ public struct PointSnapshots: Sendable {
     public func create(name: String, autoDays: Int, now: Date, blockReason: String? = nil) async throws -> RekordboxPointSnapshotEntry {
         if let blockReason { throw PointSnapshotRefusal.busy(blockReason) }
         let points = self
-        return try await Task.detached(priority: .userInitiated) {
+        return try await BlockingWork.run {
             try points.files.create(name, points.database, points.shareRoot, points.directory, autoDays, now)
-        }.value
+        }
     }
 
     public func setPinned(_ pinned: Bool, _ entry: RekordboxPointSnapshotEntry) throws {
@@ -222,7 +222,7 @@ public struct PointSnapshots: Sendable {
     /// 묻지 않고 지운다(CLI: 명령이 곧 동의다). 고정한 것은 실제 구현이 거부한다
     public func delete(_ entry: RekordboxPointSnapshotEntry) async throws {
         let points = self, url = entry.url
-        try await Task.detached(priority: .userInitiated) { try points.files.delete(url, points.directory) }.value
+        try await BlockingWork.run { try points.files.delete(url, points.directory) }
     }
 
     /// 지운 스냅샷은 되살릴 수 없어 한 번 묻는다. 고정한 것은 묻지도 않는다.
@@ -253,9 +253,9 @@ public struct PointSnapshots: Sendable {
     /// 고른 스냅샷과 지금 라이브러리를 견준다(읽기만)
     public func compare(_ entry: RekordboxPointSnapshotEntry) async throws -> RekordboxPointSnapshotDiff {
         let points = self
-        return try await Task.detached(priority: .userInitiated) {
+        return try await BlockingWork.run {
             try points.files.compare(entry, points.database, points.shareRoot)
-        }.value
+        }
     }
 
     // MARK: - 복원

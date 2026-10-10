@@ -74,7 +74,7 @@ enum HistorySelfTest {
             do {
                 _ = try checkedDatabase(database, snapshot: snapshot)
                 let before = try Data(contentsOf: database)
-                let keys = try await Task.detached { try LocalLibraryKeysReader.load(snapshot: snapshot) }.value
+                let keys = try await BlockingWork.run(qos: .default) { try LocalLibraryKeysReader.load(snapshot: snapshot) }
                 guard let key = keys.tracks.first(where: { $0.contentID == row.track.id }) else { exit(2) }
                 let archive = ArchivedHistory(id: "usbhistory-selftest", name: "HISTORY 2026-10-09", importedAt: Date(timeIntervalSince1970: 1_791_524_834),
                     sequence: 1, source: .init(volumeKey: "SELFTEST", volumeName: "합성 USB", format: "deviceLibrary", historyID: 1, historyName: "HISTORY 001"),
@@ -83,7 +83,7 @@ enum HistorySelfTest {
                                     masterContentId: Int64(key.masterSongID) ?? 0,
                                     fileName: UsbPathRules.audioFileName(sourcePath: key.folderPath, fileNameL: key.fileNameL))])
                 let archiveStore = UsbHistoryStore(directory: URL(filePath: home).appending(path: "usb-histories"), home: URL(filePath: home))
-                try await Task.detached { try archiveStore.save([archive]) }.value
+                try await BlockingWork.run(qos: .default) { try archiveStore.save([archive]) }
                 store.usbHistories = ArchiveUsbHistories(files: .live(directory: archiveStore.directory, home: URL(filePath: home)),
                                                          now: { Date() }, newID: { UUID().uuidString })
                 await store.loadArchivedHistories()

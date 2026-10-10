@@ -3,6 +3,7 @@ import AppKit
 import DJCAdapters
 import DJCApplication
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Synchronization
 import Testing

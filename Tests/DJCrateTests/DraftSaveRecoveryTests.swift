@@ -4,6 +4,7 @@ import DJCApplication
 import DJCDomain
 import DJCAnalysis
 import DJCStorage
+import DJCTestKit
 import Foundation
 import RekordboxFixtures
 import RekordboxKit
