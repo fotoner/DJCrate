@@ -62,8 +62,9 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - 반영 세션 `ReflectionSession`은 rekordbox 쓰기 흐름이 함께 쓰는 유스케이스다. 앱의 반영, 곡 넣기·빼기, 복원이 이 세션을 쓴다. 시점 복원과 iTunes 동기화도 같은 세션을 쓴다.
 - CLI 쓰기 명령도 같은 세션을 쓴다. CLI는 세션 옵션으로 쓴 뒤의 초안 정리와 되살리기를 끈다.
 - 라이브러리 쪽(`Library/`)은 여러 흐름을 유스케이스로 둔다. 읽기, 초안 지켜보기, 추가한 곡이 유스케이스다. XML 가져오기와 내보내기, 막힌 초안 복구도 유스케이스다. 바깥 일은 포트 묶음 `LibraryPorts`로 받는다.
-- 공유 저장소 `LibraryStore`는 유스케이스 묶음 `LibraryUseCases`를 받는다. 저장소는 유스케이스 결과를 화면 상태에 적용한다.
-- 한 기능의 상태와 흐름은 기능 조각에 둔다. 기능 조각은 공유 저장소의 속성이다(#248). 태그 편집 조각 `TagEditStore`가 그 예다.
+- 공유 핵심 `LibraryStore`는 화면 여럿이 같은 값을 봐야 하는 상태만 든다. 읽은 곡과 목록 줄, 사이드바·선택·덱 곡, 초안 표시, 쓰기 잠금, 알림, 파일 없음 확인이다. 핵심은 유스케이스 묶음 `LibraryUseCases`를 받아 결과를 화면 상태에 적용한다.
+- 라이브러리 화면의 상태는 세 겹이다(#248). 공유 핵심, 기능 하나의 기능 조각(`…Store`), 화면 하나의 화면 모델(`…Model`)이다. 겹마다 두는 것은 [MVVM 패턴의 MVVM-6](mvvm.md#mvvm-6-예외)에 있다.
+- 한 기능의 상태와 흐름은 기능 조각에 둔다. 기능 조각은 공유 핵심의 속성이다. 태그 편집 조각 `TagEditStore`가 그 예다.
   - 태그 초안 색인(`tagDrafts`)은 공유 저장소에 남는다. 곡 목록, 인스펙터, 반영이 같은 색인을 보기 때문이다.
   - 받는 값과 충돌 해결의 규칙과 순서는 유스케이스 `EditTags`가 맡는다. 조각에는 되돌리기 등록과 색인 반영만 남는다.
 - **Music(iTunes) 표시 상태는 기능 조각 `MusicLibraryStore`가 든다(#253).** 조각은 저장소의 `let music` 속성이다. 조각이 드는 것은 아래와 같다.
@@ -72,7 +73,10 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - 동기화 창 화면 모델 `ITunesSyncModel`은 저장소 대신 좁은 포트(`ITunesSyncModel.Ports`)를 받는다. Music 결과에 맞춰 곡 목록·사이드바 선택을 고치는 일은 저장소가 한다.
 - **재생 기록 트리·보존본·쓰기 대기는 기능 조각 `HistoryStore`가 든다(#251).** 조각은 저장소의 `history` 속성이다. 보존의 줄 세우기·채택·실패 알림은 유스케이스 `ArchiveUsbHistories`가 정한다. 유스케이스는 화면 포트 `UsbHistoryScreen`으로 조각의 값을 읽는다. 결과도 그 포트로 알린다.
 - **재생 목록 트리·초안·연결 기록은 기능 조각 `PlaylistEditStore`가 든다(#251).** 조각은 저장소의 `playlists` 속성이다. 최근 목록·넣기 전 나누기·기록 원본 고르기의 규칙은 유스케이스 `EditPlaylists`가 정한다. 사이드바의 폴더 펼침과 이름 바꾸기는 화면 모델 `PlaylistSidebarModel`이 든다.
-- **추가한 곡·그리드 일괄 추정·XML 내보내기는 기능 조각 `TrackStagingStore`가 든다(#252).** 조각은 저장소의 `staging` 속성이다. 넣기·저장·추정의 규칙과 순서는 유스케이스 `StageTracks`와 `ExportXML`이 정한다. 목록 아래 막대의 단추·막힘 이유와 파일 없음 확인은 화면 모델 `ListActionBarModel`이 든다.
+- **추가한 곡·그리드 일괄 추정·XML 내보내기는 기능 조각 `TrackStagingStore`가 든다(#252).** 조각은 저장소의 `staging` 속성이다. 넣기·저장·추정의 규칙과 순서는 유스케이스 `StageTracks`와 `ExportXML`이 정한다. 목록 아래 막대의 단추·막힘 이유는 화면 모델 `ListActionBarModel`이 든다. 파일 없음 확인은 곡 행을 바꾸므로 공유 핵심이 한다(#254).
+- **주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다(#254).** 그 시트는 쓰기 결과, 연결되지 않은 초안, rekordbox XML 가져오기다. 처음 읽기, 스냅샷, 동기화, 끌어 놓기 같은 주 창 단추는 이 모델의 입구를 부른다. 메뉴 막대의 메뉴 항목(`LibraryMenuAction`)도 이 모델을 받는다. 재생 목록 고르기, USB, 막힌 초안 복구의 시트는 그 주인이 든다.
+- 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`.
+- **곡 목록 표와 덱 묶음은 공유 핵심을 통째로 받지 않는다(#254).** 표는 읽는 값 13개만 든 프로토콜 `TrackListSource`를 받는다. 메뉴·칸 편집·끌기는 조정자 `TrackListCoordinator`가 핵심을 부른다. 덱 묶음은 프로토콜 `DeckLibrarySource`와 태그 편집 조각을 받는다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
   - 읽기 순번: 늦게 끝난 옛 결과를 버린다
