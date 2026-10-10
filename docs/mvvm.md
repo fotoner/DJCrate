@@ -274,6 +274,7 @@ try await h.loaded()
 
 - **덱 재생 경로**: `DeckModel`은 오디오 엔진 포트 `DeckAudioEngine`을 직접 부른다. 매 프레임 재생 위치와 샘플 단위 예약을 유스케이스 한 겹 뒤로 미루지 않으려는 것이다. 이유는 [구조 문서의 경계 규칙](architecture.md#경계-규칙)에 있다.
 - **공유 저장소 `LibraryStore`**: 사이드바, 곡 목록, 인스펙터, 태그 시트가 함께 쓴다. 나누기 전까지 이 모양을 둔다. 새 화면은 자기 화면 모델을 만든다. 그 화면 모델이 `LibraryStore`의 값을 읽는다.
+  - 저장소의 흐름 순서도 유스케이스로 옮긴다. 예: 읽기 순번·요청 합치기·Music 최신화 잇기는 `LibraryReadFlow`에 있다. 저장소는 화면 포트 `LibraryReadScreen`으로 상태를 넘긴다. 저장소는 흐름이 알린 결과를 표시한다.
 
 ```swift
 // Sources/DJCrate/Deck/DeckModel+Transport.swift — 예외: 화면 모델이 엔진 포트를 직접 부른다
