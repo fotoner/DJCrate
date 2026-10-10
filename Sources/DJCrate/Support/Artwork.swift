@@ -1,5 +1,6 @@
 import AppKit
 import DJCApplication
+import DJCDomain
 import Foundation
 
 /// rekordbox에 그림을 쓰거나 되돌린 곡(ContentID)마다 올리는 번호(#66). 그림 바꾸기는 `ImagePath`가 그대로라 ContentID만 열쇠로 쓰면
@@ -37,6 +38,16 @@ actor Thumbnails {
         guard !Task.isCancelled else { return nil }
         let box = artwork.listThumbnail(imagePath: imagePath, shareRoot: root).map(Box.init)
         // 아트워크가 없는 곡도 기억해 파일을 다시 열지 않는다.
+        cache.setObject(Entry(box), forKey: key as NSString)
+        return box
+    }
+
+    /// USB 곡의 그림(#256): 마운트한 볼륨의 작은 그림(`a{id}.jpg`·`b{id}.jpg`, rekordbox `artwork_s.jpg`와 같은 바이트)을 목록 크기로 읽는다(읽기 전용).
+    /// 그림이 없으면 파일을 열지 않는다. 뿌리는 늘 볼륨이라 기본 rekordbox 폴더로 가지 않는다
+    func usbImage(_ files: TrackRow.UsbFiles, key: String) -> Box? {
+        if let hit = cache.object(forKey: key as NSString) { return hit.box }
+        guard !Task.isCancelled, let path = files.artwork else { return nil }
+        let box = artwork.thumbnail(imagePath: path, shareRoot: files.root, maxPixels: 64).map(Box.init)
         cache.setObject(Entry(box), forKey: key as NSString)
         return box
     }

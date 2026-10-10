@@ -32,6 +32,8 @@ import Observation
     /// 볼륨키 → 모양
     private(set) var shapes: [String: Shape] = [:]
     private(set) var libraries: [String: UsbLibrary] = [:]
+    /// 볼륨키 → 라이브러리를 읽은 판. 읽을 때마다 오른다(곡 줄의 썸네일이 같은 자리에 덮어쓴 그림도 새로 읽게)
+    private(set) var libraryRevisions: [String: Int] = [:]
     private(set) var infos: [String: UsbInfo] = [:]
     /// 볼륨키 → content_id → 상태
     private(set) var syncBadges: [String: [Int: UsbSyncStatus]] = [:]
@@ -291,6 +293,7 @@ import Observation
                 let evaluated = await badges(for: library)
                 infos[key] = info
                 libraries[key] = library
+                libraryRevisions[key, default: 0] += 1
                 syncBadges[key] = evaluated.badges
                 localMatches[key] = evaluated.matches
                 shapes[key] = .rekordbox(formats: formats)
@@ -511,11 +514,14 @@ import Observation
         guard let volume = volume(target.volumeKey), let read = libraries[target.volumeKey] else { return [] }
         let library = UsbDraftProjection.library(read, edits: draftEdits[target.volumeKey] ?? [])
         let badges = syncBadges[target.volumeKey] ?? [:]
+        let revision = libraryRevisions[target.volumeKey] ?? 0
         switch target {
         case .collection:
-            return UsbLibraryRows.collection(library: library, volumeKey: target.volumeKey, mountPoint: volume.mountPoint, badges: badges)
+            return UsbLibraryRows.collection(library: library, volumeKey: target.volumeKey, mountPoint: volume.mountPoint, badges: badges,
+                                             revision: revision)
         case let .playlist(_, id):
-            return UsbLibraryRows.playlist(id, library: library, volumeKey: target.volumeKey, mountPoint: volume.mountPoint, badges: badges)
+            return UsbLibraryRows.playlist(id, library: library, volumeKey: target.volumeKey, mountPoint: volume.mountPoint, badges: badges,
+                                           revision: revision)
         case .pending:
             return []
         }

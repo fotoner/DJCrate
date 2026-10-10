@@ -79,14 +79,24 @@ struct TrackColumn {
         if remember { defaults.set(true, forKey: ratingWidthMigratedKey) }
     }
 
-    /// USB 갱신 상태 칸. USB 목록을 볼 때만 보이고 다른 목록에서는 숨긴다
+    /// USB 갱신 상태 칸. USB 목록을 볼 때만 보이고 다른 목록에서는 숨긴다. 다른 칸은 USB 목록도 컬렉션과 같은 배치를 쓴다(#256)
     static let usbSyncID = "usbSync"
 
-    /// USB 목록에서 보이는 칸: # 번호·제목·아티스트·BPM·키·갱신 상태. 나머지는 USB에서 읽지 않았거나(큐·그리드·미리 보기)
-    /// 로컬 초안·분류에 쓰는 칸이라 숨긴다
-    static let usbColumns: Set<String> = ["index", "title", "artist", "bpm", "key", usbSyncID]
+    static let usbSyncColumnPlacedKey = "djc.trackList.usbSyncColumnPlaced"
 
-    /// USB 곡에서 읽지 않은 값의 칸(칸이 보이더라도 비운다 — 큐 없음·자동 같은 표시가 틀린 정보가 된다)
+    /// 갱신 상태 칸을 한 번만 키 칸 바로 뒤로 옮긴다. 그 뒤로는 사용자가 옮긴 자리를 지킨다(칸 배치와 함께 자동 저장된다). 칸을 만든 직후 부른다.
+    /// - Parameter remember: 했다는 표시를 남길지(성능 측정 때는 칸 배치를 저장하지 않으므로 남기지 않는다)
+    @MainActor static func placeUsbSyncColumn(in table: NSTableView, defaults: UserDefaults = .standard, remember: Bool = true) {
+        guard !defaults.bool(forKey: usbSyncColumnPlacedKey) else { return }
+        if let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == usbSyncID }),
+           let key = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "key" }) {
+            table.moveColumn(from, toColumn: from > key ? key + 1 : key)
+        }
+        if remember { defaults.set(true, forKey: usbSyncColumnPlacedKey) }
+    }
+
+    /// USB 목록을 읽을 때 읽지 않는 값의 칸(칸이 보이더라도 비운다 — 큐 없음·자동 같은 표시가 틀린 정보가 된다).
+    /// 큐는 곡마다 USB 분석 파일에 있어 목록을 읽을 때 읽지 않는다(큐·그리드 가져오기만 읽는다)
     static let usbUnreadColumns: Set<String> = ["hotCues", "memoryCues", "tempo"]
 
     /// 처음에 숨기는 칸(머리글 오른쪽 클릭으로 보인다). 태그 칸은 모두 목록에서 바로 고칠 수 있게 두되(#88) 자주 쓰지 않는 칸은 숨긴다.

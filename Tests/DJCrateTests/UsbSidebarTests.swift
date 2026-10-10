@@ -166,9 +166,9 @@ struct UsbSidebarTests {
                            previewRevision: 0)
         func visible() -> [String] { table.tableColumns.filter { !$0.isHidden }.map(\.identifier.rawValue) }
         #expect(!visible().contains("usbSync"))
-        // USB 목록은 # 번호·제목·아티스트·BPM·키·갱신 상태만, 갱신 상태는 키 바로 뒤에
+        // USB 목록도 컬렉션에서 고른 칸 배치를 그대로 쓰고 갱신 상태 칸만 더 보인다(#256)
         coordinator.updateUsbMode(true)
-        #expect(visible() == ["index", "title", "artist", "bpm", "key", "usbSync"])
+        #expect(visible() == ids.filter { $0 != "album" })
         // 읽지 않은 큐·그리드 값은 칸이 보이더라도 비운다(큐 없음 경고색 '없음'을 달지 않는다)
         func text(_ column: String) -> String? {
             let tableColumn = table.tableColumns.first { $0.identifier.rawValue == column }
@@ -176,12 +176,6 @@ struct UsbSidebarTests {
         }
         #expect(text("memoryCues") == "" && text("hotCues") == "" && text("tempo") == "")
         #expect(text("key") == "8A")
-        // 칸 메뉴로 USB 목록의 칸을 바꾸지 않는다
-        let columnMenu = coordinator.makeColumnMenu(table)
-        coordinator.menuNeedsUpdate(columnMenu)
-        #expect(!columnMenu.items.isEmpty && columnMenu.items.allSatisfy { $0.action == nil })
-        coordinator.showAllColumns()
-        #expect(visible() == ["index", "title", "artist", "bpm", "key", "usbSync"])
         let menu = coordinator.makeMenu()
         coordinator.menuNeedsUpdate(menu)
         let actions = Set(menu.items.compactMap(\.action).map(NSStringFromSelector))
@@ -196,7 +190,7 @@ struct UsbSidebarTests {
         #expect(!store.tagDrafts.keys.contains { $0.hasPrefix(UsbLibraryRows.idPrefix) })
         store.loadToDeck(store.displayRows.first)
         #expect(store.deckTrackID == nil)
-        // 로컬 목록으로 돌아오면 들어가기 전 칸 숨김 상태로 돌린다(갱신 상태 칸만 숨김)
+        // 로컬 목록으로 돌아오면 갱신 상태 칸만 숨긴다(사용자가 숨긴 칸은 그대로)
         coordinator.updateUsbMode(false)
         #expect(visible() == ids.filter { $0 != "album" && $0 != "usbSync" })
         withExtendedLifetime(table) {}

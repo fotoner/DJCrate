@@ -24,15 +24,6 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
     private(set) var tagRevision = 0
     /// USB 목록을 보는 중(읽기 전용, 갱신 상태 칸을 보인다). 처음 한 번은 저장된 칸 배치와 무관하게 맞추려고 nil에서 시작한다
     private(set) var usbMode: Bool?
-    /// USB 목록에 들어가기 전의 칸 숨김 상태와 칸 배치 자동 저장 여부. 나오면 되돌린다
-    struct SavedLayout {
-        var hidden: [String: Bool]
-        var autosave: Bool
-        /// 들어가기 전 칸 순서·너비. USB 칸 배치(갱신 상태 칸을 키 뒤로)와 남는 폭 나누기를 나올 때 직접 되돌린다(#241)
-        var order: [String] = []
-        var widths: [String: CGFloat] = [:]
-    }
-    private(set) var usbSavedLayout: SavedLayout?
     /// 표 → 스토어로 선택·정렬을 넘기는 중에는 스토어 → 표 동기화를 건너뛴다(되먹임 방지).
     private var syncing = false
 
@@ -93,8 +84,7 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         guard commentPreset != preset, let table,
               let column = table.tableColumns.first(where: { $0.identifier.rawValue == "class" }) else { return }
         // 강제로 숨긴 상태가 사용자가 고른 열 숨김 설정을 덮지 않게 따로 기억한다.
-        // USB 목록을 보는 중이면 들어가기 전 상태를 기준으로 하고, 바뀐 숨김도 나올 때 돌릴 상태에 둔다.
-        let hidden = usbSavedLayout?.hidden["class"] ?? column.isHidden
+        let hidden = column.isHidden
         if commentPreset == nil {
             classHiddenWhenEnabled = store.settings.defaults.object(forKey: SettingKeys.commentClassColumnHidden.name) as? Bool ?? hidden
         } else if commentPreset?.rule != nil {
@@ -102,11 +92,7 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         }
         store.settings.set(SettingKeys.commentClassColumnHidden, classHiddenWhenEnabled)
         commentPreset = preset
-        if usbSavedLayout != nil {
-            usbSavedLayout?.hidden["class"] = preset.rule == nil || classHiddenWhenEnabled
-        } else {
-            column.isHidden = preset.rule == nil || classHiddenWhenEnabled
-        }
+        column.isHidden = preset.rule == nil || classHiddenWhenEnabled
         cancelEditing()
         reloadVisible(table)
     }
@@ -268,50 +254,23 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
         if locked { cancelEditing() }
     }
 
-    /// USB 목록이면 USB 칸(`TrackColumn.usbColumns`)만 보이고 갱신 상태 칸을 키 칸 바로 뒤에 둔다.
-    /// 나오면 들어가기 전 칸 순서·너비·숨김 상태로 돌리고 갱신 상태 칸은 숨긴다. 고치던 칸은 닫는다.
+    /// USB 목록도 컬렉션과 같은 칸 배치(보이는 칸·순서·폭)를 쓴다. 다른 점은 갱신 상태 칸이 USB 목록에서만 보이는 것뿐이다(#256).
+    /// 배치를 바꿨다 되돌리지 않으므로 자동 저장도 멈추지 않는다. 멈췄다 다시 켜면 AppKit이 저장된 배치를 다시 읽어 머리글이 어긋났다(#241).
+    /// 고치던 칸은 닫는다.
     func updateUsbMode(_ usb: Bool) {
         guard usbMode != usb else { return }
         usbMode = usb
         cancelPendingEdit()
         cancelEditing()
         clickedCell = nil
-        guard let table else { return }
-        if usb {
-            // USB 목록의 칸 배치가 사용자 칸 배치로 저장되지 않게 자동 저장을 멈춘 뒤 바꾼다(켠 채 앱을 끝내도 로컬 배치가 남게)
-            usbSavedLayout = SavedLayout(hidden: Dictionary(table.tableColumns.map { ($0.identifier.rawValue, $0.isHidden) },
-                                                            uniquingKeysWith: { first, _ in first }),
-                                         autosave: table.autosaveTableColumns,
-                                         order: table.tableColumns.map(\.identifier.rawValue),
-                                         widths: Dictionary(table.tableColumns.map { ($0.identifier.rawValue, $0.width) },
-                                                            uniquingKeysWith: { first, _ in first }))
-            table.autosaveTableColumns = false
-            for column in table.tableColumns { column.isHidden = !TrackColumn.usbColumns.contains(column.identifier.rawValue) }
-            let ids = table.tableColumns.map(\.identifier.rawValue)
-            if let from = ids.firstIndex(of: TrackColumn.usbSyncID), let key = ids.firstIndex(of: "key"), from != key + 1 {
-                table.moveColumn(from, toColumn: from > key ? key + 1 : key)
-            }
-        } else {
-            let saved = usbSavedLayout
-            usbSavedLayout = nil
-            // 순서는 moveColumn으로 먼저 되돌린다. 자동 저장을 다시 켜면 AppKit이 저장된 배치를 읽어 moveColumn 없이 순서·너비를 바꾸고,
-            // 그 뒤 머리글이 USB 때 칸 순서·숨김으로 그린 모양으로 남아 데이터 열과 어긋났다(#241). 끝에서 머리글·표도 다시 그린다.
-            for (target, id) in (saved?.order ?? []).enumerated() {
-                if let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == id }), from != target,
-                   target < table.numberOfColumns {
-                    table.moveColumn(from, toColumn: target)
-                }
-            }
-            for column in table.tableColumns {
-                let id = column.identifier.rawValue
-                column.isHidden = id == TrackColumn.usbSyncID || (saved?.hidden[id] ?? column.isHidden)
-            }
-            // 칸을 다시 보이면 남는 폭을 나눠 가진 칸 너비가 바뀌므로 숨김을 다 돌린 뒤 너비를 맞춘다
-            for column in table.tableColumns {
-                if let width = saved?.widths[column.identifier.rawValue], column.width != width { column.width = width }
-            }
-            if let saved { table.autosaveTableColumns = saved.autosave }
-        }
+        guard let table, let column = table.tableColumns.first(where: { $0.identifier.rawValue == TrackColumn.usbSyncID }),
+              column.isHidden == usb else { return }
+        // 숨김을 바꾸면 AppKit이 남는 폭을 늘어나는 칸에 나눠(uniform) 다른 칸 폭이 바뀌고, 드나들수록 컬렉션과 폭이 달라졌다.
+        // 다른 칸 폭은 바꾸기 직전 폭으로 그 자리에서 되돌린다(갱신 상태 칸 폭만큼 표가 넓어지거나 좁아진다)
+        let widths = table.tableColumns.filter { $0 !== column }.map { ($0, $0.width) }
+        column.isHidden = !usb
+        for (other, width) in widths where other.width != width { other.width = width }
+        // 칸 하나만 숨기거나 보여도 그 뒤 칸 자리가 모두 바뀐다. 머리글 전체를 지금 칸 순서로 다시 그린다
         table.tile()
         table.headerView?.needsDisplay = true
         table.needsDisplay = true
