@@ -8,5 +8,19 @@ xcuserdata/
 *.db
 *.db-wal
 *.db-shm
+*.db.itunes.json
 *.part
 snapshots/
+dist/
+
+# 커버리지 계측 빌드를 실행하면 생긴다
+*.profraw
+
+# Claude Code 서브에이전트 워크트리
+.claude/worktrees/
+
+# 워크트리 작업 표시(scripts/worker-lock.sh)
+.djc-worker.lock
+
+# 파이썬 스크립트를 돌리면 생긴다
+__pycache__/

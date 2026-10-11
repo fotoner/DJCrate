@@ -1,0 +1,4 @@
+# actionlint 1.7.12가 모르는 GitHub 호스티드 공개 미리보기 라벨만 등록한다.
+self-hosted-runner:
+  labels:
+    - xcode-27

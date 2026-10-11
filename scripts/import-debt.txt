@@ -1,0 +1,5 @@
+# 모듈 경계 규칙의 빚 목록(scripts/check-imports.py). 지금 남은 위반을 고정한다.
+# 줄: 파일<TAB>규칙<TAB>대상. 규칙: import(허용 밖 프로젝트 모듈), api(핵심부의 직접 호출), test-defaults(시험의 UserDefaults(suiteName:)),
+# view-task(뷰 파일의 Task 시작·await, 대상에 곳 수: 늘면 새 위반, 줄면 이 줄을 고친다).
+# 빚을 갚으면 그 줄을 지운다(남겨 두면 검사가 "지워도 됨"으로 실패한다). 새 위반은 여기 더하지 말고 고친다.
+# 다시 만들기: scripts/check-imports.py --write-debt

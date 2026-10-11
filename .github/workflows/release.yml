@@ -1,0 +1,107 @@
+name: 앱 릴리스
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: 검사·패키징·Release
+    # check.yml과 같은 macOS 27 공개 미리보기 이미지. 조건은 docs/ci.md 참고.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      RELEASE_TAG: ${{ github.ref_name }}
+      DJC_SIGN_IDENTITY: '-'
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 태그·실행 환경 확인
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo '::error::릴리스 태그는 vX.Y.Z 형식으로 지정하세요.'
+            exit 1
+          fi
+          sw_vers
+          xcodebuild -version
+          swift --version
+          if [[ "$(sw_vers -productVersion | cut -d. -f1)" -lt 27 ]] ||
+             [[ "$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)" -lt 27 ]] ||
+             [[ "$(uname -m)" != arm64 ]]; then
+            echo '::error::macOS 27 실행 환경과 SDK가 있는 arm64 러너를 선택하세요.'
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/djc-home" "$RUNNER_TEMP/rekordbox-fixture"
+          {
+            echo "DJC_HOME=$RUNNER_TEMP/djc-home"
+            echo "DJC_REKORDBOX_DIR=$RUNNER_TEMP/rekordbox-fixture"
+          } >> "$GITHUB_ENV"
+
+      - name: 전체 검사
+        run: scripts/check.sh
+
+      - name: ad-hoc 앱 패키지 만들기
+        run: scripts/build-app.sh --tag "$RELEASE_TAG" --package
+
+      - name: 패키지 검증
+        run: |
+          ARCHIVE="DJCrate-${RELEASE_TAG#v}-macOS-arm64.zip"
+          (cd dist && shasum -a 256 -c "$ARCHIVE.sha256")
+          ditto -x -k "dist/$ARCHIVE" "$RUNNER_TEMP/release-verify"
+          APP="$RUNNER_TEMP/release-verify/DJCrate.app"
+          codesign --verify --deep --strict "$APP"
+          test "$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")" = "${RELEASE_TAG#v}"
+          test "$(lipo -archs "$APP/Contents/MacOS/DJCrate")" = arm64
+          cmp dist/DJCrate.app/Contents/MacOS/DJCrate "$APP/Contents/MacOS/DJCrate"
+          test -f "$APP/Contents/Resources/LICENSE"
+          test -f "$APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
+
+      - name: GitHub Release 발행
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ARCHIVE="DJCrate-${RELEASE_TAG#v}-macOS-arm64.zip"
+          TITLE="DJCrate $RELEASE_TAG"
+          PRERELEASE=()
+          : > "$RUNNER_TEMP/release-notes.md"
+          # 0.x는 베타다: Pre-release로 올리고 제목과 노트 첫머리에 적는다(docs/releasing.md "베타").
+          if [[ "$RELEASE_TAG" == v0.* ]]; then
+            TITLE="DJCrate $RELEASE_TAG (베타)"
+            PRERELEASE=(--prerelease)
+            cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          > [!WARNING]
+          > **베타 버전입니다.** 기능과 저장 형식이 바뀔 수 있습니다. 확인하지 않은 환경에서는 문제가 생길 수 있습니다. rekordbox에 쓰기 전에 라이브러리를 따로 백업하세요. 문제는 [이슈](https://github.com/fotoner/DJCrate/issues)로 알려 주세요.
+          >
+          > **This is a beta release.** Features and data formats may change. Back up your rekordbox library before you write to it.
+
+          NOTES
+          fi
+          cat >> "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          macOS 27 이상 / Apple Silicon(arm64)용 앱입니다.
+
+          **Developer ID 서명·Apple 공증을 제공하지 않습니다.** 번들의 ad-hoc 서명은 배포자 신원을 보증하지 않으며, 다운로드한 앱은 macOS에서 차단될 수 있습니다.
+
+          ZIP과 `.sha256`을 같은 폴더에 받은 뒤 `shasum -a 256 -c DJCrate-*.zip.sha256`으로 전송 무결성을 확인하세요. ZIP을 풀고 DJCrate.app을 응용 프로그램 폴더로 옮기세요. 차단되면 아래 설치 안내에서 Apple의 공식 승인 절차를 확인하세요.
+          NOTES
+          printf '\n[설치·검증 안내](%s/%s/blob/%s/docs/releasing.md)\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$RELEASE_TAG" >> "$RUNNER_TEMP/release-notes.md"
+          gh release create "$RELEASE_TAG" "dist/$ARCHIVE" "dist/$ARCHIVE.sha256" \
+            --verify-tag --title "$TITLE" "${PRERELEASE[@]}" --generate-notes \
+            --notes-file "$RUNNER_TEMP/release-notes.md"

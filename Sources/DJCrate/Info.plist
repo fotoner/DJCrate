@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- 실행 파일에 넣는 언어 목록. 앱 번들(scripts/build-app.sh)도 이 값을 그대로 쓴다.
+     목록에 없는 언어를 쓰는 사용자에게는 개발 지역(영어)이 나온다. -->
+<plist version="1.0">
+<dict>
+    <key>NSAppleMusicUsageDescription</key><string>iTunes 동기화 목록을 선택하고 곡 순서를 읽으려면 Music 보관함 접근이 필요합니다.</string>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleLocalizations</key><array><string>ko</string><string>en</string><string>ja</string></array>
+    <!-- AppKit 페이스트보드와 SwiftUI 드롭이 같은 형식으로 곡 ID를 주고받게 한다(덱·재생 목록·USB 곡). -->
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.djcrate.deck-track</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>com.apple.nspboard-type</key><array><string>com.djcrate.deck-track</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.djcrate.track-ids</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>com.apple.nspboard-type</key><array><string>com.djcrate.track-ids</string></array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key><string>com.djcrate.usb-track-ids</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>com.apple.nspboard-type</key><array><string>com.djcrate.usb-track-ids</string></array>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>

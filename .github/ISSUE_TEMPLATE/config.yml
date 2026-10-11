@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 이슈 관리 규칙
+    url: https://github.com/fotoner/DJCrate/blob/main/docs/issues.md
+    about: 제목·라벨·본문 형식과 이슈에 넣지 않을 것
