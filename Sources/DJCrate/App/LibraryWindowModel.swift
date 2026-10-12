@@ -19,6 +19,8 @@ final class LibraryWindowModel {
     var showingWriteResult = false
     /// 연결되지 않은 초안 시트의 화면 모델(띄울 때마다 새로 만든다)
     var unlinkedDrafts: UnlinkedDraftsModel?
+    /// 켤 때 알림의 "모두 갱신"이 부르는 AI 에이전트 설치 모델(조립 지점이 붙인다. 시험은 nil)
+    @ObservationIgnored var agentTools: AgentToolsSettingsModel?
 
     init(store: LibraryStore) {
         self.store = store
@@ -47,7 +49,18 @@ final class LibraryWindowModel {
 
     /// 알림의 단추(USB 꺼내기 등)
     @discardableResult
-    func performToastAction(_ action: AppToast.Action) -> Task<Void, Never> { Task { [store] in await store.usbCoordinator?.perform(action) } }
+    func performToastAction(_ action: AppToast.Action) -> Task<Void, Never> {
+        switch action {
+        case .updateAgentTools:
+            Task { [store, agentTools] in
+                if store.toast?.action == action { store.toast = nil }
+                guard let agentTools else { return }
+                store.toast = await agentTools.updateAllFromNotice()
+            }
+        case .ejectUsb:
+            Task { [store] in await store.usbCoordinator?.perform(action) }
+        }
+    }
 
     // MARK: - 파일 끌어 놓기
 

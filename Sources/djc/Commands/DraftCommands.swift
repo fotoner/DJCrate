@@ -4,7 +4,8 @@ import Foundation
 
 /// rekordbox는 스냅샷으로 읽고, 앱이 읽는 초안 파일만 고친다.
 enum DraftCommands {
-    static let command = Command("draft", "cue|tag|rm … <ContentID> [--db PATH] [--dry-run] [--json]", String(ui: "큐·태그 초안 만들기·지우기(docs/cli.md)")) { args in try run(args) }
+    static let command = Command("draft", "cue|tag|rm … <ContentID> | \(PlaylistDraftCommand.usage) [--db PATH] [--dry-run] [--json]",
+                                 String(ui: "큐·태그·재생 목록 초안 만들기·지우기(docs/cli.md)")) { args in try run(args) }
 
     struct Result: Encodable {
         let kind: String
@@ -20,6 +21,7 @@ enum DraftCommands {
     }
 
     static func run(_ args: [String]) throws {
+        if args.count >= 2, args[1] == "playlist" { return try PlaylistDraftCommand.run(args) }
         let options = try Options(args)
         // 초안은 데이터 폴더의 실제 경로 아래 곡별 파일에 바로 쓴다(유스케이스 `EditDraftFiles`, 앱은 바깥 변경 확인으로 받는다)
         let library = CLIComposition.live.library(home: CLIComposition.resolvedDraftHome)

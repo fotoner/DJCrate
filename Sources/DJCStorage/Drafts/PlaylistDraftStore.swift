@@ -12,6 +12,11 @@ public enum PlaylistDraftStore {
         (try? DamagedDrafts.read(PlaylistDraft.self, at: url)) ?? PlaylistDraft()
     }
 
+    /// 없으면 빈 초안, 읽지 못하면 던진다(손상된 파일을 빈 초안으로 받지 않게)
+    public static func read(url: URL) throws -> PlaylistDraft {
+        try DamagedDrafts.read(PlaylistDraft.self, at: url) ?? PlaylistDraft()
+    }
+
     public static func save(_ draft: PlaylistDraft, url: URL = url) throws {
         // 손상된 파일은 덮거나 지우지 않고 옮겨 보관한다(#174).
         try DamagedDrafts.preserveIfDamaged(PlaylistDraft.self, at: url, home: url.deletingLastPathComponent(), trackUUID: nil)

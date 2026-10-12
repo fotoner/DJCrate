@@ -181,7 +181,7 @@ public struct PlaylistLayout: Hashable, Sendable {
     }
 
     /// 편집할 목록(맨 위는 안 됨, 인텔리전트 목록은 막음)
-    func target(_ ref: PlaylistRef) throws -> Item {
+    public func target(_ ref: PlaylistRef) throws -> Item {
         switch ref {
         case .root: throw Blocked(String(ui: "맨 위는 편집할 수 없습니다"))
         case .new:
@@ -194,7 +194,8 @@ public struct PlaylistLayout: Hashable, Sendable {
         }
     }
 
-    func trackList(_ ref: PlaylistRef) throws -> Item {
+    /// 곡을 넣고 뺄 목록(폴더는 막음)
+    public func trackList(_ ref: PlaylistRef) throws -> Item {
         let item = try target(ref)
         guard !item.isFolder else { throw Blocked(String(ui: "폴더에는 곡을 넣거나 뺄 수 없습니다")) }
         return item

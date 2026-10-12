@@ -62,11 +62,22 @@ struct HideStreamingTests {
 
     static func ids(_ store: LibraryStore) -> [String] { store.displayRows.map(\.track.id) }
 
+    /// 저장한 설정을 층마다 읽은 값(#257 진단). CI에서 끈 값이 켠 값으로 읽힌 적이 한 번 있었고, 로컬 부하 반복으로는 재현하지 못했다.
+    /// 같은 영역의 새 인스턴스와 cfprefsd가 적은 plist를 함께 남겨, 다음 실패 때 값을 잃은 층을 가른다.
+    static func persistedTrace(_ suite: String, _ defaults: UserDefaults) -> String {
+        let name = SettingKeys.hideStreaming.name
+        let fresh = TestDefaults.open(suite).object(forKey: name)
+        let file = (try? Data(contentsOf: URL(filePath: suite + ".plist")))
+            .flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }?[name]
+        return "인스턴스=\(String(describing: defaults.object(forKey: name))) 새 인스턴스=\(String(describing: fresh)) plist=\(String(describing: file))"
+    }
+
     // MARK: 설정 저장
 
     @Test func 기본은_꺼져_있고_켜면_저장해_다시_열어도_이어진다() async throws {
         let fixture = try Self.fixture()
-        let defaults = TestDefaults.make("hide-streaming.save")
+        let suite = TestDefaults.suiteName("hide-streaming.save")
+        let defaults = TestDefaults.open(suite)
         let store = await Self.makeStore(fixture, persist: true, defaults: defaults)
         #expect(!store.hideStreaming)
         #expect(Self.ids(store).count == 6)
@@ -77,8 +88,11 @@ struct HideStreamingTests {
         #expect(reopened.hideStreaming)
         #expect(Set(Self.ids(reopened)) == ["1", "3", "5", "6"])
         #expect(reopened.count(.all) == 4)
+        // 첫 저장소가 켠 채여야 끄는 값이 저장된다(#257: 실패가 저장소 상태 때문인지 설정 영역 때문인지 가른다)
+        #expect(store.hideStreaming)
         store.hideStreaming = false
-        #expect(!SettingsStore(defaults: defaults, persist: true).value(SettingKeys.hideStreaming))
+        let saved = SettingsStore(defaults: defaults, persist: true).value(SettingKeys.hideStreaming)
+        #expect(!saved, "\(Self.persistedTrace(suite, defaults))")
         // 자가 테스트(persist 없음)는 설정을 읽지도 저장하지도 않는다
         defaults.set(true, forKey: SettingKeys.hideStreaming.name)
         #expect(!SettingsStore(defaults: defaults, persist: false).value(SettingKeys.hideStreaming))

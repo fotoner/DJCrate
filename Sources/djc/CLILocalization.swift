@@ -21,11 +21,18 @@ enum CLILocalization {
         }
         let language = language(override: ProcessInfo.processInfo.environment["DJC_LANG"], preferredLanguages: Locale.preferredLanguages)
         UIStrings.locale = Locale(identifier: language)
-        // PATH에 옮길 때 실행 파일 옆의 리소스 번들도 함께 둔다. 번들이 빠져도 원문으로 실행한다.
+        // 번들이 빠져도 원문으로 실행한다.
         let directory = Bundle.main.executableURL?.resolvingSymlinksInPath().deletingLastPathComponent() ?? Bundle.main.bundleURL
-        guard let bundle = Bundle(url: directory.appending(path: "DJCrate_djc.bundle")),
+        guard let bundle = resourceBundles(executableDirectory: directory).lazy.compactMap({ Bundle(url: $0) }).first,
               let path = bundle.path(forResource: language, ofType: "lproj"), let localized = Bundle(path: path) else { return }
         UIStrings.catalog = UIStrings.Catalog(string: { String(localized: $0, bundle: localized, locale: $1) },
                                               resource: { LocalizedStringResource($0, locale: $1, bundle: localized) })
+    }
+
+    /// 리소스 번들 자리: 실행 파일 옆(빌드 폴더, PATH에 함께 옮긴 경우), 그다음 앱 번들 안
+    /// (`Contents/Helpers/djc` → `Contents/Resources`, #262). 링크로 불러도 실제 자리 기준이다
+    static func resourceBundles(executableDirectory: URL) -> [URL] {
+        [executableDirectory.appending(path: "DJCrate_djc.bundle"),
+         executableDirectory.deletingLastPathComponent().appending(path: "Resources/DJCrate_djc.bundle")]
     }
 }

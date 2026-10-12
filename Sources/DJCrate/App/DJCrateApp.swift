@@ -90,6 +90,7 @@ struct DJCrateApp: App {
         }
         .commands {
             AppCommands()
+            UpdateCommands(model: app.updates)
             CommandGroup(after: .pasteboard) {
                 // 표준 편집 명령처럼 현재 응답자가 활성 상태와 실행을 결정한다.
                 Button(.ui("아래로 채우기")) {
@@ -117,7 +118,7 @@ struct DJCrateApp: App {
         // Settings가 설정 메뉴와 ⌘,도 등록한다. 주 창에 수동 메뉴를 더하면 중복된다.
         // 덱과 같은 모델에 묶여 바꾸면 바로 반영·저장된다.
         Settings {
-            SettingsView(store: store, deck: deck, storage: { [app] in app.storageSettings() })
+            SettingsView(store: store, deck: deck, storage: { [app] in app.storageSettings() }, updates: app.updates, agents: app.agentTools)
         }
     }
 }

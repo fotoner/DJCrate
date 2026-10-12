@@ -257,8 +257,10 @@ guard buildArguments.isEmpty || buildArguments == ["--enable-code-coverage"] els
 }
 
 func buildDebug() {
-    guard run(["swift", "build", "--product", "DJCrate"] + buildArguments, quiet: buildArguments.isEmpty) == 0 else { fail("swift build가 실패했습니다. 먼저 빌드 오류를 고치세요") }
+    // djc를 먼저 빌드한다. 한 제품만 빌드하면 그 제품이 쓰지 않는 Products/Debug의 프레임워크(Sparkle)를 낡은 결과로 지운다.
+    // 앱을 마지막에 빌드해야 Sparkle이 남아 뒤따르는 시험(DJCrateTests)이 열린다.
     guard run(["swift", "build", "--product", "djc"] + buildArguments, quiet: buildArguments.isEmpty) == 0 else { fail("djc 빌드가 실패했습니다. 먼저 빌드 오류를 고치세요") }
+    guard run(["swift", "build", "--product", "DJCrate"] + buildArguments, quiet: buildArguments.isEmpty) == 0 else { fail("swift build가 실패했습니다. 먼저 빌드 오류를 고치세요") }
 }
 
 func report(_ problems: [String], limit: Int = 40) {

@@ -159,19 +159,15 @@ enum XMLDiffCommand {
     }
 
     /// 차이를 초안으로 만들어 `home` 아래 초안 폴더에만 쓴다. 기존 초안은 덮지 않고, 초안이 담지 못한 차이는 손실로 알린다.
-    /// - Parameter appRunning: DJCrate 앱이 켜져 있다. 앱은 재생 목록 초안 파일을 다시 읽지 않고 메모리 초안을 저장하므로
-    ///   재생 목록 초안은 만들지 않는다. 큐·태그·그리드 파일은 앱이 다시 읽지만 덱에 올린 곡의 그리드는 덱 편집이 덮을 수 있어 알린다.
+    /// - Parameter appRunning: DJCrate 앱이 켜져 있다. 초안 파일은 앱이 다시 읽지만(재생 목록 초안도, #260) 덱에 올린 곡의 그리드는
+    ///   덱 편집이 덮을 수 있어 알린다.
     static func makeDrafts(_ report: Report, request: Request, home: URL, appRunning: Bool = false) throws -> [String] {
-        var kinds = request.kinds
-        if appRunning { kinds.remove(.playlist) }
+        let kinds = request.kinds
         // 재생 목록 초안은 초안 파일에서 읽고, 계획하는 동안 파일이 바뀌지 않았을 때만 저장한다(앱은 화면이 든 초안으로 같은 규칙).
         let result = try CLIComposition.live.library(home: home).importXML
             .makeDraftsNow(report, selection: XMLImportDrafts.Selection(kinds: kinds))
         let saved: [XMLImportDrafts.Kind: Int] = [.cue: result.cues, .grid: result.grids, .tag: result.tags, .playlist: result.playlists]
         var lines = [String(ui: "초안을 만들었습니다: 큐 \(saved[.cue, default: 0]) · 그리드 \(saved[.grid, default: 0]) · 태그 \(saved[.tag, default: 0]) · 재생 목록 \(saved[.playlist, default: 0])")]
-        if appRunning, request.kinds.contains(.playlist), !report.diff.playlists.isEmpty {
-            lines.append(String(ui: "DJCrate가 켜져 있어 재생 목록 초안은 만들지 않았습니다(앱이 자기 초안으로 덮습니다). DJCrate를 끈 뒤 다시 실행하거나 앱의 rekordbox XML 가져오기를 쓰세요"))
-        }
         if appRunning, request.kinds.contains(.grid) {
             lines.append(String(ui: "DJCrate가 켜져 있습니다: 덱에 올린 곡의 그리드 초안은 덱 편집이 덮을 수 있으니 그 곡을 덱에 다시 불러오세요"))
         }

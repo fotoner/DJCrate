@@ -12,6 +12,8 @@ public final class MemoryDraftFiles: Sendable {
         var playlist = PlaylistDraft()
         /// 다음 `playlist` 읽기들에 차례로 돌려줄 값(시험이 계획 도중 바뀐 초안을 만든다)
         var playlistReads: [PlaylistDraft] = []
+        /// 다른 실행이 재생 목록 초안 파일 잠금을 들고 있다
+        var playlistLocked = false
     }
     private let state = Mutex(State())
 
@@ -28,9 +30,12 @@ public final class MemoryDraftFiles: Sendable {
     public func setPlaylist(_ draft: PlaylistDraft) { state.withLock { $0.playlist = draft } }
     /// 다음 재생 목록 초안 읽기들이 차례로 이 값을 돌려준다(다 쓰면 저장된 값)
     public func queuePlaylistReads(_ drafts: [PlaylistDraft]) { state.withLock { $0.playlistReads = drafts } }
+    /// 다른 실행(앱의 쓰기)이 재생 목록 초안 파일 잠금을 들고 있는 것처럼 한다
+    public func setPlaylistLocked(_ locked: Bool) { state.withLock { $0.playlistLocked = locked } }
+    private var isPlaylistLocked: Bool { state.withLock { $0.playlistLocked } }
 
     public var files: DraftFiles {
-        DraftFiles(
+        var files = DraftFiles(
             exists: { [self] kind, uuid in
                 state.withLock {
                     switch kind {
@@ -48,6 +53,9 @@ public final class MemoryDraftFiles: Sendable {
             playlist: { [self] in
                 state.withLock { $0.playlistReads.isEmpty ? $0.playlist : $0.playlistReads.removeFirst() }
             },
+            readPlaylist: { [self] in
+                state.withLock { $0.playlistReads.isEmpty ? $0.playlist : $0.playlistReads.removeFirst() }
+            },
             savePlaylist: { [self] draft in setPlaylist(draft) },
             cue: { [self] uuid in cue(uuid) },
             tag: { [self] uuid in tag(uuid) },
@@ -55,5 +63,8 @@ public final class MemoryDraftFiles: Sendable {
             removeTag: { [self] uuid in state.withLock { _ = $0.tags.removeValue(forKey: uuid) } },
             isPlainPath: { _, _ in true },
             newCueID: { MemoryCueIDs.next() })
+        let unlock: @Sendable () -> Void = {}
+        files.lockPlaylist = { [self] in isPlaylistLocked ? nil : unlock }
+        return files
     }
 }

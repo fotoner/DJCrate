@@ -44,7 +44,7 @@ extension DraftFiles {
             case .playlist: nil
             }
         }
-        return DraftFiles(
+        var files = DraftFiles(
             exists: { kind, uuid in
                 guard let directory = directory(kind) else { return false }
                 return FileManager.default.fileExists(atPath: directory.appending(path: "\(uuid).json").path)
@@ -53,6 +53,7 @@ extension DraftFiles {
             saveGrid: { try GridDraftStore.save($0, directory: places.grid) },
             saveTag: { try TagDraftStore.save($0, directory: places.tags) },
             playlist: { PlaylistDraftStore.load(url: places.playlist) },
+            readPlaylist: { try PlaylistDraftStore.read(url: places.playlist) },
             savePlaylist: { try PlaylistDraftStore.save($0, url: places.playlist) },
             cue: { try existing(places.cue.appending(path: "\($0).json")) },
             tag: { try existing(places.tags.appending(path: "\($0).json")) },
@@ -65,6 +66,9 @@ extension DraftFiles {
                     && file.resolvingSymlinksInPath().standardizedFileURL == file.standardizedFileURL
             },
             newCueID: { UUID() })
+        // 다른 djc가 잠깐 들고 있는 것은 기다린다. 앱의 쓰기는 길어 기다리지 않고 알린다
+        files.lockPlaylist = { PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: places.playlist), wait: 2) }
+        return files
     }
 
     /// 초안 파일 하나: 없으면 nil, 읽지 못하면 던진다

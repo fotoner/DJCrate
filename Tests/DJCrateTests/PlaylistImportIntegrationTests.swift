@@ -22,6 +22,8 @@ struct PlaylistImportIntegrationTests {
         let store = store()
         store.playlists.playlistImports.addFiles(["/fixtures/a", "/fixtures/b"], to: .new("P"))
         try store.playlists.playlistDraft.append(.create(key: "P", name: "세트", isFolder: false, parent: .root), rekordbox: PlaylistLayout())
+        // 앱 편집처럼 저장한다: 연결 전 바깥 초안 확인(#260)이 저장하지 않은 메모리 초안을 디스크 초안으로 바꾸지 않게
+        store.playlists.savePlaylistDraft()
         store.playlists.resolvePlaylistImports(contentIDsByPath: ["/fixtures/a": "1"])
         let written = store.playlists.playlistDraft
         store.finishPlaylistWrite(written, outcomes: written.edits.map {
@@ -71,7 +73,7 @@ struct PlaylistImportIntegrationTests {
         store.staging.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
         let provider = NSItemProvider(object: file as NSURL)
         let node = try #require(store.playlists.playlistIndex["P"])
-        #expect(PlaylistDrop.perform([provider], on: node, store: store))
+        #expect(PlaylistDrop.perform([provider], on: node, store: store, sidebar: PlaylistSidebarModel(playlists: store.playlists)))
         for _ in 0..<100 where store.playlists.playlistImports.pendingCount == 0 {
             try await Task.sleep(for: .milliseconds(10))
         }

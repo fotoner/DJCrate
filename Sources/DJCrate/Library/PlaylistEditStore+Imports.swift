@@ -50,6 +50,8 @@ extension PlaylistEditStore {
     /// 초안 저장에 실패하면 연결은 남기며, 연결 저장만 실패하면 다음 읽기에서 중복 없이 다시 확인한다.
     func resolvePlaylistImports(contentIDsByPath: [String: String]? = nil) {
         guard !playlistImportsLoadFailed, playlistImports.pendingCount > 0 else { return }
+        // 바깥(CLI)에서 바뀐 초안이 있으면 먼저 받는다(메모리 초안으로 저장해 덮지 않게, #260)
+        syncExternalPlaylistDraft()
         let ids = contentIDsByPath ?? Dictionary(library.rows.map { (PlaylistImports.pathKey($0.track.folderPath), $0.track.id) },
                                                  uniquingKeysWith: { first, _ in first })
         guard let resolution = library.useCases.playlists.resolveImports(playlistImports, draft: playlistDraft, rekordbox: rekordboxPlaylists,

@@ -32,7 +32,9 @@ final class PlaylistEditStore {
     /// 스냅샷에서 읽은 rekordbox 재생 목록(초안을 얹기 전)
     var rekordboxPlaylists = PlaylistLayout()
     /// 재생 목록 초안(반영 때 쓴다). 바꿀 때는 `setPlaylistDraft`로(저장·화면·되돌리기).
-    var playlistDraft = PlaylistDraft()
+    var playlistDraft = PlaylistDraft() { didSet { playlistDraftRevision &+= 1 } }
+    /// 초안이 바뀔 때마다 오른다. 바깥 변경 확인은 읽는 사이 앱이 초안을 바꿨으면 결과를 버린다
+    @ObservationIgnored private(set) var playlistDraftRevision: UInt64 = 0
     /// 초안을 얹은 모양과 편집마다 막힌 이유
     var playlistProjection = PlaylistDraft().project(onto: PlaylistLayout())
     /// 목록마다 초안으로 넣은 곡(ContentID). 목록을 볼 때 초안 표식을 붙인다.
@@ -134,6 +136,9 @@ final class PlaylistEditStore {
         } else if refreshList, case .playlist = library.sidebar {
             library.refreshBase()
         }
+        // 함께 고른 목록 중 없어진 것은 고르기에서 뺀다(보던 목록은 남은 경우, #261)
+        let gone = library.sidebarSelection.filter { if case let .playlist(id) = $0 { index[id] == nil } else { false } }
+        if !gone.isEmpty { library.selectSidebar(library.sidebarSelection.subtracting(gone), showing: library.sidebar) }
     }
 
     /// 사이드바 재생 목록 곡 수. 컬렉션에 없는 곡과 숨기는 스트리밍 곡은 세지 않는다.
@@ -162,21 +167,48 @@ final class PlaylistEditStore {
 
     // MARK: - 초안 바꾸기
 
-    /// 편집을 차례로 초안에 더한다. 하나라도 쓸 수 없으면 아무것도 더하지 않고 이유를 알린다.
+    /// 편집 요청을 차례로 초안에 더한다(유스케이스 `EditPlaylists.planning`, CLI `djc draft playlist`와 같은 규칙).
+    /// 하나라도 쓸 수 없으면 아무것도 더하지 않고 이유를 알린다. 더했으면 계획(만든 목록 ID·쌓은 뒤 모양)을 돌려준다.
+    /// `allOrNothing`이 false면(사이드바 여러 개 편집, #261) 막힌 요청만 건너뛰고 나머지를 쌓는다. 쌓은 것이 없어도 계획을 돌려준다
+    /// (건너뛴 이유는 부른 쪽이 보인다). 묶음 하나는 ⌘Z 한 번에 되돌린다.
     @discardableResult
-    func applyPlaylistEdits(_ edits: [PlaylistEdit], actionName: String) -> Bool {
-        guard !library.isWritingRekordbox, !edits.isEmpty else { return false }
-        do {
-            setPlaylistDraft(try EditPlaylists.appending(edits, to: playlistDraft, rekordbox: rekordboxPlaylists), actionName: actionName)
-            return true
-        } catch {
-            playlistMessage = AppMessage(kind: .warning, text: (error as? EditPlaylists.Refused)?.message ?? DJCError.reason(of: error))
-            return false
+    func applyPlaylistRequests(_ requests: [PlaylistEditRequest], actionName: String, allOrNothing: Bool = true) -> EditPlaylists.Batch? {
+        guard !library.isWritingRekordbox, !requests.isEmpty else { return nil }
+        // 바깥(CLI)에서 바뀐 초안이 있으면 먼저 받고 그 위에 쌓는다(덮지 않게)
+        syncExternalPlaylistDraft()
+        let batch = planPlaylistRequests(requests, allOrNothing: allOrNothing)
+        if !allOrNothing {
+            if batch.hasChanges { commitPlaylistDraft(batch.draft, actionName: actionName) }
+            return batch
+        }
+        if batch.refused {
+            playlistMessage = AppMessage(kind: .warning, text: EditPlaylists.refusedMessage(batch.firstSkipReason ?? ""))
+            return nil
+        }
+        guard batch.hasChanges else { return nil }
+        commitPlaylistDraft(batch.draft, actionName: actionName)
+        return batch
+    }
+
+    /// 요청을 지금 초안에 얹어 계획만 한다(쌓지 않는다). 확인 창이 쌓을 것과 건너뛸 것을 미리 보인다
+    func planPlaylistRequests(_ requests: [PlaylistEditRequest], allOrNothing: Bool = false) -> EditPlaylists.Batch {
+        EditPlaylists.planning(requests, onto: playlistDraft, rekordbox: rekordboxPlaylists, allOrNothing: allOrNothing) {
+            UUID().uuidString.lowercased()
         }
     }
 
     /// 초안을 바꾸고 저장·화면 갱신·되돌리기(⌘Z)를 건다. 되돌리기 대상은 핵심이다(쓰기 잠금이 핵심 대상으로 지운다).
+    /// 디스크 초안이 바깥(CLI)에서 바뀌었으면 그 초안을 받고 이 변경은 하지 않는다(옛 초안으로 만든 변경이 CLI 초안을 덮지 않게).
     func setPlaylistDraft(_ draft: PlaylistDraft, actionName: String) {
+        guard draft != playlistDraft else { return }
+        if syncExternalPlaylistDraft() {
+            playlistMessage = AppMessage(kind: .warning, text: String(ui: "바깥에서 바뀐 재생 목록 초안을 다시 읽어 방금 변경은 하지 않았습니다. 다시 해 주세요."))
+            return
+        }
+        commitPlaylistDraft(draft, actionName: actionName)
+    }
+
+    private func commitPlaylistDraft(_ draft: PlaylistDraft, actionName: String) {
         let before = playlistDraft
         guard draft != before else { return }
         playlistDraft = draft
@@ -197,7 +229,7 @@ final class PlaylistEditStore {
         guard let item = playlistItem(id), item.holdsTracks else { return }
         let plan = EditPlaylists.addPlan(library.uniqueTracks(rows), to: item)
         if !plan.new.isEmpty {
-            guard applyPlaylistEdits([.addTracks(playlist: PlaylistRef(id), contentIDs: plan.new)], actionName: String(ui: "재생 목록에 넣기")) else { return }
+            guard applyPlaylistRequests([.addTracks(.ref(PlaylistRef(id)), contentIDs: plan.new)], actionName: String(ui: "재생 목록에 넣기")) != nil else { return }
             touchRecent(id)
         }
         if let summary = EditPlaylists.addSummary(name: item.name, added: plan.new.count, duplicates: plan.duplicates.count,
@@ -206,12 +238,18 @@ final class PlaylistEditStore {
         }
     }
 
+    static func unique(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { seen.insert($0).inserted }
+    }
+
     /// 보고 있는 목록에서 곡을 뺀다(같은 곡이 여러 번 들었으면 모두). 컬렉션에서는 빼지 않는다.
     func removeTracks(_ rows: [TrackRow], fromPlaylist id: String) {
         guard let item = playlistItem(id), item.holdsTracks else { return }
         let entries = item.entries(of: Set(rows.map(\.track.id)))
         guard !entries.isEmpty else { return }
-        if applyPlaylistEdits([.removeTracks(playlist: PlaylistRef(id), entries: entries)], actionName: String(ui: "재생 목록에서 빼기")) {
+        if applyPlaylistRequests([.removeTracks(.ref(PlaylistRef(id)), contentIDs: Self.unique(entries.map(\.contentID)))],
+                                 actionName: String(ui: "재생 목록에서 빼기")) != nil {
             let count = Set(entries.map(\.contentID)).count
             let removed = String(ui: "‘\(item.name)’에서 \(count)곡을 뺐습니다(쓰기 대기).")
             playlistMessage = playlistDraftUnsaved ? AppMessage(kind: .warning, text: removed + " " + Self.playlistSaveFailureText)
@@ -224,12 +262,10 @@ final class PlaylistEditStore {
         guard let item = playlistItem(id), item.holdsTracks else { return }
         let moving = item.firstEntries(of: Set(contentIDs))
         guard !moving.isEmpty else { return }
-        let to = item.insertionPoint(before: before, moving: moving)
-        let order = item.entries.filter { !moving.contains($0) }
-        var after = order
-        after.insert(contentsOf: moving, at: min(max(to - 1, 0), after.count))
-        guard after != item.entries else { return }
-        applyPlaylistEdits([.moveTracks(playlist: PlaylistRef(id), entries: moving, to: to)], actionName: String(ui: "곡 순서 바꾸기"))
+        // 목록 순서대로 넘겨 편집 하나로 옮긴다. 목록에 없는 곡 앞이면 맨 끝이다.
+        let before = before.flatMap { item.trackIDs.contains($0) ? $0 : nil }
+        applyPlaylistRequests([.moveTracks(.ref(PlaylistRef(id)), contentIDs: moving.map(\.contentID), before: before)],
+                              actionName: String(ui: "곡 순서 바꾸기"))
     }
 
     /// 고른 곡을 보고 있는 목록에서 뺀다(⌫)
@@ -257,14 +293,12 @@ final class PlaylistEditStore {
     /// 만든 목록 ID(`new:키`)를 돌려준다.
     @discardableResult
     func createPlaylist(isFolder: Bool, in parent: String? = nil, name: String? = nil, tracks: [TrackRow] = []) -> String? {
-        let key = UUID().uuidString.lowercased()
         let name = name ?? (isFolder ? String(ui: "새 폴더") : String(ui: "새 재생 목록"))
-        var edits: [PlaylistEdit] = [.create(key: key, name: name, isFolder: isFolder, parent: PlaylistRef(parent ?? newPlaylistParent))]
-        let ids = EditPlaylists.creatableTrackIDs(library.uniqueTracks(tracks))
-        if !isFolder, !ids.isEmpty { edits.append(.addTracks(playlist: .new(key), contentIDs: ids)) }
+        let ids = isFolder ? [] : EditPlaylists.creatableTrackIDs(library.uniqueTracks(tracks))
         let action = isFolder ? String(ui: "새 폴더") : String(ui: "새 재생 목록")
-        guard applyPlaylistEdits(edits, actionName: action) else { return nil }
-        let id = PlaylistRef.new(key).layoutID
+        let request = PlaylistEditRequest.create(name: name, isFolder: isFolder, parent: .ref(PlaylistRef(parent ?? newPlaylistParent)),
+                                                 position: nil, alias: nil, tracks: ids)
+        guard let id = applyPlaylistRequests([request], actionName: action)?.outcomes.first?.playlistID else { return nil }
         if !ids.isEmpty { touchRecent(id) }
         let ancestors = playlistProjection.layout.ancestors(of: id).map(\.id)
         library.sidebar = .playlist(id)
@@ -288,30 +322,22 @@ final class PlaylistEditStore {
     func renamePlaylist(_ id: String, to name: String) {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let item = playlistItem(id), !name.isEmpty, name != item.name else { return }
-        applyPlaylistEdits([.rename(playlist: PlaylistRef(id), name: name)], actionName: String(ui: "재생 목록 이름 바꾸기"))
+        applyPlaylistRequests([.rename(.ref(PlaylistRef(id)), name: name)], actionName: String(ui: "재생 목록 이름 바꾸기"))
     }
 
     func deletePlaylist(_ id: String) {
         guard playlistItem(id) != nil else { return }
-        applyPlaylistEdits([.delete(playlist: PlaylistRef(id))], actionName: String(ui: "재생 목록 지우기"))
+        applyPlaylistRequests([.delete(.ref(PlaylistRef(id)))], actionName: String(ui: "재생 목록 지우기"))
     }
 
     /// 다른 폴더(또는 맨 위)로 옮기고, `before`를 주면 그 항목 앞 자리로(없으면 맨 끝).
     func movePlaylist(_ id: String, into parent: String, before: String? = nil) {
-        guard let item = playlistItem(id), before != id else { return }
-        let layout = playlistProjection.layout
-        let others = layout.childIDs(of: parent).filter { $0 != id }
-        let index = before.flatMap { others.firstIndex(of: $0) } ?? others.count
-        var edits: [PlaylistEdit] = []
-        if item.parentID != parent {
-            // 옮기기는 새 부모 맨 끝에 놓는다. 다른 자리면 순서 바꾸기를 이어 붙인다.
-            edits.append(.move(playlist: PlaylistRef(id), into: PlaylistRef(parent)))
-            if index != others.count { edits.append(.reorder(playlist: PlaylistRef(id), index: index)) }
-        } else if index != layout.childIDs(of: parent).firstIndex(of: id) {
-            edits.append(.reorder(playlist: PlaylistRef(id), index: index))
-        }
-        guard !edits.isEmpty else { return }
-        applyPlaylistEdits(edits, actionName: String(ui: "재생 목록 옮기기"))
+        guard playlistItem(id) != nil, before != id else { return }
+        // 그 폴더 안에 없는 항목 앞이면 맨 끝이다.
+        let others = playlistProjection.layout.childIDs(of: parent).filter { $0 != id }
+        let position = before.flatMap { others.contains($0) ? PlaylistPosition.before(.ref(PlaylistRef($0))) : nil }
+        applyPlaylistRequests([.move(.ref(PlaylistRef(id)), into: .ref(PlaylistRef(parent)), position: position)],
+                              actionName: String(ui: "재생 목록 옮기기"))
     }
 
     /// 목록(폴더면 그 아래까지)의 초안을 버린다. nil이면 재생 목록 초안 모두.
@@ -326,6 +352,28 @@ final class PlaylistEditStore {
         var draft = playlistDraft
         draft.discardBlocked(rekordbox: rekordboxPlaylists, contentIDs: Set(library.rowsByID.keys))
         setPlaylistDraft(draft, actionName: String(ui: "재생 목록 초안 버리기"))
+    }
+
+    // MARK: - 바깥 변경(#260)
+
+    /// 바깥(CLI `djc draft playlist`)에서 바꾼 디스크 초안을 받는다. 받으면 그 앞의 라이브러리 ⌘Z 기록(태그·재생 목록)을 비운다
+    /// (옛 초안으로 되돌리면 CLI 초안을 덮는다). 저장하지 못한 메모리 초안(디스크보다 최신), 복원 뒤 다시 쌓을 편집, 쓰는 중이면 받지 않는다.
+    /// - Returns: 받았으면 true
+    @discardableResult
+    func adoptExternalDraft(_ disk: PlaylistDraft?) -> Bool {
+        guard let disk, disk != playlistDraft, !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty,
+              !library.isWritingRekordbox else { return false }
+        playlistDraft = disk
+        refreshPlaylists()
+        library.undoManager?.removeAllActions(withTarget: library)
+        return true
+    }
+
+    /// 편집하기 전에: 디스크 초안이 메모리와 다르면(바깥에서 바뀜) 받는다. 1초마다 하는 바깥 변경 확인보다 먼저 편집해도 CLI 초안을 덮지 않게 한다
+    @discardableResult
+    func syncExternalPlaylistDraft() -> Bool {
+        guard !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty else { return false }
+        return adoptExternalDraft(try? library.useCases.playlists.loadDraft())
     }
 
     // MARK: - 초안 저장

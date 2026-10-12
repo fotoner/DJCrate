@@ -29,13 +29,24 @@ disable-model-invocation: true
 4. 압축 해제한 번들의 서명을 확인한다(`codesign --verify --deep --strict`).
 5. 같은 번들의 버전과 아키텍처를 확인한다.
 6. 같은 번들에 `LICENSE`와 `THIRD_PARTY_NOTICES.md`가 있는지 본다.
-7. 워크플로를 바꿨으면 `zsh -n scripts/build-app.sh`와 `actionlint .github/workflows/release.yml`을 돌린다.
+7. 같은 번들의 Info.plist에 `SUFeedURL`·`SUPublicEDKey`가 있는지 본다. `SUPublicEDKey`는 `Assets/sparkle-public-ed-key.txt`와 같아야 한다.
+8. 저장소 시크릿 `SPARKLE_ED_PRIVATE_KEY`가 있는지 관리자에게 확인한다. 없으면 워크플로가 검사 전에 실패한다.
+9. 업데이트 서명을 바꿨으면 시험용 키로 `scripts/sparkle-appcast.sh`를 돌린다. 방법은 `docs/releasing.md` "로컬에서 확인할 것"에 있다.
+10. 워크플로를 바꿨으면 `zsh -n scripts/build-app.sh`와 `actionlint .github/workflows/release.yml`을 돌린다.
 
 태그 푸시(`vX.Y.Z`)부터 Release 업로드까지는 `.github/workflows/release.yml`이 한다. 태그와 푸시는 사용자가 요청할 때만 한다.
 
+## 업데이트 신뢰 모델
+
+- 첫 설치에서는 사용자가 해시를 확인한다. 그 뒤 macOS의 열기 승인을 한다.
+- 그 뒤의 업데이트는 앱이 EdDSA 서명으로 확인한다. 근거와 키 절차는 `docs/releasing.md` "자동 업데이트"에 있다.
+- 진짜 서명 키 만들기와 시크릿 설정은 관리자가 한다. 에이전트는 키체인과 GitHub 시크릿을 건드리지 않는다.
+
 ## 하지 않는 것
 
-- Gatekeeper를 끄지 않는다. 다운로드 격리 속성도 지우지 않는다.
+- Gatekeeper를 끄지 않는다. 다운로드 격리 속성도 지우지 않는다. 사용자에게 이 둘을 안내하지 않는다.
+- 업데이트 서명 비밀 키를 저장소·출력·로그에 두지 않는다.
+- 0.x Release도 Pre-release로 올리지 않는다. 앱은 Latest Release의 `appcast.xml`만 본다.
 - 개발용 데이터와 라이브러리 사본을 앱·ZIP에 넣지 않는다.
 - 기존 Release를 덮어쓰지 않는다. 태그를 새로 만들지 않는다.
 - 재실행 실패는 관리자가 본다.

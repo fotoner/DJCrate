@@ -57,8 +57,29 @@ extension LibraryStore {
 
     /// 쓰는 동안 잠근다. `deck`이면 덱도 재생을 멈추고 조작을 막는다(iTunes 동기화는 덱을 잠그지 않는다).
     func setWriteLock(_ locked: Bool, deck: Bool = true) {
+        if locked {
+            // 쓰는 동안 CLI가 재생 목록 초안 파일을 고치지 못하게 잡고(#260), 그 전에 바깥에서 바뀐 초안을 먼저 받는다(1초 확인을 기다리지 않게)
+            // CLI는 초안 파일을 읽고 저장하는 동안만 든다. 그만큼만 기다려 잡으면 그사이 CLI가 저장한 초안도 아래에서 받는다
+            if playlistDraftUnlock == nil { playlistDraftUnlock = useCases.playlists.lockDraftFile(wait: 0.3) }
+            if playlistDraftUnlock == nil { retryPlaylistDraftLock() }
+            playlists.syncExternalPlaylistDraft()
+        } else {
+            playlistDraftUnlock?()
+            playlistDraftUnlock = nil
+        }
         isWritingRekordbox = locked
         if deck { onWriteLock?(locked) }
+    }
+
+    /// CLI가 초안 파일 잠금을 잠깐 들고 있었으면 풀린 뒤 잡는다. 한 번 못 잡았다고 쓰기 내내 잠금 없이 두지 않는다(그동안 고친 CLI 편집은 쓴 뒤 정리가 덮을 수 있다)
+    private func retryPlaylistDraftLock() {
+        Task { @MainActor [weak self] in
+            while let self, self.isWritingRekordbox, self.playlistDraftUnlock == nil {
+                try? await Task.sleep(for: .milliseconds(20))
+                guard self.isWritingRekordbox, self.playlistDraftUnlock == nil else { return }
+                self.playlistDraftUnlock = self.useCases.playlists.lockDraftFile()
+            }
+        }
     }
 
     /// 쓰기·복원 뒤 조용히 다시 읽는다. 쓴 곡은 새 스냅샷을 읽은 뒤 덱에 알리고, 되살린 재생 목록 편집은 읽은 뒤 쌓는다(읽지 못하면 다음 읽기 뒤에).

@@ -74,6 +74,7 @@ public final class MemoryDrafts: Sendable {
             saveArtwork: { edit in self.state.withLock { $0.artwork[edit.trackUUID] = edit } },
             removeArtwork: { uuid in self.state.withLock { $0.artwork[uuid] = nil } },
             playlistDraft: { self.state.withLock { $0.playlist } },
+            readPlaylistDraft: { self.state.withLock { $0.playlist } },
             savePlaylistDraft: { draft in self.state.withLock { $0.playlist = draft } },
             mergeDrafts: { self.state.withLock { $0.merges } },
             saveMergeDrafts: { drafts in self.state.withLock { $0.merges = drafts } },

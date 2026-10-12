@@ -46,6 +46,7 @@ DJCDomain은 입출력 없는 규칙과 값을 둔다. 규칙은 시험이 가�
 - 읽은 rekordbox 라이브러리와 iTunes 목록
 - CLI JSON 계약 값과 분석 결과 값
 - 순수 화면 규칙(입력 → 할 동작). 앱을 빌드하지 않은 채 시험할 수 있게 여기 둔다.
+- AI 에이전트 설치 규칙(`AgentTools/`): 설치 표시로 상태를 정한다. 설치·갱신·제거 계획도 세운다.
 
 ### DJCApplication
 
@@ -57,7 +58,9 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | `Edit/` | `RenderEdit`, `StageEdit` |
 | `Library/` | `LoadLibrary`, `LibraryReadFlow`, `ImportXML`, `RecoverDrafts`, `RelocateTracks`, `StageTracks`, `EditPlaylists`, `EditTags`, `ArchiveUsbHistories` |
 | `Reflection/` | `ReflectionSession`, `CompatibilityCheck` |
+| `Update/` | `UpdateDeferral`(앱 업데이트 설치를 쓰기가 끝날 때까지 미룬다, #59) |
 | `Usb/` | `UsbSync`, `UsbExportSession`, `UsbWriteFlow` |
+| `AgentTools/` | `AgentTools`(스킬·djc 설치, #262) |
 
 - 반영 세션 `ReflectionSession`은 rekordbox 쓰기 흐름이 함께 쓰는 유스케이스다. 앱의 반영, 곡 넣기·빼기, 복원이 이 세션을 쓴다. 시점 복원과 iTunes 동기화도 같은 세션을 쓴다.
 - CLI 쓰기 명령도 같은 세션을 쓴다. CLI는 세션 옵션으로 쓴 뒤의 초안 정리와 되살리기를 끈다.
@@ -73,6 +76,13 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - 동기화 창 화면 모델 `ITunesSyncModel`은 저장소 대신 좁은 포트(`ITunesSyncModel.Ports`)를 받는다. Music 결과에 맞춰 곡 목록·사이드바 선택을 고치는 일은 저장소가 한다.
 - **재생 기록 트리·보존본·쓰기 대기는 기능 조각 `HistoryStore`가 든다(#251).** 조각은 저장소의 `history` 속성이다. 보존의 줄 세우기·채택·실패 알림은 유스케이스 `ArchiveUsbHistories`가 정한다. 유스케이스는 화면 포트 `UsbHistoryScreen`으로 조각의 값을 읽는다. 결과도 그 포트로 알린다.
 - **재생 목록 트리·초안·연결 기록은 기능 조각 `PlaylistEditStore`가 든다(#251).** 조각은 저장소의 `playlists` 속성이다. 최근 목록·넣기 전 나누기·기록 원본 고르기의 규칙은 유스케이스 `EditPlaylists`가 정한다. 사이드바의 폴더 펼침과 이름 바꾸기는 화면 모델 `PlaylistSidebarModel`이 든다.
+  - 사이드바의 목록·곡 편집은 요청 `PlaylistEditRequest`로 `EditPlaylists.planning`을 지난다(#260). CLI `djc draft playlist`(`EditDraftFiles.stackPlaylistEdits`)도 같은 계획을 부른다. 앱은 하나라도 막히면 쌓지 않는다. CLI는 막힌 요청만 건너뛴다.
+  - 사이드바 여러 개 고르기(#261)는 막힌 요청만 건너뛴다(`applyPlaylistRequests(…, allOrNothing: false)`). 묶음 하나가 ⌘Z 하나다. 고른 항목은 핵심의 `sidebarSelection`에 둔다. 다른 곳이 `sidebar`를 바꾸면 그 하나로 돌아간다.
+  - 고르기 규칙과 요청 만들기는 `PlaylistSidebarModel+Selection`에 있다. 요청은 사이드바 순서로 만든다. 고른 폴더 안의 항목은 뺀다.
+  - 바깥(CLI)에서 바꾼 `playlist-drafts.json`은 바깥 변경 확인(`WatchDrafts.refresh`)이 읽는다. 조각은 다르면 받는다(`adoptExternalDraft`). 받으면 라이브러리 ⌘Z 기록을 비운다. 편집하기 전에도 디스크 초안을 견준다(`syncExternalPlaylistDraft`). 곡 추가 연결과 XML 가져오기도 저장 전에 견준다.
+  - 앱은 쓰기 잠금(`setWriteLock`) 동안 초안 파일 잠금 `PlaylistDraftLock`(flock)을 든다. 포트는 `DraftStore.lockPlaylistDraft`다. 0.3초까지 기다려 잡은 뒤 바깥 초안을 받는다. 못 잡으면 쓰는 동안 20ms마다 다시 잡아 본다. 그때는 바깥 초안을 받지 않는다. 쓸 초안을 이미 정했기 때문이다.
+  - CLI(`EditDraftFiles`, `ImportXML.makeDraftsNow`)는 `DraftFiles.lockPlaylist` 안에서 읽고 저장한다. `makeDraftsNow`는 마지막 비교와 저장 동안만 든다. 잡지 못하면 쌓지 않는다. 쓴 뒤 정리가 앞 단계를 접은 바깥 편집을 지우지 않게 하려는 것이다.
+  - 앱이 잠금을 잡지 못한 드문 경우의 대비가 있다. 쓴 뒤 정리(`EditPlaylists.finishWrite`)는 디스크 초안이 쓴 초안 뒤에 편집을 더했으면 쓴 편집만 뺀다(`keepingExternal`).
 - **추가한 곡·그리드 일괄 추정·XML 내보내기는 기능 조각 `TrackStagingStore`가 든다(#252).** 조각은 저장소의 `staging` 속성이다. 넣기·저장·추정의 규칙과 순서는 유스케이스 `StageTracks`와 `ExportXML`이 정한다. 목록 아래 막대의 단추·막힘 이유는 화면 모델 `ListActionBarModel`이 든다. 파일 없음 확인은 곡 행을 바꾸므로 공유 핵심이 한다(#254).
 - **주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다(#254).** 그 시트는 쓰기 결과, 연결되지 않은 초안, rekordbox XML 가져오기다. 처음 읽기, 스냅샷, 동기화, 끌어 놓기 같은 주 창 단추는 이 모델의 입구를 부른다. 메뉴 막대의 메뉴 항목(`LibraryMenuAction`)도 이 모델을 받는다. 재생 목록 고르기, USB, 막힌 초안 복구의 시트는 그 주인이 든다.
 - 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`.
@@ -108,7 +118,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 
 ### 경계 규칙
 
-`scripts/check-imports.py`가 소스에서 경계 규칙을 기계로 검사한다. 이 검사는 모든 검사 모드의 첫 단계로 1~2초 걸린다. 규칙 표의 정본은 그 스크립트 맨 위다. 표 이름은 `ALLOWED`·`FORBIDDEN_API`이고, 예외 목록은 `ASSEMBLY_FILES`·`BROAD_FOLDERS`다.
+`scripts/check-imports.py`가 소스에서 경계 규칙을 기계로 검사한다. 이 검사는 모든 검사 모드의 첫 단계로 1~2초 걸린다. 규칙 표의 정본은 그 스크립트 맨 위다. 표 이름은 `ALLOWED`·`FORBIDDEN_API`이다. 예외 목록은 `ASSEMBLY_FILES`·`BROAD_FOLDERS`다. 외부 모듈 목록은 `EXTERNAL_FILES`다.
 
 - 파일의 모듈은 `Package.swift`의 타깃 경로로 정한다.
 - 어느 타깃에도 속하지 않는 Swift 파일과 규칙이 없는 타깃은 실패한다. 그래서 폴더를 옮겨도 검사에서 조용히 빠지지 않는다.
@@ -120,6 +130,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | import | 앱의 화면 모델·뷰와 CLI 명령은 DJCApplication·DJCDomain만 import한다 |
 | import 예외 | 조립 지점은 파일 이름 목록 `ASSEMBLY_FILES` 5개다. 아래 층을 모두 import한다 |
 | import 예외 | 디버그 자가 테스트(`Sources/DJCrate/Diagnostics/`), 실험 명령(`Sources/djc/Lab/`)은 `BROAD_FOLDERS`에 적은 import만 더 받는다 |
+| import 제한 | 외부 모듈 Sparkle은 `EXTERNAL_FILES`에 적은 파일 하나(`Sources/DJCrate/App/AppUpdater.swift`)만 import한다. 화면 모델과 핵심부로 번지지 않게 한다 |
 | api | 핵심부(DJCDomain·DJCApplication)는 `FileManager`, `ProcessInfo`, `UserDefaults`를 직접 쓰지 않는다 |
 | api | 핵심부는 `Bundle` 타입, `Date()`·`Date.now`, `UUID()`도 직접 쓰지 않는다. `.init()` 꼴도 같다. 시계·ID·환경·파일·번들은 포트나 주입으로 받는다 |
 | api | 핵심부는 `Locale`·`TimeZone`·`Calendar`의 `.current`·`.autoupdatingCurrent`를 쓰지 않는다. 타입 없이 쓴 `.main`·`.current`·`.now`도 쓰지 않는다 |
@@ -220,6 +231,8 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 스냅샷 함수 `LibrarySnapshot.latest`·`LibrarySnapshot.take`
 - 예외 파일은 `Diagnostics/`, CLI `Lab/`, 조립 지점뿐이다.
 - 설정 › 저장 공간의 화면 모델은 `AppComposition.storageSettings()`가 만든다.
+- 설정 › AI 에이전트의 화면 모델은 `AppComposition.agentTools(arguments:settings:)`가 한 번 만든다. 설정 창과 켤 때 알림이 이 모델을 함께 쓴다. 설치 자리의 뿌리(홈)는 조립 지점이 준다. 디버그 빌드는 `--agent-home=<폴더>`로 홈과 휴지통을 임시 폴더로 바꾼다.
+- 앱 자동 업데이트(#59)의 Sparkle 연결 `AppUpdater`는 `live()`가 만든다. Info.plist에 정보 파일 주소와 공개 키가 있는 배포 번들에서만 만든다. 쓰기 상태는 `LibraryStore.writeActivity`에서 읽는다. 설정 › 업데이트와 앱 메뉴는 화면 모델 `UpdateSettingsModel` 하나를 함께 쓴다.
 - **목록 그림 캐시 싱글턴은 없앴다.** 옛 `PreviewWaveformCache.shared`·`Thumbnails.shared` 대신 라이브러리 저장소가 하나씩 든다(`previewImages`·`thumbnails`).
 - 남은 싱글턴은 넷이다.
   - `LoudnessCache.shared`: 인프라 쪽 캐시다. 조립 지점이 붙인다.
@@ -242,6 +255,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | 소리 분석·렌더 | DJCAnalysis |
 | 화면 상태·의도 전달 | 앱 화면 모델. 유스케이스를 부른다. 모양은 [MVVM 패턴](mvvm.md) |
 | 실제 구현 연결 | 앱은 `AppComposition`, CLI는 `CLIComposition` |
+| 외부 프레임워크(예: Sparkle) 연결 | 앱의 연결 파일 한 곳. `scripts/check-imports.py`의 `EXTERNAL_FILES`에 적는다. 판정은 DJCDomain·DJCApplication에 둔다 |
 | CLI 인자·출력 | `djc` 명령 |
 | 규칙을 알아낼 때 쓴 실험 | `djc/Lab/` |
 
@@ -261,7 +275,7 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 
 - 초안: `cue-drafts/`, `grid-drafts/`, `gain-drafts.json`, `tag-drafts/`
 - 앨범아트 초안: `artwork-drafts/`. 앨범아트 초안과 고른 앨범아트 사본이 있다.
-- 재생 목록 초안: `playlist-drafts.json`. 재생 목록 편집을 순서대로 적는다.
+- 재생 목록 초안: `playlist-drafts.json`. 재생 목록 편집을 순서대로 적는다. 옆의 `playlist-drafts.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다.
 - `damaged-drafts/`: 읽지 못한 초안 파일을 옮겨 둔 곳이다. 그 파일을 지우지 않는다. 빈 값으로 덮지도 않는다. 합치기 초안 `merge-drafts.json`과 추가 목록 `staged.json`도 여기로 옮긴다. 앱은 읽기·저장 때 파일을 옮긴 뒤 목록 위에 알린다.
 - 추가한 곡: `staged.json`
 - 읽기용 스냅샷: `snapshots/`

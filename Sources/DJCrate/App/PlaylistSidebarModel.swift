@@ -1,6 +1,7 @@
 import Observation
 
 /// 사이드바 재생 목록 칸의 화면 모델(#251): 펼친 폴더와 이름을 고치는 목록. 조립 지점이 한 번 만든다(`AppComposition.playlistSidebar`).
+/// 사이드바 여러 개 고르기와 묶음 지우기·옮기기(#261)는 `PlaylistSidebarModel+Selection`에 있다.
 /// 목록을 만들면(메뉴·곡 목록·사이드바 어디서든) 재생 목록 조각이 알린다(`PlaylistEditStore.onCreate`). 그러면 조상 폴더만 펼치고
 /// (다른 폴더의 펼침은 그대로) 새 목록의 이름을 고치게 한다. 재생 기록 칸의 펼침은 흐름이 바꾸므로 재생 기록 조각(`HistoryStore`)이 든다.
 @MainActor
@@ -10,7 +11,12 @@ final class PlaylistSidebarModel {
     var expandedPlaylistIDs: Set<String> = []
     /// 사이드바에서 이름을 고치는 중인 목록
     private(set) var renamingPlaylistID: String?
-    @ObservationIgnored private let playlists: PlaylistEditStore
+    /// 재생 목록 조각(초안 편집 입구). 고르기는 그 핵심(`library.sidebarSelection`)에 둔다
+    @ObservationIgnored let playlists: PlaylistEditStore
+    /// 여러 개 지우기 확인 창(시험은 정해 둔 답을 넣는다)
+    @ObservationIgnored var prompter: any ReflectionPrompter = AlertPrompter()
+    /// 끄는 중인 재생 목록(끌기를 시작할 때 적는다). 놓는 쪽이 그 위에는 놓지 않는다
+    @ObservationIgnored var draggingPlaylistIDs: Set<String> = []
 
     /// 조각의 만들기 알림을 이 모델이 받는다(조각 하나에 모델 하나)
     init(playlists: PlaylistEditStore) {

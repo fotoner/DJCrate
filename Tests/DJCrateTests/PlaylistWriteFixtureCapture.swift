@@ -11,6 +11,7 @@ import Testing
 /// 그림 편집(#66) 시험용으로 넷째 곡은 분석한 곡(그림 없음), 다섯째 곡은 분석한 곡 + 합성 그림 셋·`artwork.jpg` 파일 행(상태 256)이다.
 /// 평점·곡 색(#65) 시험용으로 여섯째 곡은 동기화 상태 0(쓰기를 확인한 곡)이고 어느 목록에도 없으며, `djmdColor`에 rekordbox 여덟 색이 있다.
 /// 곡마다 평점·색은 rekordbox처럼 0·'0'이고 첫 곡만 평점 3·Red다.
+/// `DJC_PLAYLIST_FIXTURE_SMART=1`을 함께 주면 맨 위에 인텔리전트 목록 "합성 인텔리전트"를 더한다(사이드바 여러 개 고르기 캡처, #261).
 /// `DJC_PLAYLIST_FIXTURE=<폴더> swift test --filter PlaylistWriteFixtureCapture` → `DJC_REKORDBOX_DIR=<폴더>`로 앱을 띄운다.
 struct PlaylistWriteFixtureCapture {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["DJC_PLAYLIST_FIXTURE"] != nil))
@@ -44,8 +45,13 @@ struct PlaylistWriteFixtureCapture {
         try fixture.add(PlaylistSpec(id: "1001", name: "합성 폴더", seq: 1, isFolder: true))
         try fixture.add(PlaylistSpec(id: "1002", name: "합성 목록", parentID: "1001", seq: 1, contentIDs: ["101", "102"]))
         try fixture.add(PlaylistSpec(id: "1003", name: "맨 위 목록", seq: 2, contentIDs: ["103"]))
+        let smart = ProcessInfo.processInfo.environment["DJC_PLAYLIST_FIXTURE_SMART"] == "1"
+        if smart {
+            try fixture.add(PlaylistSpec(id: "1004", name: "합성 인텔리전트", seq: 3))
+            try fixture.execute("UPDATE djmdPlaylist SET Attribute = 4 WHERE ID = '1004'")
+        }
         // rekordbox가 남기는 모양(NODE Id는 16진수, 맨 위 = 0)
-        let xml = [
+        let xml = ([
             #"<?xml version="1.0" encoding="UTF-8"?>"#, "",
             #"<MASTER_PLAYLIST Version="3.0.0" AutomaticSync="0">"#,
             #"  <PRODUCT Name="rekordbox" Version="7.2.18" Company="AlphaTheta"/>"#,
@@ -53,8 +59,9 @@ struct PlaylistWriteFixtureCapture {
             #"    <NODE Id="3E9" ParentId="0" Attribute="1" Timestamp="1790400600945" Lib_Type="0" CheckType="0"/>"#,
             #"    <NODE Id="3EA" ParentId="3E9" Attribute="0" Timestamp="1790400600945" Lib_Type="0" CheckType="0"/>"#,
             #"    <NODE Id="3EB" ParentId="0" Attribute="0" Timestamp="1790400600945" Lib_Type="0" CheckType="0"/>"#,
+        ] + (smart ? [#"    <NODE Id="3EC" ParentId="0" Attribute="4" Timestamp="1790400600945" Lib_Type="0" CheckType="0"/>"#] : []) + [
             "  </PLAYLISTS>", "</MASTER_PLAYLIST>", "",
-        ].joined(separator: "\r\n")
+        ]).joined(separator: "\r\n")
         try xml.write(to: fixture.root.appending(path: "masterPlaylists6.xml"), atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: fixture.root.appending(path: "share/PIONEER/USBANLZ"), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: fixture.root, to: root)

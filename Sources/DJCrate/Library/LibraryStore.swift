@@ -131,6 +131,8 @@ final class LibraryStore {
 
     var sidebar: SidebarItem = .filter(.all) {
         didSet {
+            // 다른 곳(메뉴·만들기·지운 뒤)이 고른 것을 정하면 여러 개 고르기는 그 하나로 돌아간다
+            if !isSelectingSidebar, sidebarSelection != [sidebar] { sidebarSelection = [sidebar] }
             guard sidebar != oldValue else { return }
             // 고른 재생 기록이 접힌 연·월 안에 있으면 펼친다
             if case let .history(id) = sidebar { history.revealHistory(id) }
@@ -144,6 +146,25 @@ final class LibraryStore {
             suppressRefresh = false
             refreshBase()
         }
+    }
+    /// 사이드바에서 함께 고른 항목(⌘·⇧ 클릭, #261). 늘 `sidebar`(곡 목록이 보이는 마지막에 고른 항목)를 든다.
+    /// 여럿을 고르는 규칙은 사이드바 화면 모델(`PlaylistSidebarModel.select`)이 정하고 `selectSidebar`로 넣는다
+    private(set) var sidebarSelection: Set<SidebarItem> = [.filter(.all)]
+    @ObservationIgnored private var isSelectingSidebar = false
+
+    /// 여러 항목을 고르고 그중 `primary`의 곡을 보인다(`items`는 `primary`를 든다)
+    func selectSidebar(_ items: Set<SidebarItem>, showing primary: SidebarItem) {
+        isSelectingSidebar = true
+        defer { isSelectingSidebar = false }
+        sidebar = primary
+        let items = items.union([primary])
+        if sidebarSelection != items { sidebarSelection = items }
+    }
+
+    /// 같은 고르기를 다시 알린다. 사이드바 목록이 빈 고르기를 보냈을 때 강조를 되살린다(받지 않으면 화면만 비어 어긋난다)
+    /// 같은 값을 넣으면 관찰 알림이 나가지 않아 바뀐 것으로 알린다
+    func reassertSidebarSelection() {
+        withMutation(keyPath: \.sidebarSelection) {}
     }
     /// Music(iTunes) 표시 상태와 동기화 창(기능 조각, `MusicLibraryStore`). `let`이라 관찰하지 않는다: 화면은 조각의 값을 읽는다
     let music: MusicLibraryStore
@@ -265,6 +286,8 @@ final class LibraryStore {
             if oldValue && !isWritingRekordbox { refreshWriteBackups() }
         }
     }
+    /// 쓰는 동안 든 재생 목록 초안 파일 잠금을 푸는 함수(#260)
+    @ObservationIgnored var playlistDraftUnlock: (@Sendable () -> Void)?
     /// 쓰는 동안 덱 큐 편집을 잠근다
     var onWriteLock: ((Bool) -> Void)?
     /// rekordbox에 쓰거나 되돌린 곡(UUID). 덱이 그 곡이면 다시 읽는다. 새 스냅샷을 읽은 뒤에만 부른다(#175).

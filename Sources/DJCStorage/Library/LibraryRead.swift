@@ -75,6 +75,12 @@ public struct LibraryRead {
     /// rekordbox 곡 색 목록(읽지 못했으면 rekordbox 기본 여덟 색)
     public var colors: [TrackColor] { library.colors.isEmpty ? TrackColor.rekordboxDefaults : library.colors }
 
+    /// 재생 목록 트리(초안을 얹기 전). 앱이 스냅샷을 읽을 때와 같은 모양이다
+    public var playlistLayout: PlaylistLayout { PlaylistLayout(rekordbox: library.playlists) }
+
+    /// 컬렉션의 곡(ContentID, 지운 곡 제외)
+    public var contentIDs: Set<String> { Set(byID.keys) }
+
     /// 곡이 살아 있는 재생 목록(폴더 제외)에 들었는지. 평점·곡 색 쓰기를 확인한 범위를 가른다(`TagWriteScope`).
     public func isInPlaylist(id: String) -> Bool {
         library.playlists.contains { !$0.isFolder && $0.trackIDs.contains(id) }

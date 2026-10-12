@@ -8,8 +8,8 @@ struct WriteLockPolicy {
     var canCancelPreparation = false
 
     var allowsLibraryInteraction: Bool { !isWriting }
+    /// 앱 끄기는 USB 쓰기도 함께 본다(`AppWriteActivity.quitBlockedReason`)
     var allowsTermination: Bool { !isWriting }
-    static var terminationMessage: String { String(ui: "rekordbox에 쓰는 중입니다. 끝난 뒤 종료하세요") }
 
     func blocksKey(_ keyCode: UInt16, in context: KeyRoutingPolicy.Context) -> Bool {
         guard isWriting, context.isMainWindow, !context.hasModalWindow, !context.hasAttachedSheet,
@@ -25,5 +25,11 @@ struct WriteLockPolicy {
 extension LibraryStore {
     var writeLockPolicy: WriteLockPolicy {
         WriteLockPolicy(isWriting: isWritingRekordbox, canCancelPreparation: writeStage?.cancellable == true)
+    }
+
+    /// 앱이 쓰는 중인 것: rekordbox 쓰기·복원(쓰기 잠금)과 USB 쓰기(진행 중·볼륨을 붙잡은 작업). 관찰할 수 있는 값에서 읽는다.
+    var writeActivity: AppWriteActivity {
+        AppWriteActivity(writingRekordbox: isWritingRekordbox,
+                         writingUsb: usb.map { $0.activeWrite != nil || !$0.busyVolumes.isEmpty } ?? false)
     }
 }

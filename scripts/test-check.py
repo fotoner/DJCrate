@@ -151,6 +151,9 @@ def prepare(root):
     for relative in rules.ASSEMBLY_FILES:
         (root / relative).parent.mkdir(parents=True, exist_ok=True)
         (root / relative).write_text("import Foundation\n")
+    for relative in (name for listed in rules.EXTERNAL_FILES.values() for name in listed):
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_text("import Foundation\n")
     for folder, modules in rules.BROAD_FOLDERS.items():
         (root / folder).mkdir(parents=True, exist_ok=True)
         (root / folder / "Placeholder.swift").write_text("".join(f"import {name}\n" for name in sorted(modules)))
@@ -636,6 +639,13 @@ IMPORT_CASES = {
     # 목록에 적은 예외 파일이 없으면(지웠거나 옮김) 목록을 고치게 한다.
     "imports-stale-assembly": ({"Sources/djc/CLIComposition+Usb.swift": None}, "", 1,
                                "예외 목록의 파일이 없습니다: Sources/djc/CLIComposition+Usb.swift", False),
+    # 외부 모듈(Sparkle)은 적은 파일에서만: 화면 모델·핵심부에서 import하면 위반이고, 적은 파일이 없어지면 목록을 고치게 한다.
+    "imports-external-file": ({"Sources/DJCrate/App/AppUpdater.swift": "import Sparkle\nimport DJCApplication\n"}, "", 0, "위반 0개", True),
+    "imports-external-outside": ({"Sources/DJCrate/Settings/UpdateSettingsModel.swift": "import Sparkle\n",
+                                  "Sources/DJCApplication/Update.swift": "import Sparkle\n"}, "", 1,
+                                 "UpdateSettingsModel.swift\timport\tSparkle", False),
+    "imports-external-stale": ({"Sources/DJCrate/App/AppUpdater.swift": None}, "", 1,
+                               "예외 목록의 파일이 없습니다: Sources/DJCrate/App/AppUpdater.swift", False),
     # 넓은 예외 폴더도 허용 import는 적은 것만: 목록 밖 모듈은 위반이고, 적었는데 아무도 쓰지 않으면 목록을 줄이게 한다.
     "imports-broad-folder": ({"Sources/djc/Lab/LabCipher.swift": "import SQLCipher\n"}, "", 1,
                              "LabCipher.swift\timport\tSQLCipher", False),

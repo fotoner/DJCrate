@@ -14,7 +14,8 @@ struct Sidebar: View {
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
-        List(selection: $store.sidebar) {
+        // ⌘·⇧ 클릭으로 재생 목록을 여럿 고른다(#261). 곡 목록은 마지막에 고른 항목(`store.sidebar`)을 보인다
+        List(selection: Binding(get: { playlistSidebar.selection }, set: { playlistSidebar.select($0) })) {
             Section {
                 ForEach(LibraryFilter.visible(commentPreset: store.commentPreset, hidingStreaming: store.hideStreaming)) { filter in
                     SidebarFilterRow(store: store, filter: filter)

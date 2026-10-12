@@ -33,21 +33,36 @@ final class AppComposition {
     let listActionBar: ListActionBarModel
     /// 주 창 화면 모델(주 창이 띄우는 시트와 단추·메뉴 입구). 주 창을 다시 그려도 같은 모델을 쓴다.
     let libraryWindow: LibraryWindowModel
+    /// 설정 › AI 에이전트 화면 모델(#262). 설정 창과 켤 때 알림이 함께 쓴다. 화면 시험의 조립(`init(store:deck:)`)은 nil이다
+    /// (사용자 홈의 `~/.claude*`·`~/.agents`·`~/.local/bin`을 읽거나 쓰지 않게)
+    let agentTools: AgentToolsSettingsModel?
+    /// 켤 때 옛 설치본을 알릴지(자가 테스트·측정 실행은 알리지 않는다)
+    private let agentNoticeEnabled: Bool
+    /// 설정 › 업데이트와 앱 메뉴 "업데이트 확인…"의 화면 모델(#59)
+    let updates: UpdateSettingsModel
+    /// Sparkle 연결. 배포 앱 번들에서만 있다(개발 빌드·화면 시험은 nil)
+    private let updater: AppUpdater?
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
 
-    init(settings: SettingsStore, store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator) {
+    init(settings: SettingsStore, store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
+         agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil) {
         self.settings = settings
+        self.updater = updater
+        updates = UpdateSettingsModel(updater: updater, version: .of(.main))
         self.store = store
         self.deck = deck
         self.windows = windows
         self.reflection = reflection
+        self.agentTools = agentTools
+        self.agentNoticeEnabled = agentNoticeEnabled
         trackListActions = .live(store: store, reflection: reflection)
         tagInspector = TagInspectorModel(store: store)
         playlistSidebar = PlaylistSidebarModel(playlists: store.playlists)
         listActionBar = ListActionBarModel(store: store)
         libraryWindow = LibraryWindowModel(store: store)
+        libraryWindow.agentTools = agentTools
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
@@ -85,7 +100,45 @@ final class AppComposition {
         // 덱은 저장소와 같은 초안 저장소(같은 저장 큐)·설정을 쓴다(읽기는 메인 밖에서 실제 파일을 본다).
         let storage = DeckStorage(drafts: drafts, settings: settings)
         let deck = DeckModel(audio: DeckAudio(), storage: storage, assets: .live(drafts: drafts), analysis: deckAnalysis(), runsAnalysis: true)
-        return AppComposition(settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store))
+        let notice = !info.arguments.contains { $0.contains("selftest") || $0.contains("capture") || $0.hasPrefix("--ui-perf") || $0.hasPrefix("--perf-")
+            || $0 == "--autoplay" || $0 == "--scroll-perf" }
+        // 앱 자동 업데이트(#59): 쓰는 동안 설치를 미루고 그 사실을 알림으로 보인다
+        let updater = AppUpdater.make(activity: { [weak store] in store?.writeActivity ?? .idle },
+                                      announce: { [weak store] in store?.toast = .notice($0, nil) })
+        return AppComposition(settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store),
+                              agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
+                              updater: updater)
+    }
+
+    /// AI 에이전트 설치(#262): 재료는 이 앱 번들 안(`Contents/Resources/skills/djcrate`·`Contents/Helpers/djc`), 설치 자리의 뿌리는 사용자 홈.
+    /// 디버그 빌드는 `--agent-home=<폴더>`로 홈을 바꾼다(자가 테스트·캡처가 사용자 홈과 휴지통에 쓰지 않게 휴지통도 그 안으로 둔다)
+    static func agentTools(arguments: [String], settings: SettingsStore?,
+                           confirm: @escaping @MainActor (ReflectionPrompt) -> Bool = { AlertPrompter().show($0) }) -> AgentToolsSettingsModel {
+        var home = FileManager.default.homeDirectoryForCurrentUser
+        var trash: URL?
+        #if DEBUG
+        if let value = arguments.first(where: { $0.hasPrefix("--agent-home=") })?.dropFirst("--agent-home=".count), !value.isEmpty {
+            home = URL(filePath: String(value), directoryHint: .isDirectory)
+            trash = home.appending(path: ".djc-test-trash")
+        }
+        #endif
+        let tools = AgentTools(files: .live(layout: agentLayout(), trash: trash), home: home)
+        return AgentToolsSettingsModel(tools: tools, settings: settings, confirm: confirm)
+    }
+
+    /// 앱 번들이면 번들 안 재료, 디버그 실행 파일이면 저장소의 `skills/djcrate`와 실행 파일 옆 djc(`swift build`가 함께 만든다)
+    static func agentLayout(bundle: Bundle = .main) -> AgentBundleLayout {
+        if bundle.bundleURL.pathExtension == "app" { return .appBundle(bundle.bundleURL, info: bundle.infoDictionary ?? [:]) }
+        #if DEBUG
+        let repository = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let command = bundle.executableURL?.deletingLastPathComponent().appending(path: "djc")
+        return AgentBundleLayout(skillSource: repository.appending(path: "skills/djcrate"),
+                                 command: command.flatMap { FileManager.default.isExecutableFile(atPath: $0.path) ? $0 : nil },
+                                 version: AgentPayloadVersion(version: "dev", build: "0"))
+        #else
+        return AgentBundleLayout(skillSource: nil, command: nil, version: AgentPayloadVersion(version: "dev", build: "0"))
+        #endif
     }
 
     /// rekordbox 쓰기를 잇는다: 반영 세션(DJCApplication)의 포트에 실제 구현(관문·백업 폴더·음원·실행 중인 앱, DJCAdapters)과
@@ -195,6 +248,7 @@ final class AppComposition {
                                     libraryWindow: libraryWindow)
         DevSelfTests.runAsyncGuidanceCaptureIfRequested(store: store, deck: deck)
         UsbMigrateCapture.runIfRequested(store: store)
+        AgentToolsCapture.runIfRequested()
         DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows)
         #endif
         deck.onDraftChange = { [weak store] uuid, kind, exists in
@@ -204,11 +258,22 @@ final class AppComposition {
 
     /// 창을 띄운 뒤: 사이드바 USB 절을 붙이고, 읽을 때마다 도는 캐시 정리를 붙이고, 라이브러리를 처음 읽는다.
     func start() async {
+        updater?.start()
         UsbAppSetup.attach(to: store)
         // CLI가 앱의 시점 스냅샷 보관 일수를 따르게 공유 파일에 맞춘다
         settings.syncShared()
         // 프로세스 전체의 캐시·임시 파일 정리는 앱만 한다(화면 모델·시험 저장소가 공용 음량 캐시를 자기 곡으로 잘라내지 않게).
         store.onLibraryLoaded = { paths in Self.maintainCaches(keeping: paths) }
+        // 옛 AI 에이전트 설치본 알림(#262)은 읽기를 기다리지 않는다. 다른 알림을 덮지 않는다
+        if agentNoticeEnabled, let agentTools {
+            Task { [store] in
+                _ = await agentTools.launchNotice { toast in
+                    guard store.toast == nil else { return false }
+                    store.toast = toast
+                    return true
+                }
+            }
+        }
         await store.loadInitial()
     }
 

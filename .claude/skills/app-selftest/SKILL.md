@@ -58,6 +58,9 @@ grep "루프 시험" /tmp/djc-loop.log
 | `--usb-selftest` | 합성 라이브러리로 USB 내보내기·편집·옮기기·되돌리기 전 과정("USB 시험 통과" 줄). 아래 자세히 | rekordbox 꺼짐, 임시 `DJC_HOME`, `--db <스냅샷 사본>`(`DJC_HOME`은 스냅샷을 옮기지 않는다). 앱 없이 같은 흐름: `DJC_USB_SELFTEST_SCRATCH=<임시 폴더>`로 `UsbSelfTestScenarioCapture` |
 | `--xml-export-capture=<폴더>` | 라이브러리 XML 내보내기(#72) 캡처와 결과 확인("라이브러리 XML 시험 통과" 줄). `<폴더>`는 `DJC_HOME` 밖. 아래 자세히 | `XMLExportFixtureCapture` 합성 라이브러리를 `DJC_REKORDBOX_DIR`·`--db`로, 임시 `DJC_HOME` |
 | `--xml-import-capture=<폴더>` | rekordbox XML 가져오기(#72) 캡처와 결과 확인("rekordbox XML 가져오기 시험 통과" 줄). `<폴더>`는 `DJC_HOME` 밖. 아래 자세히 | `XMLExportFixtureCapture` 합성 라이브러리를 `DJC_REKORDBOX_DIR`·`--db`로, 임시 `DJC_HOME` |
+| `--agent-tools-capture=<폴더>` | 설정 › AI 에이전트(#262): 손 설치 보기·설치·다른 djc 바꾸기·고친 파일 다시 설치·제거의 창과 확인 창 PNG, "AI 에이전트 캡처 통과" 줄 | `--agent-home=<임시 폴더>` 필수(임시 폴더가 아니면 종료 코드 2). 홈의 휴지통도 그 안 `.djc-test-trash`다. 라이브러리는 임시 `DJC_HOME`·`DJC_REKORDBOX_DIR` |
+| `--sidebar-multi-capture=<폴더>` | 사이드바 여러 개 고르기(#261)의 화면을 캡처한다. 고르기·지우기 확인 창·건너뛰기 알림·⌘Z·옮기기를 본다. 통과 줄은 "사이드바 여러 개 캡처 통과"다 | `DJC_PLAYLIST_FIXTURE_SMART=1`로 만든 `PlaylistWriteFixtureCapture` 사본(`$TMPDIR` 아래)을 `DJC_REKORDBOX_DIR`·`--db`로, 임시 `DJC_HOME` |
+| `--sidebar-multi-write=bulk\|single` | 같은 목록 편집을 묶음이나 하나씩 쌓아 사본에 쓴다. 통과 줄은 "사이드바 여러 개 쓰기 통과"다. 두 사본은 `djc lab db-diff`로 견준다 | 한 `PlaylistWriteFixtureCapture` 사본을 두 폴더에 넣어 하나씩 `DJC_REKORDBOX_DIR`로 준다. `--db`는 그 `master.db`를 따로 둔 사본 |
 | `--key-routing-selftest` | 앱 안 키 전달(검색칸·곡 목록·태그 시트·부착 시트·모달·곡 편집 창) | [captures.md](captures.md) |
 
 ### 인자별 자세히

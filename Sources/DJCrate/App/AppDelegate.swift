@@ -24,9 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// rekordbox·USB에 쓰는 중이면 끄지 않는다. 앱 업데이트(#59)의 다시 켜기·끌 때 설치도 이 입구를 지난다.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard store?.writeLockPolicy.allowsTermination == false else { return .terminateNow }
-        inform(WriteLockPolicy.terminationMessage)
+        guard let reason = store?.writeActivity.quitBlockedReason else { return .terminateNow }
+        inform(reason)
         return .terminateCancel
     }
 }

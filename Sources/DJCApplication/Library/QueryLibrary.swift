@@ -23,6 +23,10 @@ public struct LibraryQuery: Sendable {
     public var isInPlaylist: @Sendable (_ id: String) -> Bool
     /// rekordbox 곡 색 목록
     public var colors: [TrackColor]
+    /// 재생 목록 트리(초안을 얹기 전, `djc draft playlist`가 편집을 계획한다)
+    public var playlistLayout: @Sendable () -> PlaylistLayout
+    /// rekordbox 컬렉션의 곡(ContentID, 지운 곡 제외)
+    public var contentIDs: @Sendable () -> Set<String>
 
     public init(search: @escaping @Sendable (_ query: String, _ bpm: ClosedRange<Double>?, _ key: String?, _ playlistID: String?,
                                              _ filter: LibraryFilter) throws -> LibraryRecords.TrackList,
@@ -38,7 +42,9 @@ public struct LibraryQuery: Sendable {
                 titlePaths: @escaping @Sendable (_ query: String) -> [String],
                 draftSource: @escaping @Sendable (_ id: String) throws -> (track: Track, cues: [Cue]),
                 isInPlaylist: @escaping @Sendable (_ id: String) -> Bool,
-                colors: [TrackColor]) {
+                colors: [TrackColor],
+                playlistLayout: @escaping @Sendable () -> PlaylistLayout = { PlaylistLayout() },
+                contentIDs: @escaping @Sendable () -> Set<String> = { [] }) {
         self.search = search
         self.track = track
         self.playlists = playlists
@@ -53,6 +59,8 @@ public struct LibraryQuery: Sendable {
         self.draftSource = draftSource
         self.isInPlaylist = isInPlaylist
         self.colors = colors
+        self.playlistLayout = playlistLayout
+        self.contentIDs = contentIDs
     }
 }
 

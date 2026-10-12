@@ -54,7 +54,16 @@ extension LibraryStore {
         location.movesDamagedDrafts = movesDamagedDrafts ?? (draftHome != nil)
         var drafts = DraftStore.live(writer: writer, home: home)
         if let saveTagDrafts { drafts.saveTags = { saveTagDrafts($0) } }
-        if let playlistDraftSaver { drafts.savePlaylistDraft = { try playlistDraftSaver($0) } }
+        if let playlistDraftSaver {
+            // 가짜 저장이 받은 초안을 디스크 초안으로 읽게 한다: 편집 전 바깥 변경 확인(#260)이 쓰지 않은 파일을 바깥 변경으로 보지 않게
+            let saved = SavedPlaylistDraft()
+            let read = drafts.readPlaylistDraft
+            drafts.savePlaylistDraft = { draft in
+                try playlistDraftSaver(draft)
+                saved.value = draft
+            }
+            drafts.readPlaylistDraft = { try saved.value ?? read() }
+        }
         if let mergeDraftSaver { drafts.saveMergeDrafts = { try mergeDraftSaver($0) } }
         let places = DraftLocations(home: home)
         // 라이브러리 포트는 조립 지점과 같은 실제 구현이다. 시험이 `ports`로 일부(라이브러리 읽기·Music 등)를 바꾼다.
@@ -154,4 +163,14 @@ final class TestSwitch: Sendable {
 extension DraftStore {
     /// 옛 `LoadedLibrary.load` 기본값과 같은 초안 저장소: 이 프로세스의 데이터 폴더(시험은 `DJC_HOME` 또는 임시 폴더)와 새 저장 큐
     static func dataFolder() -> DraftStore { .live(writer: DraftWriter(), home: DJCPaths.userData) }
+}
+
+/// 시험의 가짜 재생 목록 초안 저장이 받은 마지막 초안(`LibraryStore.test`의 `playlistDraftSaver`)
+private final class SavedPlaylistDraft: @unchecked Sendable {
+    private let lock = NSLock()
+    private var draft: PlaylistDraft?
+    var value: PlaylistDraft? {
+        get { lock.withLock { draft } }
+        set { lock.withLock { draft = newValue } }
+    }
 }

@@ -302,7 +302,7 @@ try await h.loaded()
   - 예: 곡 목록 표와 덱 묶음은 핵심을 통째로 받지 않는다. 표는 프로토콜 `TrackListSource`를, 덱 묶음은 `DeckLibrarySource`와 태그 편집 조각을 받는다.
   - 예: Music 목록과 동기화 창은 `MusicLibraryStore`(`store.music`)가 든다. 태그 인스펙터의 화면 모델 `TagInspectorModel`은 태그 편집 조각 `TagEditStore`(`store.tags`)를 부른다. 규칙은 유스케이스 `EditTags`에 있다.
   - 예: 재생 기록 트리와 보존본은 `HistoryStore`(`store.history`)가 든다. 보존의 줄 세우기와 실패 알림은 유스케이스 `ArchiveUsbHistories`에 있다.
-  - 예: 재생 목록 트리와 초안은 `PlaylistEditStore`(`store.playlists`)가 든다. 사이드바 펼침과 이름 바꾸기는 화면 모델 `PlaylistSidebarModel`이 든다.
+  - 예: 재생 목록 트리와 초안은 `PlaylistEditStore`(`store.playlists`)가 든다. 사이드바 펼침과 이름 바꾸기는 화면 모델 `PlaylistSidebarModel`이 든다. 사이드바 여러 개 고르기의 규칙과 묶음 지우기·옮기기도 이 모델이 한다. 고른 항목 집합은 곡 목록도 보므로 핵심(`sidebarSelection`)이 든다.
   - 예: 추가한 곡과 그리드 일괄 추정은 `TrackStagingStore`(`store.staging`)가 든다. 목록 아래 막대의 단추와 막힘 이유는 화면 모델 `ListActionBarModel`이 든다. 파일 없음 확인은 곡 행을 바꾸므로 핵심이 한다. 막대는 그 결과를 읽는다.
 
 ```swift
@@ -332,7 +332,7 @@ func tick() {
 
 | 접미사 | 뜻 | 예 |
 |---|---|---|
-| `…Model` | 화면 하나 전용 화면 모델 | `RelocateModel`, `TrackEditModel`, `StorageSettingsModel` |
+| `…Model` | 화면 하나 전용 화면 모델 | `RelocateModel`, `TrackEditModel`, `StorageSettingsModel`, `AgentToolsSettingsModel` |
 | `…Store` | 여러 화면이 함께 쓰는 저장소·기능 조각 | `LibraryStore`, `UsbStore`, `TagEditStore` |
 | `…Coordinator` | 화면 여러 개를 잇는 흐름 | `ReflectionCoordinator`, `UsbWriteCoordinator` |
 | `…Coordinator`(AppKit) | `NSViewRepresentable`의 대리자 | `TrackListCoordinator`, `SheetCoordinator` |

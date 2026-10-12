@@ -24,7 +24,9 @@ extension LibraryQuerySource {
                     titlePaths: { read.value.titlePaths(query: $0) },
                     draftSource: { try read.value.draftSource(id: $0) },
                     isInPlaylist: { read.value.isInPlaylist(id: $0) },
-                    colors: read.value.colors)
+                    colors: read.value.colors,
+                    playlistLayout: { read.value.playlistLayout },
+                    contentIDs: { read.value.contentIDs })
             },
             parse: { LibraryRead.parse(comment: $0) },
             compatibility: { try LibraryRead.compatibility(snapshot: $0, version: RekordboxCompatibility.installedAppVersion()) })

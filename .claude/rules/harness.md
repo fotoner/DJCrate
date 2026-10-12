@@ -70,7 +70,7 @@ paths:
 - **HAR-16** 파일의 모듈은 `Package.swift` 타깃 경로로 정한다. 타깃 이름이나 폴더를 바꾸면 `ALLOWED` 키만 맞춘다.
 - **HAR-17** 파일·폴더를 옮기면 `.claude/rules/*.md`의 `paths`도 따라 고친다. `scripts/test-map.txt`의 `when`도 고친다.
 - **HAR-18** 맞는 파일이 없는 글롭은 전체 검사에서 실패한다. 넓힌 `--changed`에서도 실패한다. `check-docs.py`와 `affected-tests.py --check-map`이 이것을 본다.
-- **HAR-34** 경계 예외는 두 가지다. 조립 지점은 파일 이름 목록 `ASSEMBLY_FILES`다. `Diagnostics/`·`Lab/`은 `BROAD_FOLDERS`에 허용 import를 적는다. 그 파일·폴더를 옮기면 두 목록도 고친다.
+- **HAR-34** 경계 예외는 두 가지다. 조립 지점은 파일 이름 목록 `ASSEMBLY_FILES`다. `Diagnostics/`·`Lab/`은 `BROAD_FOLDERS`에 허용 import를 적는다. 외부 모듈(Sparkle)은 `EXTERNAL_FILES`에 적은 파일에서만 import한다. 그 파일·폴더를 옮기면 세 목록도 고친다.
 - **HAR-35** 목록에 있는 파일이 없으면 검사가 실패한다. 아무도 쓰지 않는 허용 import가 남아도 실패한다. 넓은 예외의 크기는 `check-imports.py --summary`로 본다.
 
 ## 지침의 자리

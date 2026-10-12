@@ -176,7 +176,11 @@ group build-script
 when scripts/build-app.sh
 when scripts/make-icon.swift
 when Sources/DJCrate/Info.plist
+when scripts/sparkle-appcast.sh
+when scripts/sparkle-verify.swift
+when Assets/sparkle-public-ed-key.txt
 suite djcTests.BuildAppScriptTests
+suite djcTests.SparkleAppcastScriptTests
 
 # 시험이 없는 파일(빌드·검사 대상이 아님)
 group no-tests

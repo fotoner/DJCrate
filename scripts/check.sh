@@ -584,7 +584,11 @@ if [[ "$mode" == changed ]]; then
     case "$plan_scope" in
         tests)
             run_stage "소스 타깃 전체 빌드: 앱·CLI 포함(커버리지 계측)" build-sources swift build --enable-code-coverage
-            for target in ${=plan_targets}; do
+            # 타깃 하나만 빌드하면 그 타깃이 쓰지 않는 Products/Debug의 프레임워크(Sparkle)를 낡은 결과로 지운다.
+            # Sparkle을 쓰는 DJCrateTests를 마지막에 빌드해 그 번들이 열리게 한다.
+            build_targets=(${=plan_targets})
+            if (( ${build_targets[(Ie)DJCrateTests]} )); then build_targets=(${build_targets:#DJCrateTests} DJCrateTests); fi
+            for target in $build_targets; do
                 run_stage "시험 타깃 빌드: $target(커버리지 계측)" "build-$target" swift build --target "$target" --enable-code-coverage
             done
             if [[ " $plan_checks " == *" write-coverage "* ]]; then fresh_profile; fi

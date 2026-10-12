@@ -13,7 +13,7 @@ final class SettingsStore: @unchecked Sendable {
     let sharedFile: SharedSettingsWriter?
 
     init(defaults: UserDefaults = .standard,
-         persist: Bool = !ProcessInfo.processInfo.arguments.contains { $0.hasSuffix("-selftest") || $0 == "--autoplay" || $0 == "--scroll-perf" || $0.hasPrefix("--ui-perf=") },
+         persist: Bool = !ProcessInfo.processInfo.arguments.contains { $0.hasSuffix("-selftest") || $0.hasPrefix("--sidebar-multi-") || $0 == "--autoplay" || $0 == "--scroll-perf" || $0.hasPrefix("--ui-perf=") },
          sharedFile: SharedSettingsWriter? = nil) {
         self.defaults = defaults
         self.persist = persist

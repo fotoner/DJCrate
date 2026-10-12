@@ -21,6 +21,7 @@
 빚 목록 밖 위반이 있거나, 빚 목록의 항목이 이미 해소됐으면 실패한다(빚이 줄면 목록도 줄인다).
 
 예외: 조립 지점은 파일 이름 목록(ASSEMBLY_FILES), 디버그 자가 테스트·실험 명령은 폴더와 허용 import 목록(BROAD_FOLDERS).
+외부 모듈(Sparkle)은 적은 파일에서만 import한다(EXTERNAL_FILES).
 목록의 파일·폴더가 없거나, 폴더 예외가 허용한 모듈을 그 폴더의 어느 파일도 쓰지 않으면 실패한다(목록을 지금 쓰는 것으로 좁힌다).
 
 사용: scripts/check-imports.py            검사
@@ -92,6 +93,12 @@ ASSEMBLY_FILES = [
 BROAD_FOLDERS = {
     "Sources/DJCrate/Diagnostics": {"DJCAdapters", "DJCAnalysis", "DJCStorage", "RekordboxKit"},
     "Sources/djc/Lab": {"DJCAdapters", "DJCAnalysis", "DJCEnvironment", "DJCStorage", "RekordboxKit"},
+}
+
+# 예외 ③: 외부 모듈은 적은 파일에서만 import한다(바깥 프레임워크가 화면 모델·핵심부로 번지지 않게).
+# Sparkle(앱 자동 업데이트, #59)은 앱의 업데이트 연결 파일 한 곳.
+EXTERNAL_FILES = {
+    "Sparkle": ["Sources/DJCrate/App/AppUpdater.swift"],
 }
 
 # 핵심부가 직접 쓰면 안 되는 API(대상 이름, 정규식)
@@ -336,6 +343,9 @@ def violations(root=ROOT):
         for imported in imported_modules:
             if imported not in allowed:
                 found.add((relative, "import", imported))
+        for imported in IMPORT.findall(code):
+            if imported in EXTERNAL_FILES and relative not in EXTERNAL_FILES[imported]:
+                found.add((relative, "import", imported))
         if module in CORE:
             for name, pattern in FORBIDDEN_API:
                 if pattern.search(code):
@@ -354,6 +364,10 @@ def violations(root=ROOT):
     for relative in ASSEMBLY_FILES:
         if module_of(relative, targets) is not None and not (root / relative).is_file():
             problems.append(f"예외 목록의 파일이 없습니다: {relative}. 지웠거나 옮겼으면 scripts/check-imports.py의 ASSEMBLY_FILES를 고치세요")
+    for module, listed in EXTERNAL_FILES.items():
+        for relative in listed:
+            if module_of(relative, targets) is not None and not (root / relative).is_file():
+                problems.append(f"예외 목록의 파일이 없습니다: {relative}. 지웠거나 옮겼으면 scripts/check-imports.py의 EXTERNAL_FILES[{module}]를 고치세요")
     for folder, modules in BROAD_FOLDERS.items():
         if module_of(folder + "/_.swift", targets) is None:
             continue

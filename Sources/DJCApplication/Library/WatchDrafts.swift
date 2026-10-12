@@ -59,6 +59,8 @@ public struct WatchDrafts: Sendable {
         public var tagDrafts: [String: TagDraft]
         public var gridDraftUUIDs: Set<String>
         public var artworkDrafts: [String: ArtworkDraft]
+        /// 디스크의 재생 목록 초안(CLI `djc draft playlist`가 바꾼다, #260). 읽지 못하면 nil(받지 않는다)
+        public var playlistDraft: PlaylistDraft?
     }
 
     /// 바깥에서 바꾼 초안 파일을 확인한다. 파일 수정 시각이 `stamps`와 같고 저장 대기 입력이 없으면 내용을 읽지 않는다.
@@ -75,6 +77,8 @@ public struct WatchDrafts: Sendable {
         var result = Refresh(saveRevision: revision, failedTagSaves: drafts.failedTagSaves(),
                              stamps: drafts.fileStamps(), unsaved: unsaved)
         guard result.stamps != stamps || !unsaved.isEmpty else { return result }
+        // 손상된 파일을 옮기기 전에 읽는다: 옮긴 뒤 읽으면 빈 초안이 되어 메모리 초안을 덮는다
+        let playlist = try? drafts.readPlaylistDraft()
         let moved = preservingDamaged ? drafts.preserveDamaged() : []
         var cues: [String: CueDraft] = [:]
         for uuid in drafts.cueDraftUUIDs().union(unsaved.cues.keys) {
@@ -85,7 +89,7 @@ public struct WatchDrafts: Sendable {
             if let draft = drafts.tagDraft(uuid), draft.hasChanges { tags[uuid] = draft }
         }
         result.contents = Contents(moved: moved, cueDrafts: cues, tagDrafts: tags,
-                                   gridDraftUUIDs: drafts.gridDraftUUIDs(), artworkDrafts: drafts.artworkDrafts())
+                                   gridDraftUUIDs: drafts.gridDraftUUIDs(), artworkDrafts: drafts.artworkDrafts(), playlistDraft: playlist)
         return result
     }
 

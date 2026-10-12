@@ -30,6 +30,14 @@ struct PortContractTests {
                                        directory: URL(filePath: "/points"), now: Date(timeIntervalSince1970: 1_790_337_600))
     }
 
+    // MARK: - AI 에이전트 도구
+
+    @Test func AI_에이전트_설치_자리() throws {
+        let fake = MemoryAgentToolFiles()
+        fake.setPayload(source: URL(filePath: "/agent/payload/skills/djcrate"))
+        try agentToolFilesContract(fake.port, bench: fake, root: URL(filePath: "/agent"))
+    }
+
     // MARK: - 라이브러리
 
     @Test func 초안_저장소() throws { try draftStoreContract(MemoryDrafts().store) }

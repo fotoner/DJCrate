@@ -30,6 +30,15 @@ let package = Package(
         .executable(name: "DJCrate", targets: ["DJCrateExecutable"]),
     ],
     targets: [
+        // 앱 자동 업데이트(#59, MIT). Sparkle 2.10.0 공식 SwiftPM 바이너리·체크섬(그 태그의 Package.swift와 같다).
+        // 업데이트 검증 코드를 확인한 버전으로 고정한다. 올리면 docs/releasing.md "자동 업데이트"의 확인을 다시 한다.
+        // 외부 패키지가 아니라 이 패키지의 바이너리 타깃으로 둔다: 외부 패키지 제품은 시험 타깃이 의존해도 `swift build --build-tests`가
+        // 프레임워크를 Products/Debug에 두지 않아 앱 시험 번들(DJCrateTests)을 열지 못한다. SQLCipher와 같은 꼴이다.
+        .binaryTarget(
+            name: "Sparkle",
+            url: "https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-for-Swift-Package-Manager.zip",
+            checksum: "17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959"
+        ),
         // 공식 4.19.0 바이너리·체크섬은 그대로다. 외부 manifest의 폐기된 watchOS 4 선언은 읽지 않는다.
         .binaryTarget(
             name: "SQLCipher",
@@ -65,10 +74,11 @@ let package = Package(
             resources: [.process("Resources")],
             swiftSettings: swiftSettings
         ),
-        // macOS 앱 본체. 문구 카탈로그는 Resources/에 있다.
+        // macOS 앱 본체. 문구 카탈로그는 Resources/에 있다. Sparkle은 업데이트 연결 파일 한 곳만 import한다(scripts/check-imports.py).
         .target(
             name: "DJCrate",
-            dependencies: ["DJCDomain", "DJCEnvironment", "RekordboxKit", "DJCStorage", "DJCAnalysis", "DJCApplication", "DJCAdapters"],
+            dependencies: ["DJCDomain", "DJCEnvironment", "RekordboxKit", "DJCStorage", "DJCAnalysis", "DJCApplication", "DJCAdapters",
+                           "Sparkle"],
             exclude: ["Info.plist"],
             resources: [.process("Resources")],
             swiftSettings: swiftSettings
@@ -120,8 +130,10 @@ let package = Package(
         // 앱 화면 모델(덱·목록·반영 흐름)을 가짜 오디오·저장소로 시험한다.
         .testTarget(
             name: "DJCrateTests",
+            // Sparkle은 import하지 않는다. 시험 타깃이 바이너리 타깃에 직접 의존해야 `swift build --build-tests`가 Sparkle.framework를
+            // Products/Debug에 둔다(앱 제품을 거친 의존만으로는 두지 않아 DJCrateTests.xctest를 열지 못한다. SQLCipher는 CipherTestKDF가 같은 일을 한다).
             dependencies: ["DJCrate", "DJCStorage", "DJCApplication", "DJCAdapters", "DJCAnalysis", "RekordboxKit", "DJCDomain", "DJCEnvironment", "RekordboxFixtures", "DJCTestKit",
-                           "CipherTestKDF"],
+                           "CipherTestKDF", "Sparkle"],
             swiftSettings: swiftSettings
         ),
         // 유스케이스 시험: 가짜 포트(PortTestKit)와 DJCTestKit만 쓴다(DB·인프라 없이). 포트 계약 함수를 가짜에 돌린다.

@@ -1,3 +1,4 @@
+import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
@@ -148,7 +149,7 @@ struct SmartPlaylistAppTests {
         store.sidebar = .playlist("S1")
         #expect(store.playlists.editablePlaylistID == nil && !store.playlists.canReorderDisplayedTracks)
         #expect(!store.playlists.trackPlaylists.contains { $0.item.id == "S1" })
-        #expect(store.playlists.applyPlaylistEdits([.rename(playlist: .id("S1"), name: "x")], actionName: "시험") == false)
+        #expect(store.playlists.applyPlaylistRequests([.rename(.ref(.id("S1")), name: "x")], actionName: "시험") == nil)
         #expect(store.playlists.playlistDraft.isEmpty)
     }
 

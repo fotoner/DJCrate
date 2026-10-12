@@ -8,7 +8,7 @@ extension DraftStore {
     /// 같은 파일(게인 초안 하나)을 쓰는 곳이 모두 같은 `writer`를 받아야 저장 순서가 지켜진다(조립 지점이 하나를 만들어 나눠 준다).
     public static func live(writer: DraftWriter, home: URL) -> DraftStore {
         let places = DraftLocations(home: home)
-        return DraftStore(
+        var store = DraftStore(
             flush: { writer.flush() },
             saveRevision: { writer.saveRevision(in: places) },
             failures: { writer.failures(in: places) },
@@ -32,6 +32,13 @@ extension DraftStore {
                     for file in files where file.pathExtension == "json" {
                         stamps[file.path] = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
                     }
+                }
+                // 재생 목록 초안 파일도 CLI(`djc draft playlist`)가 바꾼다(#260).
+                // 같은 URL 값은 Foundation이 처음 읽은 시각을 캐시해 두 번째 변경부터 놓친다. 매번 캐시를 비우고 읽는다.
+                var playlist = places.playlist
+                playlist.removeAllCachedResourceValues()
+                if let date = (try? playlist.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
+                    stamps[places.playlist.path] = date
                 }
                 return stamps
             },
@@ -58,9 +65,12 @@ extension DraftStore {
             saveArtwork: { try ArtworkDraftStore.save($0, directory: places.artwork) },
             removeArtwork: { try ArtworkDraftStore.remove(trackUUID: $0, directory: places.artwork) },
             playlistDraft: { PlaylistDraftStore.load(url: places.playlist) },
+            readPlaylistDraft: { try PlaylistDraftStore.read(url: places.playlist) },
             savePlaylistDraft: { try PlaylistDraftStore.save($0, url: places.playlist) },
             mergeDrafts: { DuplicateMergeDraftStore.load(url: places.merge) },
             saveMergeDrafts: { try DuplicateMergeDraftStore.save($0, url: places.merge) },
             newCueID: { UUID() })
+        store.lockPlaylistDraft = { PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: places.playlist), wait: $0) }
+        return store
     }
 }

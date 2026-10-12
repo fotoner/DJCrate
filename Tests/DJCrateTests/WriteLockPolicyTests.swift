@@ -1,5 +1,7 @@
 @testable import DJCrate
 import AppKit
+import DJCDomain
+import DJCTestKit
 import Testing
 
 @Suite("쓰기 잠금 — 키·종료·편집")
@@ -14,6 +16,24 @@ struct WriteLockPolicyTests {
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
         #expect(messages == ["rekordbox에 쓰는 중입니다. 끝난 뒤 종료하세요"])
         store.setWriteLock(false)
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
+        #expect(messages.count == 1)
+    }
+
+    /// 앱 업데이트(#59)의 다시 켜기·끌 때 설치도 이 입구를 지난다. USB에 쓰는 중에 꺼지면 USB DB가 반쯤 쓴 채로 남는다.
+    @MainActor @Test func 종료_입구는_USB_쓰기_중에도_거절한다() throws {
+        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil))
+        let volume = FakeUsbVolume.diskImageFAT32(name: "B1", uuid: "00000000-0000-0000-0000-0000000000B1")
+        let usb = UsbTestData.store(FakeUsbHost([volume]))
+        store.usb = usb
+        let delegate = AppDelegate()
+        delegate.store = store
+        var messages: [String] = []
+        delegate.inform = { messages.append($0) }
+        _ = try #require(usb.beginWrite(volume, title: "합성 쓰기"))
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
+        #expect(messages == ["USB에 쓰는 중입니다. 끝난 뒤 종료하세요"])
+        usb.endWrite(volume.usbKey)
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
         #expect(messages.count == 1)
     }

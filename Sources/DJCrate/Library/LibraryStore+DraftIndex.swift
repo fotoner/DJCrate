@@ -30,11 +30,11 @@ extension LibraryStore {
         let watch = useCases.watch
         externalDraftRefreshCount += 1
         let request = externalDraftRefreshCount
-        let tags = tagRevision, artwork = artworkChangeCount, marks = draftMarkRevision
+        let tags = tagRevision, artwork = artworkChangeCount, marks = draftMarkRevision, playlist = playlists.playlistDraftRevision
         let refresh = await watch.refresh(since: draftFileStamps, preservingDamaged: location.movesDamagedDrafts)
         guard request == externalDraftRefreshCount, case .loaded = phase, !isWritingRekordbox, allowsLibrarySync?() ?? true,
               watch.saveRevision() == refresh.saveRevision, tagRevision == tags,
-              artworkChangeCount == artwork, draftMarkRevision == marks else {
+              artworkChangeCount == artwork, draftMarkRevision == marks, playlists.playlistDraftRevision == playlist else {
             // 이 확인이 옮긴 손상 파일은 다음 확인이 다시 보지 못하니 결과를 버려도 알리고 메모리 태그 초안을 다시 저장한다(#174).
             applyMovedDrafts(refresh.contents?.moved ?? [])
             return
@@ -44,6 +44,8 @@ extension LibraryStore {
         else if lastError == DraftSaveFailure.tagSaveMessage { clearLibraryError() }
         guard let contents = refresh.contents else { return }
         rememberDraftFileStamps(refresh.stamps)
+        // CLI가 바꾼 재생 목록 초안(#260). 받으면 라이브러리 ⌘Z 기록을 비운다(`adoptExternalDraft`)
+        playlists.adoptExternalDraft(contents.playlistDraft)
         // 바깥에서 바뀐 파일 중 읽지 못하는 것은 옮겨 보관했다. 메모리 태그 초안은 아래에서 다시 저장한다(#174).
         let previousTags = tagDrafts
         // 자동 큐를 빼고 만든 옛 초안에는 곡의 자동 큐를 채운다(#145).

@@ -28,10 +28,13 @@ struct AppToast: Identifiable, Equatable {
     enum Action: Equatable {
         /// USB 쓰기가 끝난 뒤 그 볼륨 꺼내기
         case ejectUsb(volumeKey: String)
+        /// 옛 AI 에이전트 스킬·djc 링크를 이 앱에 맞추기(#262)
+        case updateAgentTools
 
         var title: String {
             switch self {
             case .ejectUsb: String(ui: "꺼내기")
+            case .updateAgentTools: String(ui: "모두 갱신")
             }
         }
     }

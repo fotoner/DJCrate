@@ -8,7 +8,11 @@ extension LibraryStore {
     func xmlImportContext() -> ImportXML.Context {
         ImportXML.Context(
             existing: [.tag: Set(tagDrafts.keys)],
-            playlists: ImportXML.PlaylistTarget(current: { [weak self] in self?.playlists.playlistDraft ?? PlaylistDraft() },
+            // 바깥(CLI)에서 바뀐 초안을 먼저 받는다(#260): 계획하는 동안 바뀌면 저장하지 않는다(`ImportXML.playlistStep`)
+            playlists: ImportXML.PlaylistTarget(current: { [weak self] in
+                                                    self?.playlists.syncExternalPlaylistDraft()
+                                                    return self?.playlists.playlistDraft ?? PlaylistDraft()
+                                                },
                                                 save: { [weak self] draft in
                                                     guard let self else { return }
                                                     playlists.playlistDraft = draft

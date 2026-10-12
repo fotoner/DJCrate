@@ -129,6 +129,7 @@ struct UsbWriteCoordinator {
     func perform(_ action: AppToast.Action) async {
         switch action {
         case let .ejectUsb(volumeKey): await flow.eject(volumeKey)
+        case .updateAgentTools: break
         }
     }
 }

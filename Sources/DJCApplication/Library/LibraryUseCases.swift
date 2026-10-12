@@ -153,7 +153,7 @@ public struct LibraryUseCases: Sendable {
         merge = MergeDuplicates(prepare: ports.prepareMerge, drafts: ports.drafts)
         relocate = RelocateTracks(source: ports.relocate)
         queries = QueryLibrary(source: ports.source, query: ports.query, liveShare: ports.liveShare)
-        draftEdits = EditDraftFiles(files: ports.draftFiles)
+        draftEdits = EditDraftFiles(files: ports.draftFiles, newKey: ports.newKey)
         appleMusic = ImportAppleMusic(files: ports.appleMusic)
         previews = ShowPreviewWaveforms(previews: ports.previews)
         usbCueGrid = ImportUsbCueGridDrafts(drafts: ports.drafts, files: ports.draftFiles, newKey: ports.newKey)

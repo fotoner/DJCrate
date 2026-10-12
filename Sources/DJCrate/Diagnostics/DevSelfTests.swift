@@ -33,6 +33,7 @@ enum DevSelfTests {
         runXMLImportCaptureIfRequested(store: store, libraryWindow: libraryWindow)
         runPlaylistRecoveryIfRequested(store: store, reflection: reflection)
         runWriteSelfTestIfRequested(store: store, deck: deck, reflection: reflection, playlistSidebar: playlistSidebar)
+        SidebarMultiCapture.runIfRequested(store: store, sidebar: playlistSidebar, reflection: reflection)
         HistorySelfTest.runIfRequested(store: store, reflection: reflection)
         runTrackSelfTestIfRequested(store: store)
         runLoopSelfTestIfRequested(deck: deck)
@@ -88,9 +89,23 @@ enum DevSelfTests {
         }
     }
 
+    /// 쓰기 시험 전에 CLI가 쌓아 둔 재생 목록 초안(시험과 같은 모양: 맨 위 새 폴더 안 새 목록, 있던 목록에 곡 하나). 초안이 없으면 nil
+    static func externalSelfTestPlaylists(_ store: LibraryStore) -> (list: String?, extended: (id: String, before: [String], added: String)?)? {
+        let draft = store.playlists.playlistDraft
+        guard !draft.isEmpty else { return nil }
+        let layout = store.playlists.playlistProjection.layout
+        let list = layout.outline.first { $0.name == "DJC 시험 목록" && $0.isNew }?.id
+        let extended = draft.edits.lazy.compactMap { edit -> (id: String, before: [String], added: String)? in
+            guard case let .addTracks(.id(id), ids) = edit, let first = ids.first, let item = store.playlists.rekordboxPlaylists.item(id) else { return nil }
+            return (id, item.trackIDs, first)
+        }.first
+        return (list, extended)
+    }
+
     /// 개발용: 사본 rekordbox 폴더(`DJC_REKORDBOX_DIR`)와 사본 초안(`DJC_HOME`)으로
     /// 미리 보기 → 쓰기 → 다시 읽기 → 되돌리기 → 초안 복구를 앱 흐름 그대로 해 본다(`--write-selftest`).
     /// 재생 목록 초안도 만들어(맨 위에 폴더 → 그 안에 목록 + 곡, 있던 목록에 곡 하나) 함께 쓰고 되돌린다.
+    /// `DJC_HOME`에 재생 목록 초안이 이미 있으면(CLI `djc draft playlist`로 같은 모양을 쌓음) 만들지 않고 그것을 쓴다.
     static func runWriteSelfTestIfRequested(store: LibraryStore, deck: DeckModel, reflection: ReflectionCoordinator,
                                             playlistSidebar: PlaylistSidebarModel) {
         let session = reflection.session
@@ -141,13 +156,20 @@ enum DevSelfTests {
             log("반영 대기 \(store.pendingLibraryCount)곡 · 대상 \(targets.count)곡")
             // 재생 목록 초안: 새 폴더 안에 새 목록(곡 셋), 있던 목록 하나에 곡 하나
             let playable = store.rows.filter { !$0.isStaged && !$0.track.isStreaming }
-            let folder = store.playlists.createPlaylist(isFolder: true, in: PlaylistLayout.root, name: "DJC 시험 폴더")
-            let list = folder.flatMap { store.playlists.createPlaylist(isFolder: false, in: $0, name: "DJC 시험 목록", tracks: Array(playable.prefix(3))) }
+            var list: String?
             var extended: (id: String, before: [String], added: String)?
-            if let existing = store.playlists.rekordboxPlaylists.outline.first(where: { $0.holdsTracks }),
-               let track = playable.first(where: { !existing.trackIDs.contains($0.track.id) }) {
-                store.playlists.addTracks([track], toPlaylist: existing.id)
-                extended = (existing.id, existing.trackIDs, track.track.id)
+            if let external = Self.externalSelfTestPlaylists(store) {
+                // CLI(`djc draft playlist`)로 같은 편집을 미리 쌓았으면 그 초안을 그대로 쓴다(#260: 앱 편집과 같게 쓰이는지 본다)
+                (list, extended) = (external.list, external.extended)
+                log("재생 목록 초안: 바깥(CLI) 초안을 씀")
+            } else {
+                let folder = store.playlists.createPlaylist(isFolder: true, in: PlaylistLayout.root, name: "DJC 시험 폴더")
+                list = folder.flatMap { store.playlists.createPlaylist(isFolder: false, in: $0, name: "DJC 시험 목록", tracks: Array(playable.prefix(3))) }
+                if let existing = store.playlists.rekordboxPlaylists.outline.first(where: { $0.holdsTracks }),
+                   let track = playable.first(where: { !existing.trackIDs.contains($0.track.id) }) {
+                    store.playlists.addTracks([track], toPlaylist: existing.id)
+                    extended = (existing.id, existing.trackIDs, track.track.id)
+                }
             }
             playlistSidebar.cancelRenaming()
             let playlistEdits = store.playlists.playlistDraft.edits.count

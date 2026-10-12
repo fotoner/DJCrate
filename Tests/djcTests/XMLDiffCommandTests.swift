@@ -146,6 +146,22 @@ struct XMLDiffCommandTests {
         #expect(kept == tag)
     }
 
+    @Test func 재생_목록_초안_파일을_잡지_못하면_재생_목록만_건너뛴다() throws {
+        // 앱이 rekordbox에 쓰는 동안 초안 파일 잠금을 들고 있다(#260)
+        let fixture = try library()
+        let url = try xml(fixture) {
+            $0.replacingOccurrences(of: #"Name="시험 곡""#, with: #"Name="새 제목""#)
+                .replacingOccurrences(of: #"<NODE Name="셋""#, with: #"<NODE Name="새 셋""#)
+        }
+        let home = fixture.root.appending(path: "home")
+        let held = try #require(PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: home.appending(path: PlaylistDraftStore.fileName))))
+        defer { held() }
+        let request = XMLDiffCommand.Request(database: fixture.database, xml: url, share: nil, draft: true)
+        let lines = try XMLDiffCommand.makeDrafts(try XMLDiffCommand.report(request), request: request, home: home).joined(separator: "\n")
+        #expect(lines.contains("태그 1 · 재생 목록 0"))
+        #expect(!FileManager.default.fileExists(atPath: home.appending(path: PlaylistDraftStore.fileName).path))
+    }
+
     @Test func only로_고른_종류만_초안으로_만든다() throws {
         let fixture = try library()
         let url = try xml(fixture) {
@@ -159,8 +175,8 @@ struct XMLDiffCommandTests {
         #expect(!FileManager.default.fileExists(atPath: home.appending(path: "cue-drafts").path))
     }
 
-    @Test func DJCrate가_켜져_있으면_재생_목록_초안은_쓰지_않고_그리드는_경고한다() throws {
-        // 앱은 재생 목록 초안 파일을 다시 읽지 않아 다음 저장이 CLI가 쓴 것을 덮는다
+    @Test func DJCrate가_켜져_있어도_재생_목록_초안을_쓰고_그리드는_경고한다() throws {
+        // 켜져 있는 앱은 바깥에서 바뀐 재생 목록 초안 파일을 다시 읽는다(#260)
         let fixture = try library()
         let url = try xml(fixture) {
             $0.replacingOccurrences(of: #"Name="시험 곡""#, with: #"Name="새 제목""#)
@@ -170,9 +186,9 @@ struct XMLDiffCommandTests {
         let request = XMLDiffCommand.Request(database: fixture.database, xml: url, share: nil, draft: true)
         let lines = try XMLDiffCommand.makeDrafts(try XMLDiffCommand.report(request), request: request, home: home, appRunning: true)
             .joined(separator: "\n")
-        #expect(lines.contains("초안을 만들었습니다: 큐 0 · 그리드 0 · 태그 1 · 재생 목록 0"))
-        #expect(lines.contains("DJCrate가 켜져 있어 재생 목록 초안은 만들지 않았습니다"))
+        #expect(lines.contains("초안을 만들었습니다: 큐 0 · 그리드 0 · 태그 1 · 재생 목록 1"))
+        #expect(!lines.contains("재생 목록 초안은 만들지 않았습니다"))
         #expect(lines.contains("덱에 올린 곡"))
-        #expect(!FileManager.default.fileExists(atPath: home.appending(path: "playlist-drafts.json").path))
+        #expect(FileManager.default.fileExists(atPath: home.appending(path: "playlist-drafts.json").path))
     }
 }

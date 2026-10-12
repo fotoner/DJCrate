@@ -76,6 +76,13 @@ public enum SettingKeys {
     /// rekordbox가 꺼져 있고 라이브러리가 바뀌었으면 하루 한 번 자동 시점 스냅샷을 남긴다(#228). 기본은 켬
     public static let pointSnapshotAuto = SettingKey("storage.pointSnapshotAuto", true)
 
+    // MARK: AI 에이전트
+
+    /// 옛 설치본 알림(#262)을 마지막으로 보인 앱 판(`AgentPayloadVersion.key`). 앱 판마다 한 번만 알린다
+    public static let agentToolsNotifiedVersion = SettingKey("agentTools.notifiedVersion", "")
+    /// "다른 위치…"로 더한 Claude Code 스킬 자리(경로 모음)
+    public static let agentToolsClaudeFolders = "agentTools.claudeFolders"
+
     // MARK: 실험실
 
     /// 실험실: 사이드바에서 인텔리전트 재생 목록의 조건을 DJCrate가 계산해 읽기 전용으로 보인다(#68). rekordbox가 보여 주는 곡과 아직 견주지 않아
@@ -96,6 +103,7 @@ public enum SettingKeys {
             + [quantize, playQuantize, carryCues, showSuggestions, keyLock, autoGain, peakProtection, useRekordboxGain,
                sheetMode, showTagEditor, sidebarPlaylistsExpanded, sidebarSummaryExpanded, sidebarHistoriesExpanded, sidebarShowsStatus,
                sidebarVisible, commentClassColumnHidden, hideStreaming, labSmartPlaylists, pointSnapshotAuto].map(\.name)
-            + [dismissedGainSuggestions, dismissedGridSuggestions, dismissedKeySuggestions, deckShortcuts, waveformColorMode.name, commentPreset.name, cueListFilter.name]
+            + [dismissedGainSuggestions, dismissedGridSuggestions, dismissedKeySuggestions, deckShortcuts, waveformColorMode.name, commentPreset.name, cueListFilter.name,
+               agentToolsNotifiedVersion.name, agentToolsClaudeFolders]
     }
 }
