@@ -7,11 +7,13 @@ import SwiftUI
 struct DeckSuggestionBar: View {
     let tags: TagEditStore
     let deck: DeckModel
+    var singleLine = false
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
         let suggestions = DeckSuggestions(deck: deck, tags: tags)
         DeckSuggestionBarContent(list: suggestions.list, gridStatus: suggestions.gridStatus, isLocked: suggestions.isLocked,
+                                 notice: deck.gridUnavailableReason ?? deck.gridSourceNotice, singleLine: singleLine,
                                  apply: suggestions.apply, dismiss: suggestions.dismiss,
                                  restore: suggestions.restoreDismissed, reanalyze: deck.reanalyze)
     }
@@ -33,6 +35,10 @@ struct DeckSuggestionBarContent: View {
     var list: DeckSuggestionList
     var gridStatus: DeckSuggestions.GridStatus?
     var isLocked: Bool
+    /// 그리드를 편집할 수 없는 이유·출처 안내. 줄을 늘리지 않게 남는 폭에서 한 줄로 자른다(전체 문장은 툴팁).
+    var notice: String? = nil
+    /// 탭 판에서는 두 번째 줄을 늘리지 않고 가로로 훑어 모든 제안을 볼 수 있게 한다.
+    var singleLine = false
     var titles = Titles()
     var apply: @MainActor (DeckSuggestion.Kind) -> Void = { _ in }
     var dismiss: @MainActor (DeckSuggestion.Kind) -> Void = { _ in }
@@ -40,28 +46,59 @@ struct DeckSuggestionBarContent: View {
     var reanalyze: @MainActor () -> Void = {}
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            // 넓으면 한 줄: [재분석]은 오른쪽 끝(예전 그리드 제안 줄과 같은 자리)
-            HStack(spacing: 8) {
-                if !list.shown.isEmpty { icon }
-                ForEach(list.shown) { chip($0) }
-                status
-                Spacer(minLength: 0)
-                restoreButton
-                reanalyzeButton
-            }
-            .lineLimit(1)
-            // 모자라면 칩을 통째로 다음 줄로 넘기고, 칸보다 넓은 칩만 안에서 줄을 바꾼다.
-            SuggestionFlow(spacing: 8, lineSpacing: 4) {
-                if !list.shown.isEmpty { icon }
-                ForEach(list.shown) { chip($0) }
-                status.fixedSize(horizontal: false, vertical: true)
-                restoreButton
-                reanalyzeButton
+        Group {
+            if singleLine {
+                GeometryReader { geometry in
+                    ScrollView(.horizontal) {
+                        row
+                            .frame(minWidth: geometry.size.width, alignment: .leading)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+                .frame(height: TextScale.length(24, scale: textScale))
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    // 넓으면 한 줄: [재분석]은 오른쪽 끝(예전 그리드 제안 줄과 같은 자리)
+                    row
+                    // 모자라면 칩을 통째로 다음 줄로 넘기고, 칸보다 넓은 칩만 안에서 줄을 바꾼다.
+                    SuggestionFlow(spacing: 8, lineSpacing: 4) {
+                        if !list.shown.isEmpty { icon }
+                        ForEach(list.shown) { chip($0) }
+                        status.fixedSize(horizontal: false, vertical: true)
+                        if let notice { noticeLabel(notice).fixedSize(horizontal: false, vertical: true) }
+                        restoreButton
+                        reanalyzeButton
+                    }
+                }
             }
         }
         .font(.scaled(.caption, textScale))
         .controlSize(ControlSize.small.scaled(textScale))
+    }
+
+    private var row: some View {
+        HStack(spacing: 8) {
+            if !list.shown.isEmpty { icon }
+            ForEach(list.shown) { chip($0) }
+            status
+            if let notice {
+                // 이상적인 폭을 작게 두어, 긴 안내 때문에 여러 줄 배치로 넘어가지 않는다.
+                noticeLabel(notice)
+                    .frame(minWidth: 0, idealWidth: 40, maxWidth: .infinity, alignment: .leading)
+            } else {
+                Spacer(minLength: 0)
+            }
+            restoreButton
+            reanalyzeButton
+        }
+        .lineLimit(1)
+    }
+
+    private func noticeLabel(_ notice: String) -> some View {
+        Label(notice, systemImage: "lock")
+            .foregroundStyle(UIColors.warning.color)
+            .truncationMode(.tail)
+            .help(notice)
     }
 
     /// "DJCrate 제안:" 대신 줄 앞에 한 번만 둔다.
@@ -71,17 +108,19 @@ struct DeckSuggestionBarContent: View {
 
     /// 제안 하나: 이름 값 (확인 필요) [적용] [무시]. 칸이 이 한 줄보다 좁으면 값이 줄을 바꾸고 단추는 그 아래로 간다.
     private func chip(_ item: DeckSuggestion) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-                label(item).lineLimit(1)
-                checkMark(item)
-                buttons(item)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                label(item).fixedSize(horizontal: false, vertical: true)
-                FlowLayout(spacing: 6) {
-                    checkMark(item)
-                    buttons(item)
+        Group {
+            if singleLine {
+                chipRow(item)
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    chipRow(item)
+                    VStack(alignment: .leading, spacing: 3) {
+                        label(item).fixedSize(horizontal: false, vertical: true)
+                        FlowLayout(spacing: 6) {
+                            checkMark(item)
+                            buttons(item)
+                        }
+                    }
                 }
             }
         }
@@ -91,6 +130,14 @@ struct DeckSuggestionBarContent: View {
         // 단추는 따로 누를 수 있게 두고(.combine이 아니다), 묶음에 "게인 제안 +1.7 dB …" 이름을 준다.
         .accessibilityElement(children: .contain)
         .accessibilityLabel(item.spokenLabel)
+    }
+
+    private func chipRow(_ item: DeckSuggestion) -> some View {
+        HStack(spacing: 6) {
+            label(item).lineLimit(1)
+            checkMark(item)
+            buttons(item)
+        }
     }
 
     /// 이름은 굵게, 값은 그대로. 한 글로 두어 좁으면 함께 줄을 바꾼다(번역할 문구가 아니라 이미 번역한 두 값이다).

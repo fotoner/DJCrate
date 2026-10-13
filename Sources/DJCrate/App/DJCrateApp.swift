@@ -71,7 +71,7 @@ struct DJCrateApp: App {
         Window(Text(verbatim: "DJCrate"), id: "main") {
             ContentView(store: store, deck: deck, app: app, windowFrameRestored: windowFrameRestored)
                 .modifier(AppTextScale())
-                .frame(minWidth: 1100, minHeight: 700)
+                .frame(minWidth: 1155, minHeight: 700)
                 .background(MainWindowFrame { windowFrameRestored = true })
                 .task {
                     appDelegate.store = store

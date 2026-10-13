@@ -32,7 +32,7 @@ struct GridShiftButton: NSViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: GridShiftControl, context: Context) -> CGSize? {
         CGSize(width: max(nsView.intrinsicContentSize.width, 32),
-               height: CGFloat(TextScale.length(24, scale: textScale)))
+               height: CGFloat(TextScale.length(20, scale: textScale)))
     }
 
     static func dismantleNSView(_ button: GridShiftControl, coordinator: ()) {

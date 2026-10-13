@@ -66,9 +66,15 @@ struct TextScalingTests {
         #expect(WaveformMetrics(scale: 1.5).rulerHeight == 24)
         // 전체 파형: 아래 띠(섹션·조성)가 커진 만큼 전체 높이도 늘려 파형 높이는 그대로다.
         let base = WaveformMetrics(scale: 1), big = WaveformMetrics(scale: 1.5)
-        #expect(base.overviewHeight == 86)
+        #expect(base.overviewHeight == 48)
         #expect(base.overviewHeight - base.overviewBandsHeight == big.overviewHeight - big.overviewBandsHeight)
         #expect(big.keyBandHeight >= big.labelSize + 2)
+    }
+
+    @Test func 조성_띠를_끄면_그_자리만큼_전체_파형이_낮아진다() {
+        let shown = WaveformMetrics(scale: 1, showsKeyBand: true), hidden = WaveformMetrics(scale: 1)
+        #expect(shown.overviewHeight - hidden.overviewHeight == 2 + shown.keyBandHeight)
+        #expect(shown.overviewHeight - shown.overviewBandsHeight == hidden.overviewHeight - hidden.overviewBandsHeight)
     }
 }
 

@@ -7,36 +7,78 @@ struct TransportBar: View {
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
-        VStack(alignment: .leading, spacing: 6) {
-            FlowLayout(spacing: 22, justified: true) {
-                HStack(spacing: 4) {
-                    ForEach(0..<8, id: \.self) { slot in
-                        HotCuePad(deck: deck, slot: slot)
-                    }
-                }
-                HStack(spacing: 6) {
-                    HStack(spacing: 2) {
-                        Button { deck.jumpToCue(forward: false) } label: { Image(systemName: "backward.end.fill") }
-                            .help(.ui("이전 큐로 (\(deck.shortcuts.keyLabel(for: .previousCue)))")).accessibilityLabel(.ui("이전 큐로"))
-                        Button { deck.jumpToCue(forward: true) } label: { Image(systemName: "forward.end.fill") }
-                            .help(.ui("다음 큐로 (\(deck.shortcuts.keyLabel(for: .nextCue)))")).accessibilityLabel(.ui("다음 큐로"))
-                    }
-                    .disabled(!deck.canPlay)
-                    Button(.ui("+ 메모리 큐")) {
-                        // Shift+클릭 = 이 자리 메모리 큐 지우기
-                        if NSEvent.modifierFlags.contains(.shift) { deck.deleteMemoryCue(at: deck.currentTime) } else { deck.addMemoryCue() }
-                    }
-                    .help(.ui("CUE 위치에 메모리 큐 추가 (\(deck.shortcuts.keyLabel(for: .memoryCue))). Shift를 누르고 누르면 현재 재생 위치의 메모리 큐를 지웁니다"))
-                }
-                LoopControl(deck: deck)
-                HStack(spacing: 6) {
-                    MetronomeToggle(deck: deck)
-                    PlayQuantizeToggle(deck: deck)
+        // 줄을 바꾸지 않는다. 좁아지면 간격 → 메모리 큐 글자 → 핫큐 칸 폭 순서로 줄인다.
+        ViewThatFits(in: .horizontal) {
+            row(.regular)
+            row(.tight)
+            row(.iconMemory)
+            row(.squeezed)
+        }
+        .frame(maxWidth: .infinity)
+        .controlSize(ControlSize.small.scaled(textScale))
+    }
+
+    private func row(_ density: TransportDensity) -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: density == .regular ? 4 : density == .squeezed ? 2 : 3) {
+                ForEach(0..<8, id: \.self) { slot in
+                    HotCuePad(deck: deck, slot: slot, flexible: density == .squeezed)
                 }
             }
-            .frame(maxWidth: .infinity)
+            gap(density)
+            HStack(spacing: density == .squeezed ? 3 : 6) {
+                HStack(spacing: 2) {
+                    Button { deck.jumpToCue(forward: false) } label: { Image(systemName: "backward.end.fill") }
+                        .help(.ui("이전 큐로 (\(deck.shortcuts.keyLabel(for: .previousCue)))")).accessibilityLabel(.ui("이전 큐로"))
+                    Button { deck.jumpToCue(forward: true) } label: { Image(systemName: "forward.end.fill") }
+                        .help(.ui("다음 큐로 (\(deck.shortcuts.keyLabel(for: .nextCue)))")).accessibilityLabel(.ui("다음 큐로"))
+                }
+                .disabled(!deck.canPlay)
+                Button {
+                    // Shift+클릭 = 이 자리 메모리 큐 지우기
+                    if NSEvent.modifierFlags.contains(.shift) { deck.deleteMemoryCue(at: deck.currentTime) } else { deck.addMemoryCue() }
+                } label: {
+                    // 좁을 때는 파형 아래 큐 제안의 + 배지와 같은 + 하나로 줄인다.
+                    if density == .iconMemory || density == .squeezed {
+                        Image(systemName: "plus")
+                    } else {
+                        Text(.ui("+ 메모리 큐"))
+                    }
+                }
+                .accessibilityLabel(.ui("+ 메모리 큐"))
+                .help(.ui("CUE 위치에 메모리 큐 추가 (\(deck.shortcuts.keyLabel(for: .memoryCue))). Shift를 누르고 누르면 현재 재생 위치의 메모리 큐를 지웁니다"))
+            }
+            .fixedSize()
+            gap(density)
+            LoopControl(deck: deck).fixedSize()
+            gap(density)
+            DeckQuantizeToggles(deck: deck)
         }
-        .controlSize(ControlSize.small.scaled(textScale))
+        // 그리드 판 줄과 같은 높이로 두어 오른쪽 끝 메트로놈·Q가 두 판에서 같은 자리에 온다.
+        .frame(height: TextScale.length(24, scale: textScale))
+    }
+
+    /// 묶음 사이는 남는 폭을 고르게 나눠 양 끝을 맞춘다(예전 justified 줄과 같은 모양).
+    private func gap(_ density: TransportDensity) -> some View {
+        Spacer(minLength: density == .regular ? 22 : density == .squeezed ? 4 : 8)
+    }
+}
+
+/// 핫큐 줄을 한 줄에 넣으려고 줄이는 단계. 뒤로 갈수록 좁은 폭용이다.
+private enum TransportDensity {
+    case regular, tight, iconMemory, squeezed
+}
+
+/// 메트로놈·Q. CUE/LOOP·GRID 두 판의 오른쪽 끝에 같은 모양으로 둔다.
+struct DeckQuantizeToggles: View {
+    let deck: DeckModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            MetronomeToggle(deck: deck)
+            PlayQuantizeToggle(deck: deck)
+        }
+        .fixedSize()
     }
 }
 
@@ -169,6 +211,8 @@ struct HotCuePad: View {
     @Environment(\.textScale) private var textScale
     let deck: DeckModel
     let slot: Int
+    /// 아주 좁은 덱에서 줄을 바꾸지 않도록 칸 폭을 줄일 수 있게 한다.
+    var flexible = false
 
     var body: some View {
         let cue = deck.hotCue(slot: slot)
@@ -189,7 +233,9 @@ struct HotCuePad: View {
             }
                 .font(.scaled(size: 11, weight: .bold, textScale))
                 .imageScale(.small)
-                .frame(width: TextScale.length(24, scale: textScale), height: TextScale.length(20, scale: textScale))
+                .frame(minWidth: flexible ? TextScale.length(12, scale: textScale) : TextScale.length(24, scale: textScale),
+                       maxWidth: TextScale.length(24, scale: textScale))
+                .frame(height: TextScale.length(20, scale: textScale))
                 .foregroundStyle(cue == nil ? Color.secondary : UIColors.onFill)
                 .background(cue == nil ? Color.clear : color, in: RoundedRectangle(cornerRadius: 4))
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(engaged ? Color.primary : cue == nil ? Color.secondary.opacity(0.5) : color,

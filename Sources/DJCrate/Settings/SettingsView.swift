@@ -44,9 +44,11 @@ struct SettingsView: View {
                     }
                     Text(.ui("덱의 확대·전체 파형과 곡 목록 미리 보기에 함께 적용합니다."))
                         .foregroundStyle(.secondary)
+                    Toggle(.ui("전체 파형 아래 조성 띠 보이기"), isOn: $deck.showKeyBand)
+                        .help(.ui("끄면 조성 띠가 차지하던 높이만큼 전체 파형이 낮아집니다"))
                 }
                 .formStyle(.grouped)
-                .frame(width: 520, height: 180)
+                .frame(width: 520, height: 230)
             }
             Tab(.ui("저장 공간"), systemImage: "internaldrive", value: SettingsTab.storage) {
                 StorageSettingsView(model: storage())

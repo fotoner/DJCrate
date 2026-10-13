@@ -36,18 +36,9 @@ struct DeckView: View {
                         .font(.scaled(.caption, textScale))
                     }
                     DeckWaveformGroup(library: library, deck: deck, leftRailWidth: leftRailWidth, rightRailWidth: rightRailWidth)
-                    VStack(alignment: .leading, spacing: 12) {
-                        TransportBar(deck: deck)
-                        AudioBar(deck: deck)
-                    }
-                    .padding(.leading, leftRailWidth + 8)
-                    .padding(.trailing, PerfProbe.hidden.contains("meter") ? 0 : rightRailWidth + 8)
-                    GridEditorBar(deck: deck)
-                        .padding(.leading, leftRailWidth + 8)
-                        .padding(.trailing, PerfProbe.hidden.contains("meter") ? 0 : rightRailWidth + 8)
-                    // 게인·그리드·키 제안을 한 줄에 모은다. 좁으면 줄이 늘어나고, 한 줄일 때 높이는 예전 그리드 제안 줄과 같다.
-                    DeckSuggestionBar(tags: tags, deck: deck)
-                        .frame(maxWidth: .infinity, minHeight: TextScale.length(28, scale: textScale), alignment: .leading)
+                    // 탭 줄은 왼쪽 조작부 열에 두고, 탭 판은 오른쪽 음량 미터 열 끝까지 채운다.
+                    DeckControlTabs(tags: tags, deck: deck, tabWidth: leftRailWidth)
+                    GainDraftDiscardButton(deck: deck)
                         .padding(.leading, leftRailWidth + 8)
                         .padding(.trailing, PerfProbe.hidden.contains("meter") ? 0 : rightRailWidth + 8)
             }
@@ -84,12 +75,14 @@ private struct DeckWaveformGroup: View {
     let rightRailWidth: CGFloat
 
     private var waveGroupHeight: Double {
-        zoomWaveformHeight + 8 + WaveformMetrics(scale: textScale).overviewHeight
-            + TextScale.length(28, scale: textScale)
+        zoomWaveformHeight + 8 + WaveformMetrics(scale: textScale, showsKeyBand: deck.showKeyBand).overviewHeight
+            + WaveformMetrics(scale: textScale).tempoBandHeight
     }
     /// 조작부의 최소 높이에서 남는 자리를 확대 파형이 채워 빈 띠를 남기지 않는다.
+    /// 조성 띠를 끄면 그 자리도 확대 파형이 가져가 왼쪽 조작부 높이가 띠 설정에 따라 바뀌지 않는다.
     private var zoomWaveformHeight: Double {
         max(waveformHeight, DeckLayout.minimumZoomWaveformHeight(scale: textScale))
+            + (deck.showKeyBand ? 0 : WaveformMetrics(scale: textScale).keyBandSpace)
     }
 
     var body: some View {
@@ -138,7 +131,7 @@ private struct DeckWaveformGroup: View {
                 .environment(\.colorScheme, .dark)
                 VStack(spacing: 0) {
                     Group { if PerfProbe.hidden.contains("overview") { EmptyView() } else { OverviewWaveformView(deck: deck) } }
-                        .frame(height: WaveformMetrics(scale: textScale).overviewHeight)
+                        .frame(height: WaveformMetrics(scale: textScale, showsKeyBand: deck.showKeyBand).overviewHeight)
                     GridTempoSegments(deck: deck)
                 }
                 .background(Palette.well)
@@ -183,22 +176,27 @@ private struct DeckSideControls: View {
     let availableHeight: Double
     @State private var beatStep = 4
 
-    /// 넓은 간격에서 필요한 전체 높이. 조작 높이·여백과 함께 글자 배율을 따른다.
-    private var roomyControlsHeight: Double {
+    /// 여백을 뺀 조작 높이. 조작 높이·여백과 함께 글자 배율을 따른다.
+    private var controlsHeight: Double {
         2 * TextScale.length(24, scale: textScale)
             + TextScale.length(26, scale: textScale)
             + 2 * TextScale.length(36, scale: textScale)
-            + TextScale.length(20, scale: textScale)
-            + TextScale.length(48, scale: textScale)
-            + TextScale.length(12, scale: textScale)
             + 4 + 12 + 2 // 고정 간격·바깥쪽 여백과 레이아웃 반올림 여유
     }
 
+    /// 여백(곡 이동 아래 · 박 이동량 아래 · CUE 아래)을 좁은 값에서 넓은 값까지 남는 높이에 맞춰 늘린다.
+    /// 기준 높이에서 한 번에 바뀌면 파형 높이가 조금만 달라져도 조작부 모양이 크게 달라졌다.
+    private func gap(_ narrow: Double, _ wide: Double) -> Double {
+        let narrowTotal = TextScale.length(10 + 10 + 6, scale: textScale)
+        let wideTotal = TextScale.length(20 + 48 + 12, scale: textScale)
+        let fraction = min(max((availableHeight - controlsHeight - narrowTotal) / (wideTotal - narrowTotal), 0), 1)
+        return TextScale.length(narrow + (wide - narrow) * fraction, scale: textScale)
+    }
+
     var body: some View {
-        let compact = availableHeight < roomyControlsHeight
         VStack(spacing: 0) {
             DeckTrackStepButtons(library: library, deck: deck)
-                .padding(.bottom, TextScale.length(compact ? 10 : 20, scale: textScale))
+                .padding(.bottom, gap(10, 20))
             HStack(spacing: 4) {
                 Button { deck.beatJump(beats: -beatStep) } label: {
                     Image(systemName: "chevron.left")
@@ -234,9 +232,9 @@ private struct DeckSideControls: View {
             .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
             .help(.ui("한 번 누를 때 이동할 박 수를 고릅니다"))
             .accessibilityLabel(.ui("박 이동량"))
-            .padding(.bottom, TextScale.length(compact ? 10 : 48, scale: textScale))
+            .padding(.bottom, gap(10, 48))
             CueButton(deck: deck)
-                .padding(.bottom, TextScale.length(compact ? 6 : 12, scale: textScale))
+                .padding(.bottom, gap(6, 12))
             DeckPlayButton(deck: deck)
         }
         .font(.scaled(.caption, textScale))
@@ -336,7 +334,7 @@ struct DeckInfoHeader: View {
             }
             HStack(spacing: 10) {
                 cover
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     title
                     if !PerfProbe.hidden.contains("label") {
                         HStack(spacing: 8) {

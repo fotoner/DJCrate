@@ -20171,6 +20171,22 @@
         }
       }
     },
+    "끄면 조성 띠가 차지하던 높이만큼 전체 파형이 낮아집니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turning this off shortens the overview waveform by the key band's height"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフにするとキーの帯の分だけ全体波形が低くなります"
+          }
+        }
+      }
+    },
     "끊긴 USB 쓰기를 되돌렸습니다" : {
       "localizations" : {
         "en" : {
@@ -40425,6 +40441,22 @@
         }
       }
     },
+    "재생 템포 (−16…+16%). 두 번 누르면 0%" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playback tempo (−16…+16%). Double-click to reset to 0%"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生テンポ（−16…+16%）。ダブルクリックで0%"
+          }
+        }
+      }
+    },
     "재생 횟수" : {
       "localizations" : {
         "en" : {
@@ -40821,6 +40853,22 @@
         }
       }
     },
+    "전체 파형 아래 조성 띠 보이기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Key Band Below Overview Waveform"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全体波形の下にキーの帯を表示"
+          }
+        }
+      }
+    },
     "전체 행 %lld = 실제 컬렉션 %lld + 삭제 행 %lld" : {
       "localizations" : {
         "en" : {
@@ -41127,6 +41175,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "候補"
+          }
+        }
+      }
+    },
+    "제안 %lld개" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Suggestions"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提案 %lld件"
           }
         }
       }
@@ -43761,22 +43825,6 @@
         }
       }
     },
-    "켜면 아래 막대로 그리드를 옮기고 BPM·1박·변속 지점을 고칩니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "When on, use the bar below to move the grid and fix the BPM, first beat, and tempo-change points."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "オンにすると下のバーでグリッドを動かし、BPM・1拍目・テンポ変化点を修正します。"
-          }
-        }
-      }
-    },
     "켜면 음정을 유지한 채 속도만 바꿉니다(마스터 템포). 끄면 바이닐처럼 음정도 함께 바뀝니다." : {
       "localizations" : {
         "en" : {
@@ -44833,6 +44881,22 @@
         }
       }
     },
+    "큐·루프" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cue & Loop"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キュー・ループ"
+          }
+        }
+      }
+    },
     "큐·루프 시각은 곡 길이 안에, 루프 끝은 시작 뒤에, 박 수는 정수 또는 1/n으로 쓰세요" : {
       "localizations" : {
         "en" : {
@@ -45011,6 +45075,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キューは書き込み待ち：%@"
+          }
+        }
+      }
+    },
+    "큐도 함께" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move Cues Too"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キューも一緒に"
           }
         }
       }

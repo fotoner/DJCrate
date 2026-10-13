@@ -51,7 +51,7 @@ struct DeckWaveformLayoutTests {
         }
         let zoom = try #require(SelfTestFrames.frames[zoomKey])
         let group = try #require(SelfTestFrames.frames[groupKey])
-        let overviewAndTempo = WaveformMetrics(scale: scale).overviewHeight + TextScale.length(28, scale: scale)
+        let overviewAndTempo = WaveformMetrics(scale: scale).overviewHeight + WaveformMetrics(scale: scale).tempoBandHeight
         let blank = group.height - zoom.height - 8 - overviewAndTempo
         print("[덱 파형 배치] 배율=\(scale) 요청=\(requested) 확대=\(zoom.height) 묶음=\(group.height) 빈 높이=\(blank)")
         #expect(settled == 2)

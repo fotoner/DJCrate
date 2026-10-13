@@ -17,7 +17,7 @@ struct LibraryLayoutMetricsTests {
         layout.request(requested)
         layout.setTextScale(scale)
         let minimum = max(80, TextScale.length(190, scale: scale) - 8
-            - WaveformMetrics(scale: scale).overviewHeight - TextScale.length(28, scale: scale))
+            - WaveformMetrics(scale: scale, showsKeyBand: true).overviewHeight - TextScale.length(15, scale: scale))
         #expect(layout.minimumWaveformHeight == minimum)
         #expect(layout.waveformHeight == max(requested, minimum))
     }
@@ -33,26 +33,27 @@ struct LibraryLayoutMetricsTests {
         #expect(control.canGrow)
         #expect(!control.canShrink)
         control.grow()
-        #expect(requested == 156)
+        // 1.5배에서 조작부 285 − 여백 8 − 개요·띠 75 − 템포 띠 23 = 최소 179pt다.
+        #expect(requested == 199)
         let handle = SplitHandle(height: .constant(80), displayedHeight: layout.waveformHeight,
                                  maximumHeight: layout.maximumWaveformHeight, minimumHeight: layout.minimumWaveformHeight)
-        #expect(handle.draggedHeight(from: handle.displayedHeight, translation: 1) == 137)
-        #expect(handle.draggedHeight(from: handle.displayedHeight, translation: -100) == 136)
+        #expect(handle.draggedHeight(from: handle.displayedHeight, translation: 1) == 180)
+        #expect(handle.draggedHeight(from: handle.displayedHeight, translation: -100) == 179)
         // 끄는 중 표시 높이가 바뀌어도 시작점에 누적 이동량을 더한다.
-        #expect(handle.draggedHeight(from: 136, translation: 30) == 166)
-        #expect(handle.draggedHeight(from: 136, translation: 1000) == 480)
-        #expect(!WaveformHeightControl(displayed: 136, maximum: 480, minimum: 136) { _ in }.canShrink)
-        #expect(DeckLayout.steppedWaveformHeight(displayed: 146, direction: -1, maximum: 480, minimum: 136) == 136)
+        #expect(handle.draggedHeight(from: 179, translation: 30) == 209)
+        #expect(handle.draggedHeight(from: 179, translation: 1000) == 480)
+        #expect(!WaveformHeightControl(displayed: 179, maximum: 480, minimum: 179) { _ in }.canShrink)
+        #expect(DeckLayout.steppedWaveformHeight(displayed: 189, direction: -1, maximum: 480, minimum: 179) == 179)
     }
 
     @Test func 낮은_창의_조작_상한은_실제_최소_높이보다_작아지지_않는다() {
         let layout = LibraryLayoutMetrics()
         layout.setTextScale(1.5)
-        layout.measureDetail(height: 900, deckHeight: 456, waveformHeight: 136, hasTrack: true)
-        layout.measureDetail(height: 650, deckHeight: 456, waveformHeight: 136, hasTrack: true)
+        layout.measureDetail(height: 900, deckHeight: 499, waveformHeight: 179, hasTrack: true)
+        layout.measureDetail(height: 650, deckHeight: 499, waveformHeight: 179, hasTrack: true)
         layout.request(480)
-        #expect(layout.waveformHeight == 136)
-        #expect(layout.maximumWaveformHeight == 136)
+        #expect(layout.waveformHeight == 179)
+        #expect(layout.maximumWaveformHeight == 179)
         let control = WaveformHeightControl(displayed: layout.waveformHeight, maximum: layout.maximumWaveformHeight,
                                             minimum: layout.minimumWaveformHeight) { _ in }
         #expect(!control.canGrow && !control.canShrink)
@@ -67,29 +68,30 @@ struct LibraryLayoutMetricsTests {
         let layout = LibraryLayoutMetrics()
         layout.request(defaults.double(forKey: SettingKeys.waveformHeight.name))
         layout.setTextScale(1.5)
-        #expect(layout.waveformHeight == 136)
+        #expect(layout.waveformHeight == 179)
         #expect(defaults.double(forKey: SettingKeys.waveformHeight.name) == 80)
         layout.setTextScale(1)
-        #expect(layout.waveformHeight == 80)
+        #expect(layout.waveformHeight == 105)
         layout.setTextScale(1.5)
         let control = WaveformHeightControl(displayed: layout.waveformHeight, maximum: layout.maximumWaveformHeight,
                                             minimum: layout.minimumWaveformHeight) { defaults.set($0, forKey: SettingKeys.waveformHeight.name) }
         control.grow()
         layout.request(defaults.double(forKey: SettingKeys.waveformHeight.name))
-        #expect(layout.waveformHeight == 156)
-        layout.measureDetail(height: 1600, deckHeight: 476, waveformHeight: 156, hasTrack: true)
-        layout.measureDetail(height: 650, deckHeight: 476, waveformHeight: 156, hasTrack: true)
-        #expect(layout.waveformHeight == 136)
-        #expect(defaults.double(forKey: SettingKeys.waveformHeight.name) == 156)
-        layout.measureDetail(height: 1600, deckHeight: 456, waveformHeight: 136, hasTrack: true)
-        #expect(layout.waveformHeight == 156)
+        #expect(layout.waveformHeight == 199)
+        layout.measureDetail(height: 1600, deckHeight: 519, waveformHeight: 199, hasTrack: true)
+        layout.measureDetail(height: 650, deckHeight: 519, waveformHeight: 199, hasTrack: true)
+        #expect(layout.waveformHeight == 179)
+        #expect(defaults.double(forKey: SettingKeys.waveformHeight.name) == 199)
+        layout.measureDetail(height: 1600, deckHeight: 499, waveformHeight: 179, hasTrack: true)
+        #expect(layout.waveformHeight == 199)
         layout.setTextScale(1)
-        #expect(layout.waveformHeight == 156)
-        #expect(defaults.double(forKey: SettingKeys.waveformHeight.name) == 156)
+        #expect(layout.waveformHeight == 199)
+        #expect(defaults.double(forKey: SettingKeys.waveformHeight.name) == 199)
     }
 
     @Test func 들어맞는_창의_원시_높이는_덱과_파형에_알리지_않는다() {
         let layout = LibraryLayoutMetrics()
+        layout.request(150)
         layout.measureDetail(height: 900, deckHeight: 390, waveformHeight: 150, hasTrack: true)
         let changed = Mutex(false)
         withObservationTracking {
@@ -107,6 +109,7 @@ struct LibraryLayoutMetricsTests {
 
     @Test func 메뉴_문맥은_창_높이가_바뀌어도_키울_줄일_수_있는지가_같으면_알리지_않는다() {
         let layout = LibraryLayoutMetrics()
+        layout.request(150)
         layout.measureDetail(height: 900, deckHeight: 390, waveformHeight: 150, hasTrack: true)
         #expect(layout.canGrowWaveform && layout.canShrinkWaveform)
         let changed = Mutex(false)
@@ -171,10 +174,10 @@ struct LibraryLayoutMetricsTests {
             _ = layout.maximumWaveformHeight
             _ = layout.viewportHeight
         } onChange: { changed.withLock { $0 = true } }
-        layout.request(150)
+        layout.request(130)
         layout.measureNotice(0)
         layout.measureListHeader(40)
-        layout.measureDetail(height: 650, deckHeight: 390, waveformHeight: 150, hasTrack: true)
+        layout.measureDetail(height: 650, deckHeight: 370, waveformHeight: 130, hasTrack: true)
         #expect(!changed.withLock { $0 })
     }
 }

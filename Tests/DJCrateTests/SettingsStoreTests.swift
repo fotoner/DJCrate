@@ -44,6 +44,7 @@ struct SettingsStoreTests {
         #expect(deck.quantize)
         #expect(deck.carryCues)
         #expect(deck.showSuggestions)
+        #expect(!deck.showKeyBand)
         #expect(deck.volume == 0.9)
         #expect(deck.keyLock)
         #expect(deck.autoGain)

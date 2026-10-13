@@ -23,6 +23,8 @@ public enum SettingKeys {
     public static let carryCues = SettingKey("deck.carryCues", true)
     /// 메모리 큐 제안 표시
     public static let showSuggestions = SettingKey("deck.showSuggestions", true)
+    /// 전체 파형 아래 조성 띠 표시
+    public static let showKeyBand = SettingKey("waveform.showKeyBand", false)
     public static let volume = SettingKey<Double>("deck.volume", 0.9, in: 0...1)
     public static let keyLock = SettingKey("deck.keyLock", true)
     public static let metronomeVolume = SettingKey<Double>("deck.metronomeVolume", 0.8, in: 0...1)
@@ -46,7 +48,11 @@ public enum SettingKeys {
     public static let cueListFilter = SettingKey("deck.cueListFilter", CueListFilter.all.rawValue) {
         CueListFilter(rawValue: $0)?.rawValue
     }
-    public static let waveformHeight = SettingKey<Double>("waveformHeight", 150, in: nil)
+    /// 덱 아래에서 마지막으로 고른 조작 탭(CUE/LOOP · GRID)
+    public static let deckControlTab = SettingKey("deck.controlTab", DeckControlTab.cueLoop.rawValue) {
+        DeckControlTab(rawValue: $0)?.rawValue
+    }
+    public static let waveformHeight = SettingKey<Double>("waveformHeight", 130, in: nil)
     public static let sheetMode = SettingKey("sheetMode", false)
     public static let showTagEditor = SettingKey("showTagEditor", false)
     public static let sidebarPlaylistsExpanded = SettingKey("sidebar.playlistsExpanded", true)
@@ -100,10 +106,10 @@ public enum SettingKeys {
     public static var all: [String] {
         [zoomSeconds.name, volume.name, metronomeVolume.name, idleSeconds.name, gainTarget.name, gainTrim.name,
          waveformHeight.name, textScale.name, playQuantizeBeats.name, pointSnapshotAutoDays.name]
-            + [quantize, playQuantize, carryCues, showSuggestions, keyLock, autoGain, peakProtection, useRekordboxGain,
+            + [quantize, playQuantize, carryCues, showSuggestions, showKeyBand, keyLock, autoGain, peakProtection, useRekordboxGain,
                sheetMode, showTagEditor, sidebarPlaylistsExpanded, sidebarSummaryExpanded, sidebarHistoriesExpanded, sidebarShowsStatus,
                sidebarVisible, commentClassColumnHidden, hideStreaming, labSmartPlaylists, pointSnapshotAuto].map(\.name)
-            + [dismissedGainSuggestions, dismissedGridSuggestions, dismissedKeySuggestions, deckShortcuts, waveformColorMode.name, commentPreset.name, cueListFilter.name,
+            + [dismissedGainSuggestions, dismissedGridSuggestions, dismissedKeySuggestions, deckShortcuts, waveformColorMode.name, commentPreset.name, cueListFilter.name, deckControlTab.name,
                agentToolsNotifiedVersion.name, agentToolsClaudeFolders]
     }
 }

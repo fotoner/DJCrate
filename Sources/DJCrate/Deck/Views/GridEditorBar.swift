@@ -6,6 +6,8 @@ import SwiftUI
 struct GridEditorBar: View {
     @Environment(\.textScale) private var textScale
     @Bindable var deck: DeckModel
+    /// 덱 조작 탭 안에서는 탭 판이 바탕·여백을 그리므로 자기 상자를 그리지 않는다.
+    var framed = true
     @State private var bpm: Double?
     @State private var bpmFieldRevision = 0
     @FocusState private var bpmFocused: Bool
@@ -15,146 +17,159 @@ struct GridEditorBar: View {
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
-        let controlHeight = CGFloat(TextScale.length(24, scale: textScale))
+        // CUE/LOOP 판의 핫큐·루프·Q 버튼과 같은 높이
+        let controlHeight = CGFloat(TextScale.length(20, scale: textScale))
         VStack(alignment: .leading, spacing: 8) {
-            FlowLayout(spacing: 12, justified: true, centerItems: true) {
-                headerTitle
-                GridEditorHeaderInfo(deck: deck)
-                headerActions
-            }
-            .frame(maxWidth: .infinity)
-            if let reason = deck.gridUnavailableReason ?? deck.gridSourceNotice {
-                Label(reason, systemImage: "lock").font(.scaled(.caption, textScale)).foregroundStyle(UIColors.warning.color)
-            }
-            FlowLayout(spacing: 12, justified: true) {
-                HStack(spacing: 4) {
-                    Button { deck.setGridAnchorAtPlayhead() } label: {
-                        GridAnchorIcon()
-                    }
-                    .buttonStyle(GridEditorControlStyle(height: controlHeight, darkBackground: true))
-                    .accessibilityLabel(.ui("여기서 그리드 시작"))
-                    .help(.ui("플레이헤드 위치에 박을 정확히 놓고 1박으로"))
-                }
-                HStack(spacing: 4) {
-                    TextField("BPM" as String, value: $bpm, format: .number.precision(.fractionLength(2)))
-                        .id(bpmFieldRevision)
-                        .focused($bpmFocused)
-                        .frame(width: TextScale.length(64, scale: textScale), height: controlHeight)
-                        .onSubmit { bpmFocused = false }
-                        .onChange(of: bpmFocused) { _, focused in
-                            if !focused { commitBPM() }
+            // 한 줄: [1박 · BPM · 미세 이동] … [구간 정보] [큐도 함께 · 초안 버리기].
+            // 좁아지면 구간 정보 → 큐도 함께 이름·초안 버리기 글자 순서로 줄인다.
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    HStack(spacing: 4) {
+                        Button { deck.setGridAnchorAtPlayhead() } label: {
+                            GridAnchorIcon()
                         }
-                        .onAppear { bpm = deck.gridBPM }
-                        .onChange(of: deck.gridBPM) { bpm = deck.gridBPM }
-                        .onChange(of: deck.row?.track.uuid) {
-                            bpm = deck.gridBPM
-                            bpmFocused = false
-                            bpmFieldRevision += 1
-                        }
-                        .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
-                            guard bpmFocused, deck.gridEditing, deck.canEditGrid,
-                                  press.modifiers.intersection([.command, .control, .option, .shift]).isEmpty,
-                                  let value = bpm ?? deck.gridBPM, value.isFinite else { return .ignored }
-                            let range = GridDraft.bpmRange
-                            let hundredths = Int((min(max(value, range.lowerBound), range.upperBound) * 100).rounded())
-                            let step = press.key == .upArrow ? 1 : -1
-                            bpm = Double(min(max(hundredths + step, Int(range.lowerBound * 100)),
-                                             Int(range.upperBound * 100))) / 100
-                            return .handled
-                        }
-                        .help((invalidBPM ? bpmWarning : String(ui: "현재 템포 구간의 BPM (엔터를 누르거나 칸을 벗어나면 적용)"))
-                              + " · " + String(ui: "↑·↓로 0.01씩 조정하고 길게 누르면 반복합니다"))
-                    if invalidBPM && deck.gridDraft != nil {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(UIColors.warning.color)
-                            .accessibilityLabel(bpmWarning)
-                            .help(bpmWarning)
+                        .buttonStyle(GridEditorControlStyle(height: controlHeight, darkBackground: true))
+                        .accessibilityLabel(.ui("여기서 그리드 시작"))
+                        .help(.ui("플레이헤드 위치에 박을 정확히 놓고 1박으로"))
                     }
-                    Button("×2" as String) { deck.scaleGridBPM(2) }
-                        .disabled(deck.gridBPM.map { !GridDraft.bpmRange.contains($0 * 2) } ?? true)
-                        .help(deck.gridBPM.map { GridDraft.bpmRange.contains($0 * 2) } == true ? String(ui: "현재 템포 구간의 BPM을 두 배로 바꿉니다") : bpmWarning)
-                    Button("÷2" as String) { deck.scaleGridBPM(0.5) }
-                        .disabled(deck.gridBPM.map { !GridDraft.bpmRange.contains($0 * 0.5) } ?? true)
-                        .help(deck.gridBPM.map { GridDraft.bpmRange.contains($0 * 0.5) } == true ? String(ui: "현재 템포 구간의 BPM을 절반으로 바꿉니다") : bpmWarning)
-                    HStack(spacing: 0) {
-                        Button { deck.tapTempo() } label: { Text(verbatim: "TAP") }
-                            .help(String(ui: "박자에 맞춰 여러 번 눌러 BPM을 측정합니다") + " · "
-                                  + String(ui: "탭 템포 (\(deck.shortcuts.keyLabel(for: .tapTempo)))") + " · "
-                                  + String(ui: "우클릭: TAP 초기화"))
-                            .accessibilityAction(named: .ui("TAP 초기화")) { deck.resetTapTempo() }
-                    }
-                    .background {
-                        GeometryReader { geometry in
-                            TapResetClickArea { deck.resetTapTempo() }
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                                .allowsHitTesting(false)
+                    HStack(spacing: 4) {
+                        TextField("BPM" as String, value: $bpm, format: .number.precision(.fractionLength(2)))
+                            .id(bpmFieldRevision)
+                            .focused($bpmFocused)
+                            .frame(width: TextScale.length(64, scale: textScale), height: controlHeight)
+                            .onSubmit { bpmFocused = false }
+                            .onChange(of: bpmFocused) { _, focused in
+                                if !focused { commitBPM() }
+                            }
+                            .onAppear { bpm = deck.gridBPM }
+                            .onChange(of: deck.gridBPM) { bpm = deck.gridBPM }
+                            .onChange(of: deck.row?.track.uuid) {
+                                bpm = deck.gridBPM
+                                bpmFocused = false
+                                bpmFieldRevision += 1
+                            }
+                            .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
+                                guard bpmFocused, deck.gridEditing, deck.canEditGrid,
+                                      press.modifiers.intersection([.command, .control, .option, .shift]).isEmpty,
+                                      let value = bpm ?? deck.gridBPM, value.isFinite else { return .ignored }
+                                let range = GridDraft.bpmRange
+                                let hundredths = Int((min(max(value, range.lowerBound), range.upperBound) * 100).rounded())
+                                let step = press.key == .upArrow ? 1 : -1
+                                bpm = Double(min(max(hundredths + step, Int(range.lowerBound * 100)),
+                                                 Int(range.upperBound * 100))) / 100
+                                return .handled
+                            }
+                            .help((invalidBPM ? bpmWarning : String(ui: "현재 템포 구간의 BPM (엔터를 누르거나 칸을 벗어나면 적용)"))
+                                  + " · " + String(ui: "↑·↓로 0.01씩 조정하고 길게 누르면 반복합니다"))
+                        if invalidBPM && deck.gridDraft != nil {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(UIColors.warning.color)
+                                .accessibilityLabel(bpmWarning)
+                                .help(bpmWarning)
                         }
-                    }
-                    Button { if let tap = deck.tapBPM { deck.setGridBPM(tap) } } label: {
-                        HStack(spacing: 4) {
+                        // TAP 값이 있는 동안만 ×2·÷2 자리에 적용 버튼을 겹쳐 보여 폭을 따로 차지하지 않는다.
+                        ZStack {
+                            HStack(spacing: 4) {
+                                Button("×2" as String) { deck.scaleGridBPM(2) }
+                                    .disabled(deck.gridBPM.map { !GridDraft.bpmRange.contains($0 * 2) } ?? true)
+                                    .help(deck.gridBPM.map { GridDraft.bpmRange.contains($0 * 2) } == true ? String(ui: "현재 템포 구간의 BPM을 두 배로 바꿉니다") : bpmWarning)
+                                Button("÷2" as String) { deck.scaleGridBPM(0.5) }
+                                    .disabled(deck.gridBPM.map { !GridDraft.bpmRange.contains($0 * 0.5) } ?? true)
+                                    .help(deck.gridBPM.map { GridDraft.bpmRange.contains($0 * 0.5) } == true ? String(ui: "현재 템포 구간의 BPM을 절반으로 바꿉니다") : bpmWarning)
+                            }
+                            .opacity(deck.tapBPM == nil ? 1 : 0)
+                            .allowsHitTesting(deck.tapBPM == nil)
+                            .accessibilityHidden(deck.tapBPM != nil)
                             if let tap = deck.tapBPM {
-                                Text(verbatim: tap.formatted(.number.precision(.fractionLength(2)).grouping(.never)))
-                                Text(.ui("적용"))
+                                Button {
+                                    deck.setGridBPM(tap)
+                                    deck.resetTapTempo()
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Text(verbatim: tap.formatted(.number.precision(.fractionLength(2)).grouping(.never)))
+                                        Image(systemName: "return")
+                                    }
+                                    .font(.scaled(.caption, textScale).monospacedDigit())
+                                    .foregroundStyle(UIColors.draft.color)
+                                    .frame(maxWidth: .infinity)
+                                }
+                                .disabled(!GridDraft.bpmRange.contains(tap))
+                                .accessibilityLabel(String(ui: "측정한 TAP BPM을 현재 템포 구간에 적용합니다"))
+                                .help(GridDraft.bpmRange.contains(tap) ? String(ui: "측정한 TAP BPM을 현재 템포 구간에 적용합니다") : bpmWarning)
                             }
                         }
-                        .font(.scaled(.caption, textScale).monospacedDigit())
-                        .frame(width: TextScale.length(88, scale: textScale), height: controlHeight)
+                        .fixedSize()
+                        HStack(spacing: 0) {
+                            Button { deck.tapTempo() } label: { Text(verbatim: "TAP") }
+                                .help(String(ui: "박자에 맞춰 여러 번 눌러 BPM을 측정합니다") + " · "
+                                      + String(ui: "탭 템포 (\(deck.shortcuts.keyLabel(for: .tapTempo)))") + " · "
+                                      + String(ui: "우클릭: TAP 초기화"))
+                                .accessibilityAction(named: .ui("TAP 초기화")) { deck.resetTapTempo() }
+                        }
+                        .background {
+                            GeometryReader { geometry in
+                                TapResetClickArea { deck.resetTapTempo() }
+                                    .frame(width: geometry.size.width, height: geometry.size.height)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                     }
-                    .disabled(deck.tapBPM.map { !GridDraft.bpmRange.contains($0) } ?? true)
-                    .opacity(deck.tapBPM == nil ? 0 : 1)
-                    .allowsHitTesting(deck.tapBPM != nil)
-                    .accessibilityHidden(deck.tapBPM == nil)
-                    .help(deck.tapBPM.map { GridDraft.bpmRange.contains($0) } == true ? String(ui: "측정한 TAP BPM을 현재 템포 구간에 적용합니다") : bpmWarning)
-                }
-                HStack(spacing: 4) {
-                    ForEach([-10.0, -1.0, 1.0, 10.0], id: \.self) { milliseconds in
-                        GridShiftButton(deck: deck, milliseconds: milliseconds)
-                            .fixedSize()
-                            .background(UIColors.gridControlFill, in: RoundedRectangle(cornerRadius: 6))
+                    .fixedSize()
+                    HStack(spacing: 4) {
+                        ForEach([-10.0, -1.0, 1.0, 10.0], id: \.self) { milliseconds in
+                            GridShiftButton(deck: deck, milliseconds: milliseconds)
+                                .fixedSize()
+                                .background(UIColors.gridControlFill, in: RoundedRectangle(cornerRadius: 4))
+                        }
                     }
                 }
+                .fixedSize()
+                .font(.scaled(.caption, textScale))
+                .buttonStyle(GridEditorControlStyle(height: controlHeight))
+                .disabled(!deck.gridEditing || !deck.canEditGrid)
+                Spacer(minLength: 4)
+                // 편집할 수 없는 이유·출처 안내는 아래 제안 줄에 둔다(DeckSuggestionBar).
+                ViewThatFits(in: .horizontal) {
+                    GridEditorHeaderInfo(deck: deck)
+                    GridEditorHeaderInfo(deck: deck, compact: true)
+                    Color.clear.frame(width: 0, height: 0)
+                }
+                .layoutPriority(0.5)
+                ViewThatFits(in: .horizontal) {
+                    headerActions(.full)
+                    headerActions(.iconDiscard)
+                    headerActions(.shortToggle)
+                }
+                .layoutPriority(1)
+                // CUE/LOOP 판과 같은 자리(오른쪽 끝)에 메트로놈·Q를 둔다. 두 줄 높이가 같아 위치도 같다.
+                DeckQuantizeToggles(deck: deck)
             }
+            // CUE/LOOP 판 줄과 같은 높이로 두어 오른쪽 끝 메트로놈·Q가 같은 자리에 온다.
             .frame(maxWidth: .infinity)
-            .font(.scaled(.caption, textScale))
-            .buttonStyle(GridEditorControlStyle(height: controlHeight))
-            .disabled(!deck.gridEditing || !deck.canEditGrid)
+            .frame(height: TextScale.length(24, scale: textScale))
         }
         .controlSize(ControlSize.small.scaled(textScale))
-        .padding(8)
+        .padding(framed ? 8 : 0)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(UIColors.draftFill, in: RoundedRectangle(cornerRadius: 6))
+        .background(framed ? UIColors.draftFill : Color.clear, in: RoundedRectangle(cornerRadius: 6))
     }
 
-    private var headerTitle: some View {
-        HStack(spacing: 6) {
-            Button { deck.gridEditing.toggle() } label: {
-                Image(systemName: deck.gridEditing ? "lock.open.fill" : "lock.fill")
-                    .font(.scaled(.caption, textScale))
-                    .frame(width: TextScale.length(24, scale: textScale),
-                           height: TextScale.length(24, scale: textScale))
-                    .foregroundStyle(deck.gridEditing ? UIColors.draft.color : Color.secondary)
-                    .background(UIColors.gridControlFill, in: RoundedRectangle(cornerRadius: 4))
-            }
-            .buttonStyle(.plain)
-            .disabled(!deck.canEditGrid)
-            .accessibilityAddTraits(.isToggle)
-            .accessibilityLabel(.ui("그리드 편집"))
-            .accessibilityValue(deck.gridEditing ? String(ui: "켜짐") : String(ui: "꺼짐"))
-            .help(deck.gridUnavailableReason ?? String(ui: "켜면 아래 막대로 그리드를 옮기고 BPM·1박·변속 지점을 고칩니다."))
-            Text(.ui("그리드 편집"))
-                .font(.scaled(.subheadline, textScale).weight(.semibold))
-        }
-    }
-
-    private var headerActions: some View {
+    private func headerActions(_ density: HeaderDensity) -> some View {
         HStack(spacing: 8) {
-            Toggle(.ui("큐도 함께(핫큐·메모리)"), isOn: $deck.carryCues)
+            Toggle(density == .shortToggle ? String(ui: "큐도 함께") : String(ui: "큐도 함께(핫큐·메모리)"), isOn: $deck.carryCues)
                 .toggleStyle(.checkbox)
                 .disabled(!deck.gridEditing || !deck.canEditGrid)
                 .help(.ui("켜면 그리드를 옮기거나 BPM을 바꿀 때 핫큐·메모리 큐(루프 포함)가 같은 박을 따라 움직입니다"))
-            Button(.ui("그리드 초안 버리기")) { deck.revertGrid() }
+            Button { deck.revertGrid() } label: {
+                if density == .iconDiscard || density == .shortToggle {
+                    Image(systemName: "arrow.uturn.backward")
+                } else {
+                    Text(.ui("그리드 초안 버리기"))
+                }
+            }
                 .disabled(!deck.canDiscardGridDraft)
-                .buttonStyle(GridEditorControlStyle(height: TextScale.length(24, scale: textScale)))
+                .buttonStyle(GridEditorControlStyle(height: TextScale.length(20, scale: textScale)))
+                .accessibilityLabel(.ui("그리드 초안 버리기"))
                 .help(.ui("그리드 초안을 버리고 원래 그리드로 되돌립니다"))
         }
         .fixedSize()
@@ -168,26 +183,49 @@ struct GridEditorBar: View {
     }
 }
 
+/// 오른쪽 동작 묶음을 줄이는 단계. 뒤로 갈수록 좁은 폭용이다.
+private enum HeaderDensity {
+    case full, iconDiscard, shortToggle
+}
+
 /// 재생 중 바뀌는 구간 정보만 관찰해 BPM 입력칸 등 편집 막대의 재평가를 줄인다.
 private struct GridEditorHeaderInfo: View {
     @Environment(\.textScale) private var textScale
     let deck: DeckModel
+    /// 좁을 때: BPM은 입력칸·템포 띠와 겹치니 빼고, 구간이 하나면 구간 번호도 뺀다.
+    var compact = false
 
     @ViewBuilder var body: some View {
         if let draft = deck.gridDraft, !draft.segments.isEmpty {
             let index = draft.segmentIndex(at: deck.displayTime)
             let segment = draft.segments[index]
             HStack(spacing: 8) {
-                Text(verbatim: "\(index + 1) / \(draft.segments.count)  ·  \(segment.start.clockText)  ·  \(segment.bpm.formatted(.number.precision(.fractionLength(2)).grouping(.never))) BPM")
+                Text(verbatim: infoText(index: index, count: draft.segments.count, segment: segment))
                     .font(.scaled(.caption, textScale).monospacedDigit())
                     .foregroundStyle(.secondary)
                 if draft.hasChanges {
-                    Text(.ui("그리드 초안 변경됨"))
-                        .font(.scaled(.caption, textScale).bold())
-                        .foregroundStyle(UIColors.draft.color)
+                    if compact {
+                        Circle()
+                            .fill(UIColors.draft.color)
+                            .frame(width: 7, height: 7)
+                            .accessibilityLabel(.ui("그리드 초안 변경됨"))
+                            .help(.ui("그리드 초안 변경됨"))
+                    } else {
+                        Text(.ui("그리드 초안 변경됨"))
+                            .font(.scaled(.caption, textScale).bold())
+                            .foregroundStyle(UIColors.draft.color)
+                    }
                 }
             }
         }
+    }
+
+    private func infoText(index: Int, count: Int, segment: GridSegment) -> String {
+        let position = "\(index + 1) / \(count)"
+        guard compact else {
+            return "\(position)  ·  \(segment.start.clockText)  ·  \(segment.bpm.formatted(.number.precision(.fractionLength(2)).grouping(.never))) BPM"
+        }
+        return count > 1 ? "\(position)  ·  \(segment.start.clockText)" : segment.start.clockText
     }
 }
 
@@ -238,11 +276,11 @@ private struct GridAnchorIcon: View {
     var body: some View {
         Rectangle()
             .fill(Color.white)
-            .frame(width: 3, height: 18)
+            .frame(width: 3, height: 14)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(Palette.memory).frame(height: 9)
+                Rectangle().fill(Palette.memory).frame(height: 7)
             }
-            .frame(width: 17, height: 18)
+            .frame(width: 14, height: 14)
     }
 }
 
@@ -262,7 +300,7 @@ private struct GridEditorControlStyle: ButtonStyle {
             .frame(minWidth: height, minHeight: height)
             .frame(height: height)
             .padding(.horizontal, 4)
-            .background(background, in: RoundedRectangle(cornerRadius: 6))
+            .background(background, in: RoundedRectangle(cornerRadius: 4))
     }
 }
 
@@ -275,7 +313,7 @@ struct GridTempoSegments: View {
         let segments = deck.gridDraft?.segments ?? []
         let current = deck.gridDraft?.segmentIndex(at: deck.displayTime) ?? 0
         let duration = max(deck.duration, 1)
-        let height = CGFloat(TextScale.length(28, scale: textScale))
+        let height = CGFloat(WaveformMetrics(scale: textScale).tempoBandHeight)
         GeometryReader { geometry in
             let cursorX = geometry.size.width * CGFloat(min(max(deck.displayTime, 0), duration) / duration)
             ZStack(alignment: .topLeading) {
@@ -300,8 +338,8 @@ struct GridTempoSegments: View {
                 if deck.gridEditing && deck.gridDraft != nil {
                     Button { deck.addTempoChangeAtPlayhead() } label: {
                         Image(systemName: "plus")
-                            .font(.scaled(.caption, textScale).bold())
-                            .frame(width: height - 4, height: height - 4)
+                            .font(.scaled(.caption2, textScale).bold())
+                            .frame(width: height - 2, height: height - 2)
                             .background(UIColors.draftFill, in: Circle())
                             .overlay(Circle().stroke(UIColors.draft.color, lineWidth: 1))
                     }
@@ -337,7 +375,6 @@ private struct GridTempoSegmentCell: View {
     let isCurrent: Bool
 
     private var name: String { String(ui: "템포 구간 \(index + 1)") }
-    private var shortName: String { String(ui: "템포") + " \(index + 1)" }
     private var bpmText: String { segment.bpm.formatted(.number.precision(.fractionLength(2)).grouping(.never)) }
     private var seekHelp: String {
         [name, bpmText, segment.start.clockText, String(ui: "누르면 이 자리로 옮깁니다")].joined(separator: " · ")
@@ -370,8 +407,9 @@ private struct GridTempoSegmentCell: View {
         let trailing = deck.gridEditing && index > 0 ? CGFloat(23) : CGFloat(7)
         let labelWidth = max(0, width - 7 - trailing)
         return ViewThatFits(in: .horizontal) {
-            Text(verbatim: name + " · " + bpmText).fixedSize(horizontal: true, vertical: false)
-            Text(verbatim: shortName).fixedSize(horizontal: true, vertical: false)
+            // 띠 안은 구간 번호와 BPM 숫자만 쓴다. 좁으면 BPM 단위 → 구간 번호 순서로 뺀다.
+            Text(verbatim: "\(index + 1) · \(bpmText) BPM").fixedSize(horizontal: true, vertical: false)
+            Text(verbatim: "\(index + 1) · \(bpmText)").fixedSize(horizontal: true, vertical: false)
             Text(verbatim: bpmText).lineLimit(1).minimumScaleFactor(0.65)
         }
         .font(.scaled(.caption, textScale).monospacedDigit())

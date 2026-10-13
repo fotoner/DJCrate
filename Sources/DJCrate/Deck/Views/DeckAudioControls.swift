@@ -2,51 +2,137 @@ import DJCApplication
 import DJCDomain
 import SwiftUI
 
-/// 템포(변속) · 키 고정 · 큐 제안 표시 · 게인 초안 버리기
-struct AudioBar: View {
+/// CUE/LOOP 판 두 번째 줄: 템포(변속) · 키 고정 · 큐 제안 표시 · 단축키 도움말.
+struct AudioControlsRow: View {
     @Environment(\.textScale) private var textScale
     @Bindable var deck: DeckModel
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                FlowLayout(spacing: 12, justified: true) {
-                    HStack(spacing: 4) {
-                        Text(.ui("템포")).foregroundStyle(.secondary)
-                        Slider(value: Binding(get: { deck.tempoPercent }, set: { deck.tempoPercent = ($0 * 10).rounded() / 10 }),
-                               in: -16...16, neutralValue: 0) {
-                            Text(.ui("재생 템포"))
-                        } ticks: {
-                            SliderTick(-16); SliderTick(-8); SliderTick(0); SliderTick(8); SliderTick(16)
-                        }
-                        .labelsHidden()
-                        .frame(width: 120)
-                        Text(verbatim: deck.tempoPercent.unitText(signed: true) + "%").font(.scaled(.caption, textScale).monospacedDigit())
-                            .frame(width: TextScale.length(46, scale: textScale), alignment: .trailing)
-                        Button { deck.tempoPercent = 0 } label: { Text(verbatim: "RST") }.help(.ui("원래 속도로"))
-                            .accessibilityLabel(.ui("템포 0으로"))
-                    }
-                    HStack(spacing: 12) {
-                        Toggle(.ui("키 고정"), isOn: $deck.keyLock)
-                            .toggleStyle(.checkbox)
-                            .help(.ui("켜면 음정을 유지한 채 속도만 바꿉니다(마스터 템포). 끄면 바이닐처럼 음정도 함께 바뀝니다."))
-                        Toggle(.ui("큐 제안 표시"), isOn: $deck.showSuggestions)
-                            .toggleStyle(.checkbox)
-                            .help(.ui("큐 제안을 표시합니다. 파형 아래 + 배지를 누르면 메모리 큐로 추가합니다."))
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                ShortcutsButton()
+        HStack(spacing: TextScale.length(12, scale: textScale)) {
+            HStack(spacing: 4) {
+                Text(.ui("템포")).foregroundStyle(.secondary)
+                TempoFader(value: Binding(get: { deck.tempoPercent }, set: { deck.tempoPercent = $0 }))
+                    .frame(width: TextScale.length(100, scale: textScale))
+                Text(verbatim: deck.tempoPercent.unitText(signed: true) + "%").font(.scaled(.caption, textScale).monospacedDigit())
+                    .frame(width: TextScale.length(46, scale: textScale), alignment: .trailing)
+                Button { deck.tempoPercent = 0 } label: { Text(verbatim: "RST") }.help(.ui("원래 속도로"))
+                    .accessibilityLabel(.ui("템포 0으로"))
             }
-            // 게인 제안은 덱 제안 줄에 있다. 초안을 만든 뒤에는 여기서 바로 버릴 수 있다.
-            if deck.hasGainOverride {
-                Button(.ui("게인 초안 버리기")) { deck.clearGainDraft() }
-                    .font(.scaled(.caption, textScale))
-                    .help(.ui("이 곡의 게인 초안을 지우고 rekordbox 오토게인으로 돌아갑니다"))
+            .fixedSize()
+            Divider()
+                .frame(height: TextScale.length(14, scale: textScale))
+            Toggle(.ui("키 고정"), isOn: $deck.keyLock)
+                .toggleStyle(.checkbox)
+                .fixedSize()
+                .help(.ui("켜면 음정을 유지한 채 속도만 바꿉니다(마스터 템포). 끄면 바이닐처럼 음정도 함께 바뀝니다."))
+            Toggle(.ui("큐 제안 표시"), isOn: $deck.showSuggestions)
+                .toggleStyle(.checkbox)
+                .fixedSize()
+                .help(.ui("큐 제안을 표시합니다. 파형 아래 + 배지를 누르면 메모리 큐로 추가합니다."))
+            Spacer(minLength: 0)
+            ShortcutsButton()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: TextScale.length(24, scale: textScale))
+        .font(.scaled(.caption, textScale))
+        .controlSize(ControlSize.small.scaled(textScale))
+    }
+}
+
+/// 템포 페이더: 가는 홈 · 가운데(0%) 눈금 · 0에서 손잡이까지 채운 막대 · 납작한 손잡이.
+/// 0 근처에서는 가운데에 붙고, 두 번 누르면 0으로 돌아간다. 0.1% 단위.
+struct TempoFader: View {
+    @Environment(\.textScale) private var textScale
+    @Environment(\.isEnabled) private var isEnabled
+    @Binding var value: Double
+    var range: ClosedRange<Double> = -16...16
+    @State private var dragging = false
+
+    /// 가운데에 붙는 폭(%)
+    private static let detent = 0.3
+
+    var body: some View {
+        let height = TextScale.length(20, scale: textScale)
+        let thumb = CGSize(width: TextScale.length(8, scale: textScale), height: TextScale.length(14, scale: textScale))
+        GeometryReader { geometry in
+            let inset = thumb.width / 2
+            let usable = max(1, geometry.size.width - thumb.width)
+            let xOf = { (v: Double) in inset + CGFloat((v - range.lowerBound) / (range.upperBound - range.lowerBound)) * usable }
+            let midY = geometry.size.height / 2
+            let changed = value != 0
+            let tint = changed ? UIColors.cue.color : Color.primary.opacity(0.35)
+            ZStack(alignment: .topLeading) {
+                // 홈
+                Capsule()
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(width: usable, height: 3)
+                    .position(x: inset + usable / 2, y: midY)
+                // ±8% 작은 점, 가운데 눈금
+                ForEach([-8.0, 8.0], id: \.self) { mark in
+                    Circle().fill(Color.primary.opacity(0.25)).frame(width: 2, height: 2)
+                        .position(x: xOf(mark), y: midY + 6)
+                }
+                Rectangle().fill(Color.primary.opacity(0.45)).frame(width: 1, height: 9)
+                    .position(x: xOf(0), y: midY)
+                // 0에서 손잡이까지
+                if changed {
+                    let from = min(xOf(0), xOf(value)), to = max(xOf(0), xOf(value))
+                    Capsule().fill(tint).frame(width: max(2, to - from), height: 3)
+                        .position(x: (from + to) / 2, y: midY)
+                }
+                // 손잡이
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color(white: dragging ? 1 : 0.9))
+                    .overlay(Rectangle().fill(tint).frame(height: 1.5))
+                    .shadow(color: .black.opacity(0.35), radius: 1, y: 0.5)
+                    .frame(width: thumb.width, height: thumb.height)
+                    .position(x: xOf(value), y: midY)
+            }
+            .opacity(isEnabled ? 1 : 0.5)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { drag in
+                    dragging = true
+                    let fraction = Double((drag.location.x - inset) / usable)
+                    set(range.lowerBound + min(max(fraction, 0), 1) * (range.upperBound - range.lowerBound))
+                }
+                .onEnded { _ in dragging = false })
+            .simultaneousGesture(TapGesture(count: 2).onEnded { value = 0 })
+        }
+        .frame(height: height)
+        .help(.ui("재생 템포 (−16…+16%). 두 번 누르면 0%"))
+        .accessibilityElement()
+        .accessibilityLabel(.ui("재생 템포"))
+        .accessibilityValue(value.unitText(signed: true) + "%")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: set(value + 0.1)
+            case .decrement: set(value - 0.1)
+            @unknown default: break
             }
         }
-        .controlSize(ControlSize.small.scaled(textScale))
+    }
+
+    private func set(_ raw: Double) {
+        let clamped = min(max(raw, range.lowerBound), range.upperBound)
+        let snapped = abs(clamped) < Self.detent ? 0 : (clamped * 10).rounded() / 10
+        if snapped != value { value = snapped }
+    }
+}
+
+/// 게인 제안은 덱 제안 줄에 있다. 초안을 만든 뒤에는 여기서 바로 버릴 수 있다.
+struct GainDraftDiscardButton: View {
+    @Environment(\.textScale) private var textScale
+    let deck: DeckModel
+
+    var body: some View {
+        if deck.hasGainOverride {
+            Button(.ui("게인 초안 버리기")) { deck.clearGainDraft() }
+                .font(.scaled(.caption, textScale))
+                .controlSize(ControlSize.small.scaled(textScale))
+                .help(.ui("이 곡의 게인 초안을 지우고 rekordbox 오토게인으로 돌아갑니다"))
+        }
     }
 }
 

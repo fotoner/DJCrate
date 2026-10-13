@@ -79,6 +79,8 @@ final class DeckModel {
     var showSuggestions = true {
         didSet { storage.settings.set(SettingKeys.showSuggestions, showSuggestions); refreshSuggestions() }
     }
+    /// 전체 파형 아래 조성 띠. 끄면 그 높이만큼 전체 파형이 낮아진다.
+    var showKeyBand = false { didSet { storage.settings.set(SettingKeys.showKeyBand, showKeyBand) } }
 
     // 재생 설정
     var volume: Double = 0.9 {
@@ -316,6 +318,7 @@ final class DeckModel {
         playQuantizeBeats = settings.value(SettingKeys.playQuantizeBeats)
         carryCues = settings.value(SettingKeys.carryCues)
         showSuggestions = settings.value(SettingKeys.showSuggestions)
+        showKeyBand = settings.value(SettingKeys.showKeyBand)
         volume = settings.value(SettingKeys.volume)
         keyLock = settings.value(SettingKeys.keyLock)
         metronomeVolume = settings.value(SettingKeys.metronomeVolume)

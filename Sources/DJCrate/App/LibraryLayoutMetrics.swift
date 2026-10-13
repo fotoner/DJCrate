@@ -11,10 +11,10 @@ final class LibraryLayoutMetrics {
     @ObservationIgnored private var noticeHeight = 0.0
     @ObservationIgnored private var listHeaderHeight = 40.0
 
-    private(set) var waveformHeight = 150.0
+    private(set) var waveformHeight = DeckLayout.defaultWaveformHeight
     private(set) var minimumWaveformHeight = DeckLayout.minimumWaveformHeight
     private(set) var maximumWaveformHeight = 213.0
-    private(set) var viewportHeight = 390.0
+    private(set) var viewportHeight = 240 + DeckLayout.defaultWaveformHeight
     /// 메뉴 '파형 크게·작게'를 켤지. 상한은 창 높이를 바꾸는 동안 단계마다 바뀌므로 메뉴 문맥은 이 둘만 읽는다(#155).
     private(set) var canGrowWaveform = true
     private(set) var canShrinkWaveform = true
