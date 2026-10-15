@@ -17,6 +17,12 @@ public enum TestDefaults {
         folder.appending(path: "\(prefix)\(label).\(UUID().uuidString)").path
     }
 
+    /// 명시적으로 정리할 영역. 시험 끝에 `defaults.removePersistentDomain(forName: name)`으로 비운다.
+    public static func suite(_ label: String) -> (name: String, defaults: UserDefaults) {
+        let name = suiteName(label)
+        return (name, open(name))
+    }
+
     /// 새 빈 영역
     public static func make(_ label: String) -> UserDefaults { open(suiteName(label)) }
 

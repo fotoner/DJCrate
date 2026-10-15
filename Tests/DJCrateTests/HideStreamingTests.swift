@@ -78,6 +78,7 @@ struct HideStreamingTests {
         let fixture = try Self.fixture()
         let suite = TestDefaults.suiteName("hide-streaming.save")
         let defaults = TestDefaults.open(suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
         let store = await Self.makeStore(fixture, persist: true, defaults: defaults)
         #expect(!store.hideStreaming)
         #expect(Self.ids(store).count == 6)
