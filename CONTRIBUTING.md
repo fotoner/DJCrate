@@ -38,6 +38,7 @@ scripts/check.sh                                   # 릴리스 전·요청: 빌�
 - 이슈를 만들 때와 고를 때는 [이슈 관리 규칙](docs/issues.md)을 따른다.
 - 브랜치·커밋은 [AGENTS.md의 저장소 규칙](AGENTS.md#저장소-규칙)을 따른다.
 - PR은 `dev`를 대상으로 연다.
+- 기여한 코드는 저장소와 같은 GPL-2.0-or-later 조건으로 배포한다([LICENSE](LICENSE)).
 - PR에는 변경 내용과 실행한 확인 명령·결과를 적는다. rekordbox 쓰기 경로를 바꿨다면 사본 자가 테스트 결과도 적는다.
 - 아래 셋은 [AGENTS.md의 안전 불변식](AGENTS.md#안전-불변식)을 따른다.
   - rekordbox 규칙 확인 방법

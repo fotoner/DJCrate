@@ -523,7 +523,7 @@ awk -v write_min="$write_min_files" -v only="$only" '
             k = split("RekordboxWriter RekordboxGridWriter RekordboxCompatibility RekordboxTrackWriter RekordboxTrackAdd", prefixes, " ")
             for (j = 1; j <= k; j++) if (index(name, prefixes[j]) == 1) named[prefixes[j]]++
         }
-        if ($1 ~ /^(DJCDomain|DJCEnvironment|DJCApplication|DJCAdapters|RekordboxKit|DJCStorage|DJCAnalysis)\//) add("코어", $2, $3)
+        if ($1 ~ /^(DJCDomain|DJCEnvironment|DJCApplication|DJCAdapters|RekordboxKit|DJCStorage|DJCAnalysis|DJCLink)\//) add("코어", $2, $3)
         if ($1 ~ /^DJCrate\//) add("앱", $2, $3)
     }
     END {

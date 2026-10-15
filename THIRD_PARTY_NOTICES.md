@@ -1,13 +1,13 @@
 # 제3자 고지
 
-DJCrate 배포물에 포함되거나 옮겨 온 코드의 출처와 라이선스 원문이다.
+DJCrate 배포물에 포함되거나 옮겨 온 코드의 출처와 라이선스 원문이다. DJCrate 자체는 GPL-2.0-or-later다(Copyright (c) 2026 Hyeonjae Nam, 전문은 `LICENSE`). 아래 제3자 코드의 저작권 표시와 허가 문구는 지우지 않고 보존한다.
 
 ## SQLCipher.swift (4.19.0)
 
 - 고지 기준 커밋: `39f212458aeb88e33bdac2200a793a3f0d55d32b`
 - 출처: [sqlcipher/SQLCipher.swift](https://github.com/sqlcipher/SQLCipher.swift/tree/39f212458aeb88e33bdac2200a793a3f0d55d32b)
 - 원문: [LICENSE.md](https://github.com/sqlcipher/SQLCipher.swift/blob/39f212458aeb88e33bdac2200a793a3f0d55d32b/LICENSE.md)
-- 가져오는 방법: 공식 4.19.0 `SQLCipher.xcframework.zip`을 `Package.swift`의 바이너리 타깃으로 직접 지정한다. 공식 패키지와 같은 URL·SHA-256 체크섬을 쓰며 프레임워크는 수정하지 않는다.
+- 가져오는 방법: `Package.swift`가 공식 SwiftPM 패키지 4.19.0을 정확히 고정한다. 그 패키지는 공식 `SQLCipher.xcframework.zip`을 URL·SHA-256 체크섬으로 지정한 바이너리 타깃이다. 프레임워크는 수정하지 않는다. DJLinkKit도 같은 패키지를 써서 그래프에 SQLCipher는 하나다(#268).
 - DJCrate에서 쓰는 곳: `Sources/RekordboxKit/Database/CipherDatabase.swift`의 DB 접근과 앱에 포함하는 `SQLCipher.framework`.
 
 ````text
@@ -619,6 +619,16 @@ STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
 IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 ````
+
+## DJLinkKit (0.1.0, GPL-2.0-or-later)
+
+- 고지 기준 커밋: `adc8ac8bc65ee0f271ce161466d2ec5428435501`(태그 `0.1.0`)
+- 출처: [ImBada/DJLinkKit](https://github.com/ImBada/DJLinkKit/tree/0.1.0)
+- 원문: [LICENSE](https://github.com/ImBada/DJLinkKit/blob/0.1.0/LICENSE)(GPL-2.0-or-later). 범위별 저작권은 [COPYRIGHT.md](https://github.com/ImBada/DJLinkKit/blob/0.1.0/COPYRIGHT.md)에, 그 안에 든 제3자 코드의 원문과 저작권 표시는 [THIRD_PARTY_NOTICES.md](https://github.com/ImBada/DJLinkKit/blob/0.1.0/THIRD_PARTY_NOTICES.md)에 있다.
+- 담긴 것: [alphatheta-connect](https://github.com/chrisle/alphatheta-connect)(MIT, Copyright (c) 2013 Evan Purkhiser, Copyright (c) 2025–2026 Chris Le 등)의 Swift 포트와 [rbxport](https://github.com/chrisle/rbxport)(GPL-2.0-or-later, Copyright (c) 2026 Chris Le)의 포트(`DJLinkExport`).
+- 가져오는 방법: `Package.swift`가 SwiftPM 패키지 `0.1.0`을 정확히 고정한다. 코드는 이 저장소에 옮기지 않는다.
+- DJCrate에서 쓰는 곳: `Sources/DJCLink/`(Pro DJ Link 장치 알림 읽기). DJLinkKit을 import하는 곳은 이 모듈뿐이다. 아직 앱·CLI에 잇지 않았다.
+- 이 패키지를 링크해 배포하는 프로그램은 GPL-2.0-or-later 조건을 따라야 한다. 그래서 DJCrate도 GPL-2.0-or-later로 바꿨다(#268).
 
 ## pyrekordbox (MIT)
 

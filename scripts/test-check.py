@@ -104,11 +104,11 @@ PARTITIONS = {
 PREPARE_TARGETS = [
     ("SQLCipher", "binary", None),
     *((name, "regular", None) for name in ("DJCDomain", "DJCEnvironment", "DJCApplication", "RekordboxKit", "DJCStorage",
-                                           "DJCAnalysis", "DJCAdapters", "DJCrate", "djc")),
+                                           "DJCAnalysis", "DJCLink", "DJCAdapters", "DJCrate", "djc")),
     ("DJCrateExecutable", "executable", None), ("djcExecutable", "executable", None),
     ("DJCTestKit", "regular", "Tests/Support/Kit"), ("RekordboxFixtures", "regular", "Tests/Support/Fixtures"),
     ("PortTestKit", "regular", "Tests/Support/Ports"),
-    *((name, "test", None) for name in ("DJCDomainTests", "RekordboxKitTests", "DJCAnalysisTests", "DJCStorageTests",
+    *((name, "test", None) for name in ("DJCDomainTests", "RekordboxKitTests", "DJCAnalysisTests", "DJCLinkTests", "DJCStorageTests",
                                         "DJCApplicationTests", "DJCAdaptersTests", "djcTests", "DJCrateTests")),
 ]
 
@@ -646,6 +646,14 @@ IMPORT_CASES = {
                                  "UpdateSettingsModel.swift\timport\tSparkle", False),
     "imports-external-stale": ({"Sources/DJCrate/App/AppUpdater.swift": None}, "", 1,
                                "예외 목록의 파일이 없습니다: Sources/DJCrate/App/AppUpdater.swift", False),
+    # DJLinkKit 패키지(Pro DJ Link, #268)는 DJCLink만 import한다. 그 DJCLink도 적은 제품(DJLinkKit)만 쓴다.
+    "imports-link-only": ({"Sources/DJCLink/LinkDevice.swift": "import DJLinkKit\n",
+                           "Tests/DJCLinkTests/LinkDeviceTests.swift": "import DJCLink\nimport Testing\n"}, "", 0, "위반 0개", True),
+    "imports-link-outside": ({"Sources/DJCAdapters/Link/LinkPorts+Live.swift": "import DJLinkKit\n",
+                              "Sources/DJCrate/Link/LinkModel.swift": "import DJLinkControl\n",
+                              "Sources/DJCLink/Passive.swift": "import DJLinkPassive\n",
+                              "Tests/DJCLinkTests/LinkDeviceTests.swift": "import DJLinkKit\n"}, "", 1,
+                             "LinkPorts+Live.swift\timport\tDJLinkKit", False),
     # 넓은 예외 폴더도 허용 import는 적은 것만: 목록 밖 모듈은 위반이고, 적었는데 아무도 쓰지 않으면 목록을 줄이게 한다.
     "imports-broad-folder": ({"Sources/djc/Lab/LabCipher.swift": "import SQLCipher\n"}, "", 1,
                              "LabCipher.swift\timport\tSQLCipher", False),
@@ -743,6 +751,11 @@ def check_imports(case, files, debt, expected, note, built):
         assert result.returncode == expected, f"종료코드 {result.returncode}, 기대값 {expected}\n{result.stdout}{result.stderr}"
         assert note in result.stdout, f"출력에 {note!r} 없음\n{result.stdout}"
         assert (root / "calls.txt").exists() == built, "모듈 경계 위반에도 빌드함" if not built else "통과했는데 빌드하지 않음"
+        if case == "imports-link-outside":
+            # 어댑터·앱·시험 타깃의 DJLinkKit 제품 import와 DJCLink의 적지 않은 제품 import를 모두 잡는다.
+            for line in ("LinkModel.swift\timport\tDJLinkControl", "Sources/DJCLink/Passive.swift\timport\tDJLinkPassive",
+                         "Tests/DJCLinkTests/LinkDeviceTests.swift\timport\tDJLinkKit"):
+                assert line in result.stdout, f"출력에 {line!r} 없음\n{result.stdout}"
         if case == "imports-summary":
             summary = subprocess.run([sys.executable, str(root / "scripts/check-imports.py"), "--summary"], cwd=root, env=env,
                                      capture_output=True, text=True, timeout=20)

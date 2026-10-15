@@ -1,6 +1,6 @@
 # DJCrate
 
-[![构建与测试](https://github.com/fotoner/DJCrate/actions/workflows/check.yml/badge.svg?branch=dev)](https://github.com/fotoner/DJCrate/actions/workflows/check.yml) [![许可证: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![构建与测试](https://github.com/fotoner/DJCrate/actions/workflows/check.yml/badge.svg?branch=dev)](https://github.com/fotoner/DJCrate/actions/workflows/check.yml) [![许可证: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
 
 [한국어](README.md) | [English](README.en.md) | [日本語](README.ja.md) | **简体中文**
 
@@ -9,7 +9,7 @@
 >
 > DJCrate 在写入 rekordbox 之前，会自动备份整个资料库。如果写入后出现问题，请通过工具栏 [Write to rekordbox]（写入 rekordbox）菜单中的 [Restore Before Write…]（恢复到写入前）进行还原。如果问题仍然存在，请通过 [Issues](https://github.com/fotoner/DJCrate/issues) 联系我们。
 >
-> DJCrate 依据 [MIT 许可证](LICENSE)按“原样”提供。对于使用过程中发生的任何数据丢失或损害，开发者不承担责任。
+> DJCrate 依据 [GPL-2.0-or-later 许可证](LICENSE)按“原样”提供。对于使用过程中发生的任何数据丢失或损害，开发者不承担责任。
 
 DJCrate 是一款 macOS 应用，无需启动 rekordbox 即可编辑 rekordbox 7 资料库。它是资料库管理工具，而不是演出用软件。它还附带命令行工具 `djc`。
 
@@ -87,6 +87,8 @@ swift build -c release --product djc  # .build/release/djc
 
 ## 许可证
 
-- 采用 [MIT](LICENSE) 许可证。第三方声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- 采用 [GPL-2.0-or-later](LICENSE) 许可证：GNU 通用公共许可证第 2 版，或（由你选择）任何更高版本。Copyright (c) 2026 Hyeonjae Nam.
+- 为了在 Pro DJ Link 功能中使用 GPL-2.0-or-later 的 [DJLinkKit](https://github.com/ImBada/DJLinkKit)，许可证已从 MIT 改为 GPL-2.0-or-later。`v0.3.0` 及更早的版本以 MIT 发布，这些副本的 MIT 条款保持不变。
+- 第三方声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 - rekordbox 是 AlphaTheta 的商标。本应用是与 AlphaTheta 无关的独立项目。
 - rekordbox 数据库密钥的解密方式与 [pyrekordbox](https://github.com/dylanljones/pyrekordbox)（MIT）相同。

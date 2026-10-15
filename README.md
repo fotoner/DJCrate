@@ -1,6 +1,6 @@
 # DJCrate
 
-[![빌드·테스트](https://github.com/fotoner/DJCrate/actions/workflows/check.yml/badge.svg?branch=dev)](https://github.com/fotoner/DJCrate/actions/workflows/check.yml) [![라이선스: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![빌드·테스트](https://github.com/fotoner/DJCrate/actions/workflows/check.yml/badge.svg?branch=dev)](https://github.com/fotoner/DJCrate/actions/workflows/check.yml) [![라이선스: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
 
 **한국어** | [English](README.en.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
 
@@ -9,7 +9,7 @@
 >
 > DJCrate는 rekordbox에 쓰기 전에 라이브러리 전체를 자동으로 백업합니다. 쓴 뒤 문제가 생기면 툴바 [rekordbox에 쓰기] 메뉴의 [쓰기 전으로 복원…]으로 되돌려 주세요. 그래도 문제가 남으면 [이슈](https://github.com/fotoner/DJCrate/issues)로 연락해 주세요.
 >
-> DJCrate는 [MIT 라이선스](LICENSE)에 따라 있는 그대로 제공됩니다. 사용 중 생긴 데이터 손실이나 손해는 개발자가 책임지지 않습니다.
+> DJCrate는 [GPL-2.0-or-later 라이선스](LICENSE)에 따라 있는 그대로 제공됩니다. 사용 중 생긴 데이터 손실이나 손해는 개발자가 책임지지 않습니다.
 
 DJCrate는 rekordbox 7 라이브러리를 고치는 macOS 앱이다. 고칠 때 rekordbox를 켤 필요가 없다. 공연용이 아니라 라이브러리 관리 도구다. 명령줄 도구 `djc`도 함께 있다. 화면은 한국어·영어·일본어로 볼 수 있다.
 
@@ -84,6 +84,8 @@ swift build -c release --product djc  # .build/release/djc
 
 ## 라이선스
 
-- 라이선스는 [MIT](LICENSE)다. 제3자 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에 있다.
+- 라이선스는 [GPL-2.0-or-later](LICENSE)다. GNU GPL 버전 2의 조건이나 그 뒤 버전의 조건 가운데 하나를 골라 따르면 된다. Copyright (c) 2026 Hyeonjae Nam.
+- Pro DJ Link 기능에 GPL-2.0-or-later인 [DJLinkKit](https://github.com/ImBada/DJLinkKit)을 쓰기 위해 MIT에서 바꿨다. `v0.3.0`까지의 릴리스는 MIT로 배포했다. 그 사본의 MIT 조건은 그대로다.
+- 제3자 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에 있다.
 - rekordbox는 AlphaTheta의 상표다. 이 앱은 AlphaTheta와 관계없는 독립 프로젝트다.
 - rekordbox DB 키는 [pyrekordbox](https://github.com/dylanljones/pyrekordbox)(MIT)와 같은 방식으로 푼다.

@@ -102,7 +102,7 @@ TDD로 일한다. 버그는 실패하는 시험으로 먼저 재현한 뒤 고�
 
 - 의존은 한쪽으로만 간다(헥사고날): 앱 `DJCrate`·CLI `djc` → `DJCApplication` → `DJCDomain`.
 - `DJCApplication`은 유스케이스와 포트를 둔다. `DJCDomain`은 순수 규칙이다. 이 핵심부는 바깥 자원을 포트로 받는다.
-- 포트의 실제 구현은 `DJCAdapters`가 인프라를 불러 만든다. 인프라는 `RekordboxKit`, `DJCStorage`, `DJCAnalysis`, `DJCEnvironment`다.
+- 포트의 실제 구현은 `DJCAdapters`가 인프라 `RekordboxKit`, `DJCStorage`, `DJCAnalysis`, `DJCEnvironment`, `DJCLink`를 불러 만든다.
 - 인프라는 포트를 모른다. 실제 구현은 조립 지점(`AppComposition`·`CLIComposition`)만 고른다.
 - 모듈 경계는 `scripts/check-imports.py`가 검사한다. 빚 목록 `scripts/import-debt.txt`에는 새 규칙이 찾은 옛 코드만 있다. 새 위반은 빚 목록에 더하지 않는다. 그 자리에서 고친다.
 - 쓰기 입구 파일(`Sources/RekordboxKit/RekordboxWriter*` 등)과 `Sources/RekordboxKit/Usb/Write/`는 옮기지 않는다. `scripts/check.sh`의 쓰기 커버리지 정규식이 그 자리를 본다.
