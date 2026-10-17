@@ -62,6 +62,11 @@ final class HistoryStore {
     private(set) var pendingHistories: [ArchivedHistory] = []
     /// 쓰기 대기 기록 ID(사이드바 기록 줄이 대기 표시를 고른다)
     private(set) var pendingHistoryIDs: Set<String> = []
+    /// 보존 기록이 rekordbox에 쓰일 이름(보존본 이름과 다를 때만, `HistoryNaming.displayNames`). 사이드바·목록 제목·쓰기 대기 메뉴가 보인다
+    private(set) var archivedDisplayNames: [String: String] = [:]
+
+    /// 보존 기록을 화면에 보일 이름(rekordbox에 같은 이름이 있으면 rekordbox처럼 " (n)"을 붙인 이름)
+    func displayName(_ history: ArchivedHistory) -> String { archivedDisplayNames[history.id] ?? history.name }
     /// rekordbox에 썼지만 아직 새 스냅샷으로 읽지 못한 기록의 rekordbox ID. 다시 읽을 때까지 rekordbox에 있는 것으로 본다
     /// (쓴 뒤 다시 읽지 못해도 같은 기록을 또 쓰지 않게). 라이브러리를 새로 읽으면 비운다
     @ObservationIgnored var historyIDsAwaitingReload: Set<String> = []
@@ -76,9 +81,10 @@ final class HistoryStore {
         let rows = library.rowsByID
         let view = UsbHistoryRules.view(histories: histories, archived: archivedHistories, local: historyLocalKeys,
                                         inCollection: { rows[$0] != nil }, queueOpen: library.snapshotURL != nil && writesHistories,
-                                        awaitingReload: historyIDsAwaitingReload, calendar: .current)
+                                        awaitingReload: historyIDsAwaitingReload, calendar: .current, openLinkSessions: openLinkSessions)
         if view.shadowed != shadowedArchiveIDs { shadowedArchiveIDs = view.shadowed }
         if view.tree != historyTree { historyTree = view.tree }
+        if view.displayNames != archivedDisplayNames { archivedDisplayNames = view.displayNames }
         guard view.pending != pendingHistories else { return }
         pendingHistories = view.pending
         pendingHistoryIDs = Set(view.pending.map(\.id))
@@ -179,6 +185,37 @@ final class HistoryStore {
     /// USB의 새 기기 재생 기록을 보존하고 트리에 더한다(USB를 읽었거나 로컬 짝을 다시 계산한 뒤, `UsbStore.onLibraryEvaluated`)
     func importUsbHistories(volume: UsbVolumeInfo, library: UsbLibrary, matches: [Int: String]) {
         archive.startImport(volumeKey: volume.usbKey, volumeName: volume.name, library: library, matches: matches, calendar: .current)
+    }
+
+    // MARK: - PRO DJ LINK 재생 기록
+
+    /// 연결 중인 LINK 세션. 그 기록은 곡이 계속 붙으므로 rekordbox 쓰기 대기에 올리지 않는다(LINK를 끄면 올린다)
+    private(set) var openLinkSessions: Set<String> = [] {
+        didSet { if openLinkSessions != oldValue { refreshHistoryTree() } }
+    }
+    /// 닫은 LINK 세션(늦게 온 곡이 세션을 다시 열지 않게)
+    @ObservationIgnored private var closedLinkSessions: Set<String> = []
+
+    /// LINK를 껐다: 연결 중이던 세션의 기록을 rekordbox 쓰기 대기에 올린다
+    func closeLinkSessions() {
+        closedLinkSessions.formUnion(openLinkSessions)
+        openLinkSessions = []
+    }
+
+    /// 그 LINK 기록이 연결 중이라 아직 쓰기 대기에 오르지 않았는지(사이드바 도움말)
+    func isOpenLinkHistory(_ history: ArchivedHistory) -> Bool { LinkHistory.isOpen(history, openSessions: openLinkSessions) }
+
+    /// CDJ가 LINK 재생 기록에 넣거나 뺀 곡을 그 세션 기록에 반영한다(보존만 한다. rekordbox에는 쓰기 대기로 올린다).
+    /// 원본 키는 채택한 스냅샷에서 그 곡 자신의 것을 쓴다(`LinkHistory.entry`)
+    /// - Parameter session: LINK 세션 열쇠(조립 지점이 앱 실행·연결 차례로 짓는다)
+    func recordLinkPlay(_ play: LinkPlay, session: String) {
+        if !closedLinkSessions.contains(session) { openLinkSessions.insert(session) }
+        if play.removed {
+            archive.removeLinkPlay(contentID: play.contentID, session: session)
+            return
+        }
+        guard let row = library.rowsByID[play.contentID] else { return }
+        archive.recordLinkPlay(LinkHistory.entry(row: row, keys: historyLocalKeys, linkID: play.linkID), session: session, calendar: .current)
     }
 
     /// 줄 선 USB 기록 보존이 모두 끝날 때까지(시험·자가 테스트)

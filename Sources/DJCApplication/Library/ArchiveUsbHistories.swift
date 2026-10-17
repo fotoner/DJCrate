@@ -71,6 +71,44 @@ public final class ArchiveUsbHistories {
         return save
     }
 
+    // MARK: - PRO DJ LINK 재생 기록
+
+    /// CDJ가 재생 기록에 넣은 곡을 그 LINK 세션 기록에 더해 보존한다(`LinkHistory.record`). USB 기록 보존과 같은 줄에 세운다.
+    /// rekordbox 라이브러리에는 쓰지 않는다: 보존본은 다른 초안처럼 rekordbox 쓰기 대기에 오른다
+    /// - Parameter session: LINK 세션 열쇠(서버를 띄울 때마다 새로)
+    public func recordLinkPlay(_ entry: ArchivedHistory.Entry, session: String, calendar: Calendar) {
+        guard isEnabled else { return }
+        enqueue { [weak self] in
+            guard let self else { return }
+            let recorded = LinkHistory.record(entry, session: session, existing: self.state.archived, now: self.now(), calendar: calendar,
+                                              makeID: self.newID)
+            await self.keepLinkHistory(recorded.history, isNew: recorded.isNew)
+        }
+    }
+
+    /// CDJ가 재생 기록에서 뺀 곡을 그 LINK 세션 기록에서 뺀다
+    public func removeLinkPlay(contentID: String, session: String) {
+        guard isEnabled else { return }
+        enqueue { [weak self] in
+            guard let self else { return }
+            let archived = self.state.archived
+            guard let changed = LinkHistory.remove(contentID: contentID, session: session, existing: archived) else { return }
+            await self.keepLinkHistory(changed, isNew: false)
+        }
+    }
+
+    /// 바뀐 LINK 기록을 화면에 넣고 저장한다. 새 기록은 사이드바에 펼쳐 보인다. 저장하지 못하면 알린다(화면 상태는 되돌리지 않는다)
+    private func keepLinkHistory(_ history: ArchivedHistory, isNew: Bool) async {
+        let current = state.archived
+        apply(.archived(isNew ? current + [history] : UsbHistoryRules.replacing(current, with: [history])))
+        let failed = await save([history])
+        apply(.imported(shown: isNew ? [history.id] : [], saved: [history.id], notice: nil))
+        if failed > 0 {
+            apply(.notice(.warning(String(ui: "LINK 재생 기록을 보존하지 못했습니다"),
+                                   String(ui: "DJCrate 데이터 폴더의 usb-histories 쓰기 권한을 확인하세요"))))
+        }
+    }
+
     /// 줄 선 보존·저장이 모두 끝날 때까지(시험·자가 테스트)
     public func waitUntilIdle() async {
         while let task = line {

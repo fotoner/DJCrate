@@ -102,7 +102,7 @@ struct ListActionBarModelTests {
         // 곡이 없어도 재생 목록 초안·재생 기록만으로 쓸 수 있다
         #expect(!model.isWriteBlocked(targets: [], playlistEdits: 1, histories: 0))
         #expect(!model.isWriteBlocked(targets: [], playlistEdits: 0, histories: 1))
-        #expect(model.writeHelp == String(ui: "고른 곡(없으면 목록 전체)과 재생 목록 초안·USB 재생 기록을 rekordbox에 씁니다."))
+        #expect(model.writeHelp == String(ui: "고른 곡(없으면 목록 전체)과 재생 목록 초안·재생 기록(USB·LINK)을 rekordbox에 씁니다."))
         store.isWritingRekordbox = true
         #expect(model.isWriteBlocked(targets: [], playlistEdits: 1, histories: 0))
         store.isWritingRekordbox = false

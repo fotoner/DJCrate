@@ -45,6 +45,37 @@ struct DeckLoadTests {
         #expect(store.deckTrackID == nil)
     }
 
+    @Test func CDJ가_재생_중이라_덱이_받지_않는_곡은_덱_곡_ID도_바꾸지_않아_다시_읽어도_올리지_않는다() async throws {
+        // #278: 막힌 곡이 덱 곡 ID로 남으면 라이브러리를 다시 맞출 때(`refreshDeckTrack`) 그 곡이 올라갔다(2026-10-16 실기)
+        let fixture = try historyFixture()
+        let (store, log) = await loadedStore(fixture)
+        store.deckRefuses = { $0.track.id == "102" }
+        store.loadToDeck(store.rowsByID["101"])
+        store.loadToDeck(store.rowsByID["102"])
+        #expect(log.ids == ["101"])
+        #expect(store.deckTrackID == "101")
+        store.refreshDeckTrack()
+        #expect(log.ids == ["101", "101"])
+        // CDJ가 덱의 곡을 실어 내리면 덱 곡 ID도 비워 다시 읽어도 올리지 않는다
+        store.unloadDeckForCDJ()
+        store.refreshDeckTrack()
+        #expect(log.ids == ["101", "101", nil])
+        #expect(store.deckTrackID == nil)
+    }
+
+    @Test func rekordbox에_쓰는_동안_CDJ가_덱의_곡을_실으면_쓰기가_끝난_뒤_내린다() async throws {
+        let fixture = try historyFixture()
+        let (store, log) = await loadedStore(fixture)
+        store.loadToDeck(store.rowsByID["101"])
+        store.isWritingRekordbox = true
+        store.unloadDeckForCDJ()
+        #expect(store.deckTrackID == "101")
+        #expect(log.ids == ["101"])
+        store.isWritingRekordbox = false
+        #expect(store.deckTrackID == nil)
+        #expect(log.ids == ["101", nil])
+    }
+
     @Test func 덱이_곡을_바꾸지_말라고_하면_올리지_않는다() async throws {
         // Flip 기록 중 곡을 바꾸기 전에 묻고, 취소하면 덱도 덱 곡 ID도 그대로다.
         let fixture = try historyFixture()

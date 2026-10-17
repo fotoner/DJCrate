@@ -108,10 +108,46 @@ public enum UsbHistoryImport {
 public enum HistoryNaming {
     public static let prefix = "HISTORY"
 
-    public static func name(for date: Date, calendar: Calendar, taken: Set<String>) -> String {
+    /// PRO DJ LINK 기록(rekordbox의 LINK EXPORT 기록) 이름 앞부분: "LINK HISTORY yyyy-MM-dd"
+    public static let linkPrefix = "LINK HISTORY"
+
+    public static func name(for date: Date, calendar: Calendar, taken: Set<String>, prefix: String = HistoryNaming.prefix) -> String {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         let base = "\(prefix) \(pad(parts.year ?? 0, 4))-\(pad(parts.month ?? 0, 2))-\(pad(parts.day ?? 0, 2))"
         guard taken.contains(base) else { return base }
+        var number = 1
+        while taken.contains("\(base) (\(number))") { number += 1 }
+        return "\(base) (\(number))"
+    }
+
+    /// 보존 기록을 화면에 보일 이름: rekordbox에 쓰일 이름. 보존본 이름은 보존본끼리만 매겨 rekordbox에 같은 이름이 이미 있을 수 있다
+    /// (그 이름은 USB 기록 숨김 판정이 쓰므로 그대로 둔다). 쓰기 대기 기록은 쓰기 관문과 같은 차례·규칙으로 매긴다(`writtenName`).
+    /// 대기에 오르지 않은 기록(뺀 기록·연결 중인 LINK 기록 등)은 대기 기록을 다 쓴 뒤 그 기록 하나를 쓴다면 붙을 이름이다(서로 자리를 차지하지 않는다).
+    /// 이름이 그대로인 기록은 넣지 않는다
+    /// - Parameters:
+    ///   - pending: 쓰기 대기 기록(쓰는 차례, `HistoryWriteQueue.pending`)
+    ///   - others: 아직 rekordbox에 쓰지 않았고 대기에도 없는 기록
+    ///   - rekordboxNames: 지금 rekordbox의 살아 있는 기록 이름
+    public static func displayNames(pending: [ArchivedHistory], others: [ArchivedHistory], rekordboxNames: Set<String>) -> [String: String] {
+        var taken = rekordboxNames
+        var names: [String: String] = [:]
+        for history in pending {
+            let name = writtenName(history.name, taken: taken)
+            taken.insert(name)
+            if name != history.name { names[history.id] = name }
+        }
+        for history in others {
+            let name = writtenName(history.name, taken: taken)
+            if name != history.name { names[history.id] = name }
+        }
+        return names
+    }
+
+    /// 쓰기 관문이 짓는 이름(`RekordboxWriter.historyName`과 같은 규칙): 비어 있으면 그대로, 아니면 " (n)"을 뗀 바탕에 1부터 빈 번호
+    public static func writtenName(_ requested: String, taken: Set<String>) -> String {
+        guard taken.contains(requested) else { return requested }
+        var base = requested
+        if let suffix = requested.range(of: #" \([0-9]+\)$"#, options: .regularExpression) { base = String(requested[..<suffix.lowerBound]) }
         var number = 1
         while taken.contains("\(base) (\(number))") { number += 1 }
         return "\(base) (\(number))"

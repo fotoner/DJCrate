@@ -50,6 +50,7 @@ extension LibraryStore {
         let previousTags = tagDrafts
         // 자동 큐를 빼고 만든 옛 초안에는 곡의 자동 큐를 채운다(#145).
         let cues = watch.visibleCueDrafts(contents.cueDrafts) { self.rowsByUUID[$0]?.cues ?? [] }
+        let previousCueDrafts = cueDraftUUIDs
         if let tags = WatchDrafts.externalTags(disk: contents.tagDrafts, memory: tagDrafts, failed: failedTags) {
             tagDrafts = tags
             // 외부 변경 뒤 옛 되돌리기가 새 초안을 덮지 않게 한다.
@@ -66,6 +67,8 @@ extension LibraryStore {
         applyMovedDrafts(contents.moved, previousTags: previousTags)
         refreshUnlinkedDrafts()
         onCueDraftsReloaded?(cues)
+        // 바깥(djc·LINK 큐 편집)에서 바뀌거나 사라진 큐 초안도 LINK로 내어 주는 큐에 옮긴다(#281). 같은 큐는 LINK 막대가 다시 보내지 않는다
+        publishLinkCues(previousCueDrafts.union(cues.keys), drafts: cues)
     }
 
     /// 실패한 저장의 입력이 디스크보다 최신이므로 다시 읽어도 복구 진입점을 남긴다(저장 대기 입력은 메모리라 파일을 읽지 않는다).
@@ -92,6 +95,7 @@ extension LibraryStore {
         draftMarkRevision += 1
         setDraftMark(kind, trackUUID: trackUUID, exists: exists)
         if kind == .cue, !exists { draftPreviewCues[trackUUID] = nil }
+        if kind == .cue { publishLinkCues([trackUUID]) }
         updateEdited(trackUUID)
         if case .pending = sidebar { refreshBase() }
     }

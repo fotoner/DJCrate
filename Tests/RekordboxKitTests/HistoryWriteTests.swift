@@ -179,6 +179,46 @@ struct HistoryWriteTests {
         #expect(loaded.folderNames == ["2026", "10"] && loaded.seq == 1 && loaded.entries.map(\.contentID) == [Self.track])
     }
 
+    /// LINK 기록(2026-10-16 rekordbox 7.2.x 실험): rekordbox를 PRO DJ Link로 CDJ-2000nexus 하나와 잇고 "ワンモアタイム",
+    /// "Wondrous", "FRIENDS & SMILE"을 차례로 틀었다. 전후 스냅샷 비교에서 칸 값은 USB 기록과 같았다(이름만 "LINK HISTORY …").
+    /// 다른 것은 변경 번호 차례다: rekordbox는 곡을 틀 때마다 붙이므로 곡마다 항목 → 곡 행 순서로 번호를 받는다.
+    /// `djc lab history-repro`가 이 차례 하나만 다르다고 보였다
+    @Test func LINK_기록은_곡마다_항목_다음_곡_행_차례로_번호를_받는다() throws {
+        let fixture = try library()
+        var third = TrackSpec(id: "505", uuid: "uuid-505")
+        third.trackInfoUpdated = "3"
+        third.dataStatus = 0
+        try fixture.add(third)
+        try fixture.session { db in try db.execute("UPDATE djmdContent SET DJPlayCount = 0 WHERE ID = '505'") }
+        let link = experiment([Self.track, "504", "505"], name: "LINK HISTORY 2026-10-09", id: "usbhistory-link-test")
+        let report = try write(fixture, [link])
+        #expect(report.historyOutcomes?.first?.reason == nil)
+        #expect(report.historyOutcomes?.first?.status == .written)
+        #expect(report.historyOutcomes?.first?.entries == 3)
+        // 월 폴더 308558 → 기록 308559 → (항목 → 곡) × 3
+        #expect(try row(fixture, "djmdHistory", "2063847119")["rb_local_usn"] == "308559")
+        let entries = try fixture.rows("SELECT ContentID, TrackNo, rb_local_usn FROM djmdSongHistory WHERE HistoryID = '2063847119' ORDER BY TrackNo")
+        #expect(entries == [
+            ["ContentID": Self.track, "TrackNo": "1", "rb_local_usn": "308560"],
+            ["ContentID": "504", "TrackNo": "2", "rb_local_usn": "308562"],
+            ["ContentID": "505", "TrackNo": "3", "rb_local_usn": "308564"],
+        ])
+        #expect(try content(fixture, Self.track)["rb_local_usn"] == "308561")
+        #expect(try content(fixture, "504")["rb_local_usn"] == "308563")
+        #expect(try content(fixture, "505")["rb_local_usn"] == "308565")
+        for id in [Self.track, "504", "505"] { #expect(try content(fixture, id)["DJPlayCount"] == "1") }
+        #expect(try fixture.localUpdateCount() == 308_565)
+    }
+
+    @Test func USB_기록은_그대로_항목을_모두_쓴_뒤_곡_행을_쓴다() throws {
+        let fixture = try library()
+        try write(fixture, [experiment([Self.track, "504"])])
+        let entries = try fixture.rows("SELECT rb_local_usn FROM djmdSongHistory WHERE HistoryID = '2063847119' ORDER BY TrackNo")
+        #expect(entries == [["rb_local_usn": "308560"], ["rb_local_usn": "308561"]])
+        #expect(try content(fixture, Self.track)["rb_local_usn"] == "308562")
+        #expect(try content(fixture, "504")["rb_local_usn"] == "308563")
+    }
+
     // MARK: 관문
 
     @Test func 쓰기를_열기_전에는_모두_막고_DB와_백업을_건드리지_않는다() throws {

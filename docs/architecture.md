@@ -11,7 +11,7 @@
                  │ 유스케이스를 부른다                                   │ 실제 구현을 고른다(조립 지점만)
 핵심부        DJCApplication(유스케이스·포트) ──▶ DJCDomain(엔티티·값·순수 규칙)
                  ▲ 포트를 구현한다
-피동 어댑터   DJCAdapters(포트의 실제 구현 .live, 오디오 엔진) ──▶ RekordboxKit · DJCStorage · DJCAnalysis · DJCEnvironment(인프라, 포트를 모른다)
+피동 어댑터   DJCAdapters(포트의 실제 구현 .live, 오디오 엔진) ──▶ RekordboxKit · DJCStorage · DJCAnalysis · DJCEnvironment · DJCLink(인프라, 포트를 모른다)
 실행 파일     DJCrateExecutable · djcExecutable(main.swift 몇 줄)
 ```
 
@@ -32,6 +32,7 @@ DJCrate는 헥사고날 구조다(#167). 바깥 층은 안쪽 층을 안다. 안
 | DJCStorage | 인프라 | DJCrate 자신의 파일, iTunes 읽기, USB 볼륨 |
 | DJCAnalysis | 인프라 | 소리 분석과 곡 편집 렌더 |
 | DJCEnvironment | 인프라 | 이 프로세스의 환경 읽기 |
+| DJCLink | 인프라 | Pro DJ Link(CDJ·DJM 네트워크). DJLinkKit을 감싼다 |
 | DJCrate·djc | 주도 어댑터 | 앱 화면과 CLI 명령, 조립 지점 |
 
 ### DJCDomain
@@ -114,6 +115,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - **DJCStorage**는 DJCrate 자신의 파일을 맡는다. 초안과 추가한 곡, 반영 묶음과 USB 초안이 그 파일이다. iTunes 읽기와 USB 볼륨·도구 실행도 맡는다.
 - **DJCAnalysis**는 소리 분석과 곡 편집 렌더를 맡는다. 파형, 그리드 추정, 조성을 분석한다. 음량과 섹션도 분석한다. DJCAnalysis는 rekordbox를 모르므로 시간축 차이를 인자로 받는다.
 - **DJCEnvironment**는 이 프로세스의 환경을 읽는다. 시험 프로세스인지와 그 임시 폴더를 안다(`TestProcess`, #182). 데이터·로그·캐시 위치는 `DJC_HOME`과 `DJC_REKORDBOX_DIR`에 따라 정한다. 환경을 인자로 받는 순수 규칙은 DJCDomain에 남는다. 인프라가 막는 입출력을 협력 풀 밖에서 돌리는 `OffPoolIO`도 여기 있다(#247).
+- **DJCLink**는 Pro DJ Link(CDJ·DJM 네트워크)를 맡는다. 외부 패키지 [DJLinkKit](https://github.com/ImBada/DJLinkKit)(GPL-2.0-or-later)을 import하는 유일한 모듈이다. DJLinkKit 타입은 공개 API에 내지 않는다. DJCrate의 값(`LinkDevice` 등)으로 바꿔 낸다. 그래서 DJLinkKit이 바뀌어도 고칠 곳은 이 모듈뿐이다. 어댑터 `DJCAdapters/Link`만 부른다(#272).
 - 앱 **DJCrate**와 CLI **djc**의 본체는 라이브러리 타깃이다. 그래서 실행 파일과 시험이 컴파일 결과를 함께 쓴다. 실행 진입점만 `DJCrateExecutable`·`djcExecutable`로 나눈다. 제품 이름과 리소스 번들 이름은 그대로다.
 
 ### 경계 규칙
@@ -131,6 +133,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | import 예외 | 조립 지점은 파일 이름 목록 `ASSEMBLY_FILES` 5개다. 아래 층을 모두 import한다 |
 | import 예외 | 디버그 자가 테스트(`Sources/DJCrate/Diagnostics/`), 실험 명령(`Sources/djc/Lab/`)은 `BROAD_FOLDERS`에 적은 import만 더 받는다 |
 | import 제한 | 외부 모듈 Sparkle은 `EXTERNAL_FILES`에 적은 파일 하나(`Sources/DJCrate/App/AppUpdater.swift`)만 import한다. 화면 모델과 핵심부로 번지지 않게 한다 |
+| import 제한 | DJLinkKit 패키지의 제품(`DJLinkKit`·`DJLinkControl`·`DJLinkPassive`·`DJLinkExport`)은 DJCLink만 import한다. DJCLink도 `ALLOWED`에 적은 제품만 쓴다 |
 | api | 핵심부(DJCDomain·DJCApplication)는 `FileManager`, `ProcessInfo`, `UserDefaults`를 직접 쓰지 않는다 |
 | api | 핵심부는 `Bundle` 타입, `Date()`·`Date.now`, `UUID()`도 직접 쓰지 않는다. `.init()` 꼴도 같다. 시계·ID·환경·파일·번들은 포트나 주입으로 받는다 |
 | api | 핵심부는 `Locale`·`TimeZone`·`Calendar`의 `.current`·`.autoupdatingCurrent`를 쓰지 않는다. 타입 없이 쓴 `.main`·`.current`·`.now`도 쓰지 않는다 |
@@ -253,6 +256,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | rekordbox 형식 읽기·쓰기, USB 형식 | RekordboxKit. 쓰기 입구는 최상위, USB 쓰기는 `Usb/Write/` |
 | DJCrate 자신의 파일 형식·저장 | DJCStorage |
 | 소리 분석·렌더 | DJCAnalysis |
+| Pro DJ Link(CDJ·DJM) 장치·패킷 | DJCLink. DJLinkKit 타입은 이 모듈 밖에 내지 않는다 |
 | 화면 상태·의도 전달 | 앱 화면 모델. 유스케이스를 부른다. 모양은 [MVVM 패턴](mvvm.md) |
 | 실제 구현 연결 | 앱은 `AppComposition`, CLI는 `CLIComposition` |
 | 외부 프레임워크(예: Sparkle) 연결 | 앱의 연결 파일 한 곳. `scripts/check-imports.py`의 `EXTERNAL_FILES`에 적는다. 판정은 DJCDomain·DJCApplication에 둔다 |

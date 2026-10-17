@@ -45,6 +45,11 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 210, ideal: 230)
         } detail: {
             detail
+                // 창 아래 LINK 막대(#272): Pro DJ Link 장치가 보일 때만 높이를 차지한다. 막대만 장치 목록을 읽는다.
+                // 분할 화면 전체 아래에 붙이면 열의 화면이 막대 위까지 덮어 플레이어 칸이 끌어다 놓기를 받지 못했다(#274). 상세 열 안에 둔다
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let link = app.link { LinkBar(model: link) }
+                }
                 // 본문(덱·목록)에 바로 붙이면 인스펙터를 연 뒤 임시 높이의 본문 사본이 생겨, 창 크기를 바꿀 때마다
                 // 크기 측정이 진짜 본문과 번갈아 와서 본문을 두 번씩 다시 계산했다(#138). 상세 열 전체에 붙인다.
                 .inspector(isPresented: inspectorPresented) {
@@ -126,6 +131,8 @@ struct ContentView: View {
         .task { await app.watchExternalDrafts() }
         // 하루 한 번 자동 시점 스냅샷(#228): rekordbox가 꺼져 있고 라이브러리가 바뀌었으면 뒤에서 조용히 남긴다
         .task { await app.runAutoPointSnapshots() }
+        // Pro DJ Link 장치 알림을 받기만 한다(#272). 화면 시험·자가 테스트 조립에는 없다
+        .task { await app.link?.watch() }
         // rekordbox에서 곡을 지우거나 고치고 돌아오면 새로 읽는다(옛 목록에 지워진 곡이 남지 않게)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             window.startRefreshIfRekordboxChanged()
@@ -146,7 +153,9 @@ struct ContentView: View {
                     Button(.ui("스냅샷 뜨기")) { window.startTakeSnapshot() }
                 }
             case let .loading(message):
+                // 상세 열을 다 채운다. 제 크기만 차지하면 아래에 붙는 LINK 막대가 열 가운데로 올라왔다
                 ProgressView(message)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             case let .failed(message):
                 ContentUnavailableView {
                     Label(.ui("불러오지 못했습니다"), systemImage: "exclamationmark.triangle")
@@ -276,7 +285,7 @@ struct EmptyLibraryOverlay: View {
             ContentUnavailableView {
                 Label(.ui("쓸 곡 초안이 없습니다"), systemImage: "clock.arrow.circlepath")
             } description: {
-                Text(.ui("USB 재생 기록 \(store.history.pendingHistories.count)건이 쓰기 대기에 있습니다. 위 ‘rekordbox에 쓰기’로 rekordbox 재생 기록에 넣습니다."))
+                Text(.ui("재생 기록 \(store.history.pendingHistories.count)건이 쓰기 대기에 있습니다. 위 ‘rekordbox에 쓰기’로 rekordbox 재생 기록에 넣습니다."))
             }
         } else if store.sidebar == .pending {
             ContentUnavailableView {

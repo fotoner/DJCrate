@@ -1,6 +1,6 @@
 # DJCrate
 
-[![Build & Test](https://github.com/fotoner/DJCrate/actions/workflows/check.yml/badge.svg?branch=dev)](https://github.com/fotoner/DJCrate/actions/workflows/check.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build & Test](https://github.com/fotoner/DJCrate/actions/workflows/check.yml/badge.svg?branch=dev)](https://github.com/fotoner/DJCrate/actions/workflows/check.yml) [![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
 
 [한국어](README.md) | **English** | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
 
@@ -9,7 +9,7 @@
 >
 > DJCrate automatically backs up your entire library before it writes to rekordbox. If something goes wrong after a write, roll it back with [Restore Before Write…] in the toolbar's [Write to rekordbox] menu. If the problem remains, please contact us through [Issues](https://github.com/fotoner/DJCrate/issues).
 >
-> DJCrate is provided "as is" under the [MIT License](LICENSE). The developer is not responsible for any data loss or damage that occurs while using it.
+> DJCrate is provided "as is" under the [GPL-2.0-or-later license](LICENSE). The developer is not responsible for any data loss or damage that occurs while using it.
 
 DJCrate is a macOS app for editing a rekordbox 7 library without launching rekordbox. It is a library management tool, not a performance app. It also ships with a command-line tool, `djc`. The app UI is available in Korean, English, and Japanese.
 
@@ -87,6 +87,8 @@ Copies, drafts, and backups are stored in `~/Library/Application Support/DJCrate
 
 ## License
 
-- Licensed under [MIT](LICENSE). Third-party notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- Licensed under [GPL-2.0-or-later](LICENSE): the GNU General Public License, version 2, or (at your option) any later version. Copyright (c) 2026 Hyeonjae Nam.
+- DJCrate moved from MIT to GPL-2.0-or-later to use [DJLinkKit](https://github.com/ImBada/DJLinkKit) (GPL-2.0-or-later) for Pro DJ Link features. Releases up to `v0.3.0` were published under MIT, and those copies keep their MIT terms.
+- Third-party notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - rekordbox is a trademark of AlphaTheta. This app is an independent project not affiliated with AlphaTheta.
 - The rekordbox database key is decrypted the same way as [pyrekordbox](https://github.com/dylanljones/pyrekordbox) (MIT).

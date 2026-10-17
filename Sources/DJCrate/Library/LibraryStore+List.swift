@@ -137,7 +137,7 @@ extension LibraryStore {
         case let .filter(filter): filter.title
         case let .playlist(id): playlists.playlistIndex[id]?.name ?? String(ui: "플레이리스트")
         case let .itunesPlaylist(id): music.library.index[id]?.name ?? String(ui: "iTunes 동기화 목록")
-        case let .history(id): history.historyIndex[id].map(historyTitle) ?? history.archivedHistoryIndex[id]?.name ?? String(ui: "재생 기록")
+        case let .history(id): history.historyIndex[id].map(historyTitle) ?? history.archivedHistoryIndex[id].map(history.displayName) ?? String(ui: "재생 기록")
         case .duplicates: String(ui: "중복 후보")
         case .staged: String(ui: "추가한 곡")
         case .pending: String(ui: "rekordbox 쓰기 대기")

@@ -98,6 +98,9 @@ public struct WatchDrafts: Sendable {
     /// 걸린 초안 저장을 끝낸다
     public func flush() { drafts.flush() }
 
+    /// 지금의 큐 초안(저장하지 못한 입력이 디스크보다 최신). LINK로 내어 줄 큐를 고를 때 읽는다(#280)
+    public func currentCue(_ uuid: String) -> CueDraft? { drafts.currentCue(uuid) }
+
     /// 맡은 저장 입력의 순번(바깥 변경 확인이 읽는 사이 앱이 새로 저장했는지 견준다)
     public func saveRevision() -> UInt64 { drafts.saveRevision() }
 

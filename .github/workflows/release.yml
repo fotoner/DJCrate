@@ -116,9 +116,9 @@ jobs:
           >
           > DJCrate는 rekordbox에 쓰기 전에 라이브러리 전체를 자동으로 백업합니다. 쓴 뒤 문제가 생기면 툴바 [rekordbox에 쓰기] 메뉴의 [쓰기 전으로 복원…]으로 되돌려 주세요. 그래도 문제가 남으면 [이슈](https://github.com/fotoner/DJCrate/issues)로 연락해 주세요.
           >
-          > DJCrate는 MIT 라이선스에 따라 있는 그대로 제공됩니다. 사용 중 생긴 데이터 손실이나 손해는 개발자가 책임지지 않습니다.
+          > DJCrate는 GPL-2.0-or-later 라이선스에 따라 있는 그대로 제공됩니다. 사용 중 생긴 데이터 손실이나 손해는 개발자가 책임지지 않습니다.
           >
-          > **DJCrate is in beta.** It backs up your rekordbox library automatically before every write. If something goes wrong, roll back with [Restore Before Write…]. If that does not fix it, please contact us through Issues. DJCrate is provided "as is" under the MIT License, and the developer is not responsible for any data loss or damage.
+          > **DJCrate is in beta.** It backs up your rekordbox library automatically before every write. If something goes wrong, roll back with [Restore Before Write…]. If that does not fix it, please contact us through Issues. DJCrate is provided "as is" under the GPL-2.0-or-later license, and the developer is not responsible for any data loss or damage.
 
           NOTES
           fi

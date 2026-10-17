@@ -112,7 +112,9 @@ public struct HistoryTree: Sendable, Equatable {
     }
 
     /// rekordbox 기록과 보존 기록을 한 트리로. 보존 기록의 연·월·정렬 키는 가져온 시각을 `calendar`(앱은 이 Mac의 달력)로 본 값이다
-    public static func make(histories: [RekordboxHistory], archived: [ArchivedHistory], calendar: Calendar) -> HistoryTree {
+    /// - displayNames: 보존 기록 ID → 화면에 보일 이름(rekordbox에 쓰일 이름). 없으면 보존본 이름
+    public static func make(histories: [RekordboxHistory], archived: [ArchivedHistory], calendar: Calendar,
+                            displayNames: [String: String] = [:]) -> HistoryTree {
         let rekordbox = histories.map { history -> Item in
             let yearMonth = yearMonth(folderNames: history.folderNames, dateCreated: history.dateCreated)
             return Item(id: history.id, name: rowName(history), year: yearMonth?.year, month: yearMonth?.month,
@@ -120,7 +122,7 @@ public struct HistoryTree: Sendable, Equatable {
         }
         let usb = archived.map { history -> Item in
             let parts = calendar.dateComponents([.year, .month], from: history.importedAt)
-            return Item(id: history.id, name: history.name, year: parts.year, month: parts.month,
+            return Item(id: history.id, name: displayNames[history.id] ?? history.name, year: parts.year, month: parts.month,
                         sortKey: sortKey(history.importedAt, calendar: calendar), sequence: history.sequence)
         }
         return build(rekordbox + usb)

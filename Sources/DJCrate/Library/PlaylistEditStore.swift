@@ -37,6 +37,8 @@ final class PlaylistEditStore {
     @ObservationIgnored private(set) var playlistDraftRevision: UInt64 = 0
     /// 초안을 얹은 모양과 편집마다 막힌 이유
     var playlistProjection = PlaylistDraft().project(onto: PlaylistLayout())
+    /// 초안을 얹은 모양을 다시 만든 뒤(LINK가 켜 둔 서버의 재생 목록을 바꾼다)
+    @ObservationIgnored var onProjectionChanged: (() -> Void)?
     /// 목록마다 초안으로 넣은 곡(ContentID). 목록을 볼 때 초안 표식을 붙인다.
     var playlistAddedTracks: [String: Set<String>] = [:]
     /// 최근에 곡을 넣은 목록(최근 것부터). 오른쪽 클릭 메뉴 맨 위·'마지막에 쓴 목록에 넣기'.
@@ -111,6 +113,7 @@ final class PlaylistEditStore {
     func refreshPlaylists(refreshList: Bool = true) {
         let projection = playlistDraft.project(onto: rekordboxPlaylists, contentIDs: Set(library.rowsByID.keys))
         playlistProjection = projection
+        defer { onProjectionChanged?() }
         playlistTree = PlaylistOutlineNode.tree(projection)
         fillSmartPlaylists()
         var index: [String: PlaylistOutlineNode] = [:]

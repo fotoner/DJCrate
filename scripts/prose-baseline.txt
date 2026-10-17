@@ -5,6 +5,7 @@
 .claude/rules/audio.md	A=80.0	B=0.0
 .claude/rules/cipher.md	A=80.0	B=0.0
 .claude/rules/harness.md	A=80.0	B=0.0
+.claude/rules/link.md	A=80.0	B=0.0
 .claude/rules/mvvm.md	A=80.0	B=0.0
 .claude/rules/rekordbox-write.md	A=80.0	B=0.0
 .claude/rules/tests.md	A=80.0	B=0.0
@@ -33,4 +34,4 @@ docs/phrase-analysis-research.md	A=80.0	B=0.8
 docs/rekordbox-internals.md	A=80.0	B=0.1
 docs/releasing.md	A=80.0	B=0.0
 docs/usb-internals.md	A=80.0	B=0.9
-skills/djcrate/SKILL.md	A=80.0	B=1.4
+skills/djcrate/SKILL.md	A=80.0	B=1.3

@@ -14,6 +14,8 @@ final class DeckModel {
         didSet { if oldValue !== undoManager { oldValue?.removeAllActions(withTarget: self) } }
     }
     @ObservationIgnored var pendingDraftUndo: DeckDraftSnapshot?
+    /// LINK로 CDJ가 실은 곡(rekordbox 곡 ID, #278). 덱에 올리지 않는다
+    @ObservationIgnored var cdjLoadedTrackIDs: Set<String> = []
 
     var row: TrackRow?
     var waveform: Waveform? { didSet { refreshColorWaveform() } }

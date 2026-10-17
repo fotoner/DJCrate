@@ -61,8 +61,10 @@ final class ListActionBarModel {
     /// 쓸 곡: 고른 곡(없으면 목록 전체)
     var pendingTargets: [TrackRow] { store.selection.isEmpty ? store.displayRows : store.selectedRows }
     var pendingPlaylistEdits: Int { store.playlists.playlistDraft.steps.count }
-    /// 쓰기 대기에 오른 USB 재생 기록(#43)
+    /// 쓰기 대기에 오른 재생 기록(USB 기기 기록 #43, LINK 기록)
     var pendingHistories: [ArchivedHistory] { store.history.pendingHistories }
+    /// 쓰기 대기 기록의 이름(rekordbox에 쓰일 이름)
+    func displayName(_ history: ArchivedHistory) -> String { store.history.displayName(history) }
 
     func isWriteBlocked(targets: [TrackRow], playlistEdits: Int, histories: Int) -> Bool {
         (targets.isEmpty && playlistEdits == 0 && histories == 0) || store.isWritingRekordbox || store.writesBlockedBySheet
@@ -70,7 +72,7 @@ final class ListActionBarModel {
 
     var writeHelp: String {
         store.writesBlockedBySheet ? LibraryStore.writesBlockedBySheetReason
-            : String(ui: "고른 곡(없으면 목록 전체)과 재생 목록 초안·USB 재생 기록을 rekordbox에 씁니다.")
+            : String(ui: "고른 곡(없으면 목록 전체)과 재생 목록 초안·재생 기록(USB·LINK)을 rekordbox에 씁니다.")
     }
 
     func showHistory(_ id: String) { store.sidebar = .history(id) }

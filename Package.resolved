@@ -1,0 +1,24 @@
+{
+  "originHash" : "7add69f2b880c05b1242710e966e22fac1d048859fa7c149dbf19b6680328aee",
+  "pins" : [
+    {
+      "identity" : "djlinkkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ImBada/DJLinkKit",
+      "state" : {
+        "revision" : "ca824f710fd731a35709a3b664a6be4257d0019c",
+        "version" : "0.1.6"
+      }
+    },
+    {
+      "identity" : "sqlcipher.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sqlcipher/SQLCipher.swift",
+      "state" : {
+        "revision" : "39f212458aeb88e33bdac2200a793a3f0d55d32b",
+        "version" : "4.19.0"
+      }
+    }
+  ],
+  "version" : 3
+}

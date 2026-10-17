@@ -8,11 +8,15 @@ public struct UsbHistoryView: Sendable, Equatable {
     public var shadowed: Set<String>
     /// rekordbox 쓰기 대기에 오른 보존 기록(가져온 차례)
     public var pending: [ArchivedHistory]
+    /// 보존 기록 ID → 화면에 보일 이름(rekordbox에 쓰일 이름, `HistoryNaming.displayNames`). 보존본 이름과 같으면 없다
+    public var displayNames: [String: String]
 
-    public init(tree: HistoryTree = HistoryTree(), shadowed: Set<String> = [], pending: [ArchivedHistory] = []) {
+    public init(tree: HistoryTree = HistoryTree(), shadowed: Set<String> = [], pending: [ArchivedHistory] = [],
+                displayNames: [String: String] = [:]) {
         self.tree = tree
         self.shadowed = shadowed
         self.pending = pending
+        self.displayNames = displayNames
     }
 }
 
@@ -68,8 +72,10 @@ public enum UsbHistoryRules {
     ///   - awaitingReload: rekordbox에 썼지만 아직 새 스냅샷으로 읽지 못한 기록 ID(다시 읽을 때까지 rekordbox에 있는 것으로 본다)
     ///   - calendar: 보존 기록의 연·월을 정할 달력(앱은 이 Mac의 달력)
     ///   - inCollection: 그 ContentID의 곡이 지금 컬렉션에 있는지
+    ///   - openLinkSessions: 연결 중인 LINK 세션. 그 기록은 곡이 계속 붙으므로 쓰기 대기에 올리지 않는다(`LinkHistory.isOpen`)
     public static func view(histories: [RekordboxHistory], archived: [ArchivedHistory], local: LocalLibraryKeys?, inCollection: (String) -> Bool,
-                            queueOpen: Bool, awaitingReload: Set<String>, calendar: Calendar) -> UsbHistoryView {
+                            queueOpen: Bool, awaitingReload: Set<String>, calendar: Calendar,
+                            openLinkSessions: Set<String> = []) -> UsbHistoryView {
         let index = Dictionary(histories.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let records = histories.map { history in
             HistoryDuplicates.Record(id: history.id, name: history.name, dateCreated: history.dateCreated,
@@ -77,11 +83,16 @@ public enum UsbHistoryRules {
         }
         let shadowed = HistoryDuplicates.shadowedArchiveIDs(
             archived: forDuplicateMatching(archived, local: local, rekordbox: index, inCollection: inCollection), rekordbox: records)
-        let tree = HistoryTree.make(histories: histories, archived: archived.filter { !shadowed.contains($0.id) }, calendar: calendar)
+        let visible = archived.filter { !shadowed.contains($0.id) }
         let pending = !queueOpen || local == nil ? [] : HistoryWriteQueue.pending(
             validatedMarkers(archived, local: local, rekordbox: index, inCollection: inCollection), shadowed: shadowed,
-            rekordboxHistoryIDs: Set(index.keys).union(awaitingReload))
-        return UsbHistoryView(tree: tree, shadowed: shadowed, pending: pending)
+            rekordboxHistoryIDs: Set(index.keys).union(awaitingReload)).filter { !LinkHistory.isOpen($0, openSessions: openLinkSessions) }
+        // 이름은 쓰기 관문과 같은 차례로 매긴다(쓰기 대기 먼저, 쓴 표시가 무효가 되어 다시 대기에 오른 기록 포함)
+        let pendingIDs = Set(pending.map(\.id))
+        let others = visible.filter { $0.rekordboxHistoryID == nil && !pendingIDs.contains($0.id) }
+        let displayNames = HistoryNaming.displayNames(pending: pending, others: others, rekordboxNames: Set(histories.map(\.name)))
+        let tree = HistoryTree.make(histories: histories, archived: visible, calendar: calendar, displayNames: displayNames)
+        return UsbHistoryView(tree: tree, shadowed: shadowed, pending: pending, displayNames: displayNames)
     }
 
     /// 쓰기 대기 기록 → rekordbox 쓰기 입력(가져온 차례). 컬렉션 짝이 있는 곡만 재생 순서대로 넘긴다

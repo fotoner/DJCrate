@@ -213,6 +213,10 @@ final class LibraryStore {
     var onLoadToDeck: ((TrackRow?) -> Void)?
     /// 덱의 곡을 다른 곡으로 바꿔도 되는지(Flip 기록을 버리기 전에 묻는다). false면 올리지 않는다.
     @ObservationIgnored var confirmDeckReplacement: ((TrackRow) -> Bool)?
+    /// 덱이 이 곡을 받지 않는지(CDJ에 LINK로 실려 있는 곡, #278). 받지 않으면 덱이 까닭을 알리고 덱 곡 ID도 바꾸지 않는다
+    @ObservationIgnored var deckRefuses: ((TrackRow) -> Bool)?
+    /// rekordbox에 쓰는 동안 CDJ가 덱의 곡을 실었다. 쓰기가 끝나면 덱에서 내린다(쓰는 동안은 덱을 바꾸지 않는다, #278)
+    @ObservationIgnored var unloadsDeckAfterWrite = false
     /// 스냅샷을 새로 읽었을 때(USB 갱신 상태의 로컬 짝짓기 키를 다시 읽는다)
     @ObservationIgnored var onSnapshotLoaded: ((URL) -> Void)?
     var allowsLibrarySync: (() -> Bool)?
@@ -244,6 +248,11 @@ final class LibraryStore {
     var recoverySheet: RecoverySheetModel?
     /// 복구가 rekordbox 사본을 읽은 횟수(시험이 시트 하나가 줄마다 사본을 뜨지 않는지 센다)
     @ObservationIgnored var recoverySnapshotReads = 0
+    /// CDJ 큐 편집(#280)을 받은 차례대로 하나씩 얹는 줄의 끝
+    @ObservationIgnored var linkCueTail: Task<Void, Never>?
+    /// LINK로 내어 주는 큐를 바꿀 곡(rekordbox 곡 ID)과 지금 큐(#281). LINK가 연결된 동안만 받는다(`isLinkServing`)
+    @ObservationIgnored var onLinkCuesChanged: ((_ contentID: String, _ cues: [Cue]) -> Void)?
+    @ObservationIgnored var isLinkServing: () -> Bool = { false }
     private(set) var cueDraftUUIDs: Set<String> = []
     private(set) var gridDraftUUIDs: Set<String> = []
     private(set) var gainDraftUUIDs: Set<String> = []
@@ -284,6 +293,7 @@ final class LibraryStore {
             if isWritingRekordbox { undoManager?.removeAllActions(withTarget: self) }
             // 쓰기·되돌리기 실패 때도 백업이 남거나 정리될 수 있다.
             if oldValue && !isWritingRekordbox { refreshWriteBackups() }
+            if oldValue && !isWritingRekordbox, unloadsDeckAfterWrite { unloadDeckForCDJ() }
         }
     }
     /// 쓰는 동안 든 재생 목록 초안 파일 잠금을 푸는 함수(#260)
@@ -414,6 +424,16 @@ final class LibraryStore {
         isSynchronizingLibrary = true
         defer { isSynchronizingLibrary = false }
         await body()
+    }
+
+    /// CDJ가 덱의 곡을 실었다: 덱 곡 ID와 함께 내린다. rekordbox에 쓰는 동안이면 끝난 뒤에 내린다(#278)
+    func unloadDeckForCDJ() {
+        guard writeLockPolicy.allowsLibraryInteraction else {
+            unloadsDeckAfterWrite = true
+            return
+        }
+        unloadsDeckAfterWrite = false
+        setDeckTrack(nil)
     }
 
     /// 덱의 곡을 정하고 덱에 알린다(nil이면 내리기)

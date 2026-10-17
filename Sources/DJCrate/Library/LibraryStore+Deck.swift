@@ -16,6 +16,8 @@ extension LibraryStore {
         }
         // 다른 곡으로 바꾸기 전에 덱이 버릴 것(Flip 기록)을 묻는다. 취소하면 덱도 덱 곡 ID도 그대로다.
         if target.track.id != deckTrackID, confirmDeckReplacement?(target) == false { return }
+        // CDJ에 실려 있는 곡은 덱 곡 ID도 바꾸지 않는다(다시 읽을 때 `refreshDeckTrack`이 그 곡을 올리지 않게, #278)
+        if target.track.id != deckTrackID, deckRefuses?(target) == true { return }
         setDeckTrack(target)
     }
 

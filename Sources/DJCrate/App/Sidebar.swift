@@ -224,11 +224,12 @@ struct SidebarHistoryRow: View {
         HStack(spacing: 4) {
             Text(verbatim: item.name)
                 .lineLimit(1)
-            if archived != nil {
-                Image(systemName: "externaldrive")
+            if let archived {
+                // LINK 기록(PRO DJ LINK로 내어 주는 동안 CDJ가 남긴 기록)과 USB 기기 기록을 가른다
+                Image(systemName: archived.source.isLink ? "point.3.connected.trianglepath.dotted" : "externaldrive")
                     .imageScale(.small)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel(.ui("USB에서 가져온 기록"))
+                    .accessibilityLabel(archived.source.isLink ? .ui("LINK로 남긴 기록") : .ui("USB에서 가져온 기록"))
             }
             // 아직 rekordbox에 쓰지 않은 초안과 같은 표식(쓰기 대기)
             if pending {
@@ -244,6 +245,7 @@ struct SidebarHistoryRow: View {
 
     /// 보존 기록의 도움말: 어디서 가져왔는지와 rekordbox 쓰기 상태
     private func archivedHelp(_ archived: ArchivedHistory, pending: Bool) -> String {
+        if archived.source.isLink { return linkHelp(archived, pending: pending) }
         let volume = archived.source.volumeName
         if pending {
             return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에 있어 rekordbox에 쓰기(⇧⌘E) 때 rekordbox 재생 기록에 넣습니다")
@@ -261,6 +263,29 @@ struct SidebarHistoryRow: View {
             return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 컬렉션에 있는 곡이 없어 rekordbox에는 쓰지 않습니다")
         }
         return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에는 없습니다")
+    }
+
+    /// LINK 기록의 도움말: CDJ가 남긴 기록과 rekordbox 쓰기 상태
+    private func linkHelp(_ archived: ArchivedHistory, pending: Bool) -> String {
+        if history.isOpenLinkHistory(archived) {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남기는 기록입니다. 곡이 계속 붙으므로 LINK를 끄면 rekordbox 쓰기 대기에 올립니다")
+        }
+        if pending {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에 있어 rekordbox에 쓰기(⇧⌘E) 때 rekordbox 재생 기록에 넣습니다")
+        }
+        if archived.excludedFromRekordbox {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
+        }
+        if let id = archived.rekordboxHistoryID, history.historyIndex[id] != nil {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에 썼습니다")
+        }
+        if HistoryWriteQueue.hasRepeatedTracks(archived) {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 같은 곡이 두 번 이상 들어 rekordbox 재생 횟수 규칙을 확인하지 않아 rekordbox에는 쓰지 않습니다")
+        }
+        if archived.matchedContentIDs.isEmpty {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 컬렉션 곡을 확인하지 못해 rekordbox에는 쓰지 않습니다")
+        }
+        return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에는 없습니다")
     }
 }
 
@@ -352,7 +377,7 @@ struct ListActionBar: View {
                     // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 이 메뉴에서 보고(고르면 그 기록으로) 뺀다
                     Menu {
                         ForEach(model.pendingHistories) { history in
-                            Button(history.name) { model.showHistory(history.id) }
+                            Button(model.displayName(history)) { model.showHistory(history.id) }
                         }
                         Divider()
                         Button(.ui("모두 rekordbox 쓰기 대기에서 빼기")) { model.excludePendingHistories() }

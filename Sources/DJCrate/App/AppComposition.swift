@@ -42,12 +42,15 @@ final class AppComposition {
     let updates: UpdateSettingsModel
     /// Sparkle 연결. 배포 앱 번들에서만 있다(개발 빌드·화면 시험은 nil)
     private let updater: AppUpdater?
+    /// 창 아래 LINK 막대 화면 모델(#272). 실제 앱만 장치 알림을 받는다. 화면 시험·자가 테스트·측정 실행은 nil이다(네트워크 포트를 열지 않게)
+    let link: LinkBarModel?
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
 
     init(settings: SettingsStore, store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
-         agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil) {
+         agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil, link: LinkBarModel? = nil) {
+        self.link = link
         self.settings = settings
         self.updater = updater
         updates = UpdateSettingsModel(updater: updater, version: .of(.main))
@@ -107,7 +110,58 @@ final class AppComposition {
                                       announce: { [weak store] in store?.toast = .notice($0, nil) })
         return AppComposition(settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store),
                               agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
-                              updater: updater)
+                              updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
+                                  : linkBar(store: store, deck: deck))
+    }
+
+    /// 자가 테스트·측정·캡처 실행의 LINK 막대: 장치 찾기를 붙이지 않는다(LNK-6). LINK 캡처만 포트 없는 가상 장치를 보인다
+    static func diagnosticLink(arguments: [String], store: LibraryStore) -> LinkBarModel? {
+        #if DEBUG
+        LinkCapture.model(arguments: arguments, store: store)
+        #else
+        nil
+        #endif
+    }
+
+    /// LINK 막대(#272·#273): 실제 알림 포트(받기만 한다)와 사용자가 켤 때만 띄우는 Link Export 서버.
+    /// 내어 줄 라이브러리는 저장소가 읽은 rekordbox 컬렉션·재생 목록이고, 분석 파일은 저장소의 share 뿌리에서 읽기만 한다.
+    /// 포트 실패는 표준 오류에만 남기고, 연결·싣기 실패는 알림으로 보인다
+    static func linkBar(store: LibraryStore, deck: DeckModel) -> LinkBarModel {
+        // LINK 재생 기록의 세션 열쇠: 앱 실행마다 새 앞부분 + 연결 차례 + 서버가 연 기록 번호
+        // (보존본은 다시 켠 뒤에도 남아 앞 실행의 차례와 섞이지 않게, CDJ가 기록을 지우고 새로 열면 새 기록이 되게)
+        let launch = UUID().uuidString
+        // CDJ가 저장·삭제한 큐(#280)는 큐 초안에 하나씩 얹는다(앱이 맡은 초안 저장을 먼저 끝낸다)
+        let cueDrafts = LinkCueDrafts(edits: store.useCases.draftEdits, flush: { [watch = store.useCases.watch] in watch.flush() })
+        return LinkBarModel(
+            discovery: LinkDiscovery(source: .live, log: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }),
+            // CDJ가 못 읽는 FLAC·ALAC은 끌어 놓거나 CDJ에서 고를 때 WAV로 바꿔 ~/Music/DJCrate/LINK에 둔다(#277). 음원이 보통 ~/Music에 있어 새로 열리는 폴더가 없다
+            session: LinkSession(source: .live(), converter: .live(cache: FileManager.default.homeDirectoryForCurrentUser
+                                     .appending(path: "Music/DJCrate/LINK", directoryHint: .isDirectory)),
+                                 played: { [weak store] play in
+                Task { @MainActor in store?.history.recordLinkPlay(play, session: "\(launch)-\(play.session)-\(play.history)") }
+            }, cueEdited: { [weak store] edit in
+                Task { @MainActor in store?.enqueueLinkCueEdit(edit, drafts: cueDrafts) }
+            }, backgroundConversion: { [weak store] event in
+                // CDJ에서 고른 FLAC·ALAC은 그 싣기가 실패한 뒤에 WAV로 바꾼다. 다 바꾸면 다시 실으라고 알린다
+                let finished = if case .finished = event { true } else { false }
+                Task { @MainActor in
+                    store?.toast = .notice(LinkText.backgroundConversion(event), nil, kind: finished ? .success : .warning)
+                }
+            }),
+            library: { [weak store] in
+                guard let store, case .loaded = store.phase else { return nil }
+                // iTunes 목록은 다 읽었을 때만 넣는다(USB 동기화와 같은 조건). 읽는 중이면 다 읽은 뒤 연결 중인 서버에 더한다
+                let music = store.music.library
+                let iTunes = music.status == .ready || music.status == .stale ? music.tree : nil
+                return LinkBarModel.LibraryInput(rows: store.rows, playlists: store.playlists.playlistProjection.layout, iTunes: iTunes,
+                                                 draftCues: store.linkDraftCues(), shareRoot: store.shareRoot.path)
+            },
+            notify: { [weak store] text, kind in store?.toast = .notice(text, nil, kind: kind) },
+            sessionEnded: { [weak store] in store?.history.closeLinkSessions() },
+            // CDJ가 덱의 곡을 실으면 라이브러리가 덱 곡 ID와 함께 내린다(다시 읽을 때 그 곡을 되올리지 않게)
+            cdjTracks: { [weak deck, weak store] loaded in
+                if deck?.applyCDJTracks(loaded: loaded) == true { store?.unloadDeckForCDJ() }
+            })
     }
 
     /// AI 에이전트 설치(#262): 재료는 이 앱 번들 안(`Contents/Resources/skills/djcrate`·`Contents/Helpers/djc`), 설치 자리의 뿌리는 사용자 홈.
@@ -211,6 +265,12 @@ final class AppComposition {
         }
         // 목록 선택은 덱을 바꾸지 않는다. 더블클릭·⌘→·오른쪽 클릭·끌어다 놓기로만 덱에 올린다(#93).
         store.onLoadToDeck = { [weak deck] row in deck?.load(row) }
+        // 덱이 비어 있으면 덱 위 알림이 보이지 않으므로 창 아래 알림으로 까닭을 알린다(#278)
+        store.deckRefuses = { [weak deck, weak store] row in
+            guard let reason = deck?.cdjRefusal(row) else { return false }
+            store?.toast = .notice(reason, nil, kind: .warning)
+            return true
+        }
         // 덱이 분석 파일·그림을 읽는 곳을 쓰기 대상 라이브러리와 맞춘다.
         deck.shareRoot = { [weak store] in store?.shareRoot }
         store.confirmDeckReplacement = { [weak deck] _ in deck?.confirmDiscardingFlip() ?? true }
@@ -250,10 +310,18 @@ final class AppComposition {
         UsbMigrateCapture.runIfRequested(store: store)
         UsbSnapshotCapture.runIfRequested(store: store)
         AgentToolsCapture.runIfRequested()
+        LinkCapture.runIfRequested(link: link, store: store)
         DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows)
         #endif
         deck.onDraftChange = { [weak store] uuid, kind, exists in
             store?.draftChanged(trackUUID: uuid, kind: kind, exists: exists)
+        }
+        // DJCrate에서 고친 큐를 LINK로 내어 주는 큐에 옮긴다(#281)
+        if let link {
+            store.isLinkServing = { [weak link] in link?.isServing ?? false }
+            store.onLinkCuesChanged = { [weak link] contentID, cues in link?.updateCues(contentID: contentID, cues: cues) }
+            // 재생 목록 초안도 얹어 내어 준다. 추가 대기 곡은 rekordbox 분석 파일이 없어 빼므로 목록에서도 빠진다
+            store.playlists.onProjectionChanged = { [weak link] in link?.updatePlaylists() }
         }
     }
 

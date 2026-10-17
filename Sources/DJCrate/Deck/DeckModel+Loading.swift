@@ -6,6 +6,29 @@ import Foundation
 /// 곡 불러오기: 상태를 비우고 → 음원 값만 메인 밖에서 읽어 음원을 열고 → 초안·그리드·그림을 메인 밖에서 읽어 한 번에 적용한다.
 /// 같은 곡 가드는 `loadGeneration` 하나다(곡을 바꾸면 그 전 곡의 늦은 읽기·파형·분석을 버린다).
 extension DeckModel {
+    /// LINK로 CDJ가 실은 곡이 바뀌었다(#278). CDJ에 실린 곡은 덱에 올리지 못하게 기억한다.
+    /// CDJ가 덱의 곡을 새로 실었으면 알리고 true를 돌려준다(내리기는 라이브러리가 덱 곡 ID와 함께 한다)
+    func applyCDJTracks(loaded: Set<String>) -> Bool {
+        let newlyLoaded = loaded.subtracting(cdjLoadedTrackIDs)
+        cdjLoadedTrackIDs = loaded
+        guard let current = row?.track.id, newlyLoaded.contains(current) else { return false }
+        showToast(String(ui: "CDJ가 같은 곡을 불러와 DJCrate 덱에서 내렸습니다"))
+        return true
+    }
+
+    /// CDJ에 실려 있어 덱에 올리지 않는 까닭(재생 중이 아니어도 막는다. 같은 곡을 두 곳에서 다루지 않게). 올려도 되면 nil
+    func cdjRefusal(_ row: TrackRow) -> String? {
+        guard row.track.id != self.row?.track.id, cdjLoadedTrackIDs.contains(row.track.id) else { return nil }
+        return String(ui: "CDJ에 실려 있는 곡이라 덱에 올리지 않습니다. CDJ에서 다른 곡을 실은 뒤 올리세요")
+    }
+
+    /// CDJ에 실려 있는 곡이면 덱 위에 까닭을 알리고 true
+    func refusesForCDJ(_ row: TrackRow) -> Bool {
+        guard let reason = cdjRefusal(row) else { return false }
+        showToast(reason)
+        return true
+    }
+
     /// 지금 곡을 처음부터 다시 읽는다(분석 파일·초안이 밖에서 바뀌었을 때).
     func reload() {
         let current = row
@@ -80,6 +103,8 @@ extension DeckModel {
     /// 같은 파일이고 이미 소리를 불러 둔 상태면 처음부터 다시 부르지 않고 초안·그리드만 맞춘다.
     func load(_ row: TrackRow?) {
         guard row != self.row else { return }
+        // CDJ에 LINK로 실려 있는 곡은 덱에 올리지 않는다(같은 곡을 두 곳에서 다루지 않게, #278). 보통은 라이브러리 입구가 먼저 막는다
+        if let row, refusesForCDJ(row) { return }
         clearDraftUndo()
         hasUncommittedCueEdits = false
         let sameTrack = row != nil && row?.id == self.row?.id

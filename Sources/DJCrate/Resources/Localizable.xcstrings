@@ -1505,6 +1505,28 @@
         }
       }
     },
+    "%@: %@. 그 곡의 큐를 DJCrate에서 확인한 뒤 CDJ에서 다시 찍으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: %2$@. Check that track's cues in DJCrate, then set the cue again on the CDJ"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: %2$@。DJCrateでその曲のキューを確認してから、CDJでもう一度打ってください"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@. 그 곡의 큐를 DJCrate에서 확인한 뒤 CDJ에서 다시 찍으세요"
+          }
+        }
+      }
+    },
     "%@: WAV·AIFF로만 렌더합니다. 확장자를 .wav나 .aiff로 주세요" : {
       "localizations" : {
         "en" : {
@@ -3149,6 +3171,38 @@
         }
       }
     },
+    "%lld번 플레이어가 네트워크에 없습니다. 플레이어를 확인한 뒤 다시 놓으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Player %lld is not on the network. Check the player, then drop the track again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレーヤー %lld がネットワークにいません。プレーヤーを確認してからもう一度ドロップしてください"
+          }
+        }
+      }
+    },
+    "%lld번 플레이어가 아직 DJCrate 라이브러리를 열지 않았습니다. 잠시 뒤 다시 놓으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Player %lld hasn't opened the DJCrate library yet. Wait a moment, then drop the track again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレーヤー %lld はまだ DJCrate ライブラリを開いていません。少し待ってからもう一度ドロップしてください"
+          }
+        }
+      }
+    },
     "%lld번째 · %@" : {
       "localizations" : {
         "en" : {
@@ -4411,6 +4465,38 @@
         }
       }
     },
+    "CDJ가 같은 곡을 불러와 DJCrate 덱에서 내렸습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A CDJ loaded the same track, so it was unloaded from the DJCrate deck"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CDJが同じ曲をロードしたため、DJCrateのデッキから外しました"
+          }
+        }
+      }
+    },
+    "CDJ가 보낸 큐가 곡 길이를 벗어났습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The cue sent by the CDJ is outside the track length"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CDJから送られたキューが曲の長さを超えています"
+          }
+        }
+      }
+    },
     "CDJ가 쓴 기록·목록이 있어 Device Library는 아직 고칠 수 없습니다" : {
       "localizations" : {
         "en" : {
@@ -4439,6 +4525,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CDJが書き込んだ履歴・リストがあるため、まだ移行できません。rekordboxからUSBをもう一度エクスポートしてください"
+          }
+        }
+      }
+    },
+    "CDJ가 읽을 수 있게 WAV로 바꾼 뒤 싣습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Converting to WAV so the CDJ can play it, then loading"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CDJで再生できるようWAVに変換してからロードします"
+          }
+        }
+      }
+    },
+    "CDJ가 읽을 수 있는 WAV로 바꾸지 못했습니다(%@). 음원 파일을 확인한 뒤 다시 놓으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't convert to a WAV the CDJ can play (%@). Check the audio file, then drop it again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CDJで再生できるWAVに変換できませんでした（%@）。音声ファイルを確認してから、もう一度ドロップしてください"
+          }
+        }
+      }
+    },
+    "CDJ로 가는 네트워크 연결을 찾지 못했습니다. 케이블·네트워크 설정을 확인한 뒤 다시 켜세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't find a network connection to the CDJs. Check the cable and network settings, then turn it on again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CDJ へのネットワーク接続が見つかりません。ケーブルとネットワーク設定を確認してからもう一度オンにしてください"
+          }
+        }
+      }
+    },
+    "CDJ에 실려 있는 곡이라 덱에 올리지 않습니다. CDJ에서 다른 곡을 실은 뒤 올리세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This track is loaded on a CDJ, so it won't load on the deck. Load another track on the CDJ, then load it"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CDJにロードされている曲のため、デッキにロードしません。CDJで別の曲をロードしてからロードしてください"
+          }
+        }
+      }
+    },
+    "CDJ에서 고친 큐를 DJCrate에 옮기지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't bring the cue edited on the CDJ into DJCrate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CDJで編集したキューをDJCrateに取り込めませんでした"
+          }
+        }
+      }
+    },
+    "CDJ에서 찍은 메모리 큐를 DJCrate에 옮기지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't bring the memory cue set on the CDJ into DJCrate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CDJで打ったメモリーキューをDJCrateに取り込めませんでした"
           }
         }
       }
@@ -4753,6 +4935,22 @@
         }
       }
     },
+    "DJCrate 데이터 폴더의 usb-histories 쓰기 권한을 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check write permission for usb-histories in the DJCrate data folder"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrateデータフォルダのusb-historiesの書き込み権限を確認してください"
+          }
+        }
+      }
+    },
     "DJCrate 데이터 폴더의 usb-histories 쓰기 권한을 확인한 뒤 다시 바꾸세요" : {
       "localizations" : {
         "en" : {
@@ -4797,6 +4995,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "DJCrateデータフォルダのusb-historiesを確認してから、USBを接続し直してください"
+          }
+        }
+      }
+    },
+    "DJCrate 라이브러리를 열었습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opened the DJCrate library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate ライブラリを開きました"
           }
         }
       }
@@ -5863,6 +6077,246 @@
         }
       }
     },
+    "LINK" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK"
+          }
+        }
+      }
+    },
+    "LINK 연결을 껐습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turned off the LINK connection"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK 接続をオフにしました"
+          }
+        }
+      }
+    },
+    "LINK 일이 실패했습니다: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK failed: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK の処理に失敗しました: %@"
+          }
+        }
+      }
+    },
+    "LINK 재생 기록을 보존하지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not keep the LINK history"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKの演奏履歴を保存できませんでした"
+          }
+        }
+      }
+    },
+    "LINK 포트를 열지 못했습니다(%@). 그 포트를 쓰는 앱을 끈 뒤 다시 켜세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't open the LINK ports (%@). Quit the app using them, then turn it on again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK ポートを開けませんでした(%@)。そのポートを使っているアプリを終了してからもう一度オンにしてください"
+          }
+        }
+      }
+    },
+    "LINK로 남긴 기록" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recorded over LINK"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKで残した履歴"
+          }
+        }
+      }
+    },
+    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남기는 기록입니다. 곡이 계속 붙으므로 LINK를 끄면 rekordbox 쓰기 대기에 올립니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Being recorded by a CDJ while DJCrate shares its library over LINK. Tracks keep being added, so it goes to Pending rekordbox Writes when you turn LINK off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKでライブラリを共有している間にCDJが残している履歴です。曲が追加され続けるため、LINKをオフにするとrekordbox書き込み待ちに入れます"
+          }
+        }
+      }
+    },
+    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에 있어 rekordbox에 쓰기(⇧⌘E) 때 rekordbox 재생 기록에 넣습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Left by a CDJ while DJCrate shared its library over LINK. It's in Pending rekordbox Writes and goes into rekordbox History when you Write to rekordbox (⇧⌘E)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。rekordbox書き込み待ちにあり、rekordboxに書き込む（⇧⌘E）ときにrekordboxの演奏履歴に入れます"
+          }
+        }
+      }
+    },
+    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에서 뺐습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Left by a CDJ while DJCrate shared its library over LINK. Removed from Pending rekordbox Writes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。rekordbox書き込み待ちから外しました"
+          }
+        }
+      }
+    },
+    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에 썼습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Left by a CDJ while DJCrate shared its library over LINK. Written to rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。rekordboxに書き込みました"
+          }
+        }
+      }
+    },
+    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에는 없습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Left by a CDJ while DJCrate shared its library over LINK. It's not in rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。rekordboxにはありません"
+          }
+        }
+      }
+    },
+    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 같은 곡이 두 번 이상 들어 rekordbox 재생 횟수 규칙을 확인하지 않아 rekordbox에는 쓰지 않습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Left by a CDJ while DJCrate shared its library over LINK. It has the same track more than once, and the rekordbox play count rule for that isn't confirmed, so it isn't written to rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。同じ曲が2回以上あり、rekordboxの再生回数の規則を確認していないため、rekordboxには書き込みません"
+          }
+        }
+      }
+    },
+    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 컬렉션 곡을 확인하지 못해 rekordbox에는 쓰지 않습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Left by a CDJ while DJCrate shared its library over LINK. Its collection tracks couldn't be confirmed, so it isn't written to rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。コレクションの曲を確認できないため、rekordboxには書き込みません"
+          }
+        }
+      }
+    },
+    "LINK를 누른 뒤 곡을 놓으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Press LINK, then drop the track"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK を押してから曲をドロップしてください"
+          }
+        }
+      }
+    },
+    "MASTER" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MASTER"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MASTER"
+          }
+        }
+      }
+    },
     "MBR이나 GPT 파티션이 아닌 USB에는 쓸 수 없습니다. 디스크 유틸리티에서 MBR로 포맷한 뒤 다시 시도하세요" : {
       "localizations" : {
         "en" : {
@@ -6361,6 +6815,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "PWAVのヘッダーが短すぎます"
+          }
+        }
+      }
+    },
+    "SYNC" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SYNC"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SYNC"
           }
         }
       }
@@ -7921,34 +8391,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "USBの操作が進行中のため、終了してから再度取り込んでください。"
-          }
-        }
-      }
-    },
-    "USB 재생 기록 %lld건이 쓰기 대기에 있습니다. 위 ‘rekordbox에 쓰기’로 rekordbox 재생 기록에 넣습니다." : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld USB history is pending. Use ‘Write to rekordbox’ above to add it to rekordbox History."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld USB histories are pending. Use ‘Write to rekordbox’ above to add them to rekordbox History."
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USBの演奏履歴%lld件が書き込み待ちです。上の「rekordboxに書き込む」でrekordboxの演奏履歴に入れます。"
           }
         }
       }
@@ -12665,6 +13107,22 @@
         }
       }
     },
+    "rekordbox가 같은 LINK 포트를 쓰고 있습니다. rekordbox를 끈 뒤 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox is using the same LINK ports. Quit rekordbox, then try again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox が同じ LINK ポートを使っています。rekordbox を終了してから使ってください"
+          }
+        }
+      }
+    },
     "rekordbox가 꺼져 있고 라이브러리가 바뀌었을 때 뒤에서 조용히 남깁니다." : {
       "localizations" : {
         "en" : {
@@ -12837,6 +13295,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxが正常に終了しなかったようです（WALファイルが残っています）。rekordboxを一度起動して終了してから、もう一度お試しください"
+          }
+        }
+      }
+    },
+    "rekordbox가 켜져 LINK 연결을 껐습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox started, so the LINK connection was turned off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox が起動したため LINK 接続をオフにしました"
           }
         }
       }
@@ -14685,6 +15159,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「%@」の曲順を変更"
+          }
+        }
+      }
+    },
+    "‘%@’ 곡을 CDJ가 읽을 수 있는 WAV로 바꾸지 못했습니다(%@). 음원 파일을 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't convert ‘%1$@’ to a WAV the CDJ can play (%2$@). Check the audio file"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%1$@」をCDJで再生できるWAVに変換できませんでした（%2$@）。音声ファイルを確認してください"
+          }
+        }
+      }
+    },
+    "‘%@’ 곡을 CDJ가 읽을 수 있는 WAV로 바꿨습니다. CDJ에서 다시 실으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Converted ‘%@’ to a WAV the CDJ can play. Load it again on the CDJ"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」をCDJで再生できるWAVに変換しました。CDJでもう一度ロードしてください"
+          }
+        }
+      }
+    },
+    "‘%@’ 곡을 WAV로 바꾸지 못했습니다. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't convert ‘%1$@’ to a WAV. %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%1$@」をWAVに変換できませんでした。%2$@"
           }
         }
       }
@@ -16933,18 +17455,18 @@
         }
       }
     },
-    "고른 곡(없으면 목록 전체)과 재생 목록 초안·USB 재생 기록을 rekordbox에 씁니다." : {
+    "고른 곡(없으면 목록 전체)과 재생 목록 초안·재생 기록(USB·LINK)을 rekordbox에 씁니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Writes the selected tracks (or the whole list), playlist drafts, and USB histories to rekordbox."
+            "value" : "Writes the selected tracks (or the whole list), playlist drafts, and histories (USB and LINK) to rekordbox."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選んだ曲（なければリスト全体）とプレイリストの下書き・USBの演奏履歴をrekordboxに書き込みます。"
+            "value" : "選んだ曲（なければリスト全体）とプレイリストの下書き・演奏履歴（USB・LINK）をrekordboxに書き込みます。"
           }
         }
       }
@@ -21617,6 +22139,22 @@
         }
       }
     },
+    "네트워크에 CDJ가 보이지 않습니다. CDJ를 같은 네트워크에 연결한 뒤 켜세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No CDJs are visible on the network. Connect a CDJ to the same network, then turn it on"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ネットワークに CDJ が見つかりません。CDJ を同じネットワークに接続してからオンにしてください"
+          }
+        }
+      }
+    },
     "누르거나 끌어서 재생선을 옮깁니다. 스페이스바로 재생합니다" : {
       "localizations" : {
         "en" : {
@@ -21645,6 +22183,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "クリックしてから新しいキーを押すと変更します（右クリック：削除）"
+          }
+        }
+      }
+    },
+    "누르면 네트워크의 Pro DJ Link 장치를 보이고 DJCrate 라이브러리를 CDJ에 내어 줍니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows Pro DJ Link devices on the network and shares the DJCrate library with CDJs"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "押すとネットワーク上の Pro DJ Link 機器を表示し、DJCrate ライブラリを CDJ に共有します"
           }
         }
       }
@@ -24165,6 +24719,22 @@
         }
       }
     },
+    "라이브러리를 읽은 뒤 LINK를 다시 누르세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Press LINK again after the library has loaded"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリを読み込んでから、もう一度 LINK を押してください"
+          }
+        }
+      }
+    },
     "라이브러리에 없음" : {
       "localizations" : {
         "en" : {
@@ -26247,6 +26817,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "メモリーキューは1曲につき%lld個までです（rekordboxの制限）。使わないメモリーキューを削除してから保存してください"
+          }
+        }
+      }
+    },
+    "메모리 큐는 곡당 %lld개까지입니다. DJCrate에서 쓰지 않는 메모리 큐를 지운 뒤 CDJ에서 다시 찍으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A track can have up to %lld memory cues. Delete unused memory cues in DJCrate, then set the cue again on the CDJ"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモリーキューは1曲あたり%lld個までです。DJCrateで使わないメモリーキューを削除してから、CDJでもう一度打ってください"
           }
         }
       }
@@ -33693,6 +34279,22 @@
         }
       }
     },
+    "아직 LINK에 참여하는 중입니다. 잠시 뒤 다시 놓으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Still joining LINK. Wait a moment, then drop the track again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだ LINK に参加中です。少し待ってからもう一度ドロップしてください"
+          }
+        }
+      }
+    },
     "아직 rekordbox 컬렉션에 넣지 않은 곡이라 USB에 넣지 않았습니다. rekordbox에 쓴 뒤 다시 동기화하세요" : {
       "localizations" : {
         "en" : {
@@ -35447,6 +36049,38 @@
         }
       }
     },
+    "연결됨" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続済み"
+          }
+        }
+      }
+    },
+    "연결하는 중…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecting…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続中…"
+          }
+        }
+      }
+    },
     "연결하지 못한 %lld곡은 rekordbox 컬렉션 등록과 파일 위치를 확인하세요" : {
       "localizations" : {
         "en" : {
@@ -36693,6 +37327,22 @@
         }
       }
     },
+    "음원 파일을 읽지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read the audio file"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声ファイルを読み込めませんでした"
+          }
+        }
+      }
+    },
     "음원 파일을 읽지 못했으니 파일 접근 권한과 외장 드라이브 연결을 확인한 뒤 다시 불러오세요" : {
       "localizations" : {
         "en" : {
@@ -37591,6 +38241,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "この曲では候補を表示しなくなります"
+          }
+        }
+      }
+    },
+    "이 곡은 LINK로 내어 주지 않습니다. rekordbox 컬렉션에 있고 파일이 있는 MP3·WAV·AIFF·M4A·FLAC 곡만 실을 수 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This track isn't shared over LINK. Only MP3, WAV, AIFF, M4A, or FLAC tracks in the rekordbox collection whose files exist can be loaded"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この曲は LINK で共有されません。rekordbox コレクションにありファイルがある MP3・WAV・AIFF・M4A・FLAC の曲だけをロードできます"
           }
         }
       }
@@ -40131,6 +40797,34 @@
         }
       }
     },
+    "재생 기록 %lld건이 쓰기 대기에 있습니다. 위 ‘rekordbox에 쓰기’로 rekordbox 재생 기록에 넣습니다." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld history is pending. Use ‘Write to rekordbox’ above to add it to rekordbox History."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld histories are pending. Use ‘Write to rekordbox’ above to add them to rekordbox History."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "演奏履歴%lld件が書き込み待ちです。上の「rekordboxに書き込む」でrekordboxの演奏履歴に入れます。"
+          }
+        }
+      }
+    },
     "재생 기록 곡의 재생 횟수·변경 번호가 쓴 것과 다릅니다" : {
       "localizations" : {
         "en" : {
@@ -41421,6 +42115,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再生位置に最も近い候補をメモリーキューとして受け入れる"
+          }
+        }
+      }
+    },
+    "재생 중" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "playing"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生中"
           }
         }
       }
@@ -43343,6 +44053,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "違いはありません"
+          }
+        }
+      }
+    },
+    "참여하는 중…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Joining…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参加中…"
+          }
+        }
+      }
+    },
+    "참여하지 못했습니다: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't join: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "参加できませんでした: %@"
           }
         }
       }
