@@ -94,6 +94,35 @@ struct LinkBarModelTests {
         var values: [String] = []
     }
 
+    @Test func 변환본을_비우는_동안_켜면_다_비운_뒤에_내어_주고_켠_동안은_비우기를_시작하지_않는다() async throws {
+        // #287 PR 리뷰: 비우기가 내어 주는지 한 번만 보면, 비우는 사이 켠 LINK가 CDJ에 내어 준 변환본을 지운다
+        let started = Mutex(0)
+        let source = LinkServerSource(start: { _, _, _, _ throws(LinkProblem) in started.withLock { $0 += 1 } }, stop: {},
+                                      status: { LinkServerStatus(deviceNumber: 17) }, load: { _, _ throws(LinkProblem) in },
+                                      isRekordboxRunning: { false })
+        let row = TrackRow(track: Track(id: "10", uuid: "u10", title: "곡", artist: nil, album: nil, albumArtist: nil, genre: nil,
+                                        composer: nil, releaseYear: nil, trackNumber: nil, key: nil, bpm: 120, lengthSeconds: 60,
+                                        folderPath: "/Users/dj/Music/10.flac", comment: "", importedOn: nil, analysisDataPath: nil,
+                                        imagePath: nil, isDeleted: false),
+                           cues: [], playCount: 0)
+        let model = LinkBarModel(discovery: LinkDiscovery(source: .none), session: LinkSession(source: source),
+                                 library: { .init(rows: [row], playlists: PlaylistLayout(), shareRoot: "/share") })
+        model.apply(.listening([Self.cdj1]))
+        let end = try #require(model.beginCacheClear())
+        let connecting = Task { await model.connect() }
+        while !model.isServing { await Task.yield() }
+        // 켜는 중이면 새 비우기는 시작하지 않는다
+        #expect(model.beginCacheClear() == nil)
+        // 다 비울 때까지 서버를 띄우지 않는다(켜기가 서버를 띄울 틈을 준다)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(started.withLock { $0 } == 0)
+        end()
+        await connecting.value
+        #expect(started.withLock { $0 } == 1)
+        #expect(model.isConnected)
+        #expect(model.beginCacheClear() == nil)
+    }
+
     @Test func 연결한_동안_고친_큐를_바뀔_때만_차례대로_서버에_보낸다() async {
         // #281: DJCrate에서 고친 큐·루프를 CDJ가 다시 실으면 보이게 한다
         let sent = Mutex<[[UInt32]]>([])

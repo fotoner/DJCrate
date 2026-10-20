@@ -32,8 +32,13 @@ CDJ·DJM 네트워크 코드를 고칠 때 지키는 규칙이다. 리뷰는 규
   - CDJ에서 고를 때: 플레이어가 NFS로 원본을 찾으면 백그라운드에서 바꿔 끼운다(`LinkSession.fileRequested`).
   - 바꾸는 동안 그 요청에 답하지 않는다(`LinkFileHold`). CDJ가 1초쯤 뒤 다시 묻는 요청에 WAV로 답해 첫 싣기부터 실린다. 원본으로 답해 E-8305로 실패시키지 않는다.
   - 15초(`LinkFileHold.limit`) 안에 못 바꾸면 원본으로 답한다. 그 싣기는 실패하므로 다 바꾼 뒤 다시 실으라고 알린다. 바꿀 필요가 없는 곡은 곧바로 원본으로 답한다. 바꾸지 못한 곡도 그렇다.
+  - 바꾸지 못한 원본은 그 연결에서 기억한다(#287). CDJ가 다시 찾아도 다시 바꾸지 않는다. 알림도 다시 띄우지 않는다. 끌어 놓으면 다시 바꿔 본다.
+  - 같은 원본을 바꿔 끼우는 일은 연결마다 하나다(`LinkSession.prepare`). 끌어 놓기·CDJ 요청이 그 일을 함께 기다린다. 그래서 바꿔 끼운 뒤에 싣는다(#287).
+  - 보류 풀기와 바꿔 끼우기는 그 변환을 시작한 연결 차례가 지금 차례일 때만 한다(#287). 앞 연결의 변환이 새 연결의 보류를 풀지 않는다.
   - 바꿔 끼울 때는 곡 정보의 경로와 NFS의 원본 이름을 함께 WAV로 바꾼다(`redirect_file`). CDJ는 곡 번호별로 처음 받은 경로를 기억해 원본 이름으로 다시 찾기 때문이다(2026-10-17 CDJ-2000nexus 실기). 이미 연 핸들은 원본을 이어 읽는다.
-  - 바꾼 파일은 `~/Music/DJCrate/LINK`에만 쓴다. 원본은 읽기만 한다. 시험은 임시 폴더에서만 바꾼다.
+  - NFS는 서버를 띄울 때 곡 경로 앞 세 단계 폴더만 연다(`LinkExportServer.exportRoots`). 음악 폴더 밖 곡만 내어 주면 WAV가 그 밖에 놓일 수 있다. 그때는 곡 정보의 경로를 원본 그대로 둔다. 형식만 WAV로 바꾼다. 서버가 원본 이름으로 WAV를 내어 준다(#287). 2026-10-20 CDJ-2000nexus 실기로 확인했다.
+  - 바꾼 파일은 `DJCCachePaths.linkAudio`에만 쓴다. 자리는 `~/Music/DJCrate/LINK`다. `DJC_HOME`이 있으면 그 안 `link-audio/`다. 원본은 읽기만 한다. 시험은 임시 폴더에서만 바꾼다.
+  - 바꾼 파일은 캐시 종류 `link-audio`다(#287). 저장 공간 설정·`djc cache`가 용량을 보인다. 비우기도 거기서 한다. LINK로 내어 주는 동안 앱 화면은 이 종류를 비우지 않는다. 비우는 사이 LINK를 켜면 다 비운 뒤에 내어 준다(`LinkBarModel.beginCacheClear`).
 - **LNK-15** CDJ가 실은 DJCrate 곡은 DJCrate 덱에서 내린다. CDJ에 실려 있는 곡은 재생 중이 아니어도 덱에 올리지 않는다(`DeckModel.applyCDJTracks`).
 - **LNK-13** CDJ가 보낸 재생 기록(`add_to_history`)은 DJCrate에 "LINK HISTORY yyyy-MM-dd" 보존본으로만 남긴다(`LinkHistory`). LINK 동안 rekordbox 라이브러리에 쓰지 않는다. rekordbox에는 USB 기록과 같은 쓰기 대기로 올려 rekordbox에 쓰기 때 넣는다.
 - **LNK-16** CDJ의 큐 저장·삭제(#280)는 내어 주는 큐 목록을 바꿔 답한다. 거절하면 서버가 빈 목록으로 답해 CDJ의 메모리 큐가 사라진다. 받은 편집은 그 곡의 큐 초안에만 얹는다(`LinkCueDrafts`). LINK 동안 rekordbox 라이브러리에 쓰지 않는다. 큐 초안이 있는 곡은 연결할 때 초안의 큐를 내어 준다.

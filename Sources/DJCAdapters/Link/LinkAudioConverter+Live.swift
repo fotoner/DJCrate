@@ -10,37 +10,51 @@ extension LinkAudioConverter {
     /// FLAC·ALAC를 같은 샘플의 WAV로 바꿔 `cache` 폴더에 둔다(#277). 원본은 읽기만 한다.
     /// 무손실 형식은 인코더 지연이 0이라(`RekordboxTimeline.predictedOffset`) 처음부터 끝까지 그대로 옮기면 큐·그리드 시각이 같다.
     /// 같은 원본(경로·크기·수정 시각)은 한 번만 바꾸고 다시 쓴다. 다 쓴 뒤에 이름을 바꿔 반쯤 쓴 파일을 내어 주지 않는다(`EditRenderer`).
-    /// - Parameter cache: 바꾼 WAV를 둘 폴더. CDJ가 NFS로 읽으므로 내어 주는 곡과 같은 뿌리 폴더(경로 앞 세 단계) 안이어야 한다
+    /// 원본이 바뀌어 새로 바꾸면 그 원본의 옛 변환본을 지운다(#287).
+    /// - Parameter cache: 바꾼 WAV를 둘 폴더(`DJCCachePaths.linkAudio`). 내어 주는 곡과 다른 뿌리 폴더에 있어도 서버가 원본 이름으로 내어 준다
     public static func live(cache: URL) -> LinkAudioConverter {
-        LinkAudioConverter { path throws(LinkProblem) in
+        LinkAudioConverter(convert: { path throws(LinkProblem) in
             let result = await BlockingWork.run(qos: .userInitiated) { () -> Result<String?, LinkProblem> in
                 Result { () throws(LinkProblem) -> String? in try convertIfNeeded(path, cache: cache) }
             }
             return try result.get()
-        }
+        }, needsConversion: { path in
+            // .m4a는 파일을 열어 코덱을 본다
+            await BlockingWork.run(qos: .userInitiated) { needsConversion(URL(filePath: path)) }
+        })
     }
 
     /// 바꿔야 하면 바꾼 WAV 경로, 아니면 nil
     static func convertIfNeeded(_ path: String, cache: URL) throws(LinkProblem) -> String? {
         let source = URL(filePath: path)
         guard needsConversion(source) else { return nil }
-        let output: URL
+        let name: CacheName
         do {
-            output = cache.appending(path: try cacheName(source) + ".wav")
+            name = try cacheName(source)
         } catch {
             throw .conversionFailed(String(ui: "음원 파일을 읽지 못했습니다"))
         }
+        let output = cache.appending(path: name.file)
         if FileManager.default.fileExists(atPath: output.path) { return output.path }
         do {
             try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
             let file = try AVAudioFile(forReading: source)
             let span = EditFrameSpan(sourceFrame: 0, frameCount: file.length, outputFrame: 0, crossfadeFrames: 0)
             _ = try EditRenderer.render([span], source: source, to: output, bitDepth: bitDepth(file, source: source))
+            removeOlderVersions(of: name, in: cache)
             return output.path
         } catch {
             // 같은 곡을 거의 같이 두 번 놓아 다른 쪽이 먼저 다 썼으면 그 파일을 쓴다
             if FileManager.default.fileExists(atPath: output.path) { return output.path }
             throw .conversionFailed(error.localizedDescription)
+        }
+    }
+
+    /// 같은 원본 경로의 다른 판(원본이 바뀌기 전에 바꾼 WAV)을 지운다. 연결마다 원본 하나는 한 번만 바꾸므로 지금 내어 주는 판이 아니다
+    static func removeOlderVersions(of name: CacheName, in cache: URL) {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: cache.path)) ?? []
+        for other in names where other != name.file && other.hasPrefix(name.prefix) && other.hasSuffix(".wav") {
+            try? FileManager.default.removeItem(at: cache.appending(path: other))
         }
     }
 
@@ -53,12 +67,26 @@ extension LinkAudioConverter {
         }
     }
 
-    /// 원본 경로·크기·수정 시각으로 지은 이름(원본이 바뀌면 새로 바꾼다)
-    static func cacheName(_ source: URL) throws -> String {
+    /// 변환본 이름 `<원본 이름 40자>-<경로 열쇠>-<판 열쇠>.wav`. 원본이 바뀌면(크기·수정 시각) 판 열쇠만 달라져 새로 바꾸고,
+    /// 같은 앞부분(`prefix`)으로 옛 판을 찾아 지운다
+    struct CacheName: Equatable {
+        /// 원본 이름과 경로 열쇠까지(`-`로 끝난다)
+        var prefix: String
+        var version: String
+        var file: String { "\(prefix)\(version).wav" }
+    }
+
+    /// 원본 경로·크기·수정 시각으로 지은 이름
+    static func cacheName(_ source: URL) throws -> CacheName {
         let values = try source.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-        let key = "\(source.standardizedFileURL.path)\n\(values.fileSize ?? 0)\n\(values.contentModificationDate?.timeIntervalSince1970 ?? 0)"
-        let digest = SHA256.hash(data: Data(key.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
-        return "\(source.deletingPathExtension().lastPathComponent.prefix(40))-\(digest)"
+        let path = source.standardizedFileURL.path
+        let version = "\(values.fileSize ?? 0)\n\(values.contentModificationDate?.timeIntervalSince1970 ?? 0)"
+        return CacheName(prefix: "\(source.deletingPathExtension().lastPathComponent.prefix(40))-\(digest(path, bytes: 8))-",
+                         version: digest(path + "\n" + version, bytes: 6))
+    }
+
+    private static func digest(_ text: String, bytes: Int) -> String {
+        SHA256.hash(data: Data(text.utf8)).prefix(bytes).map { String(format: "%02x", $0) }.joined()
     }
 
     /// 원본 비트 수를 지킨다: 16비트 이하면 16, 아니면 24(CDJ WAV는 16·24비트)

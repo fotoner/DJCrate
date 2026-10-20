@@ -5,8 +5,9 @@ import Foundation
 import RekordboxKit
 
 /// 비정상 종료·강제 종료 뒤 남은 임시 파일·폴더 청소(#219). 앱이 켜질 때 뒤에서 조용히 돌고, 지운 것은 로그에만 남긴다.
-/// 지우는 자리는 아래 다섯뿐이다. 초안·추가 목록·백업·USB 저널·허용·거부 목록은 이름도 읽지 않는다.
+/// 지우는 자리는 아래 여섯뿐이다. 초안·추가 목록·백업·USB 저널·허용·거부 목록은 이름도 읽지 않는다.
 /// - 데이터 폴더의 `preview-waveforms.plist.sb-*`: 원자적 저장이 끊긴 임시 파일(다음 저장이 새 이름을 쓴다)
+/// - LINK WAV 변환본 폴더의 `.<이름>.djc-partial.wav`: 바꾸는 중에 앱이 끝나 남은 반쯤 쓴 파일(#287). 내어 주지 않은 파일이다
 /// - `$TMPDIR/djc-preview-<UUID>/`: 쓰기 미리 보기의 DB 사본. 주인 pid가 이름에 없어 오래된 것만(`defer`가 못 지운 것)
 /// - `$TMPDIR/djc-test-sandbox-<pid>/`: 시험 프로세스의 임시 폴더. 그 pid가 살아 있지 않을 때만
 /// - USB 동기화 전용 DB 사본 `$TMPDIR/djc-usb-sync-snapshots/<pid>-<UUID>/`(`DJC_HOME`이 있으면 `<데이터 폴더>/usb-sync-snapshots/`):
@@ -29,6 +30,7 @@ public enum DJCTempCleanup {
     public static func run(paths: DJCCachePaths = .current, temporaryDirectory: URL = defaultTemporaryDirectory,
                            now: Date = Date(), isProcessAlive: (pid_t) -> Bool = processAlive) -> [URL] {
         var targets = previewWaveformLeftovers(in: paths.root, now: now)
+        targets += linkAudioLeftovers(in: paths.linkAudio, now: now)
         targets += temporaryLeftovers(in: temporaryDirectory, now: now, isProcessAlive: isProcessAlive)
         targets += stagingLeftovers(paths: paths, now: now)
         for directory in [temporaryDirectory.appending(path: "djc-usb-sync-snapshots"), paths.root.appending(path: "usb-sync-snapshots")] {
@@ -54,6 +56,14 @@ public enum DJCTempCleanup {
     static func previewWaveformLeftovers(in root: URL, now: Date) -> [URL] {
         entries(of: root).filter {
             $0.lastPathComponent.hasPrefix("preview-waveforms.plist.sb-") && isRegularFile($0) && age($0, now: now) > partialAge
+        }
+    }
+
+    /// 바꾸는 중인 파일과 겹치지 않게 오래된 것만(`EditRenderer`가 다 쓰면 이름을 바꾸므로 남은 것은 끊긴 것이다)
+    static func linkAudioLeftovers(in folder: URL, now: Date) -> [URL] {
+        entries(of: folder).filter {
+            let name = $0.lastPathComponent
+            return name.hasPrefix(".") && name.hasSuffix(".djc-partial.wav") && isRegularFile($0) && age($0, now: now) > partialAge
         }
     }
 

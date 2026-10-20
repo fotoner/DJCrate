@@ -56,6 +56,9 @@ final class LinkBarModel {
     @ObservationIgnored private var playlistTail: Task<Void, Never>?
     /// 연결을 끌 때마다 오른다. 끄기 전에 걸어 둔 큐·재생 목록 보내기가 다시 켠 서버에 옛 값을 보내지 않게 한다
     @ObservationIgnored private var linkEpoch = 0
+    /// 진행 중인 LINK WAV 변환본 비우기 수(#287 PR 리뷰). 그동안 켜기는 다 비울 때까지 기다린다(CDJ가 찾은 변환본을 지우지 않게)
+    @ObservationIgnored private var cacheClears = 0
+    @ObservationIgnored private var cacheClearWaiters: [CheckedContinuation<Void, Never>] = []
     /// 연결한 뒤 서버에 보낸 곡별 큐(rekordbox 곡 ID). 같은 큐는 다시 보내지 않는다(#281)
     @ObservationIgnored private var sentCues: [String: [Cue]] = [:]
     /// 켜는 동안 고친 곡별 큐. 켜진 뒤에 보낸다(켤 때 읽은 초안 큐보다 새것이다)
@@ -163,6 +166,9 @@ final class LinkBarModel {
             return
         }
         connection = .connecting
+        // 변환본을 비우는 중이면 다 비운 뒤에 내어 준다. 켜는 중으로 둔 뒤라 새 비우기는 시작하지 않는다
+        while cacheClears > 0 { await withCheckedContinuation { cacheClearWaiters.append($0) } }
+        guard connection == .connecting else { return }
         do {
             servesITunes = input.iTunes != nil
             playlistsChangedWhileConnecting = false
@@ -187,6 +193,22 @@ final class LinkBarModel {
             pendingCues = [:]
             notify(LinkText.problem(error), .warning)
         }
+    }
+
+    /// LINK WAV 변환본 비우기를 시작한다(설정 › 저장 공간). 켜는 중이거나 켜져 있으면 nil(CDJ가 읽는 변환본을 지우지 않는다).
+    /// 확인과 표시를 한 번에 해 비우는 사이 켜도 돌려준 함수를 부를 때까지 켜기가 기다린다
+    func beginCacheClear() -> (() -> Void)? {
+        guard !isServing else { return nil }
+        cacheClears += 1
+        return { [weak self] in self?.endCacheClear() }
+    }
+
+    private func endCacheClear() {
+        cacheClears -= 1
+        guard cacheClears == 0 else { return }
+        let waiters = cacheClearWaiters
+        cacheClearWaiters = []
+        waiters.forEach { $0.resume() }
     }
 
     func disconnect() async {

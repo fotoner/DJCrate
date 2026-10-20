@@ -286,6 +286,7 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - 쓰기 전 백업: `rekordbox-backups/`
 - 시점 스냅샷: `point-snapshots/`(#224)
 - 캐시: `analysis/`, `waveforms/`, `loudness.json`
+- LINK WAV 변환본: 데이터 폴더가 아니라 `~/Music/DJCrate/LINK`다. `DJC_HOME`이 있으면 그 안 `link-audio/`다. CDJ가 NFS로 읽으므로 음원이 보통 있는 음악 폴더에 둔다(#277·#287).
 - USB 백업과 초안: `usb-backups/`, `usb-drafts/`
 - USB DB의 Mac 사본: `usb-snapshots/`
 - USB 시점 스냅샷: `usb-point-snapshots/<볼륨>/`(#226). 사용자가 남긴 것이라 캐시가 아니다.

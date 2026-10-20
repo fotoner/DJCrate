@@ -76,7 +76,8 @@ enum CacheCommand {
 
     static func usageText(paths: DJCCachePaths, cache: CacheFiles) -> String {
         let usage = cache.usage(paths)
-        var lines = [String(ui: "데이터 폴더: \(paths.root.path)"), String(ui: "스냅샷 폴더: \(paths.snapshots.path)")]
+        var lines = [String(ui: "데이터 폴더: \(paths.root.path)"), String(ui: "스냅샷 폴더: \(paths.snapshots.path)"),
+                     String(ui: "LINK WAV 변환본 폴더: \(paths.linkAudio.path)")]
         for item in usage {
             lines.append("  \(item.kind.rawValue)  \(item.kind.title): \(size(item.bytes)) · " + String(ui: "파일 \(item.files)개"))
         }
