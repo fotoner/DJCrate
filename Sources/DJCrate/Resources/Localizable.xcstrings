@@ -337,22 +337,6 @@
         }
       }
     },
-    "#태그 겹침" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shared #tags"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "#タグが共通"
-          }
-        }
-      }
-    },
     "%+.1f dB (rekordbox %+.1f)" : {
       "localizations" : {
         "en" : {
@@ -371,22 +355,6 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$+.1f dB (rekordbox %2$+.1f)"
-          }
-        }
-      }
-    },
-    "%.0f점" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%.0f pts"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%.0f点"
           }
         }
       }
@@ -4337,38 +4305,6 @@
         }
       }
     },
-    "BPM ±6% · 반·두 배 포함 · 키 이웃 · 장르 · #태그\n점수순 상위 100곡 · 더블클릭·Return으로 덱에 올립니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "BPM ±6% · half and double included · neighboring keys · genre · #tags\nTop 100 by score · Double-click or press Return to load a track to the deck"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "BPM ±6% · 半分・倍を含む · 隣接キー · ジャンル · #タグ\nスコア上位100曲 · ダブルクリックまたはReturnでデッキに読み込みます"
-          }
-        }
-      }
-    },
-    "BPM 두 배로 비교" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "BPM compared at double"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "BPMを倍で比較"
-          }
-        }
-      }
-    },
     "BPM 변경" : {
       "localizations" : {
         "en" : {
@@ -4397,22 +4333,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "BPMなし"
-          }
-        }
-      }
-    },
-    "BPM 절반으로 비교" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "BPM compared at half"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "BPMを半分で比較"
           }
         }
       }
@@ -15945,22 +15865,6 @@
         }
       }
     },
-    "가까운 BPM" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Close BPM"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "近いBPM"
-          }
-        }
-      }
-    },
     "가까운 제안 받기" : {
       "localizations" : {
         "en" : {
@@ -16441,22 +16345,6 @@
         }
       }
     },
-    "같은 장르" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Same genre"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同じジャンル"
-          }
-        }
-      }
-    },
     "같은 재생 목록이나 재생 이력에서 이 곡 뒤에 rekordbox가 지운 표시를 남긴 항목이 있어 순번을 당기는 규칙을 아직 확인하지 못했으니 rekordbox에서 직접 빼세요" : {
       "localizations" : {
         "en" : {
@@ -16517,22 +16405,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "同じ項目が変更された%lld曲の下書きを保持しました。曲情報で現在の値と下書きを確認してください。"
-          }
-        }
-      }
-    },
-    "같은 키" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Same key"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同じキー"
           }
         }
       }
@@ -19625,54 +19497,6 @@
         }
       }
     },
-    "관련 곡" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Related Tracks"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "関連するトラック"
-          }
-        }
-      }
-    },
-    "관련 곡을 찾는 중…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finding related tracks…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "関連するトラックを検索中…"
-          }
-        }
-      }
-    },
-    "관련 곡이 없습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Related Tracks"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "関連するトラックはありません"
-          }
-        }
-      }
-    },
     "구간 넣기" : {
       "localizations" : {
         "en" : {
@@ -21097,22 +20921,6 @@
         }
       }
     },
-    "기준곡이 없습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Reference Track"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "基準の曲がありません"
-          }
-        }
-      }
-    },
     "기타" : {
       "localizations" : {
         "en" : {
@@ -22379,22 +22187,6 @@
         }
       }
     },
-    "다른 기준곡을 고르거나 BPM·키·장르·#태그를 확인하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose another reference track, or check its BPM, key, genre, and #tags."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "別の基準曲を選ぶか、BPM・キー・ジャンル・#タグを確認してください。"
-          }
-        }
-      }
-    },
     "다른 도구나 rekordbox가 만든 rekordbox XML을 골라 지금 라이브러리와의 차이를 봅니다. 고른 차이만 초안으로 만들고 rekordbox에는 쓰지 않습니다." : {
       "localizations" : {
         "en" : {
@@ -23025,22 +22817,6 @@
         }
       }
     },
-    "더블클릭하면 %@을 덱에 올립니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Double-click to load %@ to the deck"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ダブルクリックで%@をデッキに読み込みます"
-          }
-        }
-      }
-    },
     "더할 곡이 없습니다. 막힌 곡의 이유를 확인한 뒤 다시 시도하세요" : {
       "localizations" : {
         "en" : {
@@ -23245,22 +23021,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "デッキの曲、再生中"
-          }
-        }
-      }
-    },
-    "덱에 올린 곡과 BPM·키·장르·코멘트의 #태그가 어울리는 곡을 찾습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finds tracks whose BPM, key, genre, and comment #tags go well with the track on the deck"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デッキの曲とBPM・キー・ジャンル・コメントの#タグが合う曲を探します"
           }
         }
       }
@@ -27325,22 +27085,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "リストで曲を選んでデッキに読み込んでください"
-          }
-        }
-      }
-    },
-    "목록에서 곡을 더블클릭해 덱에 올리세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Double-click a track in the list to load it to the deck."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "リストで曲をダブルクリックしてデッキに読み込んでください。"
           }
         }
       }
@@ -50481,22 +50225,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "形式とソースを選んでから、プレビューを押してください"
-          }
-        }
-      }
-    },
-    "호환 키" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Compatible key"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "相性の良いキー"
           }
         }
       }
