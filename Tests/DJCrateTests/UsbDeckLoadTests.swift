@@ -52,7 +52,7 @@ struct UsbDeckLoadTests {
         #expect(s.store.staging.stagingMessage == nil)
     }
 
-    @Test("USB 재생 목록에서 고른 곡도 ⌘→·덱 메뉴로 로컬 곡을 올린다")
+    @Test("USB 재생 목록에서 고른 곡도 ⌘→로 로컬 곡을 올린다")
     func loadsSelectionFromUsbPlaylist() async throws {
         let s = try await setUp { .playlist(volumeKey: $0, id: 10) }
         let first = try #require(s.store.displayRows.first)

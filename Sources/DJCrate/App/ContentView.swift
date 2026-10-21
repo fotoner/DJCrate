@@ -115,7 +115,7 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.15), value: store.writeStage)
         .searchable(text: $store.search, placement: .toolbar, prompt: Text(.ui("제목·아티스트·코멘트")))
         .toolbar(id: "main") { toolbarContent }
-        .focusedSceneValue(\.appCommands, AppCommandContext(window: window, deck: deck, windows: app.windows, reflection: app.reflection,
+        .focusedSceneValue(\.appCommands, AppCommandContext(window: window, windows: app.windows, reflection: app.reflection,
                                                             showTagEditor: $showTagEditor))
         .onAppear { setUp() }
         // 보조 창·목록 메뉴 동작은 조립 지점이 한 번 만든 것을 내려 준다(값이 바뀌지 않아 본문을 다시 계산하지 않는다).

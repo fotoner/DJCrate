@@ -163,6 +163,22 @@ struct DeckCueTests {
         #expect(h.deck.draft?.hasChanges == false)
     }
 
+    /// 핫큐 단추의 우클릭 메뉴(플레이헤드로 옮기기)가 부른다. 덱 메뉴가 있던 때는 그 메뉴 시험이 이 약속을 지켰다.
+    @Test func 핫큐는_플레이헤드로_옮기고_없는_칸은_그대로_둔다() async throws {
+        let h = try DeckHarness()
+        try await h.loaded()
+        h.deck.moveHotCueToPlayhead(slot: 0)
+        #expect(h.deck.hotCue(slot: 0) == nil, "찍지 않은 칸은 옮기지 않는다")
+        h.deck.seek(10.5)
+        h.deck.pressHotCue(slot: 0)
+        #expect(h.deck.hotCue(slot: 0)?.time == 10.5)
+        h.deck.seek(20.5)
+        h.deck.moveHotCueToPlayhead(slot: 0)
+        #expect(h.deck.hotCue(slot: 0)?.time == 20.5)
+        h.deck.deleteHotCue(slot: 0)
+        #expect(h.deck.hotCue(slot: 0) == nil)
+    }
+
     /// #145: 핫큐 2개·메모리 6개인 곡은 핫큐를 지우거나 종류를 바꾸고 실행 취소·복귀·제안 받기를 거쳐도 보이는 메모리 큐로만 센다.
     @Test func 핫큐를_지우거나_바꿔도_보이는_메모리_큐로만_센다() async throws {
         let memory = (1...6).map { Cue(id: "m\($0)", contentID: "1", kind: 0, inMsec: $0 * 10_000, name: "", colorTableIndex: nil) }

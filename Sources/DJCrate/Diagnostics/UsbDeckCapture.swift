@@ -96,13 +96,13 @@ enum UsbDeckCapture {
         log("1 더블클릭: 덱 곡 \(store.deckTrackID ?? "-") · USB 줄 덱 표시 [\(marks())] · 안내 \(store.staging.stagingMessage?.text ?? "-")")
         try UsbDragCapture.captureWindow(window, to: directory + "/usb-playlist-deck-loaded.jpg")
 
-        // 2. 넷째 줄을 골라 ⌘→(덱 메뉴 '고른 곡 덱에 불러오기')로 올린다
+        // 2. 넷째 줄을 골라 ⌘→(단축키 창의 '고른 곡 덱에 불러오기')로 올린다
         table.selectRowIndexes([3], byExtendingSelection: false)
         try await settle(300)
         let enabled = store.canLoadSelectionToDeck
         store.loadSelectionToDeck()
         try await settle(2500)
-        log("2 ⌘→: 메뉴 켜짐 \(enabled) · 덱 곡 \(store.deckTrackID ?? "-") · USB 줄 덱 표시 [\(marks())]")
+        log("2 ⌘→: 불러오기 가능 \(enabled) · 덱 곡 \(store.deckTrackID ?? "-") · USB 줄 덱 표시 [\(marks())]")
         try UsbDragCapture.captureWindow(window, to: directory + "/usb-playlist-deck-selection.jpg")
 
         // 3~5. 곡 줄을 눌러 끌어 덱 위에 놓는다: 표가 만든 끌 항목을 덱 놓기 대상(SwiftUI `onDrop`)의 실제 놓기 메서드에 넘긴다.

@@ -3883,38 +3883,6 @@
         }
       }
     },
-    "1마디 뒤로(선택한 큐 또는 재생 위치)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Forward 1 Bar (Selected Cue or Playhead)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1小節後ろへ（選択したキューまたは再生位置）"
-          }
-        }
-      }
-    },
-    "1마디 앞으로(선택한 큐 또는 재생 위치)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Back 1 Bar (Selected Cue or Playhead)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1小節前へ（選択したキューまたは再生位置）"
-          }
-        }
-      }
-    },
     "1마디 이동 (선택한 큐 또는 재생 위치)" : {
       "localizations" : {
         "en" : {
@@ -5831,38 +5799,6 @@
         }
       }
     },
-    "Flip 기록 마치기…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finish Flip Recording…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flip記録を終了…"
-          }
-        }
-      }
-    },
-    "Flip 기록 시작" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Start Flip Recording"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flip記録を開始"
-          }
-        }
-      }
-    },
     "Flip 기록 중: 재생하며 핫큐·루프를 쓴 뒤 Flip을 다시 누르면 편집본으로 만듭니다" : {
       "localizations" : {
         "en" : {
@@ -5923,22 +5859,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Flip記録を開始します。再生中に使ったホットキューのジャンプ・ループだけを集め、同じように再生される編集版を作ります。"
-          }
-        }
-      }
-    },
-    "Flip 다시 기록…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Record Flip Again…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Flipを記録し直す…"
           }
         }
       }
@@ -17439,22 +17359,6 @@
         }
       }
     },
-    "고른 곡 덱에 불러오기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Load Selected Track to Deck"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選んだ曲をデッキに読み込む"
-          }
-        }
-      }
-    },
     "고른 곡(없으면 목록 전체)과 재생 목록 초안·재생 기록(USB·LINK)을 rekordbox에 씁니다." : {
       "localizations" : {
         "en" : {
@@ -18963,22 +18867,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "トラック編集 — %@"
-          }
-        }
-      }
-    },
-    "곡 편집…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edit Track…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "トラック編集…"
           }
         }
       }
@@ -23261,22 +23149,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "デッキの曲とBPM・キー・ジャンル・コメントの#タグが合う曲を探します"
-          }
-        }
-      }
-    },
-    "덱에 올린 곡으로 편집 창을 엽니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Open the editor for the track loaded into the deck"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デッキに読み込んだ曲の編集ウインドウを開きます"
           }
         }
       }
@@ -42259,22 +42131,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再生停止後にオーディオエンジンをオフにする"
-          }
-        }
-      }
-    },
-    "재생하며 쓴 핫큐 점프·루프만 모아 같은 소리로 재생되는 편집본을 만듭니다. 마치면 결과 창을 엽니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Collects only the hot cue jumps and loops you use while playing and creates an edited version that plays back the same way. Finishing opens the result window."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再生中に使ったホットキューのジャンプ・ループだけを集め、同じように再生される編集版を作ります。終了すると結果ウインドウを開きます。"
           }
         }
       }

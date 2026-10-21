@@ -4,7 +4,6 @@ import SwiftUI
 struct AppCommandContext {
     /// 주 창 화면 모델. 파일·rekordbox 메뉴 항목(`LibraryMenuAction`)은 이 모델로 보고 부른다
     var window: LibraryWindowModel
-    var deck: DeckModel
     var windows: AppWindows
     var reflection: ReflectionCoordinator
     var showTagEditor: Binding<Bool>
@@ -90,45 +89,6 @@ struct AppCommands: Commands {
             ForEach(LibraryMenuAction.rekordboxActions, id: \.self) { libraryButton($0) }
         }
         CommandMenu(.ui("재생 목록")) { PlaylistCommands(store: context?.store, reflection: context?.reflection) }
-        CommandMenu(.ui("덱")) {
-            // 키는 곡 목록·태그 시트가 받는다(글자 입력 중 ⌘→는 커서 이동이라 메뉴에 걸지 않는다).
-            let loadTitle = "\(String(ui: "고른 곡 덱에 불러오기"))    ⌘→"
-            Button(loadTitle) { context?.store.loadSelectionToDeck() }
-                .disabled(context?.store.canLoadSelectionToDeck != true)
-            Divider()
-            ForEach(DeckAction.Group.allCases, id: \.self) { group in
-                if group != .transport { Divider() }
-                if group == .hotCues {
-                    Menu(group.title) {
-                        ForEach(DeckMenuCommand.actions(in: group), id: \.self) { action in
-                            Menu(action.title) {
-                                deckButton(.action(action))
-                                if let slot = action.hotCueSlot {
-                                    deckButton(.moveHotCue(slot))
-                                    deckButton(.deleteHotCue(slot))
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    ForEach(DeckMenuCommand.actions(in: group), id: \.self) { action in
-                        deckButton(.action(action))
-                        ForEach(DeckMenuCommand.variants(after: action), id: \.self) { deckButton($0) }
-                    }
-                }
-            }
-            Divider()
-            Button(.ui("곡 편집…")) { context?.windows.trackEdit.startOpen() }
-                .disabled(context.map { !$0.deck.canOpenTrackEdit } ?? true)
-                .help(context.flatMap { $0.deck.trackEditUnavailableReason } ?? String(ui: "덱에 올린 곡으로 편집 창을 엽니다"))
-            Button(context?.deck.isFlipRecording == true ? String(ui: "Flip 기록 마치기…")
-                   : context?.deck.hasPendingFlipResult == true ? String(ui: "Flip 다시 기록…") : String(ui: "Flip 기록 시작")) {
-                context?.windows.flip.toggleRecording()
-            }
-            .disabled(context.map { $0.deck.flipUnavailableReason != nil } ?? true)
-            .help(context.flatMap { $0.deck.flipUnavailableReason }
-                  ?? String(ui: "재생하며 쓴 핫큐 점프·루프만 모아 같은 소리로 재생되는 편집본을 만듭니다. 마치면 결과 창을 엽니다"))
-        }
         CommandGroup(replacing: .help) {
             Button(.ui("DJCrate 단축키")) { openWindow(id: "shortcuts") }
                 .keyboardShortcut("?", modifiers: .command)
@@ -147,14 +107,5 @@ struct AppCommands: Commands {
         .keyboardShortcut(action.shortcut)
         .disabled(context.map { !action.isEnabled(in: $0.window) } ?? true)
         .help(context.flatMap { action.disabledReason(in: $0.window) } ?? action.title)
-    }
-
-    private func deckButton(_ command: DeckMenuCommand) -> some View {
-        let keys = command.keyLabel(shortcuts: context?.deck.shortcuts ?? .standard)
-        return Button(keys.isEmpty ? command.title : "\(command.title)    \(keys)") {
-            if let deck = context?.deck { command.perform(on: deck) }
-        }
-        // keyboardShortcut를 달면 글자 입력 중에도 메뉴가 덱 키를 가로챈다.
-        .disabled(context.map { !command.isEnabled(on: $0.deck) } ?? true)
     }
 }

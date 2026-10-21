@@ -6,7 +6,7 @@ import Testing
 @MainActor
 @Suite("메모리 큐 — CUE 위치 저장")
 struct MemoryCuePositionTests {
-    enum Entry: CaseIterable { case button, keyboard, menu }
+    enum Entry: CaseIterable { case button, keyboard }
 
     func add(_ entry: Entry, to deck: DeckModel) {
         switch entry {
@@ -16,8 +16,6 @@ struct MemoryCuePositionTests {
             let router = KeyRouter()
             router.deck = deck
             #expect(router.handleKeyDown(46, focus: .deck))
-        case .menu:
-            DeckMenuCommand.action(.memoryCue).perform(on: deck)
         }
     }
 
