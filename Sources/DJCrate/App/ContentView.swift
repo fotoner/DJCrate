@@ -169,9 +169,6 @@ struct ContentView: View {
     }
 
     @ToolbarContentBuilder private var toolbarContent: some CustomizableToolbarContent {
-            ToolbarItem(id: "relatedTracks") {
-                RelatedTracksButton(store: store, deck: deck)
-            }
             ToolbarItem(id: "volume", placement: .principal) {
                 VolumeControl(deck: deck)
                     .disabled(!store.writeLockPolicy.allowsLibraryInteraction)

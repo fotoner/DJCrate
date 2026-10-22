@@ -58,7 +58,7 @@ extension DevSelfTests {
                 }.max() ?? 0
                 let focused = (window.firstResponder as? NSTextView)?.delegate === field
                 let visibleIDs = Set((toolbar.visibleItems ?? []).map { $0.itemIdentifier.rawValue })
-                let controlsVisible = ["viewMode", "relatedTracks", "addFiles", "tagEditor", "snapshot", "reflection"]
+                let controlsVisible = ["viewMode", "addFiles", "tagEditor", "snapshot", "reflection"]
                     .allSatisfy { visibleIDs.contains($0) }
                 let stable = focused && controlsVisible && !neighbors.isEmpty && before.width > 0
                     && abs(before.width - after.width) <= 0.5 && movement <= 0.5
