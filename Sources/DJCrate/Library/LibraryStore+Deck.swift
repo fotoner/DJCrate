@@ -24,7 +24,7 @@ extension LibraryStore {
     /// 짝 없는 USB 곡을 골라도 막지 않는다: 누르면 이유를 알린다
     var canLoadSelectionToDeck: Bool { writeLockPolicy.allowsLibraryInteraction && primaryRow != nil }
 
-    /// 고른 곡 중 표 순서로 첫 곡을 덱에 올린다(⌘→·덱 메뉴).
+    /// 고른 곡 중 표 순서로 첫 곡을 덱에 올린다(⌘→).
     func loadSelectionToDeck() {
         guard writeLockPolicy.allowsLibraryInteraction else { return }
         guard let row = primaryRow else {

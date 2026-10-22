@@ -48,37 +48,69 @@ struct ShortcutsList: View {
         }
     }
 
-    @ViewBuilder private var standardRows: some View {
-        row(["Space"], String(ui: "재생 / 정지"))
-        row(["C"], String(ui: "CUE — 재생 중: 큐로 돌아가 정지 · 멈춤: 큐 지점 설정 · 누르고 있기: 미리 듣기"))
-        row(["1", "~", "8"], String(ui: "핫큐 A~H (있으면 이동, 없으면 찍기)"))
-        row(["Shift", "+", "1", "~", "8"], String(ui: "그 핫큐 지우기"))
-        row(["`", "·", "M"], String(ui: "메모리 큐 찍기 (파형 더블클릭도)"))
-        row(["Shift", "+", "`", "·", "M"], String(ui: "이 자리 메모리 큐 지우기"))
-        row(["Q", "/", "E"], String(ui: "이전 · 다음 큐로"))
-        row(["←", "→"], String(ui: "1박 이동 — 선택한 큐가 있으면 그 큐, 없으면 재생 위치"))
-        row(["Shift", "+", "←", "→"], String(ui: "1마디 이동 (선택한 큐 또는 재생 위치)"))
-        row(["Esc"], String(ui: "큐 선택 풀기 (그 뒤 ←→는 재생 위치를 옮김)"))
-        row(["⌫"], String(ui: "선택한 큐 지우기"))
-        row(["S"], String(ui: "다음 제안으로 (Shift: 이전 제안으로)"))
-        row(["A"], String(ui: "재생 위치에서 가장 가까운 제안을 메모리 큐로 받기"))
-        row(["L"], String(ui: "루프 걸기 · 나가기 (반복 중 빈 핫큐 = 루프 핫큐로 저장)"))
-        row(["[", "/", "]"], String(ui: "루프 길이 ½ · ×2"))
-        row(["T"], String(ui: "탭 템포"))
-        row([String(ui: "휠"), "·", "+", "/", "−"], String(ui: "파형 확대 · 축소 (가로 스크롤: 이동)"))
+    /// 기본 표의 한 줄. `actions`·`shiftActions`는 이 줄이 안내하는 덱 동작이다.
+    /// 덱 동작을 더하고 이 표에 줄을 빠뜨리면 시험(`ShortcutsListTests`)이 알린다. 메뉴 막대에는 덱 메뉴가 없어 이 창이 유일한 안내다.
+    struct Entry: Equatable {
+        var keys: [String]
+        var text: String
+        var actions: [DeckAction] = []
+        var shiftActions: [DeckAction] = []
     }
 
-    /// 바꾼 표: 키가 있는 동작마다 한 줄(키 이름은 구분 기호와 섞이지 않게 키캡으로만 쓴다)
+    static var standardEntries: [Entry] {
+        let hotCues = DeckAction.allCases.filter { $0.hotCueSlot != nil }
+        return [
+            Entry(keys: ["Space"], text: String(ui: "재생 / 정지"), actions: [.playPause]),
+            Entry(keys: ["C"], text: String(ui: "CUE — 재생 중: 큐로 돌아가 정지 · 멈춤: 큐 지점 설정 · 누르고 있기: 미리 듣기"), actions: [.cue]),
+            Entry(keys: ["1", "~", "8"], text: String(ui: "핫큐 A~H (있으면 이동, 없으면 찍기)"), actions: hotCues),
+            Entry(keys: ["Shift", "+", "1", "~", "8"], text: String(ui: "그 핫큐 지우기"), shiftActions: hotCues),
+            Entry(keys: ["`", "·", "M"], text: String(ui: "메모리 큐 찍기 (파형 더블클릭도)"), actions: [.memoryCue]),
+            Entry(keys: ["Shift", "+", "`", "·", "M"], text: String(ui: "이 자리 메모리 큐 지우기"), shiftActions: [.memoryCue]),
+            Entry(keys: ["Q", "/", "E"], text: String(ui: "이전 · 다음 큐로"), actions: [.previousCue, .nextCue]),
+            Entry(keys: ["←", "→"], text: String(ui: "1박 이동 — 선택한 큐가 있으면 그 큐, 없으면 재생 위치"), actions: [.nudgeBack, .nudgeForward]),
+            Entry(keys: ["Shift", "+", "←", "→"], text: String(ui: "1마디 이동 (선택한 큐 또는 재생 위치)"), shiftActions: [.nudgeBack, .nudgeForward]),
+            Entry(keys: ["Esc"], text: String(ui: "큐 선택 풀기 (그 뒤 ←→는 재생 위치를 옮김)")),
+            Entry(keys: ["⌫"], text: String(ui: "선택한 큐 지우기"), actions: [.deleteCue]),
+            Entry(keys: ["S"], text: String(ui: "다음 제안으로 (Shift: 이전 제안으로)"), actions: [.nextSuggestion], shiftActions: [.nextSuggestion]),
+            Entry(keys: ["A"], text: String(ui: "재생 위치에서 가장 가까운 제안을 메모리 큐로 받기"), actions: [.acceptSuggestion]),
+            Entry(keys: ["L"], text: String(ui: "루프 걸기 · 나가기 (반복 중 빈 핫큐 = 루프 핫큐로 저장)"), actions: [.loop]),
+            Entry(keys: ["[", "/", "]"], text: String(ui: "루프 길이 ½ · ×2"), actions: [.loopHalve, .loopDouble]),
+            Entry(keys: ["T"], text: String(ui: "탭 템포"), actions: [.tapTempo]),
+            Entry(keys: [String(ui: "휠"), "·", "+", "/", "−"], text: String(ui: "파형 확대 · 축소 (가로 스크롤: 이동)"), actions: [.zoomIn, .zoomOut]),
+        ]
+    }
+
+    @ViewBuilder private var standardRows: some View {
+        ForEach(Array(Self.standardEntries.enumerated()), id: \.offset) { _, entry in
+            row(entry.keys, entry.text)
+        }
+    }
+
+    /// 바꾼 표의 한 줄: 동작과 지금 키 이름
+    struct CustomEntry: Equatable {
+        var action: DeckAction
+        var keys: [String]
+    }
+
+    /// 바꾼 표: 키가 있는 동작마다 한 줄. 키를 지운 동작은 보이지 않는다.
+    static func customEntries(_ shortcuts: DeckShortcuts) -> [CustomEntry] {
+        DeckAction.allCases.compactMap { action in
+            let keys = shortcuts.keys(for: action)
+            return keys.isEmpty ? nil : CustomEntry(action: action, keys: keys.map(KeyLabel.name(for:)))
+        }
+    }
+
+    /// 키 이름은 구분 기호와 섞이지 않게 키캡으로만 쓴다.
     @ViewBuilder private var customRows: some View {
-        ForEach(DeckAction.allCases.filter { !shortcuts.keys(for: $0).isEmpty }, id: \.self) { action in
+        ForEach(Self.customEntries(shortcuts), id: \.action) { entry in
             GridRow {
                 HStack(spacing: 4 * scale) {
-                    ForEach(Array(shortcuts.keys(for: action).enumerated()), id: \.offset) { index, key in
+                    ForEach(Array(entry.keys.enumerated()), id: \.offset) { index, key in
                         if index > 0 { separator("·") }
-                        keycap(KeyLabel.name(for: key))
+                        keycap(key)
                     }
                 }
-                description(action.title + (action.shiftTitle.map { " (\($0))" } ?? ""))
+                description(entry.action.title + (entry.action.shiftTitle.map { " (\($0))" } ?? ""))
             }
         }
         row(["Esc"], String(ui: "큐 선택 풀기 (그 뒤 1박 이동 키는 재생 위치를 옮김)"))

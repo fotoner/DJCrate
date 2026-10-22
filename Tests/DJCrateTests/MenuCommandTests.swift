@@ -5,7 +5,7 @@ import SwiftUI
 import Testing
 
 @MainActor
-@Suite("메뉴 — 구성·단축키·덱 동작")
+@Suite("메뉴 — 구성·단축키")
 struct MenuCommandTests {
     @Test func 설정_메뉴와_단축키는_Settings_장면에서만_등록한다() throws {
         // Settings가 메뉴와 ⌘,를 함께 만든다. 다른 장면의 수동 링크가 겹치지 않게 고정한다.
@@ -15,126 +15,6 @@ struct MenuCommandTests {
         #expect(app.components(separatedBy: "Settings {").count - 1 == 1)
         #expect(!(app + commands).contains("SettingsLink"))
         #expect(!(app + commands).contains(".appSettings"))
-    }
-
-    @Test func 덱_메뉴는_단축키_표의_모든_동작을_한번씩_포함한다() {
-        let actions = DeckAction.Group.allCases.flatMap { DeckMenuCommand.actions(in: $0) }
-        #expect(actions == DeckAction.allCases)
-        #expect(Set(actions).count == actions.count)
-    }
-
-    @Test func 메뉴의_키_안내는_바꾼_키와_삭제한_키를_따른다() throws {
-        var shortcuts = DeckShortcuts.standard
-        #expect(DeckMenuCommand.action(.playPause).keyLabel(shortcuts: shortcuts) == "Space")
-        try shortcuts.replace(49, with: 35, in: .playPause)
-        #expect(DeckMenuCommand.action(.playPause).keyLabel(shortcuts: shortcuts) == "P")
-        shortcuts.remove(35, from: .playPause)
-        #expect(DeckMenuCommand.action(.playPause).keyLabel(shortcuts: shortcuts).isEmpty)
-        try shortcuts.replace(18, with: 7, in: .hotCueA)
-        #expect(DeckMenuCommand.deleteHotCue(0).keyLabel(shortcuts: shortcuts) == "⇧X · ⇧숫자패드 1")
-        #expect(DeckMenuCommand.moveHotCue(0).keyLabel(shortcuts: shortcuts).isEmpty)
-    }
-
-    @Test func 키가_없거나_겹쳐도_메뉴는_고른_동작을_한번만_실행한다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        h.deck.shortcuts.remove(49, from: .playPause)
-        let play = DeckMenuCommand.action(.playPause)
-        play.perform(on: h.deck)
-        #expect(h.deck.isPlaying)
-        play.perform(on: h.deck)
-        #expect(!h.deck.isPlaying)
-        try h.deck.shortcuts.add(46, to: .tapTempo)
-        DeckMenuCommand.action(.tapTempo).perform(on: h.deck)
-        #expect(h.deck.taps.count == 1)
-        #expect(h.deck.draft?.cues.isEmpty == true)
-    }
-
-    @Test func 메뉴_CUE는_누르기와_떼기를_마쳐_미리듣기가_남지_않는다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        h.deck.seek(10.5)
-        let cue = DeckMenuCommand.action(.cue)
-        cue.perform(on: h.deck)
-        #expect(h.deck.cuePoint == 10.5)
-        cue.perform(on: h.deck)
-        #expect(!h.deck.isCuePreviewing)
-        #expect(!h.deck.isPlaying)
-        h.deck.togglePlay()
-        cue.perform(on: h.deck)
-        #expect(!h.deck.isPlaying)
-    }
-
-    @Test func 핫큐_메뉴는_찍기_옮기기_지우기를_제공한다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        let move = DeckMenuCommand.moveHotCue(0), delete = DeckMenuCommand.deleteHotCue(0)
-        #expect(!move.isEnabled(on: h.deck))
-        #expect(!delete.isEnabled(on: h.deck))
-        h.deck.seek(10.5)
-        DeckMenuCommand.action(.hotCueA).perform(on: h.deck)
-        #expect(move.isEnabled(on: h.deck))
-        h.deck.seek(20.5)
-        move.perform(on: h.deck)
-        #expect(h.deck.hotCue(slot: 0)?.time == 20.5)
-        delete.perform(on: h.deck)
-        #expect(h.deck.hotCue(slot: 0) == nil)
-    }
-
-    @Test func 쓰기_중에는_메뉴로_재생하거나_편집할_수_없다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        h.deck.isWriteLocked = true
-        for action in DeckAction.allCases {
-            let command = DeckMenuCommand.action(action)
-            #expect(!command.isEnabled(on: h.deck))
-            command.perform(on: h.deck)
-        }
-        #expect(!h.deck.isPlaying)
-        #expect(h.deck.draft?.cues.isEmpty == true)
-        #expect(h.deck.taps.isEmpty)
-    }
-
-    @Test func 박_이동과_제안_메뉴는_단축키와_같은_함수를_부른다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        h.deck.seek(10)
-        #expect(DeckMenuCommand.action(.nudgeForward).isEnabled(on: h.deck), "선택한 큐가 없으면 재생 위치를 옮긴다")
-        DeckMenuCommand.action(.nudgeForward).perform(on: h.deck)
-        #expect(h.deck.currentTime == 10.5)
-        DeckMenuCommand.stepBar(forward: true).perform(on: h.deck)
-        #expect(h.deck.currentTime == 12.5)
-        DeckMenuCommand.stepBar(forward: false).perform(on: h.deck)
-        DeckMenuCommand.action(.nudgeBack).perform(on: h.deck)
-        #expect(h.deck.currentTime == 10)
-
-        for command in [DeckMenuCommand.action(.nextSuggestion), .previousSuggestion, .action(.acceptSuggestion)] {
-            #expect(!command.isEnabled(on: h.deck), "제안이 없으면 끈다")
-        }
-        h.deck.suggestions = [20, 30]
-        DeckMenuCommand.action(.nextSuggestion).perform(on: h.deck)
-        DeckMenuCommand.action(.nextSuggestion).perform(on: h.deck)
-        #expect(h.deck.currentTime == 30)
-        DeckMenuCommand.previousSuggestion.perform(on: h.deck)
-        #expect(h.deck.currentTime == 20)
-        h.deck.seek(21)
-        DeckMenuCommand.action(.acceptSuggestion).perform(on: h.deck)
-        #expect(h.deck.draft?.cues.map(\.time) == [20])
-        h.deck.isWriteLocked = true
-        for command in [DeckMenuCommand.stepBar(forward: true), .stepBar(forward: false), .previousSuggestion] {
-            #expect(!command.isEnabled(on: h.deck))
-        }
-    }
-
-    @Test func Shift_동작은_메뉴에서_원래_동작_바로_아래에_Shift_키와_함께_있다() {
-        #expect(DeckMenuCommand.variants(after: .memoryCue) == [.deleteMemoryCue])
-        #expect(DeckMenuCommand.variants(after: .nudgeBack) == [.stepBar(forward: false)])
-        #expect(DeckMenuCommand.variants(after: .nudgeForward) == [.stepBar(forward: true)])
-        #expect(DeckMenuCommand.variants(after: .nextSuggestion) == [.previousSuggestion])
-        #expect(DeckMenuCommand.variants(after: .acceptSuggestion).isEmpty)
-        #expect(DeckMenuCommand.stepBar(forward: false).keyLabel(shortcuts: .standard) == "⇧←")
-        #expect(DeckMenuCommand.previousSuggestion.keyLabel(shortcuts: .standard) == "⇧S")
-        #expect(DeckMenuCommand.action(.acceptSuggestion).keyLabel(shortcuts: .standard) == "A")
     }
 
     @Test func 파형_높이_메뉴는_보이는_높이에서_한_칸씩_범위_안으로_바꾼다() {
