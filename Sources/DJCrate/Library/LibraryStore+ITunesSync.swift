@@ -8,7 +8,7 @@ extension LibraryStore {
     /// Music 조각이 보는 핵심. 조각이 저장소를 붙들지 않게 약하게 잇는다(저장소가 조각을 든다)
     var musicHost: MusicLibraryHost {
         MusicLibraryHost(snapshot: { [weak self] in self?.snapshotURL },
-                         isBusy: { [weak self] in self.map { $0.isLoading || $0.isWritingRekordbox } ?? true },
+                         isBusy: { [weak self] in self.map { $0.isLoading || $0.libraryBusy } ?? true },
                          adoptSynced: { [weak self] in self?.adoptSyncedMusic($0, database: $1) })
     }
 

@@ -30,7 +30,7 @@ final class UnlinkedDraftsModel: Identifiable {
         let watch = store.useCases.watch
         self.init(details: { [weak store] in store.map { watch.unlinkedDetails($0.unlinkedDraftUUIDs) } ?? [] },
                   discard: { [weak store] in store?.discardUnlinkedDrafts($0) ?? 0 },
-                  isWriting: { [weak store] in store?.isWritingRekordbox ?? false })
+                  isWriting: { [weak store] in store?.libraryBusy ?? false })
     }
 
     var canChooseAll: Bool { !drafts.isEmpty && selected.count != drafts.count }

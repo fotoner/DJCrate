@@ -217,7 +217,7 @@ final class ReflectionCoordinator {
     /// 막힌 초안 비교 창이 열려 있으면 알리고 시작하지 않는다(#232). 이미 쓰는 중이거나 다른 작업이 있으면 무시한다.
     private func canStart(blocked: Bool = false) -> Bool {
         if store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return false }
-        return !blocked && !store.isWritingRekordbox && store.writeTask == nil
+        return !blocked && !store.libraryBusy && store.writeTask == nil
     }
 
     private func start(_ work: @escaping @MainActor () async -> Void) {

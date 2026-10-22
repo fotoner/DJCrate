@@ -234,11 +234,11 @@ struct DeckCueTests {
         let h = try DeckHarness()
         try await h.loaded()
         h.deck.togglePlay()
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         #expect(!h.deck.isPlaying)
         h.deck.addMemoryCue(at: 40.5)
         #expect(h.deck.draft?.cues.isEmpty == true, "쓰는 동안 초안은 바뀌지 않는다")
-        h.deck.isWriteLocked = false
+        h.deck.editsFrozen = false
         #expect(h.deck.isPlaying)
     }
 }

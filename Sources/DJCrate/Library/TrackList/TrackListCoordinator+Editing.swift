@@ -110,7 +110,7 @@ extension TrackListCoordinator {
             store.staging.stagingMessage = AppMessage(kind: .warning, text: reason)
             return false
         }
-        guard !isEditing, store.writeLockPolicy.allowsLibraryInteraction, let table, rows.indices.contains(index), !rows[index].isUsb,
+        guard !isEditing, !store.editsFrozen, let table, rows.indices.contains(index), !rows[index].isUsb,
               let key = TrackListTagEditing.key(forColumn: column),
               let columnIndex = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == column && !$0.isHidden })
         else { return false }
@@ -190,7 +190,7 @@ extension TrackListCoordinator {
 
     /// 이 줄의 고르기 메뉴를 열 수 있는지: 쓰는 중이 아니고 그 칸을 고칠 수 있는 곡(USB·스트리밍, 평점·곡 색은 추가한 곡·확인 밖 곡 제외)
     func canPick(_ key: TagFields.Key, row index: Int) -> Bool {
-        store.writeLockPolicy.allowsLibraryInteraction && rows.indices.contains(index)
+        !store.editsFrozen && rows.indices.contains(index)
             && TrackListTagEditing.unavailableReason(rows[index], key: key) == nil
     }
 
@@ -216,7 +216,7 @@ extension TrackListCoordinator {
     }
 
     @objc func pickKey(_ sender: NSMenuItem) {
-        guard store.writeLockPolicy.allowsLibraryInteraction, let choice = sender.representedObject as? Choice,
+        guard !store.editsFrozen, let choice = sender.representedObject as? Choice,
               TagChoice.accepted(choice.key, choice.value, colors: store.trackColors) == choice.value else { return }
         // 초안은 고를 때만 만든다(열기·취소는 그대로, #5). 여러 값에서 "없음"을 고르면 모두 비운다.
         // 메뉴를 연 사이 목록이 바뀌어도 엉뚱한 곡에 들어가지 않게 줄 ID로 다시 찾는다.

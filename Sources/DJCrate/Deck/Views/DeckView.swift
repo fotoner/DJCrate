@@ -31,7 +31,7 @@ struct DeckView: View {
                                 .textSelection(.enabled)
                             Spacer(minLength: 8)
                             Button(.ui("다시 저장")) { deck.retryDraftSaves() }
-                                .disabled(deck.isWriteLocked)
+                                .disabled(deck.editsFrozen)
                         }
                         .font(.scaled(.caption, textScale))
                     }
@@ -213,7 +213,7 @@ private struct DeckSideControls: View {
                     .help(.ui("\(beatStep)박 앞으로 이동"))
                     .accessibilityLabel(.ui("\(beatStep)박 앞으로 이동"))
             }
-            .disabled(!deck.canPlay || deck.isWriteLocked)
+            .disabled(!deck.canPlay || deck.editsFrozen)
             .padding(.bottom, 4)
             Menu {
                 ForEach([1, 2, 4, 8, 16, 32], id: \.self) { beats in
@@ -270,7 +270,7 @@ private struct DeckTrackStepButtons: View {
                     .frame(width: TextScale.length(24, scale: textScale), height: TextScale.length(24, scale: textScale))
                     .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
             }
-                .disabled(previous == nil || !library.allowsLibraryInteraction)
+                .disabled(previous == nil || library.editsFrozen)
                 .help(.ui("이전 곡"))
                 .accessibilityLabel(.ui("이전 곡"))
             Button { load(next) } label: {
@@ -278,7 +278,7 @@ private struct DeckTrackStepButtons: View {
                     .frame(width: TextScale.length(24, scale: textScale), height: TextScale.length(24, scale: textScale))
                     .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
             }
-                .disabled(next == nil || !library.allowsLibraryInteraction)
+                .disabled(next == nil || library.editsFrozen)
                 .help(.ui("다음 곡"))
                 .accessibilityLabel(.ui("다음 곡"))
         }
@@ -292,7 +292,7 @@ private struct DeckTrackStepButtons: View {
 protocol DeckLibrarySource: AnyObject, Sendable {
     var displayRows: [TrackRow] { get }
     /// rekordbox에 쓰는 동안은 덱에 곡을 올리지 않는다
-    var allowsLibraryInteraction: Bool { get }
+    var editsFrozen: Bool { get }
     /// 이전·다음 곡: 목록에서 고르고 덱에 올린다
     func selectAndLoadToDeck(_ row: TrackRow)
     /// 곡 목록에서 끌어 온 곡(첫 곡을 올린다)
@@ -304,8 +304,6 @@ protocol DeckLibrarySource: AnyObject, Sendable {
 }
 
 extension LibraryStore: DeckLibrarySource {
-    var allowsLibraryInteraction: Bool { writeLockPolicy.allowsLibraryInteraction }
-
     func selectAndLoadToDeck(_ row: TrackRow) {
         selection = [row.id]
         loadToDeck(row)

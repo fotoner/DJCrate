@@ -176,7 +176,7 @@ final class PlaylistEditStore {
     /// (건너뛴 이유는 부른 쪽이 보인다). 묶음 하나는 ⌘Z 한 번에 되돌린다.
     @discardableResult
     func applyPlaylistRequests(_ requests: [PlaylistEditRequest], actionName: String, allOrNothing: Bool = true) -> EditPlaylists.Batch? {
-        guard !library.isWritingRekordbox, !requests.isEmpty else { return nil }
+        guard !library.editsFrozen, !requests.isEmpty else { return nil }
         // 바깥(CLI)에서 바뀐 초안이 있으면 먼저 받고 그 위에 쌓는다(덮지 않게)
         syncExternalPlaylistDraft()
         let batch = planPlaylistRequests(requests, allOrNothing: allOrNothing)
@@ -219,7 +219,7 @@ final class PlaylistEditStore {
         refreshPlaylists()
         guard let undoManager = library.undoManager else { return }
         undoManager.registerUndo(withTarget: library) { target in
-            guard !target.isWritingRekordbox else { return }
+            guard !target.editsFrozen else { return }
             target.playlists.setPlaylistDraft(before, actionName: actionName)
         }
         undoManager.setActionName(actionName)
@@ -280,7 +280,7 @@ final class PlaylistEditStore {
     /// '재생 목록에 넣기…'(이름으로 찾기) 시트를 연다. 시트 모델은 여기서 한 번 만든다(본문이 다시 그려져도 같은 모델).
     func openPlaylistPicker(tracks: [TrackRow]? = nil) {
         let tracks = library.uniqueTracks(tracks ?? library.selectedRows).filter { !$0.isStaged }
-        guard !tracks.isEmpty, !library.isWritingRekordbox else { return }
+        guard !tracks.isEmpty, !library.editsFrozen else { return }
         playlistPicker = PlaylistPickerModel(playlists: self, tracks: tracks)
     }
 
@@ -365,7 +365,7 @@ final class PlaylistEditStore {
     @discardableResult
     func adoptExternalDraft(_ disk: PlaylistDraft?) -> Bool {
         guard let disk, disk != playlistDraft, !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty,
-              !library.isWritingRekordbox else { return false }
+              !library.libraryBusy else { return false }
         playlistDraft = disk
         refreshPlaylists()
         library.undoManager?.removeAllActions(withTarget: library)

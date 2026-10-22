@@ -342,13 +342,13 @@ extension DeckModel {
 
     /// ←→·메뉴: 선택한 큐가 있으면 그 큐를 밀고, 없으면 재생 위치를 옮긴다(Shift는 1마디 = `BeatJump.beatsPerBar`박).
     func step(beats: Int) {
-        guard !isWriteLocked else { return }
+        guard !editsFrozen else { return }
         if !nudgeSelectedCue(beats: beats) { beatJump(beats: beats) }
     }
 
     /// 재생 위치를 박 단위로 옮긴다(규칙은 `BeatJump`, VoiceOver 조절도 이 함수). 재생 중이면 박 안의 위치를 지켜 이어 재생한다.
     func beatJump(beats: Int) {
-        guard !isWriteLocked, canPlay || grid != nil else { return }
+        guard !editsFrozen, canPlay || grid != nil else { return }
         seek(BeatJump.target(from: playhead, beats: beats, grid: grid, duration: duration, keepsPhase: isPlaying))
     }
 

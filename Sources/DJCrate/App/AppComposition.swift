@@ -209,7 +209,7 @@ final class AppComposition {
                                         preserveDamagedDrafts: { [weak store] in store?.preserveDamagedDraftFiles() ?? [] },
                                         savePlaylistDraft: { [weak store] in store?.playlists.ensurePlaylistDraftSaved() ?? true },
                                         recordHistories: { [weak store] in await store?.history.recordWrittenHistories($0) })
-        let lock = WriteLock(isLocked: { [weak store] in store?.isWritingRekordbox ?? false },
+        let lock = WriteLock(isLocked: { [weak store] in store?.libraryBusy ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
                              stage: { [weak store] in store?.writeStage = $0 })
         // 반영 세션은 라이브러리와 같은 초안 저장 큐·스냅샷 뜨기·연결 기록을 쓴다(라이브러리 유스케이스 묶음에서 받는다).
@@ -291,7 +291,7 @@ final class AppComposition {
         deck.onStagedGridChange = { [weak store] uuid, bpm in store?.staging.stagedGridChanged(uuid: uuid, bpm: bpm) }
         deck.onCueDraftChange = { [weak store] draft in store?.cueDraftChanged(draft) }
         deck.onReanalyze = { [weak store] uuid in store?.tags.restoreKeySuggestion(uuid: uuid) }
-        store.onWriteLock = { [weak deck] locked in deck?.isWriteLocked = locked }
+        store.onWriteLock = { [weak deck] locked in deck?.editsFrozen = locked }
         store.onRekordboxWritten = { [weak deck, weak store] uuids in
             // 처음부터 다시 불러오지 않고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다(소리·파형은 그대로).
             guard let deck, let uuid = deck.row?.track.uuid, uuids.contains(uuid) else { return }

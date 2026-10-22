@@ -87,7 +87,7 @@ private struct AppleMusicImportView: View {
                 Spacer()
                 Button(.ui("선택한 곡 추가")) { model.startAddSelected() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(model.selectedTracks.isEmpty || !model.staging.allowsLibraryInteraction)
+                    .disabled(model.selectedTracks.isEmpty || model.staging.libraryBusy)
             }
         }
         .padding(20)

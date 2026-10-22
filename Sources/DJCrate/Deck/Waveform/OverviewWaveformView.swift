@@ -73,7 +73,7 @@ struct OverviewAccessibilityMarkers: ViewModifier {
                             .accessibilityLabel(marker.label)
                             .accessibilityAddTraits(.isButton)
                             .accessibilityHint(.ui("누르면 이 자리로 옮깁니다"))
-                            .accessibilityAction { if !deck.isWriteLocked { deck.seek(marker.time) } }
+                            .accessibilityAction { if !deck.editsFrozen { deck.seek(marker.time) } }
                             .accessibilityActions {
                                 if suggestionIDs.contains(marker.id) {
                                     Button(.ui("메모리 큐로 받기")) { deck.acceptSuggestion(marker.time) }

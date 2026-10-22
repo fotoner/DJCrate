@@ -55,7 +55,7 @@ final class DragHotCueKeys {
         guard input.isMouseDown() else { end(); return }
         let slots = watch.slots(pressed: Set(watch.keys.filter(input.isKeyDown)))
         self.watch = watch
-        guard !slots.isEmpty, !deck.isWriteLocked else { return }
+        guard !slots.isEmpty, !deck.editsFrozen else { return }
         let shift = input.isShiftDown()
         for slot in slots {
             if shift { deck.deleteHotCue(slot: slot) } else { deck.pressHotCue(slot: slot) }

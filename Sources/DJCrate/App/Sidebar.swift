@@ -104,7 +104,7 @@ struct SidebarActivityLogRow: View {
             Label(.ui("활동 기록…"), systemImage: "doc.text.magnifyingglass")
         }
         .buttonStyle(.plain)
-        .disabled(store.isWritingRekordbox)
+        .disabled(store.editsFrozen)
     }
 }
 
@@ -344,7 +344,7 @@ struct ListActionBar: View {
             bar {
                 let addTargets = model.stagedAddTargets
                 Button { reflection?.startAddTracks(rows: addTargets) } label: {
-                    Label(model.isWritingRekordbox ? LocalizedStringResource.ui("rekordbox에 쓰는 중…") : .ui("rekordbox에 바로 넣기 (\(addTargets.count)곡)"),
+                    Label(model.libraryBusy ? LocalizedStringResource.ui("rekordbox에 쓰는 중…") : .ui("rekordbox에 바로 넣기 (\(addTargets.count)곡)"),
                           systemImage: "tray.and.arrow.down")
                 }
                 .buttonStyle(.borderedProminent)
@@ -381,7 +381,7 @@ struct ListActionBar: View {
                         }
                         Divider()
                         Button(.ui("모두 rekordbox 쓰기 대기에서 빼기")) { model.excludePendingHistories() }
-                            .disabled(model.isWritingRekordbox)
+                            .disabled(model.editsFrozen)
                     } label: {
                         Label(.ui("재생 기록 \(histories)건"), systemImage: "clock.arrow.circlepath")
                     }
@@ -392,7 +392,7 @@ struct ListActionBar: View {
                     Button { model.discardPlaylistDrafts() } label: {
                         Label(.ui("재생 목록 초안 버리기"), systemImage: "trash")
                     }
-                    .disabled(model.isWritingRekordbox)
+                    .disabled(model.editsFrozen)
                     .help(.ui("rekordbox에 아직 쓰지 않은 재생 목록 편집을 모두 버립니다(⌘Z로 되돌림)."))
                 }
                 Button { model.exportPendingXML(targets) } label: {
@@ -405,7 +405,7 @@ struct ListActionBar: View {
                 }
                 .disabled(model.isRestoreBlocked)
                 .help(model.restoreHelp)
-                if model.isWritingRekordbox {
+                if model.libraryBusy {
                     ProgressView().controlSize(.small)
                     Text(.ui("rekordbox 라이브러리 확인·쓰는 중…")).font(.caption).foregroundStyle(.secondary)
                 } else {
@@ -443,7 +443,7 @@ struct ListActionBar: View {
                             .disabled(model.isPlaylistRecoveryBlocked)
                     } else {
                         Button(.ui("이 목록의 초안 버리기")) { model.discardPlaylistDraft(id) }
-                            .disabled(model.isWritingRekordbox)
+                            .disabled(model.editsFrozen)
                     }
                     if hiddenNote { hiddenStreamingNote }
                 }

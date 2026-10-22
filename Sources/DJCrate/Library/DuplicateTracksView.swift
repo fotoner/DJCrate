@@ -69,7 +69,7 @@ struct DuplicateTracksView: View {
                 }
             }
         }
-        .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+        .disabled(store.editsFrozen)
         .navigationTitle(store.sidebarTitle)
         .navigationSubtitle(String(ui: "\(store.displayDuplicateGroups.count)묶음 · \(store.displayRows.count)곡"))
     }

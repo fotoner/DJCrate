@@ -45,7 +45,7 @@ final class PointSnapshotModel {
         let settings = store.settings, snapshots = points.directory
         self.init(points: points, autoDays: { Int(settings.value(SettingKeys.pointSnapshotAutoDays)) },
                   busyReason: { [weak store] in
-                      store?.isWritingRekordbox == true ? String(ui: "rekordbox에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 누르세요") : nil
+                      store?.libraryBusy == true ? String(ui: "rekordbox에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 누르세요") : nil
                   },
                   restore: { [weak reflection] entry, changed in
                       guard let reflection else { throw CancellationError() }

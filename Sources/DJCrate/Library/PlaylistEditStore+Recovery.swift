@@ -49,7 +49,7 @@ extension PlaylistEditStore {
     }
 
     private var playlistRecoveryAllowed: Bool {
-        !library.isWritingRekordbox && !library.isLoading && (library.allowsLibrarySync?() ?? true)
+        !library.libraryBusy && !library.isLoading && (library.allowsLibrarySync?() ?? true)
     }
 
     private func playlistRecoveryChanged() -> DJCError { RecoverDrafts.changedError }

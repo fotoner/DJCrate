@@ -14,7 +14,7 @@ struct UnlinkedDraftsBar: View {
                   systemImage: "questionmark.folder")
             Spacer(minLength: 0)
             Button(.ui("연결되지 않은 초안 보기…")) { window.openUnlinkedDrafts() }
-                .disabled(store.isWritingRekordbox)
+                .disabled(store.libraryBusy)
         }
         .font(.callout)
         .padding(.horizontal, Spacing.edge).padding(.vertical, 6)

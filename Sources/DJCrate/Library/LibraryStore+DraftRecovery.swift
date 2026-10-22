@@ -26,7 +26,7 @@ extension LibraryStore {
     func prepareDraftRecovery(row: TrackRow, kind: DraftRecoveryKind,
                               readCurrent: ((RecoveryDraft) async throws -> RecoveryDraft)? = nil,
                               prefetched: RecoveryPrefetch? = nil) async throws -> DraftRecoveryReview {
-        guard !isRecoveringDraft, !isWritingRekordbox, !isLoading, allowsLibrarySync?() ?? true,
+        guard !isRecoveringDraft, !libraryBusy, !isLoading, allowsLibrarySync?() ?? true,
               !row.isUsb, !row.isStaged, !row.track.isStreaming,
               rowsByUUID[row.track.uuid] != nil,
               let original = recoveryInput(uuid: row.track.uuid, kind: kind), original.hasChanges else {
@@ -80,7 +80,7 @@ extension LibraryStore {
     }
 
     private func checkRecoveryInput(_ original: RecoveryDraft) throws {
-        guard !isWritingRekordbox, !isLoading, allowsLibrarySync?() ?? true,
+        guard !libraryBusy, !isLoading, allowsLibrarySync?() ?? true,
               rowsByUUID[original.uuid] != nil,
               recoveryInput(uuid: original.uuid, kind: original.kind) == original else {
             throw recoveryChangedError()
@@ -95,7 +95,7 @@ extension LibraryStore {
     func readRecoveryPrefetches(_ originals: [RecoveryDraft],
                                 readCurrent: ((RecoveryDraft) async throws -> RecoveryDraft)? = nil) async throws -> [Result<RecoveryPrefetch, any Error>] {
         guard !originals.isEmpty else { return [] }
-        guard !isRecoveringDraft, !isWritingRekordbox, !isLoading, allowsLibrarySync?() ?? true else { throw recoveryChangedError() }
+        guard !isRecoveringDraft, !libraryBusy, !isLoading, allowsLibrarySync?() ?? true else { throw recoveryChangedError() }
         isRecoveringDraft = true
         defer { isRecoveringDraft = false }
         useCases.recover.flush()

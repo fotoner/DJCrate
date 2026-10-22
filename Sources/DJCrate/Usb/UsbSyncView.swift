@@ -19,7 +19,7 @@ struct UsbSyncView: View {
 
     private var isOperating: Bool { model.isSyncing || model.isImporting }
     private var controlsDisabled: Bool {
-        model.isLoading || isOperating || store.isLoading || store.isWritingRekordbox
+        model.isLoading || isOperating || store.isLoading || store.libraryBusy
             || usb.activeWrite != nil || usb.busyVolumes.contains(request.volumeKey)
             || usb.ejecting.contains(request.volumeKey) || usb.volume(request.volumeKey) == nil
     }

@@ -67,14 +67,23 @@ struct WriteLockPolicyTests {
         }
     }
 
-    @Test func 준비부터_다시읽기까지_종료와_라이브러리_조작을_거절한다() {
+    @Test func 준비부터_다시읽기까지_종료를_거절한다() {
         for cancellable in [true, false] {
             let policy = WriteLockPolicy(isWriting: true, canCancelPreparation: cancellable)
             #expect(!policy.allowsTermination)
-            #expect(!policy.allowsLibraryInteraction)
         }
         let unlocked = WriteLockPolicy(isWriting: false)
-        #expect(unlocked.allowsTermination && unlocked.allowsLibraryInteraction)
+        #expect(unlocked.allowsTermination)
         #expect(!unlocked.blocksKey(49, in: .init()))
+    }
+
+    /// 라이브러리 조작 거절은 정책 구조체가 아니라 저장소의 용도별 값이 한다(#301): 쓰는 동안 둘 다 켜지고 끝나면 꺼진다.
+    @MainActor @Test func 쓰는_동안_라이브러리_조작을_거절한다() {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        #expect(!store.libraryBusy && !store.editsFrozen)
+        store.setWriteLock(true)
+        #expect(store.libraryBusy && store.editsFrozen)
+        store.setWriteLock(false)
+        #expect(!store.libraryBusy && !store.editsFrozen)
     }
 }

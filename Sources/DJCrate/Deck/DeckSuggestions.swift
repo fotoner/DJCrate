@@ -51,7 +51,7 @@ struct DeckSuggestions {
     }
 
     /// rekordbox에 쓰는 동안: 줄은 그대로 두고 단추만 막는다(쓰는 동안 줄이 접혔다 펴지지 않게).
-    var isLocked: Bool { deck.isWriteLocked || tags.isWritingRekordbox }
+    var isLocked: Bool { deck.editsFrozen || tags.editsFrozen }
 
     func apply(_ kind: DeckSuggestion.Kind) {
         guard !isLocked else { return }

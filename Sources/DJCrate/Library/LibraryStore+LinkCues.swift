@@ -15,7 +15,7 @@ extension LibraryStore {
     /// 큐 편집 하나를 그 곡의 큐 초안에 얹고 바로 다시 읽어 화면에 보인다. rekordbox에는 쓰지 않는다. 초안은 rekordbox에 쓰기 때 나간다(LNK-16).
     /// rekordbox에 쓰는 중이거나 다시 읽는 중이면 끝날 때까지 기다린다(쓰기가 끝나며 지우는 초안에 얹지 않고, 쓴 뒤의 rekordbox 큐를 base로 삼게)
     func applyLinkCueEdit(_ edit: LinkCueEdit, drafts: LinkCueDrafts) async {
-        while isWritingRekordbox || !isLoaded {
+        while libraryBusy || !isLoaded {
             guard (try? await Task.sleep(for: .milliseconds(250))) != nil else { return }
         }
         guard let row = rows.first(where: { $0.track.id == edit.contentID }) else { return }
@@ -49,7 +49,7 @@ extension LibraryStore {
     /// - Parameter drafts: 이미 읽은 큐 초안(없는 곡은 저장을 맡은 입력·디스크에서 읽는다)
     /// rekordbox에 쓰는 동안은 보내지 않는다. 쓰기는 초안을 먼저 지우고 나중에 다시 읽으므로, 쓴 곡은 다시 읽은 뒤 보낸다(`deliverWrittenAfterReload`)
     func publishLinkCues(_ uuids: some Sequence<String>, drafts: [String: CueDraft]? = nil) {
-        guard let onLinkCuesChanged, !isWritingRekordbox, isLinkServing() else { return }
+        guard let onLinkCuesChanged, !libraryBusy, isLinkServing() else { return }
         for uuid in uuids {
             guard let row = rowsByUUID[uuid] else { continue }
             let draft = drafts.map { $0[uuid] } ?? useCases.watch.currentCue(uuid)
