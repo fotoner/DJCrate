@@ -22,6 +22,8 @@ public struct LibrarySource: Sendable {
     public var log: @Sendable (String) -> Void
     /// 명시한 DB(없으면 최신 스냅샷)를 읽을 사본으로 정한다. 라이브 master.db(링크·같은 파일 포함)는 거부한다(`ReadFailure` `live_database`, CLI 읽기 명령)
     public var resolveCopy: @Sendable (_ database: URL?) throws -> URL
+    /// 설치된 rekordbox가 쓰기를 확인한 버전이 아니면 그 버전(읽기 전용, `djc compat`와 같은 판정). 확인한 버전이거나 설치를 못 찾으면 nil
+    public var unsupportedRekordboxVersion: @Sendable () -> String?
 
     public init(library: @escaping @Sendable (_ snapshot: URL) throws -> RekordboxLibrary,
                 tempoChanges: @escaping @Sendable (_ tracks: [Track], _ shareRoot: URL?) -> [[Double]],
@@ -31,7 +33,8 @@ public struct LibrarySource: Sendable {
                 changed: @escaping @Sendable (_ snapshot: URL, _ source: URL) -> Bool,
                 isRekordboxRunning: @escaping @Sendable () -> Bool,
                 log: @escaping @Sendable (String) -> Void,
-                resolveCopy: @escaping @Sendable (_ database: URL?) throws -> URL) {
+                resolveCopy: @escaping @Sendable (_ database: URL?) throws -> URL,
+                unsupportedRekordboxVersion: @escaping @Sendable () -> String? = { nil }) {
         self.library = library
         self.tempoChanges = tempoChanges
         self.grid = grid
@@ -41,14 +44,16 @@ public struct LibrarySource: Sendable {
         self.isRekordboxRunning = isRekordboxRunning
         self.log = log
         self.resolveCopy = resolveCopy
+        self.unsupportedRekordboxVersion = unsupportedRekordboxVersion
     }
 }
 
 extension LibrarySource {
     /// 메모리 라이브러리(시험): 사본 경로마다 읽을 라이브러리를 준다. 분석 파일 그리드는 `analysisPath`별로 준다.
-    /// 스냅샷 폴더·변경 확인·rekordbox 실행 여부는 주지 않으면 없음·바뀌지 않음·꺼짐이다.
+    /// 스냅샷 폴더·변경 확인·rekordbox 실행 여부·지원하지 않는 버전은 주지 않으면 없음·바뀌지 않음·꺼짐·확인한 버전이다.
     public static func memory(_ libraries: [URL: RekordboxLibrary], grids: [String: BeatGrid] = [:],
-                              latest: URL? = nil, changed: Bool = false, rekordboxRunning: Bool = false) -> LibrarySource {
+                              latest: URL? = nil, changed: Bool = false, rekordboxRunning: Bool = false,
+                              unsupportedRekordboxVersion: String? = nil) -> LibrarySource {
         LibrarySource(
             library: { snapshot in
                 guard let library = libraries[snapshot] else { throw DJCError.snapshotNotFound }
@@ -72,6 +77,7 @@ extension LibrarySource {
             resolveCopy: { database in
                 guard let copy = database ?? latest else { throw DJCError.snapshotNotFound }
                 return copy
-            })
+            },
+            unsupportedRekordboxVersion: { unsupportedRekordboxVersion })
     }
 }

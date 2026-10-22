@@ -13,6 +13,10 @@ public final class FakeLibraryReadScreen {
     public private(set) var adopted: [LibraryReadResult] = []
     /// 넣은 Music 최신화 결과(차례대로)
     public private(set) var music: [ITunesLibrarySnapshot] = []
+    /// 알린 읽기 실패(차례대로)
+    public private(set) var failures: [LibraryReadFailure] = []
+    /// 알린 지원하지 않는 rekordbox 버전(차례대로)
+    public private(set) var unsupportedVersions: [String] = []
     public var commentPreset: CommentPreset = .none
     /// 마지막으로 알린 읽기 순번
     public private(set) var reads = LibraryReadSequence()
@@ -49,9 +53,13 @@ public final class FakeLibraryReadScreen {
         case let .damagedDrafts(files):
             events.append("damaged \(files.map(\.name))")
         case let .readFailed(failure, _):
+            failures.append(failure)
             state.phase = failure.keepsPreviousLibrary ? .loaded : .failed(failure.message)
             if failure.keepsPreviousLibrary { state.hasError = true }
             events.append("failed \(failure.stage)")
+        case let .unsupportedRekordbox(version):
+            unsupportedVersions.append(version)
+            events.append("unsupported \(version)")
         }
     }
 
