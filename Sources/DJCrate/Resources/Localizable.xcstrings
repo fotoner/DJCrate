@@ -3335,6 +3335,34 @@
         }
       }
     },
+    "%lld초 지났습니다" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld second elapsed"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld seconds elapsed"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld秒経過しました"
+          }
+        }
+      }
+    },
     "%lld칸 바뀜" : {
       "localizations" : {
         "en" : {
@@ -6201,6 +6229,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MP3フレームが途中で途切れていて（壊れたフレーム）解析を追加できないため、先にrekordboxで解析してください。"
+          }
+        }
+      }
+    },
+    "Mac을 끄는 중이라 rekordbox에 쓰지 않았습니다. 다시 켠 뒤 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Mac is shutting down, so nothing was written to rekordbox. Write again after it restarts."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Macをシャットダウンしているため、rekordboxには書き込みませんでした。再起動後にもう一度書き込んでください"
           }
         }
       }
@@ -9363,18 +9407,18 @@
         }
       }
     },
-    "USB에 쓰는 중입니다. 끝난 뒤 종료하세요" : {
+    "USB에 쓰는 중이라 지금은 종료하지 않았습니다. 쓰기가 끝나면 다시 종료하세요" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "DJCrate is writing to a USB. Quit after it finishes"
+            "value" : "DJCrate is writing to a USB, so it did not quit. Quit again after the writing finishes."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "USBに書き込み中です。終わってから終了してください"
+            "value" : "USBに書き込み中のため、終了しませんでした。書き込みが終わったらもう一度終了してください"
           }
         }
       }
@@ -13941,6 +13985,22 @@
         }
       }
     },
+    "rekordbox에 쓰는 중… 끝나면 종료합니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Writing to rekordbox… DJCrate will quit when it finishes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxに書き込み中… 終わったら終了します"
+          }
+        }
+      }
+    },
     "rekordbox에 쓰는 중에는 비울 수 없습니다. 쓰기가 끝난 뒤 비우세요" : {
       "localizations" : {
         "en" : {
@@ -13985,22 +14045,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxに書き込み中のため、キューの編集を一時的に止めています。"
-          }
-        }
-      }
-    },
-    "rekordbox에 쓰는 중입니다. 끝난 뒤 종료하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrate is writing to rekordbox. Quit after it finishes"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに書き込み中です。終わってから終了してください"
           }
         }
       }
@@ -42747,6 +42791,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キーの変化"
+          }
+        }
+      }
+    },
+    "종료 취소" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel Quit"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了をキャンセル"
+          }
+        }
+      }
+    },
+    "종료하는 중이라 rekordbox에 쓰지 않았습니다. 종료를 취소한 뒤 다시 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate is quitting, so nothing was written to rekordbox. Cancel quitting, then write again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了中のため、rekordboxには書き込みませんでした。終了をキャンセルしてからもう一度書き込んでください"
           }
         }
       }

@@ -175,7 +175,7 @@ extension ReflectionSession {
             let unsaved = saveStagedDrafts(uuids: unstaged, in: backup)
             if !unsaved.isEmpty { notes.append(Self.stagedDraftsBackupFailureText(unsaved.count)) }
         }
-        stage(WriteStage(String(ui: "넣은 곡을 읽는 중…")))
+        stage(WriteStage(String(ui: "넣은 곡을 읽는 중…"), readsBack: true))
         _ = await ports.reload.reload([], [])
         if let first = report.added.first(where: \.written), let id = first.contentID { apply(.showAdded(id)) }
         apply(.lastWriteBackup(report.backup.map { URL(filePath: $0) }))
@@ -276,7 +276,7 @@ extension ReflectionSession {
         let report = try await BlockingWork.run { try gate.deleteTracks(ids, target, false) }
         guard options.followsUp else { return report }
         apply(.deselected(Set(report.deleted.filter(\.written).compactMap(\.contentID))))
-        stage(WriteStage(String(ui: "라이브러리를 다시 읽는 중…")))
+        stage(WriteStage(String(ui: "라이브러리를 다시 읽는 중…"), readsBack: true))
         _ = await ports.reload.reload([], [])
         apply(.lastWriteBackup(report.backup.map { URL(filePath: $0) }))
         return report

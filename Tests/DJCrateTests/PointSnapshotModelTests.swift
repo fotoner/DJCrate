@@ -163,6 +163,52 @@ struct PointSnapshotModelTests {
         #expect(model.isError && model.rows.isEmpty)
     }
 
+    /// 복원까지 실패한 경고창(#300): 그 창을 확인하기 전에는 앱을 끄지 않는다. 창을 띄우는 동안 확인 중으로 표시한다.
+    @MainActor final class AckProbe: HeadlessReflectionPrompter {
+        var insideAcknowledgement: () -> Bool = { false }
+        var shownInside: [Bool] = []
+        func show(_ prompt: ReflectionPrompt) -> Bool {
+            shownInside.append(insideAcknowledgement())
+            return true
+        }
+    }
+
+    @Test func 복원까지_실패하면_경고창이_떠_있는_동안_확인_중으로_표시한다() async throws {
+        let fixture = try RekordboxFixture()
+        let creator = model(fixture)
+        creator.newName = "복원 시험"
+        await creator.create()
+        let row = try #require(creator.rows.first { $0.entry != nil })
+        let points = PointSnapshots(database: fixture.database, shareRoot: fixture.shareRoot, directory: fixture.root.appending(path: "point-snapshots"),
+                                    backupDirectory: fixture.backups, files: .live(guard: Self.copyGuard), backups: .live())
+        let probe = AckProbe()
+        var acknowledging = false
+        probe.insideAcknowledgement = { acknowledging }
+        let failing = PointSnapshotModel(points: points, prompter: probe, now: { now },
+                                         whileAcknowledging: { ask in acknowledging = true; defer { acknowledging = false }; return ask() },
+                                         restore: { _, _ in
+            throw DJCError.pointRestoreFailed(reason: "무결성 검사 실패", restoreError: "권한 없음", snapshot: "s", database: nil)
+        })
+        await failing.refresh()
+        let target = try #require(failing.rows.first { $0.id == row.id })
+        await failing.restore(target)
+        // 비교 뒤 묻는 확인 창은 `ScriptedPrompter`가 아닌 이 프롬프터가 받는다: 확인(true) 뒤 복원이 실패하고 경고창이 한 번 더 뜬다
+        #expect(probe.shownInside.last == true, "경고창은 확인 중 표시 안에서 떠야 한다: \(probe.shownInside)")
+        #expect(!acknowledging)
+    }
+
+    @Test func 종료를_기다리거나_Mac을_끄는_중에는_저장소로_연_창이_복원을_막는다() throws {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        store.isPoweringOff = true
+        let folder = FileManager.default.temporaryDirectory.appending(path: "point-\(UUID().uuidString)")
+        let points = PointSnapshots(database: folder.appending(path: "master.db"), shareRoot: nil, directory: folder,
+                                    backupDirectory: folder, files: .live(guard: Self.copyGuard), backups: .live())
+        let model = PointSnapshotModel(store: store, reflection: ReflectionCoordinator.test(store: store), points: points)
+        #expect(model.blockReason == "Mac을 끄는 중이라 rekordbox에 쓰지 않았습니다. 다시 켠 뒤 쓰세요")
+        store.isPoweringOff = false
+        #expect(model.blockReason == nil)
+    }
+
     // MARK: - 비교·복원(#225)
 
     func title(_ fixture: RekordboxFixture, _ id: String) throws -> String? {

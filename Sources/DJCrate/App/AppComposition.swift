@@ -209,7 +209,8 @@ final class AppComposition {
                                         preserveDamagedDrafts: { [weak store] in store?.preserveDamagedDraftFiles() ?? [] },
                                         savePlaylistDraft: { [weak store] in store?.playlists.ensurePlaylistDraftSaved() ?? true },
                                         recordHistories: { [weak store] in await store?.history.recordWrittenHistories($0) })
-        let lock = WriteLock(isLocked: { [weak store] in store?.isWritingRekordbox ?? false },
+        // Mac을 끄는 중·종료를 기다리는 중에는 세션도 새 쓰기를 시작하지 않는다(바쁨으로 답한다, #300)
+        let lock = WriteLock(isLocked: { [weak store] in store.map { $0.isWritingRekordbox || $0.writeRefusal != nil } ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
                              stage: { [weak store] in store?.writeStage = $0 })
         // 반영 세션은 라이브러리와 같은 초안 저장 큐·스냅샷 뜨기·연결 기록을 쓴다(라이브러리 유스케이스 묶음에서 받는다).
@@ -218,7 +219,10 @@ final class AppComposition {
                                         await store?.reloadAfterWrite(written: written, playlistEdits: edits) ?? false
                                     },
                                     lock: lock,
-                                    confirmation: UserConfirmation(confirm: { prompter.show($0) }, choose: { prompter.choose($0) }),
+                                    // 확인 창이 떠 있는 동안은 아직 아무것도 쓰지 않았다: 종료 판정이 이 때를 가른다(#300)
+                                    confirmation: UserConfirmation(
+                                        confirm: { [weak store] prompt in store?.whileAwaitingConfirmation { prompter.show(prompt) } ?? prompter.show(prompt) },
+                                        choose: { [weak store] prompt in store?.whileAwaitingConfirmation { prompter.choose(prompt) } ?? prompter.choose(prompt) }),
                                     results: ReflectionResults { presenter.publish($0) }, runningApps: runningApps)
         let session = ReflectionSession(location: store.location, ports: ports, options: options)
         store.music.write = { try await session.syncITunes($0) }
