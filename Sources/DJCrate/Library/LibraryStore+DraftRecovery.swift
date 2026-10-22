@@ -12,7 +12,7 @@ extension LibraryStore {
 
     /// 막힌 입구를 눌렀을 때 아무 반응이 없지 않게 알린다.
     func announceWritesBlockedBySheet() {
-        toast = .notice(String(ui: "막힌 초안 비교가 열려 있어 쓰지 않았습니다"), String(ui: "비교 창에서 저장하거나 취소한 뒤 다시 시도하세요."))
+        showToast(.notice(String(ui: "막힌 초안 비교가 열려 있어 쓰지 않았습니다"), String(ui: "비교 창에서 저장하거나 취소한 뒤 다시 시도하세요.")))
     }
 
     /// 복구할 입력: 태그는 메모리 초안, 큐·그리드는 덱의 메모리 입력이 있으면 그것, 없으면 저장 대기 입력·초안 파일

@@ -14,8 +14,8 @@ struct WriteResultTests {
     func 결과는_토스트를_닫고_재시작해도_열린다(operation: String) async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let url = folder.appending(path: "last-write-result.json")
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: url), feedback: AppFeedback(announce: { _ in }))
+        let url = folder.appending(path: "activity-log.json")
+        let store = LibraryStore.test(activityLog: ActivityLog(url: url), feedback: AppFeedback(announce: { _ in }))
         let presenter = ReflectionPresenter(store: store, prompter: ScriptedPrompter())
         let backupURL = URL(filePath: "/tmp/fixture-write-backup"), restoreSafetyBackup = URL(filePath: "/tmp/fixture-before-restore")
         var expected: [String]
@@ -54,8 +54,10 @@ struct WriteResultTests {
             presenter.publish(.restored(backup, saved: restoreSafetyBackup, fileWarning: nil, followUp: []))
             expected = ["쓰기 전 상태로 복원했습니다", "곡 deleted"]
         }
-        store.toast = nil
-        let result = try #require(WriteResultHistory(url: url).latest)
+        store.dismissToast()
+        // 다시 연 활동 기록에도 결과 한 건이 그대로 있다(#296)
+        #expect(ActivityLog(url: url).entries.count == 1)
+        let result = try #require(ActivityLog(url: url).latest?.result)
         for text in expected { #expect(result.text.contains(text)) }
         #expect(result.backups.contains(backupURL))
         #expect(result.kind == (operation == "되돌리기" ? .success : .warning))
@@ -96,7 +98,7 @@ struct WriteResultTests {
         merge.mergeOutcomes = [Fixture.outcome("m", .written, reason: note)]
         let merged = WriteResult.written(merge, preview: merge)
         #expect(merged.kind == .success && merged.text.contains(note))
-        #expect(merged.toast.detail == "전체 내용과 백업 위치는 ‘마지막 쓰기 결과…’에서 다시 볼 수 있습니다.")
+        #expect(merged.toast.detail == "전체 내용과 백업 위치는 ‘활동 기록…’에서 다시 볼 수 있습니다.")
 
         var tracks = RekordboxTrackWriter.Report(dryRun: false)
         tracks.deleted = [Fixture.track("d", reason: note)]
@@ -143,26 +145,26 @@ struct WriteResultTests {
     }
 
     @Test func 모두_막힌_결과도_전체_이유를_남긴다() {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(), feedback: AppFeedback(announce: { _ in }))
+        let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { _ in }))
         let preview = Fixture.preview(cues: (1...15).map { Fixture.outcome("\($0)", .blocked, reason: "이유 \($0)") })
         ReflectionPresenter(store: store, prompter: ScriptedPrompter()).publish(.nothingWritable(preview, targets: []))
-        #expect(store.resultHistory.latest?.text.contains("이유 15") == true)
-        #expect(store.resultHistory.latest?.kind == .warning)
+        #expect(store.activityLog.latest?.result?.text.contains("이유 15") == true)
+        #expect(store.activityLog.latest?.result?.kind == .warning)
     }
 
     @Test func 기록_저장이_실패해도_결과를_메모리에_보존하고_실패를_알린다() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let history = WriteResultHistory(url: folder)
+        let history = ActivityLog(url: folder)
         let result = WriteResult(kind: .success, title: "쓴 결과", text: "전체 내용")
         history.record(result)
-        #expect(history.latest == result)
+        #expect(history.latest?.result == result)
         #expect(history.storageError != nil)
     }
 
     @Test func 실제_쓰기_단계에는_취소를_전달하지_않는다() async {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(), feedback: AppFeedback(announce: { _ in }))
+        let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { _ in }))
         var suspended: CheckedContinuation<Void, Never>?
         var cancelled = false
         store.writeTask = Task {
@@ -178,12 +180,12 @@ struct WriteResultTests {
     }
 
     @Test func 실패_결과도_토스트를_닫은_뒤_남는다() {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(), feedback: AppFeedback(announce: { _ in }))
+        let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { _ in }))
         ReflectionPresenter(store: store, prompter: ScriptedPrompter())
             .publish(.failed(title: "rekordbox에 쓰지 않았습니다", error: FixtureFailure(), exclusions: []))
-        store.toast = nil
-        #expect(store.resultHistory.latest?.kind == .failure)
-        #expect(store.resultHistory.latest?.text == AppErrorMessage.message(for: FixtureFailure()))
+        store.dismissToast()
+        #expect(store.activityLog.latest?.result?.kind == .failure)
+        #expect(store.activityLog.latest?.result?.text == AppErrorMessage.message(for: FixtureFailure()))
     }
 
     @Test func 쓰기_결과에_재생_목록_편집마다_한_줄을_남긴다() {
@@ -205,8 +207,8 @@ struct WriteResultTests {
     @Test func 알림은_주입한_한_함수로_제목과_설명을_보낸다() {
         var messages: [AppMessage] = []
         let feedback = AppFeedback(announce: { messages.append($0) }, isVoiceOverEnabled: { true })
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(), feedback: feedback)
-        store.toast = AppToast(kind: .failure, title: "실패", detail: "이유 전체")
+        let store = LibraryStore.test(activityLog: ActivityLog(), feedback: feedback)
+        store.showToast(AppToast(kind: .failure, title: "실패", detail: "이유 전체"))
         store.staging.stagingMessage = AppMessage(kind: .failure, text: "목록 저장 실패")
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         deck.feedback = feedback

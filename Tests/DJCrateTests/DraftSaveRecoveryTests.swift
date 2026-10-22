@@ -172,7 +172,7 @@ struct DraftSaveRecoveryTests {
             writer.save(CueDraft(trackUUID: spec.uuid), directory: locations.cue)
             writer.flush()
         }
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
                                  draftHome: home, arguments: ["test", "--db", fixture.database.path], environment: [:], writer: writer)
         await store.load(snapshot: fixture.database)
         let row = try #require(store.rowsByUUID[spec.uuid])
@@ -278,7 +278,7 @@ struct DraftSaveRecoveryTests {
             writer.removeCue(trackUUID: spec.uuid, directory: cues)
             writer.flush()
         }
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
                                  draftHome: home, arguments: ["test", "--db", fixture.database.path], environment: [:], writer: writer)
         await store.load(snapshot: fixture.database)
         let report = try await store.session.writeToRekordbox([draft], to: fixture.database, shareRoot: fixture.shareRoot)

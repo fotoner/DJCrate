@@ -17,7 +17,7 @@ struct TrackStagingStoreObservationTests {
     private final class Saves: Sendable { let count = Mutex(0) }
 
     private func store(saves: Saves? = nil) -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                           stagingSaver: { _ in saves?.count.withLock { $0 += 1 } })
     }
 
@@ -90,7 +90,7 @@ struct TrackStagingStoreObservationTests {
         var grid: Task<Void, Never>?
         do {
             let path = "/synthetic/\(UUID().uuidString).wav"
-            let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
+            let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
                                           ports: { ports in
                                               let exists = ports.files.exists
                                               ports.files.exists = { $0 == path || exists($0) }

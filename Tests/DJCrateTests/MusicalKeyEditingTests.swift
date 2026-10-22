@@ -310,7 +310,7 @@ struct MusicalKeyEditingTests {
         try fixture.insert("djmdKey", ["ID": .text("1486464042"), "ScaleName": .text("8A"), "Seq": .int(1), "UUID": .text("k-8a"),
                                        "rb_data_status": .int(256), "rb_local_deleted": .int(0), "rb_local_usn": .int(1)])
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("musicalkey"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot, arguments: ["test"], environment: [:],

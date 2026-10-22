@@ -5,7 +5,12 @@ import Foundation
 /// 코디네이터 결과를 보이는 곳(토스트). 앱은 `LibraryStore`
 @MainActor
 protocol UsbWriteHost: AnyObject {
-    var toast: AppToast? { get set }
+    /// 지금 떠 있는 알림
+    var toast: AppToast? { get }
+    /// 알림을 띄운다(앱은 활동 기록에도 남긴다, #296)
+    func showToast(_ toast: AppToast)
+    /// 알림을 닫는다. id를 주면 그 알림이 아직 떠 있을 때만 닫는다
+    func dismissToast(_ id: AppToast.ID?)
     /// 선택 당시 원본·revision·스냅샷을 비교한다. 원본을 모르는 호스트는 native 쓰기를 허용하지 않는다.
     func usbSyncSourceIsCurrent(_ context: UsbExportSyncSourceContext, database: URL?, share: URL?) -> Bool
 }
@@ -34,10 +39,9 @@ extension LibraryStore: UsbWriteHost {
 
     init(_ store: LibraryStore) { self.store = store }
 
-    var toast: AppToast? {
-        get { store?.toast }
-        set { store?.toast = newValue }
-    }
+    var toast: AppToast? { store?.toast }
+    func showToast(_ toast: AppToast) { store?.showToast(toast) }
+    func dismissToast(_ id: AppToast.ID?) { store?.dismissToast(id) }
 
     func usbSyncSourceIsCurrent(_ context: UsbExportSyncSourceContext, database: URL?, share: URL?) -> Bool {
         store?.usbSyncSourceIsCurrent(context, database: database, share: share) ?? false

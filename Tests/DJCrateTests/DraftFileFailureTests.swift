@@ -171,7 +171,7 @@ struct DraftFileFailureTests {
         let fixture = try RekordboxFixture()
         let spec = TrackSpec()
         try fixture.add(spec)
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
                                  draftHome: fixture.root.appending(path: "drafts"),
                                  arguments: ["test", "--db", fixture.database.path], environment: [:], writer: writer)
         // 게인 초안은 저장소의 초안 폴더(`draftHome`)에 쓴다
@@ -206,7 +206,7 @@ struct DraftFileFailureTests {
         try FileManager.default.createDirectory(at: tags, withIntermediateDirectories: true)
         try broken.write(to: tags.appending(path: "손상-태그.json"))
         try broken.write(to: home.appending(path: "playlist-drafts.json"))
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, draftHome: home,
                                  arguments: ["test", "--db", fixture.database.path], environment: [:])
@@ -226,7 +226,7 @@ struct DraftFileFailureTests {
         let uuid = UUID().uuidString, other = UUID().uuidString
         let cues = home.appending(path: "cue-drafts")
         try FileManager.default.createDirectory(at: cues, withIntermediateDirectories: true)
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, playlistDraftSaver: { _ in }, draftHome: home)
         store.draftChanged(trackUUID: uuid, kind: .cue, exists: true)
         // 다른 곡의 파일만 깨졌으면 대상 쓰기는 막지 않고 알리기만 한다.
@@ -261,7 +261,7 @@ struct DraftFileFailureTests {
 
     @MainActor func playlistStore(_ saver: FlakySaver) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("playlist-save"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, playlistDraftSaver: { try saver.save($0) },
                                  draftHome: FileManager.default.temporaryDirectory.appending(path: "djc-playlist-save-\(UUID())"))
         store.phase = .loaded
@@ -291,7 +291,7 @@ struct DraftFileFailureTests {
         let fixture = try RekordboxFixture()
         try fixture.add(TrackSpec(id: "1"))
         let saver = FlakySaver()
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { try saver.save($0) },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, draftHome: try home(),
                                  arguments: ["test", "--db", fixture.database.path], environment: [:])

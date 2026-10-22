@@ -242,6 +242,9 @@ public struct DraftLocations: Sendable, Equatable {
     public var merge: URL
     public var staged: URL
     public var playlistImports: URL
+    /// 앱 창 알림과 쓰기 결과의 활동 기록(#296)
+    public var activityLog: URL
+    /// 옛 '마지막 쓰기 결과'(결과 한 건). 활동 기록이 처음 열 때 이어 받고 지운다
     public var writeResult: URL
     /// 내보낸 반영 XML의 계획 묶음(가져온 뒤 검증)
     public var reflection: URL
@@ -257,6 +260,7 @@ public struct DraftLocations: Sendable, Equatable {
         merge = home.appending(path: DuplicateMergeDraftStore.fileName)
         staged = home.appending(path: StagedTrackFile.fileName)
         playlistImports = home.appending(path: PlaylistImportStore.fileName)
+        activityLog = home.appending(path: "activity-log.json")
         writeResult = home.appending(path: "last-write-result.json")
         reflection = home.appending(path: ReflectionStore.fileName)
     }

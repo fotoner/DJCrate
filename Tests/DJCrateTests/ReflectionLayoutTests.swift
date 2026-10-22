@@ -30,11 +30,11 @@ struct ReflectionLayoutTests {
             try fixture.add(track)
         }
         let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
         await store.load(snapshot: fixture.database)
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
-        store.toast = AppToast(kind: .warning, title: "배치 시험 결과", detail: "합성 데이터로 확인합니다")
+        store.showToast(AppToast(kind: .warning, title: "배치 시험 결과", detail: "합성 데이터로 확인합니다"))
         let toastID = try #require(store.toast?.id)
         let toastKey = "toast.\(toastID)", contentKey = "reflectionLayout.\(toastID)"
         defer {

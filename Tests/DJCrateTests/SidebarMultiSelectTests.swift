@@ -27,7 +27,7 @@ struct SidebarMultiSelectTests {
     /// 사이드바 순서: F(폴더: A · G(폴더: H)) · B · S(인텔리전트) · D · T(폴더)
     init() {
         store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("sidebar-multi"), persist: false),
-                                  resultHistory: WriteResultHistory(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
+                                  activityLog: ActivityLog(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
         store.undoManager = undo
         store.phase = .loaded
         for id in ["1", "2", "3"] { store.rowsByID[id] = PlaylistEditingTests.row(id) }

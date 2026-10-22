@@ -34,7 +34,7 @@ struct MenuCommandTests {
 
     @Test func 앱_명령은_파일과_rekordbox_메뉴로_나뉜다() {
         #expect(LibraryMenuAction.fileActions == [.addFiles, .importAppleMusic, .snapshot, .exportXML, .exportLibraryXML, .importRekordboxXML])
-        #expect(LibraryMenuAction.rekordboxActions == [.reflect, .pending, .writeResult, .restore, .pointSnapshots, .removeTracks])
+        #expect(LibraryMenuAction.rekordboxActions == [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks])
         #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions == LibraryMenuAction.allCases)
     }
 
@@ -55,7 +55,7 @@ struct MenuCommandTests {
     }
 
     @Test func 빈_라이브러리와_쓰기_잠금에서_명령의_활성_조건을_지킨다() {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString))
         let window = LibraryWindowModel(store: store)
         #expect(LibraryMenuAction.snapshot.isEnabled(in: window))

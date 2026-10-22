@@ -153,7 +153,7 @@ extension ReflectionSession {
     }
 
     public static func keptDraftsText(_ count: Int) -> String {
-        String(ui: "쓴 뒤 새로 만든 초안이 있는 \(count)곡은 지금 초안을 남겼고, 백업의 초안은 ‘마지막 쓰기 결과…’의 백업 폴더에 남아 있습니다.")
+        String(ui: "쓴 뒤 새로 만든 초안이 있는 \(count)곡은 지금 초안을 남겼고, 백업의 초안은 ‘활동 기록…’의 백업 폴더에 남아 있습니다.")
     }
 
     public static func artworkRestoreFailureText(_ count: Int) -> String {

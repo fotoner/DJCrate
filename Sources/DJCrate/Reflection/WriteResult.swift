@@ -1,10 +1,8 @@
 import DJCApplication
 import DJCDomain
 import Foundation
-import Observation
-import SwiftUI
 
-/// 토스트가 닫힌 뒤에도 읽을 마지막 결과. 전체 문구와 백업 위치만 DJCrate 데이터 폴더에 보관한다.
+/// rekordbox 쓰기·넣기·빼기·복원의 결과. 토스트가 닫힌 뒤에도 활동 기록(`ActivityLog`)에서 전체 문구와 백업 위치를 다시 본다.
 struct WriteResult: Codable, Equatable {
     var kind: AppToast.Kind
     var title: String
@@ -15,7 +13,7 @@ struct WriteResult: Codable, Equatable {
     var createdAt = Date.now
 
     var toast: AppToast {
-        AppToast(kind: kind, title: title, detail: shortfall ?? String(ui: "전체 내용과 백업 위치는 ‘마지막 쓰기 결과…’에서 다시 볼 수 있습니다."))
+        AppToast(kind: kind, title: title, detail: shortfall ?? String(ui: "전체 내용과 백업 위치는 ‘활동 기록…’에서 다시 볼 수 있습니다."))
     }
 
     /// "그리드 1곡은 쓰지 않았습니다 — 이유". 막힘 이유는 할 일까지 적은 문장이라 하나뿐이면 그대로 보이고, 여럿이면 결과 보기로 안내한다.
@@ -167,68 +165,5 @@ struct WriteResult: Codable, Equatable {
         // 경로가 예상과 달라 남긴 분석 파일은 참고로 적는다(복원은 끝났다).
         if let fileWarning { lines.append(fileWarning) }
         return Self(kind: .success, title: String(ui: "rekordbox를 쓰기 전으로 복원했습니다"), text: lines.joined(separator: "\n"), backups: [backup.url, saved])
-    }
-}
-
-@MainActor
-@Observable
-final class WriteResultHistory {
-    private(set) var latest: WriteResult?
-    private(set) var storageError: String?
-    private let url: URL?
-
-    /// nil은 시험용 메모리 저장소다.
-    init(url: URL? = nil) {
-        self.url = url
-        guard let url, FileManager.default.fileExists(atPath: url.path) else { return }
-        do { latest = try JSONDecoder().decode(WriteResult.self, from: Data(contentsOf: url)) }
-        catch { storageError = String(ui: "지난 결과를 읽지 못했습니다. DJCrate 데이터 폴더의 읽기 권한을 확인하세요: \(error.localizedDescription)") }
-    }
-
-    func record(_ result: WriteResult) {
-        latest = result
-        guard let url else { return }
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(result).write(to: url, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-            storageError = nil
-        } catch {
-            storageError = String(ui: "결과를 파일에 보관하지 못했습니다. 앱을 닫기 전에 내용을 복사하고 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)")
-        }
-    }
-}
-
-struct WriteResultView: View {
-    let history: WriteResultHistory
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(.ui("마지막 쓰기 결과")).font(.title2.bold())
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let error = history.storageError { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
-                    if let result = history.latest {
-                        Label(result.title, systemImage: result.kind.icon).font(.headline).foregroundStyle(result.kind.tint)
-                        Text(result.createdAt.formatted(date: .abbreviated, time: .standard)).foregroundStyle(.secondary)
-                        Text(result.text).frame(maxWidth: .infinity, alignment: .leading)
-                        Text(.ui("백업 위치")).font(.headline)
-                        if result.backups.isEmpty { Text(.ui("이 결과에 연결된 백업이 없습니다.")).foregroundStyle(.secondary) }
-                        ForEach(result.backups, id: \.self) { url in
-                            Text(url.path).font(.callout.monospaced())
-                            Button(.ui("Finder에서 백업 보기")) { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path) }
-                                .disabled(!FileManager.default.fileExists(atPath: url.path))
-                        }
-                        if !result.backups.isEmpty { Text(.ui("정리되거나 이동한 백업은 열 수 없습니다.")).font(.caption).foregroundStyle(.secondary) }
-                    } else { Text(.ui("아직 보관한 쓰기 결과가 없습니다.")) }
-                }
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            HStack { Spacer(); Button(.ui("닫기")) { dismiss() }.keyboardShortcut(.cancelAction) }
-        }
-        .padding(24)
-        .frame(width: 660, height: 500)
     }
 }

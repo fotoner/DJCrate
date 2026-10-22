@@ -32,7 +32,7 @@ struct LibraryDraftFolderTests {
         stray.fields.comment = "다른 폴더"
         try TagDraftStore.save(stray, directory: elsewhere.appending(path: "tag-drafts"))
 
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: fixture.root.appending(path: "result.json")),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, draftHome: home)
         await store.load(snapshot: fixture.database)
         #expect(Set(store.tagDrafts.keys) == [mine.uuid])
@@ -51,7 +51,7 @@ struct LibraryDraftFolderTests {
         try Data("{".utf8).write(to: home.appending(path: "last-write-result.json"))
         try Data("{".utf8).write(to: home.appending(path: "playlist-imports.json"))
         let store = LibraryStore.test(saveTagDrafts: { _ in }, draftHome: home)
-        #expect(store.resultHistory.storageError != nil)
+        #expect(store.activityLog.storageError != nil)
         #expect(store.playlists.playlistImportsLoadFailed)
     }
 }
@@ -63,7 +63,7 @@ struct LibraryDraftFolderTests {
 @MainActor
 struct ExternalDraftDiscardTests {
     func loadedStore(_ fixture: RekordboxFixture, home: URL) async -> LibraryStore {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), backupDirectory: fixture.backups, draftHome: home)
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), backupDirectory: fixture.backups, draftHome: home)
         await store.load(snapshot: fixture.database)
         return store
     }

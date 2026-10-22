@@ -15705,6 +15705,22 @@
         }
       }
     },
+    "… 오래된 결과라 앞부분만 남겼습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "… This is an older result, so only the beginning was kept."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "… 古い結果のため、先頭部分だけを残しました。"
+          }
+        }
+      }
+    },
     "↑·↓로 0.01씩 조정하고 길게 누르면 반복합니다" : {
       "localizations" : {
         "en" : {
@@ -16101,6 +16117,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "同じまとまりに同じ仮の名前（@%@）で作成したプレイリストがあります"
+          }
+        }
+      }
+    },
+    "같은 알림이 잇달아 %lld번 떴습니다. 시각은 마지막으로 뜬 때입니다." : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "The same notification appeared %lld time in a row. The time shown is when it last appeared."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "The same notification appeared %lld times in a row. The time shown is when it last appeared."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同じ通知が続けて%lld回表示されました。時刻は最後に表示されたときです。"
           }
         }
       }
@@ -16963,22 +17007,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "結果: 回復する書き込みはありません"
-          }
-        }
-      }
-    },
-    "결과를 파일에 보관하지 못했습니다. 앱을 닫기 전에 내용을 복사하고 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Couldn't save the result to a file. Copy the contents before closing the app, and check write permission for the DJCrate data folder: %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "結果をファイルに保存できませんでした。アプリを閉じる前に内容をコピーし、DJCrateデータフォルダの書き込み権限を確認してください：%@"
           }
         }
       }
@@ -25785,38 +25813,6 @@
         }
       }
     },
-    "마지막 쓰기 결과" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last Write Result"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最後の書き込み結果"
-          }
-        }
-      }
-    },
-    "마지막 쓰기 결과…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Last Write Result…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最後の書き込み結果…"
-          }
-        }
-      }
-    },
     "마지막 클립은 더 뒤로 옮길 수 없으니 앞으로 옮기거나 다른 클립을 고르세요" : {
       "localizations" : {
         "en" : {
@@ -33157,18 +33153,18 @@
         }
       }
     },
-    "쓰기 전 백업이 없으니 마지막 쓰기 결과를 확인하세요" : {
+    "쓰기 전 백업이 없으니 활동 기록을 확인하세요" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "There is no backup from before writing, so check the last write result"
+            "value" : "There is no backup from before writing, so check the activity log"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "書き込み前のバックアップがないため、最後の書き込み結果を確認してください"
+            "value" : "書き込み前のバックアップがないため、アクティビティ履歴を確認してください"
           }
         }
       }
@@ -33557,7 +33553,7 @@
         }
       }
     },
-    "쓴 뒤 새로 만든 초안이 있는 %lld곡은 지금 초안을 남겼고, 백업의 초안은 ‘마지막 쓰기 결과…’의 백업 폴더에 남아 있습니다." : {
+    "쓴 뒤 새로 만든 초안이 있는 %lld곡은 지금 초안을 남겼고, 백업의 초안은 ‘활동 기록…’의 백업 폴더에 남아 있습니다." : {
       "localizations" : {
         "en" : {
           "variations" : {
@@ -33565,13 +33561,13 @@
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "Kept the current draft for %lld track that was edited after the write. Its backup draft remains in the backup folder shown in “Last Write Result…”."
+                  "value" : "Kept the current drafts for %lld track that was edited after the write. Its backup drafts remain in the backup folder shown in “Activity Log…”."
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "Kept the current drafts for %lld tracks that were edited after the write. Their backup drafts remain in the backup folder shown in “Last Write Result…”."
+                  "value" : "Kept the current drafts for %lld tracks that were edited after the write. Their backup drafts remain in the backup folder shown in “Activity Log…”."
                 }
               }
             }
@@ -33580,7 +33576,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "書き込み後に新しく下書きを作った%lld曲は今の下書きを残しました。バックアップの下書きは「最後の書き込み結果…」のバックアップフォルダに残っています。"
+            "value" : "書き込み後に新しく下書きを作った%lld曲は今の下書きを残しました。バックアップの下書きは「アクティビティ履歴…」のバックアップフォルダに残っています。"
           }
         }
       }
@@ -33959,22 +33955,6 @@
         }
       }
     },
-    "아직 보관한 쓰기 결과가 없습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No write results saved yet."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存された書き込み結果はまだありません。"
-          }
-        }
-      }
-    },
     "아직 쓰지 않은 목록 초안입니다 · rekordbox에 쓰기(⇧⌘E)로 저장합니다" : {
       "localizations" : {
         "en" : {
@@ -34035,6 +34015,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "まだ確認していません"
+          }
+        }
+      }
+    },
+    "아직 활동 기록이 없습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No activity yet."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティビティ履歴はまだありません。"
           }
         }
       }
@@ -38765,18 +38761,18 @@
         }
       }
     },
-    "이 초안은 rekordbox가 바뀌어서 막힌 것이 아니니 ‘마지막 쓰기 결과…’에서 쓰지 못한 이유를 확인하세요." : {
+    "이 초안은 rekordbox가 바뀌어서 막힌 것이 아니니 ‘활동 기록…’에서 쓰지 못한 이유를 확인하세요." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This draft is not blocked because rekordbox changed, so check the reason in “Last Write Result…”."
+            "value" : "This draft is not blocked because rekordbox changed, so check the reason in “Activity Log…”."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この下書きはrekordboxが変更されたためにブロックされたのではないので、「最後の書き込み結果…」で理由を確認してください。"
+            "value" : "この下書きはrekordboxが変更されたためにブロックされたのではないので、「アクティビティ履歴…」で理由を確認してください。"
           }
         }
       }
@@ -42115,18 +42111,18 @@
         }
       }
     },
-    "전체 내용과 백업 위치는 ‘마지막 쓰기 결과…’에서 다시 볼 수 있습니다." : {
+    "전체 내용과 백업 위치는 ‘활동 기록…’에서 다시 볼 수 있습니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You can see the full details and backup location again in 'Last Write Result…'."
+            "value" : "You can see the full details and backup location again in 'Activity Log…'."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "全体の内容とバックアップの場所は「最後の書き込み結果…」でもう一度確認できます。"
+            "value" : "全体の内容とバックアップの場所は「アクティビティ履歴…」でもう一度確認できます。"
           }
         }
       }
@@ -43225,18 +43221,50 @@
         }
       }
     },
-    "지난 결과를 읽지 못했습니다. DJCrate 데이터 폴더의 읽기 권한을 확인하세요: %@" : {
+    "지난 활동 기록을 읽지 못해 ‘%@’ 파일로 옮겨 두고 새 기록을 시작했습니다. 지난 기록이 필요하면 DJCrate 데이터 폴더에서 그 파일을 여세요: %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Couldn't read the previous result. Check read permission for the DJCrate data folder: %@"
+            "value" : "Couldn't read the previous activity log, so it was moved to '%1$@' and a new log was started. If you need the previous log, open that file in the DJCrate data folder: %2$@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "前回の結果を読み込めませんでした。DJCrateデータフォルダの読み取り権限を確認してください：%@"
+            "value" : "以前のアクティビティ履歴を読み込めなかったため、「%1$@」ファイルに移して新しい履歴を始めました。以前の履歴が必要な場合は、DJCrateデータフォルダでそのファイルを開いてください：%2$@"
+          }
+        }
+      }
+    },
+    "지난 활동 기록을 읽지 못해 이번 실행의 활동 기록은 파일에 보관하지 않습니다. DJCrate 데이터 폴더의 읽기·쓰기 권한을 확인한 뒤 앱을 다시 켜세요: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read the previous activity log, so this session's activity log won't be saved to a file. Check read and write permission for the DJCrate data folder, then reopen the app: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以前のアクティビティ履歴を読み込めなかったため、今回のアクティビティ履歴はファイルに保存しません。DJCrateデータフォルダの読み取り・書き込み権限を確認してから、アプリを開き直してください：%@"
+          }
+        }
+      }
+    },
+    "지난 활동 기록을 읽지 못했습니다. DJCrate 데이터 폴더의 읽기 권한을 확인하세요: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read the previous activity log. Check read permission for the DJCrate data folder: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以前のアクティビティ履歴を読み込めませんでした。DJCrateデータフォルダの読み取り権限を確認してください：%@"
           }
         }
       }
@@ -50391,6 +50419,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拡張子のみ異なる"
+          }
+        }
+      }
+    },
+    "활동 기록" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activity Log"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティビティ履歴"
+          }
+        }
+      }
+    },
+    "활동 기록…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activity Log…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティビティ履歴…"
+          }
+        }
+      }
+    },
+    "활동 기록을 파일에 보관하지 못했습니다. 앱을 닫기 전에 내용을 복사하고 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't save the activity log to a file. Copy the contents before closing the app, and check write permission for the DJCrate data folder: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティビティ履歴をファイルに保存できませんでした。アプリを閉じる前に内容をコピーし、DJCrateデータフォルダの書き込み権限を確認してください：%@"
           }
         }
       }

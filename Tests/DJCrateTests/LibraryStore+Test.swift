@@ -24,7 +24,7 @@ extension LibraryStore {
     ///   - takeLiveSnapshot: 스냅샷 뜨기(주지 않으면 이 프로세스의 rekordbox 폴더에서 뜬다)
     ///   - ports: 라이브러리 포트(실제 구현)를 바꾼다(메모리 라이브러리·가짜 Music 등)
     static func test(settings: SettingsStore = SettingsStore(defaults: TestDefaults.make("library-store")),
-                     resultHistory: WriteResultHistory? = nil,
+                     activityLog: ActivityLog? = nil,
                      reflectionBatches: ReflectionBatchStore? = nil,
                      feedback: AppFeedback = AppFeedback(),
                      saveTagDrafts: (([TagDraft]) -> Void)? = nil,
@@ -76,7 +76,7 @@ extension LibraryStore {
         libraryPorts.snapshots = SnapshotTaker(take: takeLiveSnapshot ?? { try LibrarySnapshot.take(force: $0) })
         ports?(&libraryPorts)
         let store = LibraryStore(settings: settings, location: location, useCases: LibraryUseCases(ports: libraryPorts),
-                                 resultHistory: resultHistory ?? WriteResultHistory(url: places.writeResult),
+                                 activityLog: activityLog ?? ActivityLog(url: places.activityLog, legacyResult: places.writeResult),
                                  feedback: feedback, launch: launch)
         testPortTable[ObjectIdentifier(store)] = (WeakStore(store: store), libraryPorts)
         // rekordbox 쓰기는 조립 지점과 같은 연결로 붙인다(iTunes 동기화 쓰기도 이 세션으로 간다). 관문은 `writeGate`, 없으면 실제 관문.

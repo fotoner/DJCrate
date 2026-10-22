@@ -96,7 +96,7 @@ final class AppComposition {
         // USB 기기 재생 기록 보존(#43)은 앱만 붙인다(시험 저장소·CLI는 보존하지 않는다)
         ports.usbHistories = UsbAppComposition.historyFiles()
         let store = LibraryStore(settings: settings, location: location, useCases: LibraryUseCases(ports: ports),
-                                 resultHistory: WriteResultHistory(url: places.writeResult),
+                                 activityLog: ActivityLog(url: places.activityLog, legacyResult: places.writeResult),
                                  launch: LibraryLaunchOptions(arguments: info.arguments))
         // 재생 기록 쓰기 관문(#43): 사본 재현으로 연 쓰기 경로. 닫혀 있으면 보존·보기만 하고 쓰기 대기에 올리지 않는다
         store.history.writesHistories = RekordboxWriter.writesHistories
@@ -107,7 +107,7 @@ final class AppComposition {
             || $0 == "--autoplay" || $0 == "--scroll-perf" }
         // 앱 자동 업데이트(#59): 쓰는 동안 설치를 미루고 그 사실을 알림으로 보인다
         let updater = AppUpdater.make(activity: { [weak store] in store?.writeActivity ?? .idle },
-                                      announce: { [weak store] in store?.toast = .notice($0, nil) })
+                                      announce: { [weak store] in store?.showToast(.notice($0, nil)) })
         return AppComposition(settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store),
                               agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
                               updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
@@ -145,7 +145,7 @@ final class AppComposition {
                 // CDJ에서 고른 FLAC·ALAC은 그 싣기가 실패한 뒤에 WAV로 바꾼다. 다 바꾸면 다시 실으라고 알린다
                 let finished = if case .finished = event { true } else { false }
                 Task { @MainActor in
-                    store?.toast = .notice(LinkText.backgroundConversion(event), nil, kind: finished ? .success : .warning)
+                    store?.showToast(.notice(LinkText.backgroundConversion(event), nil, kind: finished ? .success : .warning))
                 }
             }),
             library: { [weak store] in
@@ -156,7 +156,7 @@ final class AppComposition {
                 return LinkBarModel.LibraryInput(rows: store.rows, playlists: store.playlists.playlistProjection.layout, iTunes: iTunes,
                                                  draftCues: store.linkDraftCues(), shareRoot: store.shareRoot.path)
             },
-            notify: { [weak store] text, kind in store?.toast = .notice(text, nil, kind: kind) },
+            notify: { [weak store] text, kind in store?.showToast(.notice(text, nil, kind: kind)) },
             sessionEnded: { [weak store] in store?.history.closeLinkSessions() },
             // CDJ가 덱의 곡을 실으면 라이브러리가 덱 곡 ID와 함께 내린다(다시 읽을 때 그 곡을 되올리지 않게)
             cdjTracks: { [weak deck, weak store] loaded in
@@ -268,7 +268,7 @@ final class AppComposition {
         // 덱이 비어 있으면 덱 위 알림이 보이지 않으므로 창 아래 알림으로 까닭을 알린다(#278)
         store.deckRefuses = { [weak deck, weak store] row in
             guard let reason = deck?.cdjRefusal(row) else { return false }
-            store?.toast = .notice(reason, nil, kind: .warning)
+            store?.showToast(.notice(reason, nil, kind: .warning))
             return true
         }
         // 덱이 분석 파일·그림을 읽는 곳을 쓰기 대상 라이브러리와 맞춘다.
@@ -338,7 +338,7 @@ final class AppComposition {
             Task { [store] in
                 _ = await agentTools.launchNotice { toast in
                     guard store.toast == nil else { return false }
-                    store.toast = toast
+                    store.showToast(toast)
                     return true
                 }
             }

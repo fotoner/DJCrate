@@ -24,14 +24,14 @@ extension LibraryStore {
             case .applied: await refreshExternalDrafts()
             case .unchanged, .unsupported: break
             case .memoryLimit:
-                toast = .notice(String(ui: "CDJ에서 찍은 메모리 큐를 DJCrate에 옮기지 못했습니다"),
-                                String(ui: "메모리 큐는 곡당 \(CueDraft.memoryLimit)개까지입니다. DJCrate에서 쓰지 않는 메모리 큐를 지운 뒤 CDJ에서 다시 찍으세요"),
-                                kind: .warning)
+                showToast(.notice(String(ui: "CDJ에서 찍은 메모리 큐를 DJCrate에 옮기지 못했습니다"),
+                                  String(ui: "메모리 큐는 곡당 \(CueDraft.memoryLimit)개까지입니다. DJCrate에서 쓰지 않는 메모리 큐를 지운 뒤 CDJ에서 다시 찍으세요"),
+                                  kind: .warning))
             }
         } catch {
-            toast = .notice(String(ui: "CDJ에서 고친 큐를 DJCrate에 옮기지 못했습니다"),
-                            String(ui: "\(row.track.title): \(error.localizedDescription). 그 곡의 큐를 DJCrate에서 확인한 뒤 CDJ에서 다시 찍으세요"),
-                            kind: .warning)
+            showToast(.notice(String(ui: "CDJ에서 고친 큐를 DJCrate에 옮기지 못했습니다"),
+                              String(ui: "\(row.track.title): \(error.localizedDescription). 그 곡의 큐를 DJCrate에서 확인한 뒤 CDJ에서 다시 찍으세요"),
+                              kind: .warning))
         }
     }
 

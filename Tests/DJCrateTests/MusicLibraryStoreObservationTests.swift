@@ -14,7 +14,7 @@ struct MusicLibraryStoreObservationTests {
     private final class Flag: @unchecked Sendable { var fired = false }
 
     private func store() -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
     }
 
     /// `body`를 한 번 계산하는 동안 읽은 값 중 `change`가 바꾸는 것이 있는지

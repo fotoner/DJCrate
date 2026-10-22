@@ -7,7 +7,7 @@ import Testing
 @Suite("쓰기 잠금 — 키·종료·편집")
 struct WriteLockPolicyTests {
     @MainActor @Test func 종료_입구는_잠금을_읽고_거절_이유를_알린다() {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil))
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
         let delegate = AppDelegate()
         delegate.store = store
         var messages: [String] = []
@@ -22,7 +22,7 @@ struct WriteLockPolicyTests {
 
     /// 앱 업데이트(#59)의 다시 켜기·끌 때 설치도 이 입구를 지난다. USB에 쓰는 중에 꺼지면 USB DB가 반쯤 쓴 채로 남는다.
     @MainActor @Test func 종료_입구는_USB_쓰기_중에도_거절한다() throws {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil))
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
         let volume = FakeUsbVolume.diskImageFAT32(name: "B1", uuid: "00000000-0000-0000-0000-0000000000B1")
         let usb = UsbTestData.store(FakeUsbHost([volume]))
         store.usb = usb

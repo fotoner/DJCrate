@@ -22,7 +22,7 @@ struct DeckWaveformLayoutTests {
         let defaults = TestDefaults.open(domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }))
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }))
         let key = String(describing: ObjectIdentifier(deck))
         let zoomKey = "deck.zoom.\(key)", groupKey = "deck.waveGroup.\(key)"
         defer {

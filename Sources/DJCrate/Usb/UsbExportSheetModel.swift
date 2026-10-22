@@ -147,6 +147,9 @@ final class UsbExportSheetModel {
     private(set) var isPreviewing = false
     /// 시트를 닫은 뒤 동기화 창을 연다(‘USB 동기화…’)
     private(set) var opensSyncAfterDismissal = false
+    /// 미리 보기를 막은 USB 안내(rekordbox 켜짐·쓰는 중). 창 토스트는 시트 뒤에 가리고 저절로 닫히므로(#296)
+    /// 시트에서 닫거나 다음 안내가 올 때까지 여기에 둔다(#230)
+    private(set) var notice: AppToast?
     @ObservationIgnored private let usb: UsbStore
     @ObservationIgnored private let ports: Ports
 
@@ -193,6 +196,17 @@ final class UsbExportSheetModel {
     var canOpenSync: Bool { !isPreviewing && usb.activeWrite == nil }
 
     // MARK: - 의도
+
+    /// 창 알림이 바뀔 때(뷰의 `onChange`). USB 안내만 받아 두고, 창 알림이 닫혀도 지우지 않는다
+    func toastChanged(_ toast: AppToast?) {
+        if let toast, toast.isNotice, toast.isUsb { notice = toast }
+    }
+
+    /// 안내 [닫기]. 닫은 안내의 id를 돌려준다(창 토스트가 아직 떠 있으면 함께 닫는다)
+    func closeNotice() -> AppToast.ID? {
+        defer { notice = nil }
+        return notice?.id
+    }
 
     /// [미리 보기]. 뷰는 기다리지 않는다
     @discardableResult

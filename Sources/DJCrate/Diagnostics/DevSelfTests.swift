@@ -22,7 +22,7 @@ enum DevSelfTests {
                                playlistSidebar: PlaylistSidebarModel, libraryWindow: LibraryWindowModel) {
         runITunesSelfTestIfRequested(store: store, deck: deck)
         runSearchLayoutIfRequested()
-        runReflectionLayoutIfRequested(store: store)
+        runReflectionLayoutIfRequested(store: store, libraryWindow: libraryWindow)
         Issue237Capture.runIfRequested(store: store)
         ColumnHeaderCapture.runIfRequested(store: store)
         UsbDragCapture.runIfRequested(store: store)

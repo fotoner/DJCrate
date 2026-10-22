@@ -10,7 +10,7 @@ import Testing
 @MainActor
 struct AppleMusicImportModelTests {
     /// 창 모델은 추가 목록 조각만 든다. 조각은 저장소를 붙들지 않으므로(unowned) 저장소는 시험이 든다
-    let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+    let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
 
     func model() -> AppleMusicImportModel {
         AppleMusicImportModel(staging: store.staging, appleMusic: store.useCases.appleMusic)

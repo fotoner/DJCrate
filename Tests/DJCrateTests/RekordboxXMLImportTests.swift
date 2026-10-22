@@ -16,7 +16,7 @@ struct RekordboxXMLImportTests {
 
     /// 초안 폴더는 픽스처 아래 `home`(가져오기가 만든 초안을 시험이 그 폴더에서 확인한다)
     func loadedStore(_ fixture: RekordboxFixture) async -> LibraryStore {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                                       draftHome: fixture.root.appending(path: "home"), movesDamagedDrafts: false)
         await store.load(snapshot: fixture.database)
         return store
@@ -37,7 +37,7 @@ struct RekordboxXMLImportTests {
     @Test func 메뉴는_파일_메뉴에_있고_불러온_라이브러리에서만_켜진다() async throws {
         #expect(LibraryMenuAction.importRekordboxXML.title == "rekordbox XML 가져오기…")
         #expect(LibraryMenuAction.fileActions.contains(.importRekordboxXML))
-        let empty = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        let empty = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         #expect(!LibraryMenuAction.importRekordboxXML.isEnabled(in: LibraryWindowModel(store: empty)))
         let fixture = try library()
         let store = await loadedStore(fixture)

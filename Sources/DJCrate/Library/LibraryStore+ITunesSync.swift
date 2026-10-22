@@ -21,8 +21,8 @@ extension LibraryStore {
         }
         // 개발 실행에서 `--db`로 쓰기 대상과 다른 폴더의 사본을 열었으면 그 사본에는 쓴 선택이 보이지 않는다. 화면은 그대로 두고 알린다.
         guard synced.visible else {
-            toast = .notice(String(ui: "iTunes 동기화를 rekordbox에 썼습니다"),
-                            String(ui: "지금 연 사본(--db)에는 보이지 않으니 --db 없이 다시 열어 확인하세요."))
+            showToast(.notice(String(ui: "iTunes 동기화를 rekordbox에 썼습니다"),
+                              String(ui: "지금 연 사본(--db)에는 보이지 않으니 --db 없이 다시 열어 확인하세요.")))
             return
         }
         guard snapshotURL == database || sameSource else { return }

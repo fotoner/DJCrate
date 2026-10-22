@@ -15,7 +15,7 @@ struct PlaylistEditStoreObservationTests {
 
     /// 사이드바는 읽은 뒤에만 재생 목록 구역을 그리므로 읽은 상태로 둔다
     private func store() -> LibraryStore {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
         store.phase = .loaded
         return store
     }

@@ -51,7 +51,7 @@ extension LibraryStore {
         case let .lastWriteBackup(url): lastWriteBackup = url
         case let .followUp(notes): writeFollowUp = notes
         case .writeBackupsChanged: refreshWriteBackups()
-        case let .historyMarkFailed(warning): toast = .notice(ArchiveUsbHistories.queueSaveFailureTitle, warning)
+        case let .historyMarkFailed(warning): showToast(.notice(ArchiveUsbHistories.queueSaveFailureTitle, warning))
         }
     }
 

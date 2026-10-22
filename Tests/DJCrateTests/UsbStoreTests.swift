@@ -121,7 +121,7 @@ struct UsbStoreTests {
         }
         func makeStore(environment: [String: String]) -> LibraryStore {
             LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbsnap"), persist: false),
-                              resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                              activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                               mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                               arguments: ["DJCrate", "--db", "/tmp/x/m.db"], environment: environment, takeLiveSnapshot: take)
         }
@@ -159,7 +159,7 @@ struct UsbStoreTests {
         #expect(draft.conflictingKeys(with: TagFields(track: row.track)).contains(.comment))
         var saves = 0
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbtag"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in saves += 1 },
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in saves += 1 },
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
         let undo = UndoManager()
         store.undoManager = undo

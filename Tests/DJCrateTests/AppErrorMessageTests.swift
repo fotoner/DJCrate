@@ -32,7 +32,7 @@ struct AppErrorMessageTests {
     @Test func 라이브러리_로드_실패도_앱_문구로_표시한다() async throws {
         let fixture = try RekordboxFixture()
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("error"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), backupDirectory: fixture.backups,
+                                 activityLog: ActivityLog(url: nil), backupDirectory: fixture.backups,
                                  draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: fixture.database,
                                  rekordboxShareRoot: fixture.shareRoot)
         let missing = fixture.root.appending(path: "missing.db")

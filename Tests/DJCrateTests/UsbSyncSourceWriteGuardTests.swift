@@ -9,7 +9,9 @@ import Testing
 
 @MainActor
 private final class SyncSourceWriteHost: UsbWriteHost {
-    var toast: AppToast?
+    private(set) var toast: AppToast?
+    func showToast(_ toast: AppToast) { self.toast = toast }
+    func dismissToast(_ id: AppToast.ID?) { if id == nil || toast?.id == id { toast = nil } }
     var source: UsbSyncSource
     var revision = 1
     var database = URL(filePath: "/tmp/djc-synthetic/snapshot.db")

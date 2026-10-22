@@ -182,7 +182,7 @@ struct AgentToolsSettingsModelTests {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("agent-window"), persist: false))
         let window = LibraryWindowModel(store: store)
         window.agentTools = updated
-        store.toast = toast
+        store.showToast(toast)
         await window.performToastAction(.updateAgentTools).value
         #expect(store.toast?.kind == .success)
         #expect(store.toast?.title == String(ui: "모두 갱신했습니다. 에이전트의 새 세션부터 새 스킬을 읽습니다."))
