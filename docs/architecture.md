@@ -85,8 +85,8 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - CLI(`EditDraftFiles`, `ImportXML.makeDraftsNow`)는 `DraftFiles.lockPlaylist` 안에서 읽고 저장한다. `makeDraftsNow`는 마지막 비교와 저장 동안만 든다. 잡지 못하면 쌓지 않는다. 쓴 뒤 정리가 앞 단계를 접은 바깥 편집을 지우지 않게 하려는 것이다.
   - 앱이 잠금을 잡지 못한 드문 경우의 대비가 있다. 쓴 뒤 정리(`EditPlaylists.finishWrite`)는 디스크 초안이 쓴 초안 뒤에 편집을 더했으면 쓴 편집만 뺀다(`keepingExternal`).
 - **추가한 곡·그리드 일괄 추정·XML 내보내기는 기능 조각 `TrackStagingStore`가 든다(#252).** 조각은 저장소의 `staging` 속성이다. 넣기·저장·추정의 규칙과 순서는 유스케이스 `StageTracks`와 `ExportXML`이 정한다. 목록 아래 막대의 단추·막힘 이유는 화면 모델 `ListActionBarModel`이 든다. 파일 없음 확인은 곡 행을 바꾸므로 공유 핵심이 한다(#254).
-- **주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다(#254).** 그 시트는 쓰기 결과, 연결되지 않은 초안, rekordbox XML 가져오기다. 처음 읽기, 스냅샷, 동기화, 끌어 놓기 같은 주 창 단추는 이 모델의 입구를 부른다. 메뉴 막대의 메뉴 항목(`LibraryMenuAction`)도 이 모델을 받는다. 재생 목록 고르기, USB, 막힌 초안 복구의 시트는 그 주인이 든다.
-- 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`.
+- **주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다(#254).** 그 시트는 활동 기록, 연결되지 않은 초안, rekordbox XML 가져오기다. 처음 읽기, 스냅샷, 동기화, 끌어 놓기 같은 주 창 단추는 이 모델의 입구를 부른다. 메뉴 막대의 메뉴 항목(`LibraryMenuAction`)도 이 모델을 받는다. 재생 목록 고르기, USB, 막힌 초안 복구의 시트는 그 주인이 든다.
+- 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`, `ActivityLogModel`.
 - **곡 목록 표와 덱 묶음은 공유 핵심을 통째로 받지 않는다(#254).** 표는 읽는 값 13개만 든 프로토콜 `TrackListSource`를 받는다. 메뉴·칸 편집·끌기는 조정자 `TrackListCoordinator`가 핵심을 부른다. 덱 묶음은 프로토콜 `DeckLibrarySource`와 태그 편집 조각을 받는다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
@@ -282,6 +282,9 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - 재생 목록 초안: `playlist-drafts.json`. 재생 목록 편집을 순서대로 적는다. 옆의 `playlist-drafts.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다.
 - `damaged-drafts/`: 읽지 못한 초안 파일을 옮겨 둔 곳이다. 그 파일을 지우지 않는다. 빈 값으로 덮지도 않는다. 합치기 초안 `merge-drafts.json`과 추가 목록 `staged.json`도 여기로 옮긴다. 앱은 읽기·저장 때 파일을 옮긴 뒤 목록 위에 알린다.
 - 추가한 곡: `staged.json`
+- 활동 기록: `activity-log.json`(권한 0600). 창 알림과 쓰기 결과의 최근 200건이다.
+  - 옛 결과 파일 `last-write-result.json`은 처음 열 때 첫 항목으로 이어 받는다. 이어 받은 옛 파일은 지운다(#296).
+  - 읽지 못한 기록 파일은 `activity-log-unreadable-<시각>.json`으로 옮긴다. 그 파일은 덮지 않는다.
 - 읽기용 스냅샷: `snapshots/`
 - 쓰기 전 백업: `rekordbox-backups/`
 - 시점 스냅샷: `point-snapshots/`(#224)
@@ -367,10 +370,14 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
 4. 쓸 수 있는 것만 실제로 쓴다.
 5. 쓰기 전으로 복원할 수 있는 토스트를 띄운다.
 
-- **확인 창은 묻는 이유가 되는 항목만 보인다.** 곡마다의 결과는 쓰기 결과 창에 둔다.
+- **확인 창은 묻는 이유가 되는 항목만 보인다.** 곡마다의 결과는 활동 기록 창에 둔다.
 - **토스트에서 누른 복원은 그 뒤 rekordbox 변경이나 초안 충돌이 없으면 묻지 않는다.**
 - **아무것도 쓰지 않았으면 창 대신 토스트로 알린다(#230).** 손실과 상태 불명만 창으로 멈춘다.
-  - rekordbox가 켜져 있을 때와 쓸 초안·넣을 곡·뺄 곡이 없을 때는 경고 토스트 `AppToast.notice`를 띄운다. 이 토스트는 결과 보기 없이 닫을 때까지 남는다.
+  - rekordbox가 켜져 있을 때와 쓸 초안·넣을 곡·뺄 곡이 없을 때는 경고 토스트 `AppToast.notice`를 띄운다. 이 토스트는 결과 보기 없이 읽을 시간이 지나면 닫힌다. 활동 기록에는 남는다.
+- **창 토스트는 `LibraryStore.showToast` 한 길로 띄운다(#296).** 띄운 알림은 모두 활동 기록 `ActivityLog`에 남는다. 쓰기 결과는 결과(전체 문구·백업 위치)를 함께 남긴다. 저장소의 `toast`는 밖에서 바꿀 수 없다. USB 흐름은 `UsbWriteHost.showToast`로 같은 길을 지난다.
+  - 수명은 `AppToast.duration`이 정한다. 성공·경고는 4초 + 글자마다 0.06초다. 되돌리기·동작 단추가 있으면 적어도 7초다. 실패만 닫을 때까지 남는다.
+  - 마우스를 올린 동안과 알림 안 단추에 키보드 포커스가 있는 동안은 시간을 세지 않는다(`AppToastTimer`). VoiceOver가 켜져 있으면 닫지 않는다.
+  - 활동 기록은 최근 200건이다. 바로 앞 항목과 종류·제목·내용(쓰기 결과는 백업도)이 같으면 새 항목 대신 시각과 횟수를 고친다.
   - 모두 막힌 초안과 미리 보기에서 제외한 초안은 결과 토스트와 결과 보기로 알린다.
 - **쓰는 동안 덱은 재생을 멈춘 채 조작을 막는다.**
 - **되돌리기는 쓰기 전 전체 백업으로 한다.** 백업은 `rekordbox-backups/<시각>-write/`에 최근 20개를 남긴다. 백업에 그때 쓴 초안도 넣어 두어, 되돌릴 때는 DB·분석 파일의 복원과 함께 초안도 다시 살린다.

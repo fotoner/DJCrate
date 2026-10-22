@@ -27,7 +27,7 @@ struct TrackWritePathTests {
     ///   nil을 줘 저장소의 초안 폴더에 쓴다.
     func makeStore(_ fixture: RekordboxFixture, saveTagDrafts: (([TagDraft]) -> Void)? = { _ in }) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("trackwrite"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: saveTagDrafts, backupDirectory: fixture.backups,
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: fixture.root.appending(path: "drafts"),
@@ -684,7 +684,7 @@ struct TrackWritePathTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let wav = try AudioFixture.wav(seconds: 1, in: directory)
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("estimate"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: directory.appending(path: "backups"),
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: directory.appending(path: "drafts"), writer: writer,

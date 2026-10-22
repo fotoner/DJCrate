@@ -1,7 +1,7 @@
 import DJCDomain
 import SwiftUI
 
-/// 반영 대기가 없어도 마지막 쓰기 결과와 되돌리기를 열 수 있다.
+/// 반영 대기가 없어도 활동 기록과 되돌리기를 열 수 있다.
 struct ReflectionMenu: View {
     let store: LibraryStore
     /// 주 창 화면 모델(메뉴 항목은 이 모델로 보고 부른다)
@@ -20,8 +20,8 @@ struct ReflectionMenu: View {
         Menu {
             Button(LibraryMenuAction.restore.title) { LibraryMenuAction.restore.perform(in: window, reflection: reflection) }
                 .disabled(!LibraryMenuAction.restore.isEnabled(in: window))
-            Button(LibraryMenuAction.writeResult.title) { LibraryMenuAction.writeResult.perform(in: window, reflection: reflection) }
-                .disabled(!LibraryMenuAction.writeResult.isEnabled(in: window))
+            Button(LibraryMenuAction.activityLog.title) { LibraryMenuAction.activityLog.perform(in: window, reflection: reflection) }
+                .disabled(!LibraryMenuAction.activityLog.isEnabled(in: window))
         } label: {
             Label(.ui("rekordbox에 쓰기"), systemImage: "square.and.arrow.up.on.square")
         } primaryAction: {

@@ -252,7 +252,7 @@ struct UsbEditActionsTests {
         // 곡 목록 메뉴 'USB에 넣기 ▸': 앱에서는 실물 볼륨의 항목도 누를 수 있다(쓰기 확인 창이 동의를 받는다)
         let fixture = try historyFixture()
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbedit"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
         await store.load(snapshot: fixture.database)
         let (usb, _, actions) = await setUp(library, volumes: [image, physical], local: UsbEditTestData.localNewerOne)

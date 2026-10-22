@@ -11,7 +11,7 @@ import Testing
 @Suite("목록 아래 막대 화면 모델")
 struct ListActionBarModelTests {
     private func store() -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in })
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in })
     }
 
     private func staged(_ name: String, imported: StagedTrack.ImportCheck.Result? = nil) -> StagedTrack {
@@ -157,7 +157,7 @@ struct ListActionBarModelTests {
     private func missingFileStore(_ folder: TemporaryFolder, present: TestSwitch) -> LibraryStore {
         let volume = "/Volumes/DJC 시험 디스크 \(UUID().uuidString)"
         let tracks = [track("1"), track("2", path: "\(volume)/Music/b.wav")]
-        return LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
+        return LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
                                  draftHome: folder.url.appending(path: "drafts"), ports: { ports in
                                      var source = LibrarySource.withoutDatabase
                                      source.library = { _ in RekordboxLibrary(allTracks: tracks, cues: [], playCounts: [:]) }

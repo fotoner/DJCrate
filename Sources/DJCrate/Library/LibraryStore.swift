@@ -43,7 +43,8 @@ final class LibraryStore {
         hasWriteBackup = useCases.hasWriteBackup(in: backupDirectory)
     }
 
-    let resultHistory: WriteResultHistory
+    /// 창 알림과 쓰기 결과의 기록(활동 기록 창, #296)
+    let activityLog: ActivityLog
     @ObservationIgnored var feedback: AppFeedback
     @ObservationIgnored var writeTask: Task<Void, Never>?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
@@ -88,7 +89,7 @@ final class LibraryStore {
     /// 실제 구현(초안 파일·스냅샷·위치)은 조립 지점(`AppComposition.live`)이 고른다. 시험은 `LibraryStore.test(…)`로 만든다.
     /// rekordbox 쓰기는 이 저장소가 하지 않는다: 조립 지점이 만든 반영 세션(`ReflectionSession`)이 이 저장소의 상태를 읽고 결과를 알린다.
     /// - Parameter launch: 개발용 실행 인자(`--select`·`--add-files`)
-    init(settings: SettingsStore, location: LibraryLocation, useCases: LibraryUseCases, resultHistory: WriteResultHistory,
+    init(settings: SettingsStore, location: LibraryLocation, useCases: LibraryUseCases, activityLog: ActivityLog,
          feedback: AppFeedback = AppFeedback(), launch: LibraryLaunchOptions = LibraryLaunchOptions()) {
         self.settings = settings
         self.commentPreset = settings.commentPreset
@@ -98,7 +99,7 @@ final class LibraryStore {
         self.useCases = useCases
         previewImages = PreviewWaveformCache(previews: useCases.previews)
         thumbnails = Thumbnails(artwork: useCases.artwork)
-        self.resultHistory = resultHistory
+        self.activityLog = activityLog
         self.feedback = feedback
         self.launch = launch
         readFlow = LibraryReadFlow(loader: useCases.load, location: location)
@@ -276,11 +277,38 @@ final class LibraryStore {
     var reflectionBatch: ReflectionXMLBatch?
     /// 이번 실행에서 rekordbox에 쓴 마지막 백업(토스트·툴바의 되돌리기)
     var lastWriteBackup: URL?
-    /// detail 아래쪽에 뜨는 알림(rekordbox 반영 완료 등)
-    var toast: AppToast? {
+    /// detail 아래쪽에 뜨는 알림(rekordbox 반영 완료 등). 띄우고 닫기는 `showToast`·`dismissToast`로만 한다(띄운 알림은 모두 활동 기록에 남는다, #296)
+    private(set) var toast: AppToast? {
         didSet {
             if let toast { feedback.announce(AppMessage(kind: toast.kind, text: [toast.title, toast.detail].compactMap { $0 }.joined(separator: "\n"))) }
         }
+    }
+
+    /// 창 알림을 띄우고 활동 기록에 남긴다.
+    func showToast(_ toast: AppToast) {
+        present(toast, entry: activityLog.record(toast))
+    }
+
+    /// 쓰기 결과 알림을 띄우고 결과(전체 내용·백업 위치)를 활동 기록에 남긴다.
+    func showToast(_ toast: AppToast, for result: WriteResult) {
+        present(toast, entry: activityLog.record(result))
+    }
+
+    /// 알림을 닫는다. `id`를 주면 그 알림이 아직 떠 있을 때만 닫는다(그 사이 뜬 새 알림은 두고).
+    func dismissToast(_ id: AppToast.ID? = nil) {
+        guard let toast, id == nil || toast.id == id else { return }
+        self.toast = nil
+    }
+
+    /// 기록을 보관하지 못했거나 지난 기록을 읽지 못했으면 알림에도 덧붙인다(앱을 닫기 전에 내용을 복사하게).
+    private func present(_ toast: AppToast, entry: ActivityEntry.ID) {
+        var toast = toast
+        toast.activityID = entry
+        if let error = activityLog.toastNote() {
+            if toast.kind == .success { toast.kind = .warning }
+            toast.detail = [toast.detail, error].compactMap { $0 }.joined(separator: "\n")
+        }
+        self.toast = toast
     }
     /// rekordbox 쓰기 단계 안내(있으면 창 전체를 덮어 조작을 막는다. 확인 창이 떠 있는 동안은 nil)
     var writeStage: WriteStage?

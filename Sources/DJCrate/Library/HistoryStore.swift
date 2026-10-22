@@ -255,7 +255,7 @@ final class HistoryStore {
     }
 
     private func show(_ notice: UsbHistoryNotice) {
-        library.toast = .notice(notice.title, notice.detail, kind: notice.kind == .success ? .success : .warning, isUsb: true)
+        library.showToast(.notice(notice.title, notice.detail, kind: notice.kind == .success ? .success : .warning, isUsb: true))
     }
 
     /// 지금 알림을 기록 가져오기 알림으로 바꿔도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만

@@ -37,7 +37,7 @@ struct DamagedMergeStagedAppTests {
 
     @MainActor func store(home: URL, fixture: RekordboxFixture? = nil) -> LibraryStore {
         let mergeURL = home.appending(path: DuplicateMergeDraftStore.fileName), stagedURL = home.appending(path: StagedTrackFile.fileName)
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture?.backups ?? home.appending(path: "backups"), playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { try DuplicateMergeDraftStore.save($0, url: mergeURL) },
                                  playlistImportURL: nil, stagingSaver: { try StagedTrackFile.save($0, url: stagedURL) }, draftHome: home)

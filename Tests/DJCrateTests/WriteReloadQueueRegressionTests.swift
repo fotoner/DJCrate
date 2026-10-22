@@ -40,7 +40,7 @@ struct WriteReloadQueueRegressionTests {
         let stamp = Date(timeIntervalSince1970: 1_800_000_000)
         let previous = try LibrarySnapshot.take(from: sourceDB, into: directory, force: true, now: stamp)
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("music-selection"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, arguments: ["test"], environment: [:])
         await store.load(snapshot: previous)
@@ -116,7 +116,7 @@ struct WriteReloadQueueRegressionTests {
         let late = ITunesLibrarySnapshot(playlists: [.init(id: "B", name: "늦게 도착한 목록")])
         try cached.save(for: previous)
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("write-reload-queue"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, arguments: ["test"], environment: [:])
         await store.load(snapshot: previous)

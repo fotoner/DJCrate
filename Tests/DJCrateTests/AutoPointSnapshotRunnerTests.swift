@@ -143,7 +143,7 @@ struct AutoPointSnapshotRunnerTests {
         func enabled(_ arguments: [String], environment: [String: String] = [:]) -> Bool {
             // 설정 저장소는 저장하는 쪽이라 실행 인자 판단만 가른다
             let settings = SettingsStore(defaults: TestDefaults.make("autosnap"), persist: true, sharedFile: nil)
-            let store = LibraryStore.test(settings: settings, resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+            let store = LibraryStore.test(settings: settings, activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                           arguments: arguments, environment: environment, launch: LibraryLaunchOptions(arguments: arguments))
             return AutoPointSnapshotRunner(store: store, snapshots: FileManager.default.temporaryDirectory.appending(path: "djc-autosnap-unused"),
                                            files: .live(guard: Self.copyGuard)).environment.enabled()

@@ -36,7 +36,7 @@ struct MissingFileListTests {
     }
 
     func store(_ fixture: RekordboxFixture, log: ThreadLog) -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in },
+        LibraryStore.test(activityLog: ActivityLog(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in },
                           ports: { ports in
                               ports.files.exists = { path in
                                   log.record()

@@ -63,10 +63,10 @@ struct ContentView: View {
                 .overlay(alignment: .bottom) {
                     if let toast = store.toast {
                         AppToastView(toast: toast,
-                                     onUndo: toast.undoBackup.map { url in { store.toast = nil; app.reflection.startRestore(backupURL: url) } },
-                                     onDetails: toast.showsResult ? { window.showWriteResult() } : nil,
+                                     onUndo: toast.undoBackup.map { url in { store.dismissToast(); app.reflection.startRestore(backupURL: url) } },
+                                     onDetails: toast.showsResult ? { window.showActivityLog(selecting: toast.activityID) } : nil,
                                      onAction: toast.action.map { action in { window.performToastAction(action) } },
-                                     onClose: { if store.toast?.id == toast.id { store.toast = nil } })
+                                     onClose: { store.dismissToast(toast.id) })
                             .padding(.bottom, 16)
                             .padding(.horizontal, 16)
                             .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
@@ -103,9 +103,7 @@ struct ContentView: View {
             UsbPointSnapshotsView(model: model)
         }
         // 주 창만 쓰는 시트는 주 창 모델이, 다른 화면이 여는 시트(재생 목록 고르기·USB·복구)는 그 주인이 든다
-        .sheet(isPresented: Binding(get: { window.showingWriteResult }, set: { window.showingWriteResult = $0 })) {
-            WriteResultView(history: store.resultHistory)
-        }
+        .sheet(item: Binding(get: { window.activityLog }, set: { window.activityLog = $0 })) { ActivityLogView(model: $0) }
         .sheet(item: Binding(get: { store.playlists.playlistPicker }, set: { store.playlists.playlistPicker = $0 })) { PlaylistPickerView(model: $0) }
         .sheet(item: Binding(get: { window.unlinkedDrafts }, set: { window.unlinkedDrafts = $0 })) { UnlinkedDraftsView(model: $0) }
         .sheet(item: Binding(get: { window.xmlImport.preview }, set: { window.xmlImport.preview = $0 })) { preview in

@@ -3,7 +3,7 @@ import DJCDomain
 import Foundation
 import Observation
 
-/// 주 창(`ContentView`)의 화면 모델(#254): 주 창이 띄우는 시트(쓰기 결과·연결되지 않은 초안·rekordbox XML 가져오기)와
+/// 주 창(`ContentView`)의 화면 모델(#254): 주 창이 띄우는 시트(활동 기록·연결되지 않은 초안·rekordbox XML 가져오기)와
 /// 주 창의 단추·알림·끌어 놓기·메뉴가 부르는 입구(MVVM-4). 입구는 핵심의 비동기 일을 시작만 하고 기다리지 않는다.
 /// 단추의 `Task {}`처럼 화면이 사라져도 취소하지 않는다. 돌려주는 손잡이는 시험이 기다린다.
 /// 상태는 공유 핵심(`LibraryStore`)에 있다. 이 모델은 주 창만 쓰는 시트 상태만 든다. 다른 화면 모델·기능 조각이 여는 시트
@@ -15,8 +15,8 @@ final class LibraryWindowModel {
     @ObservationIgnored let store: LibraryStore
     /// rekordbox XML 가져오기(읽는 중·미리 보기 시트·결과). 메뉴가 읽는 중인지 보므로 시트를 닫아도 남는다
     @ObservationIgnored let xmlImport: XMLImportModel
-    /// 마지막 쓰기 결과 시트(알림의 '자세히'·메뉴·사이드바 줄이 띄운다)
-    var showingWriteResult = false
+    /// 활동 기록 시트의 화면 모델(알림의 결과 보기·메뉴·사이드바 줄이 띄운다. 띄울 때마다 새로 만든다)
+    var activityLog: ActivityLogModel?
     /// 연결되지 않은 초안 시트의 화면 모델(띄울 때마다 새로 만든다)
     var unlinkedDrafts: UnlinkedDraftsModel?
     /// 켤 때 알림의 "모두 갱신"이 부르는 AI 에이전트 설치 모델(조립 지점이 붙인다. 시험은 nil)
@@ -29,7 +29,10 @@ final class LibraryWindowModel {
 
     // MARK: - 시트
 
-    func showWriteResult() { showingWriteResult = true }
+    /// 활동 기록을 연다. 알림의 결과 보기는 그 알림의 항목을 고른다(없으면 맨 위 항목)
+    func showActivityLog(selecting entry: ActivityEntry.ID? = nil) {
+        activityLog = ActivityLogModel(log: store.activityLog, selection: entry)
+    }
 
     func openUnlinkedDrafts() { unlinkedDrafts = UnlinkedDraftsModel(store: store) }
 
@@ -53,9 +56,9 @@ final class LibraryWindowModel {
         switch action {
         case .updateAgentTools:
             Task { [store, agentTools] in
-                if store.toast?.action == action { store.toast = nil }
+                if let toast = store.toast, toast.action == action { store.dismissToast(toast.id) }
                 guard let agentTools else { return }
-                store.toast = await agentTools.updateAllFromNotice()
+                store.showToast(await agentTools.updateAllFromNotice())
             }
         case .ejectUsb:
             Task { [store] in await store.usbCoordinator?.perform(action) }

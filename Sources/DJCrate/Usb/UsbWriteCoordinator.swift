@@ -45,9 +45,9 @@ struct UsbWriteCoordinator {
             service: service,
             confirmation: prompter.confirmation,
             results: UsbWriteResults(
-                show: { [weak host] in host?.toast = Self.toast($0) },
+                show: { [weak host] in host?.showToast(Self.toast($0)) },
                 dismissEject: { [weak host] key in
-                    if host?.toast?.action == .ejectUsb(volumeKey: key) { host?.toast = nil }
+                    if let toast = host?.toast, toast.action == .ejectUsb(volumeKey: key) { host?.dismissToast(toast.id) }
                 },
                 errorText: { AppErrorMessage.message(for: $0) },
                 log: { AppErrorMessage.log($0) },

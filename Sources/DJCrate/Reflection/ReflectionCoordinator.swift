@@ -144,11 +144,11 @@ final class ReflectionPresenter {
         case let .failed(title, error, exclusions):
             fail(title, error, exclusions: exclusions)
         case let .restoreFailed(backup, error):
-            store?.toast = nil
+            store?.dismissToast()
             AppErrorMessage.log(error)
             let text = String(ui: "rekordbox 라이브러리 상태를 확인하지 못했으므로 rekordbox를 켜지 말고 백업 폴더의 위치와 접근 권한을 확인한 뒤 다시 복원하세요.")
             let title = String(ui: "복원하지 못했습니다")
-            store?.resultHistory.record(WriteResult(kind: .failure, title: title, text: text, backups: [backup.url]))
+            store?.activityLog.record(WriteResult(kind: .failure, title: title, text: text, backups: [backup.url]))
             _ = prompter.show(ReflectionPrompt(title: title, text: text, critical: true))
         }
     }
@@ -159,23 +159,19 @@ final class ReflectionPresenter {
         publish(WriteResult(kind: .success, title: String(ui: "작업을 취소했습니다"), text: text), detail: text)
     }
 
+    /// 결과 알림을 띄우고 결과를 활동 기록에 남긴다(기록을 보관하지 못했으면 알림에 덧붙는다, `LibraryStore.showToast`).
     private func publish(_ result: WriteResult, undo: String? = nil, detail: String? = nil) {
         guard let store else { return }
-        store.resultHistory.record(result)
         var toast = result.toast
         if let detail { toast.detail = detail }
         toast.undoBackup = undo.map { URL(filePath: $0) }
-        if let error = store.resultHistory.storageError {
-            if toast.kind == .success { toast.kind = .warning }
-            toast.detail = [toast.detail, error].compactMap { $0 }.joined(separator: "\n")
-        }
-        store.toast = toast
+        store.showToast(toast, for: result)
     }
 
-    /// 아무것도 쓰지 않은 안내(지금은 못 함·할 것 없음): 창을 띄우지 않고 닫을 때까지 남는 경고 토스트로 알린다(#230).
-    /// 쓰기 결과가 아니라 결과 기록에 남기지 않고, 이유 줄은 앞 둘과 남은 수만 보인다.
+    /// 아무것도 쓰지 않은 안내(지금은 못 함·할 것 없음): 창을 띄우지 않고 경고 토스트로 알린다(#230).
+    /// 쓰기 결과가 아니라 결과 보기를 붙이지 않는다(활동 기록에는 안내로 남는다). 이유 줄은 앞 둘과 남은 수만 보인다.
     private func notify(_ title: String, _ text: String, lines: [String] = []) {
-        store?.toast = .notice(title, ([text] + [ReflectionPrompts.summaryLine(lines)].compactMap { $0 }).joined(separator: "\n"))
+        store?.showToast(.notice(title, ([text] + [ReflectionPrompts.summaryLine(lines)].compactMap { $0 }).joined(separator: "\n")))
     }
 
     /// 쓰기 실패 알림. 자동 복원까지 실패했으면 사라지는 토스트가 아니라 닫아야 하는 경고 창으로 알린다.
@@ -185,10 +181,10 @@ final class ReflectionPresenter {
         let excludedText = exclusions.isEmpty ? [] : [String(ui: "미리 보기에서 제외한 초안:")] + exclusions
         if var alert = ReflectionPrompts.restoreFailureAlert(error) {
             AppErrorMessage.log(error)
-            store?.toast = nil
+            store?.dismissToast()
             let backups: [URL]
             if case let DJCError.restoreFailed(_, _, backup, _) = error { backups = [URL(filePath: backup)] } else { backups = [] }
-            store?.resultHistory.record(WriteResult(kind: .failure, title: alert.title,
+            store?.activityLog.record(WriteResult(kind: .failure, title: alert.title,
                                                     text: ([alert.text] + excludedText).joined(separator: "\n"), backups: backups))
             alert.details = excludedText
             _ = prompter.show(alert)
@@ -254,7 +250,7 @@ final class ReflectionCoordinator {
         store.refreshWriteBackups()
         guard let backup = session.writeBackups().first(where: \.isWrite) else {
             // 메뉴는 백업이 있을 때만 열린다. 그 사이 백업이 정리됐으면 창 대신 토스트로 알린다(#230).
-            store.toast = .notice(String(ui: "복원할 쓰기 기록이 없습니다"), String(ui: "DJCrate가 rekordbox에 쓴 적이 없거나 백업이 정리됐습니다."))
+            store.showToast(.notice(String(ui: "복원할 쓰기 기록이 없습니다"), String(ui: "DJCrate가 rekordbox에 쓴 적이 없거나 백업이 정리됐습니다.")))
             return
         }
         guard canStart() else { return }
@@ -265,7 +261,7 @@ final class ReflectionCoordinator {
     /// 백업은 쓰기가 남긴 이 저장소의 백업 폴더(`backupDirectory`)에서 찾는다(최근 쓰기 복원과 같은 곳).
     func startRestore(backupURL: URL) {
         guard let backup = Self.backup(matching: backupURL, in: session.writeBackups()) else {
-            store.toast = .notice(String(ui: "백업을 찾지 못했습니다"), backupURL.path)
+            store.showToast(.notice(String(ui: "백업을 찾지 못했습니다"), backupURL.path))
             return
         }
         guard canStart() else { return }

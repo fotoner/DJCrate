@@ -17,7 +17,7 @@ struct ITunesSyncTests {
         let ports: ((inout LibraryPorts) -> Void)? = withoutDatabase ? { $0.source = .withoutDatabase } : nil
         let database = root.appending(path: "master.db")
         return LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes.sync"), persist: false),
-                          resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                          activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                           backupDirectory: root.appending(path: "backups"),
                           playlistDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                           rekordboxDatabase: database,

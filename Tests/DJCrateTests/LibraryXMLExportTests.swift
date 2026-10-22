@@ -30,14 +30,14 @@ struct LibraryXMLExportTests {
     }
 
     func loadedStore(_ fixture: RekordboxFixture) async -> LibraryStore {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         await store.load(snapshot: fixture.database)
         return store
     }
 
     @Test func 불러온_라이브러리에서만_메뉴가_켜지고_내보내는_동안은_꺼진다() async throws {
         let fixture = try library()
-        let empty = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        let empty = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         #expect(!LibraryMenuAction.exportLibraryXML.isEnabled(in: LibraryWindowModel(store: empty)))
         #expect(LibraryMenuAction.exportLibraryXML.disabledReason(in: LibraryWindowModel(store: empty))?.contains("불러온") == true)
         let store = await loadedStore(fixture)

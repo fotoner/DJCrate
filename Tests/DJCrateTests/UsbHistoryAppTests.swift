@@ -53,7 +53,7 @@ struct UsbHistoryAppTests {
     static func newStore(_ fixture: RekordboxFixture, histories: UsbHistoryFiles? = nil) -> LibraryStore {
         let fixed = now
         return LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbhistory"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  ports: { ports in
@@ -174,7 +174,7 @@ struct UsbHistoryAppTests {
         let first = store.history.archivedHistories
         #expect(first.count == 1)
 
-        store.toast = nil
+        store.dismissToast()
         await usb.refresh()
         await store.history.waitForHistoryImports()
         await usb.localLibraryChanged()

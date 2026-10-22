@@ -17,7 +17,7 @@ struct StagedEditRaceTests {
 
     func store() throws -> (LibraryStore, StagedTrack) {
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                       saveTagDrafts: { _ in }, backupDirectory: home.appending(path: "backups"), playlistDraftSaver: { _ in },
                                       mergeDraftSaver: { _ in }, playlistImportURL: nil, draftHome: home)
         // 이미 추가한 곡 하나(그리드 추정·키 찾기가 끝나 목록 저장이 일어날 곡). 시험이 그 저장을 직접 일으키므로 BPM·키를 미리 채워

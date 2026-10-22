@@ -3,6 +3,7 @@ import DJCDomain
 import SwiftUI
 
 /// 창 아래에 잠깐 뜨는 알림. rekordbox 반영이 끝났을 때 결과와 되돌리기를 보여 준다.
+/// 띄우기는 `LibraryStore.showToast`로만 한다(띄운 알림은 모두 활동 기록에 남는다, #296).
 struct AppToast: Identifiable, Equatable {
     enum Kind: String, Codable {
         case success, warning, failure
@@ -50,29 +51,34 @@ struct AppToast: Identifiable, Equatable {
     var isUsb = false
     /// 아무것도 쓰지 않은 안내(지금은 못 함·할 것 없음). 쓰기 결과가 아니라 결과 보기를 붙이지 않는다(#230)
     var isNotice = false
+    /// 이 알림을 남긴 활동 기록 항목(결과 보기가 그 항목을 고른다). 띄울 때 `LibraryStore.showToast`가 정한다
+    var activityID: ActivityEntry.ID?
 
     /// 결과 보기 단추를 붙일지(rekordbox 쓰기 결과일 때만)
     var showsResult: Bool { !isUsb && !isNotice }
 
-    /// 창 대신 띄우는 안내. 경고는 닫을 때까지 남는다.
+    /// 창 대신 띄우는 안내(기본은 경고)
     static func notice(_ title: String, _ detail: String?, kind: Kind = .warning, isUsb: Bool = false) -> Self {
         Self(kind: kind, title: title, detail: detail?.isEmpty == true ? nil : detail, isUsb: isUsb, isNotice: true)
     }
 
-    /// 실패·경고는 사용자가 닫을 때까지 남긴다.
+    /// 저절로 닫히기까지의 시간(초). 성공·경고는 읽을 시간만큼(4초 + 글자마다 0.06초) 남기고, 단추가 있으면 누를 시간으로 적어도 7초 둔다.
+    /// 실패만 닫을 때까지 남긴다. 지나간 알림은 활동 기록에서 다시 본다(#296, #31 결정을 바꿈).
     var duration: Double {
-        switch kind {
-        case .success: undoBackup == nil && action == nil ? 3.5 : 7
-        case .warning, .failure: .infinity
-        }
+        guard kind != .failure else { return .infinity }
+        let reading = 4 + 0.06 * Double(title.count + (detail?.count ?? 0))
+        return undoBackup == nil && action == nil ? reading : max(reading, 7)
     }
     func automaticallyDismisses(voiceOverEnabled: Bool) -> Bool {
         duration.isFinite && !voiceOverEnabled
     }
 }
 
-/// 토스트 모양: 둥근 카드, 아이콘 + 제목 + 설명 + (되돌리기) + 닫기. 마우스를 올려 두면 사라지지 않는다.
+/// 토스트 모양: 둥근 카드, 아이콘 + 제목 + 설명 + (되돌리기) + 닫기. 마우스를 올려 두거나 단추에 키보드 포커스가 있으면 사라지지 않는다.
 struct AppToastView: View {
+    /// 키보드 포커스를 받을 수 있는 단추
+    private enum Control: Hashable { case details, action, undo, close }
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.textScale) private var textScale
     let toast: AppToast
@@ -81,6 +87,7 @@ struct AppToastView: View {
     var onAction: (() -> Void)?
     var onClose: () -> Void
     @State private var timer = AppToastTimer()
+    @FocusState private var focus: Control?
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -98,14 +105,17 @@ struct AppToastView: View {
             }
             .frame(maxWidth: TextScale.length(420, scale: textScale), alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
-            if let onDetails { Button(.ui("결과 보기"), action: onDetails).controlSize(ControlSize.small.scaled(textScale)) }
+            if let onDetails {
+                Button(.ui("결과 보기"), action: onDetails).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .details)
+            }
             if let onAction, let action = toast.action {
-                Button(action.title, action: onAction).controlSize(ControlSize.small.scaled(textScale))
+                Button(action.title, action: onAction).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .action)
             }
             if let onUndo, toast.undoBackup != nil {
                 Button(.ui("쓰기 전으로 복원"), action: onUndo)
                     .controlSize(ControlSize.small.scaled(textScale))
                     .help(.ui("라이브러리 전체를 이번 쓰기 전으로 복원합니다. rekordbox를 먼저 종료하세요."))
+                    .focused($focus, equals: .undo)
             }
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.scaled(.caption, textScale).bold())
@@ -116,6 +126,7 @@ struct AppToastView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(.ui("알림 닫기"))
                 .help(.ui("알림 닫기"))
+                .focused($focus, equals: .close)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .fixedSize(horizontal: true, vertical: false)
@@ -125,6 +136,8 @@ struct AppToastView: View {
         .selfTestFrame("toast.\(toast.id)")
         .onDisappear { SelfTestFrames.frames.removeValue(forKey: "toast.\(toast.id)") }
         .onHover { timer.hovering = $0 }
+        // 키보드로 단추에 간 동안은 읽고 누를 시간을 준다(#296)
+        .onChange(of: focus) { _, focus in timer.focused = focus != nil }
         .task(id: toast.id) { await timer.run(toast, close: onClose) }
     }
 

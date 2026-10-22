@@ -14,7 +14,7 @@ struct UsbSyncReadEpochTests {
     /// 기본은 명시한 사본(`--db`)으로 연 창. `explicitCopy`가 거짓이면 스냅샷을 뜰 수 있는 보통 실행(사본 rekordbox 폴더 없음)이다.
     private func store(_ fixture: RekordboxFixture, explicitCopy: Bool = true) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usb-epoch"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  rekordboxShareRoot: fixture.shareRoot,

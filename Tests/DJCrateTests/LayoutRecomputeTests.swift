@@ -40,7 +40,7 @@ struct LayoutRecomputeTests {
         UserDefaults.standard.set(CueListFilter.all.rawValue, forKey: SettingKeys.cueListFilter.name)
         let fixture = try historyFixture()
         let snapshot = ProcessInfo.processInfo.environment["DJC_LAYOUT_BENCHMARK_DB"].map { URL(filePath: $0) } ?? fixture.database
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                       rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
         await store.load(snapshot: snapshot)
         prepareStore(store)

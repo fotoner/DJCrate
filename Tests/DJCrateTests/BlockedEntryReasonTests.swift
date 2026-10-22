@@ -56,7 +56,7 @@ struct BlockedEntryReasonTests {
     @Test func 동기화_미확정_입력과_쓰기_대기_없음을_구분한다() throws {
         let folder = try TemporaryFolder()
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("entry"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), backupDirectory: folder.url.appending(path: "backups"),
+                                 activityLog: ActivityLog(url: nil), backupDirectory: folder.url.appending(path: "backups"),
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil,
                                  stagingSaver: { _ in }, draftHome: folder.url.appending(path: "drafts"),
                                  rekordboxDatabase: folder.url.appending(path: "master.db"), rekordboxShareRoot: folder.url.appending(path: "share"))

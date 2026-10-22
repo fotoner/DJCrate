@@ -18,7 +18,7 @@ struct DeckLoadTests {
     }
 
     func loadedStore(_ fixture: RekordboxFixture) async -> (LibraryStore, LoadLog) {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(activityLog: ActivityLog(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
         let log = LoadLog()
         store.onLoadToDeck = { log.rows.append($0) }
         await store.load(snapshot: fixture.database)

@@ -135,7 +135,7 @@ struct UsbExportJobLayoutTests {
         try fixture.add(TrackSpec(id: "101"))
         try fixture.add(PlaylistSpec(id: "11", name: "합성 목록", seq: 1, contentIDs: ["101", "101"]))
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usb-retry"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: fixture.root.appending(path: "drafts"), rekordboxShareRoot: fixture.shareRoot)

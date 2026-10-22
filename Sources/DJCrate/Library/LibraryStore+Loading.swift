@@ -169,10 +169,10 @@ extension LibraryStore {
         warmPreviewWaveforms(loaded.rows)
         if failedTagSaves().isEmpty { clearLibraryError() } else { reportLibraryError(DraftSaveFailure.tagSaveMessage) }
         if synchronizingDrafts {
-            toast = conflicts == 0
+            showToast(conflicts == 0
                 ? AppToast(title: String(ui: "현재 rekordbox 내용을 불러왔습니다"))
                 : AppToast(kind: .warning, title: String(ui: "태그 충돌을 확인하세요"),
-                           detail: String(ui: "같은 칸이 바뀐 \(conflicts)곡의 초안을 보존했습니다. 곡 정보에서 현재 값과 초안을 확인하세요."))
+                           detail: String(ui: "같은 칸이 바뀐 \(conflicts)곡의 초안을 보존했습니다. 곡 정보에서 현재 값과 초안을 확인하세요.")))
         }
         useCases.log("라이브러리 로드 \(ContinuousClock.now - started) · \(rows.count)곡")
         // 동기화 중 시작한 드래그는 메모리에만 있을 수 있어 덱을 덮지 않는다.

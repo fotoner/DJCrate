@@ -14,7 +14,7 @@ import Testing
 struct UsbSidebarTests {
     private func libraryStore() -> LibraryStore {
         LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usb"), persist: false),
-                     resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                     activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                      mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
     }
 

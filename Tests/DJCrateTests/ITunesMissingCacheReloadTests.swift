@@ -22,7 +22,7 @@ struct ITunesMissingCacheReloadTests {
         let previous = try LibrarySnapshot.take(from: sourceDB, into: directory, force: true, now: stamp)
         let defaults = TestDefaults.make("itunes-missing-cache")
         let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  arguments: ["test"], environment: [:])
@@ -122,7 +122,7 @@ struct ITunesMissingCacheReloadTests {
 
     func quietStore(_ fixture: RekordboxFixture) -> LibraryStore {
         LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes-loading"), persist: false),
-                     resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                     activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                      backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                      mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                      arguments: ["test", "--db", fixture.database.path], environment: [:])

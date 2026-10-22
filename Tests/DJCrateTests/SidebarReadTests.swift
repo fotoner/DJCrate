@@ -19,7 +19,7 @@ struct SidebarReadTests {
 
     @Test func 기록선택은_순번과_반복행을_보존하고_선택한곡은_한번만_편집한다() async throws {
         let fixture = try historyFixture()
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(activityLog: ActivityLog(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
         await store.load(snapshot: fixture.database)
         #expect(store.history.histories.map(\.id) == ["new-a", "new-b", "old", "undated"])
         store.sidebar = .history("new-a")
@@ -52,7 +52,7 @@ struct SidebarReadTests {
 
     @Test func 후보_사이드바는_검색해도_비교곡을_함께_보이고_스냅샷_갱신을_따른다() async throws {
         let fixture = try fixture()
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
+        let store = LibraryStore.test(activityLog: ActivityLog(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in })
         await store.load(snapshot: fixture.database)
         store.sidebar = .duplicates
         #expect(store.sidebarTitle == "중복 후보")

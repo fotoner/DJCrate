@@ -27,7 +27,7 @@ struct AsyncFailureGuidanceTests {
     /// DB를 열지 않는 시험은 임시 폴더만 준다(경로만 쓰고 파일은 만들지 않는다)
     private func store(root: URL) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("async"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: root.appending(path: "backups"), playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in },
                                  playlistImportURL: nil, stagingSaver: { _ in }, draftHome: root.appending(path: "drafts"),
                                  rekordboxDatabase: root.appending(path: "master.db"), rekordboxShareRoot: root.appending(path: "share"),

@@ -17,7 +17,7 @@ struct ITunesStatusLabelTests {
     private func store(root: URL) -> LibraryStore {
         let defaults = TestDefaults.make("itunes-status-label")
         return LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
-                            resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                            activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                             backupDirectory: root.appending(path: "backups"), playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in },
                             playlistImportURL: nil, stagingSaver: { _ in }, draftHome: root.appending(path: "drafts"),
                             arguments: ["test", "--db", root.appending(path: "master.db").path], environment: [:])

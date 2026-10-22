@@ -278,7 +278,9 @@ extension FakeUsbWriteService.State {
 /// 토스트를 받는 가짜 앱
 @MainActor
 final class FakeUsbWriteHost: UsbWriteHost {
-    var toast: AppToast?
+    private(set) var toast: AppToast?
+    func showToast(_ toast: AppToast) { self.toast = toast }
+    func dismissToast(_ id: AppToast.ID?) { if id == nil || toast?.id == id { toast = nil } }
 }
 
 extension UsbTestData {
@@ -467,11 +469,11 @@ struct UsbWriteCoordinatorTests {
         await coordinator(usb, running: true).export(job())
         #expect(await coordinator(usb, running: true).preview(job()) == nil)
         #expect(service.current.calls.isEmpty)
-        // 창을 띄우지 않고 닫을 때까지 남는 경고 토스트로 알린다(#230)
+        // 창을 띄우지 않고 경고 토스트로 알린다(#230). 경고는 읽을 시간이 지나면 닫힌다(#296)
         #expect(prompter.shown.isEmpty)
         #expect(host.toast?.title == UsbWriteFlow.Text.rekordboxRunningTitle && host.toast?.kind == .warning)
         #expect(host.toast?.detail == UsbWriteFlow.Text.rekordboxRunningDetail)
-        #expect(host.toast?.isUsb == true && host.toast?.showsResult == false && host.toast?.duration == .infinity)
+        #expect(host.toast?.isUsb == true && host.toast?.showsResult == false && host.toast?.duration.isFinite == true)
         #expect(usb.busyVolumes.isEmpty)
     }
 
@@ -520,7 +522,7 @@ struct UsbWriteCoordinatorTests {
 
         // 나중에: 아무것도 하지 않는다
         service.update { $0.calls = [] }
-        host.toast = nil
+        host.dismissToast(nil)
         prompter.choices = [.cancel]
         await coordinator(usb).offerRecovery(image)
         #expect(service.current.calls.isEmpty)

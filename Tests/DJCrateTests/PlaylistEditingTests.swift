@@ -36,7 +36,7 @@ struct PlaylistEditingTests {
     init() {
         let saved = saved
         store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("playlists"), persist: false),
-                             resultHistory: WriteResultHistory(), saveTagDrafts: { _ in }, playlistDraftSaver: { saved.last = $0 })
+                             activityLog: ActivityLog(), saveTagDrafts: { _ in }, playlistDraftSaver: { saved.last = $0 })
         store.undoManager = undo
         store.phase = .loaded
         for id in ["1", "2", "3", "4"] { store.rowsByID[id] = Self.row(id) }

@@ -264,7 +264,7 @@ struct RecoverySheetTests {
         let expected: [Target] = [.draft("A", .tags), .draft("A", .cues), .draft("B", .tags), .draft("B", .grid), .draft("C", .cues)]
         #expect(prompter.reviewed.first?.lines.map(\.id) == expected.map { Self.request(scenario, $0).id })
         // 다른 이유로 막힌 곡의 이유는 결과(토스트·결과 보기)에 남는다.
-        let result = try #require(scenario.store.resultHistory.latest)
+        let result = try #require(scenario.store.activityLog.latest?.result)
         #expect(result.text.contains("합성 곡 D"), "막힌 이유가 결과에 없음: \(result.text)")
     }
 
@@ -277,7 +277,7 @@ struct RecoverySheetTests {
         await ReflectionCoordinator.test(store: scenario.store, prompter: prompter)
             .write(rows: [try #require(scenario.rows["D"])], playlists: false)
         #expect(prompter.reviewed.isEmpty && prompter.shown.isEmpty && scenario.store.recoverySheet == nil)
-        let result = try #require(scenario.store.resultHistory.latest)
+        let result = try #require(scenario.store.activityLog.latest?.result)
         #expect(result.text.contains("합성 곡 D") && scenario.store.toast != nil)
     }
 
@@ -393,13 +393,13 @@ struct RecoverySheetTests {
         let reflection = ReflectionCoordinator.test(store: store)
         for entry in [{ reflection.startWrite(rows: [a]) }, { reflection.startAddTracks(rows: [a]) },
                       { reflection.startDeleteTracks(rows: [a]) }, { reflect.perform(in: LibraryWindowModel(store: store), reflection: reflection) }] {
-            store.toast = nil
+            store.dismissToast()
             entry()
             #expect(store.toast?.isNotice == true, "쓰지 않은 까닭을 안내한다")
             #expect(store.writeTask == nil && !store.isWritingRekordbox)
         }
         // 비교 창을 또 열려 해도 안내한다.
-        store.toast = nil
+        store.dismissToast()
         reflection.startRecovery(row: a, kind: .tags)
         #expect(store.toast?.isNotice == true && store.writeTask == nil)
         sheet.cancel()

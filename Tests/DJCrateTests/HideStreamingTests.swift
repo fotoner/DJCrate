@@ -44,7 +44,7 @@ struct HideStreamingTests {
         let defaults = defaults ?? TestDefaults.make("hide-streaming")
         let settings = SettingsStore(defaults: defaults, persist: persist)
         if persist { defaults.set(hideStreaming, forKey: SettingKeys.hideStreaming.name) }
-        let store = LibraryStore.test(settings: settings, resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(settings: settings, activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: fixture.database,

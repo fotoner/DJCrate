@@ -13,7 +13,7 @@ struct SidebarObservationTests {
     private final class Flag: @unchecked Sendable { var fired = false }
 
     private func store() -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
     }
 
     /// `body`를 한 번 계산하는 동안 읽은 값 중 `change`가 바꾸는 것이 있는지.
@@ -100,7 +100,7 @@ struct SidebarObservationTests {
         #expect(reads({ SidebarGridJobRow(staging: $0.staging) }, before: { $0.staging.gridJob = GridJob(done: 1, total: 5) }) {
             $0.staging.gridJob = GridJob(done: 2, total: 5)
         })
-        #expect(reads({ SidebarLastWriteResultRow(store: $0) }) { $0.isWritingRekordbox = true })
+        #expect(reads({ SidebarActivityLogRow(store: $0) }) { $0.isWritingRekordbox = true })
     }
 
     @Test func 그리드_추정_중_표시는_시작과_끝에만_바뀐다() {

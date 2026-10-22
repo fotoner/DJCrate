@@ -25,7 +25,7 @@ struct WriteFollowUpTests {
 
     func makeStore(_ fixture: RekordboxFixture) async -> (LibraryStore, Calls) {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("follow-up"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  backupDirectory: fixture.backups,
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: fixture.root.appending(path: "drafts"),
@@ -157,7 +157,7 @@ struct WriteFollowUpTests {
                                 directory: grids)
         try GainDraftStore.save(-2, trackUUID: gainOnly, url: gain)
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("unlinked"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { [writer] in writer.save($0, directory: tags) }, backupDirectory: fixture.backups,
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: home, writer: writer)

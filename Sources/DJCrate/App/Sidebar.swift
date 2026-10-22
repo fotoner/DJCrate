@@ -31,7 +31,7 @@ struct Sidebar: View {
                     .tag(SidebarItem.staged)
                 SidebarPendingRow(store: store)
                     .tag(SidebarItem.pending)
-                SidebarLastWriteResultRow(store: store)
+                SidebarActivityLogRow(store: store)
                 // 진행 줄은 넣고 빼야 해서 본문이 시작·끝만 읽고, 진행(done/total)은 줄이 읽는다.
                 if store.staging.hasGridJob { SidebarGridJobRow(staging: store.staging) }
                 if store.staging.hasXMLExportJob { SidebarXMLExportRow(staging: store.staging) }
@@ -94,14 +94,14 @@ struct SidebarPendingRow: View {
     }
 }
 
-struct SidebarLastWriteResultRow: View {
+struct SidebarActivityLogRow: View {
     let store: LibraryStore
-    /// 쓰기 결과 시트를 든 주 창 모델(사이드바 본문에 클로저를 넣지 않으려고 환경 값으로 받는다)
+    /// 활동 기록 시트를 든 주 창 모델(사이드바 본문에 클로저를 넣지 않으려고 환경 값으로 받는다)
     @Environment(\.libraryWindow) private var window
 
     var body: some View {
-        Button { window?.showWriteResult() } label: {
-            Label(.ui("마지막 쓰기 결과…"), systemImage: "doc.text.magnifyingglass")
+        Button { window?.showActivityLog() } label: {
+            Label(.ui("활동 기록…"), systemImage: "doc.text.magnifyingglass")
         }
         .buttonStyle(.plain)
         .disabled(store.isWritingRekordbox)

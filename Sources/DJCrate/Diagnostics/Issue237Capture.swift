@@ -90,11 +90,11 @@ enum Issue237Capture {
 
         let backup = DJCPaths.userData.appending(path: "synthetic-backup")
         store.lastWriteBackup = backup
-        store.toast = AppToast(kind: .warning, title: String(ui: "일부 곡을 썼습니다"),
-                               detail: String(ui: "합성 데이터의 화면 배치 시험입니다"), undoBackup: backup)
+        store.showToast(AppToast(kind: .warning, title: String(ui: "일부 곡을 썼습니다"),
+                                 detail: String(ui: "합성 데이터의 화면 배치 시험입니다"), undoBackup: backup))
         try await settle()
         try captureWindow(window, to: path("toast"))
-        store.toast = nil
+        store.dismissToast()
 
         store.sidebar = .pending
         try await settle()

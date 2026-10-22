@@ -13,7 +13,7 @@ struct HistoryStoreObservationTests {
     private final class Flag: @unchecked Sendable { var fired = false }
 
     private func store() -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
     }
 
     /// `read`가 읽은 값 가운데 `change`가 바꾸는 것이 있는지

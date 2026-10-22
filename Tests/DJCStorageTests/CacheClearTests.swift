@@ -39,7 +39,7 @@ struct CacheClearTests {
         "playlist-drafts.json", "staged.json", "playlist-imports.json", "damaged-drafts/a.json", "usb-drafts/V.json",
         "usb-sessions/V.lock", "usb-staging/s1/x.bin", "usb-physical-allow.json", "usb-physical-deny.json",
         "rekordbox-backups/20260101-write/master.db", "usb-backups/V/20260101-export/x.bin", "edits/a.wav",
-        "reflection.json", "last-write-result.json",
+        "reflection.json", "last-write-result.json", "activity-log.json",
     ]
 
     func seedCaches(_ scene: Scene) throws {

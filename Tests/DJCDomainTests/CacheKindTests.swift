@@ -11,7 +11,7 @@ struct CacheKindTests {
         "cue-drafts", "grid-drafts", "tag-drafts", "artwork-drafts", "gain-drafts.json", "playlist-drafts.json",
         "staged.json", "playlist-imports.json", "damaged-drafts", "usb-drafts", "usb-sessions", "usb-staging",
         "usb-physical-allow.json", "usb-physical-deny.json", "rekordbox-backups", "usb-backups", "edits",
-        "merge-drafts.json", "reflection.json", "last-write-result.json",
+        "merge-drafts.json", "reflection.json", "last-write-result.json", "activity-log.json",
     ]
 
     let root = URL(filePath: "/private/tmp/djc-cache-kind-\(UUID())")

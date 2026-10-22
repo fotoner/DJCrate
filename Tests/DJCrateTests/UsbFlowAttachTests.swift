@@ -18,7 +18,7 @@ struct UsbFlowAttachTests {
     @Test("떼면 흐름도 없고, 다시 붙이면 새 UsbStore·새 쓰기 창구로 만들며 결과는 스토어에 알린다")
     func detachAndReattach() throws {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbattach"), persist: false),
-                                 resultHistory: WriteResultHistory(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
+                                 activityLog: ActivityLog(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
         #expect(store.usbCoordinator == nil && store.usbEdits == nil)
 
         let first = FakeUsbWriteService(), second = FakeUsbWriteService()
@@ -38,7 +38,7 @@ struct UsbFlowAttachTests {
         #expect(secondUsb.writeService as? FakeUsbWriteService === second)
         // 흐름의 결과 알림은 스토어로 간다(약한 창구)
         let host = try #require(store.usbCoordinator?.host)
-        host.toast = .notice("합성 알림", "합성", isUsb: true)
+        host.showToast(.notice("합성 알림", "합성", isUsb: true))
         #expect(store.toast?.title == "합성 알림")
     }
 }

@@ -21,7 +21,7 @@ struct PlaylistSidebarModelTests {
 
     init() {
         store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("playlist-sidebar"), persist: false),
-                                  resultHistory: WriteResultHistory(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
+                                  activityLog: ActivityLog(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
         store.phase = .loaded
         for id in ["1", "2", "3"] { store.rowsByID[id] = PlaylistEditingTests.row(id) }
         // 맨 위: 폴더 F(접힌 자식 폴더 N · 목록 A[1,2]) · 펼친 다른 폴더 O · 접힌 다른 폴더 C

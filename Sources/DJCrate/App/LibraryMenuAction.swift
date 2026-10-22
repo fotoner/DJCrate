@@ -2,10 +2,10 @@ import DJCDomain
 import SwiftUI
 
 enum LibraryMenuAction: CaseIterable {
-    case addFiles, importAppleMusic, snapshot, exportXML, exportLibraryXML, importRekordboxXML, reflect, pending, writeResult, restore, pointSnapshots, removeTracks
+    case addFiles, importAppleMusic, snapshot, exportXML, exportLibraryXML, importRekordboxXML, reflect, pending, activityLog, restore, pointSnapshots, removeTracks
 
     static let fileActions: [Self] = [.addFiles, .importAppleMusic, .snapshot, .exportXML, .exportLibraryXML, .importRekordboxXML]
-    static let rekordboxActions: [Self] = [.reflect, .pending, .writeResult, .restore, .pointSnapshots, .removeTracks]
+    static let rekordboxActions: [Self] = [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks]
 
     var title: String {
         switch self {
@@ -19,7 +19,7 @@ enum LibraryMenuAction: CaseIterable {
         case .importRekordboxXML: String(ui: "rekordbox XML 가져오기…")
         case .reflect: String(ui: "rekordbox에 쓰기")
         case .pending: String(ui: "쓰기 대기 목록 보기")
-        case .writeResult: String(ui: "마지막 쓰기 결과…")
+        case .activityLog: String(ui: "활동 기록…")
         case .restore: String(ui: "쓰기 전으로 복원…")
         // 라이브러리 읽기 사본(스냅샷)과 달리 DB·분석 파일·앨범아트를 한 시점으로 남기고 되돌린다(#224).
         case .pointSnapshots: String(ui: "시점 스냅샷…")
@@ -58,7 +58,7 @@ enum LibraryMenuAction: CaseIterable {
             guard case .loaded = store.phase else { return false }
             return store.snapshotURL != nil && !store.isLoading && !window.xmlImport.isBusy
         case .reflect: return store.pendingLibraryCount > 0 || store.playlists.hasPlaylistDrafts || store.history.hasHistoryDrafts
-        case .pending, .writeResult: return true
+        case .pending, .activityLog: return true
         case .restore: return store.hasWriteBackup
         case .pointSnapshots: return true
         case .removeTracks: return !store.deleteTargets(store.selectedRows).isEmpty
@@ -86,7 +86,7 @@ enum LibraryMenuAction: CaseIterable {
         case .importRekordboxXML: LibraryXMLPanels.importXML(into: window.xmlImport)
         case .reflect: reflection?.startWrite(rows: store.reflectionPreviewRows)
         case .pending: store.sidebar = .pending
-        case .writeResult: window.showWriteResult()
+        case .activityLog: window.showActivityLog()
         case .restore: reflection?.startRestoreLatest()
         case .pointSnapshots: if let reflection { windows?.pointSnapshots.open(store: store, reflection: reflection) }
         case .removeTracks: reflection?.startDeleteTracks(rows: store.selectedRows)
@@ -112,9 +112,9 @@ enum LibraryMenuAction: CaseIterable {
         case .importRekordboxXML:
             return window.xmlImport.isBusy
                 ? String(ui: "지금 가져오는 XML이 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 가져오세요")
-        case .restore: return String(ui: "쓰기 전 백업이 없으니 마지막 쓰기 결과를 확인하세요")
+        case .restore: return String(ui: "쓰기 전 백업이 없으니 활동 기록을 확인하세요")
         case .addFiles, .importAppleMusic: return String(ui: "라이브러리를 먼저 불러온 뒤 곡을 추가하세요")
-        case .pending, .writeResult, .pointSnapshots: return nil
+        case .pending, .activityLog, .pointSnapshots: return nil
         }
     }
 }

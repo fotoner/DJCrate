@@ -45,7 +45,7 @@ struct LibraryWindowModelTests {
 
     @Test func 스냅샷_단추는_강제_여부를_그대로_넘긴다() async {
         let forces = Mutex<[Bool]>([])
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), takeLiveSnapshot: { force in
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), takeLiveSnapshot: { force in
             forces.withLock { $0.append(force) }
             throw SnapshotRefused()
         })
@@ -59,7 +59,7 @@ struct LibraryWindowModelTests {
         let folder = try TemporaryFolder()
         let text = folder.url.appending(path: "메모.txt")
         try Data("음원이 아님".utf8).write(to: text)
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), stagingSaver: { _ in })
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), stagingSaver: { _ in })
         let window = LibraryWindowModel(store: store)
         await window.addDroppedFiles([NSItemProvider(object: text as NSURL)]).value
         // 음원이 아니라 추가하지 않고 이유를 알린다(곡 추가까지 왔다는 뜻)
@@ -84,7 +84,7 @@ struct LibraryWindowModelTests {
         let folder = try TemporaryFolder()
         let text = folder.url.appending(path: "메모.txt")
         try Data("음원이 아님".utf8).write(to: text)
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), stagingSaver: { _ in })
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), stagingSaver: { _ in })
         let window = LibraryWindowModel(store: store)
         store.isWritingRekordbox = true
         await window.addDroppedFiles([NSItemProvider(object: text as NSURL)]).value
@@ -96,7 +96,7 @@ struct LibraryWindowModelTests {
         let track = TrackSpec(id: "101")
         try fixture.add(track)
         let home = fixture.root.appending(path: "drafts")
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), backupDirectory: fixture.backups, draftHome: home)
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), backupDirectory: fixture.backups, draftHome: home)
         await store.load(snapshot: fixture.database)
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         let app = AppComposition(store: store, deck: deck)
@@ -112,7 +112,7 @@ struct LibraryWindowModelTests {
     // MARK: - 주 창이 띄우는 시트(#254)
 
     private func store() -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
     }
 
     @Test func 조립_지점이_주_창_모델을_한_번_만들어_든다() {
@@ -122,15 +122,20 @@ struct LibraryWindowModelTests {
         #expect(app.libraryWindow.store === store)
     }
 
-    @Test func 쓰기_결과_시트는_주_창_모델이_든다() {
+    @Test func 활동_기록_시트는_주_창_모델이_든다() {
         let window = LibraryWindowModel(store: store())
-        #expect(!window.showingWriteResult)
-        window.showWriteResult()
-        #expect(window.showingWriteResult)
-        // 메뉴(rekordbox › 마지막 쓰기 결과…)도 같은 시트를 띄운다
-        window.showingWriteResult = false
-        LibraryMenuAction.writeResult.perform(in: window)
-        #expect(window.showingWriteResult)
+        #expect(window.activityLog == nil)
+        let older = window.store.activityLog.record(AppToast.notice("이전 안내", nil))
+        let newest = window.store.activityLog.record(AppToast.notice("새 안내", nil))
+        window.showActivityLog()
+        #expect(window.activityLog?.selection == newest)
+        // 알림의 결과 보기는 그 알림의 항목을 고른다(#296)
+        window.showActivityLog(selecting: older)
+        #expect(window.activityLog?.selection == older)
+        // 메뉴(rekordbox › 활동 기록…)도 같은 시트를 띄운다
+        window.activityLog = nil
+        LibraryMenuAction.activityLog.perform(in: window)
+        #expect(window.activityLog?.selection == newest)
     }
 
     @Test func 연결되지_않은_초안_시트는_띄울_때마다_새_모델이다() {

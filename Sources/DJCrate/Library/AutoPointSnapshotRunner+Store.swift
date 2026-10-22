@@ -23,6 +23,6 @@ extension AutoPointSnapshotRunner {
             files: files, now: { .now }, calendar: .current),
                   errorText: { AppErrorMessage.message(for: $0) },
                   log: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) },
-                  onFailure: { [weak store] title, text in store?.toast = .notice(title, text) })
+                  onFailure: { [weak store] title, text in store?.showToast(.notice(title, text)) })
     }
 }

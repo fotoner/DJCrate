@@ -74,11 +74,11 @@ struct ReflectionPromptLayoutTests {
 
     /// 곡이 많아도 쓴 곡마다의 결과는 쓰기 결과에 남는다(묻지 않고 모두 쓰는 판정은 반영 세션 시험).
     @Test func 그리드와_게인_각_100곡을_쓴_결과는_곡마다_남는다() throws {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(), feedback: AppFeedback(announce: { _ in }))
+        let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { _ in }))
         let report = Fixture.preview(cues: [], grids: (1...100).map { Fixture.outcome("grid-\($0)", .written, added: 64) },
                                      gains: (1...100).map { Fixture.outcome("gain-\($0)", .written, added: -250) }).report
         ReflectionPresenter(store: store, prompter: ScriptedPrompter()).publish(.written(report, preview: report, followUp: []))
-        let lines = try #require(store.resultHistory.latest).text.components(separatedBy: "\n")
+        let lines = try #require(store.activityLog.latest?.result).text.components(separatedBy: "\n")
         #expect(lines.contains("• 곡 grid-100 — 그리드 쓰기 완료") && lines.contains("• 곡 gain-100 — 게인 쓰기 완료"))
     }
 

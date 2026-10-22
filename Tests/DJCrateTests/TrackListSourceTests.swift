@@ -29,7 +29,7 @@ struct TrackListSourceTests {
         var draftPreviewCues: [String: [PreviewCueMark]] = [:]
         var deckTrackID: String?
         @ObservationIgnored let library = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("track-list-source"), persist: false),
-                                                            resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+                                                            activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         @ObservationIgnored private(set) var madeCoordinators = 0
 
         func makeTrackListCoordinator(actions: TrackListActions?, reflection: ReflectionCoordinator?) -> TrackListCoordinator {
@@ -83,7 +83,7 @@ struct TrackListSourceTests {
 
     @Test func 라이브러리_저장소는_표가_읽는_값을_그대로_내준다() {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("track-list-source-store"), persist: false),
-                                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+                                      activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         let source: any TrackListSource = store
         store.sidebar = .usb(.collection(volumeKey: "합성"))
         #expect(source.isUsbSelection)
@@ -93,7 +93,7 @@ struct TrackListSourceTests {
 
     @Test func 덱의_이전·다음_단추는_곡을_고르고_덱에_올린다() {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("deck-library-source"), persist: false),
-                                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+                                      activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         let row = TrackListTagEditTests.row("7")
         store.rowsByID[row.id] = row
         var loaded: [String?] = []

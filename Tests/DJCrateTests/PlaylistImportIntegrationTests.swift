@@ -14,7 +14,7 @@ import Testing
 struct PlaylistImportIntegrationTests {
     func store(saver: @escaping (PlaylistDraft) throws -> Void = { _ in }) -> LibraryStore {
         LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("imports"), persist: false),
-                     resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: saver,
+                     activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: saver,
                      playlistImportURL: nil, stagingSaver: { _ in })
     }
 
@@ -87,7 +87,7 @@ struct PlaylistImportIntegrationTests {
         defer { try? FileManager.default.removeItem(at: home) }
         let file = try AudioFixture.wav(seconds: 0.1, in: home)
         let destination = home.appending(path: "blocked")
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                  playlistDraftSaver: { _ in }, playlistImportURL: destination, stagingSaver: { _ in })
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         store.playlists.rekordboxPlaylists = PlaylistLayout([(.init(id: "P", name: "세트"), 1)])
