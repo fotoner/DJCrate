@@ -26657,6 +26657,22 @@
         }
       }
     },
+    "모두 보기…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show All…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべて表示…"
+          }
+        }
+      }
+    },
     "모두 비우기" : {
       "localizations" : {
         "en" : {
@@ -40007,6 +40023,22 @@
         }
       }
     },
+    "읽지 않음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unread"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未読"
+          }
+        }
+      }
+    },
     "임시 폴더 아래의 경로만 쓸 수 있습니다(%@)" : {
       "localizations" : {
         "en" : {
@@ -44507,6 +44539,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最大ピーク（dBFS、ゲイン後）。0dBFSを%lld回超えました — ゲインを下げてください。クリックすると記録を消去します。"
+          }
+        }
+      }
+    },
+    "최근 알림" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent Notifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近の通知"
+          }
+        }
+      }
+    },
+    "최근 알림을 봅니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows recent notifications"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近の通知を表示します"
           }
         }
       }
@@ -50439,6 +50503,34 @@
         }
       }
     },
+    "활동 기록, 읽지 않은 알림 %lld건" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Activity Log, %lld unread notification"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Activity Log, %lld unread notifications"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティビティ履歴、未読の通知%lld件"
+          }
+        }
+      }
+    },
     "활동 기록…" : {
       "localizations" : {
         "en" : {
@@ -50451,6 +50543,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "アクティビティ履歴…"
+          }
+        }
+      }
+    },
+    "활동 기록에서 보기…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show in Activity Log…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティビティ履歴で表示…"
           }
         }
       }

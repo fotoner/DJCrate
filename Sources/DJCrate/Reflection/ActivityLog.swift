@@ -15,6 +15,8 @@ struct ActivityEntry: Codable, Equatable, Identifiable {
     var date: Date
     /// 잇달아 뜬 횟수(바로 앞과 같은 알림은 합친다)
     var count = 1
+    /// 다른 알림이 떠 있어 띄우지 못하고 기록만 남겼다(#298). 옛 기록 파일에는 없는 칸이라 nil은 거짓이다
+    var unshown: Bool?
 
     init(kind: AppToast.Kind, title: String, detail: String?, result: WriteResult? = nil, date: Date) {
         self.kind = kind
@@ -26,6 +28,22 @@ struct ActivityEntry: Codable, Equatable, Identifiable {
 
     init(_ result: WriteResult, date: Date) {
         self.init(kind: result.kind, title: result.title, detail: result.text, result: result, date: date)
+    }
+
+    /// 상태 줄이 읽지 않은 수로 셀 항목인지: 경고·실패, 그리고 띄우지 못한 알림(종류와 관계없이)
+    var needsAttention: Bool { kind != .success || unshown == true }
+
+    /// 목록 줄의 시각(분까지)
+    var listTime: String { date.formatted(Self.timeFormat(seconds: false)) }
+    /// 자세한 내용의 시각(초까지)
+    var detailTime: String { date.formatted(Self.timeFormat(seconds: true)) }
+
+    /// 목록과 자세한 내용의 시각 형식. 둘 다 같은 칸에 시를 두 자리로 쓰고 자세한 내용만 초를 더한다.
+    /// 시스템 형식(`.shortened`·`.standard`)은 24시간제 한국어에서 「01:15」와 「1:15:40」으로 시 자릿수가 갈렸다(#298)
+    static func timeFormat(seconds: Bool, locale: Locale = .autoupdatingCurrent, timeZone: TimeZone = .autoupdatingCurrent) -> Date.FormatStyle {
+        let minutes = Date.FormatStyle(locale: locale, timeZone: timeZone)
+            .year().month(.abbreviated).day().hour(.twoDigits(amPM: .abbreviated)).minute(.twoDigits)
+        return seconds ? minutes.second(.twoDigits) : minutes
     }
 
     /// 바로 앞 항목과 같은 알림인지. 쓰기 결과는 백업까지 같아야 한다(다른 쓰기의 백업 위치를 잃지 않게).
@@ -94,10 +112,12 @@ final class ActivityLog {
         return Self.joined([read, saveFailure])
     }
 
-    /// 창 알림을 남기고 그 항목(합쳤으면 합친 항목)을 돌려준다.
+    /// 창 알림을 남기고 그 항목(합쳤으면 합친 항목)을 돌려준다. `shown`이 거짓이면 다른 알림이 떠 있어 띄우지 못하고 기록만 남긴 알림이다.
     @discardableResult
-    func record(_ toast: AppToast) -> ActivityEntry.ID {
-        append(ActivityEntry(kind: toast.kind, title: toast.title, detail: toast.detail, date: now()))
+    func record(_ toast: AppToast, shown: Bool = true) -> ActivityEntry.ID {
+        var entry = ActivityEntry(kind: toast.kind, title: toast.title, detail: toast.detail, date: now())
+        if !shown { entry.unshown = true }
+        return append(entry)
     }
 
     /// 쓰기 결과를 남긴다. 자세한 내용은 결과의 전체 문구다.
@@ -111,6 +131,8 @@ final class ActivityLog {
         if var last = entries.first, last.repeats(entry) {
             last.date = entry.date
             last.result = entry.result
+            // 마지막으로 뜬 때 보였는지를 따른다
+            last.unshown = entry.unshown
             last.count += 1
             entries[0] = last
         } else {

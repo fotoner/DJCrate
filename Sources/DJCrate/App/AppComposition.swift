@@ -33,6 +33,8 @@ final class AppComposition {
     let listActionBar: ListActionBarModel
     /// 주 창 화면 모델(주 창이 띄우는 시트와 단추·메뉴 입구). 주 창을 다시 그려도 같은 모델을 쓴다.
     let libraryWindow: LibraryWindowModel
+    /// 창 아래 상태 줄 화면 모델(#298): 활동 단추의 읽지 않은 수와 활동 팝오버. 알림의 [열기]도 이 모델로 팝오버를 연다
+    let statusBar: StatusBarModel
     /// 설정 › AI 에이전트 화면 모델(#262). 설정 창과 켤 때 알림이 함께 쓴다. 화면 시험의 조립(`init(store:deck:)`)은 nil이다
     /// (사용자 홈의 `~/.claude*`·`~/.agents`·`~/.local/bin`을 읽거나 쓰지 않게)
     let agentTools: AgentToolsSettingsModel?
@@ -48,8 +50,10 @@ final class AppComposition {
     let keys = KeyRouter()
     private var connected = false
 
+    /// - Parameter persistsActivityReadMark: 상태 줄의 읽음 기준을 설정에 남길지. 진단 실행(캡처·자가 테스트)은 사용자 설정을 바꾸지 않게 거짓이다
     init(settings: SettingsStore, store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
-         agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil, link: LinkBarModel? = nil) {
+         agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil, link: LinkBarModel? = nil,
+         persistsActivityReadMark: Bool = true) {
         self.link = link
         self.settings = settings
         self.updater = updater
@@ -65,7 +69,9 @@ final class AppComposition {
         playlistSidebar = PlaylistSidebarModel(playlists: store.playlists)
         listActionBar = ListActionBarModel(store: store)
         libraryWindow = LibraryWindowModel(store: store)
+        statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
         libraryWindow.agentTools = agentTools
+        statusBar.showLog = { [weak window = libraryWindow] in window?.showActivityLog(selecting: $0) }
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
@@ -111,7 +117,8 @@ final class AppComposition {
         return AppComposition(settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store),
                               agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
                               updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
-                                  : linkBar(store: store, deck: deck))
+                                  : linkBar(store: store, deck: deck),
+                              persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments))
     }
 
     /// 자가 테스트·측정·캡처 실행의 LINK 막대: 장치 찾기를 붙이지 않는다(LNK-6). LINK 캡처만 포트 없는 가상 장치를 보인다
@@ -305,7 +312,7 @@ final class AppComposition {
         windows.flip.attach(editLinks)
         #if DEBUG
         DevSelfTests.runIfRequested(store: store, deck: deck, windows: windows, reflection: reflection, playlistSidebar: playlistSidebar,
-                                    libraryWindow: libraryWindow)
+                                    libraryWindow: libraryWindow, statusBar: statusBar)
         DevSelfTests.runAsyncGuidanceCaptureIfRequested(store: store, deck: deck)
         UsbMigrateCapture.runIfRequested(store: store)
         UsbSnapshotCapture.runIfRequested(store: store)

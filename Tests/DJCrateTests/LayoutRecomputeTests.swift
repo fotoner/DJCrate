@@ -23,7 +23,8 @@ import Testing
 struct LayoutRecomputeTests {
     /// 합성 곡 하나를 덱에 올린 주 창(사이드바 열림)
     private func mainWindow(width: Double = 1440, waveformHeight: Double = 150,
-                            prepareStore: (LibraryStore) -> Void = { _ in }) async throws -> (window: NSWindow, deck: DeckModel, close: () -> Void) {
+                            prepareStore: (LibraryStore) -> Void = { _ in },
+                            prepareApp: (AppComposition) -> Void = { _ in }) async throws -> (window: NSWindow, deck: DeckModel, close: () -> Void) {
         _ = NSApplication.shared
         let settingNames = [SettingKeys.sidebarVisible.name, SettingKeys.showTagEditor.name, SettingKeys.sheetMode.name, SettingKeys.waveformHeight.name, SettingKeys.cueListFilter.name]
         let savedSettings = settingNames.map { UserDefaults.standard.object(forKey: $0) }
@@ -45,7 +46,9 @@ struct LayoutRecomputeTests {
         await store.load(snapshot: snapshot)
         prepareStore(store)
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
-        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: AppComposition(store: store, deck: deck), windowFrameRestored: false))
+        let app = AppComposition(store: store, deck: deck)
+        prepareApp(app)
+        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: app, windowFrameRestored: false))
         let window = UnconstrainedWindow(contentViewController: controller)
         window.isReleasedWhenClosed = false
         cleanup = { window.close(); restoreSettings() }
@@ -91,6 +94,38 @@ struct LayoutRecomputeTests {
         }
         print("TRACE 선택별 목록 첫 줄:", positions)
         #expect(positions.allSatisfy { abs($0 - positions[0]) < 0.5 })
+    }
+
+    /// 창 아래 상태 줄(#298)의 읽지 않은 수는 상태 줄만 읽는다. 알림이 쌓이고 팝오버를 여닫아도 주 창 본문을 다시 계산하지 않는다.
+    @Test func 활동_기록이_쌓이고_팝오버를_여닫아도_주_창_본문은_다시_계산하지_않는다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var captured: AppComposition?
+        let (window, _, close) = try await mainWindow(prepareApp: { captured = $0 })
+        defer { close() }
+        let statusBar = try #require(captured?.statusBar)
+        // 창을 띄운 직후 늦게 자리 잡는 배치(파형 높이 맞춤)가 멎을 때까지 기다린 뒤 센다
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+        PerfProbe.resetBodyCounts()
+        for index in 0..<5 {
+            statusBar.log.record(AppToast.notice("레이아웃 시험 경고 \(index)", nil))
+            try await settle(window)
+        }
+        #expect(statusBar.unreadCount == 5)
+        print("TRACE 활동 기록 5건:", PerfProbe.bodySummary() ?? "-")
+        statusBar.togglePopover()
+        try await settle(window)
+        statusBar.togglePopover()
+        try await settle(window)
+        print("TRACE 활동 기록 5건·팝오버 여닫기:", PerfProbe.bodySummary() ?? "-")
+        #expect(statusBar.unreadCount == 0)
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("StatusBar") >= 5)
     }
 
     @Test func 창_폭을_조금씩_바꿔도_주_창_본문은_거의_다시_계산되지_않는다() async throws {

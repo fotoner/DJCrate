@@ -186,6 +186,17 @@ struct ActivityLogTests {
         #expect(FileManager.default.fileExists(atPath: legacy.path))
     }
 
+    /// 시스템 형식은 24시간제 한국어에서 목록 「01:15」, 자세히 「1:15:40」으로 시 자릿수가 갈렸다(#296 캡처, #298)
+    @Test(arguments: ["ko_KR@hours=h23", "ko_KR", "ja_JP", "en_US@hours=h23"])
+    func 목록과_자세히의_시각은_같은_형식에_초만_더한다(_ locale: String) throws {
+        let utc = try #require(TimeZone(identifier: "UTC"))
+        // 2026-09-21 01:15:40 UTC
+        let date = Date(timeIntervalSince1970: 1_789_948_800 + 4_540)
+        let list = date.formatted(ActivityEntry.timeFormat(seconds: false, locale: Locale(identifier: locale), timeZone: utc))
+        let detail = date.formatted(ActivityEntry.timeFormat(seconds: true, locale: Locale(identifier: locale), timeZone: utc))
+        #expect(detail == list + ":40")
+    }
+
     // MARK: - 창 알림과 잇기
 
     @Test func 창_알림을_띄우면_활동_기록에_남고_알림이_그_항목을_가리킨다() throws {

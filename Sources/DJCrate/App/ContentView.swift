@@ -50,6 +50,9 @@ struct ContentView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let link = app.link { LinkBar(model: link) }
                 }
+                // 창 맨 아래 상태 줄(#298). LINK 막대처럼 상세 열 안에 둔다: 사이드바를 접어도 상세 열은 늘 있고,
+                // 분할 화면 전체 아래에 붙이면 열의 화면이 막대를 덮었다(#274). 읽지 않은 수는 상태 줄만 읽는다
+                .safeAreaInset(edge: .bottom, spacing: 0) { StatusBar(model: app.statusBar) }
                 // 본문(덱·목록)에 바로 붙이면 인스펙터를 연 뒤 임시 높이의 본문 사본이 생겨, 창 크기를 바꿀 때마다
                 // 크기 측정이 진짜 본문과 번갈아 와서 본문을 두 번씩 다시 계산했다(#138). 상세 열 전체에 붙인다.
                 .inspector(isPresented: inspectorPresented) {
@@ -59,15 +62,17 @@ struct ContentView: View {
                 .task(id: showTagEditor) { await InspectorReveal.follow(showTagEditor, shown: $inspectorContentShown) }
                 .modifier(LibraryWindowTitle(store: store))
                 .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
-                // 위쪽 알림 줄(스냅샷 오류·반영·곡 추가)과 겹치지 않게 아래에 띄운다(#122).
+                // 위쪽 알림 줄(스냅샷 오류·반영·곡 추가)과 겹치지 않게 아래에 띄운다(#122). 덮개는 아래 덧댄 상태 줄의 자리를 모르므로
+                // 그 높이만큼 올린다(#298)
                 .overlay(alignment: .bottom) {
                     if let toast = store.toast {
                         AppToastView(toast: toast,
                                      onUndo: toast.undoBackup.map { url in { store.dismissToast(); app.reflection.startRestore(backupURL: url) } },
                                      onDetails: toast.showsResult ? { window.showActivityLog(selecting: toast.activityID) } : nil,
+                                     onOpen: toast.opensActivity ? { store.dismissToast(toast.id); app.statusBar.open(toast.activityID) } : nil,
                                      onAction: toast.action.map { action in { window.performToastAction(action) } },
                                      onClose: { store.dismissToast(toast.id) })
-                            .padding(.bottom, 16)
+                            .padding(.bottom, 16 + StatusBar.height)
                             .padding(.horizontal, 16)
                             .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                             .id(toast.id)

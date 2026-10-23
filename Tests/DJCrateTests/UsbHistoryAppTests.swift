@@ -160,6 +160,30 @@ struct UsbHistoryAppTests {
         #expect(store.playlists.playlistItem(created)?.trackIDs == ["102", "101"])
     }
 
+    /// 경고가 저절로 닫히게 된 뒤(#296)에도 가져오기 알림이 경고를 덮지 않게 하되, 버리지 않고 활동 기록에 남긴다(#298)
+    @Test("경고 알림이 떠 있으면 가져오기 알림은 덮지 않고 활동 기록에만 남겨 읽지 않은 수에 넣는다")
+    func importNoticeBehindWarningIsRecorded() async throws {
+        let scratch = Self.scratch()
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let fixture = try historyFixture()
+        let store = try await Self.libraryStore(fixture, histories: Self.histories(scratch))
+        store.showToast(.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        let warning = try #require(store.toast)
+        let (host, _) = Self.host()
+        let usb = UsbTestData.store(host, local: Self.localKeys())
+        await Self.connect(store, usb)
+        await usb.refresh()
+        await store.history.waitForHistoryImports()
+
+        #expect(store.history.archivedHistories.count == 1)
+        #expect(store.toast?.id == warning.id)
+        let entry = try #require(store.activityLog.latest)
+        #expect(entry.title == "USB에서 재생 기록 1개를 가져왔습니다" && entry.kind == .success && entry.unshown == true)
+        #expect(store.activityLog.entries.count == 2)
+        // 띄우지 못한 알림도 떠 있던 경고와 함께 상태 줄의 읽지 않은 수에 든다
+        #expect(StatusBarModel(log: store.activityLog, settings: store.settings).unreadCount == 2)
+    }
+
     @Test("같은 USB를 다시 읽거나 앱을 다시 켜도 보존 기록이 늘지 않고 알리지 않는다")
     func rereadDoesNotDuplicate() async throws {
         let scratch = Self.scratch()

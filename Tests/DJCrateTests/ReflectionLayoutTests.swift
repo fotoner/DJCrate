@@ -36,12 +36,14 @@ struct ReflectionLayoutTests {
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
         store.showToast(AppToast(kind: .warning, title: "배치 시험 결과", detail: "합성 데이터로 확인합니다"))
         let toastID = try #require(store.toast?.id)
-        let toastKey = "toast.\(toastID)", contentKey = "reflectionLayout.\(toastID)"
+        let app = AppComposition(store: store, deck: deck)
+        let toastKey = "toast.\(toastID)", contentKey = "reflectionLayout.\(toastID)", barKey = app.statusBar.frameKey
         defer {
             SelfTestFrames.frames.removeValue(forKey: toastKey)
             SelfTestFrames.frames.removeValue(forKey: contentKey)
+            SelfTestFrames.frames.removeValue(forKey: barKey)
         }
-        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: AppComposition(store: store, deck: deck))
+        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: app)
             .defaultAppStorage(defaults).selfTestFrame(contentKey))
         let window = NSWindow(contentViewController: controller)
         window.isReleasedWhenClosed = false
@@ -66,13 +68,16 @@ struct ReflectionLayoutTests {
         }
         let content = try #require(SelfTestFrames.frames[contentKey])
         let toast = try #require(SelfTestFrames.frames[toastKey])
+        let bar = try #require(SelfTestFrames.frames[barKey])
         let bottomInset = content.maxY - toast.maxY
-        print("[알림 배치] 본문=\(content) 알림=\(toast) 아래 여백=\(bottomInset) 창 표시=\(window.isVisible) 화면 모드=\(appearance)")
+        print("[알림 배치] 본문=\(content) 알림=\(toast) 상태 줄=\(bar) 아래 여백=\(bottomInset) 창 표시=\(window.isVisible) 화면 모드=\(appearance)")
         #expect(settled == 2)
         #expect(!toast.isEmpty)
         #expect(toast.midY > content.midY)
         #expect(bottomInset * window.backingScaleFactor > 8)
-        #expect(abs(bottomInset - 16) < 1)
+        // 창 맨 아래 상태 줄(#298)과 겹치지 않게 그 줄 위 16pt에 뜬다
+        #expect(abs(bar.maxY - content.maxY) < 1 && abs(bar.height - StatusBar.height) < 1)
+        #expect(abs(bar.minY - toast.maxY - 16) < 1)
         #expect(content.contains(toast))
         #expect(!window.isVisible)
     }

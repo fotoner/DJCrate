@@ -38,17 +38,20 @@ struct ActivityLogView: View {
     }
 }
 
-/// 목록 한 줄: 종류 아이콘 + 제목 + 시각(같은 알림이 잇달아 떴으면 횟수)
+/// 목록 한 줄: 종류 아이콘 + 제목 + 시각(같은 알림이 잇달아 떴으면 횟수). 활동 팝오버(#298)도 같은 줄을 쓴다
 struct ActivityLogRow: View {
+    /// 아이콘 칸 폭. 아이콘마다 폭이 달라 실패 줄 제목이 2~3pt 밀렸다(#298). 칸을 고정해 제목 줄을 맞춘다
+    static let iconWidth: CGFloat = 18
     let entry: ActivityEntry
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: entry.kind.icon).foregroundStyle(entry.kind.tint)
+                .frame(width: Self.iconWidth)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.title).lineLimit(2)
                 HStack(spacing: 6) {
-                    Text(entry.date.formatted(date: .abbreviated, time: .shortened))
+                    Text(entry.listTime)
                     if entry.count > 1 { Text(verbatim: "×\(entry.count)").monospacedDigit() }
                 }
                 .font(.caption)
@@ -67,7 +70,7 @@ struct ActivityEntryDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(entry.title, systemImage: entry.kind.icon).font(.headline).foregroundStyle(entry.kind.tint)
-            Text(entry.date.formatted(date: .abbreviated, time: .standard)).foregroundStyle(.secondary)
+            Text(entry.detailTime).foregroundStyle(.secondary)
             if entry.count > 1 {
                 Text(.ui("같은 알림이 잇달아 \(entry.count)번 떴습니다. 시각은 마지막으로 뜬 때입니다."))
                     .font(.callout).foregroundStyle(.secondary)
