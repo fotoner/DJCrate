@@ -4,7 +4,7 @@ import Foundation
 
 extension LibraryStore {
     func stageMerge(_ draft: DuplicateMergeDraft) throws {
-        guard !isWritingRekordbox else { return }
+        guard !libraryBusy else { return }
         try setMergeDrafts(MergeDuplicates.staging(draft, onto: mergeDrafts, pending: pendingUUIDs, playlistDraftEmpty: playlists.playlistDraft.isEmpty))
     }
 
@@ -16,7 +16,7 @@ extension LibraryStore {
         refreshBase()
         guard let undoManager else { return }
         undoManager.registerUndo(withTarget: self) { target in
-            guard !target.isWritingRekordbox else { return }
+            guard !target.libraryBusy else { return }
             do { try target.setMergeDrafts(before) }
             catch { target.reflectionMessage = AppMessage(kind: .warning, text: error.localizedDescription) }
         }
@@ -35,10 +35,10 @@ extension LibraryStore {
     }
 
     func prepareMerge(keeping id: String, removing: [String], prompter: any ReflectionPrompter = AlertPrompter()) async {
-        guard let snapshotURL, !isWritingRekordbox else { return }
+        guard let snapshotURL, !libraryBusy else { return }
         do {
             let draft = try await useCases.merge.draft(keeping: id, removing: removing, snapshot: snapshotURL)
-            guard !isWritingRekordbox else { return }
+            guard !libraryBusy else { return }
             // 초안 단계는 같은 음원인지 비교만 한다. 잃는 정보는 rekordbox에 쓸 때 한 번 경고로 묻는다(#212).
             let paths = rowsByID.filter { ([id] + removing).contains($0.key) }.mapValues(\.track.folderPath)
             if prompter.show(MergeDuplicates.confirmation(draft, paths: paths)) { try stageMerge(draft) }

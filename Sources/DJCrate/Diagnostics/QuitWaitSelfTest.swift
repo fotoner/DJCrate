@@ -64,12 +64,12 @@ enum QuitWaitSelfTest {
             @MainActor func arm() { if powerOff { store.isPoweringOff = true } }
             @MainActor func disarm() { store.isPoweringOff = false }
             @MainActor func reachWritingStage() async -> Bool {
-                let reached = await until(60) { store.isWritingRekordbox && store.writeStage?.phase == .writing }
-                log("쓰는 단계 도달=\(reached) · 단계=\(store.writeStage?.text ?? "-") · 잠금=\(store.isWritingRekordbox)")
+                let reached = await until(60) { store.quitBlocked && store.writeStage?.phase == .writing }
+                log("쓰는 단계 도달=\(reached) · 단계=\(store.writeStage?.text ?? "-") · 잠금=\(store.quitBlocked)")
                 return reached
             }
             @MainActor func finishWrite() async -> Bool {
-                await until(60) { !store.isWritingRekordbox && store.writeTask == nil }
+                await until(60) { !store.quitBlocked && store.writeTask == nil }
             }
             @MainActor func elapsed() -> Int { store.quitWait.current?.elapsedSeconds(at: Date()) ?? -1 }
 
@@ -79,7 +79,7 @@ enum QuitWaitSelfTest {
             arm()
             requestQuit()
             check(await until(5) { store.quitWait.isWaiting }, "1. 종료 요청 → 기다림 시작(앱은 끝나지 않았다)")
-            check(store.isWritingRekordbox, "1. 기다리는 동안 쓰기는 계속된다")
+            check(store.quitBlocked, "1. 기다리는 동안 쓰기는 계속된다")
             await wait(1.2)
             check(elapsed() >= 1, "1. 지난 시간이 흐른다(\(elapsed())초)")
             if let capture { capturePanel(capture, "waiting-card.jpg") }
@@ -106,7 +106,7 @@ enum QuitWaitSelfTest {
                 requestQuit(inEventLoop: false)
                 check(await until(3) { !store.quitWait.isWaiting }, "2. 종료를 한 번 더 요청하면 종료만 취소된다")
             }
-            check(store.isWritingRekordbox, "2. 쓰기는 계속된다")
+            check(store.quitBlocked, "2. 쓰기는 계속된다")
             check(await finishWrite(), "2. 쓰기가 끝까지 갔다")
             disarm()
 
@@ -116,7 +116,7 @@ enum QuitWaitSelfTest {
             let expectedRating = rating
             _ = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
                 MainActor.assumeIsolated {
-                    log("종료 직전: 쓰기 잠금=\(store.isWritingRekordbox) · 단계=\(store.writeStage?.text ?? "-") · 남은 평점 초안=\(store.tagDrafts[rated.track.uuid] != nil) · 쓴 평점=\(expectedRating)")
+                    log("종료 직전: 쓰기 잠금=\(store.quitBlocked) · 단계=\(store.writeStage?.text ?? "-") · 남은 평점 초안=\(store.tagDrafts[rated.track.uuid] != nil) · 쓴 평점=\(expectedRating)")
                 }
             }
             check(failures == 0, "3. 앞 단계가 모두 통과했다(\(failures)건 실패)")

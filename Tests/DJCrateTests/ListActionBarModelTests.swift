@@ -61,7 +61,7 @@ struct ListActionBarModelTests {
         #expect(!model.isAddBlocked(targets))
         #expect(model.addHelp == String(ui: "고른 곡(없으면 추가 목록 전체)을 확인한 뒤 rekordbox 컬렉션에 넣습니다."))
         store.isWritingRekordbox = true
-        #expect(model.isAddBlocked(targets) && model.isWritingRekordbox)
+        #expect(model.isAddBlocked(targets) && model.libraryBusy && model.editsFrozen)
         store.isWritingRekordbox = false
         openRecoverySheet(store)
         #expect(model.isAddBlocked(targets))

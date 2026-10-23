@@ -15,7 +15,7 @@ struct BlockedEntryReasonTests {
         let notLoaded = try #require(h.deck.trackEditUnavailableReason)
         try await h.loaded()
         #expect(h.deck.trackEditUnavailableReason == nil && h.deck.canOpenTrackEdit)
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         // 불러온 곡에서 막는 것은 쓰기 잠금뿐이고, 그 이유는 불러오기 전 이유와 다르다
         let locked = try #require(h.deck.trackEditUnavailableReason)
         #expect(locked != notLoaded)
@@ -34,7 +34,7 @@ struct BlockedEntryReasonTests {
         #expect(h.deck.hotCue(slot: 0)?.loop?.end == 3)
         h.deck.grid = BeatGrid(beats: [.init(number: 1, bpm: 120, time: 0)])
         #expect(h.deck.hotCueCreationUnavailableReason == nil)
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         #expect(h.deck.hotCueCreationUnavailableReason != nil, "그리드가 있어도 쓰는 중에는 막는다")
     }
 

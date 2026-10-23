@@ -46,7 +46,7 @@ extension ReflectionCoordinator {
             store.showToast(.notice(String(ui: "막힌 초안 비교가 이미 열려 있습니다"), String(ui: "열려 있는 비교 창에서 저장하거나 취소한 뒤 다시 여세요.")))
             return
         }
-        guard !requests.isEmpty, !store.isRecoveringDraft, !store.isWritingRekordbox, store.writeTask == nil else { return }
+        guard !requests.isEmpty, !store.isRecoveringDraft, !store.libraryBusy, store.writeTask == nil else { return }
         let store = store
         store.writeTask = Task {
             defer { store.writeTask = nil }

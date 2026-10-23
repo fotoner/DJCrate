@@ -29,7 +29,8 @@ final class ListActionBarModel {
     }
 
     var sidebar: SidebarItem { store.sidebar }
-    var isWritingRekordbox: Bool { store.isWritingRekordbox }
+    var libraryBusy: Bool { store.libraryBusy }
+    var editsFrozen: Bool { store.editsFrozen }
 
     // MARK: - 추가한 곡
 
@@ -39,7 +40,7 @@ final class ListActionBarModel {
         return selectedStaged.isEmpty ? staging.stagedRows : selectedStaged
     }
 
-    func isAddBlocked(_ targets: [TrackRow]) -> Bool { targets.isEmpty || store.isWritingRekordbox || store.writesBlockedBySheet }
+    func isAddBlocked(_ targets: [TrackRow]) -> Bool { targets.isEmpty || store.libraryBusy || store.writesBlockedBySheet }
 
     var addHelp: String {
         store.writesBlockedBySheet ? LibraryStore.writesBlockedBySheetReason
@@ -67,7 +68,7 @@ final class ListActionBarModel {
     func displayName(_ history: ArchivedHistory) -> String { store.history.displayName(history) }
 
     func isWriteBlocked(targets: [TrackRow], playlistEdits: Int, histories: Int) -> Bool {
-        (targets.isEmpty && playlistEdits == 0 && histories == 0) || store.isWritingRekordbox || store.writesBlockedBySheet
+        (targets.isEmpty && playlistEdits == 0 && histories == 0) || store.libraryBusy || store.writesBlockedBySheet
     }
 
     var writeHelp: String {
@@ -81,7 +82,7 @@ final class ListActionBarModel {
     func discardPlaylistDrafts() { PlaylistPanels.discardAll(store: store) }
     func exportPendingXML(_ rows: [TrackRow]) { ReflectionPanels.export(store: store, rows: rows) }
 
-    var isRestoreBlocked: Bool { store.isWritingRekordbox || !store.hasWriteBackup || store.writesBlockedBySheet }
+    var isRestoreBlocked: Bool { store.libraryBusy || !store.hasWriteBackup || store.writesBlockedBySheet }
 
     var restoreHelp: String {
         store.writesBlockedBySheet ? LibraryStore.writesBlockedBySheetReason
@@ -106,7 +107,7 @@ final class ListActionBarModel {
     }
 
     func playlistNode(_ id: String) -> PlaylistOutlineNode? { store.playlists.playlistIndex[id] }
-    var isPlaylistRecoveryBlocked: Bool { store.isWritingRekordbox || store.isRecoveringDraft || store.writeTask != nil }
+    var isPlaylistRecoveryBlocked: Bool { store.libraryBusy || store.isRecoveringDraft || store.writeTask != nil }
     func discardPlaylistDraft(_ id: String) { store.playlists.discardPlaylistDraft(id) }
 
     // MARK: - USB

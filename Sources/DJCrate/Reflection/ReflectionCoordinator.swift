@@ -228,7 +228,7 @@ final class ReflectionCoordinator {
             return false
         }
         if store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return false }
-        return !blocked && !store.isWritingRekordbox && store.writeTask == nil
+        return !blocked && !store.libraryBusy && store.writeTask == nil
     }
 
     private func start(_ work: @escaping @MainActor () async -> Void) {

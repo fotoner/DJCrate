@@ -76,13 +76,22 @@ struct WriteLockPolicyTests {
         }
     }
 
-    @Test func 준비부터_다시읽기까지_라이브러리_조작을_거절한다() {
-        for cancellable in [true, false] {
-            let policy = WriteLockPolicy(isWriting: true, canCancelPreparation: cancellable)
-            #expect(!policy.allowsLibraryInteraction)
-        }
+    /// 종료 판단은 `AppQuitPolicy`(#300)가, 라이브러리 조작 거절은 저장소의 용도별 값(#301)이 한다. 이 구조체는 키 입력만 가른다
+    @Test func 쓰지_않을_때는_키를_막지_않는다() {
         let unlocked = WriteLockPolicy(isWriting: false)
-        #expect(unlocked.allowsLibraryInteraction)
         #expect(!unlocked.blocksKey(49, in: .init()))
+    }
+
+    /// 쓰는 동안 용도별 값이 모두 켜지고 끝나면 꺼진다(#301). 종료 판단(`writeActivity`)도 `quitBlocked`를 따른다
+    @MainActor @Test func 쓰는_동안_라이브러리_조작과_종료를_거절한다() {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        #expect(!store.libraryBusy && !store.editsFrozen && !store.quitBlocked)
+        #expect(store.writeActivity.rekordbox == .idle)
+        store.setWriteLock(true)
+        #expect(store.libraryBusy && store.editsFrozen && store.quitBlocked)
+        #expect(store.writeActivity.rekordbox != .idle)
+        store.setWriteLock(false)
+        #expect(!store.libraryBusy && !store.editsFrozen && !store.quitBlocked)
+        #expect(store.writeActivity.rekordbox == .idle)
     }
 }

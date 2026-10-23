@@ -45,7 +45,7 @@ final class TrackStagingStore {
     }
 
     /// 곡을 추가해도 되는지(rekordbox에 쓰는 동안은 추가 목록을 바꾸지 않는다, `WriteLockPolicy`)
-    var allowsLibraryInteraction: Bool { library.writeLockPolicy.allowsLibraryInteraction }
+    var libraryBusy: Bool { library.libraryBusy }
 
     // MARK: - 추가한 곡
 
@@ -111,7 +111,7 @@ final class TrackStagingStore {
     /// (XML로 다시 가져오면 rekordbox의 기존 큐·그리드를 덮을 수 있다).
     func addFiles(_ urls: [URL], appleMusicOrigins: [String: [AppleMusicOrigin]] = [:],
                   createPlaylists: Bool = false, toPlaylist playlistID: String? = nil) async {
-        guard library.writeLockPolicy.allowsLibraryInteraction,
+        guard !library.libraryBusy,
               playlistID.map({ library.playlists.canEditTracks(of: $0) }) ?? true else { return }
         let stage = library.useCases.stage
         let files = stage.audioFiles(in: urls)
@@ -121,7 +121,7 @@ final class TrackStagingStore {
         }
         let addition = await stage.add(files, current: staged, library: library.rows, origins: appleMusicOrigins)
         // 태그를 읽는 동안 반영이 시작되면 추가 목록도 바꾸지 않는다.
-        guard library.writeLockPolicy.allowsLibraryInteraction else { return }
+        guard !library.libraryBusy else { return }
         stagingMessage = nil
         // 읽는 동안 다른 곳(그리드 추정·편집본 넣기)이 고친 줄은 그대로 두고 결과만 얹어 저장하고, 재생 목록에 이으면 연결 기록을 더해 저장한다(유스케이스).
         let linksPlaylists = createPlaylists || playlistID != nil

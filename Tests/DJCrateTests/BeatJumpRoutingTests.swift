@@ -166,7 +166,7 @@ struct BeatJumpRoutingTests {
         try await h.loaded()
         h.deck.suggestions = [10, 20]
         h.deck.seek(12)
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         h.deck.step(beats: 1)
         h.deck.jumpToSuggestion(forward: true)
         h.deck.acceptNearestSuggestion()

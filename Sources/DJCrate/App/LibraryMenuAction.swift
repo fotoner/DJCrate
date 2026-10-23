@@ -41,10 +41,18 @@ enum LibraryMenuAction: CaseIterable {
     /// rekordbox 라이브러리에 쓰는 동작(막힌 초안 비교 창이 열려 있는 동안은 막는다, #232)
     private var writesLibrary: Bool { self == .reflect || self == .restore || self == .removeTracks }
 
+    /// 쓰는 동안 이 항목을 막는 잠금. 화면만 옮기는 항목(쓰기 대기 목록·활동 기록)은 편집 잠금, 읽기·쓰기·가져오기는 라이브러리 내부 배타를 따른다.
+    @MainActor private func isLocked(by store: LibraryStore) -> Bool {
+        switch self {
+        case .pending, .activityLog: store.editsFrozen
+        default: store.libraryBusy
+        }
+    }
+
     /// 메뉴 막대·툴바는 주 창 모델로 메뉴 항목을 보고 부른다. 판정은 공유 핵심의 값을, XML 가져오기는 주 창 모델이 든 가져오기를 본다
     @MainActor func isEnabled(in window: LibraryWindowModel) -> Bool {
         let store = window.store
-        guard store.writeLockPolicy.allowsLibraryInteraction else { return false }
+        guard !isLocked(by: store) else { return false }
         if writesLibrary, store.writesBlockedBySheet { return false }
         switch self {
         case .addFiles: return !store.rows.isEmpty
@@ -96,7 +104,7 @@ enum LibraryMenuAction: CaseIterable {
     @MainActor func disabledReason(in window: LibraryWindowModel) -> String? {
         guard !isEnabled(in: window) else { return nil }
         let store = window.store
-        if !store.writeLockPolicy.allowsLibraryInteraction { return String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") }
+        if isLocked(by: store) { return String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") }
         if writesLibrary, store.writesBlockedBySheet { return LibraryStore.writesBlockedBySheetReason }
         switch self {
         case .snapshot:

@@ -103,7 +103,7 @@ struct DJCrateApp: App {
                     NSApp.sendAction(#selector(SheetTableView.fillDown(_:)), to: nil, from: nil)
                 }
                 .keyboardShortcut("d", modifiers: .command)
-                .disabled(!store.canFillDownTags || store.isWritingRekordbox)
+                .disabled(!store.canFillDownTags || store.editsFrozen)
             }
         }
         .defaultSize(width: 1440, height: 900)

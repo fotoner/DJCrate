@@ -143,7 +143,7 @@ final class SheetTableView: NSTableView, NSViewToolTipOwner {
     }
 
     var canEditSelection: Bool {
-        guard let coordinator, !coordinator.store.isWritingRekordbox else { return false }
+        guard let coordinator, !coordinator.store.editsFrozen else { return false }
         let rect = coordinator.selectionRect
         return rect.rows.contains { row in
             rect.columns.contains { coordinator.editableKey(row: row, column: $0) != nil }

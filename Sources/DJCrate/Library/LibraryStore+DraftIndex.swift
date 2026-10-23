@@ -26,13 +26,13 @@ extension LibraryStore {
     /// 읽는 사이 앱에서 초안을 고쳤거나(저장 입력·태그·앨범아트·초안 표시) 덱에서 큐·그리드를 끌기 시작했으면 결과를 버리고
     /// 다음 확인에서 다시 읽는다.
     func refreshExternalDrafts() async {
-        guard case .loaded = phase, !isWritingRekordbox else { return }
+        guard case .loaded = phase, !libraryBusy else { return }
         let watch = useCases.watch
         externalDraftRefreshCount += 1
         let request = externalDraftRefreshCount
         let tags = tagRevision, artwork = artworkChangeCount, marks = draftMarkRevision, playlist = playlists.playlistDraftRevision
         let refresh = await watch.refresh(since: draftFileStamps, preservingDamaged: location.movesDamagedDrafts)
-        guard request == externalDraftRefreshCount, case .loaded = phase, !isWritingRekordbox, allowsLibrarySync?() ?? true,
+        guard request == externalDraftRefreshCount, case .loaded = phase, !libraryBusy, allowsLibrarySync?() ?? true,
               watch.saveRevision() == refresh.saveRevision, tagRevision == tags,
               artworkChangeCount == artwork, draftMarkRevision == marks, playlists.playlistDraftRevision == playlist else {
             // 이 확인이 옮긴 손상 파일은 다음 확인이 다시 보지 못하니 결과를 버려도 알리고 메모리 태그 초안을 다시 저장한다(#174).

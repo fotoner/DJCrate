@@ -91,7 +91,7 @@ final class XMLImportModel {
                 return try await importer.makeDrafts(comparison, selection: selection, context: store.xmlImportContext())
             },
             draftsChanged: { [weak store] in await store?.refreshExternalDrafts() },
-            isWriting: { [weak store] in store?.isWritingRekordbox ?? false },
+            isWriting: { [weak store] in store?.libraryBusy ?? false },
             fail: { [weak store] in store?.staging.stagingMessage = AppMessage(kind: .failure, text: $0) }))
     }
 
