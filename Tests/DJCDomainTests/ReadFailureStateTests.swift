@@ -15,6 +15,6 @@ struct ReadFailureStateTests {
         let failure = LibraryReadFailure(stage: stage, keepsPreviousLibrary: previous)
         #expect(failure.stage == stage)
         #expect(failure.message.contains("이전 목록") == previous)
-        #expect(failure.message.contains("확인"))
+        #expect(failure.cause == .other)
     }
 }

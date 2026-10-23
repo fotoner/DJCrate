@@ -61,6 +61,8 @@ public enum LibraryReadChange: Sendable {
     case damagedDrafts([DamagedDraftFile])
     /// 읽기 실패. 오류는 진단 기록에 남긴다
     case readFailed(LibraryReadFailure, any Error)
+    /// 설치된 rekordbox가 쓰기를 확인한 버전이 아니다(읽기는 됐다). 화면은 목록 위 알림으로 알린다(인자: 설치된 버전)
+    case unsupportedRekordbox(String)
 }
 
 /// 한 번 읽은 결과(화면이 곡 목록·초안 표시에 넣는다)

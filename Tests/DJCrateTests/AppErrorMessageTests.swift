@@ -42,6 +42,7 @@ struct AppErrorMessageTests {
             return
         }
         #expect(store.lastReadFailure == LibraryReadFailure(stage: .opening, keepsPreviousLibrary: false))
-        #expect(message == "라이브러리 사본을 열지 못했으니 사본과 파일 접근 권한을 확인한 뒤 다시 불러오세요")
+        // 사본(DJCrate가 만든 파일)을 못 연 것은 rekordbox 문제로 가르지 않는다
+        #expect(message == "라이브러리를 읽지 못했습니다")
     }
 }

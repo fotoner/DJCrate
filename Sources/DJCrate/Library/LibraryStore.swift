@@ -103,6 +103,8 @@ final class LibraryStore {
         self.feedback = feedback
         self.launch = launch
         readFlow = LibraryReadFlow(loader: useCases.load, location: location)
+        // 자가 테스트·측정·캡처 실행은 읽을 사본이 없어도 자동으로 읽지 않는다(그 상태에 기대는 캡처 장면이 있다)
+        readFlow.readsOnFirstRun = launch.readsOnFirstRun
         music = MusicLibraryStore(readFlow: readFlow)
         readFlow.screen = readScreen
         music.host = musicHost
@@ -328,6 +330,14 @@ final class LibraryStore {
     @ObservationIgnored var playlistDraftUnlock: (@Sendable () -> Void)?
     /// 쓰는 동안 덱 큐 편집을 잠근다
     var onWriteLock: ((Bool) -> Void)?
+    /// 쓰기·복원 확인 창이 떠 있다(잠금은 걸려 있고 아직 쓰지 않았다). 종료 판정이 단계를 가른다(#300)
+    var isAwaitingConfirmation = false
+    /// 쓰기가 실패해 복원까지 실패한 경고창이 떠 있다. 이 창을 확인하기 전에는 앱을 끄지 않는다(#300)
+    var isAwaitingAcknowledgement = false
+    /// Mac을 끄는 중(로그아웃·재시작·전원 끔). 새 rekordbox 쓰기를 시작하지 않는다(#300)
+    var isPoweringOff = false
+    /// 종료를 기다리는 중(「rekordbox에 쓰는 중… 끝나면 종료합니다」)
+    let quitWait = QuitWaitModel()
     /// rekordbox에 쓰거나 되돌린 곡(UUID). 덱이 그 곡이면 다시 읽는다. 새 스냅샷을 읽은 뒤에만 부른다(#175).
     var onRekordboxWritten: ((Set<String>) -> Void)?
     /// 성공한 라이브러리 읽기 수(쓰기 뒤 다시 읽기가 실제로 끝났는지 본다)
@@ -443,6 +453,12 @@ final class LibraryStore {
         } else {
             phase = .failed(failure.message)
         }
+    }
+
+    /// 원인 분류 없이 실패 화면으로 간다(사본을 뜨지 않은 이유 등). 이전 실패의 원인을 끌고 오지 않는다.
+    func showUnclassifiedFailure(_ message: String) {
+        lastReadFailure = nil
+        phase = .failed(message)
     }
 
     func reportLibraryError(_ message: String) { lastError = message }

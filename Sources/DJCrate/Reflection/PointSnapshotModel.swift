@@ -25,18 +25,22 @@ final class PointSnapshotModel {
     @ObservationIgnored private let busy: () -> String?
     @ObservationIgnored private let prompter: any ReflectionPrompter
     @ObservationIgnored private let now: () -> Date
+    /// 복원 실패 경고창을 띄우는 동안 확인 중으로 표시한다(앱 종료가 그 창을 건너뛰지 않게, #300)
+    @ObservationIgnored private let whileAcknowledging: @MainActor (() -> Bool) -> Bool
     /// 복원(앱은 반영 세션 `restorePointSnapshot`: 쓰기 잠금·다시 읽기까지, 대상은 쓰기와 같은 곳)
     @ObservationIgnored private let restoreAction: @MainActor (RekordboxPointSnapshotEntry, Set<String>) async throws -> RekordboxPointRestoreReport
 
     /// - Parameter restore: 시점 스냅샷으로 되돌린다(바뀌는 곡을 받는다)
     init(points: PointSnapshots, autoDays: @escaping () -> Int = { Int(SettingKeys.pointSnapshotAutoDays.defaultValue) },
          busyReason: @escaping () -> String? = { nil }, prompter: any ReflectionPrompter = AlertPrompter(), now: @escaping () -> Date = { .now },
+         whileAcknowledging: @escaping @MainActor (() -> Bool) -> Bool = { $0() },
          restore: @escaping @MainActor (RekordboxPointSnapshotEntry, Set<String>) async throws -> RekordboxPointRestoreReport) {
         self.points = points
         self.autoDays = autoDays
         self.busy = busyReason
         self.prompter = prompter
         self.now = now
+        self.whileAcknowledging = whileAcknowledging
         restoreAction = restore
     }
 
@@ -45,8 +49,12 @@ final class PointSnapshotModel {
         let settings = store.settings, snapshots = points.directory
         self.init(points: points, autoDays: { Int(settings.value(SettingKeys.pointSnapshotAutoDays)) },
                   busyReason: { [weak store] in
-                      store?.isWritingRekordbox == true ? String(ui: "rekordbox에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 누르세요") : nil
+                      // Mac을 끄는 중이거나 종료를 기다리는 중에는 새 쓰기를 시작하지 않는다(#300)
+                      if let refusal = store?.writeRefusal { return refusal }
+                      return store?.isWritingRekordbox == true ? String(ui: "rekordbox에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 누르세요") : nil
                   },
+                  // 복원까지 실패한 경고창을 확인하기 전에는 앱을 끄지 않는다(#300)
+                  whileAcknowledging: { [weak store] ask in store?.whileAwaitingAcknowledgement(ask) ?? ask() },
                   restore: { [weak reflection] entry, changed in
                       guard let reflection else { throw CancellationError() }
                       return try await reflection.restorePointSnapshot(entry.url, snapshots: snapshots, changedTracks: changed)
@@ -173,7 +181,7 @@ final class PointSnapshotModel {
             let text = AppErrorMessage.message(for: error)
             show(text, error: true)
             if case DJCError.pointRestoreFailed = error {
-                _ = prompter.show(ReflectionPrompt(title: String(ui: "복원하지 못했습니다"), text: text, critical: true))
+                _ = whileAcknowledging { prompter.show(ReflectionPrompt(title: String(ui: "복원하지 못했습니다"), text: text, critical: true)) }
             }
             await refresh()
         }

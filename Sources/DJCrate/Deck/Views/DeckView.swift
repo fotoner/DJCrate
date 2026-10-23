@@ -54,7 +54,7 @@ struct DeckView: View {
             // 단축키는 창 전체에서 KeyRouter가 받는다(포커스 위치와 무관).
         } else {
             ContentUnavailableView(.ui("덱에 곡을 불러오세요"), systemImage: "music.note",
-                                   description: Text(.ui("아래 목록에서 곡을 더블클릭하거나 여기로 끌어다 놓으면(⌘→도 됩니다) 파형과 큐가 여기 뜹니다.")))
+                                   description: Text(.ui("아래 목록에서 곡을 더블클릭하거나 여기로 끌어다 놓아 주세요")))
                 .frame(height: 220)
         }
     }

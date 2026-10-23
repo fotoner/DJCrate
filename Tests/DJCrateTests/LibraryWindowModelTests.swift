@@ -43,16 +43,22 @@ struct LibraryWindowModelTests {
 
     struct SnapshotRefused: Error {}
 
-    @Test func 스냅샷_단추는_강제_여부를_그대로_넘긴다() async {
+    /// 첫 실행의 읽기 실패 화면에서 [다시 시도]는 저장된 사본을 다시 읽지 않고 새 사본을 뜬다(#299)
+    @Test func 다시_시도_단추는_새_사본을_뜬다() async {
         let forces = Mutex<[Bool]>([])
         let store = LibraryStore.test(activityLog: ActivityLog(url: nil), takeLiveSnapshot: { force in
             forces.withLock { $0.append(force) }
             throw SnapshotRefused()
         })
         let window = LibraryWindowModel(store: store)
-        await window.startTakeSnapshot(force: true).value
-        await window.startTakeSnapshot().value
-        #expect(forces.withLock { $0 } == [true, false])
+        await window.startRetryLoad().value
+        await window.startRetryLoad().value
+        // 실제 rekordbox 실행 여부(pgrep)에 따라 강제 여부가 갈리니 횟수만 본다
+        #expect(forces.withLock { $0.count } == 2)
+        guard case .failed = store.phase else {
+            Issue.record("사본 뜨기에 실패했는데 실패 화면이 아니다: \(store.phase)")
+            return
+        }
     }
 
     @Test func 놓은_파일을_읽어_곡_추가로_넘긴다() async throws {
