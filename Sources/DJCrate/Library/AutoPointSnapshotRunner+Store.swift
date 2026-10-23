@@ -18,7 +18,7 @@ extension AutoPointSnapshotRunner {
             snapshots: snapshots,
             enabled: { allowed && settings.persist && settings.value(SettingKeys.pointSnapshotAuto) },
             autoDays: { Int(settings.value(SettingKeys.pointSnapshotAutoDays)) },
-            busy: { [weak store] in store?.isWritingRekordbox ?? true },
+            busy: { [weak store] in store?.libraryBusy ?? true },
             writeCount: { [weak store] in store?.rekordboxWriteCount ?? 0 },
             files: files, now: { .now }, calendar: .current),
                   errorText: { AppErrorMessage.message(for: $0) },

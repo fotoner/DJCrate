@@ -68,7 +68,7 @@ struct DeckFlipRecordingTests {
     @Test func 쓰기_중에는_기록을_시작하지_않는다() async throws {
         let h = try DeckHarness()
         try await h.loaded()
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         #expect(h.deck.flipUnavailableReason != nil)
         h.deck.startFlipRecording()
         #expect(!h.deck.isFlipRecording)

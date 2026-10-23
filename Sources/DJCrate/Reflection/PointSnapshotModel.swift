@@ -51,7 +51,7 @@ final class PointSnapshotModel {
                   busyReason: { [weak store] in
                       // Mac을 끄는 중이거나 종료를 기다리는 중에는 새 쓰기를 시작하지 않는다(#300)
                       if let refusal = store?.writeRefusal { return refusal }
-                      return store?.isWritingRekordbox == true ? String(ui: "rekordbox에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 누르세요") : nil
+                      return store?.libraryBusy == true ? String(ui: "rekordbox에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 누르세요") : nil
                   },
                   // 복원까지 실패한 경고창을 확인하기 전에는 앱을 끄지 않는다(#300)
                   whileAcknowledging: { [weak store] ask in store?.whileAwaitingAcknowledgement(ask) ?? ask() },

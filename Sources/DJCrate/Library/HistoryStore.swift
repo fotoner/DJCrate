@@ -283,7 +283,7 @@ final class HistoryStore {
     /// 보존 기록을 rekordbox 쓰기 대기에서 빼거나 다시 넣는다(보존본은 그대로). 편집 › 실행 취소로 되돌린다.
     /// 화면 상태는 바로 바꾸고 파일 저장은 보존 줄에 세운다. 저장하지 못하면 유스케이스가 알린다(다시 켜면 옛 상태로 읽힌다)
     func setHistoriesExcluded(_ ids: [String], excluded: Bool) {
-        guard library.writeLockPolicy.allowsLibraryInteraction else { return }
+        guard !library.editsFrozen else { return }
         let changedIDs = archive.exclude(ids, excluded: excluded)
         guard !changedIDs.isEmpty, let undoManager = library.undoManager else { return }
         // 한 이벤트 안에서 여러 번 바꿔도 각각 한 단계로 남긴다(태그·덱 초안과 같다)
@@ -295,7 +295,7 @@ final class HistoryStore {
         }
         // 되돌리기 대상은 핵심이다(쓰기 잠금이 핵심 대상으로 되돌리기를 지운다)
         undoManager.registerUndo(withTarget: library) { target in
-            guard !target.isWritingRekordbox else { return }
+            guard !target.editsFrozen else { return }
             target.history.setHistoriesExcluded(changedIDs, excluded: !excluded)
         }
         undoManager.setActionName(excluded ? String(ui: "rekordbox 쓰기 대기에서 빼기") : String(ui: "rekordbox 쓰기 대기에 넣기"))

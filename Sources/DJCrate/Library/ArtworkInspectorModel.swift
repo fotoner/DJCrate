@@ -35,7 +35,7 @@ final class ArtworkInspectorModel {
     func hasArtwork(_ row: TrackRow) -> Bool { library.artworkBase(for: row).hasArtwork }
 
     /// rekordbox에 쓰는 동안(단추를 막는다)
-    var isLocked: Bool { library.isWritingRekordbox }
+    var isLocked: Bool { library.editsFrozen }
 
     // MARK: - 초안 만들기
 
@@ -49,7 +49,7 @@ final class ArtworkInspectorModel {
     }
 
     func setArtwork(_ image: Data, name: String?, rows: [TrackRow]) {
-        guard !library.isWritingRekordbox else { return }
+        guard !library.editsFrozen else { return }
         let edits: [ArtworkEdit]
         do {
             edits = try artwork.setEdits(image: image, name: name,
@@ -63,7 +63,7 @@ final class ArtworkInspectorModel {
 
     /// 그림 지우기 초안. 그림이 없는 곡은 남은 넣기 초안만 버린다. 실패는 한 번에 센다(뒤 단계가 앞 단계의 실패 안내를 지우지 않게).
     func deleteArtwork(rows: [TrackRow]) {
-        guard !library.isWritingRekordbox else { return }
+        guard !library.editsFrozen else { return }
         let targets = editable(rows)
         let withArtwork = targets.filter(hasArtwork)
         let saved = save(withArtwork.map {
@@ -75,7 +75,7 @@ final class ArtworkInspectorModel {
 
     /// 초안 버리기(그림)
     func discardDrafts(rows: [TrackRow]) {
-        guard !library.isWritingRekordbox else { return }
+        guard !library.editsFrozen else { return }
         finish(failed: remove(rows))
     }
 

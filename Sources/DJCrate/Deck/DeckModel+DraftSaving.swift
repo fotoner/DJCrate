@@ -35,7 +35,7 @@ extension DeckModel {
     }
 
     func retryDraftSaves() {
-        guard !isWriteLocked, let uuid = row?.track.uuid else { return }
+        guard !editsFrozen, let uuid = row?.track.uuid else { return }
         let failures = currentDraftSaveFailures
         // 덱에 읽어 둔 초안이 있으면 그것(끌던 편집 포함)을 저장한다. 아직 읽는 중이면 비어 있는 것을 지우기로 보지 않고
         // 실패한 마지막 입력(저장이든 지우기든)을 그대로 다시 저장한다.

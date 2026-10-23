@@ -8,7 +8,7 @@ extension DeckModel {
     /// 사용자가 지금 실행한 명령만 알린다. 이전 곡의 뷰·드래그 완료는 초안과 안내 모두 건드리지 않는다.
     func commandDraft(expectedTrackUUID: String? = nil) -> CueDraft? {
         if let expectedTrackUUID, expectedTrackUUID != row?.track.uuid { return nil }
-        guard !isWriteLocked else { return nil }
+        guard !editsFrozen else { return nil }
         guard let draft, draft.trackUUID == row?.track.uuid else {
             showToast(String(ui: "편집할 곡의 초안이 준비되지 않았으니 곡을 덱에 다시 불러온 뒤 편집하세요"), kind: .warning)
             return nil
@@ -209,7 +209,7 @@ extension DeckModel {
 
     /// A: 재생 위치에서 가장 가까운 제안을 받는다. 제안이 없으면 아무것도 하지 않고 VoiceOver로만 알린다.
     func acceptNearestSuggestion() {
-        guard !isWriteLocked else { return }
+        guard !editsFrozen else { return }
         guard let nearest = suggestions.min(by: { abs($0 - playhead) < abs($1 - playhead) }) else {
             announce(String(ui: "받을 제안이 없습니다"))
             return
@@ -219,7 +219,7 @@ extension DeckModel {
 
     /// S·⇧S: 다음·이전 제안 자리로 재생 위치만 옮긴다(큐·CUE 지점은 그대로). 그쪽에 제안이 없으면 VoiceOver로만 알린다.
     func jumpToSuggestion(forward: Bool) {
-        guard !isWriteLocked else { return }
+        guard !editsFrozen else { return }
         // 재생 중 이전으로는 Q처럼 방금 지난 제안(0.25초 안)을 건너뛴다.
         let slack = !forward && isPlaying ? 0.25 : Self.cueTolerance
         let target = forward
@@ -243,7 +243,7 @@ extension DeckModel {
     }
 
     func reloadExternalCueDraft(_ saved: CueDraft?) {
-        guard !isWriteLocked, !hasUncommittedCueEdits, let row, saved == nil || saved?.trackUUID == row.track.uuid else { return }
+        guard !editsFrozen, !hasUncommittedCueEdits, let row, saved == nil || saved?.trackUUID == row.track.uuid else { return }
         guard !currentDraftSaveFailures.contains(where: { $0.kind == .cue }) else { return }
         let saved = saved?.includingAutoCues(from: row.cues, newID: storage.drafts.newCueID)
         if let saved, saved.base == draft?.base, saved.cues == draft?.cues { return }
@@ -258,7 +258,7 @@ extension DeckModel {
     }
 
     func commitDraft() {
-        guard !isWriteLocked, let draft else { return }
+        guard !editsFrozen, let draft else { return }
         persist(draft)
         registerDraftUndo(from: pendingDraftUndo, name: String(ui: "큐 옮기기"))
         pendingDraftUndo = nil

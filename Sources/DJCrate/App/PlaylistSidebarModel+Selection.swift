@@ -125,7 +125,7 @@ extension PlaylistSidebarModel {
 
     /// 여러 목록·폴더를 지운다. 개수와 이름을 묻고, 막힌 항목(인텔리전트 목록 등)은 건너뛴다. 모두 막히면 묻지 않고 이유만 알린다
     func deletePlaylists(_ ids: [String]) {
-        guard library.writeLockPolicy.allowsLibraryInteraction, renamingPlaylistID == nil, !library.isWritingRekordbox else { return }
+        guard !library.editsFrozen, renamingPlaylistID == nil else { return }
         let requests = deleteRequests(ids)
         guard !requests.isEmpty else { return }
         let plan = playlists.planPlaylistRequests(requests)
@@ -146,7 +146,7 @@ extension PlaylistSidebarModel {
     /// 여러 목록·폴더를 끌어 놓은 자리로 옮긴다(묻지 않고 ⌘Z로 되돌린다). 막힌 항목만 건너뛰고 이유를 알린다
     func movePlaylists(_ ids: [String], to target: PlaylistDropTarget) {
         draggingPlaylistIDs = []
-        guard library.writeLockPolicy.allowsLibraryInteraction else { return }
+        guard !library.editsFrozen else { return }
         let requests = moveRequests(ids, to: target)
         guard !requests.isEmpty,
               let batch = playlists.applyPlaylistRequests(requests, actionName: String(ui: "재생 목록 옮기기"), allOrNothing: false) else { return }

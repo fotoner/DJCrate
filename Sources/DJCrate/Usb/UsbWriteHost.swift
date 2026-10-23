@@ -26,7 +26,7 @@ extension LibraryStore: UsbWriteHost {
               snapshotReadEpoch == context.readEpoch, snapshotForUsbSync == snapshot.provenance,
               case .loaded = phase, lastError == nil,
               music.currentRefresh(snapshot: snapshot.provenance.sourceURL, revision: context.catalogRevision) == nil else { return false }
-        return !isLoading && !isWritingRekordbox && writeLockPolicy.allowsLibraryInteraction
+        return !isLoading && !libraryBusy
             && shareRoot == share
             && previewRevision == context.catalogRevision
             && UsbSyncSource.make(rekordbox: playlists.rekordboxPlaylists, iTunes: music.library) == context.source

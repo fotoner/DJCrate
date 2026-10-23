@@ -206,12 +206,13 @@ final class DeckModel {
     /// 화면·스냅·메트로놈이 쓰는 그리드. 편집하지 않았으면 rekordbox 원본 그대로다.
     var grid: BeatGrid? { didSet { if grid?.downbeats != oldValue?.downbeats { refreshKeySegments() } } }
     var gridEditing = false
+    /// 편집 잠금(`LibraryStore.editsFrozen`의 덱 쪽 복사본, `onWriteLock`으로 받는다). iTunes 동기화는 덱을 잠그지 않아 저장소와 다를 수 있다.
     /// rekordbox에 쓰는 동안 큐 편집을 막는다(쓰는 초안과 덱 초안이 어긋나지 않게).
     /// rekordbox에 쓰는 동안: 재생을 잠시 멈추고(끝나면 이어서) 편집을 막는다.
-    var isWriteLocked = false {
+    var editsFrozen = false {
         didSet {
-            guard isWriteLocked != oldValue else { return }
-            if isWriteLocked {
+            guard editsFrozen != oldValue else { return }
+            if editsFrozen {
                 clearDraftUndo()
                 resumeAfterWrite = isPlaying
                 if isPlaying { togglePlay() }

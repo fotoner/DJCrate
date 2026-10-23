@@ -6,7 +6,7 @@ extension LibraryStore {
     /// 이 곡을 덱에 올린다(더블클릭·⌘→·오른쪽 클릭·끌어다 놓기). 재생 기록의 반복 행도 컬렉션 곡으로 올린다.
     /// USB 곡은 짝인 로컬 곡을 올린다(#255). rekordbox에 쓰는 동안은 덱을 바꾸지 않는다.
     func loadToDeck(_ row: TrackRow?) {
-        guard writeLockPolicy.allowsLibraryInteraction, let row else { return }
+        guard !editsFrozen, let row else { return }
         let target: TrackRow
         if row.isUsb {
             guard let local = localDeckRow(localTrackID(ofUsb: row)) else { return }
@@ -22,11 +22,11 @@ extension LibraryStore {
     }
 
     /// 짝 없는 USB 곡을 골라도 막지 않는다: 누르면 이유를 알린다
-    var canLoadSelectionToDeck: Bool { writeLockPolicy.allowsLibraryInteraction && primaryRow != nil }
+    var canLoadSelectionToDeck: Bool { !editsFrozen && primaryRow != nil }
 
     /// 고른 곡 중 표 순서로 첫 곡을 덱에 올린다(⌘→).
     func loadSelectionToDeck() {
-        guard writeLockPolicy.allowsLibraryInteraction else { return }
+        guard !editsFrozen else { return }
         guard let row = primaryRow else {
             staging.stagingMessage = AppMessage(kind: .warning, text: String(ui: "고른 곡을 찾을 수 없으니 목록에서 곡을 다시 선택한 뒤 덱에 불러오세요"))
             return
@@ -41,7 +41,7 @@ extension LibraryStore {
 
     /// 덱 위에 놓은 USB 곡(#240 끌기 형식) 중 첫 곡의 짝 로컬 곡을 올린다(#255).
     func loadDroppedUsbTracks(_ dragged: [UsbTrackDrag]) {
-        guard writeLockPolicy.allowsLibraryInteraction, let first = dragged.first else { return }
+        guard !editsFrozen, let first = dragged.first else { return }
         loadToDeck(localDeckRow(usb?.localMatches[first.volumeKey]?[first.contentID]))
     }
 

@@ -122,11 +122,11 @@ struct ITunesSyncTests {
         h.deck.togglePlay()
         #expect(undo.canUndo && h.deck.isPlaying)
         // 앱과 같은 연결(AppComposition.connect)
-        store.onWriteLock = { [weak deck = h.deck] locked in deck?.isWriteLocked = locked }
+        store.onWriteLock = { [weak deck = h.deck] locked in deck?.editsFrozen = locked }
         let writes = store.rekordboxWriteCount, played = h.audio.log.count
         try await store.music.syncPlaylists(ITunesSyncSelection(selectedIDs: ["F"]), source: snapshot, database: fixture.database)
         #expect(store.rekordboxWriteCount == writes + 1, "쓰는 동안 다른 쓰기를 막는다")
-        #expect(!store.isWritingRekordbox && !h.deck.isWriteLocked)
+        #expect(!store.isWritingRekordbox && !h.deck.editsFrozen)
         #expect(undo.canUndo && h.deck.isPlaying)
         #expect(!h.audio.log.dropFirst(played).contains { $0 == "stop" || $0 == "pause" }, "\(h.audio.log.dropFirst(played))")
     }

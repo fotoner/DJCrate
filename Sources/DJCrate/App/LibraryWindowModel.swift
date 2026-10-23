@@ -70,7 +70,7 @@ final class LibraryWindowModel {
 
     /// 창에 음원 파일을 놓을 수 있는지. 쓰는 중이거나 읽기 전용 목록(iTunes·USB)을 보는 중이면 받지 않는다
     var acceptsFileDrop: Bool {
-        store.writeLockPolicy.allowsLibraryInteraction && !store.isITunesSelection && !store.isUsbSelection
+        !store.libraryBusy && !store.isITunesSelection && !store.isUsbSelection
     }
 
     /// 창에 끌어다 놓은 파일을 읽어 추가한 곡에 넣는다. 읽는 사이 rekordbox 쓰기가 시작되면 넣지 않는다.
@@ -84,7 +84,7 @@ final class LibraryWindowModel {
                 }
                 if let url, url.isFileURL { urls.append(url) }
             }
-            guard !urls.isEmpty, store.writeLockPolicy.allowsLibraryInteraction else { return }
+            guard !urls.isEmpty, !store.libraryBusy else { return }
             await store.staging.addFiles(urls)
         }
     }

@@ -57,8 +57,7 @@ final class StorageSettingsModel {
 
     /// 앱이 쓰는 중인지: rekordbox 쓰기와 USB 쓰기(진행 중·볼륨을 붙잡은 작업)
     static func busyReason(store: LibraryStore) -> String? {
-        let activity = store.writeActivity
-        return busyReason(writingRekordbox: activity.writingRekordbox, writingUsb: activity.writingUsb)
+        busyReason(writingRekordbox: store.libraryBusy, writingUsb: store.writeActivity.writingUsb)
     }
 
     /// 비우기 단추를 막는 이유(도움말로 보인다)

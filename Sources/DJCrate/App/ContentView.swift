@@ -41,7 +41,9 @@ struct ContentView: View {
         let _ = PerfProbe.body(Self.self)
         NavigationSplitView(columnVisibility: columnVisibility) {
             Sidebar(store: store, playlistSidebar: app.playlistSidebar)
-                .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+                // 안쪽에 가드가 없는 조작(추가 목록 제거, USB 편집 메뉴)도 이 줄이 막아 준다. 그래서 libraryBusy다.
+                // 편집 잠금만 푸는 PR은 그 조작에 가드를 더한 뒤 이 줄을 editsFrozen으로 바꾼다(#301).
+                .disabled(store.libraryBusy)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 230)
         } detail: {
             detail
@@ -61,7 +63,8 @@ struct ContentView: View {
                 }
                 .task(id: showTagEditor) { await InspectorReveal.follow(showTagEditor, shown: $inspectorContentShown) }
                 .modifier(LibraryWindowTitle(store: store))
-                .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+                // 안쪽 가드가 없는 조작을 막아 주므로 libraryBusy다(사이드바와 같다).
+                .disabled(store.libraryBusy)
                 // 위쪽 알림 줄(스냅샷 오류·반영·곡 추가)과 겹치지 않게 아래에 띄운다(#122). 덮개는 아래 덧댄 상태 줄의 자리를 모르므로
                 // 그 높이만큼 올린다(#298)
                 .overlay(alignment: .bottom) {
@@ -177,7 +180,7 @@ struct ContentView: View {
     @ToolbarContentBuilder private var toolbarContent: some CustomizableToolbarContent {
             ToolbarItem(id: "volume", placement: .principal) {
                 VolumeControl(deck: deck)
-                    .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+                    .disabled(store.editsFrozen)
             }
             ToolbarItem(id: "viewMode", placement: .principal) {
                 Picker(.ui("보기"), selection: $sheetMode) {
@@ -187,8 +190,8 @@ struct ContentView: View {
                         .help(.ui("태그를 표에서 편집합니다(⌘2)."))
                 }
                 .pickerStyle(.segmented)
-                .disabled(!store.writeLockPolicy.allowsLibraryInteraction || store.sidebar == .duplicates || store.isUsbSelection)
-                .help(!store.writeLockPolicy.allowsLibraryInteraction ? String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요")
+                .disabled(store.editsFrozen || store.sidebar == .duplicates || store.isUsbSelection)
+                .help(store.editsFrozen ? String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요")
                       : store.isUsbSelection ? String(ui: "USB 곡은 읽기 전용이니 로컬 라이브러리에서 태그를 편집하세요")
                       : store.sidebar == .duplicates ? String(ui: "중복 후보에서는 태그 시트를 열 수 없으니 전체 목록에서 곡을 고르세요")
                       : String(ui: "태그 시트에서 태그 칸을 고르고 입력하세요"))
@@ -212,7 +215,7 @@ struct ContentView: View {
                     Label(.ui("태그 편집"), systemImage: "tag")
                 }
                 .help(.ui("선택한 곡의 태그를 편집합니다 (⌘I). 여러 곡을 한꺼번에 편집할 수 있습니다."))
-                .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+                .disabled(store.editsFrozen)
             }
             ToolbarItem(id: "snapshot") {
                 Button {

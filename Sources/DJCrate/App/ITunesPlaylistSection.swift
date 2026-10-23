@@ -36,13 +36,13 @@ struct ITunesPlaylistSection: View {
                     } label: {
                         Label(.ui("iTunes 동기화…"), systemImage: "arrow.triangle.2.circlepath")
                     }
-                    .disabled(store.isLoading || store.isWritingRekordbox || store.snapshotURL == nil)
+                    .disabled(store.isLoading || store.libraryBusy || store.snapshotURL == nil)
                     Button {
                         music.startRefreshPlaylists()
                     } label: {
                         Label(.ui("iTunes 동기화 목록 새로고침"), systemImage: "arrow.clockwise")
                     }
-                    .disabled(store.isLoading || store.isWritingRekordbox)
+                    .disabled(store.isLoading || store.libraryBusy)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }

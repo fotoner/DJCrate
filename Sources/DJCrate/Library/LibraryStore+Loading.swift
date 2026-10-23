@@ -73,7 +73,7 @@ extension LibraryStore {
         case let .failed(message): .failed(message)
         }
         return LibraryReadState(phase: readPhase, snapshot: snapshotURL, revision: previewRevision, hasRows: !rows.isEmpty,
-                                hasError: lastError != nil, isWriting: isWritingRekordbox, music: music.snapshot,
+                                hasError: lastError != nil, isWriting: libraryBusy, music: music.snapshot,
                                 musicStatus: music.library.status)
     }
 

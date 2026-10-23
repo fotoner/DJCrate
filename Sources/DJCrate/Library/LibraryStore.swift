@@ -224,7 +224,7 @@ final class LibraryStore {
     @ObservationIgnored var onSnapshotLoaded: ((URL) -> Void)?
     var allowsLibrarySync: (() -> Bool)?
     private(set) var isSynchronizingLibrary = false
-    var canSynchronizeLibrary: Bool { !isLoading && !isSynchronizingLibrary && !isWritingRekordbox && (allowsLibrarySync?() ?? true) }
+    var canSynchronizeLibrary: Bool { !isLoading && !isSynchronizingLibrary && !libraryBusy && (allowsLibrarySync?() ?? true) }
     /// 덱에 올린 곡(ContentID, 추가한 곡은 djc- ID). 목록의 덱 표시와 새로 읽을 때 덱을 맞추는 데 쓴다.
     private(set) var deckTrackID: String?
 
@@ -314,11 +314,13 @@ final class LibraryStore {
     }
     /// rekordbox 쓰기 단계 안내(있으면 창 전체를 덮어 조작을 막는다. 확인 창이 떠 있는 동안은 nil)
     var writeStage: WriteStage?
-    /// rekordbox에 쓰는 중(미리 보기 포함)
     /// rekordbox 쓰기를 시작한 횟수(자동 시점 스냅샷이 뜨는 동안 쓰기가 끼어들었는지 본다, #228)
     @ObservationIgnored private(set) var rekordboxWriteCount = 0
+    /// rekordbox에 쓰거나 되돌리는 중(미리 보기 포함). 아래 세 값의 원천이다. 읽는 쪽은 이 값 대신 용도에 맞는 값을 읽는다(#301).
+    /// 이 값을 직접 읽는 곳은 시작·끝 전이(`didSet`)와 용도별 값 셋뿐이다.
     var isWritingRekordbox = false {
         didSet {
+            // 시작 횟수와 끝난 뒤 백업 확인은 libraryBusy, ⌘Z 기록 비우기와 덱 내리기는 editsFrozen이 하는 일이다.
             if isWritingRekordbox, !oldValue { rekordboxWriteCount += 1 }
             if isWritingRekordbox { undoManager?.removeAllActions(withTarget: self) }
             // 쓰기·되돌리기 실패 때도 백업이 남거나 정리될 수 있다.
@@ -326,6 +328,13 @@ final class LibraryStore {
             if oldValue && !isWritingRekordbox, unloadsDeckAfterWrite { unloadDeckForCDJ() }
         }
     }
+    /// 라이브러리 내부 배타: 읽기·복원·USB·iTunes·자동 시점 스냅샷·재생 목록 복구·곡 추가 목록이 쓰기와 겹치지 않게 막는다. 초안 파일 잠금(flock)도 이 동안 든다.
+    /// 사이드바·상세를 통째로 막는 줄도 이 값이다(안쪽에 가드가 없는 조작을 막아 준다). 판단이 어려운 자리는 이 값을 읽는다(나중에 편집 잠금만 풀 때 잘못 풀리지 않게).
+    var libraryBusy: Bool { isWritingRekordbox }
+    /// 편집 잠금: 덱 큐·그리드·게인, 태그·그림·재생 목록 편집, 키 입력, ⌘Z 기록, 덱 재생·곡 올리기를 막는다. 풀어 갈 값이다.
+    var editsFrozen: Bool { isWritingRekordbox }
+    /// 종료 판단: 앱 끄기와 업데이트 설치를 미룬다(`writeActivity`의 rekordbox 단계, #300).
+    var quitBlocked: Bool { isWritingRekordbox }
     /// 쓰는 동안 든 재생 목록 초안 파일 잠금을 푸는 함수(#260)
     @ObservationIgnored var playlistDraftUnlock: (@Sendable () -> Void)?
     /// 쓰는 동안 덱 큐 편집을 잠근다
@@ -472,7 +481,7 @@ final class LibraryStore {
 
     /// CDJ가 덱의 곡을 실었다: 덱 곡 ID와 함께 내린다. rekordbox에 쓰는 동안이면 끝난 뒤에 내린다(#278)
     func unloadDeckForCDJ() {
-        guard writeLockPolicy.allowsLibraryInteraction else {
+        guard !editsFrozen else {
             unloadsDeckAfterWrite = true
             return
         }

@@ -9,7 +9,7 @@ struct PlaylistCommands: View {
 
     private var enabled: Bool {
         guard let store, case .loaded = store.phase else { return false }
-        return store.writeLockPolicy.allowsLibraryInteraction
+        return !store.editsFrozen
     }
 
     private var tracks: [TrackRow] { store?.selectedRows.filter { !$0.isStaged } ?? [] }

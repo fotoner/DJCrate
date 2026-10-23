@@ -224,7 +224,7 @@ struct UsbSidebarSection: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                 }
                 .buttonStyle(.borderless)
-                .disabled(!volume.canSync || store.isLoading || store.isWritingRekordbox || store.snapshotURL == nil)
+                .disabled(!volume.canSync || store.isLoading || store.libraryBusy || store.snapshotURL == nil)
                 .help(.ui("USB 동기화 설정…"))
                 .accessibilityLabel(.ui("\(volume.name) 동기화…"))
                 .accessibilityIdentifier("usb-sync-\(volume.id)")
@@ -361,13 +361,13 @@ private struct UsbDropDelegate: DropDelegate {
 enum UsbDrop {
     /// 놓을 수 있는지: 로컬 곡은 컬렉션·일반 재생 목록, USB 곡은 끄는 USB와 같은 USB의 일반 재생 목록
     static func accepts(local: Bool, usb: Bool, on target: UsbSidebarTarget, store: LibraryStore) -> Bool {
-        guard store.writeLockPolicy.allowsLibraryInteraction, let actions = store.usbEdits else { return false }
+        guard !store.libraryBusy, let actions = store.usbEdits else { return false }
         if usb { return actions.acceptsUsbDrop(from: store.usbDragVolume, on: target) }
         return local && actions.acceptsDrop(on: target)
     }
 
     static func perform(_ providers: [NSItemProvider], on target: UsbSidebarTarget, store: LibraryStore) -> Bool {
-        guard store.writeLockPolicy.allowsLibraryInteraction, let actions = store.usbEdits else { return false }
+        guard !store.libraryBusy, let actions = store.usbEdits else { return false }
         let usbTracks = providers.filter { $0.hasItemConformingToTypeIdentifier(PlaylistDragType.usbTracks.identifier) }
         if !usbTracks.isEmpty {
             guard actions.acceptsUsbDrop(from: store.usbDragVolume, on: target) else { return false }

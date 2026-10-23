@@ -28,7 +28,7 @@ struct TrackTable<Source: TrackListSource, Deck: TrackListDeckStatus>: View {
 /// 메뉴·칸 편집·끌기는 사용자가 누를 때 라이브러리를 부르므로 조정자(`TrackListCoordinator`)가 맡는다.
 @MainActor
 protocol TrackListSource: AnyObject {
-    var isWritingRekordbox: Bool { get }
+    var editsFrozen: Bool { get }
     /// USB 목록을 보는 중(읽기 전용, 갱신 상태 칸을 보인다)
     var isUsbSelection: Bool { get }
     var commentPreset: CommentPreset { get }
@@ -141,7 +141,7 @@ private struct TrackListView<Source: TrackListSource>: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         PerfProbe.count("TrackListView.update")
-        context.coordinator.updateWriteLock(source.isWritingRekordbox)
+        context.coordinator.updateWriteLock(source.editsFrozen)
         context.coordinator.updateUsbMode(source.isUsbSelection)
         context.coordinator.updateTextScale(context.environment.textScale)
         context.coordinator.updateCommentPreset(source.commentPreset)

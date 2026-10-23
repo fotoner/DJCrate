@@ -4,10 +4,9 @@ import Foundation
 
 /// 쓰기 잠금에서 허용하는 시스템 동작과 막는 라이브러리 조작을 구분한다.
 struct WriteLockPolicy {
+    /// 쓰는 중인지. 키 입력 차단은 편집 잠금(덱 쪽 복사본 `DeckModel.editsFrozen`)을 넣고, 종료 판단은 이 구조체를 쓰지 않는다(`writeActivity`).
     var isWriting: Bool
     var canCancelPreparation = false
-
-    var allowsLibraryInteraction: Bool { !isWriting }
 
     func blocksKey(_ keyCode: UInt16, in context: KeyRoutingPolicy.Context) -> Bool {
         guard isWriting, context.isMainWindow, !context.hasModalWindow, !context.hasAttachedSheet,
@@ -21,10 +20,6 @@ struct WriteLockPolicy {
 }
 
 extension LibraryStore {
-    var writeLockPolicy: WriteLockPolicy {
-        WriteLockPolicy(isWriting: isWritingRekordbox, canCancelPreparation: writeStage?.cancellable == true)
-    }
-
     /// 앱이 쓰는 중인 것: rekordbox 쓰기·복원(쓰기 잠금의 단계)과 USB 쓰기(진행 중·볼륨을 붙잡은 작업). 관찰할 수 있는 값에서 읽는다.
     /// 앱 종료(#300)와 업데이트 설치 미루기(#59)가 이 값 하나로 판단한다(`AppQuitPolicy`·`UpdateInstallPolicy`).
     var writeActivity: AppWriteActivity {
@@ -37,7 +32,7 @@ extension LibraryStore {
     var rekordboxWritePhase: RekordboxWritePhase {
         // 확인할 경고창은 잠금이 풀린 뒤(시점 복원 실패)에도 뜬다. 확인하기 전에는 끄지 않는다
         if isAwaitingAcknowledgement { return .acknowledging }
-        guard isWritingRekordbox else { return .idle }
+        guard quitBlocked else { return .idle }
         if isAwaitingConfirmation { return .confirming }
         return writeStage?.phase ?? .writing
     }

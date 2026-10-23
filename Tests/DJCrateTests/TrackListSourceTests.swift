@@ -15,7 +15,7 @@ struct TrackListSourceTests {
     /// 표가 읽는 값만 든 가짜 출처. 메뉴·칸 편집을 맡는 조정자는 시험 저장소로 만든다(표 본문은 그 저장소를 읽지 않는다)
     @MainActor @Observable
     final class FakeSource: TrackListSource {
-        var isWritingRekordbox = false
+        var editsFrozen = false
         var isUsbSelection = false
         var commentPreset = CommentPreset.none
         var displayRows: [TrackRow] = []
@@ -99,13 +99,13 @@ struct TrackListSourceTests {
         var loaded: [String?] = []
         store.onLoadToDeck = { loaded.append($0?.track.id) }
         let library: any DeckLibrarySource = store
-        #expect(library.allowsLibraryInteraction)
+        #expect(!library.editsFrozen)
         library.selectAndLoadToDeck(row)
         #expect(store.selection == [row.id])
         #expect(loaded == ["7"])
         // 쓰는 동안은 단추가 막히고, 눌러도 덱은 바꾸지 않는다
         store.isWritingRekordbox = true
-        #expect(!library.allowsLibraryInteraction)
+        #expect(library.editsFrozen)
         library.selectAndLoadToDeck(row)
         #expect(loaded == ["7"])
     }
