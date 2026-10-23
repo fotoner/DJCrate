@@ -103,6 +103,8 @@ final class LibraryStore {
         self.feedback = feedback
         self.launch = launch
         readFlow = LibraryReadFlow(loader: useCases.load, location: location)
+        // 자가 테스트·측정·캡처 실행은 읽을 사본이 없어도 자동으로 읽지 않는다(그 상태에 기대는 캡처 장면이 있다)
+        readFlow.readsOnFirstRun = launch.readsOnFirstRun
         music = MusicLibraryStore(readFlow: readFlow)
         readFlow.screen = readScreen
         music.host = musicHost
@@ -443,6 +445,12 @@ final class LibraryStore {
         } else {
             phase = .failed(failure.message)
         }
+    }
+
+    /// 원인 분류 없이 실패 화면으로 간다(사본을 뜨지 않은 이유 등). 이전 실패의 원인을 끌고 오지 않는다.
+    func showUnclassifiedFailure(_ message: String) {
+        lastReadFailure = nil
+        phase = .failed(message)
     }
 
     func reportLibraryError(_ message: String) { lastError = message }

@@ -28,7 +28,15 @@ extension LibrarySource {
             changed: { LibrarySnapshot.changed(since: $0, source: $1) },
             isRekordboxRunning: { LibrarySnapshot.isRekordboxRunning() },
             log: { FileHandle.standardError.write(Data("\($0)\n".utf8)) },
-            resolveCopy: { try LibraryRead.resolve(database: $0) })
+            resolveCopy: { try LibraryRead.resolve(database: $0) },
+            unsupportedRekordboxVersion: { unsupportedVersion(installed: RekordboxCompatibility.installedAppVersion()) })
+    }
+
+    /// 설치된 rekordbox 버전이 쓰기를 확인한 버전이 아니면 그 버전. 쓰기 관문과 `djc compat`가 쓰는 판정(`checkApp`) 그대로이고,
+    /// 설치를 못 찾으면(nil) 통과한다.
+    public static func unsupportedVersion(installed version: String?) -> String? {
+        guard let version else { return nil }
+        return (try? RekordboxCompatibility.checkApp(version: version)) == nil ? version : nil
     }
 }
 

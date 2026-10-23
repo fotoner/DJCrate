@@ -97,7 +97,7 @@ final class AppComposition {
         ports.usbHistories = UsbAppComposition.historyFiles()
         let store = LibraryStore(settings: settings, location: location, useCases: LibraryUseCases(ports: ports),
                                  activityLog: ActivityLog(url: places.activityLog, legacyResult: places.writeResult),
-                                 launch: LibraryLaunchOptions(arguments: info.arguments))
+                                 launch: LibraryLaunchOptions(arguments: info.arguments, environment: info.environment))
         // 재생 기록 쓰기 관문(#43): 사본 재현으로 연 쓰기 경로. 닫혀 있으면 보존·보기만 하고 쓰기 대기에 올리지 않는다
         store.history.writesHistories = RekordboxWriter.writesHistories
         // 덱은 저장소와 같은 초안 저장소(같은 저장 큐)·설정을 쓴다(읽기는 메인 밖에서 실제 파일을 본다).
