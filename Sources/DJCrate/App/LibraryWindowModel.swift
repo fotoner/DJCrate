@@ -41,8 +41,9 @@ final class LibraryWindowModel {
     @discardableResult
     func startLoadInitial() -> Task<Void, Never> { Task { [store] in await store.loadInitial() } }
 
+    /// 읽기 실패 화면의 [다시 시도]
     @discardableResult
-    func startTakeSnapshot(force: Bool = false) -> Task<Void, Never> { Task { [store] in await store.takeSnapshot(force: force) } }
+    func startRetryLoad() -> Task<Void, Never> { Task { [store] in await store.retryLoad() } }
 
     @discardableResult
     func startSynchronizeLibrary() -> Task<Void, Never> { Task { [store] in await store.synchronizeLibrary() } }

@@ -3335,6 +3335,34 @@
         }
       }
     },
+    "%lld초 지났습니다" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld second elapsed"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld seconds elapsed"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld秒経過しました"
+          }
+        }
+      }
+    },
     "%lld칸 바뀜" : {
       "localizations" : {
         "en" : {
@@ -5591,6 +5619,22 @@
         }
       }
     },
+    "Finder에서 rekordbox 라이브러리 폴더의 읽기 권한을 확인하고, 그래도 안 되면 시스템 설정 › 개인정보 보호 및 보안 › 전체 디스크 접근 권한에서 DJCrate를 허용한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check read access to the rekordbox library folder in Finder; if that doesn't help, allow DJCrate in System Settings › Privacy & Security › Full Disk Access, then try again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finderでrekordboxライブラリフォルダの読み取り権限を確認し、それでも読めない場合はシステム設定 › プライバシーとセキュリティ › フルディスクアクセスでDJCrateを許可してから、もう一度お試しください"
+          }
+        }
+      }
+    },
     "Finder에서 백업 보기" : {
       "localizations" : {
         "en" : {
@@ -6201,6 +6245,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MP3フレームが途中で途切れていて（壊れたフレーム）解析を追加できないため、先にrekordboxで解析してください。"
+          }
+        }
+      }
+    },
+    "Mac을 끄는 중이라 rekordbox에 쓰지 않았습니다. 다시 켠 뒤 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Mac is shutting down, so nothing was written to rekordbox. Write again after it restarts."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Macをシャットダウンしているため、rekordboxには書き込みませんでした。再起動後にもう一度書き込んでください"
           }
         }
       }
@@ -9363,18 +9423,18 @@
         }
       }
     },
-    "USB에 쓰는 중입니다. 끝난 뒤 종료하세요" : {
+    "USB에 쓰는 중이라 지금은 종료하지 않았습니다. 쓰기가 끝나면 다시 종료하세요" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "DJCrate is writing to a USB. Quit after it finishes"
+            "value" : "DJCrate is writing to a USB, so it did not quit. Quit again after the writing finishes."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "USBに書き込み中です。終わってから終了してください"
+            "value" : "USBに書き込み中のため、終了しませんでした。書き込みが終わったらもう一度終了してください"
           }
         }
       }
@@ -11303,6 +11363,22 @@
         }
       }
     },
+    "rekordbox 7을 설치하고 한 번 실행한 뒤 다시 찾아 주세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Install rekordbox 7, launch it once, then try finding the library again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox 7をインストールして一度起動してから、もう一度探してください"
+          }
+        }
+      }
+    },
     "rekordbox DB 구조가 DJCrate가 확인한 모양과 다릅니다: %@. rekordbox가 업데이트됐다면 DJCrate도 확인이 필요합니다" : {
       "localizations" : {
         "en" : {
@@ -11315,22 +11391,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxのデータベース構造がDJCrateで確認した形と異なります：%@。rekordboxがアップデートされた場合は、DJCrate側の確認も必要です"
-          }
-        }
-      }
-    },
-    "rekordbox DB 스냅샷을 뜨는 중…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Taking a snapshot of the rekordbox database…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxのデータベースのスナップショットを作成中…"
           }
         }
       }
@@ -11945,6 +12005,22 @@
         }
       }
     },
+    "rekordbox 라이브러리를 복사하는 중…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copying the rekordbox library…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxライブラリをコピー中…"
+          }
+        }
+      }
+    },
     "rekordbox 라이브러리를 읽는 중…" : {
       "localizations" : {
         "en" : {
@@ -11957,6 +12033,102 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxライブラリを読み込み中…"
+          }
+        }
+      }
+    },
+    "rekordbox 라이브러리를 읽을 권한이 없습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Permission to Read the rekordbox Library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxライブラリを読み込む権限がありません"
+          }
+        }
+      }
+    },
+    "rekordbox 라이브러리를 읽을 권한이 없습니다. Finder에서 rekordbox 라이브러리 폴더의 읽기 권한을 확인하고, 그래도 안 되면 시스템 설정 › 개인정보 보호 및 보안 › 전체 디스크 접근 권한에서 DJCrate를 허용한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate doesn't have permission to read the rekordbox library. Check read access to the rekordbox library folder in Finder; if that doesn't help, allow DJCrate in System Settings › Privacy & Security › Full Disk Access, then try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxライブラリを読み込む権限がありません。Finderでrekordboxライブラリフォルダの読み取り権限を確認し、それでも読めない場合はシステム設定 › プライバシーとセキュリティ › フルディスクアクセスでDJCrateを許可してから、もう一度お試しください"
+          }
+        }
+      }
+    },
+    "rekordbox 라이브러리를 읽을 권한이 없어 이전 목록을 표시합니다. Finder에서 rekordbox 라이브러리 폴더의 읽기 권한을 확인하고, 그래도 안 되면 시스템 설정 › 개인정보 보호 및 보안 › 전체 디스크 접근 권한에서 DJCrate를 허용한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate doesn't have permission to read the rekordbox library, so the previous list is shown. Check read access to the rekordbox library folder in Finder; if that doesn't help, allow DJCrate in System Settings › Privacy & Security › Full Disk Access, then try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxライブラリを読み込む権限がないため、以前の一覧を表示しています。Finderでrekordboxライブラリフォルダの読み取り権限を確認し、それでも読めない場合はシステム設定 › プライバシーとセキュリティ › フルディスクアクセスでDJCrateを許可してから、もう一度お試しください"
+          }
+        }
+      }
+    },
+    "rekordbox 라이브러리를 찾지 못해 이전 목록을 표시합니다. rekordbox 7을 설치하고 한 번 실행한 뒤 다시 찾아 주세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The rekordbox library couldn't be found, so the previous list is shown. Install rekordbox 7, launch it once, then try finding the library again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxライブラリが見つからないため、以前の一覧を表示しています。rekordbox 7をインストールして一度起動してから、もう一度探してください"
+          }
+        }
+      }
+    },
+    "rekordbox 라이브러리를 찾지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox Library Not Found"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxライブラリが見つかりません"
+          }
+        }
+      }
+    },
+    "rekordbox 라이브러리를 찾지 못했습니다. rekordbox 7을 설치하고 한 번 실행한 뒤 다시 찾아 주세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't find the rekordbox library. Install rekordbox 7, launch it once, then try finding the library again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxライブラリが見つかりません。rekordbox 7をインストールして一度起動してから、もう一度探してください"
           }
         }
       }
@@ -13027,6 +13199,54 @@
         }
       }
     },
+    "rekordbox가 라이브러리를 쓰는 중이라 이전 목록을 표시합니다. 잠시 뒤 다시 읽습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox is writing to the library, so the previous list is shown. The library will be read again shortly."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxがライブラリに書き込み中のため、以前の一覧を表示しています。少し待ってからもう一度読み込みます"
+          }
+        }
+      }
+    },
+    "rekordbox가 라이브러리를 쓰는 중입니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox Is Writing to the Library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxがライブラリに書き込み中です"
+          }
+        }
+      }
+    },
+    "rekordbox가 라이브러리를 쓰는 중입니다. 잠시 뒤 다시 읽습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox is writing to the library. The library will be read again shortly."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxがライブラリに書き込み中です。少し待ってからもう一度読み込みます"
+          }
+        }
+      }
+    },
     "rekordbox가 분석 때 넣은 메모리 큐입니다. 고치면 일반 큐가 됩니다" : {
       "localizations" : {
         "en" : {
@@ -13519,22 +13739,6 @@
         }
       }
     },
-    "rekordbox를 종료한 뒤 master.db 사본을 떠 주세요. 원본은 읽기만 합니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quit rekordbox, then take a copy of master.db. The original is only read."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxを終了してから、master.dbのコピーを作成してください。元のファイルは読み取るだけです。"
-          }
-        }
-      }
-    },
     "rekordbox를 종료한 뒤 스냅샷을 다시 뜨세요." : {
       "localizations" : {
         "en" : {
@@ -13941,6 +14145,22 @@
         }
       }
     },
+    "rekordbox에 쓰는 중… 끝나면 종료합니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Writing to rekordbox… DJCrate will quit when it finishes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxに書き込み中… 終わったら終了します"
+          }
+        }
+      }
+    },
     "rekordbox에 쓰는 중에는 비울 수 없습니다. 쓰기가 끝난 뒤 비우세요" : {
       "localizations" : {
         "en" : {
@@ -13985,22 +14205,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxに書き込み中のため、キューの編集を一時的に止めています。"
-          }
-        }
-      }
-    },
-    "rekordbox에 쓰는 중입니다. 끝난 뒤 종료하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrate is writing to rekordbox. Quit after it finishes"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに書き込み中です。終わってから終了してください"
           }
         }
       }
@@ -15483,6 +15687,22 @@
         }
       }
     },
+    "‘%@’에 맞는 곡을 찾지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Tracks Found for ‘%@’"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」に一致する曲が見つかりません"
+          }
+        }
+      }
+    },
     "‘%@’에 쓸 키를 누르세요(Esc: 취소)." : {
       "localizations" : {
         "en" : {
@@ -15597,18 +15817,34 @@
         }
       }
     },
-    "‘스냅샷 뜨기’를 눌러 라이브러리를 불러오세요." : {
+    "‘rekordbox와 동기화’(⌘R)로 라이브러리를 읽어 오세요" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Click ‘Take Snapshot’ to load the library."
+            "value" : "Use ‘Sync with rekordbox’ (⌘R) to read the library"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「スナップショットを作成」をクリックしてライブラリを読み込んでください。"
+            "value" : "「rekordboxと同期」（⌘R）でライブラリを読み込んでください"
+          }
+        }
+      }
+    },
+    "‘rekordbox와 동기화’로 라이브러리를 읽어 오세요." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use ‘Sync with rekordbox’ to read the library."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「rekordboxと同期」でライブラリを読み込んでください。"
           }
         }
       }
@@ -16565,38 +16801,6 @@
         }
       }
     },
-    "거르기는 rekordbox 값(초안 전)으로 합니다. 조건을 바꾸거나 거르기를 끄세요." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Filtering uses rekordbox values (before drafts). Change the condition or turn off the filter."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "絞り込みはrekordboxの値（下書き前）で行います。条件を変えるか、絞り込みをオフにしてください。"
-          }
-        }
-      }
-    },
-    "거르는 중: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Filtering: %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "絞り込み中：%@"
-          }
-        }
-      }
-    },
     "건너뛴 %lld개: %@" : {
       "localizations" : {
         "en" : {
@@ -16647,6 +16851,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "変更していないキューレコードが変わりました"
+          }
+        }
+      }
+    },
+    "검색 지우기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear Search"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検索をクリア"
+          }
+        }
+      }
+    },
+    "검색어나 필터 조건을 다시 확인해 주세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check your search term or filter conditions again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検索語またはフィルターの条件をもう一度確認してください"
+          }
+        }
+      }
+    },
+    "검색어를 다시 확인해 주세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check your search term again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検索語をもう一度確認してください"
           }
         }
       }
@@ -23995,22 +24247,6 @@
         }
       }
     },
-    "라이브러리 사본을 열지 못해 이전 목록을 표시하며 최근 변경은 확인되지 않았으니 사본과 파일 접근 권한을 확인한 뒤 다시 불러오세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The library copy could not be opened and the previous list is shown with recent changes unverified, so check the copy and file permissions before reloading"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ライブラリのコピーを開けず以前の一覧を表示しており、最近の変更は未確認のため、コピーとファイルのアクセス権を確認してから再度読み込んでください"
-          }
-        }
-      }
-    },
     "라이브러리 사본을 열지 못했습니다" : {
       "localizations" : {
         "en" : {
@@ -24023,54 +24259,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリのコピーを開けませんでした"
-          }
-        }
-      }
-    },
-    "라이브러리 사본을 열지 못했으니 사본과 파일 접근 권한을 확인한 뒤 다시 불러오세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The library copy could not be opened, so check the copy and file permissions before reloading"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ライブラリのコピーを開けないため、コピーとファイルのアクセス権を確認してから再度読み込んでください"
-          }
-        }
-      }
-    },
-    "라이브러리 사본의 내용을 읽지 못해 이전 목록을 표시하며 최근 변경은 확인되지 않았으니 사본 상태를 확인하고 새 사본을 만든 뒤 다시 불러오세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The library copy could not be read and the previous list is shown with recent changes unverified, so check its condition and create a new copy before reloading"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ライブラリのコピーの内容を読み取れず以前の一覧を表示しており、最近の変更は未確認のため、コピーの状態を確認して新しいコピーを作成してから再度読み込んでください"
-          }
-        }
-      }
-    },
-    "라이브러리 사본의 내용을 읽지 못했으니 사본 상태를 확인하고 새 사본을 만든 뒤 다시 불러오세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The library copy could not be read, so check its condition and create a new copy before reloading"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ライブラリのコピーの内容を読み取れないため、コピーの状態を確認して新しいコピーを作成してから再度読み込んでください"
           }
         }
       }
@@ -24391,6 +24579,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリを読み込んでから、もう一度 LINK を押してください"
+          }
+        }
+      }
+    },
+    "라이브러리를 읽지 못해 이전 목록을 표시합니다. 최근 변경은 확인되지 않았으니 잠시 뒤 ‘rekordbox와 동기화’로 다시 읽으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read the library, so the previous list is shown. Recent changes haven't been checked, so read the library again shortly with ‘Sync with rekordbox’."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリを読み込めなかったため、以前の一覧を表示しています。最近の変更は確認できていないため、少し待ってから「rekordboxと同期」でもう一度読み込んでください"
+          }
+        }
+      }
+    },
+    "라이브러리를 읽지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't Read the Library"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリを読み込めませんでした"
+          }
+        }
+      }
+    },
+    "라이브러리를 읽지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Library Not Read Yet"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリはまだ読み込まれていません"
           }
         }
       }
@@ -29591,22 +29827,6 @@
         }
       }
     },
-    "불러오지 못했습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Couldn't Load"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "読み込めませんでした"
-          }
-        }
-      }
-    },
     "불일치 %lld — %@" : {
       "localizations" : {
         "en" : {
@@ -31707,22 +31927,6 @@
         }
       }
     },
-    "스냅샷 뜨기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Take Snapshot"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "スナップショットを作成"
-          }
-        }
-      }
-    },
     "스냅샷 만들기" : {
       "localizations" : {
         "en" : {
@@ -31895,54 +32099,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "復元ポイントの作成中にrekordboxライブラリが変わったため、破棄しました。rekordboxを終了したままもう一度押してください"
-          }
-        }
-      }
-    },
-    "스냅샷을 새로 만들지 못해 이전 목록을 표시하며 최근 변경은 확인되지 않았으니 rekordbox를 종료하고 파일 접근 권한을 확인한 뒤 다시 불러오세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A new snapshot could not be created and the previous list is shown with recent changes unverified, so quit rekordbox and check file permissions before reloading"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新しいスナップショットを作成できず以前の一覧を表示しており、最近の変更は未確認のため、rekordboxを終了しファイルのアクセス権を確認してから再度読み込んでください"
-          }
-        }
-      }
-    },
-    "스냅샷을 새로 만들지 못했으니 rekordbox를 종료하고 파일 접근 권한을 확인한 뒤 다시 불러오세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A new snapshot could not be created, so quit rekordbox and check file permissions before reloading"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新しいスナップショットを作成できないため、rekordboxを終了しファイルのアクセス権を確認してから再度読み込んでください"
-          }
-        }
-      }
-    },
-    "스냅샷이 없습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Snapshot"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "スナップショットがありません"
           }
         }
       }
@@ -32795,22 +32951,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "やり直す（⇧⌘Z）"
-          }
-        }
-      }
-    },
-    "실행 중이어도 읽기용 스냅샷 뜨기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Take a Read-Only Snapshot Even While rekordbox Is Running"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "起動中でも読み取り用スナップショットを作成"
           }
         }
       }
@@ -33827,18 +33967,18 @@
         }
       }
     },
-    "아래 목록에서 곡을 더블클릭하거나 여기로 끌어다 놓으면(⌘→도 됩니다) 파형과 큐가 여기 뜹니다." : {
+    "아래 목록에서 곡을 더블클릭하거나 여기로 끌어다 놓아 주세요" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Double-click a track in the list below or drag it here (or press ⌘→) to see its waveform and cues here."
+            "value" : "Double-click a track in the list below or drag it here"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下のリストで曲をダブルクリックするか、ここへドラッグすると（⌘→でも可）、ここに波形とキューが表示されます。"
+            "value" : "下のリストで曲をダブルクリックするか、ここへドラッグしてください"
           }
         }
       }
@@ -37713,6 +37853,22 @@
         }
       }
     },
+    "이 rekordbox 버전(%@)은 아직 지원하지 않습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This rekordbox version (%@) isn't supported yet"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このrekordboxのバージョン（%@）にはまだ対応していません"
+          }
+        }
+      }
+    },
     "이 결과에 연결된 백업이 없습니다." : {
       "localizations" : {
         "en" : {
@@ -39755,6 +39911,22 @@
         }
       }
     },
+    "읽기만 하고 rekordbox에 쓰기는 막혀 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate only reads the library; writing to rekordbox is blocked"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取りのみ行い、rekordboxへの書き込みはブロックされています"
+          }
+        }
+      }
+    },
     "읽는 동안 USB 동기화 선택이 바뀌었습니다. 동기화가 끝난 뒤 다시 읽으세요" : {
       "localizations" : {
         "en" : {
@@ -40221,6 +40393,22 @@
         }
       }
     },
+    "자세히 숨기기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide Details"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "詳細を非表示"
+          }
+        }
+      }
+    },
     "작곡가" : {
       "localizations" : {
         "en" : {
@@ -40265,6 +40453,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "残骸"
+          }
+        }
+      }
+    },
+    "잠시 뒤 다시 읽습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library will be read again shortly"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "少し待ってからもう一度読み込みます"
           }
         }
       }
@@ -42747,6 +42951,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キーの変化"
+          }
+        }
+      }
+    },
+    "종료 취소" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel Quit"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了をキャンセル"
+          }
+        }
+      }
+    },
+    "종료하는 중이라 rekordbox에 쓰지 않았습니다. 종료를 취소한 뒤 다시 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate is quitting, so nothing was written to rekordbox. Cancel quitting, then write again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了中のため、rekordboxには書き込みませんでした。終了をキャンセルしてからもう一度書き込んでください"
           }
         }
       }
@@ -48635,23 +48871,23 @@
         }
       }
     },
-    "평점·곡 색 거르기" : {
+    "평점·곡 색 필터" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Filter by Rating and Color"
+            "value" : "Rating and Color Filter"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "評価・カラーで絞り込む"
+            "value" : "評価・カラーのフィルター"
           }
         }
       }
     },
-    "평점·곡 색 거르기 끄기" : {
+    "평점·곡 색 필터 끄기" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -48662,39 +48898,23 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "評価・カラーの絞り込みをオフ"
+            "value" : "評価・カラーのフィルターをオフ"
           }
         }
       }
     },
-    "평점·곡 색 조건에 맞는 곡이 없습니다" : {
+    "평점·곡 색 필터: rekordbox에 들어 있는 값으로 목록을 거릅니다" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No tracks match the rating and color conditions"
+            "value" : "Rating and color filter: filters the list by the values stored in rekordbox"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "評価・カラーの条件に合う曲がありません"
-          }
-        }
-      }
-    },
-    "평점·곡 색으로 목록을 거릅니다(초안 전 rekordbox 값)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Filter the list by rating and color (rekordbox values before drafts)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "評価・カラーで一覧を絞り込みます（下書き前のrekordboxの値）"
+            "value" : "評価・カラーのフィルター：rekordboxに保存されている値で一覧を絞り込みます"
           }
         }
       }
@@ -49197,6 +49417,38 @@
         }
       }
     },
+    "필터 끄기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn Off Filter"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フィルターをオフ"
+          }
+        }
+      }
+    },
+    "필터 켜짐: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter on: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フィルター適用中：%@"
+          }
+        }
+      }
+    },
     "필터는 %@ 중 하나로 쓰세요" : {
       "localizations" : {
         "en" : {
@@ -49209,6 +49461,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "フィルターは%@のいずれかを指定してください"
+          }
+        }
+      }
+    },
+    "필터는 rekordbox에 들어 있는 값으로 거릅니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filters use the values stored in rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フィルターはrekordboxに保存されている値で絞り込みます"
+          }
+        }
+      }
+    },
+    "필터도 켜져 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A filter is also on"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フィルターもオンになっています"
           }
         }
       }

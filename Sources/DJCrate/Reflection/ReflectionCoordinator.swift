@@ -149,8 +149,14 @@ final class ReflectionPresenter {
             let text = String(ui: "rekordbox 라이브러리 상태를 확인하지 못했으므로 rekordbox를 켜지 말고 백업 폴더의 위치와 접근 권한을 확인한 뒤 다시 복원하세요.")
             let title = String(ui: "복원하지 못했습니다")
             store?.activityLog.record(WriteResult(kind: .failure, title: title, text: text, backups: [backup.url]))
-            _ = prompter.show(ReflectionPrompt(title: title, text: text, critical: true))
+            acknowledge(ReflectionPrompt(title: title, text: text, critical: true))
         }
+    }
+
+    /// 복원까지 실패한 경고창을 띄워 확인을 기다린다. 확인하기 전에는 앱을 끄지 않는다(#300).
+    private func acknowledge(_ alert: ReflectionPrompt) {
+        guard let store else { _ = prompter.show(alert); return }
+        _ = store.whileAwaitingAcknowledgement { prompter.show(alert) }
     }
 
     /// 작업을 취소했을 때의 결과. 미리 보기 단계에서만 취소할 수 있어 아무것도 쓰지 않았다.
@@ -187,7 +193,7 @@ final class ReflectionPresenter {
             store?.activityLog.record(WriteResult(kind: .failure, title: alert.title,
                                                     text: ([alert.text] + excludedText).joined(separator: "\n"), backups: backups))
             alert.details = excludedText
-            _ = prompter.show(alert)
+            acknowledge(alert)
         } else {
             let message = AppErrorMessage.message(for: error)
             publish(WriteResult(kind: .failure, title: title, text: ([message] + excludedText).joined(separator: "\n")),
@@ -216,6 +222,11 @@ final class ReflectionCoordinator {
 
     /// 막힌 초안 비교 창이 열려 있으면 알리고 시작하지 않는다(#232). 이미 쓰는 중이거나 다른 작업이 있으면 무시한다.
     private func canStart(blocked: Bool = false) -> Bool {
+        if let refusal = store.writeRefusal {
+            // Mac을 끄는 중이거나 종료를 기다리는 중(#300)에는 새 쓰기를 시작하지 않고 이유를 알린다
+            store.showToast(.notice(refusal, nil))
+            return false
+        }
         if store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return false }
         return !blocked && !store.libraryBusy && store.writeTask == nil
     }

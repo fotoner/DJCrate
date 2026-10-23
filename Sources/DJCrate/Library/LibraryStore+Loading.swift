@@ -17,6 +17,11 @@ extension LibraryStore {
         await readFlow.loadInitial(snapshotDirectory: snapshotDirectory, capture: captureITunes)
     }
 
+    /// 읽기 실패 화면의 [다시 시도]: 새 사본을 떠서 읽는다(명시한 사본은 그 사본을 다시 읽는다).
+    func retryLoad() async {
+        await readFlow.retry()
+    }
+
     /// 창으로 돌아올 때: 지금 읽은 스냅샷 뒤에 rekordbox가 라이브러리를 바꿨으면 뒤에서 조용히 새로 읽는다.
     func refreshIfRekordboxChanged() async {
         await readFlow.refreshIfChanged()
@@ -79,7 +84,7 @@ extension LibraryStore {
             case .idle: self.phase = .idle
             case let .loading(message): self.phase = .loading(message)
             case .loaded: self.phase = .loaded
-            case let .failed(message): self.phase = .failed(message)
+            case let .failed(message): showUnclassifiedFailure(message)
             }
         case let .readSequence(sequence):
             setReads(sequence)
@@ -98,6 +103,9 @@ extension LibraryStore {
         case let .readFailed(failure, error):
             AppErrorMessage.log(error)
             reportReadFailure(failure)
+        case let .unsupportedRekordbox(version):
+            // 읽기는 됐으니 실패 화면이 아니라 알림으로 알린다. 지나간 알림은 활동 기록에서 다시 본다
+            showToast(.notice(UnsupportedRekordboxNotice.title(version: version), UnsupportedRekordboxNotice.guidance))
         }
     }
 

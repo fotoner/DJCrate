@@ -100,6 +100,9 @@ public struct LoadLibrary: Sendable {
     /// rekordbox가 켜져 있는지(켜져 있으면 사본을 억지로 뜬다: 사본 안에서 WAL을 합친다)
     public func isRekordboxRunning() -> Bool { source.isRekordboxRunning() }
 
+    /// 설치된 rekordbox가 쓰기를 확인한 버전이 아니면 그 버전(메인 밖에서 부른다)
+    public func unsupportedRekordboxVersion() -> String? { source.unsupportedRekordboxVersion() }
+
     /// 사본 지문(메인 밖에서 뜬다). 뜨지 못하면 nil
     public func usbStamp(of snapshot: URL) async -> UsbSyncSnapshotProvenance? {
         let usbSnapshots = usbSnapshots

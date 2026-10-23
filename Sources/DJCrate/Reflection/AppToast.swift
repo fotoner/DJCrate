@@ -144,15 +144,17 @@ struct AppToastView: View {
 
 }
 
-/// rekordbox에 쓰는 동안 창 전체를 덮어 다른 조작을 막는다.
+/// rekordbox에 쓰는 동안 창 전체를 덮어 다른 조작을 막는다. 종료를 기다리는 중이면(#300) 카드 안에 안내와 [종료 취소]를 넣는다.
 struct WritingOverlay: View {
     let stage: WriteStage
+    var quitWait: QuitWait?
     var onCancel: () -> Void
+    var onCancelQuit: () -> Void = {}
 
     var body: some View {
         ZStack {
             Color.black.opacity(0.28)
-            WritingStageCard(stage: stage, onCancel: onCancel)
+            WritingStageCard(stage: stage, quitWait: quitWait, onCancel: onCancel, onCancelQuit: onCancelQuit)
         }
         .contentShape(Rectangle())
         .onTapGesture {}
@@ -161,11 +163,13 @@ struct WritingOverlay: View {
     }
 }
 
-/// 쓰기 진행 카드: 단계 문구 + (진행 막대) + 안내 + (취소).
+/// 쓰기 진행 카드: 단계 문구 + (진행 막대) + 안내 + (취소) + (종료 기다림).
 struct WritingStageCard: View {
     @Environment(\.textScale) private var textScale
     let stage: WriteStage
+    var quitWait: QuitWait?
     var onCancel: () -> Void
+    var onCancelQuit: () -> Void = {}
 
     var body: some View {
         // 막대가 창 폭을 다 차지하지 않게 문구 폭에 맞추고, 긴 문구만 최대 폭에서 줄을 바꾼다(#122).
@@ -182,12 +186,56 @@ struct WritingStageCard: View {
                 if stage.cancellable {
                     Button(.ui("취소"), action: onCancel).keyboardShortcut(.cancelAction)
                 }
+                if let quitWait {
+                    Divider().padding(.vertical, 2)
+                    QuitWaitSection(wait: quitWait, onCancel: onCancelQuit)
+                }
             }
             .multilineTextAlignment(.center)
         }
         .padding(.horizontal, 28).padding(.vertical, 20)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
+    }
+}
+
+/// 종료를 기다리는 중 안내(#300): 「rekordbox에 쓰는 중… 끝나면 종료합니다」 + 지난 시간(초) + [종료 취소].
+/// [종료 취소]는 종료만 취소한다. 쓰기는 끝까지 간다. 지난 시간은 초마다 이 뷰만 다시 그린다.
+struct QuitWaitSection: View {
+    @Environment(\.textScale) private var textScale
+    let wait: QuitWait
+    var onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(QuitWait.title).font(.scaled(.body, textScale).weight(.semibold))
+            TimelineView(.periodic(from: wait.startedAt, by: 1)) { context in
+                Text(QuitWait.elapsedText(seconds: wait.elapsedSeconds(at: context.date)))
+                    .font(.scaled(.caption, textScale).monospacedDigit()).foregroundStyle(.secondary)
+            }
+            Button(.ui("종료 취소"), action: onCancel).keyboardShortcut(.cancelAction).selfTestFrame("quit-wait.cancel")
+        }
+        .multilineTextAlignment(.center)
+    }
+}
+
+/// 진행 안내가 없는 틈(결과를 알리는 때·iTunes 동기화)에도 종료를 기다리는 중임을 보인다(#300). 덮개와 같은 모양의 카드 하나만 띄운다.
+struct QuitWaitOverlay: View {
+    let wait: QuitWait
+    var onCancel: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.28)
+            QuitWaitSection(wait: wait, onCancel: onCancel)
+                .padding(.horizontal, 28).padding(.vertical, 20)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {}
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
     }
 }
 

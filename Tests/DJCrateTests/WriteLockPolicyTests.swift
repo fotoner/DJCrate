@@ -1,26 +1,35 @@
 @testable import DJCrate
 import AppKit
+import DJCApplication
 import DJCDomain
 import DJCTestKit
 import Testing
 
 @Suite("쓰기 잠금 — 키·종료·편집")
 struct WriteLockPolicyTests {
-    @MainActor @Test func 종료_입구는_잠금을_읽고_거절_이유를_알린다() {
+    /// 쓰는 중 앱 종료(#300): 거절 알림 대신 기다렸다 끈다. 이번 요청은 취소로 답하고(종료를 미루면 메인 큐 블록 안에서 불렸을 때 쓰기가 멈춘다),
+    /// 쓰기가 끝나면(다시 읽기에 들어서면) 앱이 종료를 다시 요청한다.
+    @MainActor @Test func 종료_입구는_rekordbox에_쓰는_중이면_알림_없이_기다리고_끝나면_다시_종료한다() async {
         let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
         let delegate = AppDelegate()
-        delegate.store = store
-        var messages: [String] = []
+        var messages: [String] = [], replies: [Bool] = [], terminations = 0
         delegate.inform = { messages.append($0) }
-        store.setWriteLock(true)
-        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
-        #expect(messages == ["rekordbox에 쓰는 중입니다. 끝난 뒤 종료하세요"])
-        store.setWriteLock(false)
+        delegate.replyToTermination = { replies.append($0) }
+        delegate.terminateApp = { terminations += 1 }
+        delegate.store = store
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
-        #expect(messages.count == 1)
+        store.setWriteLock(true)
+        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
+        #expect(store.quitWait.isWaiting && messages.isEmpty && replies.isEmpty && terminations == 0)
+        store.setWriteLock(false)
+        store.writeStage = nil
+        #expect(await waitForState { terminations == 1 })
+        #expect(!store.quitWait.isWaiting && messages.isEmpty && replies.isEmpty)
     }
 
     /// 앱 업데이트(#59)의 다시 켜기·끌 때 설치도 이 입구를 지난다. USB에 쓰는 중에 꺼지면 USB DB가 반쯤 쓴 채로 남는다.
+    /// USB는 기다리지 않고 거절하되 이유와 할 일을 쓴다.
     @MainActor @Test func 종료_입구는_USB_쓰기_중에도_거절한다() throws {
         let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
         let volume = FakeUsbVolume.diskImageFAT32(name: "B1", uuid: "00000000-0000-0000-0000-0000000000B1")
@@ -32,7 +41,7 @@ struct WriteLockPolicyTests {
         delegate.inform = { messages.append($0) }
         _ = try #require(usb.beginWrite(volume, title: "합성 쓰기"))
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
-        #expect(messages == ["USB에 쓰는 중입니다. 끝난 뒤 종료하세요"])
+        #expect(messages == ["USB에 쓰는 중이라 지금은 종료하지 않았습니다. 쓰기가 끝나면 다시 종료하세요"])
         usb.endWrite(volume.usbKey)
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
         #expect(messages.count == 1)
@@ -67,23 +76,22 @@ struct WriteLockPolicyTests {
         }
     }
 
-    @Test func 준비부터_다시읽기까지_종료를_거절한다() {
-        for cancellable in [true, false] {
-            let policy = WriteLockPolicy(isWriting: true, canCancelPreparation: cancellable)
-            #expect(!policy.allowsTermination)
-        }
+    /// 종료 판단은 `AppQuitPolicy`(#300)가, 라이브러리 조작 거절은 저장소의 용도별 값(#301)이 한다. 이 구조체는 키 입력만 가른다
+    @Test func 쓰지_않을_때는_키를_막지_않는다() {
         let unlocked = WriteLockPolicy(isWriting: false)
-        #expect(unlocked.allowsTermination)
         #expect(!unlocked.blocksKey(49, in: .init()))
     }
 
-    /// 라이브러리 조작 거절은 정책 구조체가 아니라 저장소의 용도별 값이 한다(#301): 쓰는 동안 둘 다 켜지고 끝나면 꺼진다.
-    @MainActor @Test func 쓰는_동안_라이브러리_조작을_거절한다() {
+    /// 쓰는 동안 용도별 값이 모두 켜지고 끝나면 꺼진다(#301). 종료 판단(`writeActivity`)도 `quitBlocked`를 따른다
+    @MainActor @Test func 쓰는_동안_라이브러리_조작과_종료를_거절한다() {
         let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
-        #expect(!store.libraryBusy && !store.editsFrozen)
+        #expect(!store.libraryBusy && !store.editsFrozen && !store.quitBlocked)
+        #expect(store.writeActivity.rekordbox == .idle)
         store.setWriteLock(true)
-        #expect(store.libraryBusy && store.editsFrozen)
+        #expect(store.libraryBusy && store.editsFrozen && store.quitBlocked)
+        #expect(store.writeActivity.rekordbox != .idle)
         store.setWriteLock(false)
-        #expect(!store.libraryBusy && !store.editsFrozen)
+        #expect(!store.libraryBusy && !store.editsFrozen && !store.quitBlocked)
+        #expect(store.writeActivity.rekordbox == .idle)
     }
 }

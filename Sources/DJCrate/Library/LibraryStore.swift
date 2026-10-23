@@ -103,6 +103,8 @@ final class LibraryStore {
         self.feedback = feedback
         self.launch = launch
         readFlow = LibraryReadFlow(loader: useCases.load, location: location)
+        // 자가 테스트·측정·캡처 실행은 읽을 사본이 없어도 자동으로 읽지 않는다(그 상태에 기대는 캡처 장면이 있다)
+        readFlow.readsOnFirstRun = launch.readsOnFirstRun
         music = MusicLibraryStore(readFlow: readFlow)
         readFlow.screen = readScreen
         music.host = musicHost
@@ -315,7 +317,7 @@ final class LibraryStore {
     /// rekordbox 쓰기를 시작한 횟수(자동 시점 스냅샷이 뜨는 동안 쓰기가 끼어들었는지 본다, #228)
     @ObservationIgnored private(set) var rekordboxWriteCount = 0
     /// rekordbox에 쓰거나 되돌리는 중(미리 보기 포함). 아래 세 값의 원천이다. 읽는 쪽은 이 값 대신 용도에 맞는 값을 읽는다(#301).
-    /// 이 값을 직접 읽는 곳은 시작·끝 전이(`didSet`)와 종료·업데이트 판단(`writeActivity`, #300이 `quitBlocked`로 바꾼다)뿐이다.
+    /// 이 값을 직접 읽는 곳은 시작·끝 전이(`didSet`)와 용도별 값 셋뿐이다.
     var isWritingRekordbox = false {
         didSet {
             // 시작 횟수와 끝난 뒤 백업 확인은 libraryBusy, ⌘Z 기록 비우기와 덱 내리기는 editsFrozen이 하는 일이다.
@@ -331,12 +333,20 @@ final class LibraryStore {
     var libraryBusy: Bool { isWritingRekordbox }
     /// 편집 잠금: 덱 큐·그리드·게인, 태그·그림·재생 목록 편집, 키 입력, ⌘Z 기록, 덱 재생·곡 올리기를 막는다. 풀어 갈 값이다.
     var editsFrozen: Bool { isWritingRekordbox }
-    /// 종료 판단: 앱 끄기와 업데이트 설치를 미룬다(`writeActivity`는 아직 원천을 읽는다, #300).
+    /// 종료 판단: 앱 끄기와 업데이트 설치를 미룬다(`writeActivity`의 rekordbox 단계, #300).
     var quitBlocked: Bool { isWritingRekordbox }
     /// 쓰는 동안 든 재생 목록 초안 파일 잠금을 푸는 함수(#260)
     @ObservationIgnored var playlistDraftUnlock: (@Sendable () -> Void)?
     /// 쓰는 동안 덱 큐 편집을 잠근다
     var onWriteLock: ((Bool) -> Void)?
+    /// 쓰기·복원 확인 창이 떠 있다(잠금은 걸려 있고 아직 쓰지 않았다). 종료 판정이 단계를 가른다(#300)
+    var isAwaitingConfirmation = false
+    /// 쓰기가 실패해 복원까지 실패한 경고창이 떠 있다. 이 창을 확인하기 전에는 앱을 끄지 않는다(#300)
+    var isAwaitingAcknowledgement = false
+    /// Mac을 끄는 중(로그아웃·재시작·전원 끔). 새 rekordbox 쓰기를 시작하지 않는다(#300)
+    var isPoweringOff = false
+    /// 종료를 기다리는 중(「rekordbox에 쓰는 중… 끝나면 종료합니다」)
+    let quitWait = QuitWaitModel()
     /// rekordbox에 쓰거나 되돌린 곡(UUID). 덱이 그 곡이면 다시 읽는다. 새 스냅샷을 읽은 뒤에만 부른다(#175).
     var onRekordboxWritten: ((Set<String>) -> Void)?
     /// 성공한 라이브러리 읽기 수(쓰기 뒤 다시 읽기가 실제로 끝났는지 본다)
@@ -452,6 +462,12 @@ final class LibraryStore {
         } else {
             phase = .failed(failure.message)
         }
+    }
+
+    /// 원인 분류 없이 실패 화면으로 간다(사본을 뜨지 않은 이유 등). 이전 실패의 원인을 끌고 오지 않는다.
+    func showUnclassifiedFailure(_ message: String) {
+        lastReadFailure = nil
+        phase = .failed(message)
     }
 
     func reportLibraryError(_ message: String) { lastError = message }

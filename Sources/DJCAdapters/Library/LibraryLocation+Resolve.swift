@@ -22,7 +22,8 @@ extension LibraryLocation {
                                shareRoot: nil,
                                backupDirectory: data.appending(path: "rekordbox-backups"),
                                draftHome: data,
-                               movesDamagedDrafts: true)
+                               movesDamagedDrafts: true,
+                               userHome: NSHomeDirectory())
     }
 }
 
@@ -30,6 +31,22 @@ extension SnapshotTaker {
     /// 위치 값의 라이브 master.db에서 그 스냅샷 폴더로 사본을 뜬다(원본은 읽기만 한다)
     public static func live(_ location: LibraryLocation) -> SnapshotTaker {
         let source = location.liveDatabase, directory = location.snapshotDirectory
-        return SnapshotTaker { force in try LibrarySnapshot.take(from: source, into: directory, force: force) }
+        return SnapshotTaker { force in
+            do {
+                return try LibrarySnapshot.take(from: source, into: directory, force: force)
+            } catch {
+                // `FileManager.copyItem`·`FileHandle`은 원본을 읽을 수 없을 때도 "쓰기 권한"(513) 오류를 낸다. 그대로 두면 사본을 둘 폴더의
+                // 쓰기 문제와 가를 수 없다. 원본이 있는데 열 때 커널이 접근 거부(EACCES·EPERM)를 내면 읽기 권한 오류로 바로잡는다(#299).
+                // 직접 열어 보므로 ACL·개인정보 보호(TCC)로 막힌 경우도 잡는다.
+                let descriptor = open(source.path, O_RDONLY), code = errno
+                if descriptor >= 0 {
+                    close(descriptor)
+                } else if code == EACCES || code == EPERM {
+                    throw CocoaError(.fileReadNoPermission, userInfo: [NSFilePathErrorKey: source.path,
+                                                                      NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(code))])
+                }
+                throw error
+            }
+        }
     }
 }

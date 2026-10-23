@@ -33,6 +33,7 @@ enum DevSelfTests {
         runXMLImportCaptureIfRequested(store: store, libraryWindow: libraryWindow)
         runPlaylistRecoveryIfRequested(store: store, reflection: reflection)
         runWriteSelfTestIfRequested(store: store, deck: deck, reflection: reflection, playlistSidebar: playlistSidebar)
+        QuitWaitSelfTest.runIfRequested(store: store)
         SidebarMultiCapture.runIfRequested(store: store, sidebar: playlistSidebar, reflection: reflection)
         HistorySelfTest.runIfRequested(store: store, reflection: reflection)
         runTrackSelfTestIfRequested(store: store)

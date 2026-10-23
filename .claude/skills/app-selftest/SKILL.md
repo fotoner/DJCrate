@@ -1,6 +1,6 @@
 ---
 name: app-selftest
-description: 디버그 앱 자가 테스트(--write-selftest·--loop-selftest·--usb-selftest·--edit-selftest·--ui-perf 등)로 소리·실제 UI·rekordbox 쓰기 전 과정을 확인할 때 쓴다. 인자표, 합성 픽스처를 만드는 명령, 임시 폴더·잠금·timeout·로그 grep 요령이 있다.
+description: 디버그 앱 자가 테스트(--write-selftest·--quit-wait-selftest·--loop-selftest·--usb-selftest·--edit-selftest·--ui-perf 등)로 소리·실제 UI·rekordbox 쓰기 전 과정을 확인할 때 쓴다. 인자표, 합성 픽스처를 만드는 명령, 임시 폴더·잠금·timeout·로그 grep 요령이 있다.
 ---
 
 # 디버그 앱 자가 테스트
@@ -31,6 +31,7 @@ grep "루프 시험" /tmp/djc-loop.log
   - `--db <스냅샷>`: 그 사본을 연다. 환경 변수 `DJC_DB`와 같다.
   - `--select <ContentID>`: 곡을 골라 둔다.
 - `--db=<사본>`은 읽지 않는다. 이렇게 쓰면 앱이 기본 위치를 연다.
+- `--first-run-read`는 값 없는 플래그다. 진단 실행(자가 테스트·측정·캡처 인자)은 읽을 사본이 없어도 자동으로 읽지 않는다. 이 플래그를 주면 첫 실행처럼 바로 새 사본을 떠서 읽는다. 첫 실행과 읽기 실패 화면 캡처용이다. 임시 `DJC_HOME`·`DJC_REKORDBOX_DIR`을 함께 준다.
 - 자가 테스트·측정의 값 받는 인자는 `--이름=값` 한 덩어리다(`.claude/rules/ui.md`). 새로 만드는 인자도 같다.
 - 한 덩어리 인자의 예: `--jump-bpm=180`, `--resize-perf=…`, `--…-capture=<폴더>`.
 - 설치한 DJCrate 앱을 끄지 않는다. 바꾸지도 않는다.
@@ -41,6 +42,7 @@ grep "루프 시험" /tmp/djc-loop.log
 |---|---|---|
 | `--itunes-selftest` | iTunes 목록 순서·읽기 전용 제한·덱 핫큐·태그 초안·DB 불변 | `ITunesFixtureCapture` 합성 사본을 `DJC_REKORDBOX_DIR`·`--db`로. 다시 돌릴 때는 사본을 새로 만든다. 앞 실행의 동기화가 사본을 바꾸기 때문이다 |
 | `--write-selftest` | 반영(미리 보기·쓰기·조용한 다시 읽기·되돌리기) 전 과정. 재생 목록 초안(새 폴더·목록, 있던 목록에 곡)도 만들어 함께 쓰고 되돌린다 | `DJC_REKORDBOX_DIR` 사본 필수. 합성 사본은 `PlaylistWriteFixtureCapture` |
+| `--quit-wait-selftest` | 쓰는 중 종료(#300): 쓰는 단계에서 종료를 요청해 [종료 취소]와 끝난 뒤 스스로 종료를 본다. 아래 자세히 | `PlaylistWriteFixtureCapture` 합성 사본을 `DJC_REKORDBOX_DIR`·`--db`로. 둘 다 임시 폴더 아래여야 한다(아니면 종료 코드 2) |
 | `--history-selftest` | USB 보존 기록(#43)의 화면·쓰기 대기·미리 보기·쓰기·다시 읽기·복원 뒤 재대기("히스토리 시험 통과" 줄). `--history-capture=<임시 폴더>`로 대기·쓴 뒤·복원 뒤 창을 PNG로 남긴다 | `DJC_HISTORY_SELFTEST_FIXTURE=<없는 임시 폴더> swift test --filter HistorySelfTestFixtureCapture`로 만든 폴더를 `DJC_REKORDBOX_DIR`로, `--db <그 폴더>/history-snapshot.db`, 임시 `DJC_HOME`. 소리·실물 USB 없이 돈다 |
 | `--loop-selftest` | 활성 루프·즉석 루프·½·핫큐 저장·나가기 | `--select`로 활성 루프 있는 곡 |
 | `--loop-audio-selftest` | 루프 이음새가 샘플 단위로 맞는지(램프 WAV) | — |
@@ -71,6 +73,17 @@ grep "루프 시험" /tmp/djc-loop.log
 
 - 램프 WAV로 퀀타이즈 끔·켬 핫큐를 기록한다. 루프 핫큐·나가기도 기록한다.
 - 그 기록을 섞지 않은 채 렌더한다. 렌더 결과를 곡 믹서 출력과 이음새·프레임 단위로 비교한다.
+
+`--quit-wait-selftest`
+
+- 쓰기 관문을 4초 붙잡아 쓰기 단계를 늘린다. 붙잡는 동안은 아직 아무것도 쓰지 않았다.
+- 종료는 ⌘Q와 같은 길로 요청한다.
+- 1번: 종료를 요청한다. 카드가 뜨면 [종료 취소] 자리에 마우스 이벤트를 넣는다. 쓰기는 끝까지 가야 한다.
+- 2번: 종료를 한 번 더 요청한다. 종료 기다림이 풀려야 한다.
+- 3번: 종료를 요청한 채 둔다. 쓰기가 끝나면 앱이 종료 코드 0으로 끝난다. "종료 직전" 줄에 그때 쓰기 상태가 남는다.
+- `--quit-wait-poweroff`를 더하면 Mac을 끄는 중으로 알린 채 같은 순서를 한다. 이때는 종료를 `terminateLater`로 미룬다.
+- `--quit-wait-capture=<폴더>`는 기다리는 카드를 `waiting-card.jpg`로 남긴다.
+- 끝난 뒤 `djc lab db-diff <전 사본> <후 사본>`으로 마지막 평점 변경만 있는지 본다.
 
 `--resize-perf=all`
 

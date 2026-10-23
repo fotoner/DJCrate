@@ -81,9 +81,12 @@ struct ContentView: View {
         // rekordbox·USB에 쓰는 동안은 창 전체를 덮어 다른 조작을 막는다.
         .overlay {
             if let stage = store.writeStage {
-                WritingOverlay(stage: stage, onCancel: { store.cancelWritePreparation() }).transition(.opacity)
+                WritingOverlay(stage: stage, quitWait: store.quitWait.current, onCancel: { store.cancelWritePreparation() },
+                               onCancelQuit: { store.quitWait.cancel() }).transition(.opacity)
             } else if let write = store.usb?.activeWrite {
                 UsbWritingOverlay(model: UsbWriteProgressModel(write), onCancel: { store.usb?.cancelWrite() }).transition(.opacity)
+            } else if let wait = store.quitWait.current {
+                QuitWaitOverlay(wait: wait, onCancel: { store.quitWait.cancel() }).transition(.opacity)
             }
         }
         .sheet(item: Binding(get: { store.usb?.syncSheet }, set: { store.usb?.syncSheet = $0 })) { request in
@@ -146,25 +149,25 @@ struct ContentView: View {
                 LibraryDetail(store: store, deck: deck, windowFrameRestored: windowFrameRestored, sidebarVisible: sidebarVisible,
                               listActionBar: app.listActionBar, window: window)
             case .idle:
+                // 첫 실행은 단추 없이 바로 읽는다(`LibraryReadFlow.readsOnFirstRun`). 여기는 자가 테스트·캡처 실행이나 읽기 전 잠깐만 보인다.
                 ContentUnavailableView {
-                    Label(.ui("스냅샷이 없습니다"), systemImage: "externaldrive.badge.questionmark")
+                    Label(.ui("라이브러리를 읽지 않았습니다"), systemImage: "externaldrive")
                 } description: {
-                    Text(.ui("rekordbox를 종료한 뒤 master.db 사본을 떠 주세요. 원본은 읽기만 합니다."))
-                } actions: {
-                    Button(.ui("스냅샷 뜨기")) { window.startTakeSnapshot() }
+                    Text(.ui("‘rekordbox와 동기화’(⌘R)로 라이브러리를 읽어 오세요"))
                 }
             case let .loading(message):
                 // 상세 열을 다 채운다. 제 크기만 차지하면 아래에 붙는 LINK 막대가 열 가운데로 올라왔다
                 ProgressView(message)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case let .failed(message):
-                ContentUnavailableView {
-                    Label(.ui("불러오지 못했습니다"), systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button(.ui("다시 시도")) { window.startLoadInitial() }
-                    Button(.ui("실행 중이어도 읽기용 스냅샷 뜨기")) { window.startTakeSnapshot(force: true) }
+                if let failure = store.lastReadFailure {
+                    LibraryReadFailureView(title: failure.title, guidance: failure.guidance,
+                                           detail: failure.offersDetail ? failure.detail : nil) { window.startRetryLoad() }
+                } else {
+                    // 사본을 뜨지 않은 이유(명시한 사본 모드 등)처럼 원인 분류가 없는 실패
+                    LibraryReadFailureView(title: String(ui: "라이브러리를 읽지 못했습니다"), guidance: message, detail: nil) {
+                        window.startRetryLoad()
+                    }
                 }
             }
     }
@@ -255,23 +258,24 @@ struct EmptyLibraryOverlay: View {
         if store.displayRows.isEmpty { message }
     }
 
+    private func noResults(_ guide: NoResultsGuide) -> some View {
+        NoResultsView(guide: guide, clearSearch: { store.search = "" }, clearFilter: { store.minimumRating = 0; store.colorFilter = nil })
+    }
+
     @ViewBuilder private var message: some View {
-        if !store.search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            ContentUnavailableView.search(text: store.search)
+        // 검색어가 있으면 먼저, 필터만 켜졌으면 스마트 목록 계산 실패 다음에 안내한다(#299: 시스템 검색 화면 대신 앱 문구)
+        let guide = NoResultsGuide(search: store.search, isFiltered: store.isAttributeFiltered,
+                                   hasUnwrittenEdits: store.isAttributeFiltered && store.pendingWriteCount > 0)
+        if let guide, guide.offersClearSearch {
+            noResults(guide)
         } else if let summary = store.playlists.selectedSmartPlaylistResult?.unsupportedSummary {
             ContentUnavailableView {
                 Label(.ui("조건을 계산하지 못했습니다"), systemImage: WarningMark.symbol)
             } description: {
                 Text(.ui("\(summary). rekordbox에서 이 목록을 확인하세요."))
             }
-        } else if store.isAttributeFiltered {
-            ContentUnavailableView {
-                Label(.ui("평점·곡 색 조건에 맞는 곡이 없습니다"), systemImage: "line.3.horizontal.decrease.circle")
-            } description: {
-                Text(.ui("거르기는 rekordbox 값(초안 전)으로 합니다. 조건을 바꾸거나 거르기를 끄세요."))
-            } actions: {
-                Button(.ui("평점·곡 색 거르기 끄기")) { store.minimumRating = 0; store.colorFilter = nil }
-            }
+        } else if let guide {
+            noResults(guide)
         } else if store.playlists.selectedSmartPlaylistResult != nil, store.streamingHiddenInView == 0 {
             ContentUnavailableView {
                 Label(.ui("조건에 맞는 곡이 없습니다"), systemImage: "music.note.list")
