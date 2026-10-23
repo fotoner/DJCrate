@@ -78,9 +78,12 @@ struct ContentView: View {
         // rekordbox·USB에 쓰는 동안은 창 전체를 덮어 다른 조작을 막는다.
         .overlay {
             if let stage = store.writeStage {
-                WritingOverlay(stage: stage, onCancel: { store.cancelWritePreparation() }).transition(.opacity)
+                WritingOverlay(stage: stage, quitWait: store.quitWait.current, onCancel: { store.cancelWritePreparation() },
+                               onCancelQuit: { store.quitWait.cancel() }).transition(.opacity)
             } else if let write = store.usb?.activeWrite {
                 UsbWritingOverlay(model: UsbWriteProgressModel(write), onCancel: { store.usb?.cancelWrite() }).transition(.opacity)
+            } else if let wait = store.quitWait.current {
+                QuitWaitOverlay(wait: wait, onCancel: { store.quitWait.cancel() }).transition(.opacity)
             }
         }
         .sheet(item: Binding(get: { store.usb?.syncSheet }, set: { store.usb?.syncSheet = $0 })) { request in

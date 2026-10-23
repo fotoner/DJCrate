@@ -59,7 +59,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | `Edit/` | `RenderEdit`, `StageEdit` |
 | `Library/` | `LoadLibrary`, `LibraryReadFlow`, `ImportXML`, `RecoverDrafts`, `RelocateTracks`, `StageTracks`, `EditPlaylists`, `EditTags`, `ArchiveUsbHistories` |
 | `Reflection/` | `ReflectionSession`, `CompatibilityCheck` |
-| `Update/` | `UpdateDeferral`(앱 업데이트 설치를 쓰기가 끝날 때까지 미룬다, #59) |
+| `Update/` | `UpdateDeferral`(앱 업데이트 설치를 쓰기가 끝날 때까지 미룬다, #59). 순수 규칙은 DJCDomain `Update/`의 `UpdateInstallPolicy`·`AppQuitPolicy`가 쓰기 단계 `RekordboxWritePhase`로 판정한다 |
 | `Usb/` | `UsbSync`, `UsbExportSession`, `UsbWriteFlow` |
 | `AgentTools/` | `AgentTools`(스킬·djc 설치, #262) |
 
@@ -235,6 +235,20 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - 예외 파일은 `Diagnostics/`, CLI `Lab/`, 조립 지점뿐이다.
 - 설정 › 저장 공간의 화면 모델은 `AppComposition.storageSettings()`가 만든다.
 - 설정 › AI 에이전트의 화면 모델은 `AppComposition.agentTools(arguments:settings:)`가 한 번 만든다. 설정 창과 켤 때 알림이 이 모델을 함께 쓴다. 설치 자리의 뿌리(홈)는 조립 지점이 준다. 디버그 빌드는 `--agent-home=<폴더>`로 홈과 휴지통을 임시 폴더로 바꾼다.
+- **쓰는 중 앱 종료(#300).** 종료 입구 `AppDelegate`는 얇다. 판정은 DJCDomain `AppQuitPolicy`가 쓰기 단계 `RekordboxWritePhase`로 한다. 업데이트 미루기 `UpdateInstallPolicy`와 같은 판단 `isFinished`를 쓴다.
+  - 단계는 `LibraryStore.rekordboxWritePhase`가 만든다. 재료는 쓰기 잠금, 진행 안내 `WriteStage`, 창 표시 둘이다.
+  - 끊어도 되는 단계는 둘뿐이다. 아직 아무것도 쓰지 않은 단계가 하나다. 쓴 뒤 읽기만 하는 단계 `readsBack`이 다른 하나다.
+  - 백업, DB, 분석 파일, 초안 정리, 복원은 끝까지 기다린다. 복원의 다시 읽기는 읽은 뒤에도 초안 되살리기가 남아서 `readsBack`이 아니다.
+  - 기다림은 `AppQuitController`가 맡는다. 쓰기 상태를 지켜본다. 끝나면 초안 저장 큐를 비운 뒤 종료한다. 종료를 취소해도 쓰기는 끊지 않는다.
+  - 안내는 쓰는 중 덮개의 단계 카드 안에 있다(`QuitWaitSection`). 진행 안내가 없는 틈에는 같은 카드를 따로 띄운다(`QuitWaitOverlay`).
+  - 종료를 미루는 방식은 둘이다. 기본은 이번 요청에 취소로 답하는 방식이다. 쓰기가 끝나면 앱이 종료를 다시 요청한다.
+  - `terminateLater`로 미루면 AppKit은 `terminate:` 안에서 이벤트 순환을 안쪽에서 다시 돈다. 그 `terminate:`가 메인 큐 블록 안에서 불렸다면 안쪽 순환이 메인 큐를 처리하지 못한다. 메인 액터의 쓰기가 끝나지 못한다. 자가 테스트로 확인했다.
+  - 로그아웃, 재시작, 전원 끔에 취소로 답하면 그 일 전체가 멈춘다. 그래서 `terminateLater`로 미룬다. 답은 `reply`로 한다. 알림은 `NSWorkspace.willPowerOffNotification`이다.
+  - ⌘Q로 기다리는 중에 Mac을 끄는 요청이 오면 취소하지 않는다. 미루는 방식으로 바꿔 같이 기다린다.
+  - Mac을 끄는 중에는 새 rekordbox 쓰기를 시작하지 않는다. 종료를 기다리는 중도 같다(`LibraryStore.writeRefusal`).
+  - 종료를 취소로 끝내면 Mac을 끄는 중 표시를 푼다. 로그아웃을 취소해도 알림이 오지 않는다.
+  - 쓰는 동안 `WriteSystemGuard`가 갑작스러운 종료와 App Nap을 막는다.
+  - 자가 테스트는 `--quit-wait-selftest`다(스킬 `app-selftest`).
 - 앱 자동 업데이트(#59)의 Sparkle 연결 `AppUpdater`는 `live()`가 만든다. Info.plist에 정보 파일 주소와 공개 키가 있는 배포 번들에서만 만든다. 쓰기 상태는 `LibraryStore.writeActivity`에서 읽는다. 설정 › 업데이트와 앱 메뉴는 화면 모델 `UpdateSettingsModel` 하나를 함께 쓴다.
 - **목록 그림 캐시 싱글턴은 없앴다.** 옛 `PreviewWaveformCache.shared`·`Thumbnails.shared` 대신 라이브러리 저장소가 하나씩 든다(`previewImages`·`thumbnails`).
 - 남은 싱글턴은 넷이다.

@@ -150,7 +150,10 @@ SPARKLE_ED_PRIVATE_KEY="$(cat <임시 폴더>/priv.txt)" scripts/sparkle-appcast
 - 자동 확인·자동 설치·마지막 확인 시각은 Sparkle이 앱 번들 ID의 환경설정(`SU…` 키)에 저장한다.
 - 앱은 `SUFeedURL`과 `SUPublicEDKey`가 모두 있는 번들에서만 업데이트 도구를 만든다. 개발 빌드(`.build/debug/DJCrate`)와 시험 프로세스는 Sparkle 환경설정에 쓰지 않는다.
 - rekordbox·USB에 쓰는 동안에는 설치와 다시 켜기를 미룬다. 복원도 쓰기에 든다. 쓰기가 끝나면 이어서 설치한다. 판정은 `UpdateInstallPolicy`·`UpdateDeferral`에 있다.
-- 자동으로 받은 업데이트는 앱을 끌 때 설치한다. 받아 둔 업데이트를 다시 켜기로 설치할 때 Sparkle은 미룸 판정을 부르지 않는다. 두 경로 모두 앱 끄기를 지난다. 그래서 앱은 rekordbox·USB에 쓰는 동안 끄기를 막는다(`AppWriteActivity.quitBlockedReason`).
+- "쓰기가 끝났는가"는 앱 종료 대기와 같은 판단 `RekordboxWritePhase.isFinished` 하나를 쓴다. 쓴 뒤 다시 읽기만 남았으면 끝난 것이다.
+- 자동으로 받은 업데이트는 앱을 끌 때 설치한다. 받아 둔 업데이트를 다시 켜기로 설치할 때 Sparkle은 미룸 판정을 부르지 않는다.
+- 두 경로 모두 앱 끄기를 지난다. 앱은 끄기 입구에서 쓰기 단계를 본다. 판정은 `AppQuitPolicy`가 한다.
+- rekordbox에 쓰는 중이면 끝날 때까지 기다렸다 끈다. USB에 쓰는 중이면 끄지 않는다(`AppDelegate`·`AppQuitController`, #300).
 
 ### 신뢰 모델
 

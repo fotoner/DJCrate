@@ -276,7 +276,7 @@ extension ReflectionSession {
         defer { stage(nil) }
         let gate = ports.gate
         let report = try await BlockingWork.run { try gate.restorePointSnapshot(entry, target, snapshots, autoDays, now) }
-        stage(WriteStage(String(ui: "복원한 라이브러리를 읽는 중…")))
+        stage(WriteStage(String(ui: "복원한 라이브러리를 읽는 중…"), readsBack: true))
         _ = await ports.reload.reload(changedTracks, [])
         apply(.writeBackupsChanged)
         return report
