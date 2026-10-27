@@ -85,6 +85,22 @@ struct AppToast: Identifiable, Equatable {
     }
 }
 
+/// 알림 글 칸: 내용 폭에 맞추되 `maxWidth`를 넘으면 그 폭에서 줄을 바꾸고, 그 폭으로 잰 높이를 알린다.
+/// 카드는 가로를 내용 폭으로 고정(`fixedSize`)하므로, 그냥 `frame(maxWidth:)`를 쓰면 글 높이를 줄바꿈 없이 재서 긴 글이 카드 밖으로 넘친다(#307)
+private struct ToastTextLayout: Layout {
+    var maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let text = subviews.first else { return .zero }
+        let width = min(text.sizeThatFits(.unspecified).width, maxWidth, proposal.width ?? .infinity)
+        return CGSize(width: width, height: text.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+    }
+}
+
 /// 토스트 모양: 둥근 카드, 아이콘 + 제목 + 설명 + (되돌리기) + 닫기. 마우스를 올려 두거나 단추에 키보드 포커스가 있으면 사라지지 않는다.
 struct AppToastView: View {
     /// 키보드 포커스를 받을 수 있는 단추
@@ -109,15 +125,15 @@ struct AppToastView: View {
                 .imageScale(.large)
                 .foregroundStyle(toast.kind.tint)
                 .symbolEffect(.bounce, options: .nonRepeating, isActive: !reduceMotion)
-            // 카드는 내용 폭에 맞춘다(긴 설명만 이 폭에서 줄을 바꾼다)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(toast.title).font(.scaled(.body, textScale).weight(.semibold))
-                if let detail = toast.detail {
-                    Text(detail).font(.scaled(.caption, textScale)).foregroundStyle(.secondary).textSelection(.enabled)
+            // 카드는 내용 폭에 맞춘다(긴 설명만 이 폭에서 줄을 바꾸고 그만큼 높아진다)
+            ToastTextLayout(maxWidth: TextScale.length(420, scale: textScale)) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(toast.title).font(.scaled(.body, textScale).weight(.semibold))
+                    if let detail = toast.detail {
+                        Text(detail).font(.scaled(.caption, textScale)).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
                 }
             }
-            .frame(maxWidth: TextScale.length(420, scale: textScale), alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
             if let onDetails {
                 Button(.ui("결과 보기"), action: onDetails).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .details)
             }
