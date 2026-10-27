@@ -54,6 +54,10 @@ struct PointSnapshotView: View {
                     .disabled(model.isWorking || model.blockReason != nil)
                     .help(model.blockReason ?? String(ui: "rekordbox 라이브러리(DB·분석 파일·앨범아트)를 지금 시점으로 남깁니다"))
                 if model.isWorking { ProgressView().controlSize(.small) }
+                // 이 창은 주 창과 따로라 주 창의 진행 카드가 가려질 수 있다. 되돌리는 동안만 직접 안내한다(#310)
+                if model.isRestoring {
+                    Text(verbatim: ReflectionPrompts.progressNotice).font(.callout).foregroundStyle(.secondary)
+                }
                 Spacer()
             }
             Text(.ui("rekordbox가 꺼져 있을 때만 남깁니다. 수동·고정 스냅샷은 지우지 않고, 쓰기 전 백업은 따로 정리됩니다."))

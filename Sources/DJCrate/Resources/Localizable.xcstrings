@@ -1817,24 +1817,24 @@
         }
       }
     },
-    "%@에 %@로 씁니다. 쓰기 전에 Mac에 백업하고 쓴 뒤 USB에서 다시 읽어 확인합니다. 끝날 때까지 USB를 뽑지 마세요." : {
+    "%@에 %@로 씁니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Writes %2$@ to %1$@. The USB is backed up on this Mac first and read back afterward to verify. Don’t unplug the USB until it finishes."
+            "value" : "Writes %2$@ to %1$@."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@に%2$@で書き込みます。書き込む前にMacにバックアップし、書き込んだ後にUSBから読み直して確認します。終わるまでUSBを抜かないでください。"
+            "value" : "%1$@に%2$@で書き込みます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@에 %2$@로 씁니다. 쓰기 전에 Mac에 백업하고 쓴 뒤 USB에서 다시 읽어 확인합니다. 끝날 때까지 USB를 뽑지 마세요."
+            "value" : "%1$@에 %2$@로 씁니다."
           }
         }
       }
@@ -1855,18 +1855,18 @@
         }
       }
     },
-    "%@에 OneLibrary를 더하기 전의 백업으로 되돌립니다. 끝날 때까지 USB를 뽑지 마세요." : {
+    "%@에 OneLibrary를 더하기 전의 백업으로 되돌립니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Restore %@ from the backup made before adding OneLibrary. Keep the USB connected until it finishes."
+            "value" : "Restore %@ from the backup made before adding OneLibrary."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@をOneLibrary追加前のバックアップから復元します。完了するまでUSBを抜かないでください。"
+            "value" : "%@をOneLibrary追加前のバックアップから復元します。"
           }
         }
       }
@@ -2187,66 +2187,66 @@
         }
       }
     },
-    "%@을 시점 스냅샷으로 되돌리기 직전의 백업으로 되돌립니다. 끝날 때까지 USB를 뽑지 마세요." : {
+    "%@을 시점 스냅샷으로 되돌리기 직전의 백업으로 되돌립니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Restores %@ from the backup made just before restoring the restore point. Keep the USB connected until it finishes."
+            "value" : "Restores %@ from the backup made just before restoring the restore point."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@を復元ポイントに戻す直前のバックアップから復元します。完了するまでUSBを抜かないでください。"
+            "value" : "%@を復元ポイントに戻す直前のバックアップから復元します。"
           }
         }
       }
     },
-    "%@의 Device Library를 읽어 OneLibrary를 더합니다. 쓰기 전에 Mac에 백업하고 쓴 뒤 USB에서 다시 읽어 확인합니다. 끝날 때까지 USB를 뽑지 마세요." : {
+    "%@의 Device Library를 읽어 OneLibrary를 더합니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Read Device Library on %@ and add OneLibrary. A backup is made on your Mac before writing, then the USB is read again to verify the result. Keep the USB connected until it finishes."
+            "value" : "Read Device Library on %@ and add OneLibrary."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@のDevice Libraryを読み、OneLibraryを追加します。書き込み前にMacにバックアップを作り、書き込み後にUSBを読み直して確認します。完了するまでUSBを抜かないでください。"
+            "value" : "%@のDevice Libraryを読み、OneLibraryを追加します。"
           }
         }
       }
     },
-    "%@의 rekordbox 라이브러리를 고칩니다. 쓰기 전에 Mac에 백업하고 쓴 뒤 USB에서 다시 읽어 확인합니다. 끝날 때까지 USB를 뽑지 마세요." : {
+    "%@의 rekordbox 라이브러리를 고칩니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Edits the rekordbox library on %@. The USB is backed up on this Mac first and read back afterward to verify. Don’t unplug the USB until it finishes."
+            "value" : "Edits the rekordbox library on %@."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@のrekordboxライブラリを編集します。書き込む前にMacにバックアップし、書き込んだ後にUSBから読み直して確認します。終わるまでUSBを抜かないでください。"
+            "value" : "%@のrekordboxライブラリを編集します。"
           }
         }
       }
     },
-    "%@의 라이브러리 파일을 이 스냅샷으로 바꿉니다. 음원과 동기화 선택은 그대로 두며, 쓰기 전 백업으로 되돌리기를 취소할 수 있습니다. 끝날 때까지 USB를 뽑지 마세요." : {
+    "%@의 라이브러리 파일을 이 스냅샷으로 바꿉니다. 음원과 동기화 선택은 그대로 두며, 쓰기 전 백업으로 되돌리기를 취소할 수 있습니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Replaces the library files on %@ with this restore point. Audio files and sync selections are kept. You can undo this restore using the backup made before writing. Keep the USB connected until it finishes."
+            "value" : "Replaces the library files on %@ with this restore point. Audio files and sync selections are kept. You can undo this restore using the backup made before writing."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@のライブラリファイルをこの復元ポイントの状態に戻します。音源と同期の選択はそのまま残し、書き込み前のバックアップで復元を取り消せます。完了するまでUSBを抜かないでください。"
+            "value" : "%@のライブラリファイルをこの復元ポイントの状態に戻します。音源と同期の選択はそのまま残し、書き込み前のバックアップで復元を取り消せます。"
           }
         }
       }
@@ -21473,22 +21473,6 @@
         }
       }
     },
-    "끝날 때까지 rekordbox를 켜지 마세요." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Do not open rekordbox until it finishes."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "終わるまでrekordboxを起動しないでください。"
-          }
-        }
-      }
-    },
     "끝에 곡 넣기: %@" : {
       "localizations" : {
         "en" : {
@@ -28303,38 +28287,6 @@
         }
       }
     },
-    "백업한 뒤 복원하고 다시 확인합니다. 끝날 때까지 rekordbox를 켜지 마세요." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Backs up, restores, then verifies. Keep rekordbox closed until it finishes."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "バックアップしてから復元し、再確認します。完了するまでrekordboxを起動しないでください。"
-          }
-        }
-      }
-    },
-    "백업한 뒤 쓰고 다시 확인합니다. 끝날 때까지 rekordbox를 켜지 마세요." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrate backs up, writes, and then verifies. Don't open rekordbox until it finishes."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "バックアップしてから書き込み、もう一度確認します。終わるまでrekordboxを起動しないでください。"
-          }
-        }
-      }
-    },
     "버퍼" : {
       "localizations" : {
         "en" : {
@@ -33271,22 +33223,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "書き込みレポート（report.json）をバックアップに保存しきれなかったため、「書き込み前に復元…」で今回作ったファイルを削除できないことがあります。バックアップフォルダを確認してください：%@"
-          }
-        }
-      }
-    },
-    "쓰기 전 바꿀 파일을 Mac에 백업합니다. 기기에 꽂기 전에 결과를 확인하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Files to be changed are backed up to this Mac before writing. Check the result before plugging it into a device"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "書き込む前に変更するファイルをMacにバックアップします。機器に差し込む前に結果を確認してください"
           }
         }
       }

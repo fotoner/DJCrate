@@ -137,4 +137,21 @@ struct ReflectionLayoutTests {
         #expect(abs(long.width - (400 + 56)) < 1)
         #expect(long.height > short.height)
     }
+
+    /// 뷰 본문(`body`)에 값으로 든 글을 모은다. 접근성 트리는 창을 띄우지 않으면 비어 있어 본문을 거울로 읽는다.
+    static func strings(in value: Any, depth: Int = 0) -> [String] {
+        if let text = value as? String { return [text] }
+        guard depth < 40 else { return [] }
+        return Mirror(reflecting: value).children.flatMap { strings(in: $0.value, depth: depth + 1) }
+    }
+
+    /// 확인 창에서 걷어 낸 "끝날 때까지 rekordbox를 켜지 마세요"는 쓰는 동안의 진행 카드가 한 번만 보인다(#310).
+    /// 아직 쓰기 전인 취소할 수 있는 단계는 켜지 말라고 하지 않는다.
+    @Test(arguments: [false, true]) func 진행_카드는_안내를_한_번만_보인다(_ cancellable: Bool) {
+        let stage = WriteStage(cancellable ? "바꿀 내용을 확인하는 중…" : "rekordbox에 쓰는 중…", cancellable: cancellable)
+        let texts = Self.strings(in: WritingStageCard(stage: stage, onCancel: {}).body)
+        #expect(texts.contains(stage.text), "본문에서 글을 읽을 수 있다: \(texts)")
+        #expect(texts.filter { $0 == stage.notice }.count == 1, "\(texts)")
+        #expect(texts.filter { $0.contains("켜지 마세요") }.count == (cancellable ? 0 : 1), "\(texts)")
+    }
 }

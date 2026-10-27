@@ -109,9 +109,16 @@ public enum ReflectionPrompts {
         String(ui: "rekordbox를 완전히 종료한 뒤 다시 누르세요. DJCrate는 rekordbox가 켜져 있는 동안에는 rekordbox 라이브러리에 절대 쓰지 않습니다.")
     }
 
-    /// 확인 창이 쓰는 백업 안내(쓰기·넣기·빼기 공통)
-    static var backupThenWriteText: String {
-        String(ui: "백업한 뒤 쓰고 다시 확인합니다. 끝날 때까지 rekordbox를 켜지 마세요.")
+    /// 쓰는 동안 진행 카드(`WriteStage.notice`)에만 한 번 보이는 안내. 쓰기·넣기·빼기·복원·시점 복원 모두 같은 카드를 거친다.
+    /// 주 창과 따로 뜬 시점 스냅샷 창은 카드가 가려질 수 있어 되돌리는 동안 창이 이 문장을 직접 보인다.
+    /// 확인 창 본문에는 쓰지 않는다: 본문은 대상과 손실 줄만 말하고, 백업·다시 읽기 같은 절차는 말하지 않는다(#310).
+    public static var progressNotice: String {
+        String(ui: "끝날 때까지 rekordbox를 켜지 마세요")
+    }
+
+    /// 아직 쓰기 전인 취소할 수 있는 단계의 진행 카드 안내
+    public static var beforeWriteNotice: String {
+        String(ui: "아직 rekordbox에 쓰지 않았습니다")
     }
 
     /// 쓰기 전 백업 폴더에 쓸 수 없을 때의 줄
@@ -176,6 +183,7 @@ public enum ReflectionPrompts {
 
     /// 쓰기 전 확인 창(#210): 막힘·제외·손실이 있거나 백업을 만들 수 없을 때만 뜬다(`WriteConfirmPolicy`).
     /// 제목에 종류별 곡 수를 두고, 목록에는 묻는 이유가 되는 항목(합치기·쓰지 않는 것·백업)만 보인다. 곡마다의 결과는 쓰기 결과 창에 남는다.
+    /// 본문은 비운다: 절차(백업·다시 확인·켜지 마세요)는 진행 카드가 말한다(#310).
     public static func confirmation(_ report: RekordboxWriteReport, exclusions: [String] = [], canBackUp: Bool = true) -> ReflectionPrompt {
         var sections: [[String]] = []
         if !report.mergeWritten.isEmpty {
@@ -186,7 +194,7 @@ public enum ReflectionPrompts {
         if !reasons.isEmpty { sections.append([skippedHeader(reasons.count)] + reasons) }
         if !canBackUp { sections.append([noBackupText]) }
         return ReflectionPrompt(title: String(ui: "\(writeCounts(report).map(\.summary).joined(separator: " · "))을 rekordbox에 쓸까요?"),
-                                text: backupThenWriteText,
+                                text: "",
                                 confirm: String(ui: "rekordbox에 쓰기"), destructive: !report.mergeWritten.isEmpty,
                                 details: Array(sections.joined(separator: [""])))
     }
@@ -236,7 +244,7 @@ public enum ReflectionPrompts {
         if !reasons.isEmpty { sections.append([notAddedHeader(reasons.count)] + reasons) }
         if !canBackUp { sections.append([noBackupText]) }
         return ReflectionPrompt(title: String(ui: "\(written.count)곡을 rekordbox에 넣을까요?"),
-                                text: backupThenWriteText,
+                                text: "",
                                 confirm: String(ui: "rekordbox에 넣기"), details: Array(sections.joined(separator: [""])))
     }
 
@@ -246,8 +254,7 @@ public enum ReflectionPrompts {
         var body = written.map { "• \($0.title)" }
         if !blocked.isEmpty { body += ["", notDeletedHeader(blocked.count)] + blocked.map { "• \($0.title): \($0.reason ?? "")" } }
         return ReflectionPrompt(title: String(ui: "\(written.count)곡을 rekordbox에서 뺄까요?"),
-                                text: String(ui: "음원 파일은 지우지 않습니다. rekordbox의 큐·재생 목록 항목·재생 기록·분석 파일·앨범아트가 함께 사라집니다.")
-                                    + "\n" + backupThenWriteText,
+                                text: String(ui: "음원 파일은 지우지 않습니다. rekordbox의 큐·재생 목록 항목·재생 기록·분석 파일·앨범아트가 함께 사라집니다."),
                                 confirm: String(ui: "rekordbox에서 빼기"), critical: true, details: body)
     }
 
@@ -281,7 +288,6 @@ public enum ReflectionPrompts {
         if !conflicts.isEmpty { details += [String(ui: "쓴 뒤 새로 만든 초안:")] + conflicts }
         let lines = [String(ui: "백업: \(backup.createdAt.formatted(date: .abbreviated, time: .shortened))")]
             + restoreNotices(backup, changedSince: changed, conflicts: conflicts.count, later: later).map(\.text)
-            + [String(ui: "백업한 뒤 복원하고 다시 확인합니다. 끝날 때까지 rekordbox를 켜지 마세요.")]
         return ReflectionPrompt(title: String(ui: "rekordbox를 쓰기 전으로 복원할까요?"),
                                 text: lines.joined(separator: "\n\n"),
                                 confirm: conflicts.isEmpty ? String(ui: "쓰기 전으로 복원") : String(ui: "복원하고 지금 초안 남기기"),

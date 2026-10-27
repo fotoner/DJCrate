@@ -187,9 +187,8 @@ struct WritingStageCard: View {
                     Text(verbatim: "\(done)/\(total)").font(.scaled(.caption, textScale).monospacedDigit())
                 } else { ProgressView().controlSize(.regular) }
                 Text(stage.text).font(.scaled(.body, textScale).weight(.semibold))
-                Text(stage.cancellable ? LocalizedStringResource.ui("아직 rekordbox에 쓰지 않았습니다")
-                                       : LocalizedStringResource.ui("끝날 때까지 rekordbox를 켜지 마세요"))
-                    .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
+                // 확인 창에는 절차 문장을 두지 않는다. 쓰는 동안의 안내는 이 카드가 한 번만 말한다(#310).
+                Text(stage.notice).font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
                 if stage.cancellable {
                     Button(.ui("취소"), action: onCancel).keyboardShortcut(.cancelAction)
                 }

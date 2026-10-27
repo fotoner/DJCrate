@@ -166,8 +166,8 @@ struct UsbWritingOverlay: View {
                     Text(verbatim: [phase, model.items, model.bytes].compactMap { $0 }.joined(separator: " · "))
                         .font(.scaled(.caption, textScale).monospacedDigit())
                 }
-                Text(.ui("끝날 때까지 USB를 뽑지 마세요"))
-                    .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
+                // 확인 창에는 절차 문장을 두지 않는다. 쓰는 동안의 안내는 이 덮개가 한 번만 말한다(#310).
+                Text(verbatim: model.notice).font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
                 if model.showsCancel {
                     Button(.ui("취소"), action: onCancel).keyboardShortcut(.cancelAction)
                 }
