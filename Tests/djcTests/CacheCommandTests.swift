@@ -22,6 +22,7 @@ struct CacheCommandTests {
         #expect(try CacheCommand.Request(["cache", "--clear", "waveforms", "loudness"]) == .init(kinds: [.waveforms, .loudness], dryRun: false))
         #expect(try CacheCommand.Request(["cache", "--clear", "all", "--dry-run"]) == .init(kinds: DJCCacheKind.allCases, dryRun: true))
         #expect(try CacheCommand.Request(["cache", "--dry-run", "--clear", "usb-snapshots"]) == .init(kinds: [.usbSnapshots], dryRun: true))
+        #expect(try CacheCommand.Request(["cache", "--clear", "link-audio"]) == .init(kinds: [.linkAudio], dryRun: false))
     }
 
     @Test func 모르는_종류와_빈_비우기는_거부한다() {

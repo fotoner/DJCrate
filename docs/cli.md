@@ -38,7 +38,7 @@ CLI 조회·초안 명령은 `DJC_DB`로 DB를 고르지 않으므로 사본은 
 
 | 환경 변수 | 하는 일 |
 |---|---|
-| `DJC_HOME` | 초안·백업·캐시(`waveforms/`·`analysis/`·`loudness.json`)·오디오 기록(`logs/audio.log`) 폴더를 바꾼다. 스냅샷은 옮기지 않는다. 시험에서는 늘 임시 폴더 |
+| `DJC_HOME` | 초안·백업·캐시(`waveforms/`·`analysis/`·`loudness.json`)·LINK WAV 변환본(`link-audio/`)·오디오 기록(`logs/audio.log`) 폴더를 바꾼다. 스냅샷은 옮기지 않는다. 시험에서는 늘 임시 폴더 |
 | `DJC_REKORDBOX_DIR` | rekordbox 폴더 대신 쓸 사본 폴더. 그 안 `share/PIONEER/USBANLZ`는 링크가 아닌 실제 사본. 이 실행의 "라이브"가 이 사본이 된다 |
 | `DJC_DB` | 앱이 열 스냅샷(앱 인자 `--db <스냅샷>`과 같음). CLI 조회·초안 명령의 DB 선택에는 쓰지 않는다 |
 | `DJC_IDLE_SECONDS` | 재생을 멈춘 뒤 오디오 엔진을 끄기까지의 초. 설정 › 일반보다 먼저 적용 |
@@ -537,6 +537,7 @@ USB 시점 스냅샷(`usb-point-snapshots/`)의 개수와 사용량도 보인다
 | `preview-waveforms` | `preview-waveforms.plist` | 파일 | 곡 목록을 그릴 때 |
 | `usb-snapshots` | `usb-snapshots/<볼륨키>/<시각>/` | 볼륨마다 가장 새 사본을 뺀 나머지 | USB를 열 때 |
 | `snapshots` | 스냅샷 폴더(`DJC_REKORDBOX_DIR`이 있으면 그 안 `djc-snapshots/`) | 가장 새 사본을 뺀 나머지(곁 `-wal`·`-shm`·`.itunes.json` 포함) | rekordbox와 동기화할 때 |
+| `link-audio` | `~/Music/DJCrate/LINK`(`DJC_HOME`이 있으면 그 안 `link-audio/`) | 하위 파일(바꾸다 끊긴 `.….djc-partial.wav` 포함, 폴더는 남김) | FLAC·ALAC 곡을 LINK로 CDJ에 실을 때 |
 
 - 다음 항목은 어떤 종류에도 없어 지우지 않는다.
   - 초안(`*-drafts/`·`*-drafts.json`)
@@ -558,6 +559,7 @@ USB 시점 스냅샷(`usb-point-snapshots/`)의 개수와 사용량도 보인다
 - `usb-snapshots`는 쓰기 세션 사본(`local-`·`usb-`·`info-`)을 건드리지 않는다.
 - `snapshots`는 뜨는 중인 `.part`를 건드리지 않는다. 앱 화면(설정 › 저장 공간)에서 비우면 앱이 연 사본도 남긴다.
 - CLI는 앱이 연 사본을 모른다. 그래서 앱을 `--db`로 옛 사본에 연 채 비우지 않는다.
+- CLI는 앱이 LINK로 내어 주는지도 모른다. CDJ가 변환본을 읽는 중일 수 있으니 LINK를 켠 채 `link-audio`를 비우지 않는다. 앱 화면은 LINK를 켠 동안 이 종류를 막는다.
 - 크기는 논리 크기 합이다. 같은 APFS 볼륨의 복사는 클론이라 실제로 비는 양은 더 작을 수 있다.
 - 앱이 켜져 있으면 앱이 기억한 음량·목록 미리 보기 파형을 나중에 다시 저장할 수 있다. 앱에서는 설정 › 저장 공간에서 비운다.
 

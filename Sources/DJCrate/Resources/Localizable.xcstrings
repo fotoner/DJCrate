@@ -5603,6 +5603,22 @@
         }
       }
     },
+    "FLAC·ALAC 곡을 LINK로 CDJ에 실을 때 다시 바꿉니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Converted again when a FLAC or ALAC track is loaded onto a CDJ over LINK."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FLAC・ALAC の曲を LINK で CDJ にロードするときに再び変換します"
+          }
+        }
+      }
+    },
     "FLAC에 깨진 프레임이 있어 분석을 붙일 수 없으니 rekordbox에서 먼저 분석하세요" : {
       "localizations" : {
         "en" : {
@@ -5977,6 +5993,38 @@
         }
       }
     },
+    "LINK WAV 변환본" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK WAV conversions"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK WAV 変換ファイル"
+          }
+        }
+      }
+    },
+    "LINK WAV 변환본 폴더: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK WAV conversion folder: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK WAV 変換ファイルのフォルダ: %@"
+          }
+        }
+      }
+    },
     "LINK 연결을 껐습니다" : {
       "localizations" : {
         "en" : {
@@ -6037,6 +6085,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "LINK ポートを開けませんでした(%@)。そのポートを使っているアプリを終了してからもう一度オンにしてください"
+          }
+        }
+      }
+    },
+    "LINK로 CDJ에 내어 주는 중에는 LINK WAV 변환본을 비울 수 없습니다. LINK를 끈 뒤 비우세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't clear LINK WAV conversions while sharing with CDJs over LINK. Turn off LINK, then clear."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK で CDJ に共有している間は LINK WAV 変換ファイルを削除できません。LINK をオフにしてから削除してください"
           }
         }
       }

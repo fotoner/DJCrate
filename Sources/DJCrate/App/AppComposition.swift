@@ -134,9 +134,9 @@ final class AppComposition {
         let cueDrafts = LinkCueDrafts(edits: store.useCases.draftEdits, flush: { [watch = store.useCases.watch] in watch.flush() })
         return LinkBarModel(
             discovery: LinkDiscovery(source: .live, log: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }),
-            // CDJ가 못 읽는 FLAC·ALAC은 끌어 놓거나 CDJ에서 고를 때 WAV로 바꿔 ~/Music/DJCrate/LINK에 둔다(#277). 음원이 보통 ~/Music에 있어 새로 열리는 폴더가 없다
-            session: LinkSession(source: .live(), converter: .live(cache: FileManager.default.homeDirectoryForCurrentUser
-                                     .appending(path: "Music/DJCrate/LINK", directoryHint: .isDirectory)),
+            // CDJ가 못 읽는 FLAC·ALAC은 끌어 놓거나 CDJ에서 고를 때 WAV로 바꿔 ~/Music/DJCrate/LINK에 둔다(#277). 저장 공간 설정·`djc cache`가
+            // 같은 자리를 보인다(#287). 음악 폴더 밖 곡만 내어 줘 이 폴더가 NFS 밖이면 서버가 원본 이름으로 내어 준다
+            session: LinkSession(source: .live(), converter: .live(cache: DJCCachePaths.current.linkAudio),
                                  played: { [weak store] play in
                 Task { @MainActor in store?.history.recordLinkPlay(play, session: "\(launch)-\(play.session)-\(play.history)") }
             }, cueEdited: { [weak store] edit in
@@ -367,6 +367,12 @@ final class AppComposition {
                                     busyReason: { [weak store] in
                                         guard let store else { return nil }
                                         return StorageSettingsModel.busyReason(store: store)
+                                    },
+                                    linkServing: { [weak store] in store?.isLinkServing() ?? false },
+                                    // 변환본을 비우는 동안 LINK 켜기를 기다리게 한다(LINK 막대가 없는 실행은 막을 것이 없다)
+                                    beginLinkAudioClear: { [weak link = self.link] in
+                                        guard let link else { return {} }
+                                        return link.beginCacheClear()
                                     },
                                     canClone: { RekordboxPointSnapshot.canClone(from: rekordbox, to: snapshots) },
                                     clearMemory: { [weak store] kinds in

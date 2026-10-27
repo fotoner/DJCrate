@@ -6,10 +6,13 @@ public struct DJCCachePaths: Sendable, Equatable {
     public var root: URL
     /// 라이브 DB 읽기 스냅샷 폴더. `DJC_HOME`을 따르지 않는다(`DJCIdentity.snapshotsDirectory`)
     public var snapshots: URL
+    /// LINK로 실을 때 FLAC·ALAC을 바꾼 WAV(#277·#287). 앱은 음악 폴더에 둔다(`DJCIdentity.linkAudioDirectory`)
+    public var linkAudio: URL
 
-    public init(root: URL, snapshots: URL? = nil) {
+    public init(root: URL, snapshots: URL? = nil, linkAudio: URL? = nil) {
         self.root = root
         self.snapshots = snapshots ?? root.appending(path: "snapshots")
+        self.linkAudio = linkAudio ?? root.appending(path: "link-audio")
     }
 
     public var waveforms: URL { root.appending(path: "waveforms") }
@@ -29,6 +32,7 @@ public struct DJCCachePaths: Sendable, Equatable {
         case .previewWaveforms: previewWaveforms
         case .usbSnapshots: usbSnapshots
         case .snapshots: snapshots
+        case .linkAudio: linkAudio
         }
     }
 }
@@ -41,6 +45,7 @@ public enum DJCCacheKind: String, CaseIterable, Sendable, Codable {
     case previewWaveforms = "preview-waveforms"
     case usbSnapshots = "usb-snapshots"
     case snapshots
+    case linkAudio = "link-audio"
 
     public var title: String {
         switch self {
@@ -50,6 +55,7 @@ public enum DJCCacheKind: String, CaseIterable, Sendable, Codable {
         case .previewWaveforms: String(ui: "목록 미리 보기 파형")
         case .usbSnapshots: String(ui: "USB 읽기 사본")
         case .snapshots: String(ui: "라이브러리 읽기 사본")
+        case .linkAudio: String(ui: "LINK WAV 변환본")
         }
     }
 
@@ -62,6 +68,7 @@ public enum DJCCacheKind: String, CaseIterable, Sendable, Codable {
         case .previewWaveforms: String(ui: "곡 목록을 그릴 때 다시 만듭니다")
         case .usbSnapshots: String(ui: "USB를 열 때 다시 뜹니다. 볼륨마다 가장 새 사본은 남깁니다")
         case .snapshots: String(ui: "rekordbox와 동기화할 때 다시 뜹니다. 가장 새 사본과 지금 연 사본은 남깁니다")
+        case .linkAudio: String(ui: "FLAC·ALAC 곡을 LINK로 CDJ에 실을 때 다시 바꿉니다")
         }
     }
 }

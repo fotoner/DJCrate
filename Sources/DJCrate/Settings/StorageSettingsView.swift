@@ -11,14 +11,15 @@ struct StorageSettingsView: View {
         Form {
             Section {
                 ForEach(DJCCacheKind.allCases, id: \.self) { kind in
+                    let held = model.blockReason(of: kind)
                     LabeledContent {
                         HStack(spacing: 10) {
                             Text(size(of: kind))
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
                             Button(.ui("비우기")) { model.startClear([kind]) }
-                                .disabled(blocked != nil || model.isWorking || (model.clearable[kind] ?? 0) == 0)
-                                .help(blocked ?? String(ui: "\(kind.title) 캐시를 비웁니다"))
+                                .disabled(held != nil || model.isWorking || (model.clearable[kind] ?? 0) == 0)
+                                .help(held ?? String(ui: "\(kind.title) 캐시를 비웁니다"))
                         }
                     } label: {
                         Text(kind.title)

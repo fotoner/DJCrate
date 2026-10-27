@@ -91,6 +91,25 @@ struct CacheClearTests {
         #expect(outcomes.allSatisfy { $0.skipped == nil })
     }
 
+    @Test func LINK_WAV_변환본은_반쯤_쓴_숨김_파일까지_세고_비우며_폴더는_남긴다() throws {
+        // #287: 변환본이 끝없이 쌓였고 저장 공간 설정·djc cache에 보이지 않았다. 앱은 음악 폴더에 두므로 데이터 폴더 밖 자리로 준다
+        let scene = try scene()
+        defer { try? FileManager.default.removeItem(at: scene.root) }
+        let music = scene.root.appending(path: "Music/DJCrate/LINK")
+        let paths = DJCCachePaths(root: scene.home, snapshots: scene.paths.snapshots, linkAudio: music)
+        try scene.write("a-0011-22.wav", bytes: 1_000, under: music)
+        try scene.write(".b-0033-44.djc-partial.wav", bytes: 200, under: music)
+        try scene.write("waveforms/a-1.json", bytes: 50)
+
+        let usage = try #require(DJCCache.usage(paths: paths).first { $0.kind == .linkAudio })
+        #expect(usage.bytes == 1_200 && usage.files == 2)
+        let outcome = try #require(DJCCache.clear([.linkAudio], paths: paths).first)
+        #expect(outcome.freedBytes == 1_200 && outcome.removedFiles == 2)
+        #expect(!scene.exists("a-0011-22.wav", under: music) && !scene.exists(".b-0033-44.djc-partial.wav", under: music))
+        #expect(FileManager.default.fileExists(atPath: music.path), "다시 바꿀 폴더는 남긴다")
+        #expect(scene.exists("waveforms/a-1.json"), "고르지 않은 종류는 그대로")
+    }
+
     @Test func 읽기_스냅샷은_최신과_앱이_연_것을_남기고_진행_중인_사본은_건드리지_않는다() throws {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }

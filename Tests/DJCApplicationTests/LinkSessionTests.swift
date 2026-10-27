@@ -199,6 +199,85 @@ struct LinkSessionTests {
         #expect(fake.loaded.withLock { $0.map(\.player).sorted() } == [1, 2])
     }
 
+    @Test func 같은_곡을_두_플레이어에_함께_놓으면_바꿔_끼우기가_끝난_뒤에_둘_다_싣는다() async throws {
+        // #287: 먼저 깬 싣기가 바꿔 끼우는 동안 늦게 깬 싣기가 원본 경로로 실으면 그 CDJ는 E-8305로 실패한다
+        let fake = Fake()
+        let order = Mutex<[String]>([])
+        let converting = Mutex<(open: Bool, waiting: [CheckedContinuation<Void, Never>])>((false, []))
+        let swapping = Mutex<(open: Bool, waiting: [CheckedContinuation<Void, Never>])>((false, []))
+        var source = fake.source
+        source.substitute = { _, _, _ in
+            await withCheckedContinuation { continuation in
+                let now = swapping.withLock { state in
+                    if state.open { return true }
+                    state.waiting.append(continuation)
+                    return false
+                }
+                if now { continuation.resume() }
+            }
+            order.withLock { $0.append("바꿔 끼움") }
+        }
+        let load = source.load
+        source.load = { player, id throws(LinkProblem) in
+            order.withLock { $0.append("싣기") }
+            try await load(player, id)
+        }
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+            await withCheckedContinuation { continuation in
+                let now = converting.withLock { state in
+                    if state.open { return true }
+                    state.waiting.append(continuation)
+                    return false
+                }
+                if now { continuation.resume() }
+            }
+            return "/Users/dj/Music/DJCrate/LINK/x.wav"
+        })
+        try await session.connect(rows: [Self.row("10", path: "/Users/dj/Music/10.flac")], playlists: PlaylistLayout(), shareRoot: "/share",
+                                  peers: [Self.cdj2])
+        async let first: Void = session.load(contentID: "10", player: 1)
+        async let second: Void = session.load(contentID: "10", player: 2)
+        while converting.withLock({ $0.waiting.isEmpty }) { await Task.yield() }
+        // 두 번째 싣기가 변환 앞에 닿을 틈을 준다
+        try await Task.sleep(for: .milliseconds(100))
+        let held = converting.withLock { state in
+            state.open = true
+            defer { state.waiting.removeAll() }
+            return state.waiting
+        }
+        held.forEach { $0.resume() }
+        while swapping.withLock({ $0.waiting.isEmpty }) { await Task.yield() }
+        // 바꿔 끼우는 동안 다른 싣기가 앞질러 실을 틈을 준다
+        try await Task.sleep(for: .milliseconds(100))
+        let swaps = swapping.withLock { state in
+            state.open = true
+            defer { state.waiting.removeAll() }
+            return state.waiting
+        }
+        swaps.forEach { $0.resume() }
+        try await first
+        try await second
+        #expect(order.withLock { $0 } == ["바꿔 끼움", "싣기", "싣기"])
+    }
+
+    @Test func 같은_음원을_가리키는_두_곡_중_뒤_곡을_놓아도_바꿔_끼우고_싣는다() async throws {
+        // 바꿔 끼우기는 원본 경로마다 하나다. 경로로 곡 번호를 찾으면 첫 곡 번호가 나와, 뒤 곡을 놓으면 끊긴 연결로 보고 싣지 않았다(PR 리뷰)
+        let fake = Fake()
+        let swapped = Mutex<[UInt32]>([])
+        var source = fake.source
+        source.substitute = { id, _, _ in swapped.withLock { $0.append(id) } }
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+            "/Users/dj/Music/DJCrate/LINK/x.wav"
+        })
+        try await session.connect(rows: [Self.row("10", path: "/Users/dj/Music/a.flac"), Self.row("20", path: "/Users/dj/Music/a.flac")],
+                                  playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        try await session.load(contentID: "20", player: 2)
+        // 서버는 같은 음원을 가리키는 곡을 함께 바꾼다(`LinkExportServer.substitutionTargets`)
+        try await session.load(contentID: "10", player: 1)
+        #expect(swapped.withLock { $0 } == [2])
+        #expect(fake.loaded.withLock { $0.map(\.id) } == [2, 1])
+    }
+
     @Test func 바꾸는_사이_끊고_다시_켜면_앞_싣기는_새_서버에_끼우지_않는다() async throws {
         // 같은 곡 번호라도 다시 읽은 라이브러리의 경로가 다를 수 있다(PR #279 리뷰)
         let fake = Fake()
@@ -369,6 +448,124 @@ struct LinkSessionTests {
         #expect(events.withLock { $0 } == [.failed(title: "곡 20", .conversionFailed("깨진 파일"))])
         // 실패한 곡은 끌어 놓으면 다시 바꿔 본다
         #expect(await session.mayConvert(contentID: "20"))
+    }
+
+    @Test func 바꾸지_못한_원본을_CDJ가_다시_찾아도_또_바꾸거나_알리지_않는다() async throws {
+        // #287: CDJ는 원본을 찾을 때마다(LOOKUP·READ, 다시 싣기) 요청을 보낸다. 실패를 기억하지 않으면 매번 처음부터 바꾸고 알림을 다시 띄웠다
+        let fake = Fake()
+        let conversions = Mutex(0)
+        let events = Mutex<[LinkBackgroundConversion]>([])
+        let session = LinkSession(source: fake.source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+            conversions.withLock { $0 += 1 }
+            throw .conversionFailed("깨진 파일")
+        }, backgroundConversion: { event in events.withLock { $0.append(event) } })
+        try await session.connect(rows: [Self.row("20", path: "/Users/dj/Music/20.flac")], playlists: PlaylistLayout(), shareRoot: "/share",
+                                  peers: [Self.cdj2])
+        let generation = await session.currentGeneration
+        for _ in 0..<3 {
+            await session.fileRequested(path: "/Users/dj/Music/20.flac", playerModel: "CDJ-2000nexus", generation: generation)
+        }
+        #expect(conversions.withLock { $0 } == 1)
+        #expect(events.withLock { $0 } == [.failed(title: "곡 20", .conversionFailed("깨진 파일"))])
+        // 다시 켜면 새로 바꿔 본다
+        await session.disconnect()
+        try await session.connect(rows: [Self.row("20", path: "/Users/dj/Music/20.flac")], playlists: PlaylistLayout(), shareRoot: "/share",
+                                  peers: [Self.cdj2])
+        await session.fileRequested(path: "/Users/dj/Music/20.flac", playerModel: "CDJ-2000nexus", generation: await session.currentGeneration)
+        #expect(conversions.withLock { $0 } == 2)
+    }
+
+    @Test func 끄고_다시_켠_뒤_앞_연결의_변환이_끝나도_새_연결의_보류를_풀지_않는다() async throws {
+        // #287: 앞 연결의 변환 결과로 새 연결의 보류를 풀면 새 연결의 CDJ가 원본을 받아 실패한다
+        let fake = Fake()
+        let gate = Mutex<(@Sendable (String, String) -> Bool)?>(nil)
+        let converting = Mutex<CheckedContinuation<Void, Never>?>(nil)
+        let events = Mutex<[LinkBackgroundConversion]>([])
+        var source = fake.source
+        source.setFileHold = { hold in gate.withLock { $0 = hold } }
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+            await withCheckedContinuation { continuation in converting.withLock { $0 = continuation } }
+            throw .conversionFailed("깨진 파일")
+        }, backgroundConversion: { event in events.withLock { $0.append(event) } })
+        let flac = Self.row("20", path: "/Users/dj/Music/20.flac")
+        try await session.connect(rows: [flac], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        let earlier = await session.currentGeneration
+        let request = Task { await session.fileRequested(path: "/Users/dj/Music/20.flac", playerModel: "CDJ-2000nexus", generation: earlier) }
+        while converting.withLock({ $0 == nil }) { await Task.yield() }
+        await session.disconnect()
+        try await session.connect(rows: [flac], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        // 새 연결의 CDJ가 같은 원본을 찾아 서버가 답을 미룬다
+        let hold = try #require(gate.withLock { $0 })
+        #expect(hold("/Users/dj/Music/20.flac", "CDJ-2000nexus"))
+        converting.withLock { $0?.resume(); $0 = nil }
+        await request.value
+        #expect(hold("/Users/dj/Music/20.flac", "CDJ-2000nexus"))
+        #expect(events.withLock { $0.isEmpty })
+    }
+
+    @Test func 다시_켠_연결의_CDJ가_앞_연결에서_바꾸던_원본을_찾으면_그_변환을_기다려_새_서버에_끼운다() async throws {
+        // 앞 연결의 변환이 진행 중이라고 새 연결의 요청을 지나치면, 앞 변환은 옛 서버라 끼우지 않아 아무도 바꿔 끼우지 않았다
+        let fake = Fake()
+        let conversions = Mutex(0)
+        let swapped = Mutex<[UInt32]>([])
+        let gate = Mutex<(@Sendable (String, String) -> Bool)?>(nil)
+        // 풀기 전에 닿은 변환은 멈추고, 푼 뒤에 닿은 변환은 바로 끝난다(늦게 닿아도 멈춰 있지 않고 판정에서 걸리게)
+        let converting = Mutex<(open: Bool, waiting: [CheckedContinuation<Void, Never>])>((false, []))
+        var source = fake.source
+        source.substitute = { id, _, _ in swapped.withLock { $0.append(id) } }
+        source.setFileHold = { hold in gate.withLock { $0 = hold } }
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+            conversions.withLock { $0 += 1 }
+            await withCheckedContinuation { continuation in
+                let now = converting.withLock { state in
+                    if state.open { return true }
+                    state.waiting.append(continuation)
+                    return false
+                }
+                if now { continuation.resume() }
+            }
+            return "/Users/dj/Music/DJCrate/LINK/x.wav"
+        })
+        let flac = Self.row("20", path: "/Users/dj/Music/20.flac")
+        try await session.connect(rows: [flac], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        let earlier = await session.currentGeneration
+        let first = Task { await session.fileRequested(path: "/Users/dj/Music/20.flac", playerModel: "CDJ-2000nexus", generation: earlier) }
+        while converting.withLock({ $0.waiting.isEmpty }) { await Task.yield() }
+        await session.disconnect()
+        try await session.connect(rows: [Self.row("10"), flac], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        let hold = try #require(gate.withLock { $0 })
+        #expect(hold("/Users/dj/Music/20.flac", "CDJ-2000nexus"))
+        let later = await session.currentGeneration
+        let second = Task { await session.fileRequested(path: "/Users/dj/Music/20.flac", playerModel: "CDJ-2000nexus", generation: later) }
+        // 새 연결의 요청이 진행 중인 변환에 닿을 틈을 준다
+        try await Task.sleep(for: .milliseconds(100))
+        let held = converting.withLock { state in
+            state.open = true
+            defer { state.waiting.removeAll() }
+            return state.waiting
+        }
+        held.forEach { $0.resume() }
+        await first.value
+        await second.value
+        #expect(conversions.withLock { $0 } == 1)
+        // 새 서버의 번호(두 번째 곡)로 끼우고 보류를 푼다
+        #expect(swapped.withLock { $0 } == [2])
+        #expect(!hold("/Users/dj/Music/20.flac", "CDJ-2000nexus"))
+    }
+
+    @Test func AAC_m4a는_바꾼다고_알리지_않는다() async throws {
+        // #287: .m4a는 코덱을 열어 봐야 ALAC인지 안다. AAC를 처음 놓을 때 "WAV로 바꾼 뒤 싣습니다"가 떴다
+        let fake = Fake()
+        let session = LinkSession(source: fake.source, converter: LinkAudioConverter(convert: { path throws(LinkProblem) in
+            path.hasSuffix("alac.m4a") ? "/Users/dj/Music/DJCrate/LINK/x.wav" : nil
+        }, needsConversion: { path in path.hasSuffix("alac.m4a") }))
+        try await session.connect(rows: [Self.row("10", path: "/Users/dj/Music/aac.m4a"), Self.row("20", path: "/Users/dj/Music/alac.m4a")],
+                                  playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        #expect(!(await session.mayConvert(contentID: "10")))
+        #expect(await session.mayConvert(contentID: "20"))
+        try await session.load(contentID: "10", player: 2)
+        try await session.load(contentID: "20", player: 2)
+        #expect(fake.loaded.withLock { $0.map(\.id) } == [1, 2])
     }
 
     @Test func DJCrate에서_고친_큐는_내어_준_번호로_서버에_보낸다() async throws {

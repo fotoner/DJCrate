@@ -69,6 +69,22 @@ struct TempCleanupTests {
         #expect(scene.exists("loudness.json", under: scene.home))
     }
 
+    @Test func LINK_변환본_폴더의_오래된_반쯤_쓴_파일만_지운다() throws {
+        // #287: 바꾸는 중에 앱이 끝나면 숨김 `.….djc-partial.wav`가 남았다. 다 바꾼 변환본은 캐시라 남긴다
+        let scene = try scene()
+        defer { try? FileManager.default.removeItem(at: scene.root) }
+        let link = scene.paths.linkAudio
+        try scene.write(".a-0011-22.djc-partial.wav", under: link, age: 3_600)
+        try scene.write(".b-0033-44.djc-partial.wav", under: link)
+        try scene.write("c-0055-66.wav", under: link, age: 3_600)
+
+        DJCTempCleanup.run(paths: scene.paths, temporaryDirectory: scene.tmp)
+
+        #expect(!scene.exists(".a-0011-22.djc-partial.wav", under: link))
+        #expect(scene.exists(".b-0033-44.djc-partial.wav", under: link), "방금 바꾸는 중일 수 있다")
+        #expect(scene.exists("c-0055-66.wav", under: link))
+    }
+
     @Test func 미리_보기_사본_폴더는_오래된_것만_지운다() throws {
         let scene = try scene()
         defer { try? FileManager.default.removeItem(at: scene.root) }

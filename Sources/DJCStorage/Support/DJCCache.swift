@@ -5,7 +5,8 @@ import Foundation
 import RekordboxKit
 
 /// 캐시 종류별 용량 보기와 비우기(#215). 지우는 것은 `DJCCacheKind`의 자리 안에서 아래 규칙에 맞는 것뿐이다.
-/// - 파형·분석: 하위 폴더까지 일반 파일만 지우고 폴더는 남긴다(앱이 그 자리에 다시 쓴다)
+/// - 파형·분석·LINK WAV 변환본: 하위 폴더까지 일반 파일만 지우고 폴더는 남긴다(앱이 그 자리에 다시 쓴다).
+///   변환본은 바꾸다 끊긴 숨김 파일(`.….djc-partial.wav`)도 지운다. LINK로 내어 주는 동안은 앱 화면이 막는다(`StorageSettingsModel`)
 /// - 라이브러리 읽기 사본: 가장 새 사본과 `keepingSnapshots`(앱이 연 사본)는 남기고, 뜨는 중인 `.part`는 건드리지 않는다
 /// - USB 읽기 사본: `<볼륨키>/<시각>/`만, 볼륨마다 가장 새 것은 남긴다. 쓰기 세션 사본(`local-`·`usb-`·`info-`)은 건드리지 않고,
 ///   USB 쓰기 잠금이 잡혀 있거나 닫히지 않은 저널이 있으면 이 종류는 통째로 건너뛴다
@@ -45,7 +46,7 @@ public enum DJCCache {
             var outcome = Outcome(kind: kind)
             let targets: [URL]
             switch kind {
-            case .waveforms, .analysis:
+            case .waveforms, .analysis, .linkAudio:
                 targets = regularFiles(under: paths.location(of: kind)).map(\.url)
             case .loudness, .previewWaveforms:
                 targets = [paths.location(of: kind)]

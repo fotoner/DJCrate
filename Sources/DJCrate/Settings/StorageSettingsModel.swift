@@ -32,6 +32,10 @@ final class StorageSettingsModel {
     @ObservationIgnored private let canClone: @Sendable () -> Bool
     @ObservationIgnored private let openSnapshot: () -> URL?
     @ObservationIgnored private let busy: () -> String?
+    /// LINK로 CDJ에 내어 주는 중인지. 그동안 CDJ가 읽는 WAV 변환본은 지우지 않는다(#287)
+    @ObservationIgnored private let linkServing: () -> Bool
+    /// WAV 변환본 비우기를 시작한다. 내어 주는 중이면 nil, 아니면 끝낼 때 부를 함수(그때까지 LINK 켜기가 기다린다, `LinkBarModel.beginCacheClear`)
+    @ObservationIgnored private let beginLinkAudioClear: () -> (() -> Void)?
     /// 파일을 지우기 전에 앱 메모리의 캐시를 비운다(메모리의 옛 값을 다시 저장하지 않게). 시험은 비워 둔다
     @ObservationIgnored private let clearMemory: ([DJCCacheKind]) async -> Void
     /// 지운 뒤 화면에 보이는 캐시를 다시 채운다(목록 미리 보기 파형)
@@ -41,7 +45,8 @@ final class StorageSettingsModel {
     ///   - paths: 캐시 자리(앱은 이 프로세스의 데이터 폴더, 시험은 임시 폴더)
     ///   - files: 캐시 폴더 읽기·비우기
     init(paths: DJCCachePaths, files: CacheFiles, settings: SettingsStore? = nil, openSnapshot: @escaping () -> URL? = { nil },
-         busyReason: @escaping () -> String? = { nil }, canClone: @escaping @Sendable () -> Bool = { true },
+         busyReason: @escaping () -> String? = { nil }, linkServing: @escaping () -> Bool = { false },
+         beginLinkAudioClear: (() -> (() -> Void)?)? = nil, canClone: @escaping @Sendable () -> Bool = { true },
          clearMemory: @escaping ([DJCCacheKind]) async -> Void = { _ in }, rebuild: @escaping ([DJCCacheKind]) -> Void = { _ in }) {
         self.paths = paths
         self.files = files
@@ -51,6 +56,9 @@ final class StorageSettingsModel {
         self.canClone = canClone
         self.openSnapshot = openSnapshot
         self.busy = busyReason
+        self.linkServing = linkServing
+        // 주지 않으면(시험) 내어 주는지만 본다
+        self.beginLinkAudioClear = beginLinkAudioClear ?? { linkServing() ? nil : {} }
         self.clearMemory = clearMemory
         self.rebuild = rebuild
     }
@@ -62,6 +70,16 @@ final class StorageSettingsModel {
 
     /// 비우기 단추를 막는 이유(도움말로 보인다)
     var blockReason: String? { busy() }
+
+    /// 그 종류의 비우기 단추를 막는 이유. LINK로 내어 주는 동안은 CDJ가 읽는 WAV 변환본을 지우지 않는다
+    func blockReason(of kind: DJCCacheKind) -> String? {
+        if let reason = blockReason { return reason }
+        return kind == .linkAudio && linkServing() ? Self.linkServingReason : nil
+    }
+
+    nonisolated static var linkServingReason: String {
+        String(ui: "LINK로 CDJ에 내어 주는 중에는 LINK WAV 변환본을 비울 수 없습니다. LINK를 끈 뒤 비우세요")
+    }
 
     nonisolated static func busyReason(writingRekordbox: Bool, writingUsb: Bool) -> String? {
         if writingRekordbox { return String(ui: "rekordbox에 쓰는 중에는 비울 수 없습니다. 쓰기가 끝난 뒤 비우세요") }
@@ -91,11 +109,20 @@ final class StorageSettingsModel {
         guard !isWorking, blockReason == nil else { return }
         isWorking = true
         defer { isWorking = false }
+        // LINK로 내어 주는 중이면 변환본만 건너뛰고 나머지는 비운다(모두 비우기). 비우는 사이 LINK를 켜면
+        // 켜기가 다 비울 때까지 기다린다(확인을 한 번만 하면 그 사이 켠 LINK의 변환본을 지운다, #287 PR 리뷰)
+        var held: [DJCCacheKind] = []
+        var endLinkAudioClear: (() -> Void)?
+        if kinds.contains(.linkAudio) {
+            if let end = beginLinkAudioClear() { endLinkAudioClear = end } else { held = [.linkAudio] }
+        }
+        let kinds = kinds.filter { !held.contains($0) }
         let paths = paths, files = files, keep = [openSnapshot()].compactMap { $0 }
         await clearMemory(kinds)
         let outcomes = await BlockingWork.run { files.clear(kinds, paths, keep, false) }
+        endLinkAudioClear?()
         rebuild(kinds)
-        message = Self.summary(outcomes)
+        message = Self.summary(outcomes + held.map { DJCCacheOutcome(kind: $0, skipped: Self.linkServingReason) })
         await refresh()
     }
 

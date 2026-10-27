@@ -21,6 +21,7 @@ struct CacheKindTests {
         let expected: [DJCCacheKind: String] = [
             .waveforms: "waveforms", .analysis: "analysis", .loudness: "loudness.json",
             .previewWaveforms: "preview-waveforms.plist", .usbSnapshots: "usb-snapshots", .snapshots: "snapshots",
+            .linkAudio: "link-audio",
         ]
         #expect(Set(DJCCacheKind.allCases) == Set(expected.keys))
         for kind in DJCCacheKind.allCases {
@@ -40,7 +41,8 @@ struct CacheKindTests {
     }
 
     @Test func 종류_이름은_CLI_인자로_쓰는_글자_그대로다() {
-        #expect(DJCCacheKind.allCases.map(\.rawValue) == ["waveforms", "analysis", "loudness", "preview-waveforms", "usb-snapshots", "snapshots"])
+        #expect(DJCCacheKind.allCases.map(\.rawValue) == ["waveforms", "analysis", "loudness", "preview-waveforms", "usb-snapshots", "snapshots",
+                                                     "link-audio"])
         for kind in DJCCacheKind.allCases {
             #expect(!kind.title.isEmpty && !kind.detail.isEmpty)
         }

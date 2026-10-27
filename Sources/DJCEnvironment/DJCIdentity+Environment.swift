@@ -33,6 +33,14 @@ extension DJCIdentity {
                       fallback: TestProcess.isRunning ? TestProcess.sandbox.appending(path: "logs") : userLogsDirectory)
     }
 
+    /// LINK로 실을 때 FLAC·ALAC을 바꾼 WAV 폴더(#277·#287). CDJ가 NFS로 읽어 음원이 보통 있는 음악 폴더(`~/Music/DJCrate/LINK`)에 둔다.
+    /// `DJC_HOME`을 주면 그 아래 `link-audio`, 시험 프로세스는 임시 폴더(사용자 음악 폴더에 쓰지 않게)
+    public static var linkAudioDirectory: URL {
+        linkAudioDirectory(environment: ProcessInfo.processInfo.environment,
+                           fallback: TestProcess.isRunning ? TestProcess.sandbox.appending(path: "link-audio")
+                               : FileManager.default.homeDirectoryForCurrentUser.appending(path: "Music/DJCrate/LINK", directoryHint: .isDirectory))
+    }
+
     /// 라이브 DB 읽기 스냅샷 폴더. `DJC_REKORDBOX_DIR`(사본 rekordbox 폴더)을 주면 그 안 `djc-snapshots`(사용자 스냅샷과 섞이지 않게),
     /// 아니면 `supportDirectory/snapshots`. `DJC_HOME`은 따르지 않는다.
     public static var snapshotsDirectory: URL {

@@ -198,7 +198,7 @@ public final class LinkExportServer: Sendable {
     }
 
     /// 곡 하나를 다른 파일로 내어 준다(CDJ가 못 읽는 형식을 바꾼 WAV 등). CDJ는 곡 정보의 경로·형식으로 파일을 찾아 읽는다.
-    /// 새 파일은 서버를 띄울 때 연 폴더(곡 경로 앞 세 단계) 안에 있어야 NFS로 읽힌다
+    /// NFS는 서버를 띄울 때 연 폴더(`exportRoots`) 안만 찾으므로, 새 파일이 그 밖이면 곡 정보의 경로는 원본 그대로 두고 원본 이름으로 내어 준다
     public func substitute(trackID: UInt32, path: String, fileType: UInt8) async {
         await Task { @DJLinkActor [source, export] in
             // 이미 그 곡 정보를 받은 CDJ는 곡 번호별로 기억한 옛 경로로 찾는다(CDJ-2000nexus 실기). 그 이름으로도 WAV를 내어 준다
@@ -386,6 +386,29 @@ public final class LinkExportServer: Sendable {
         return paths.indices.filter { paths[$0] == paths[row] && ids.indices.contains($0) }.map { ($0, String(ids[$0])) }
     }
 
+    /// 서버를 띄울 때 NFS가 여는 폴더: 곡 경로의 앞 세 단계(그 아래에 무엇이 더 있을 때만). DJLinkKit `Files.exports`와 같은 규칙이다.
+    /// 띄운 뒤에는 늘지 않는다(#287)
+    static func exportRoots(trackPaths: [String]) -> Set<String> {
+        Set(trackPaths.compactMap(exportRoot(of:)))
+    }
+
+    /// 그 파일을 NFS가 찾을 수 있는지(연 폴더 안인지)
+    static func isExported(_ path: String, roots: Set<String>) -> Bool {
+        exportRoot(of: path).map(roots.contains) ?? false
+    }
+
+    /// 바꿔 끼울 때 곡 정보에 줄 경로. 새 파일을 NFS가 찾을 수 있으면 그 경로, 아니면 원본 경로(서버가 원본 이름으로 새 파일을 내어 준다).
+    /// 음악 폴더 밖(외장 디스크 등)의 곡만 내어 주면 `~/Music` 아래 변환본은 연 폴더 밖이다(#287)
+    static func servedPath(original: String, substitute: String, roots: Set<String>) -> String {
+        isExported(substitute, roots: roots) ? substitute : original
+    }
+
+    private static func exportRoot(of path: String) -> String? {
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        guard path.hasPrefix("/"), components.count > 3 else { return nil }
+        return "/" + components.prefix(3).joined(separator: "/")
+    }
+
     static func mergedIDs(_ perTrack: [String]) -> (names: [String], ids: [UInt32]) {
         var names: [String] = []
         var index: [String: UInt32] = [:]
@@ -429,6 +452,8 @@ private final class ExportSource: Source {
     private let root: String
     private var details: [String: DJLinkExportModel.TrackDetails]
     private let onHistory: @Sendable (LinkExportHistoryEvent) -> Void
+    /// 서버를 띄울 때 NFS가 연 폴더(띄운 곡 경로로 정해진다)
+    private let exportRoots: Set<String>
     /// 서버가 연 재생 기록 번호(서버를 띄운 동안 하나)
     private var historySession: UInt32 = 0
 
@@ -436,6 +461,7 @@ private final class ExportSource: Source {
         snapshot = library
         root = shareRoot
         self.onHistory = onHistory
+        exportRoots = LinkExportServer.exportRoots(trackPaths: tracks.map(\.path))
         var details: [String: DJLinkExportModel.TrackDetails] = [:]
         for (row, track) in tracks.enumerated() {
             func id(_ column: [UInt32]) -> UInt32 { column.indices.contains(row) ? column[row] : 0 }
@@ -471,12 +497,14 @@ private final class ExportSource: Source {
         let paths = (0..<current.folder_path.len()).map { current.folder_path.get($0) }
         let targets = LinkExportServer.substitutionTargets(paths: paths, ids: current.ids, of: Int(row))
         let original = paths[Int(row)]
+        // 새 파일이 연 폴더 밖이면 CDJ가 그 경로를 찾지 못한다. 그때는 경로를 원본 그대로 두고 형식만 바꾼다(원본 이름으로 새 파일을 내어 준다)
+        let served = LinkExportServer.servedPath(original: original, substitute: path, roots: exportRoots)
         let next = current.clone()
-        next.map_folder_paths { $0 == original ? path : $0 }
+        if served != original { next.map_folder_paths { $0 == original ? served : $0 } }
         for target in targets {
             if next.file_type.indices.contains(target.row) { next.file_type[target.row] = fileType }
             guard var detail = details[target.id] else { continue }
-            detail.path = path
+            detail.path = served
             detail.file_type = UInt32(fileType)
             details[target.id] = detail
         }
