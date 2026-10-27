@@ -39,6 +39,6 @@ struct DuplicateMergeAppTests {
         store.mergeDrafts = [draft()]
         store.saveMergeDraftsAfterWrite([])
         #expect(store.mergeDrafts.isEmpty)
-        #expect(store.reflectionMessage?.kind == .warning)
+        #expect(store.activityLog.latest?.kind == .warning)
     }
 }

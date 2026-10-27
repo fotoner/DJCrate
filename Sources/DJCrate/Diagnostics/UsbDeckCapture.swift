@@ -93,7 +93,7 @@ enum UsbDeckCapture {
         table.selectRowIndexes([1], byExtendingSelection: false)
         coordinator.doubleClicked(row: 1, column: "title")
         try await settle(2500)
-        log("1 더블클릭: 덱 곡 \(store.deckTrackID ?? "-") · USB 줄 덱 표시 [\(marks())] · 안내 \(store.staging.stagingMessage?.text ?? "-")")
+        log("1 더블클릭: 덱 곡 \(store.deckTrackID ?? "-") · USB 줄 덱 표시 [\(marks())] · 안내 \(store.toast?.text ?? "-")")
         try UsbDragCapture.captureWindow(window, to: directory + "/usb-playlist-deck-loaded.jpg")
 
         // 2. 넷째 줄을 골라 ⌘→(단축키 창의 '고른 곡 덱에 불러오기')로 올린다
@@ -124,12 +124,12 @@ enum UsbDeckCapture {
             let expected = source.isUsb ? UsbDeckLoad.localContentID(usbTrackID: source.track.id, matches: usb.localMatches) : source.track.id
             guard let expected, expected != store.deckTrackID else { throw Failure("\(step): 덱에 이미 있거나 짝 없는 줄을 골랐습니다") }
             table.selectRowIndexes([row], byExtendingSelection: false)
-            store.staging.stagingMessage = nil
+            store.dismissToast()
             let dragged = await UsbDragCapture.drag(table, row: row)
             let dropped = try await UsbDragCapture.drop(dragged, at: try deckPoint(), in: window)
             try await settle(2500)
             await dragged.end()
-            log("\(step): \(source.title) 끌기 \(dragged.summary) · 놓기 \(dropped) · 덱 곡 \(store.deckTrackID ?? "-")(기대 \(expected)) · 안내 \(store.staging.stagingMessage?.text ?? "-")")
+            log("\(step): \(source.title) 끌기 \(dragged.summary) · 놓기 \(dropped) · 덱 곡 \(store.deckTrackID ?? "-")(기대 \(expected)) · 안내 \(store.toast?.text ?? "-")")
             try UsbDragCapture.captureWindow(window, to: directory + "/" + capture + ".jpg")
             guard store.deckTrackID == expected else { throw Failure("\(step): 덱에 \(expected)가 오르지 않았습니다") }
         }
@@ -148,7 +148,7 @@ enum UsbDeckCapture {
         let file = UsbDragCapture.Dragged(started: true, items: [[NSPasteboard.PasteboardType.fileURL.rawValue: audio.absoluteString]], writers: [])
         let dropped = try await UsbDragCapture.drop(file, at: try deckPoint(), in: window)
         for _ in 0..<50 where store.staging.staged.count == stagedBefore { try await settle(200) }
-        log("6 Finder 음원 놓기: 놓기 \(dropped) · 덱 곡 \(store.deckTrackID ?? "-") · 추가한 곡 \(stagedBefore)→\(store.staging.staged.count) · 안내 \(store.staging.stagingMessage?.text ?? "-")")
+        log("6 Finder 음원 놓기: 놓기 \(dropped) · 덱 곡 \(store.deckTrackID ?? "-") · 추가한 곡 \(stagedBefore)→\(store.staging.staged.count) · 안내 \(store.toast?.text ?? "-")")
         guard store.deckTrackID == deckBefore, store.staging.staged.count == stagedBefore + 1 else { throw Failure("6: Finder 음원이 추가한 곡으로 가지 않았습니다") }
     }
 }

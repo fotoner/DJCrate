@@ -75,7 +75,7 @@ struct ExternalPlaylistDraftTests {
         h.undo.undo()
         #expect(h.store.playlists.playlistDraft == external)
         #expect(try PlaylistDraftStore.read(url: h.file) == external)
-        #expect(h.store.playlists.playlistMessage?.kind == .warning)
+        #expect(h.store.activityLog.latest?.kind == .warning)
         #expect(!h.undo.canUndo && !h.undo.canRedo)
     }
 

@@ -175,7 +175,7 @@ extension LibraryStore {
         markLoadSucceeded()
         refreshUnlinkedDrafts()
         warmPreviewWaveforms(loaded.rows)
-        if failedTagSaves().isEmpty { clearLibraryError() } else { reportLibraryError(DraftSaveFailure.tagSaveMessage) }
+        if failedTagSaves().isEmpty { clearLibraryError() } else { reportLibraryError(DraftSaveFailure.tagSaveMessage, kind: .failure) }
         if synchronizingDrafts {
             showToast(conflicts == 0
                 ? AppToast(title: String(ui: "현재 rekordbox 내용을 불러왔습니다"))

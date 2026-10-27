@@ -82,6 +82,63 @@ struct ReflectionLayoutTests {
         #expect(!window.isVisible)
     }
 
+    /// 목록 위 오류 줄은 덱 위에 끼어 덱을 밀어 내렸다(C10). 창 알림으로 옮겨 알림이 떠도 덱 자리·높이는 그대로다(#307).
+    @Test func 알림이_떠도_덱_자리와_높이는_그대로다() async throws {
+        _ = NSApplication.shared
+        let defaults = TestDefaults.make("notice-layout")
+        defaults.set(false, forKey: SettingKeys.sidebarVisible.name)
+        let toolbarKey = "NSToolbar Configuration main"
+        let savedToolbar = UserDefaults.standard.object(forKey: toolbarKey)
+        UserDefaults.standard.removeObject(forKey: toolbarKey)
+        defer { UserDefaults.standard.set(savedToolbar, forKey: toolbarKey) }
+        let fixture = try RekordboxFixture()
+        for index in 1...5 {
+            var track = TrackSpec(id: String(200 + index))
+            track.title = "합성 곡 \(index)"
+            try fixture.add(track)
+        }
+        let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
+                                      activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                      rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
+        await store.load(snapshot: fixture.database)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let app = AppComposition(store: store, deck: deck)
+        let deckKey = "library.deck.\(ObjectIdentifier(deck))"
+        defer { SelfTestFrames.frames.removeValue(forKey: deckKey) }
+        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: app).defaultAppStorage(defaults))
+        let window = NSWindow(contentViewController: controller)
+        window.isReleasedWhenClosed = false
+        window.setContentSize(NSSize(width: 1100, height: 700))
+        defer { window.close() }
+        // 배치가 잇달아 같을 때까지 기다린다(시간이 아니라 상태로 판정한다, TEST-31)
+        func settled(_ keys: [String]) async -> [CGRect]? {
+            var previous: [CGRect]?
+            var stable = 0
+            let done = await waitForState {
+                window.contentView?.layoutSubtreeIfNeeded()
+                let frames = keys.compactMap { SelfTestFrames.frames[$0] }
+                guard frames.count == keys.count, frames.allSatisfy({ !$0.isEmpty }) else {
+                    stable = 0
+                    previous = nil
+                    return false
+                }
+                stable = previous == frames ? stable + 1 : 0
+                previous = frames
+                return stable >= 5
+            }
+            return done ? previous : nil
+        }
+        let before = try #require(await settled([deckKey])?.first)
+        store.reportLibraryError("시험 오류라 이전 목록을 표시합니다. 잠시 뒤 다시 읽으세요")
+        let toast = try #require(store.toast)
+        let toastKey = "toast.\(toast.id)"
+        defer { SelfTestFrames.frames.removeValue(forKey: toastKey) }
+        let frames = try #require(await settled([deckKey, toastKey]))
+        print("[알림과 덱] 전=\(before) 후=\(frames[0]) 알림=\(frames[1])")
+        #expect(frames[0] == before)
+        #expect(!frames[0].intersects(frames[1]))
+    }
+
     /// 넓은 창에서도 진행 카드는 막대가 남는 폭을 다 차지하지 않고 문구에 맞는 폭(최대 폭 안)으로 뜬다(#122).
     @Test(arguments: [1.0, 1.4]) func 진행_카드는_넓은_창에서도_최대_폭_안에_뜬다(_ scale: Double) {
         _ = NSApplication.shared

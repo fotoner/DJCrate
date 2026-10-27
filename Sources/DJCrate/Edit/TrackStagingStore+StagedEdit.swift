@@ -18,6 +18,7 @@ extension TrackStagingStore {
         library.sidebar = .staged
         library.selection = [track.id]
         library.loadToDeck(library.rowsByID[track.id])
-        stagingMessage = AppMessage(kind: .success, text: String(ui: "편집본 ‘\(track.title)’을 추가한 곡에 넣었습니다. rekordbox에 바로 넣기나 XML로 넘기세요"))
+        // 곡 편집 창에서 한 일의 결과라 주 창에 떠 있는 경고(넣다가 옮긴 추가 목록 등)는 덮지 않는다
+        library.notify(.notice(text: String(ui: "편집본 ‘\(track.title)’을 추가한 곡에 넣었습니다. rekordbox에 바로 넣기나 XML로 넘기세요"), kind: .success))
     }
 }

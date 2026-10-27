@@ -55,7 +55,7 @@ struct DamagedMergeStagedAppTests {
         await store.load(snapshot: fixture.database)
         #expect(preserved(in: home).count == 2 && preserved(in: home).allSatisfy { (try? Data(contentsOf: $0)) == broken })
         #expect(store.mergeDrafts.isEmpty && store.staging.staged.isEmpty)
-        let message = try #require(store.draftFileMessage)
+        let message = try #require(store.activityLog.latest)
         #expect(message.kind == .warning)
         // 합치기 초안은 초안 파일로 세고, 추가 목록은 다시 추가할 일을 따로 안내한다.
         #expect(message.text == LibraryStore.damagedDraftText(1, stagedList: true))
@@ -74,8 +74,8 @@ struct DamagedMergeStagedAppTests {
         try broken.write(to: home.appending(path: StagedTrackFile.fileName))
         let store = store(home: home, fixture: fixture)
         await store.load(snapshot: fixture.database)
-        #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(0, stagedList: true))
-        #expect(store.draftFileMessage?.text.contains("초안 파일") == false)
+        #expect(store.activityLog.latest?.text == LibraryStore.damagedDraftText(0, stagedList: true))
+        #expect(store.activityLog.latest?.text.contains("초안 파일") == false)
     }
 
     @Test @MainActor func 편집본을_넣다가_옮긴_추가_목록은_새_목록이_차_있어도_알린다() async throws {
@@ -90,8 +90,10 @@ struct DamagedMergeStagedAppTests {
             EditStagingRequest(file: output, grid: [edit.outputGrid], cues: [], source: nil, title: "원곡 (Edit)"))
         store.staging.showStagedEdit(staged)
         // 옛 추가 목록은 보관만 됐고 새로 읽은 목록에는 편집본뿐이므로 다시 추가할 일을 알려야 한다.
+        // 뒤이은 넣기 결과(성공)는 이 경고를 덮지 않고 활동 기록에만 남는다(#307)
         #expect(store.staging.staged.map(\.uuid) == [staged.uuid])
-        #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(0, stagedList: true))
+        #expect(store.toast?.text == LibraryStore.damagedDraftText(0, stagedList: true))
+        #expect(store.activityLog.latest?.title.hasPrefix("편집본 ‘원곡 (Edit)’을 추가한 곡에 넣었습니다") == true && store.activityLog.latest?.unshown == true)
         #expect(preserved(in: home).map { try? Data(contentsOf: $0) } == [broken])
     }
 
@@ -106,13 +108,13 @@ struct DamagedMergeStagedAppTests {
         try store.setMergeDrafts([merge("a"), merge("b")])
         #expect(DuplicateMergeDraftStore.load(url: url).count == 2)
         #expect(preserved(in: home).map { try? Data(contentsOf: $0) } == [broken])
-        #expect(store.draftFileMessage == nil)
+        #expect(store.activityLog.entries.isEmpty)
         // 메모리 초안이 비었는데 파일이 깨져 있었다: 옛 내용은 보관만 되므로 알린다.
         try store.setMergeDrafts([])
         try broken.write(to: url)
         try store.setMergeDrafts([])
         #expect(preserved(in: home).count == 2)
-        #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(1))
+        #expect(store.activityLog.latest?.text == LibraryStore.damagedDraftText(1))
     }
 
     @Test @MainActor func 추가_목록_저장이_손상된_파일을_옮기면_메모리_목록이_비었을_때만_알린다() throws {
@@ -126,11 +128,11 @@ struct DamagedMergeStagedAppTests {
         #expect(store.staging.restage([track("b")]) == 1)
         #expect(StagedTrackFile.load(url: url).map(\.path) == [track("a").path, track("b").path])
         #expect(preserved(in: home).map { try? Data(contentsOf: $0) } == [broken])
-        #expect(store.draftFileMessage == nil)
+        #expect(store.activityLog.entries.isEmpty)
         // 메모리 목록이 비었는데 파일이 깨져 있었다: 옛 목록은 보관만 되므로 다시 추가할 일을 알린다.
         try broken.write(to: url)
         #expect(store.staging.unstage(uuids: Set(store.staging.staged.map(\.uuid))).count == 2 && store.staging.staged.isEmpty)
         #expect(preserved(in: home).count == 2)
-        #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(0, stagedList: true))
+        #expect(store.activityLog.latest?.text == LibraryStore.damagedDraftText(0, stagedList: true))
     }
 }

@@ -137,12 +137,12 @@ struct LibraryLayoutMetricsTests {
         #expect(requested == layout.maximumWaveformHeight - DeckLayout.waveformHeightStep)
     }
 
-    @Test func 낮아진_창과_알림과_머리글은_기존_최소_높이_규칙을_쓴다() {
+    /// 목록 위 알림 줄은 없앴다(#307). 덱 높이를 깎는 것은 목록 머리글(작업 줄·연결되지 않은 초안 줄·시트 머리)과 핸들뿐이다
+    @Test func 낮아진_창과_목록_머리글은_기존_최소_높이_규칙을_쓴다() {
         let layout = LibraryLayoutMetrics()
         layout.request(480)
         layout.measureDetail(height: 650, deckHeight: 390, waveformHeight: 150, hasTrack: true)
-        layout.measureNotice(30)
-        layout.measureListHeader(60)
+        layout.measureListHeader(90)
         #expect(layout.waveformHeight == DeckLayout.waveformHeight(requested: 480, detailHeight: 650,
                                                                   deckChromeHeight: 240, otherHeight: 97))
         #expect(layout.viewportHeight == 403)
@@ -175,7 +175,6 @@ struct LibraryLayoutMetricsTests {
             _ = layout.viewportHeight
         } onChange: { changed.withLock { $0 = true } }
         layout.request(130)
-        layout.measureNotice(0)
         layout.measureListHeader(40)
         layout.measureDetail(height: 650, deckHeight: 370, waveformHeight: 130, hasTrack: true)
         #expect(!changed.withLock { $0 })

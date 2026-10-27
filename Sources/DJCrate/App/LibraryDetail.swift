@@ -31,41 +31,17 @@ struct LibraryDetail: View {
         let _ = PerfProbe.body(Self.self)
         // VSplitView(NSSplitView)는 자식 최소 크기가 내용에 따라 바뀌면 레이아웃을 끝없이
         // 다시 잡다가 예외로 죽는다. SwiftUI만으로 나누고, 덱 높이는 핸들로 조절한다.
+        // 덱 위에는 아무 줄도 두지 않는다. 오류·결과 안내는 창 알림과 활동 기록이 맡아 덱 자리가 움직이지 않는다(#307).
         VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                if let error = store.visibleLastError {
-                    HStack(alignment: .top) {
-                        Label(error, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(UIColors.warning.color)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button(.ui("닫기")) { store.dismissLastError() }.controlSize(.small)
-                    }
-                    .font(.callout)
-                    .padding(.horizontal, Spacing.edge).padding(.vertical, 6)
-                }
-                if let message = store.draftFileMessage {
-                    AppMessageView(message: message, onClose: { store.draftFileMessage = nil })
-                }
-                if store.sidebar == .pending, !store.unlinkedDraftUUIDs.isEmpty {
-                    UnlinkedDraftsBar(store: store, window: window)
-                }
-                if let message = store.reflectionMessage {
-                    AppMessageView(message: message, onClose: { store.reflectionMessage = nil })
-                }
-                if let message = store.staging.stagingMessage {
-                    AppMessageView(message: message, onClose: { store.staging.stagingMessage = nil })
-                }
-                if let message = store.playlists.playlistMessage {
-                    AppMessageView(message: message, onClose: { store.playlists.playlistMessage = nil })
-                }
-            }
-            .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureNotice($0) }
             // 파형은 본문 높이가 바뀔 때만 맞추고, 덱 내용이 늘면 덱만 스크롤한다(PR #151).
             LibraryDeckViewport(library: store, tags: store.tags, deck: deck, layout: layout, widthClass: widthClass)
             LibrarySplitHandle(layout: layout, height: $waveformHeight)
             VStack(spacing: 0) {
                 ListActionBar(model: listActionBar)
+                // 연결되지 않은 초안은 사건이 아니라 쓰기 대기 목록의 상태라 알림 대신 그 목록 머리에 둔다
+                if store.sidebar == .pending, !store.unlinkedDraftUUIDs.isEmpty {
+                    UnlinkedDraftsBar(store: store, window: window)
+                }
                 if showsSheet { SheetHeader() }
             }
             .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureListHeader($0) }
@@ -170,6 +146,7 @@ private struct LibraryDeckViewport: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .frame(height: layout.viewportHeight)
+        .selfTestFrame("library.deck.\(ObjectIdentifier(deck))")
         .modifier(DeckDropTarget(library: library))
     }
 }

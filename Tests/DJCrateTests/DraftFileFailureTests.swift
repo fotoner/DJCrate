@@ -211,13 +211,13 @@ struct DraftFileFailureTests {
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, draftHome: home,
                                  arguments: ["test", "--db", fixture.database.path], environment: [:])
         await store.load(snapshot: fixture.database)
-        #expect(store.draftFileMessage?.kind == .warning)
-        #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(2))
+        #expect(store.activityLog.latest?.kind == .warning)
+        #expect(store.activityLog.latest?.text == LibraryStore.damagedDraftText(2))
         #expect(!FileManager.default.fileExists(atPath: tags.appending(path: "손상-태그.json").path))
         #expect(preserved(in: home).count == 2 && preserved(in: home).allSatisfy { (try? Data(contentsOf: $0)) == broken })
-        // 다시 읽어도 안내는 남는다(다음 읽기의 오류 줄 정리가 지우지 않는다).
+        // 다시 읽어도 안내는 남는다(다음 읽기의 오류 정리가 지우지 않는다).
         await store.load(snapshot: fixture.database)
-        #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(2))
+        #expect(store.toast?.text == LibraryStore.damagedDraftText(2))
     }
 
     @Test @MainActor func 쓰기_전에_손상된_대상_초안을_옮기고_조용히_빼지_않는다() async throws {
@@ -232,7 +232,7 @@ struct DraftFileFailureTests {
         // 다른 곡의 파일만 깨졌으면 대상 쓰기는 막지 않고 알리기만 한다.
         try broken.write(to: cues.appending(path: "\(other).json"))
         #expect(store.preserveDamagedDraftFiles().map(\.trackUUID) == [other])
-        #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(1))
+        #expect(store.activityLog.latest?.text == LibraryStore.damagedDraftText(1))
         // 읽은 뒤 대상 곡의 파일이 깨졌다: 미리 보기(반영 세션)가 조용히 빼지 않고 막는다.
         try broken.write(to: cues.appending(path: "\(uuid).json"))
         let row = TrackRow(track: Track(id: "1", uuid: uuid, title: "곡", artist: nil, album: nil, albumArtist: nil, genre: nil, composer: nil,
@@ -243,7 +243,7 @@ struct DraftFileFailureTests {
             _ = try await store.session.previewWrite(rows: [row], playlists: false)
             Issue.record("손상된 초안을 빼고 쓰기 전 확인이 통과했다")
         } catch { #expect(error.localizedDescription.contains("damaged-drafts")) }
-        #expect(store.draftFileMessage?.text == LibraryStore.damagedDraftText(2))
+        #expect(store.activityLog.latest?.text == LibraryStore.damagedDraftText(2))
         #expect(!store.pendingUUIDs.contains(uuid))
         #expect(preserved(in: home).filter { $0.lastPathComponent.hasPrefix(uuid) }.map { try? Data(contentsOf: $0) } == [broken])
     }
@@ -278,13 +278,15 @@ struct DraftFileFailureTests {
         // 입력은 메모리에 남고, 넣은 결과 안내가 저장 실패 경고를 덮지 않는다.
         #expect(store.playlists.playlistDraft.edits == [.addTracks(playlist: .id("A"), contentIDs: ["4"])])
         #expect(store.playlists.playlistDraftUnsaved)
-        #expect(store.playlists.playlistMessage?.kind == .warning)
-        #expect(store.playlists.playlistMessage?.text.contains(PlaylistEditStore.playlistSaveFailureText) == true)
+        #expect(store.activityLog.latest?.kind == .warning)
+        #expect(store.activityLog.latest?.text.contains(PlaylistEditStore.playlistSaveFailureText) == true)
         // 쓰기 전 확인은 다시 저장해 보고, 그래도 안 되면 쓰지 않는다.
         #expect(!store.playlists.ensurePlaylistDraftSaved())
         saver.fails = false
         #expect(store.playlists.ensurePlaylistDraftSaved())
         #expect(!store.playlists.playlistDraftUnsaved && saver.last == store.playlists.playlistDraft)
+        // 저장했으니 "저장하지 못했다"는 알림은 거둔다(#307)
+        #expect(store.toast == nil)
     }
 
     @Test @MainActor func 저장하지_못한_재생_목록_초안을_다시_읽기가_덮지_않는다() async throws {

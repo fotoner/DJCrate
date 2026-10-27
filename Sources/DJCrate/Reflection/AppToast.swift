@@ -54,6 +54,9 @@ struct AppToast: Identifiable, Equatable {
     /// 이 알림을 남긴 활동 기록 항목(결과 보기가 그 항목을 고른다). 띄울 때 `LibraryStore.showToast`가 정한다
     var activityID: ActivityEntry.ID?
 
+    /// 제목과 설명을 한 덩어리로(접근성 알림·진단 기록)
+    var text: String { [title, detail].compactMap { $0 }.joined(separator: "\n") }
+
     /// 결과 보기 단추를 붙일지(rekordbox 쓰기 결과일 때만)
     var showsResult: Bool { !isUsb && !isNotice }
     /// 열기 단추를 붙일지(#298): 결과 보기가 없는 경고·실패. 누르면 상태 줄의 활동 팝오버에서 이 알림을 펼친다
@@ -62,6 +65,12 @@ struct AppToast: Identifiable, Equatable {
     /// 창 대신 띄우는 안내(기본은 경고)
     static func notice(_ title: String, _ detail: String?, kind: Kind = .warning, isUsb: Bool = false) -> Self {
         Self(kind: kind, title: title, detail: detail?.isEmpty == true ? nil : detail, isUsb: isUsb, isNotice: true)
+    }
+
+    /// 한 덩어리 안내 문구를 알림으로(첫 줄이 제목, 나머지 줄이 설명). 목록 위 안내 줄이던 문구를 옮겼다(#307)
+    static func notice(text: String, kind: Kind) -> Self {
+        let lines = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        return .notice(String(lines.first ?? ""), lines.count > 1 ? String(lines[1]) : nil, kind: kind)
     }
 
     /// 저절로 닫히기까지의 시간(초). 성공·경고는 읽을 시간만큼(4초 + 글자마다 0.06초) 남기고, 단추가 있으면 누를 시간으로 적어도 7초 둔다.
@@ -121,7 +130,8 @@ struct AppToastView: View {
             if let onUndo, toast.undoBackup != nil {
                 Button(.ui("쓰기 전으로 복원"), action: onUndo)
                     .controlSize(ControlSize.small.scaled(textScale))
-                    .help(.ui("라이브러리 전체를 이번 쓰기 전으로 복원합니다. rekordbox를 먼저 종료하세요."))
+                    // 무엇을 하는지는 단추 이름이 말한다. 툴팁은 안전 조건만 둔다
+                    .help(.ui("rekordbox를 먼저 종료하세요"))
                     .focused($focus, equals: .undo)
             }
             Button(action: onClose) {

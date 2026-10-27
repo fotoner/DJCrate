@@ -73,7 +73,7 @@ struct BlockedEntryReasonTests {
         #expect(LibraryMenuAction.restore.disabledReason(in: window)?.contains("백업") == true)
         #expect(LibraryMenuAction.removeTracks.disabledReason(in: window)?.contains("고르세요") == true)
         LibraryMenuAction.reflect.perform(in: window)
-        #expect(store.staging.stagingMessage?.text == LibraryMenuAction.reflect.disabledReason(in: window))
+        #expect(store.activityLog.latest?.text == LibraryMenuAction.reflect.disabledReason(in: window))
         store.isWritingRekordbox = true
         #expect(LibraryMenuAction.snapshot.disabledReason(in: window)?.contains("쓰기") == true)
     }

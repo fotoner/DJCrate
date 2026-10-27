@@ -79,8 +79,9 @@ struct SmartPlaylistAppTests {
     @Test func 꺼져_있으면_인텔리전트_목록을_고쳐_보려_해도_조용하다() async throws {
         let fixture = try Self.fixture()
         let store = await Self.makeStore(fixture)
+        let notices = store.noticeCount
         #expect(!store.playlists.blockSmartPlaylistEdit("S1"))
-        #expect(store.playlists.playlistMessage == nil)
+        #expect(store.noticeCount == notices)
     }
 
     // MARK: 켬
@@ -157,12 +158,12 @@ struct SmartPlaylistAppTests {
         let fixture = try Self.fixture()
         let store = await Self.makeStore(fixture, lab: true)
         #expect(store.playlists.blockSmartPlaylistEdit("S1"))
-        let message = try #require(store.playlists.playlistMessage)
+        let message = try #require(store.activityLog.latest)
         #expect(message.text == "인텔리전트 재생 목록은 아직 쓰지 않습니다(rekordbox에서 고치세요)")
         // 일반 목록은 막지 않는다
-        store.playlists.playlistMessage = nil
+        let notices = store.noticeCount
         #expect(!store.playlists.blockSmartPlaylistEdit("P"))
-        #expect(store.playlists.playlistMessage == nil)
+        #expect(store.noticeCount == notices)
     }
 
     @Test func 켜도_rekordbox_목록_상태와_USB_내보내기_후보는_인텔리전트_목록을_그대로_다룬다() async throws {

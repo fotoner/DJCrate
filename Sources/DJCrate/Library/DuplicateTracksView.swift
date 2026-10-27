@@ -23,7 +23,7 @@ struct DuplicateTracksView: View {
                     Spacer()
                     Button(.ui("초안 버리기")) {
                         do { try store.setMergeDrafts(store.mergeDrafts.filter { $0.id != draft.id }) }
-                        catch { store.reflectionMessage = AppMessage(kind: .warning, text: error.localizedDescription) }
+                        catch { store.showToast(.notice(text: error.localizedDescription, kind: .warning)) }
                     }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 4)

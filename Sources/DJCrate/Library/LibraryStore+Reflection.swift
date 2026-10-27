@@ -29,7 +29,10 @@ extension LibraryStore {
     /// 새 스냅샷을 읽은 뒤: 반영 묶음의 곡마다 rekordbox에 의도대로 들어갔는지 확인한다(유스케이스 `ExportXML.verifyReflection`).
     /// 일치한 곡의 초안은 지운다(이제 rekordbox 값이 원본이다). 어긋난 곡은 초안을 그대로 두고 알린다.
     func verifyReflection() {
-        guard let verified = useCases.exportXML.verifyReflection(orSaved: reflectionBatch, rows: rowsByID, shareRoot: shareRoot) else { return }
+        guard let verified = useCases.exportXML.verifyReflection(orSaved: reflectionBatch, rows: rowsByID, shareRoot: shareRoot) else {
+            notifyState(.reflectionCheck, nil)
+            return
+        }
         for uuid in verified.cleared {
             draftCueCounts[uuid] = nil
             draftChanged(trackUUID: uuid, kind: .cue, exists: false)
@@ -37,7 +40,8 @@ extension LibraryStore {
         }
         if let error = verified.storeError { AppErrorMessage.log(error) }
         reflectionBatch = verified.finished ? nil : verified.batch
-        reflectionMessage = AppMessage(kind: verified.isClean ? .success : .warning, text: verified.message)
-        useCases.log("[반영 검증] \(reflectionMessage?.text ?? "")")
+        // 읽은 뒤 저절로 하는 확인이라 떠 있는 경고는 덮지 않고, 결과가 바뀌었을 때만 알린다
+        notifyState(.reflectionCheck, .notice(text: verified.message, kind: verified.isClean ? .success : .warning))
+        useCases.log("[반영 검증] \(verified.message)")
     }
 }

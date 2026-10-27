@@ -18,7 +18,7 @@ extension LibraryStore {
         undoManager.registerUndo(withTarget: self) { target in
             guard !target.libraryBusy else { return }
             do { try target.setMergeDrafts(before) }
-            catch { target.reflectionMessage = AppMessage(kind: .warning, text: error.localizedDescription) }
+            catch { target.showToast(.notice(text: error.localizedDescription, kind: .warning)) }
         }
         undoManager.setActionName(String(ui: "중복 곡 합치기 초안"))
     }
@@ -30,7 +30,7 @@ extension LibraryStore {
         if failure == nil {
             reportDraftFilesMovedBySave(moved)
         } else {
-            reflectionMessage = AppMessage(kind: .warning, text: String(ui: "라이브러리에는 썼지만 합치기 초안 파일을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요"))
+            notify(.notice(text: String(ui: "라이브러리에는 썼지만 합치기 초안 파일을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요"), kind: .warning))
         }
     }
 

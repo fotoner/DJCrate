@@ -50,20 +50,21 @@ struct AsyncFailureGuidanceTests {
         #expect(store.lastError == store.lastReadFailure?.message)
     }
 
-    /// 목록 위 오류 줄은 닫을 수 있다(#230). 닫아도 오류 상태(`lastError`)는 남아 그 상태를 보는 흐름은 그대로이고, 새 오류가 오면 다시 보인다.
-    @Test func 목록_위_오류_줄을_닫아도_상태는_남고_새_오류는_다시_보인다() throws {
+    /// 오류 알림은 닫을 수 있다(#230, 목록 위 오류 줄은 창 알림으로 옮겼다 #307). 닫아도 오류 상태(`lastError`)는 남아 그 상태를 보는 흐름은 그대로이고,
+    /// 새 오류가 오면 다시 뜬다.
+    @Test func 오류_알림을_닫아도_상태는_남고_새_오류는_다시_뜬다() throws {
         let folder = try TemporaryFolder()
         let store = store(root: folder.url)
-        #expect(store.visibleLastError == nil)
+        #expect(store.toast == nil)
         store.reportLibraryError("라이브러리를 열지 못했습니다")
-        #expect(store.visibleLastError == "라이브러리를 열지 못했습니다")
-        store.dismissLastError()
-        #expect(store.visibleLastError == nil && store.lastError == "라이브러리를 열지 못했습니다")
+        #expect(store.toast?.title == "라이브러리를 열지 못했습니다")
+        store.dismissToast()
+        #expect(store.toast == nil && store.lastError == "라이브러리를 열지 못했습니다")
         store.reportLibraryError("라이브러리를 열지 못했습니다")
-        #expect(store.visibleLastError == "라이브러리를 열지 못했습니다")
-        store.dismissLastError()
+        #expect(store.toast?.title == "라이브러리를 열지 못했습니다")
+        store.dismissToast()
         store.reportLibraryError("다른 오류")
-        #expect(store.visibleLastError == "다른 오류")
+        #expect(store.toast?.title == "다른 오류")
     }
 
     @Test func 삭제된_큐의_현재_명령은_다시_선택을_안내한다() async throws {
@@ -338,7 +339,7 @@ struct AsyncFailureGuidanceTests {
         store.selection = ["deleted"]
         store.loadSelectionToDeck()
         #expect(store.deckTrackID == row.track.id)
-        #expect(store.staging.stagingMessage?.text.contains("다시 선택") == true)
+        #expect(store.activityLog.latest?.text.contains("다시 선택") == true)
     }
 
     @Test func 파일_읽기_실패는_초안과_형식_판정을_섞지_않는다() async throws {

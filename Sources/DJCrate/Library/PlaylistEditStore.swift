@@ -43,12 +43,10 @@ final class PlaylistEditStore {
     var playlistAddedTracks: [String: Set<String>] = [:]
     /// 최근에 곡을 넣은 목록(최근 것부터). 오른쪽 클릭 메뉴 맨 위·'마지막에 쓴 목록에 넣기'.
     var recentPlaylistIDs: [String] = []
-    /// 재생 목록 편집 결과 안내(넣은 곡 수·이미 든 곡·막힌 이유)
-    var playlistMessage: AppMessage? {
-        didSet { if let playlistMessage { library.feedback.announce(playlistMessage) } }
-    }
     /// 재생 목록 초안 저장에 실패해 메모리 초안이 디스크보다 최신이다(쓰기 전에 다시 저장한다, #174).
     var playlistDraftUnsaved = false
+    /// 저장 실패를 알린 창 알림(넣기·빼기 결과가 실패를 함께 적었으면 그 알림). 다시 저장하면 거둔다
+    @ObservationIgnored var saveFailureToast: AppToast.ID?
     /// 재생 목록 연결 기록(컬렉션에 들어간 뒤 만들 목록 연결, `PlaylistEditStore+Imports`)
     var playlistImports = PlaylistImports()
     var playlistImportsLoadFailed = false
@@ -185,7 +183,7 @@ final class PlaylistEditStore {
             return batch
         }
         if batch.refused {
-            playlistMessage = AppMessage(kind: .warning, text: EditPlaylists.refusedMessage(batch.firstSkipReason ?? ""))
+            library.showToast(.notice(text: EditPlaylists.refusedMessage(batch.firstSkipReason ?? ""), kind: .warning))
             return nil
         }
         guard batch.hasChanges else { return nil }
@@ -205,7 +203,7 @@ final class PlaylistEditStore {
     func setPlaylistDraft(_ draft: PlaylistDraft, actionName: String) {
         guard draft != playlistDraft else { return }
         if syncExternalPlaylistDraft() {
-            playlistMessage = AppMessage(kind: .warning, text: String(ui: "바깥에서 바뀐 재생 목록 초안을 다시 읽어 방금 변경은 하지 않았습니다. 다시 해 주세요."))
+            library.showToast(.notice(text: String(ui: "바깥에서 바뀐 재생 목록 초안을 다시 읽어 방금 변경은 하지 않았습니다. 다시 해 주세요."), kind: .warning))
             return
         }
         commitPlaylistDraft(draft, actionName: actionName)
@@ -237,7 +235,8 @@ final class PlaylistEditStore {
         }
         if let summary = EditPlaylists.addSummary(name: item.name, added: plan.new.count, duplicates: plan.duplicates.count,
                                                   saveFailed: playlistDraftUnsaved, staged: plan.staged, saveFailureText: Self.playlistSaveFailureText) {
-            playlistMessage = AppMessage(kind: summary.warning ? .warning : .success, text: summary.text)
+            library.showToast(.notice(text: summary.text, kind: summary.warning ? .warning : .success))
+            if playlistDraftUnsaved { saveFailureToast = library.toast?.id }
         }
     }
 
@@ -255,8 +254,9 @@ final class PlaylistEditStore {
                                  actionName: String(ui: "재생 목록에서 빼기")) != nil {
             let count = Set(entries.map(\.contentID)).count
             let removed = String(ui: "‘\(item.name)’에서 \(count)곡을 뺐습니다(쓰기 대기).")
-            playlistMessage = playlistDraftUnsaved ? AppMessage(kind: .warning, text: removed + " " + Self.playlistSaveFailureText)
-                : AppMessage(text: removed)
+            library.showToast(playlistDraftUnsaved ? .notice(text: removed + " " + Self.playlistSaveFailureText, kind: .warning)
+                : .notice(text: removed, kind: .success))
+            if playlistDraftUnsaved { saveFailureToast = library.toast?.id }
         }
     }
 
@@ -397,12 +397,16 @@ final class PlaylistEditStore {
     /// 메모리 초안을 저장한 결과(`error`가 nil이면 저장했다)를 표시에 맞춘다. 실패면 쓰기 전에 다시 저장하도록 기록한다(#174)
     func applyPlaylistSave(_ error: (any Error)?) {
         if let error {
-            playlistDraftUnsaved = true
             AppErrorMessage.log(error)
-            playlistMessage = AppMessage(kind: .warning, text: Self.playlistSaveFailureText)
+            // 메모리에만 남은 초안이라 다른 저장 실패처럼 닫을 때까지 남긴다. 저장하지 못한 동안 고칠 때마다 다시 띄우지 않는다
+            // (곡 넣기·빼기 결과는 이 실패를 함께 적는다)
+            if !playlistDraftUnsaved { saveFailureToast = library.notify(.notice(text: Self.playlistSaveFailureText, kind: .failure)) }
+            playlistDraftUnsaved = true
         } else {
             playlistDraftUnsaved = false
-            if playlistMessage?.text == Self.playlistSaveFailureText { playlistMessage = nil }
+            // 저장했으니 아직 떠 있는 "저장하지 못했다" 알림을 거둔다
+            if let saveFailureToast { library.dismissToast(saveFailureToast) }
+            saveFailureToast = nil
         }
     }
 
@@ -450,7 +454,7 @@ final class PlaylistEditStore {
         playlistEditsAwaitingReload = []
         let unrestored = restorePlaylistEdits(edits)
         if unrestored > 0 {
-            playlistMessage = AppMessage(kind: .warning, text: String(ui: "재생 목록 편집 \(unrestored)건은 초안으로 되살리지 못했습니다."))
+            library.notify(.notice(text: String(ui: "재생 목록 편집 \(unrestored)건은 초안으로 되살리지 못했습니다."), kind: .warning))
         }
     }
 }

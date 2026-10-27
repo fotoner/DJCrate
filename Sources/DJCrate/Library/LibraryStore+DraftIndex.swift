@@ -40,8 +40,10 @@ extension LibraryStore {
             return
         }
         let failedTags = refresh.failedTagSaves.intersection(tagSaveAttempts)
-        if !failedTags.isEmpty { reportLibraryError(DraftSaveFailure.tagSaveMessage) }
-        else if lastError == DraftSaveFailure.tagSaveMessage { clearLibraryError() }
+        // 1초마다 도는 확인이라 이미 알린 실패는 다시 띄우지 않는다(#307)
+        let reported = lastError == DraftSaveFailure.tagSaveMessage
+        if !failedTags.isEmpty, !reported { reportLibraryError(DraftSaveFailure.tagSaveMessage, kind: .failure) }
+        else if failedTags.isEmpty, reported { clearLibraryError() }
         guard let contents = refresh.contents else { return }
         rememberDraftFileStamps(refresh.stamps)
         // CLI가 바꾼 재생 목록 초안(#260). 받으면 라이브러리 ⌘Z 기록을 비운다(`adoptExternalDraft`)

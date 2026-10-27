@@ -49,7 +49,7 @@ struct PlaylistEditStoreObservationTests {
             _ = try? draft.append(.create(key: "k", name: "새 목록", isFolder: false, parent: PlaylistRef(PlaylistLayout.root)), rekordbox: PlaylistLayout())
             $0.playlists.playlistDraft = draft
         })
-        #expect(!reads(section) { $0.playlists.playlistMessage = AppMessage(text: "합성 안내") })
+        #expect(!reads(section) { $0.showToast(.notice(text: "합성 안내", kind: .success)) })
         #expect(!reads(section) { $0.playlists.recentPlaylistIDs = ["A"] })
     }
 

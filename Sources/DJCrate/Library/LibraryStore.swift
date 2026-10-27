@@ -192,10 +192,8 @@ final class LibraryStore {
     /// 재생 목록 상태와 초안 편집(기능 조각, `PlaylistEditStore`). 조각이 핵심(곡·사이드바·설정·되돌리기)을 붙들어 처음 쓸 때 만든다
     /// (init 끝에서 최근 목록·연결 기록을 읽을 때). 관찰하지 않는다: 화면은 조각의 값을 읽는다
     @ObservationIgnored private(set) lazy var playlists = PlaylistEditStore(library: self)
-    /// 읽지 못해 옮겨 보관한 초안 파일 안내(#174). 닫을 때까지 남는다.
-    var draftFileMessage: AppMessage? {
-        didSet { if let draftFileMessage { feedback.announce(draftFileMessage) } }
-    }
+    /// 읽지 못해 옮겨 보관한 초안 파일 안내(#174)의 창 알림. 떠 있는 동안 더 옮기면 그 알림의 수를 더한다
+    @ObservationIgnored var damagedDraftToast: AppToast.ID?
     @ObservationIgnored var damagedDraftCount = 0
     @ObservationIgnored var damagedStagedList = false
     /// 스냅샷 곡·추가한 곡 어디에도 이어지지 않는 초안이 있는 곡(#175). 쓰기 대기 목록에서 보여 주고 고른 것만 버린다.
@@ -271,10 +269,6 @@ final class LibraryStore {
     @ObservationIgnored var deckGridDraftState: (() -> (uuid: String, hasChanges: Bool)?)?
     /// 가져온 그리드 초안을 덱이 받아 저장한다. 받지 못하면(덱에서 고쳤거나 다른 곡) false.
     @ObservationIgnored var adoptImportedGridDraft: ((GridDraft) -> Bool)?
-    /// rekordbox 반영 내보내기·검증 결과 안내
-    var reflectionMessage: AppMessage? {
-        didSet { if let reflectionMessage { feedback.announce(reflectionMessage) } }
-    }
     /// 마지막으로 내보낸 반영 묶음(가져온 뒤 검증 대기). 앱을 다시 켜면 유스케이스가 남긴 묶음을 읽는다(`ExportXML.verifyReflection`)
     var reflectionBatch: ReflectionXMLBatch?
     /// 이번 실행에서 rekordbox에 쓴 마지막 백업(토스트·툴바의 되돌리기)
@@ -282,7 +276,7 @@ final class LibraryStore {
     /// detail 아래쪽에 뜨는 알림(rekordbox 반영 완료 등). 띄우고 닫기는 `showToast`·`dismissToast`로만 한다(띄운 알림은 모두 활동 기록에 남는다, #296)
     private(set) var toast: AppToast? {
         didSet {
-            if let toast { feedback.announce(AppMessage(kind: toast.kind, text: [toast.title, toast.detail].compactMap { $0 }.joined(separator: "\n"))) }
+            if let toast { feedback.announce(AppMessage(kind: toast.kind, text: toast.text)) }
         }
     }
 
@@ -300,6 +294,44 @@ final class LibraryStore {
     func dismissToast(_ id: AppToast.ID? = nil) {
         guard let toast, id == nil || toast.id == id else { return }
         self.toast = nil
+    }
+
+    /// 사용자가 누른 일의 결과가 아닌 안내(읽기·저장 실패, 손상 파일, 검증 결과 등)를 띄운다. 목록 위 줄이던 안내다(#307).
+    /// 떠 있는 알림이 경고·실패이거나 단추가 있으면 덮지 않고 활동 기록에만 남긴다(상태 줄의 읽지 않은 수에 든다, #298).
+    /// `updating`이 아직 떠 있는 알림이면 그 알림과 기록 항목을 새 내용으로 고친다(같은 안내의 수를 더할 때).
+    /// - Returns: 띄운 알림. 띄우지 못했으면 nil
+    @discardableResult
+    func notify(_ toast: AppToast, updating previous: AppToast.ID? = nil) -> AppToast.ID? {
+        if let previous, let current = self.toast, current.id == previous {
+            present(toast, entry: activityLog.record(toast, replacing: current.activityID))
+            return toast.id
+        }
+        guard canReplaceToast else {
+            activityLog.record(toast, shown: false)
+            // 화면에 띄우지 못해도 VoiceOver로는 알린다
+            feedback.announce(AppMessage(kind: toast.kind, text: toast.text))
+            return nil
+        }
+        showToast(toast)
+        return toast.id
+    }
+
+    /// 읽을 때마다 다시 구하는 상태 안내의 출처
+    enum StateNotice: Hashable { case importCheck, reflectionCheck }
+
+    /// 읽을 때마다 다시 구하는 상태 안내(가져온 곡 확인·XML 반영 확인)는 내용이 바뀔 때만 알린다.
+    /// 바뀌지 않은 상태가 읽을 때마다 새 알림과 읽지 않은 경고로 쌓이지 않게 한다(#307). `toast`가 nil이면 상태가 풀렸다
+    func notifyState(_ source: StateNotice, _ toast: AppToast?) {
+        guard let toast else { stateNotices[source] = nil; return }
+        guard stateNotices[source] != toast.text else { return }
+        stateNotices[source] = toast.text
+        notify(toast)
+    }
+
+    /// 지금 알림을 덮어도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만
+    private var canReplaceToast: Bool {
+        guard let toast else { return true }
+        return toast.kind == .success && toast.undoBackup == nil && toast.action == nil
     }
 
     /// 기록을 보관하지 못했거나 지난 기록을 읽지 못했으면 알림에도 덧붙인다(앱을 닫기 전에 내용을 복사하게).
@@ -393,14 +425,14 @@ final class LibraryStore {
     @ObservationIgnored private(set) var usbSnapshotStamp: UsbSyncSnapshotProvenance?
     @ObservationIgnored private(set) var usbSnapshotEpoch: Int?
 
-    private(set) var lastError: String? {
-        didSet { lastErrorDismissed = false }
-    }
-    /// 목록 위 오류 줄을 닫았는지. 오류 상태(`lastError`)는 그대로 두고 줄만 숨긴다(#230). 새로 알리면 다시 보인다.
-    private var lastErrorDismissed = false
-    /// 목록 위에 보일 오류 줄
-    var visibleLastError: String? { lastErrorDismissed ? nil : lastError }
-    func dismissLastError() { lastErrorDismissed = true }
+    /// 마지막 라이브러리 오류. 읽기·쓰기 흐름이 이 상태를 본다. 화면에는 알릴 때 창 알림으로 띄운다(목록 위 오류 줄은 없앴다, #307)
+    private(set) var lastError: String?
+    /// 오류 상태를 알린 창 알림. 오류가 풀리면 아직 떠 있는 그 알림을 거둔다
+    @ObservationIgnored private var lastErrorToast: AppToast.ID?
+    /// 상태 안내마다 마지막으로 알린 내용(`notifyState`)
+    @ObservationIgnored private var stateNotices: [StateNotice: String] = [:]
+    /// 반영 세션이 뒤따른 경고(`.followUp`)를 알렸다. 세션은 바로 뒤 같은 경고를 오류 상태로도 남긴다(`.libraryError`, 쓰기 결과 알림이 이미 담는다)
+    @ObservationIgnored var followUpAwaitingError = false
     private(set) var lastReadFailure: LibraryReadFailure?
     var unreadableDraftKinds: [String: Set<WritePart>] = [:]
 
@@ -452,13 +484,13 @@ final class LibraryStore {
         completedLoadCount += 1
     }
 
-    /// 읽기 실패: 이미 라이브러리가 있으면 그대로 두고 오류만, 없으면 실패 화면으로 알린다.
-    /// 목록 위 경고는 초안 저장 오류와 같은 자리이므로 무엇이 실패했는지 문구 앞에 적는다.
+    /// 읽기 실패: 이미 라이브러리가 있으면 그대로 두고 알림으로, 없으면 실패 화면으로 알린다.
+    /// 알림은 초안 저장 오류와 같은 자리이므로 무엇이 실패했는지 문구 앞에 적는다.
     func reportReadFailure(_ failure: LibraryReadFailure) {
         lastReadFailure = failure
         if failure.keepsPreviousLibrary {
             phase = .loaded
-            lastError = failure.message
+            reportLibraryError(failure.message)
         } else {
             phase = .failed(failure.message)
         }
@@ -470,8 +502,25 @@ final class LibraryStore {
         phase = .failed(message)
     }
 
-    func reportLibraryError(_ message: String) { lastError = message }
-    func clearLibraryError() { lastError = nil }
+    /// 라이브러리 오류를 오류 상태에 두고 창 알림으로 알린다(활동 기록에 남는다). 초안을 잃을 수 있는 저장 실패는 `.failure`로 닫을 때까지 남긴다.
+    func reportLibraryError(_ message: String, kind: AppToast.Kind = .warning) {
+        let showing = lastErrorToast != nil && toast?.id == lastErrorToast
+        // 같은 오류의 알림이 아직 떠 있으면 다시 띄우지 않는다. 읽을 때마다 같은 실패가 쌓이고 떠 있는 실패 알림을 놓치지 않게(#307).
+        // 닫았거나 띄우지 못했으면 다시 알린다(다시 일어난 오류다, #230)
+        if showing, lastError == message { return }
+        lastError = message
+        // 앞 오류의 알림이 아직 떠 있으면 새 오류로 바꾼다(닫을 때까지 남는 실패가 새 오류를 막지 않게)
+        if showing, let lastErrorToast { dismissToast(lastErrorToast) }
+        lastErrorToast = notify(.notice(text: message, kind: kind))
+    }
+    /// 다른 알림이 이미 담은 오류: 상태만 남긴다
+    func setLibraryErrorQuietly(_ message: String) { lastError = message }
+    func clearLibraryError() {
+        lastError = nil
+        // 풀린 오류를 계속 보이지 않는다. 닫을 때까지 남는 실패는 그동안 다른 안내도 막는다
+        if let lastErrorToast { dismissToast(lastErrorToast) }
+        lastErrorToast = nil
+    }
 
     func whileSynchronizingLibrary(_ body: () async -> Void) async {
         isSynchronizingLibrary = true

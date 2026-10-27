@@ -80,7 +80,7 @@ enum LibraryMenuAction: CaseIterable {
         let store = window.store
         if writesLibrary, store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return }
         guard isEnabled(in: window) else {
-            if let reason = disabledReason(in: window) { store.staging.stagingMessage = AppMessage(kind: .warning, text: reason) }
+            if let reason = disabledReason(in: window) { store.showToast(.notice(text: reason, kind: .warning)) }
             return
         }
         switch self {
