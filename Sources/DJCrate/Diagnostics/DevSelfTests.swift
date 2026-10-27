@@ -19,10 +19,10 @@ import Foundation
 @MainActor
 enum DevSelfTests {
     static func runIfRequested(store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
-                               playlistSidebar: PlaylistSidebarModel, libraryWindow: LibraryWindowModel) {
+                               playlistSidebar: PlaylistSidebarModel, libraryWindow: LibraryWindowModel, statusBar: StatusBarModel) {
         runITunesSelfTestIfRequested(store: store, deck: deck)
         runSearchLayoutIfRequested()
-        runReflectionLayoutIfRequested(store: store, libraryWindow: libraryWindow)
+        runReflectionLayoutIfRequested(store: store, libraryWindow: libraryWindow, statusBar: statusBar)
         Issue237Capture.runIfRequested(store: store)
         ColumnHeaderCapture.runIfRequested(store: store)
         UsbDragCapture.runIfRequested(store: store)

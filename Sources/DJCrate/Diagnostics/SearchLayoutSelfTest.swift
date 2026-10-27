@@ -3,6 +3,7 @@ import AppKit
 
 extension DevSelfTests {
     /// 실제 도구 막대에서 검색 포커스가 검색칸과 이웃 버튼의 폭을 바꾸는지 확인한다.
+    /// 창 아래 상태 줄(#298)이 창 폭 안·도구 막대 아래에 있고 활동 단추가 그 줄 안에 보이는지도 본다.
     static func runSearchLayoutIfRequested() {
         guard ProcessInfo.processInfo.arguments.contains("--search-layout-selftest"),
               ProcessInfo.processInfo.environment["DJC_HOME"] != nil else { return }
@@ -36,7 +37,7 @@ extension DevSelfTests {
             await wait()
             let originalSize = window.contentView?.frame.size ?? NSSize(width: 1440, height: 900)
             var failures = 0
-            for width: CGFloat in [1100, 1200, 1440, 1800] {
+            for width: CGFloat in [1100, 1155, 1200, 1440, 1800] {
                 search.endSearchInteraction()
                 window.setContentSize(NSSize(width: width, height: 700))
                 await wait()
@@ -60,13 +61,22 @@ extension DevSelfTests {
                 let visibleIDs = Set((toolbar.visibleItems ?? []).map { $0.itemIdentifier.rawValue })
                 let controlsVisible = ["viewMode", "addFiles", "tagEditor", "snapshot", "reflection"]
                     .allSatisfy { visibleIDs.contains($0) }
+                // 상태 줄 자리는 위 왼쪽 원점의 창 좌표다. 도구 막대 아래 끝은 내용 영역(`contentLayoutRect`)의 위 끝이다
+                let content = window.contentView?.frame.size ?? .zero
+                let toolbarBottom = content.height - window.contentLayoutRect.maxY
+                let bar = SelfTestFrames.frames.first { $0.key.hasPrefix("statusBar.") }?.value
+                let button = SelfTestFrames.frames["statusBarActivity"]
+                let barFits = bar.map { $0.width > 0 && $0.minY >= toolbarBottom && abs($0.maxY - content.height) <= 0.5
+                    && $0.minX >= -0.5 && $0.maxX <= content.width + 0.5 } ?? false
+                let buttonFits = barFits && button.map { $0.width > 0 && bar?.insetBy(dx: -0.5, dy: -0.5).contains($0) == true } ?? false
                 let stable = focused && controlsVisible && !neighbors.isEmpty && before.width > 0
-                    && abs(before.width - after.width) <= 0.5 && movement <= 0.5
+                    && abs(before.width - after.width) <= 0.5 && movement <= 0.5 && buttonFits
                 if !stable { failures += 1 }
-                let line = String(format: "[검색 배치 시험] 창 %.0f(실제 %.0f) · 검색 폭 %.2f → %.2f · 선호 폭 %.2f · 이웃 %d개 최대 이동 %.2f · 포커스 %@ · 버튼 표시 %@ · %@\n",
+                let line = String(format: "[검색 배치 시험] 창 %.0f(실제 %.0f) · 검색 폭 %.2f → %.2f · 선호 폭 %.2f · 이웃 %d개 최대 이동 %.2f · 포커스 %@ · 버튼 표시 %@ · 상태 줄 %@(%@) · %@\n",
                                   width, window.contentView?.frame.width ?? 0, before.width, after.width,
                                   search.preferredWidthForSearchField, neighbors.count, movement,
-                                  focused ? "있음" : "없음", controlsVisible ? "모두" : "일부", stable ? "통과" : "실패")
+                                  focused ? "있음" : "없음", controlsVisible ? "모두" : "일부", buttonFits ? "맞음" : "어긋남",
+                                  bar.map { NSStringFromRect($0) } ?? "없음", stable ? "통과" : "실패")
                 FileHandle.standardError.write(Data(line.utf8))
             }
             search.endSearchInteraction()

@@ -246,16 +246,21 @@ final class HistoryStore {
         case let .imported(shown, saved, notice):
             if library.snapshotURL != nil { seedHistoryFolders() }
             for id in shown { revealHistory(id) }
-            // 닫을 때까지 남는 경고·동작 단추가 있는 알림(USB 꺼내기 등)은 덮지 않는다
-            if let notice, canReplaceToast { show(notice) }
+            // 경고·실패나 동작 단추가 있는 알림(USB 꺼내기 등)은 덮지 않는다. 그때 가져오기 알림은 버리지 않고 활동 기록에만 남겨
+            // 상태 줄의 읽지 않은 수에 넣는다(#298)
+            if let notice {
+                if canReplaceToast { show(notice) } else { library.activityLog.record(toast(notice), shown: false) }
+            }
             if case let .history(id) = library.sidebar, saved.contains(id) { library.refreshBase() }
         case let .notice(notice):
             show(notice)
         }
     }
 
-    private func show(_ notice: UsbHistoryNotice) {
-        library.showToast(.notice(notice.title, notice.detail, kind: notice.kind == .success ? .success : .warning, isUsb: true))
+    private func show(_ notice: UsbHistoryNotice) { library.showToast(toast(notice)) }
+
+    private func toast(_ notice: UsbHistoryNotice) -> AppToast {
+        .notice(notice.title, notice.detail, kind: notice.kind == .success ? .success : .warning, isUsb: true)
     }
 
     /// 지금 알림을 기록 가져오기 알림으로 바꿔도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만

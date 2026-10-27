@@ -56,6 +56,8 @@ struct AppToast: Identifiable, Equatable {
 
     /// 결과 보기 단추를 붙일지(rekordbox 쓰기 결과일 때만)
     var showsResult: Bool { !isUsb && !isNotice }
+    /// 열기 단추를 붙일지(#298): 결과 보기가 없는 경고·실패. 누르면 상태 줄의 활동 팝오버에서 이 알림을 펼친다
+    var opensActivity: Bool { kind != .success && !showsResult }
 
     /// 창 대신 띄우는 안내(기본은 경고)
     static func notice(_ title: String, _ detail: String?, kind: Kind = .warning, isUsb: Bool = false) -> Self {
@@ -77,13 +79,15 @@ struct AppToast: Identifiable, Equatable {
 /// 토스트 모양: 둥근 카드, 아이콘 + 제목 + 설명 + (되돌리기) + 닫기. 마우스를 올려 두거나 단추에 키보드 포커스가 있으면 사라지지 않는다.
 struct AppToastView: View {
     /// 키보드 포커스를 받을 수 있는 단추
-    private enum Control: Hashable { case details, action, undo, close }
+    private enum Control: Hashable { case details, open, action, undo, close }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.textScale) private var textScale
     let toast: AppToast
     var onUndo: (() -> Void)?
     var onDetails: (() -> Void)?
+    /// 활동 팝오버에서 이 알림 열기(`AppToast.opensActivity`)
+    var onOpen: (() -> Void)?
     var onAction: (() -> Void)?
     var onClose: () -> Void
     @State private var timer = AppToastTimer()
@@ -107,6 +111,9 @@ struct AppToastView: View {
             .fixedSize(horizontal: false, vertical: true)
             if let onDetails {
                 Button(.ui("결과 보기"), action: onDetails).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .details)
+            }
+            if let onOpen {
+                Button(.ui("열기"), action: onOpen).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .open)
             }
             if let onAction, let action = toast.action {
                 Button(action.title, action: onAction).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .action)
