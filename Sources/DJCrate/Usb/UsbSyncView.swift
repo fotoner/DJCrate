@@ -184,7 +184,6 @@ struct UsbSyncView: View {
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
             .disabled(controlsDisabled || !model.canSync)
-            .help(.ui("선택한 목록을 USB와 동기화합니다"))
             .accessibilityLabel(.ui("USB와 동기화…"))
             .accessibilityIdentifier("usb-sync-apply")
             Button {
@@ -197,7 +196,7 @@ struct UsbSyncView: View {
                 .frame(minWidth: 112)
             }
             .disabled(controlsDisabled || !model.canImport)
-            .help(.ui("USB의 큐·그리드로 로컬 값을 바꾸는 초안을 만듭니다. 동기화가 꺼져 있어도 쓸 수 있습니다"))
+            .help(.ui("USB의 큐·그리드를 로컬 초안으로 가져옵니다"))
             .accessibilityLabel(.ui("USB 큐·그리드 가져오기…"))
             .accessibilityIdentifier("usb-sync-import-cue-grid")
             if isOperating {

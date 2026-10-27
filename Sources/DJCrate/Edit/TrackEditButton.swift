@@ -31,7 +31,7 @@ struct TrackEditButton: View {
         }
         .buttonStyle(.plain)
         .disabled(!deck.canOpenTrackEdit)
-        .help(deck.trackEditUnavailableReason ?? String(ui: "마디 단위로 잘라 이은 편집본(인트로 늘이기·짧은 버전)을 만듭니다. 원곡은 그대로 두고 새 곡으로 추가한 곡에 넣습니다"))
+        .help(deck.trackEditUnavailableReason ?? String(ui: "마디 단위로 잘라 이은 편집본 만들기"))
     }
 
     private var flipHalf: some View {
@@ -45,9 +45,7 @@ struct TrackEditButton: View {
         }
         .buttonStyle(.plain)
         .disabled(deck.flipUnavailableReason != nil)
-        .help(deck.flipUnavailableReason ?? (recording
-            ? String(ui: "Flip 기록 중입니다. 다시 누르면 기록을 마치고 결과 창을 엽니다")
-            : String(ui: "Flip 기록을 시작합니다. 재생하며 쓴 핫큐 점프·루프만 모아 같은 소리로 재생되는 편집본을 만듭니다")))
+        .help(deck.flipUnavailableReason ?? String(ui: "핫큐 점프·루프 연주를 편집본으로 기록 (다시 누르면 마침)"))
         .accessibilityLabel(.ui("Flip 기록"))
         .accessibilityValue(recording ? String(ui: "기록 중") : String(ui: "꺼짐"))
         .accessibilityAddTraits(.isToggle)
