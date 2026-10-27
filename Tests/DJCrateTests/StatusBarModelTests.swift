@@ -136,4 +136,21 @@ struct StatusBarModelTests {
         #expect(app.libraryWindow.activityLog?.selection == entry)
         #expect(SettingKeys.all.contains(SettingKeys.activitySeenThrough.name))
     }
+
+    /// 활동 기록 창은 모든 알림을 보인다. 사이드바·메뉴·알림의 결과 보기 어디로 열어도 읽음으로 본다(캡처에서 나옴)
+    @Test func 활동_기록_창을_열고_닫으면_그때까지의_알림을_읽음으로_본다() {
+        var clock = Self.start
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil, now: { clock }), saveTagDrafts: { _ in })
+        let app = AppComposition(store: store, deck: DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false))
+        store.activityLog.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        #expect(app.statusBar.unreadCount == 1)
+        app.libraryWindow.showActivityLog()
+        #expect(app.statusBar.unreadCount == 0)
+        // 연 동안 뜬 알림도 창에 보였으므로 닫을 때 읽음으로 본다
+        clock += 1
+        store.activityLog.record(AppToast(kind: .failure, title: "USB에 쓰지 못했습니다", isUsb: true))
+        #expect(app.statusBar.unreadCount == 1)
+        app.libraryWindow.activityLog = nil
+        #expect(app.statusBar.unreadCount == 0)
+    }
 }

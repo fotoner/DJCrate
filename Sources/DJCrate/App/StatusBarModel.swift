@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 /// 창 아래 상태 줄의 화면 모델(#298): 오른쪽 활동 단추의 읽지 않은 수와 활동 팝오버(최근 알림·펼친 항목).
-/// 읽지 않은 알림은 읽음 기준 시각보다 늦게 뜬 경고·실패와 띄우지 못한 알림이다. 팝오버를 열고 닫을 때 기준을 옮긴다.
+/// 읽지 않은 알림은 읽음 기준 시각보다 늦게 뜬 경고·실패와 띄우지 못한 알림이다. 팝오버나 활동 기록 창을 열고 닫을 때 기준을 옮긴다.
 /// 기준은 설정(`SettingKeys.activitySeenThrough`)에 두어 앱을 다시 켜도 이어진다. 조립 지점(`AppComposition.statusBar`)이 한 번 만든다.
 @MainActor
 @Observable
@@ -73,8 +73,9 @@ final class StatusBarModel {
     }
 
     /// 지금까지 뜬 알림을 읽음으로 본다. 기준은 기록에서 가장 늦은 시각이다. 항목은 기록한 순서라 시계가 거꾸로 갔으면 맨 앞이 가장 늦지 않다.
-    /// 지금 시각은 쓰지 않는다(시계가 앞서 있을 때 열면 기준이 미래로 가 그 뒤 알림을 놓친다). 기준은 뒤로 가지 않는다
-    private func markSeen() {
+    /// 지금 시각은 쓰지 않는다(시계가 앞서 있을 때 열면 기준이 미래로 가 그 뒤 알림을 놓친다). 기준은 뒤로 가지 않는다.
+    /// 팝오버를 여닫을 때와 활동 기록 창을 여닫을 때(`LibraryWindowModel.activityLogSeen`) 부른다
+    func markSeen() {
         let mark = max(log.entries.map(\.date).max() ?? .distantPast, seenThrough)
         guard mark > seenThrough else { return }
         seenThrough = mark

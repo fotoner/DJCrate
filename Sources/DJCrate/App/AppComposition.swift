@@ -72,6 +72,7 @@ final class AppComposition {
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
         libraryWindow.agentTools = agentTools
         statusBar.showLog = { [weak window = libraryWindow] in window?.showActivityLog(selecting: $0) }
+        libraryWindow.activityLogSeen = { [weak bar = statusBar] in bar?.markSeen() }
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.

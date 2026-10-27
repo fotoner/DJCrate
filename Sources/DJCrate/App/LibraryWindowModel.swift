@@ -16,7 +16,9 @@ final class LibraryWindowModel {
     /// rekordbox XML 가져오기(읽는 중·미리 보기 시트·결과). 메뉴가 읽는 중인지 보므로 시트를 닫아도 남는다
     @ObservationIgnored let xmlImport: XMLImportModel
     /// 활동 기록 시트의 화면 모델(알림의 결과 보기·메뉴·사이드바 줄이 띄운다. 띄울 때마다 새로 만든다)
-    var activityLog: ActivityLogModel?
+    var activityLog: ActivityLogModel? { didSet { activityLogSeen() } }
+    /// 활동 기록 시트를 열고 닫을 때 부른다. 시트가 모든 알림을 보이므로 상태 줄이 그때까지의 알림을 읽음으로 본다(조립 지점이 잇는다)
+    @ObservationIgnored var activityLogSeen: () -> Void = {}
     /// 연결되지 않은 초안 시트의 화면 모델(띄울 때마다 새로 만든다)
     var unlinkedDrafts: UnlinkedDraftsModel?
     /// 켤 때 알림의 "모두 갱신"이 부르는 AI 에이전트 설치 모델(조립 지점이 붙인다. 시험은 nil)
