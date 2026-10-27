@@ -1228,22 +1228,6 @@
         }
       }
     },
-    "%@ 캐시를 비웁니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clears the %@ cache"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@のキャッシュを削除します"
-          }
-        }
-      }
-    },
     "%@ 폴더가 심볼릭 링크이거나 폴더가 아니라 스냅샷을 남기지 않았습니다. rekordbox 폴더를 확인하세요" : {
       "localizations" : {
         "en" : {
@@ -1637,22 +1621,6 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@가 셸 PATH에 없습니다. %2$@에 아래 줄을 더한 뒤 새 터미널을 여세요."
-          }
-        }
-      }
-    },
-    "%@가 셸 PATH에 있어 터미널과 에이전트가 djc를 바로 부릅니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ is in your shell PATH, so terminals and agents can run djc directly."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ はシェルの PATH にあるため、ターミナルとエージェントから djc をそのまま実行できます。"
           }
         }
       }
@@ -2075,18 +2043,18 @@
         }
       }
     },
-    "%@에도 지정된 키입니다. 목록 위쪽 동작이 받습니다" : {
+    "%@에도 지정돼 있습니다. 한쪽을 바꾸세요." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This key is also assigned to %@. The action higher in the list gets it"
+            "value" : "Also assigned to %@. Change one of them."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@にも割り当てられているキーです。リストで上にある操作が受け取ります"
+            "value" : "%@にも割り当てられています。どちらかを変更してください。"
           }
         }
       }
@@ -3815,6 +3783,22 @@
         }
       }
     },
+    "0dBFS를 넘지 않게 제한" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keeps the level from exceeding 0dBFS"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "0dBFSを超えないように制限します"
+          }
+        }
+      }
+    },
     "0dBFS를 넘지 않을 만큼만 올립니다" : {
       "localizations" : {
         "en" : {
@@ -4601,38 +4585,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CUEポイントにメモリーキューを追加（%@）。Shiftを押しながらクリックすると、現在の再生位置のメモリーキューを削除します。"
-          }
-        }
-      }
-    },
-    "Claude Code·Codex에 설치한 DJCrate 스킬·djc를 이 앱(%@)에 맞춰 갱신하세요. 설정 › AI 에이전트에서도 할 수 있습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Update the DJCrate skill and djc installed for Claude Code and Codex to match this app (%@). You can also do this in Settings › AI Agents."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude Code・Codex にインストールした DJCrate スキルと djc を、このアプリ(%@)に合わせて更新してください。設定 › AIエージェントでも更新できます。"
-          }
-        }
-      }
-    },
-    "Claude Code는 설정 폴더(기본 ~/.claude, CLAUDE_CONFIG_DIR로 바꾼 폴더)의 skills를, Codex는 ~/.agents/skills를 읽습니다. 사용자가 고친 파일과 DJCrate가 설치하지 않은 것은 바꾸기 전에 묻고 휴지통으로 옮깁니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude Code reads skills from its config folder (~/.claude by default, or the folder set with CLAUDE_CONFIG_DIR). Codex reads ~/.agents/skills. Files you edited and items DJCrate did not install are moved to the Trash only after you confirm."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claude Code は設定フォルダ(既定は ~/.claude、CLAUDE_CONFIG_DIR で変更したフォルダ)の skills を、Codex は ~/.agents/skills を読みます。ユーザーが編集したファイルや DJCrate がインストールしていないものは、確認してからゴミ箱に移します。"
           }
         }
       }
@@ -5599,22 +5551,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "FLACフレームを読み込めませんでした"
-          }
-        }
-      }
-    },
-    "FLAC·ALAC 곡을 LINK로 CDJ에 실을 때 다시 바꿉니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Converted again when a FLAC or ALAC track is loaded onto a CDJ over LINK."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "FLAC・ALAC の曲を LINK で CDJ にロードするときに再び変換します"
           }
         }
       }
@@ -6719,6 +6655,22 @@
         }
       }
     },
+    "PATH에 있음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In PATH"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PATHにあります"
+          }
+        }
+      }
+    },
     "PMAI 길이가 맞지 않음" : {
       "localizations" : {
         "en" : {
@@ -6859,22 +6811,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Shift: 削除"
-          }
-        }
-      }
-    },
-    "Shift는 핫큐·메모리 큐 지우기, 1마디 이동, 이전 제안에 씁니다. Esc는 덱에서 큐 선택을 풉니다(그 뒤 1박 이동 키는 재생 위치를 옮깁니다). ⌘·⌃·⌥ 조합(메뉴·실행 취소 ⌘Z)과 Return·Esc·Tab·↑↓·Home·End·Page Up/Down(곡 고르기·칸 나가기)은 지정할 수 없습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shift is used to delete Hot Cues and Memory Cues, move by 1 bar, and go to the previous suggestion. Esc clears the cue selection on the deck (after that, the 1-beat keys move the playhead). ⌘/⌃/⌥ combinations (menus, Undo ⌘Z) and Return, Esc, Tab, ↑↓, Home, End, Page Up/Down (choosing tracks, leaving fields) can't be assigned."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shiftはホットキュー・メモリーキューの削除、1小節移動、前の候補に使います。Escはデッキでキューの選択を解除します（その後、1拍移動キーは再生位置を動かします）。⌘・⌃・⌥の組み合わせ（メニュー・取り消し ⌘Z）とReturn・Esc・Tab・↑↓・Home・End・Page Up/Down（曲の選択・セルの確定）は割り当てられません。"
           }
         }
       }
@@ -7933,6 +7869,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "USBの復元ポイント…"
+          }
+        }
+      }
+    },
+    "USB 시점 스냅샷은 볼륨마다 최근 5개와 고정한 것을 남깁니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "For USB restore points, the 5 most recent per volume and pinned ones are kept."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "USBの復元ポイントは、ボリュームごとに最新の5件とピン留めしたものを残します。"
           }
         }
       }
@@ -9107,22 +9059,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "USBを接続してから書き込んでください"
-          }
-        }
-      }
-    },
-    "USB를 열 때 다시 뜹니다. 볼륨마다 가장 새 사본은 남깁니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Copied again when a USB is opened. The newest snapshot of each volume is kept."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USBを開くときに再びコピーします。ボリュームごとに最新のスナップショットは残します"
           }
         }
       }
@@ -12535,6 +12471,22 @@
         }
       }
     },
+    "rekordbox 수동·고정 시점 스냅샷은 지우지 않습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manual and pinned rekordbox restore points are never deleted."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxの手動・ピン留めした復元ポイントは削除しません。"
+          }
+        }
+      }
+    },
     "rekordbox 시점 스냅샷" : {
       "localizations" : {
         "en" : {
@@ -13199,18 +13151,18 @@
         }
       }
     },
-    "rekordbox가 꺼져 있고 라이브러리가 바뀌었을 때 뒤에서 조용히 남깁니다." : {
+    "rekordbox가 꺼져 있고 라이브러리가 바뀌었을 때만 남깁니다" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saved quietly in the background when rekordbox is closed and the library has changed."
+            "value" : "Created only when rekordbox is closed and the library has changed"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "rekordboxが終了していてライブラリが変わったときに、バックグラウンドで静かに作成します。"
+            "value" : "rekordboxが終了していてライブラリが変わったときだけ作成します"
           }
         }
       }
@@ -15047,22 +14999,6 @@
         }
       }
     },
-    "rekordbox와 동기화할 때 다시 뜹니다. 가장 새 사본과 지금 연 사본은 남깁니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Copied again when syncing with rekordbox. The newest snapshot and the one currently open are kept."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxと同期するときに再びコピーします。最新のスナップショットと今開いているものは残します"
-          }
-        }
-      }
-    },
     "rekordbox의 iTunes 동기화 선택이 바뀌었습니다. 새로고침한 뒤 다시 선택하세요." : {
       "localizations" : {
         "en" : {
@@ -15615,28 +15551,6 @@
         }
       }
     },
-    "‘%@’ 키는 %@에도 지정돼 있습니다. 목록 위쪽 동작이 받으니 한쪽을 바꾸세요." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The “%1$@” key is also assigned to %2$@. The action higher in the list gets it, so change one of them."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%1$@」キーは%2$@にも割り当てられています。リストで上にある操作が受け取るので、どちらかを変更してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "‘%1$@’ 키는 %2$@에도 지정돼 있습니다. 목록 위쪽 동작이 받으니 한쪽을 바꾸세요."
-          }
-        }
-      }
-    },
     "‘%@’ 키는 곡 고르기·칸 나가기에 써서 지정할 수 없습니다. 다른 키를 누르세요." : {
       "localizations" : {
         "en" : {
@@ -15763,38 +15677,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "「%@」に一致する曲が見つかりません"
-          }
-        }
-      }
-    },
-    "‘%@’에 쓸 키를 누르세요(Esc: 취소)." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Press a key for “%@” (Esc: Cancel)."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%@」に使うキーを押してください（Esc：キャンセル）。"
-          }
-        }
-      }
-    },
-    "‘%@’에 키가 없습니다. +로 더하거나 되돌리기를 누르세요." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%@” has no key. Add one with + or click Revert."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%@」にキーがありません。＋で追加するか、「元に戻す」を押してください。"
           }
         }
       }
@@ -16133,6 +16015,22 @@
         }
       }
     },
+    "가장 새 사본과 지금 연 사본은 남깁니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The newest copy and the one currently open are kept"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最新のコピーと今開いているコピーは残します"
+          }
+        }
+      }
+    },
     "가져오기" : {
       "localizations" : {
         "en" : {
@@ -16357,18 +16255,18 @@
         }
       }
     },
-    "같은 디스크의 복사본은 공간을 나눠 써서 실제로 차지하는 공간은 더 작을 수 있습니다. 백업과 자동 시점 스냅샷은 오래된 것부터 저절로 정리되고, rekordbox 수동·고정 시점 스냅샷은 지우지 않고, USB 시점 스냅샷은 볼륨마다 최근 5개와 고정한 것을 남깁니다." : {
+    "같은 디스크의 복사본은 공간을 나눠 써서 실제로 차지하는 공간은 더 작을 수 있습니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Copies on the same disk can share space and use less actual storage. Backups and automatic restore points are pruned oldest first. Manual and pinned rekordbox restore points are kept. Each USB volume keeps its latest five restore points and all pinned ones."
+            "value" : "Copies on the same disk can share space and use less actual storage."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "同じディスク上のコピーは領域を共有するため、実際の使用量は小さくなる場合があります。バックアップと自動復元ポイントは古い順に整理されます。rekordboxの手動・ピン留めした復元ポイントは削除しません。USBはボリュームごとに最新5件とピン留めした復元ポイントを残します。"
+            "value" : "同じディスク上のコピーは領域を共有するため、実際に使用している容量はこれより小さいことがあります。"
           }
         }
       }
@@ -16995,6 +16893,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "検証"
+          }
+        }
+      }
+    },
+    "검증 전 기능" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unverified Features"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未検証の機能"
           }
         }
       }
@@ -18535,38 +18449,6 @@
         }
       }
     },
-    "곡 목록·태그 시트·덱·알림의 글자를 키웁니다. 보기 › 글자 크게·작게(⌘+ · ⌘−)로도 바꿀 수 있습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enlarges text in the track list, Tag Sheet, deck, and notifications. You can also change it with View › Larger Text / Smaller Text (⌘+ · ⌘−)."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曲リスト・タグシート・デッキ・通知の文字を大きくします。表示 › 文字を大きく・文字を小さく（⌘+・⌘−）でも変更できます。"
-          }
-        }
-      }
-    },
-    "곡 목록과 곡 수에서 스트리밍 곡을 뺍니다. rekordbox 라이브러리는 바뀌지 않습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Removes streaming tracks from the track list and track counts. Your rekordbox library is not changed."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曲リストと曲数からストリーミングの曲を除きます。rekordboxライブラリは変更されません。"
-          }
-        }
-      }
-    },
     "곡 목록에서 고른 곡 %lld개도 넣기" : {
       "localizations" : {
         "en" : {
@@ -18591,22 +18473,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "曲リストで選んだ%lld曲も入れる"
-          }
-        }
-      }
-    },
-    "곡 목록을 그릴 때 다시 만듭니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rebuilt when the track list is drawn."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曲リストを表示するときに作り直します"
           }
         }
       }
@@ -19215,22 +19081,6 @@
         }
       }
     },
-    "곡을 덱에 불러오거나 분석할 때 다시 만듭니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rebuilt when a track is loaded into the deck or analyzed."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曲をデッキに読み込むか解析するときに作り直します"
-          }
-        }
-      }
-    },
     "곡을 덱에 불러오고 그리드 읽기가 끝난 뒤 편집하세요" : {
       "localizations" : {
         "en" : {
@@ -19291,38 +19141,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "曲をデッキに読み込み、下書きの読み込みが終わってから編集してください"
-          }
-        }
-      }
-    },
-    "곡을 덱에 불러올 때 다시 만듭니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rebuilt when a track is loaded into the deck."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曲をデッキに読み込むときに作り直します"
-          }
-        }
-      }
-    },
-    "곡을 덱에 불러올 때 다시 잽니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Measured again when a track is loaded into the deck."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曲をデッキに読み込むときに測り直します"
           }
         }
       }
@@ -20575,18 +20393,18 @@
         }
       }
     },
-    "그리드를 고칠 때 큐도 함께 옮기기(핫큐·메모리 큐·루프)" : {
+    "그리드를 고칠 때 큐도 함께 옮기기" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Move cues along when editing the grid (Hot Cues, Memory Cues, loops)"
+            "value" : "Move cues along when editing the grid"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "グリッドを修正するときにキューも一緒に動かす（ホットキュー・メモリーキュー・ループ）"
+            "value" : "グリッドを修正するときにキューも一緒に動かす"
           }
         }
       }
@@ -21293,22 +21111,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "オフ"
-          }
-        }
-      }
-    },
-    "끄면 조성 띠가 차지하던 높이만큼 전체 파형이 낮아집니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turning this off shortens the overview waveform by the key band's height"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "オフにするとキーの帯の分だけ全体波形が低くなります"
           }
         }
       }
@@ -22211,22 +22013,6 @@
         }
       }
     },
-    "누르고 새 키를 누르면 바꿉니다(오른쪽 클릭: 빼기)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Click, then press a new key to change it (right-click: remove)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "クリックしてから新しいキーを押すと変更します（右クリック：削除）"
-          }
-        }
-      }
-    },
     "누르면 네트워크의 Pro DJ Link 장치를 보이고 DJCrate 라이브러리를 CDJ에 내어 줍니다" : {
       "localizations" : {
         "en" : {
@@ -22431,6 +22217,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxや他のツールで作ったrekordbox XMLを選び、今のライブラリとの違いを表示します。選んだ違いだけを下書きにし、rekordboxには書き込みません。"
+          }
+        }
+      }
+    },
+    "다른 동작과 겹침" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conflicts with another action"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ほかの操作と重複しています"
+          }
+        }
+      }
+    },
+    "다른 디스크라 쓸 수 없습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unavailable because it is on a different disk"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のディスクにあるため使用できません"
           }
         }
       }
@@ -23257,22 +23075,6 @@
         }
       }
     },
-    "덱에서 바로 만지는 볼륨·확대·트림은 그대로 둡니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Volume, zoom, and trim that you adjust directly on the deck are kept."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デッキで直接操作する音量・ズーム・トリムはそのままです。"
-          }
-        }
-      }
-    },
     "덱의 큐 입력을 확정하고 끌기를 마친 뒤 동기화하세요" : {
       "localizations" : {
         "en" : {
@@ -23285,22 +23087,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "デッキのキュー入力を確定し、ドラッグを終えてから同期してください"
-          }
-        }
-      }
-    },
-    "덱의 확대·전체 파형과 곡 목록 미리 보기에 함께 적용합니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Applies to the deck's enlarged and full waveforms and to the track list previews."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "デッキの拡大波形・全体波形と曲リストのプレビューに適用します。"
           }
         }
       }
@@ -25849,22 +25635,6 @@
         }
       }
     },
-    "링크는 앱 안의 djc를 가리켜 앱을 갱신하면 djc도 함께 바뀝니다. 셸 설정 파일은 고치지 않습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The link points to the djc inside the app, so djc updates together with the app. Your shell configuration files are not changed."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "リンクはアプリ内の djc を指すため、アプリを更新すると djc も一緒に更新されます。シェルの設定ファイルは変更しません。"
-          }
-        }
-      }
-    },
     "링크를 만들 수 없음" : {
       "localizations" : {
         "en" : {
@@ -27021,22 +26791,6 @@
         }
       }
     },
-    "모든 캐시를 비웁니다. 초안·백업은 그대로 둡니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clears all caches. Drafts and backups are kept."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "すべてのキャッシュを削除します。下書き・バックアップはそのまま残します"
-          }
-        }
-      }
-    },
     "모든 평점" : {
       "localizations" : {
         "en" : {
@@ -28047,6 +27801,22 @@
         }
       }
     },
+    "받아 두었다가 종료할 때 설치합니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloaded in advance and installed when you quit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロードしておき、終了時にインストールします。"
+          }
+        }
+      }
+    },
     "받을 제안이 없습니다" : {
       "localizations" : {
         "en" : {
@@ -28235,6 +28005,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "バックアップ：%@"
+          }
+        }
+      }
+    },
+    "백업과 자동 시점 스냅샷은 오래된 것부터 저절로 정리됩니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backups and automatic restore points are pruned oldest first."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックアップと自動復元ポイントは、古いものから自動的に整理されます。"
           }
         }
       }
@@ -28643,6 +28429,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "星5個"
+          }
+        }
+      }
+    },
+    "보관 규칙" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retention Rules"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保管ルール"
           }
         }
       }
@@ -29155,6 +28957,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ボリューム: %1$@ · %2$@ · %3$@ · エクスポート: %4$@ · 編集: %5$@"
+          }
+        }
+      }
+    },
+    "볼륨·확대·트림은 그대로 둡니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume, zoom, and trim are kept"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音量・ズーム・トリムはそのままです"
+          }
+        }
+      }
+    },
+    "볼륨마다 가장 새 사본은 남깁니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The newest copy of each volume is kept"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボリュームごとに最新のコピーは残します"
           }
         }
       }
@@ -30603,6 +30437,22 @@
         }
       }
     },
+    "사이드바 맨 아래에 곡 수와 스냅샷 이름을 보입니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows track counts and the snapshot name at the bottom of the sidebar."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サイドバーの一番下に曲数とスナップショット名を表示します。"
+          }
+        }
+      }
+    },
     "삭제" : {
       "localizations" : {
         "en" : {
@@ -30715,18 +30565,18 @@
         }
       }
     },
-    "새 버전을 뒤에서 받아 두고 앱을 끌 때 설치합니다." : {
+    "새 버전 자동 확인을 켜면 쓸 수 있습니다" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Downloads new versions in the background and installs them when you quit the app."
+            "value" : "Available when automatic update checks are on"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新しいバージョンをバックグラウンドでダウンロードし、アプリの終了時にインストールします。"
+            "value" : "新しいバージョンの自動確認をオンにすると使えます"
           }
         }
       }
@@ -32247,6 +32097,22 @@
         }
       }
     },
+    "스킬이란?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What is a skill?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキルとは？"
+          }
+        }
+      }
+    },
     "스트리밍" : {
       "localizations" : {
         "en" : {
@@ -32967,22 +32833,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "実際のコレクション"
-          }
-        }
-      }
-    },
-    "실제 컬렉션·삭제 행·수동 큐 곡 수와 지금 연 스냅샷 파일 이름을 사이드바 맨 아래에 보여 줍니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shows the collection, deleted-row, and manual-cue track counts and the open snapshot's file name at the bottom of the sidebar."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "実際のコレクション・削除済みの行・手動キューのある曲の数と、開いているスナップショットのファイル名をサイドバーの一番下に表示します。"
           }
         }
       }
@@ -34671,6 +34521,22 @@
         }
       }
     },
+    "애니송 — 분류·필터·현황·형식 검사" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anime Songs — Classification, Filters, Summary, Format Check"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アニソン — 分類・フィルター・概要・形式チェック"
+          }
+        }
+      }
+    },
     "애니송 프리셋으로 코멘트 파싱" : {
       "localizations" : {
         "en" : {
@@ -34683,22 +34549,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "アニソンプリセットでコメントを解析"
-          }
-        }
-      }
-    },
-    "애니송을 고르면 코멘트 분류·필터·현황·형식 검사를 켭니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choosing Anisong turns on comment classification, filters, the summary, and format checks."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アニソンを選ぶと、コメントの分類・フィルター・概要・形式チェックがオンになります。"
           }
         }
       }
@@ -35527,22 +35377,6 @@
         }
       }
     },
-    "업데이트는 DJCrate 서명을 확인한 뒤에만 설치합니다. rekordbox·USB에 쓰는 중이면 쓰기가 끝난 뒤 설치합니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Updates are installed only after their DJCrate signature is verified. If DJCrate is writing to rekordbox or a USB, the update is installed after the write finishes."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アップデートはDJCrateの署名を確認してからインストールします。rekordbox・USBに書き込み中の場合は、書き込みが終わってからインストールします。"
-          }
-        }
-      }
-    },
     "없는 목록 · 곡 %lld" : {
       "localizations" : {
         "en" : {
@@ -35705,18 +35539,18 @@
         }
       }
     },
-    "여기 기능은 아직 rekordbox와 결과를 견주지 않았습니다. 기본은 꺼져 있습니다." : {
+    "에이전트가 djc로 초안을 만듭니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "These features haven't been compared with rekordbox yet. They are off by default."
+            "value" : "Agents create drafts with djc."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ここにある機能は、まだrekordboxの結果と照らし合わせていません。初期設定ではオフです。"
+            "value" : "エージェントが djc で下書きを作成します。"
           }
         }
       }
@@ -36153,6 +35987,22 @@
         }
       }
     },
+    "오래된 것부터 자동 정리되며 고정한 스냅샷은 남습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pruned automatically, oldest first; pinned restore points are kept."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "古いものから自動的に整理され、ピン留めした復元ポイントは残ります。"
+          }
+        }
+      }
+    },
     "오류: %@\n" : {
       "localizations" : {
         "en" : {
@@ -36229,22 +36079,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "オートゲインの検証に失敗しました（%@）"
-          }
-        }
-      }
-    },
-    "오토게인(곡마다 목표 음량에 맞춤)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Auto Gain (match each track to the target loudness)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "オートゲイン（曲ごとに目標ラウドネスに合わせる）"
           }
         }
       }
@@ -38863,6 +38697,22 @@
         }
       }
     },
+    "이 앱 버전에 맞춰 갱신하세요." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update to match this app version."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアプリのバージョンに合わせて更新してください。"
+          }
+        }
+      }
+    },
     "이 앱의 djc를 가리킴" : {
       "localizations" : {
         "en" : {
@@ -39911,22 +39761,6 @@
         }
       }
     },
-    "인텔리전트 재생 목록의 조건을 DJCrate가 계산해 읽기 전용으로 보입니다. rekordbox 화면과 곡이 다를 수 있고, 계산하지 못하는 조건이 있으면 곡을 보이지 않습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrate calculates each Intelligent Playlist's conditions and shows the result read-only. The tracks may differ from rekordbox, and a playlist with a condition DJCrate can't calculate shows no tracks."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "インテリジェントプレイリストの条件をDJCrateが計算し、読み取り専用で表示します。rekordboxの画面と曲が異なる場合があり、計算できない条件があるプレイリストでは曲を表示しません。"
-          }
-        }
-      }
-    },
     "일반" : {
       "localizations" : {
         "en" : {
@@ -39987,6 +39821,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "一時停止"
+          }
+        }
+      }
+    },
+    "읽기 전용이며 rekordbox와 곡이 다를 수 있습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read-only; tracks may differ from rekordbox."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り専用で、rekordboxと曲が異なる場合があります。"
           }
         }
       }
@@ -43969,18 +43819,18 @@
         }
       }
     },
-    "짧을수록 쉬는 동안 CPU를 덜 쓰고, 길수록 멈춘 뒤 CUE·재생이 바로 소리 납니다." : {
+    "짧으면 CPU를 아끼고, 길면 재생이 바로 시작됩니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Shorter uses less CPU while idle; longer makes CUE and Play sound immediately after stopping."
+            "value" : "Shorter saves CPU; longer starts playback instantly."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "短いほど待機中のCPU使用量が減り、長いほど停止後のCUE・再生がすぐに鳴ります。"
+            "value" : "短いほどCPUを節約し、長いほど再生がすぐに始まります。"
           }
         }
       }
@@ -45383,18 +45233,18 @@
         }
       }
     },
-    "캐시는 다시 만들어지므로 확인 없이 비웁니다. 초안·추가 목록·백업은 지우지 않습니다." : {
+    "캐시는 다시 만들어집니다. 초안·백업은 지우지 않습니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Caches are rebuilt automatically, so they are cleared without asking. Drafts, Added Tracks, and backups are never deleted."
+            "value" : "Caches are rebuilt as needed. Drafts and backups are not deleted."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "キャッシュは作り直されるため、確認なしで削除します。下書き・追加した曲・バックアップは削除しません。"
+            "value" : "キャッシュは必要に応じて再作成されます。下書きとバックアップは削除しません。"
           }
         }
       }
@@ -45731,6 +45581,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "クエリに失敗しました: %1$@\n%2$@"
+          }
+        }
+      }
+    },
+    "퀀타이즈(Q)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quantize (Q)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クオンタイズ（Q）"
           }
         }
       }
@@ -46647,6 +46513,22 @@
         }
       }
     },
+    "큐·루프 등록, 핫큐 점프에 적용" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Applies to cue and loop placement and Hot Cue jumps"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キュー・ループの登録とホットキュージャンプに適用します"
+          }
+        }
+      }
+    },
     "큐·루프 시각은 곡 길이 안에, 루프 끝은 시작 뒤에, 박 수는 정수 또는 1/n으로 쓰세요" : {
       "localizations" : {
         "en" : {
@@ -47287,22 +47169,6 @@
         }
       }
     },
-    "키 고정(템포를 바꿔도 음정 유지)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Master Tempo (keep pitch when changing tempo)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "マスターテンポ（テンポを変えても音程を維持）"
-          }
-        }
-      }
-    },
     "키 더하기" : {
       "localizations" : {
         "en" : {
@@ -47427,18 +47293,18 @@
         }
       }
     },
-    "키를 누르세요…" : {
+    "키를 누르세요 (Esc 취소)" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Press a key…"
+            "value" : "Press a key (Esc to cancel)"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "キーを押してください…"
+            "value" : "キーを押してください（Esc でキャンセル）"
           }
         }
       }
@@ -49507,22 +49373,6 @@
         }
       }
     },
-    "피크 보호(0dBFS를 넘지 않을 만큼만 올림)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Peak protection (boost only up to 0 dBFS)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ピーク保護（0dBFSを超えない範囲でのみ上げる）"
-          }
-        }
-      }
-    },
     "필요 공간 %lldMB · 여유 %lldMB" : {
       "localizations" : {
         "en" : {
@@ -49625,18 +49475,18 @@
         }
       }
     },
-    "하루 한 번 GitHub Releases에서 새 버전을 찾아 알립니다." : {
+    "하루 한 번 새 버전을 확인합니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Checks GitHub Releases once a day and tells you about new versions."
+            "value" : "Checks for a new version once a day."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "1日1回GitHub Releasesで新しいバージョンを探してお知らせします。"
+            "value" : "1日1回、新しいバージョンを確認します。"
           }
         }
       }

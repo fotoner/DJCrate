@@ -152,6 +152,9 @@ struct AgentToolsSettingsModelTests {
         let inside = self.model(shellPath: "/usr/bin:\(home.path)/.local/bin")
         await inside.refresh()
         #expect(inside.pathText?.line == nil)
+        // 정상일 때는 문장 없이 'PATH에 있음' 한 칸만 보인다(#309)
+        #expect(inside.pathText?.text == String(ui: "PATH에 있음") && inside.pathText?.isInPath == true)
+        #expect(outside.pathText?.isInPath == false && path.isInPath == false)
         model.start(.unlinkCommand)
         await model.task?.value
         #expect(model.commandRow?.status == String(ui: "없음"))
@@ -175,6 +178,7 @@ struct AgentToolsSettingsModelTests {
         let toast = try #require(await updated.launchNotice())
         #expect(toast.action == .updateAgentTools)
         #expect(toast.kind == .warning)
+        #expect(toast.detail == String(ui: "이 앱 버전에 맞춰 갱신하세요."))
         #expect(await updated.launchNotice() == nil)
         #expect(settings.value(SettingKeys.agentToolsNotifiedVersion) == v2.key)
 
