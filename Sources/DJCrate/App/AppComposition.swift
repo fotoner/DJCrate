@@ -46,15 +46,19 @@ final class AppComposition {
     private let updater: AppUpdater?
     /// 창 아래 LINK 막대 화면 모델(#272). 실제 앱만 장치 알림을 받는다. 화면 시험·자가 테스트·측정 실행은 nil이다(네트워크 포트를 열지 않게)
     let link: LinkBarModel?
+    /// rekordbox·rekordboxAgent 실행 감지 서비스(#323). 앱에 하나만 두고 `start()`가 돌린다. 화면 표시용이다(쓰기 판정은 관문이 한다)
+    let rekordboxRun: RekordboxRunModel
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
 
     /// - Parameter persistsActivityReadMark: 상태 줄의 읽음 기준을 설정에 남길지. 진단 실행(캡처·자가 테스트)은 사용자 설정을 바꾸지 않게 거짓이다
+    /// - Parameter rekordboxRun: 실행 감지 서비스. 주지 않으면(화면 시험) 프로세스 목록을 읽지 않는 자리(`.none`)를 둔다
     init(settings: SettingsStore, store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
          agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil, link: LinkBarModel? = nil,
-         persistsActivityReadMark: Bool = true) {
+         persistsActivityReadMark: Bool = true, rekordboxRun: RekordboxRunModel? = nil) {
         self.link = link
+        self.rekordboxRun = rekordboxRun ?? RekordboxRunModel(source: .none)
         self.settings = settings
         self.updater = updater
         updates = UpdateSettingsModel(updater: updater, version: .of(.main))
@@ -119,7 +123,8 @@ final class AppComposition {
                               agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
                               updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
                                   : linkBar(store: store, deck: deck),
-                              persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments))
+                              persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments),
+                              rekordboxRun: RekordboxRunModel(source: .live(workspace: NSWorkspace.shared.notificationCenter)))
     }
 
     /// 자가 테스트·측정·캡처 실행의 LINK 막대: 장치 찾기를 붙이지 않는다(LNK-6). LINK 캡처만 포트 없는 가상 장치를 보인다
@@ -337,9 +342,10 @@ final class AppComposition {
         }
     }
 
-    /// 창을 띄운 뒤: 사이드바 USB 절을 붙이고, 읽을 때마다 도는 캐시 정리를 붙이고, 라이브러리를 처음 읽는다.
+    /// 창을 띄운 뒤: rekordbox 실행 감지를 돌리고, 사이드바 USB 절을 붙이고, 읽을 때마다 도는 캐시 정리를 붙이고, 라이브러리를 처음 읽는다.
     func start() async {
         updater?.start()
+        rekordboxRun.start()
         UsbAppSetup.attach(to: store)
         // CLI가 앱의 시점 스냅샷 보관 일수를 따르게 공유 파일에 맞춘다
         settings.syncShared()
