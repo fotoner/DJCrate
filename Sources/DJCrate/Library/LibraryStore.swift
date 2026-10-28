@@ -29,7 +29,7 @@ final class LibraryStore {
     var linkedXMLFile: URL { useCases.linkedXML }
     /// 이번 실행에서 저장을 맡긴 태그 초안 곡(저장 실패를 이 저장소 것만 본다, `LibraryStore+DraftIndex`)
     @ObservationIgnored private(set) var tagSaveAttempts: Set<String> = []
-    var mergeDrafts: [DuplicateMergeDraft] = []
+    var mergeDrafts: [DuplicateMergeDraft] = [] { didSet { pendingInputsChanged() } }
     var backupDirectory: URL { location.backupDirectory }
     /// 쓰기·복원 대상 rekordbox DB와 분석 파일 뿌리(사본이면 그 share). 앱은 라이브 라이브러리, 시험은 합성 사본을 준다.
     /// 복원은 늘 이 DB로 되돌린다(#182: 대상 없이 되돌려 시험이 실제 라이브러리를 덮었다).
@@ -227,11 +227,11 @@ final class LibraryStore {
     private(set) var deckTrackID: String?
 
     /// 초안 상태(메모리). 표의 ✎ 표시는 디스크를 다시 읽지 않고 이것으로 계산한다.
-    var tagDrafts: [String: TagDraft] = [:]
+    var tagDrafts: [String: TagDraft] = [:] { didSet { pendingInputsChanged() } }
     /// 태그 편집 조각(인스펙터·태그 시트·목록 칸·덱 제안 줄). 위 태그 초안을 바꾼다. 조각이 이 핵심을 붙들어야 해서 처음 쓸 때 만든다(관찰하지 않는다).
     @ObservationIgnored private(set) lazy var tags = TagEditStore(library: self)
     /// 그림 초안(곡 UUID별, 그림 바이트 없이). 그림 사본은 `ArtworkDraftStore`에 있다(#66).
-    var artworkDrafts: [String: ArtworkDraft] = [:]
+    var artworkDrafts: [String: ArtworkDraft] = [:] { didSet { pendingInputsChanged() } }
     /// 곡의 살아 있는 그림 파일 행(ContentID별). 그림 초안의 base로 쓴다(스냅샷에서 읽음).
     @ObservationIgnored var artworkFileRows: [String: [ArtworkFileRow]] = [:]
     /// rekordbox 곡 색 목록(이름·순서, #65). 라이브러리에서 읽지 못하면 rekordbox 기본 여덟 색이다.
@@ -254,13 +254,13 @@ final class LibraryStore {
     /// LINK로 내어 주는 큐를 바꿀 곡(rekordbox 곡 ID)과 지금 큐(#281). LINK가 연결된 동안만 받는다(`isLinkServing`)
     @ObservationIgnored var onLinkCuesChanged: ((_ contentID: String, _ cues: [Cue]) -> Void)?
     @ObservationIgnored var isLinkServing: () -> Bool = { false }
-    private(set) var cueDraftUUIDs: Set<String> = []
-    private(set) var gridDraftUUIDs: Set<String> = []
-    private(set) var gainDraftUUIDs: Set<String> = []
+    private(set) var cueDraftUUIDs: Set<String> = [] { didSet { pendingInputsChanged() } }
+    private(set) var gridDraftUUIDs: Set<String> = [] { didSet { pendingInputsChanged() } }
+    private(set) var gainDraftUUIDs: Set<String> = [] { didSet { pendingInputsChanged() } }
     private(set) var editedUUIDs: Set<String> = []
 
     var rowsByID: [TrackRow.ID: TrackRow] = [:]
-    var rowsByUUID: [String: TrackRow] = [:]
+    var rowsByUUID: [String: TrackRow] = [:] { didSet { pendingInputsChanged() } }
 
     /// 추가한 곡·그리드 일괄 추정·XML 내보내기(기능 조각, `TrackStagingStore`). 조각이 핵심(곡·사이드바·선택·초안 표시)을 붙들어 처음 쓸 때 만든다.
     /// 관찰하지 않는다: 화면은 조각의 값을 읽는다
@@ -394,14 +394,43 @@ final class LibraryStore {
     var draftCueCounts: [String: CueCounts] = [:]
     var draftPreviewCues: [String: [PreviewCueMark]] = [:]
 
-    /// 큐·그리드·게인·태그 초안이 있는 곡(태그도 반영하면 rekordbox 곡 정보에 쓴다).
-    /// 부를 때마다 합집합을 새로 만든다. 곡마다 거를 때는 한 번 받아 두고 쓴다(#129: 초안 600곡이면 곡을 고를 때마다 수백 ms였다).
-    var pendingUUIDs: Set<String> { cueDraftUUIDs.union(gridDraftUUIDs).union(gainDraftUUIDs).union(tagDrafts.keys)
-        .union(artworkDrafts.keys).union(mergeDrafts.flatMap { $0.members.map(\.trackUUID) }) }
+    /// 큐·그리드·게인·태그·앨범아트·합치기 초안이 있는 곡(태그도 반영하면 rekordbox 곡 정보에 쓴다).
+    /// 입력이 바뀐 뒤 처음 읽을 때 한 번 만들고 그 뒤는 캐시를 돌려준다(#129: 초안 600곡이면 읽을 때마다 수백 ms였다, #324).
+    var pendingUUIDs: Set<String> { pending.uuids }
     /// 반영 대기 중인 rekordbox 곡 수(추가한 곡 제외)
-    var pendingLibraryCount: Int { pendingUUIDs.filter { rowsByUUID[$0].map { !$0.isStaged } ?? false }.count }
+    var pendingLibraryCount: Int { pending.libraryCount }
     /// 사이드바 'rekordbox 쓰기 대기' 배지: 쓸 곡 수 + 쓰기 대기 재생 기록 수(#43). 재생 목록 초안은 목록 구역 머리에 따로 알린다
+    /// 상태 줄 칩과 Dock 배지도 이 값을 읽는다(화면마다 다른 수가 나오지 않게 한 곳에서 센다, #324).
     var pendingWriteCount: Int { pendingLibraryCount + history.pendingHistories.count }
+
+    /// 쓰기 대기 곡 집합과 추가한 곡을 뺀 곡 수. 입력(초안 여섯 종류와 곡 목록)이 바뀌면 낡은 것으로 보고 다음 읽기에서 다시 만든다.
+    private struct PendingSnapshot {
+        var uuids: Set<String>
+        var libraryCount: Int
+    }
+    @ObservationIgnored private var pendingCache: PendingSnapshot?
+    /// 입력이 바뀔 때마다 오른다. 읽는 쪽은 이 값을 읽어 캐시를 읽을 때도 입력 변화를 지켜본다
+    private var pendingRevision = 0
+    /// 합집합을 만든 횟수(시험이 읽기마다 새로 만들지 않는지 센다)
+    @ObservationIgnored private(set) var pendingRebuildCount = 0
+
+    /// 입력이 바뀔 때마다 부른다. 여기서는 낡았다고 표시만 한다(바뀔 때마다 합집합을 만들지 않는다)
+    private func pendingInputsChanged() {
+        pendingCache = nil
+        pendingRevision &+= 1
+    }
+
+    private var pending: PendingSnapshot {
+        _ = pendingRevision
+        if let pendingCache { return pendingCache }
+        pendingRebuildCount += 1
+        let uuids = cueDraftUUIDs.union(gridDraftUUIDs).union(gainDraftUUIDs).union(tagDrafts.keys)
+            .union(artworkDrafts.keys).union(mergeDrafts.flatMap { $0.members.map(\.trackUUID) })
+        let snapshot = PendingSnapshot(uuids: uuids, libraryCount: uuids.filter { rowsByUUID[$0].map { !$0.isStaged } ?? false }.count)
+        pendingCache = snapshot
+        return snapshot
+    }
+
     /// 백그라운드 추정이 초안을 저장했을 때(덱이 같은 곡을 보고 있으면 다시 읽게)
     var onGridDraftSaved: ((String) -> Void)?
     var onCueDraftsReloaded: (([String: CueDraft]) -> Void)?

@@ -128,6 +128,56 @@ struct LayoutRecomputeTests {
         #expect(PerfProbe.bodyCount("StatusBar") >= 5)
     }
 
+    /// 상태 줄의 rekordbox 쓰기 상태(#324)도 상태 줄만 읽는다. 초안이 쌓이거나 쓰기 상태가 바뀌어도 주 창 본문을 다시 계산하지 않는다.
+    /// 쓰기가 시작되는 순간 `libraryBusy`를 읽는 `ContentView`가 다시 계산되는 것은 덮개·잠금(기존 동작)이라 센 뒤 세지 않고,
+    /// 그 뒤 칩이 「쓰는 중」으로 바뀌는 것만 센다.
+    @Test func 초안이_쌓이고_쓰기_상태가_바뀌어도_주_창_본문은_다시_계산하지_않고_쓰기_상태만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedApp: AppComposition?
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 }, prepareApp: { capturedApp = $0 })
+        defer { close() }
+        let app = try #require(capturedApp)
+        let store = try #require(capturedStore)
+        let gate = ReflectionStatusModelTests.SleepGate()
+        app.writeStatus.sleep = gate.sleep
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+        let rows = Array(store.rows.prefix(3))
+        try #require(!rows.isEmpty)
+        PerfProbe.resetBodyCounts()
+        for row in rows {
+            store.setDraftMark(.cue, trackUUID: row.track.uuid, exists: true)
+            try await settle(window)
+        }
+        print("TRACE 초안 \(rows.count)곡 추가:", PerfProbe.bodySummary() ?? "-")
+        #expect(app.writeStatus.chip == .pending(items: rows.count, playlistEdits: 0))
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1)
+
+        // 쓰기가 시작되는 순간(잠금)은 기존 동작이라 센 뒤 지운다
+        store.isWritingRekordbox = true
+        try await settle(window)
+        print("TRACE 쓰기 시작(잠금):", PerfProbe.bodySummary() ?? "-")
+        #expect(app.writeStatus.chip != .writing, "1초가 지나기 전에는 쓰는 중을 보이지 않는다")
+        PerfProbe.resetBodyCounts()
+        gate.release()
+        #expect(await waitForState { app.writeStatus.chip == .writing })
+        try await settle(window)
+        print("TRACE 칩이 쓰는 중으로:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1)
+        store.isWritingRekordbox = false
+        try await settle(window)
+        #expect(app.writeStatus.chip == .pending(items: rows.count, playlistEdits: 0))
+    }
+
     @Test func 창_폭을_조금씩_바꿔도_주_창_본문은_거의_다시_계산되지_않는다() async throws {
         let (window, _, close) = try await mainWindow()
         defer { close() }

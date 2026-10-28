@@ -1,8 +1,9 @@
 import DJCDomain
 import SwiftUI
 
-/// 창 맨 아래 상태 줄(#298). 왼쪽은 저장 상태(1-5) 자리로 비워 두고, 오른쪽에 활동 단추를 둔다.
-/// 이 줄만 화면 모델을 읽는다. 읽지 않은 수가 바뀌어도 주 창 본문(`ContentView`)을 다시 계산하지 않는다.
+/// 창 맨 아래 상태 줄(#298). 왼쪽은 비워 두고, 오른쪽에 rekordbox 쓰기 상태(#324)와 활동 단추를 둔다. 쓰기 상태 칩은 활동 종 바로 왼쪽이다.
+/// 이 줄만 화면 모델을 읽는다. 읽지 않은 수와 쓰기 상태가 바뀌어도 주 창 본문(`ContentView`)을 다시 계산하지 않는다.
+/// 쓰기 상태는 구역(`WriteStatusSection`)이 따로 읽어, 쓰기 상태가 바뀔 때 이 줄의 활동 단추까지 다시 계산하지 않는다.
 struct StatusBar: View {
     /// 줄 높이(위 구분선 포함). 창 알림은 이만큼 올려 띄운다
     static let height: CGFloat = 25
@@ -14,6 +15,7 @@ struct StatusBar: View {
             Divider()
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
+                if let write = model.write { WriteStatusSection(model: write) }
                 ActivityButton(unread: model.unreadCount, kind: model.unreadKind, action: { model.togglePopover() })
                     .popover(isPresented: $model.isPresented, arrowEdge: .top) { ActivityPopover(model: model) }
             }
@@ -133,5 +135,114 @@ struct ActivityPopoverRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+}
+
+/// rekordbox 쓰기 상태 구역(#324): 보조 글(마지막 쓰기) + 상태 칩 + 쓰기 대기가 있을 때 [쓰기] 단추. 칩을 누르면 상태 팝오버가 열린다.
+/// 이 구역만 쓰기 상태를 읽는다. 값과 클로저만 잎 뷰에 넘긴다.
+struct WriteStatusSection: View {
+    @Bindable var model: ReflectionStatusModel
+
+    var body: some View {
+        let _ = PerfProbe.body(Self.self)
+        HStack(spacing: 8) {
+            if let caption = model.lastWriteText {
+                // 폭이 모자라면 잘라 보이는 대신 통째로 숨긴다
+                ViewThatFits(in: .horizontal) {
+                    Text(caption).font(.caption).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                    Color.clear.frame(width: 0, height: 0)
+                }
+                .layoutPriority(-1)
+            }
+            WriteStatusChip(chip: model.chip, action: { model.isPresented.toggle() })
+                .popover(isPresented: $model.isPresented, arrowEdge: .top) {
+                    WriteStatusPopover(title: model.chip.title, lines: [model.extraLine, model.lastWriteText].compactMap { $0 },
+                                       items: model.items, perform: { model.perform($0) })
+                }
+            if model.showsWriteButton {
+                Button(.ui("쓰기")) { model.perform(.reflect) }
+                    .controlSize(.small)
+                    .disabled(!model.canWrite)
+                    .help(model.canWrite ? "" : model.writeDisabledReason ?? "")
+                    .selfTestFrame("statusBarWriteButton")
+            }
+        }
+    }
+}
+
+/// 쓰기 상태 칩: 모양과 글자로 상태를 알린다(쓰기 대기는 초안 표식과 같은 연필, 쓰는 중은 진행 표시)
+struct WriteStatusChip: View {
+    let chip: ReflectionChip
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                switch chip {
+                case .clean: Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
+                case .pending: Image(systemName: DraftMark.symbol).foregroundStyle(UIColors.draft.color)
+                case .writing: ProgressView().controlSize(.mini)
+                }
+                Text(chip.title).monospacedDigit()
+            }
+            .font(.callout)
+            .padding(.horizontal, 6)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(chip.title)
+        .selfTestFrame("statusBarWriteChip")
+    }
+}
+
+/// 쓰기 상태 팝오버: 상태 한 줄과 보조 글, 그 아래 메뉴 막대와 같은 명령 넷. 막힌 명령은 흐리게 두고 이유를 툴팁으로 알린다.
+struct WriteStatusPopover: View {
+    let title: String
+    /// 상태 아래 보조 글(재생 목록 편집 건수·마지막 쓰기)
+    let lines: [String]
+    let items: [ReflectionStatusModel.Item]
+    let perform: (LibraryMenuAction) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                ForEach(lines, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(items) { item in WriteStatusPopoverRow(item: item, perform: { perform(item.action) }) }
+            }
+            .padding(.vertical, 4)
+        }
+        .frame(width: 280)
+        .selfTestFrame("writeStatusPopover")
+    }
+}
+
+/// 팝오버 한 줄: 명령 이름과 단축키 안내
+struct WriteStatusPopoverRow: View {
+    let item: ReflectionStatusModel.Item
+    let perform: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: perform) {
+            HStack(spacing: 16) {
+                Text(item.title)
+                Spacer(minLength: 0)
+                if let hint = item.shortcutHint { Text(hint).foregroundStyle(.secondary) }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isHovering && item.isEnabled ? Color.accentColor.opacity(0.15) : .clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!item.isEnabled)
+        .onHover { isHovering = $0 }
+        .help(item.disabledReason ?? "")
     }
 }

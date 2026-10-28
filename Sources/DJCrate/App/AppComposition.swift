@@ -35,6 +35,8 @@ final class AppComposition {
     let libraryWindow: LibraryWindowModel
     /// 창 아래 상태 줄 화면 모델(#298): 활동 단추의 읽지 않은 수와 활동 팝오버. 알림의 [열기]도 이 모델로 팝오버를 연다
     let statusBar: StatusBarModel
+    /// 창 아래 상태 줄의 rekordbox 쓰기 상태(#324): 칩·마지막 쓰기·상태 팝오버·Dock 배지. 저장소를 관찰해 스스로 고친다. 상태 줄(`StatusBar`)이 읽는다
+    let writeStatus: ReflectionStatusModel
     /// 설정 › AI 에이전트 화면 모델(#262). 설정 창과 켤 때 알림이 함께 쓴다. 화면 시험의 조립(`init(store:deck:)`)은 nil이다
     /// (사용자 홈의 `~/.claude*`·`~/.agents`·`~/.local/bin`을 읽거나 쓰지 않게)
     let agentTools: AgentToolsSettingsModel?
@@ -50,10 +52,12 @@ final class AppComposition {
     let keys = KeyRouter()
     private var connected = false
 
-    /// - Parameter persistsActivityReadMark: 상태 줄의 읽음 기준을 설정에 남길지. 진단 실행(캡처·자가 테스트)은 사용자 설정을 바꾸지 않게 거짓이다
+    /// - Parameters:
+    ///   - persistsActivityReadMark: 상태 줄의 읽음 기준을 설정에 남길지. 진단 실행(캡처·자가 테스트)은 사용자 설정을 바꾸지 않게 거짓이다
+    ///   - dock: Dock 아이콘 배지. 실제 앱만 붙인다(화면 시험은 Dock을 건드리지 않는다)
     init(settings: SettingsStore, store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
          agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil, link: LinkBarModel? = nil,
-         persistsActivityReadMark: Bool = true) {
+         persistsActivityReadMark: Bool = true, dock: DockBadge = .none) {
         self.link = link
         self.settings = settings
         self.updater = updater
@@ -70,6 +74,9 @@ final class AppComposition {
         listActionBar = ListActionBarModel(store: store)
         libraryWindow = LibraryWindowModel(store: store)
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
+        writeStatus = ReflectionStatusModel(store: store, window: libraryWindow, windows: windows, reflection: reflection, dock: dock)
+        statusBar.write = writeStatus
+        writeStatus.start()
         libraryWindow.agentTools = agentTools
         statusBar.showLog = { [weak window = libraryWindow] in window?.showActivityLog(selecting: $0) }
         libraryWindow.activityLogSeen = { [weak bar = statusBar] in bar?.markSeen() }
@@ -119,7 +126,7 @@ final class AppComposition {
                               agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
                               updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
                                   : linkBar(store: store, deck: deck),
-                              persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments))
+                              persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments), dock: .live)
     }
 
     /// 자가 테스트·측정·캡처 실행의 LINK 막대: 장치 찾기를 붙이지 않는다(LNK-6). LINK 캡처만 포트 없는 가상 장치를 보인다
@@ -439,4 +446,9 @@ final class AppWindows {
 extension EnvironmentValues {
     /// 주 창 아래 화면이 여는 보조 창(곡 편집·Flip). 조립 지점이 붙이지 않은 화면(시험·미리 보기)에서는 nil이다.
     @Entry var appWindows: AppWindows? = nil
+}
+
+extension DockBadge {
+    /// 실제 Dock 아이콘 배지(조립 지점만 고른다, UI-7)
+    static var live: DockBadge { DockBadge { NSApplication.shared.dockTile.badgeLabel = $0 } }
 }
