@@ -139,6 +139,7 @@ struct ActivityPopoverRow: View {
 }
 
 /// rekordbox 쓰기 상태 구역(#324): 보조 글(마지막 쓰기) + 상태 칩 + 쓰기 대기가 있을 때 [쓰기] 단추. 칩을 누르면 상태 팝오버가 열린다.
+/// rekordbox가 켜져 있는지·꺼졌는지(#326)는 칩 글자에 이유로 붙고, 꺼진 것을 확인하면 [쓰기]가 [지금 쓰기]로 강조된다(같은 명령).
 /// 이 구역만 쓰기 상태를 읽는다. 값과 클로저만 잎 뷰에 넘긴다.
 struct WriteStatusSection: View {
     @Bindable var model: ReflectionStatusModel
@@ -156,17 +157,37 @@ struct WriteStatusSection: View {
             }
             WriteStatusChip(chip: model.chip, action: { model.isPresented.toggle() })
                 .popover(isPresented: $model.isPresented, arrowEdge: .top) {
-                    WriteStatusPopover(title: model.chip.title, lines: [model.extraLine, model.lastWriteText].compactMap { $0 },
+                    WriteStatusPopover(title: model.chip.title, lines: [model.todoLine, model.extraLine, model.lastWriteText].compactMap { $0 },
                                        items: model.items, perform: { model.perform($0) })
                 }
             if model.showsWriteButton {
-                Button(.ui("쓰기")) { model.perform(.reflect) }
-                    .controlSize(.small)
-                    .disabled(!model.canWrite)
-                    .help(model.canWrite ? "" : model.writeDisabledReason ?? "")
-                    .selfTestFrame("statusBarWriteButton")
+                WriteStatusButton(title: model.writeButtonTitle, isEmphasized: model.emphasizesWrite, isEnabled: model.canWrite,
+                                  disabledReason: model.writeDisabledReason, action: { model.perform(.reflect) })
             }
         }
+    }
+}
+
+/// 칩 옆 쓰기 단추: [쓰기], rekordbox가 꺼진 것을 확인하면 강조한 [지금 쓰기]. 둘 다 같은 명령과 같은 막힘 조건이다(메뉴 막대와 같다)
+struct WriteStatusButton: View {
+    let title: String
+    let isEmphasized: Bool
+    let isEnabled: Bool
+    let disabledReason: String?
+    let action: () -> Void
+
+    var body: some View {
+        Group {
+            if isEmphasized {
+                Button(title, action: action).buttonStyle(.borderedProminent)
+            } else {
+                Button(title, action: action)
+            }
+        }
+        .controlSize(.small)
+        .disabled(!isEnabled)
+        .help(isEnabled ? "" : disabledReason ?? "")
+        .selfTestFrame("statusBarWriteButton")
     }
 }
 

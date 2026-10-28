@@ -78,7 +78,10 @@ final class AppComposition {
         listActionBar = ListActionBarModel(store: store)
         libraryWindow = LibraryWindowModel(store: store)
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
-        writeStatus = ReflectionStatusModel(store: store, window: libraryWindow, windows: windows, reflection: reflection, dock: dock)
+        // 칩의 이유(켜짐·꺼짐)는 감지 서비스를 읽는 연결을 여기서 한다. 화면 시험의 조립(`.none`)은 늘 모름이라 칩이 바뀌지 않는다
+        let run = self.rekordboxRun
+        writeStatus = ReflectionStatusModel(store: store, window: libraryWindow, windows: windows, reflection: reflection, dock: dock,
+                                            runState: { run.state })
         statusBar.write = writeStatus
         writeStatus.start()
         libraryWindow.agentTools = agentTools
@@ -87,9 +90,14 @@ final class AppComposition {
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
-    convenience init(store: LibraryStore, deck: DeckModel) {
-        self.init(settings: store.settings, store: store, deck: deck, windows: AppWindows(), reflection: Self.reflection(store: store))
+    /// - Parameter rekordboxRun: 감지 서비스. 주지 않으면 프로세스 목록을 읽지 않는다(늘 모름이라 상태 줄 칩이 바뀌지 않는다). 시험이 가짜 감시를 넣을 때 준다
+    convenience init(store: LibraryStore, deck: DeckModel, rekordboxRun: RekordboxRunModel? = nil) {
+        self.init(settings: store.settings, store: store, deck: deck, windows: AppWindows(), reflection: Self.reflection(store: store),
+                  rekordboxRun: rekordboxRun)
     }
+
+    /// 업데이트 설치 뒤 다시 켜려고 앱을 끄는 중인지(읽으면 표시를 지운다). 켜진 채 종료 시트(#326)가 이 종료는 묻지 않는다. 업데이트 도구가 없으면 거짓이다
+    func consumeUpdateRelaunch() -> Bool { updater?.consumeRelaunchMark() ?? false }
 
     /// 옛 이름(anicue) 데이터·설정 옮기기. 앱이 시작할 때 목록·덱이 설정을 읽기 전에 한 번 부른다(`DJCrateApp`의 첫 속성)
     nonisolated static func migrateLegacyData() {
@@ -329,7 +337,7 @@ final class AppComposition {
         windows.flip.attach(editLinks)
         #if DEBUG
         DevSelfTests.runIfRequested(store: store, deck: deck, windows: windows, reflection: reflection, playlistSidebar: playlistSidebar,
-                                    libraryWindow: libraryWindow, statusBar: statusBar)
+                                    libraryWindow: libraryWindow, statusBar: statusBar, rekordboxRun: rekordboxRun)
         DevSelfTests.runAsyncGuidanceCaptureIfRequested(store: store, deck: deck)
         UsbMigrateCapture.runIfRequested(store: store)
         UsbSnapshotCapture.runIfRequested(store: store)

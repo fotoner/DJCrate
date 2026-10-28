@@ -18,7 +18,16 @@ extension DevSelfTests {
     /// - `busy-`: 쓰는 중(쓰기 잠금을 걸고 1초를 넘겨 기다린 뒤 찍는다)
     /// - `chip-`: 곡 초안 1곡과 마지막 쓰기가 있는 채 쓰기 상태 팝오버를 연 모습(팝오버는 `<캡처 이름>-popover.png`)
     /// 곡 초안이 있는 장면(위 `status-` 등)의 칩은 「쓰기 대기 1건」이다.
-    static func runReflectionLayoutIfRequested(store: LibraryStore, libraryWindow: LibraryWindowModel, statusBar: StatusBarModel) {
+    /// rekordbox 켜짐·꺼짐 장면(#326)은 곡 초안 1곡이 있는 채 감지 판정을 합성으로 넣는다(감지 서비스를 멈추고 값만 넣는다). 확인 줄은 같은 `[쓰기 상태]`다.
+    /// - `run-on-`: rekordbox가 켜져 있다(「rekordbox가 켜져 있습니다 · 쓰기 대기 1건」)
+    /// - `run-agent-`: rekordboxAgent만 켜져 있다
+    /// - `run-stopping-`: 켜짐에서 꺼짐으로 바뀐 직후(확인 시간 3초 안, 「rekordbox가 끝나는 중…」)
+    /// - `run-off-`: 확인 시간 뒤에도 꺼져 있어 [지금 쓰기]가 강조된 모습(전이 뒤 약 3초 기다린다)
+    /// 켜진 채 종료 시트(#326)는 아래 장면이 실제 판정(`AppQuitPolicy.confirmation`)으로 시트를 주 창에 띄워 찍는다(시트 창을 찍는다).
+    /// - `quit-on-`: rekordbox가 켜져 있고 쓰기 대기 1건
+    /// - `quit-agent-`: rekordboxAgent만 켜져 있고 쓰기 대기 1건
+    static func runReflectionLayoutIfRequested(store: LibraryStore, libraryWindow: LibraryWindowModel, statusBar: StatusBarModel,
+                                               rekordboxRun: RekordboxRunModel) {
         let args = ProcessInfo.processInfo.arguments
         guard let argument = args.first(where: { $0.hasPrefix("--reflection-layout=") }),
               ProcessInfo.processInfo.environment["DJC_HOME"] != nil else { return }
@@ -32,7 +41,8 @@ extension DevSelfTests {
             NSApp.appearance = NSAppearance(named: argument.hasSuffix("dark") ? .darkAqua : .aqua)
             window.setContentSize(NSSize(width: 1100, height: 700))
             window.center()
-            let writeScene = ["idle-", "plonly-", "busy-", "chip-"].first(where: argument.contains)
+            let runScene = ["run-on-", "run-agent-", "run-stopping-", "run-off-", "quit-on-", "quit-agent-"].first(where: argument.contains)
+            let writeScene = ["idle-", "plonly-", "busy-", "chip-"].first(where: argument.contains) ?? runScene
             if writeScene != "idle-", writeScene != "plonly-" {
                 var draft = CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues, newID: { UUID() })
                 draft.cues.append(EditableCue(id: UUID(), kind: .memory, time: 10, name: "레이아웃 시험"))
@@ -96,13 +106,38 @@ extension DevSelfTests {
                     // 쓰는 중 칩은 쓰기가 1초를 넘길 때만 보인다
                     try? await Task.sleep(for: .milliseconds(1500))
                 }
-                // 시작 직후 메인 스레드가 바쁜 동안은 칩이 따라오지 못한다. 값이 맞을 때까지(최대 3초) 기다린 뒤 읽는다
+                // 감지 판정은 합성으로 넣는다. 끝나는 중·꺼짐 강조는 켜짐에서 꺼짐으로 바뀌는 전이를 만들어야 한다
+                var reason: ReflectionChip.Reason?
+                if let runScene {
+                    rekordboxRun.inject(runScene == "quit-agent-" || runScene == "run-agent-" ? .agentOnly : .running)
+                    reason = runScene.hasSuffix("agent-") ? .agentRunning : .rekordboxRunning
+                    if runScene == "run-stopping-" || runScene == "run-off-" {
+                        for _ in 0..<30 where statusBar.write?.chip.reason != .rekordboxRunning { try? await Task.sleep(for: .milliseconds(100)) }
+                        rekordboxRun.inject(.stopped)
+                        reason = runScene == "run-off-" ? .rekordboxStopped : .rekordboxStopping
+                    }
+                }
+                // 시작 직후 메인 스레드가 바쁜 동안은 칩이 따라오지 못한다. 값이 맞을 때까지(최대 6초, 꺼짐 강조는 확인 시간 3초를 기다린다) 기다린 뒤 읽는다
                 let expected = writeScene == "idle-" ? ReflectionChip.clean : writeScene == "plonly-" ? .pending(items: 0, playlistEdits: 1)
-                    : writeScene == "busy-" ? .writing : .pending(items: 1, playlistEdits: 0)
-                for _ in 0..<30 where statusBar.write?.chip != expected { try? await Task.sleep(for: .milliseconds(100)) }
+                    : writeScene == "busy-" ? .writing : .pending(items: 1, playlistEdits: 0, reason: reason)
+                for _ in 0..<60 where statusBar.write?.chip != expected { try? await Task.sleep(for: .milliseconds(100)) }
                 try? await Task.sleep(for: .milliseconds(300))
+                if runScene?.hasPrefix("quit-") == true {
+                    // 켜진 채 종료 시트: 실제 판정이 정한 내용을 주 창에 시트로 띄운다
+                    NSApp.activate()
+                    window.makeKeyAndOrderFront(nil)
+                    if let sheet = AppQuitPolicy.confirmation(for: store.writeActivity, cause: .user, run: runScene == "quit-agent-" ? .agentOnly : .running,
+                                                              pending: store.pendingWriteSummary) {
+                        QuitConfirmationAlert.present(sheet) { _ in }
+                        FileHandle.standardError.write(Data("[종료 시트] \(sheet.title) | \(sheet.message)\n".utf8))
+                    } else {
+                        FileHandle.standardError.write(Data("[종료 시트] 판정이 시트를 띄우지 않았습니다\n".utf8))
+                    }
+                    try? await Task.sleep(for: .milliseconds(700))
+                }
                 let dock = NSApplication.shared.dockTile.badgeLabel ?? "없음"
-                FileHandle.standardError.write(Data("[쓰기 상태] 칩 \(statusBar.write?.chip.title ?? "-") · Dock 배지 \(dock) · 보조 글 \(statusBar.write?.lastWriteText ?? "없음")\n".utf8))
+                let write = statusBar.write
+                FileHandle.standardError.write(Data("[쓰기 상태] 칩 \(write?.chip.title ?? "-") · 단추 \(write?.writeButtonTitle ?? "-")\(write?.emphasizesWrite == true ? "(강조)" : "") · Dock 배지 \(dock) · 보조 글 \(write?.lastWriteText ?? "없음")\n".utf8))
             }
             if argument.contains("locked-") || argument.contains("reload-") {
                 store.dismissToast()

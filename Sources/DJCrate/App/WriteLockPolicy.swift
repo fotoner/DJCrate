@@ -27,6 +27,12 @@ extension LibraryStore {
                          writingUsb: usb.map { $0.activeWrite != nil || !$0.busyVolumes.isEmpty } ?? false)
     }
 
+    /// 아직 rekordbox에 쓰지 않은 편집 수. 상태 줄 칩(#324)과 켜진 채 종료 시트(#326)가 같은 수·같은 단위를 쓴다.
+    /// 곡 수는 사이드바 「rekordbox 쓰기 대기」 배지와 같은 정의(`pendingWriteCount`)고, 재생 목록 편집은 따로 센다.
+    var pendingWriteSummary: PendingWriteCount {
+        PendingWriteCount(items: pendingWriteCount, playlistEdits: playlists.playlistDraft.steps.count)
+    }
+
     /// rekordbox 쓰기가 어느 단계인가. 진행 안내(`writeStage`)가 단계를 알리고, 진행 안내가 없는 때는 창이 떠 있는지로 가른다.
     /// 진행 안내가 없는 쓰기(iTunes 동기화 등)와 결과를 알리는 짧은 때는 끊지 않는 쓰기로 본다(기다린다).
     var rekordboxWritePhase: RekordboxWritePhase {
