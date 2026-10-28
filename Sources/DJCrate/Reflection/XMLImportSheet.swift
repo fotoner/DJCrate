@@ -51,7 +51,7 @@ struct XMLImportSheet: View {
 
         list.frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        Text(.ui("고른 차이만 초안으로 만듭니다. rekordbox에는 쓰지 않으며, 이미 초안이 있는 곡·목록은 덮지 않습니다."))
+        Text(.ui("고른 차이만 초안으로 만들며, 이미 초안이 있는 곡·목록은 덮지 않습니다."))
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         HStack {
@@ -142,8 +142,6 @@ struct XMLImportSheet: View {
             }
             .frame(maxHeight: .infinity)
         }
-        Text(.ui("rekordbox에는 아직 쓰지 않았습니다. DJCrate의 rekordbox에 쓰기에서 미리 보고 쓰세요"))
-            .font(.caption).foregroundStyle(.secondary)
         HStack {
             Spacer()
             Button(.ui("닫기")) { dismiss() }.keyboardShortcut(.defaultAction)

@@ -31,7 +31,6 @@ struct PlaylistPickerView: View {
                 if choices.isEmpty { Text(.ui("맞는 재생 목록이 없습니다")).foregroundStyle(.secondary) }
             }
             HStack {
-                Text(.ui("넣은 곡은 ‘rekordbox에 쓰기’(⇧⌘E)로 저장합니다.")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button(.ui("취소")) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(.ui("넣기")) { if model.addSelection() { dismiss() } }

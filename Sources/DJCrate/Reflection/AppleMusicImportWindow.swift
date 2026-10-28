@@ -38,7 +38,7 @@ private struct AppleMusicImportView: View {
             Toggle(.ui("재생 목록도 만들기"), isOn: $model.createPlaylists)
                 .toggleStyle(.checkbox)
             if model.createPlaylists {
-                Text(.ui("목록은 맨 위에 만듭니다. 같은 이름은 ‘ (2)’, ‘ (3)’을 붙여 새로 만들고, 같은 출처는 기존 연결에 이어 넣습니다. 목록 초안은 ‘rekordbox에 쓰기’로 저장합니다."))
+                Text(.ui("목록은 맨 위에 만듭니다. 같은 이름은 ‘ (2)’, ‘ (3)’을 붙여 새로 만들고, 같은 출처는 기존 연결에 이어 넣습니다."))
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack {

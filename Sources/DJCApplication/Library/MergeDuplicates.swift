@@ -34,7 +34,7 @@ public struct MergeDuplicates: Sendable {
         let details = [String(ui: "남길 곡: \(draft.keeping.title)") + "\n" + (paths[draft.keeping.contentID] ?? "")]
             + draft.removing.map { String(ui: "컬렉션에서 뺄 곡: \($0.title)") + "\n" + (paths[$0.contentID] ?? "") }
         return ReflectionPrompt(title: String(ui: "같은 음원인지 확인하고 합치기 초안을 만들까요?"),
-                                text: String(ui: "직접 미리 들어 같은 음원인지 확인하세요. 인코더 지연만 보정하며, 곡 앞뒤의 편집 차이는 보정하지 않습니다. 초안은 ⇧⌘E로 쓰고, 쓸 때 옮기지 않는 정보를 알립니다."),
+                                text: String(ui: "직접 미리 들어 같은 음원인지 확인하세요. 인코더 지연만 보정하며, 곡 앞뒤의 편집 차이는 보정하지 않습니다. 쓸 때 옮기지 않는 정보를 알립니다."),
                                 confirm: String(ui: "같은 음원 확인 · 초안 만들기"), details: details)
     }
 
