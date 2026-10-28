@@ -53,6 +53,17 @@ suite djcTests.CLIWriteTargetTests
 suite djcTests.RestorePathTests
 suite djcTests.LabCredentialTests
 
+# rekordbox 실행 확인(#323): 쓰기 관문·복원·시점 스냅샷·USB·LINK가 함께 쓰는 감지. 확인하지 못하면 켜짐으로 보는지(fail-closed) 본다.
+# CLI 시험은 pgrep 실행을 막은 샌드박스로 djc를 띄워 기호 grep에 걸리지 않는다(HAR-9).
+group rekordbox-detection
+when Sources/RekordboxKit/RekordboxProcesses*
+when Sources/RekordboxKit/Database/LibrarySnapshot*
+when Sources/DJCDomain/Rekordbox/RekordboxRunState*
+suite RekordboxKitTests.RekordboxProcessCheckTests
+suite RekordboxKitTests.WriteGuardTests
+suite RekordboxKitTests.UsbWriteGuardTests
+suite djcTests.RekordboxDetectionCLITests
+
 # USB 쓰기 관문·실물 동의(UsbPhysicalWriteGate)·라이브 DB 판정(UsbLiveDatabase)·회복·되돌리기·임시 폴더 제한(UsbScratchPath).
 # 모든 모듈의 Usb/ 폴더와 CLI·앱의 USB 입구. 실물 거부는 CLI(--allow-physical --confirm)·앱(쓰기 확인 창)에서도 본다.
 # UsbRollbackIntent 시험은 UsbSyncSelectionPipelineTests의 확장에 있다.

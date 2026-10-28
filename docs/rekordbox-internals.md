@@ -1491,7 +1491,7 @@ rekordbox의 번호 순서는 아래와 같다. #173 S1~S4 모두 이 순서였�
 
 ## 쓰기 절차 (`RekordboxWriter.write`)
 
-1. rekordbox나 rekordboxAgent가 실행 중이면 거부한다. `-wal`이 남아 있어도 거부한다.
+1. rekordbox나 rekordboxAgent가 실행 중이면 거부한다. 실행 여부를 확인하지 못해도 거부한다(#323). `-wal`이 남아 있어도 거부한다.
 2. 백업을 뜬다. master.db(+wal/shm) 전체와 바꿀 분석 파일을 `rekordbox-backups/<시각>-write/`에 복사한다. 복사 중 원본이 바뀌면 실패한다.
 3. `BEGIN IMMEDIATE` 한 트랜잭션에서 쓴다.
 4. 같은 연결로 다시 읽어 초안과 칸마다 비교한다.
