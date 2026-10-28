@@ -17,6 +17,8 @@ public final class FakeLibraryReadScreen {
     public private(set) var failures: [LibraryReadFailure] = []
     /// 알린 지원하지 않는 rekordbox 버전(차례대로)
     public private(set) var unsupportedVersions: [String] = []
+    /// 알린 쓰기 막힘 판정(차례대로, nil은 막힘 없음)
+    public private(set) var writeBlocks: [LibraryWriteBlock?] = []
     public var commentPreset: CommentPreset = .none
     /// 마지막으로 알린 읽기 순번
     public private(set) var reads = LibraryReadSequence()
@@ -60,6 +62,9 @@ public final class FakeLibraryReadScreen {
         case let .unsupportedRekordbox(version):
             unsupportedVersions.append(version)
             events.append("unsupported \(version)")
+        case let .writeBlock(block):
+            writeBlocks.append(block)
+            events.append("writeBlock \(block.map { "\($0)" } ?? "none")")
         }
     }
 

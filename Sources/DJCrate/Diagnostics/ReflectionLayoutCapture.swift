@@ -26,6 +26,13 @@ extension DevSelfTests {
     /// 켜진 채 종료 시트(#326)는 아래 장면이 실제 판정(`AppQuitPolicy.confirmation`)으로 시트를 주 창에 띄워 찍는다(시트 창을 찍는다).
     /// - `quit-on-`: rekordbox가 켜져 있고 쓰기 대기 1건
     /// - `quit-agent-`: rekordboxAgent만 켜져 있고 쓰기 대기 1건
+    /// 쓸 수 없는 라이브러리 장면(#327)은 읽은 사본의 실제 판정(합성 사본은 쓸 수 있는 모양)이 끝난 뒤 막힘을 합성으로 넣고 쓰기 상태 팝오버를 연다
+    /// (팝오버는 `<캡처 이름>-popover.png`). 곡 초안 1곡(쓰기 대기 1건)이 있고, 값에 `-empty-`가 있으면 쓰기 대기가 없다.
+    /// - `unwritable-version-`: 설치된 rekordbox가 지원 밖 버전(7.3.1)
+    /// - `unwritable-schema-`: DB 구조가 확인한 모양과 다르다
+    /// - `unwritable-counters-`: 변경 카운터가 클라우드 동기화 카운터보다 작다
+    /// - `unwritable-backup-`: 쓰기 전 백업 폴더에 쓸 수 없다
+    /// 예: `unwritable-schema-light`(쓰기 대기 1건), `unwritable-schema-empty-dark`(쓰기 대기 없음). 이름에 `locked-`가 들어가면 쓰기 잠금 장면과 겹친다. 확인 줄은 같은 `[쓰기 상태]`에 이유가 붙는다.
     static func runReflectionLayoutIfRequested(store: LibraryStore, libraryWindow: LibraryWindowModel, statusBar: StatusBarModel,
                                                rekordboxRun: RekordboxRunModel) {
         let args = ProcessInfo.processInfo.arguments
@@ -42,8 +49,16 @@ extension DevSelfTests {
             window.setContentSize(NSSize(width: 1100, height: 700))
             window.center()
             let runScene = ["run-on-", "run-agent-", "run-stopping-", "run-off-", "quit-on-", "quit-agent-"].first(where: argument.contains)
-            let writeScene = ["idle-", "plonly-", "busy-", "chip-"].first(where: argument.contains) ?? runScene
-            if writeScene != "idle-", writeScene != "plonly-" {
+            let block: LibraryWriteBlock? = switch ["version", "schema", "counters", "backup"].first(where: { argument.contains("unwritable-\($0)-") }) {
+            case "version": .unsupportedVersion("7.3.1")
+            case "schema": .schema
+            case "counters": .counters
+            case "backup": .backupFolder
+            default: nil
+            }
+            let blockEmpty = block != nil && argument.contains("-empty-")
+            let writeScene = ["idle-", "plonly-", "busy-", "chip-"].first(where: argument.contains) ?? runScene ?? (block != nil ? "unwritable-" : nil)
+            if writeScene != "idle-", writeScene != "plonly-", !blockEmpty {
                 var draft = CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues, newID: { UUID() })
                 draft.cues.append(EditableCue(id: UUID(), kind: .memory, time: 10, name: "레이아웃 시험"))
                 try? CueDraftStore.save(draft)
@@ -106,6 +121,14 @@ extension DevSelfTests {
                     // 쓰는 중 칩은 쓰기가 1초를 넘길 때만 보인다
                     try? await Task.sleep(for: .milliseconds(1500))
                 }
+                if let block {
+                    // 읽은 사본의 실제 판정이 끝난 뒤에 넣어야 판정이 합성 막힘을 덮지 않는다. 읽기 흐름이 화면에 알리는 길로 넣는다
+                    await store.readFlow.writeBlockCheck?.value
+                    store.readScreen.apply(.writeBlock(block))
+                    NSApp.activate()
+                    window.makeKeyAndOrderFront(nil)
+                    statusBar.write?.isPresented = true
+                }
                 // 감지 판정은 합성으로 넣는다. 끝나는 중·꺼짐 강조는 켜짐에서 꺼짐으로 바뀌는 전이를 만들어야 한다
                 var reason: ReflectionChip.Reason?
                 if let runScene {
@@ -118,8 +141,9 @@ extension DevSelfTests {
                     }
                 }
                 // 시작 직후 메인 스레드가 바쁜 동안은 칩이 따라오지 못한다. 값이 맞을 때까지(최대 6초, 꺼짐 강조는 확인 시간 3초를 기다린다) 기다린 뒤 읽는다
-                let expected = writeScene == "idle-" ? ReflectionChip.clean : writeScene == "plonly-" ? .pending(items: 0, playlistEdits: 1)
-                    : writeScene == "busy-" ? .writing : .pending(items: 1, playlistEdits: 0, reason: reason)
+                let expected = if let block { ReflectionChip.blocked(block, items: blockEmpty ? 0 : 1, playlistEdits: 0) }
+                    else if writeScene == "idle-" { ReflectionChip.clean } else if writeScene == "plonly-" { ReflectionChip.pending(items: 0, playlistEdits: 1) }
+                    else if writeScene == "busy-" { ReflectionChip.writing } else { ReflectionChip.pending(items: 1, playlistEdits: 0, reason: reason) }
                 for _ in 0..<60 where statusBar.write?.chip != expected { try? await Task.sleep(for: .milliseconds(100)) }
                 try? await Task.sleep(for: .milliseconds(300))
                 if runScene?.hasPrefix("quit-") == true {
@@ -137,7 +161,10 @@ extension DevSelfTests {
                 }
                 let dock = NSApplication.shared.dockTile.badgeLabel ?? "없음"
                 let write = statusBar.write
-                FileHandle.standardError.write(Data("[쓰기 상태] 칩 \(write?.chip.title ?? "-") · 단추 \(write?.writeButtonTitle ?? "-")\(write?.emphasizesWrite == true ? "(강조)" : "") · Dock 배지 \(dock) · 보조 글 \(write?.lastWriteText ?? "없음")\n".utf8))
+                // 칩 옆 단추가 보이지 않으면(쓰기 대기 없음·쓸 수 없음·쓰는 중) 「없음」. 쓸 수 없으면 이유(툴팁·팝오버 맨 위)를 붙인다
+                let button = write?.showsWriteButton == true ? (write?.writeButtonTitle ?? "-") + (write?.emphasizesWrite == true ? "(강조)" : "") : "없음"
+                let blockReason = write?.chip.blockReason.map { " · 이유 \($0)" } ?? ""
+                FileHandle.standardError.write(Data("[쓰기 상태] 칩 \(write?.chip.title ?? "-") · 단추 \(button) · Dock 배지 \(dock) · 보조 글 \(write?.lastWriteText ?? "없음")\(blockReason)\n".utf8))
             }
             if argument.contains("locked-") || argument.contains("reload-") {
                 store.dismissToast()

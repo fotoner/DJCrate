@@ -14,7 +14,7 @@ extension LibraryPorts {
         LibraryPorts(source: .live, music: .live(rekordboxDirectory: location.rekordboxDirectory), drafts: drafts,
                      musicOrder: .shared, previews: .live, xml: .live, draftFiles: .live(home: location.draftHome), batches: batches,
                      staging: .live(home: location.draftHome), files: .live, analysis: .live, recovery: .live,
-                     playlistImports: .live(url: DraftLocations(home: location.draftHome).playlistImports), backups: .live(), artwork: .live, relocate: .live,
+                     playlistImports: .live(url: DraftLocations(home: location.draftHome).playlistImports), backups: .live(), compatibility: .live, artwork: .live, relocate: .live,
                      query: .live(home: location.draftHome), appleMusic: .live, liveShare: location.liveShare,
                      linkedXML: DJCIdentity.linkedXMLFile, usbSnapshots: .live, snapshots: .live(location), localKeys: .live,
                      prepareMerge: { try RekordboxWriter.prepareMerge(keeping: $0, removing: $1, snapshot: $2) },

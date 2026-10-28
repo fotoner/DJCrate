@@ -46,9 +46,12 @@ struct LibraryReadFlowTests {
     /// - Parameter taker: 사본 뜨기(주지 않으면 늘 실패한다)
     /// - Parameter rekordboxRunning: rekordbox가 켜져 있다
     /// - Parameter unsupportedVersion: 설치된 rekordbox가 확인하지 않은 버전이면 그 버전
+    /// - Parameter compatibility: 쓰기 전 확인(주지 않으면 쓰기 막힘을 보지 않는다)
+    /// - Parameter backups: 쓰기 전 백업 폴더(주지 않으면 쓰기 막힘을 보지 않는다)
     static func world(music: MemoryMusicLibrary = MemoryMusicLibrary(), latest: URL? = nil, block: (URL, Gate)? = nil,
                       location: LibraryLocation = L.location(), taker: SnapshotTaker? = nil, rekordboxRunning: Bool = false,
-                      unsupportedVersion: String? = nil) -> World {
+                      unsupportedVersion: String? = nil, compatibility: CompatibilityPorts? = nil,
+                      backups: RekordboxBackups? = nil) -> World {
         let libraries = [first: L.library([L.track("1"), L.track("2")]), second: L.library([L.track("1")])]
         var source = LibrarySource.memory(libraries, latest: latest, rekordboxRunning: rekordboxRunning,
                                           unsupportedRekordboxVersion: unsupportedVersion)
@@ -60,7 +63,8 @@ struct LibraryReadFlowTests {
         let loader = LoadLibrary(source: source, music: music.source, drafts: MemoryDrafts().store, order: ITunesRefreshCoordinator(),
                                  snapshots: taker ?? SnapshotTaker { _ in throw DJCError.snapshotNotFound },
                                  usbSnapshots: UsbSyncSnapshots(stamp: { _ in throw DJCError.snapshotNotFound },
-                                                                lease: { _, _ in throw DJCError.snapshotNotFound }))
+                                                                lease: { _, _ in throw DJCError.snapshotNotFound }),
+                                 compatibility: compatibility.map { CompatibilityCheck(ports: $0) }, backups: backups)
         let flow = LibraryReadFlow(loader: loader, location: location)
         let screen = FakeLibraryReadScreen()
         flow.screen = screen.port
@@ -490,6 +494,123 @@ struct LibraryReadFlowTests {
         #expect(attempts.list == [1, 2])
         #expect(!w.screen.events.dropFirst(before).contains { $0.hasPrefix("phase loading") })
         #expect(w.screen.state.snapshot == Self.second)
+    }
+
+    // MARK: - 쓰기 막힘 미리 보기 (#327)
+
+    /// 가짜 쓰기 전 확인: `schemaFails`에 든 사본은 DB 구조가 다르다. 연 사본을 차례로 남기고, `block`의 사본은 열 때 문에서 기다린다
+    static func compatibility(installed: String = "7.2.18", schemaFails: @escaping @Sendable (URL?) -> Bool = { _ in false },
+                              opened: Record<String>, block: (URL, Gate)? = nil) -> CompatibilityPorts {
+        CompatibilityPorts(
+            installedAppVersion: { installed }, verifiedAppVersions: ["7.2"],
+            checkApp: { version in if version?.hasPrefix("7.2") != true { throw DJCError.writeRefused("버전") } },
+            databaseVersion: "6000",
+            openSnapshot: { database in
+                opened.append(database?.lastPathComponent ?? "마지막 스냅샷")
+                if let block, database == block.0 { block.1.pass() }
+                return CompatibilitySnapshot(fileName: database?.lastPathComponent ?? "-",
+                                             checkSchema: { if schemaFails(database) { throw DJCError.writeRefused("구조") } },
+                                             updateCounters: { (5, 3) }, close: {})
+            },
+            checkCounters: { _, _ in })
+    }
+
+    /// 쓰기 전 백업 폴더 가짜: 쓸 수 있는지 정하고, 물어본 폴더를 남긴다
+    static func backups(canWrite: Bool = true, asked: Record<URL>) -> RekordboxBackups {
+        var port = MemoryBackups().port
+        port.canWrite = { folder in
+            asked.append(folder)
+            return canWrite
+        }
+        return port
+    }
+
+    @Test func 읽은_뒤_읽은_사본으로_쓰기_막힘을_보고_화면에_알린다() async {
+        let opened = Record<String>(), asked = Record<URL>()
+        let w = Self.world(compatibility: Self.compatibility(schemaFails: { $0 == Self.first }, opened: opened),
+                           backups: Self.backups(asked: asked))
+
+        await w.flow.load(snapshot: Self.first)
+        await w.flow.writeBlockCheck?.value
+
+        #expect(w.screen.writeBlocks == [.schema])
+        // 라이브 DB가 아니라 읽은 사본을 연다. 백업 폴더는 쓰기 확인 창과 같은 위치 값이다
+        #expect(opened.list == [Self.first.lastPathComponent])
+        #expect(asked.list == [L.location().backupDirectory])
+        #expect(w.screen.events.firstIndex(of: "adopt \(Self.first.lastPathComponent)")! < w.screen.events.firstIndex(of: "writeBlock schema")!)
+    }
+
+    @Test func 막힘이_없으면_없음을_알리고_백업_폴더에_쓸_수_없으면_백업_폴더를_알린다() async {
+        let clear = Self.world(compatibility: Self.compatibility(opened: Record()), backups: Self.backups(asked: Record()))
+        await clear.flow.load(snapshot: Self.first)
+        await clear.flow.writeBlockCheck?.value
+        let noBackup = Self.world(compatibility: Self.compatibility(opened: Record()), backups: Self.backups(canWrite: false, asked: Record()))
+        await noBackup.flow.load(snapshot: Self.first)
+        await noBackup.flow.writeBlockCheck?.value
+        let version = Self.world(compatibility: Self.compatibility(installed: "7.3.1", opened: Record()),
+                                 backups: Self.backups(canWrite: false, asked: Record()))
+        await version.flow.load(snapshot: Self.first)
+        await version.flow.writeBlockCheck?.value
+
+        #expect(clear.screen.writeBlocks == [nil])
+        #expect(noBackup.screen.writeBlocks == [.backupFolder])
+        #expect(version.screen.writeBlocks == [.unsupportedVersion("7.3.1")])
+    }
+
+    @Test func 다시_읽을_때마다_다시_본다() async {
+        let opened = Record<String>()
+        let w = Self.world(compatibility: Self.compatibility(schemaFails: { $0 == Self.first }, opened: opened),
+                           backups: Self.backups(asked: Record()))
+
+        await w.flow.load(snapshot: Self.first)
+        await w.flow.writeBlockCheck?.value
+        await w.flow.load(snapshot: Self.second)
+        await w.flow.writeBlockCheck?.value
+
+        #expect(w.screen.writeBlocks == [.schema, nil])
+        #expect(opened.list == [Self.first.lastPathComponent, Self.second.lastPathComponent])
+    }
+
+    @Test func 읽기는_판정을_기다리지_않고_판정_전에_새_읽기가_시작되면_옛_판정은_버린다() async throws {
+        let gate = Gate()
+        let w = Self.world(compatibility: Self.compatibility(schemaFails: { $0 == Self.first }, opened: Record(), block: (Self.first, gate)),
+                           backups: Self.backups(asked: Record()))
+
+        await w.flow.load(snapshot: Self.first)
+        let older = w.flow.writeBlockCheck
+        try await waitUntil { gate.entered == 1 }
+        // 판정이 문에서 기다리는 동안에도 읽기는 끝났다
+        #expect(w.screen.adopted.count == 1 && w.screen.writeBlocks.isEmpty)
+        await w.flow.load(snapshot: Self.second)
+        await w.flow.writeBlockCheck?.value
+        gate.open()
+        await older?.value
+
+        #expect(w.screen.writeBlocks == [nil])
+    }
+
+    /// 새 사본 뜨기는 읽기 세대만 올리고 실패하면 지난 목록이 그대로 남는다. 그 목록의 판정은 버리지 않는다(리뷰 지적)
+    @Test func 새_사본_뜨기가_시작만_되고_채택되지_않아도_보이는_목록의_판정은_알린다() async throws {
+        let gate = Gate()
+        let w = Self.world(compatibility: Self.compatibility(schemaFails: { $0 == Self.first }, opened: Record(), block: (Self.first, gate)),
+                           backups: Self.backups(asked: Record()))
+
+        await w.flow.load(snapshot: Self.first)
+        let check = w.flow.writeBlockCheck
+        try await waitUntil { gate.entered == 1 }
+        await w.flow.takeSnapshot(copy: { _ in throw DJCError.snapshotNotFound })
+        gate.open()
+        await check?.value
+
+        #expect(w.screen.failures.count == 1 && w.screen.state.snapshot == Self.first)
+        #expect(w.screen.writeBlocks == [.schema])
+    }
+
+    @Test func 확인을_붙이지_않으면_쓰기_막힘을_알리지_않는다() async {
+        let w = Self.world()
+        await w.flow.load(snapshot: Self.first)
+        await w.flow.writeBlockCheck?.value
+        #expect(w.screen.writeBlocks.isEmpty)
     }
 
     // MARK: - 지원하지 않는 rekordbox 버전 (#299)

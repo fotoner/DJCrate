@@ -74,8 +74,9 @@ extension LibraryStore {
         let importURL = playlistImportURL == PlaylistImportStore.url ? places.playlistImports : playlistImportURL
         libraryPorts.playlistImports = importURL.map { .live(url: $0) } ?? .none
         libraryPorts.snapshots = SnapshotTaker(take: takeLiveSnapshot ?? { try LibrarySnapshot.take(force: $0) })
-        // 시험은 이 Mac에 설치된 rekordbox 버전을 보지 않는다(지원하지 않는 버전 알림이 다른 시험의 알림을 가리지 않게)
+        // 시험은 이 Mac에 설치된 rekordbox 버전을 보지 않는다(지원하지 않는 버전 알림·쓰기 막힘 칩이 다른 시험을 가리지 않게)
         libraryPorts.source.unsupportedRekordboxVersion = { nil }
+        libraryPorts.compatibility.installedAppVersion = { nil }
         ports?(&libraryPorts)
         let store = LibraryStore(settings: settings, location: location, useCases: LibraryUseCases(ports: libraryPorts),
                                  activityLog: activityLog ?? ActivityLog(url: places.activityLog, legacyResult: places.writeResult),
