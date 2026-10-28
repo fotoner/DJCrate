@@ -52,7 +52,7 @@ struct PointSnapshotView: View {
                     .frame(maxWidth: 320)
                 Button(.ui("지금 스냅샷 남기기")) { model.startCreate() }
                     .disabled(model.isWorking || model.blockReason != nil)
-                    .help(model.blockReason ?? String(ui: "rekordbox 라이브러리(DB·분석 파일·앨범아트)를 지금 시점으로 남깁니다"))
+                    .help(model.blockReason ?? "")
                 if model.isWorking { ProgressView().controlSize(.small) }
                 // 이 창은 주 창과 따로라 주 창의 진행 카드가 가려질 수 있다. 되돌리는 동안만 직접 안내한다(#310)
                 if model.isRestoring {
@@ -119,13 +119,12 @@ struct PointSnapshotView: View {
                 Spacer()
                 Button(.ui("현재와 비교")) { model.startCompare() }
                 .disabled(model.selectedRow?.entry == nil || model.isWorking)
-                .help(String(ui: "이 시점으로 복원하면 무엇이 바뀌는지 봅니다"))
                 Button(.ui("이 시점으로 복원…")) { model.startRestore() }
                 .disabled(model.selectedRow?.entry == nil || model.isWorking || model.blockReason != nil)
-                .help(model.blockReason ?? String(ui: "rekordbox 라이브러리를 고른 시점으로 되돌립니다(rekordbox를 끈 뒤)"))
+                .help(model.blockReason ?? "")
                 Button(.ui("지우기…")) { model.startDelete() }
                 .disabled(model.selectedRow?.entry == nil || model.selectedRow?.pinned == true || model.isWorking)
-                .help(model.selectedRow?.pinned == true ? String(ui: "고정을 푼 뒤 지우세요") : String(ui: "고른 시점 스냅샷을 지웁니다"))
+                .help(model.selectedRow?.pinned == true ? String(ui: "고정을 푼 뒤 지우세요") : "")
             }
         }
         .padding(16)

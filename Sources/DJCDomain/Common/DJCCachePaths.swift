@@ -59,16 +59,12 @@ public enum DJCCacheKind: String, CaseIterable, Sendable, Codable {
         }
     }
 
-    /// 비운 뒤 언제 다시 만들어지는지
-    public var detail: String {
+    /// 비운 뒤에도 일부러 남기는 것. 없으면 nil이다: 나머지는 모두 "필요할 때 다시 만들어진다"뿐이라 설정 화면의 머리 문장이 말한다(#309)
+    public var detail: String? {
         switch self {
-        case .waveforms: String(ui: "곡을 덱에 불러올 때 다시 만듭니다")
-        case .analysis: String(ui: "곡을 덱에 불러오거나 분석할 때 다시 만듭니다")
-        case .loudness: String(ui: "곡을 덱에 불러올 때 다시 잽니다")
-        case .previewWaveforms: String(ui: "곡 목록을 그릴 때 다시 만듭니다")
-        case .usbSnapshots: String(ui: "USB를 열 때 다시 뜹니다. 볼륨마다 가장 새 사본은 남깁니다")
-        case .snapshots: String(ui: "rekordbox와 동기화할 때 다시 뜹니다. 가장 새 사본과 지금 연 사본은 남깁니다")
-        case .linkAudio: String(ui: "FLAC·ALAC 곡을 LINK로 CDJ에 실을 때 다시 바꿉니다")
+        case .usbSnapshots: String(ui: "볼륨마다 가장 새 사본은 남깁니다")
+        case .snapshots: String(ui: "가장 새 사본과 지금 연 사본은 남깁니다")
+        default: nil
         }
     }
 }

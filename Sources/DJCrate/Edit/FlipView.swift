@@ -307,9 +307,7 @@ private struct FlipFooter: View {
                 Button(.ui("취소")) { model.cancelRender() }
             } else {
                 Button(.ui("Flip 버리기…"), role: .destructive) { onDiscard() }
-                    .help(.ui("이 기록을 버리고 창을 닫습니다. 원곡과 rekordbox는 그대로입니다"))
                 Button(.ui("다시 기록…")) { onRerecord() }
-                    .help(.ui("이 기록을 버리고 덱에서 Flip 기록을 다시 시작합니다"))
                 Button {
                     model.render()
                 } label: {
@@ -317,7 +315,7 @@ private struct FlipFooter: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!model.canRender)
-                .help(.ui("WAV로 렌더해 ‘추가한 곡’에 넣습니다(그리드·큐는 결과 위치로 옮긴 값, 곡 정보는 원곡). 원곡과 rekordbox는 그대로입니다"))
+                .help(.ui("WAV로 렌더해 ‘추가한 곡’에 넣습니다 (원곡은 그대로)"))
             }
         }
         .controlSize(.regular)

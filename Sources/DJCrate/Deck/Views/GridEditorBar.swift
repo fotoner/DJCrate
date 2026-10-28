@@ -59,8 +59,7 @@ struct GridEditorBar: View {
                                                  Int(range.upperBound * 100))) / 100
                                 return .handled
                             }
-                            .help((invalidBPM ? bpmWarning : String(ui: "현재 템포 구간의 BPM (엔터를 누르거나 칸을 벗어나면 적용)"))
-                                  + " · " + String(ui: "↑·↓로 0.01씩 조정하고 길게 누르면 반복합니다"))
+                            .help(invalidBPM ? bpmWarning : String(ui: "현재 템포 구간의 BPM · ↑·↓로 0.01씩 조정"))
                         if invalidBPM && deck.gridDraft != nil {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(UIColors.warning.color)
@@ -101,9 +100,7 @@ struct GridEditorBar: View {
                         .fixedSize()
                         HStack(spacing: 0) {
                             Button { deck.tapTempo() } label: { Text(verbatim: "TAP") }
-                                .help(String(ui: "박자에 맞춰 여러 번 눌러 BPM을 측정합니다") + " · "
-                                      + String(ui: "탭 템포 (\(deck.shortcuts.keyLabel(for: .tapTempo)))") + " · "
-                                      + String(ui: "우클릭: TAP 초기화"))
+                                .help(String(ui: "탭 템포 (\(deck.shortcuts.keyLabel(for: .tapTempo))) · 우클릭: 초기화"))
                                 .accessibilityAction(named: .ui("TAP 초기화")) { deck.resetTapTempo() }
                         }
                         .background {
@@ -159,7 +156,7 @@ struct GridEditorBar: View {
             Toggle(density == .shortToggle ? String(ui: "큐도 함께") : String(ui: "큐도 함께(핫큐·메모리)"), isOn: $deck.carryCues)
                 .toggleStyle(.checkbox)
                 .disabled(!deck.gridEditing || !deck.canEditGrid)
-                .help(.ui("켜면 그리드를 옮기거나 BPM을 바꿀 때 핫큐·메모리 큐(루프 포함)가 같은 박을 따라 움직입니다"))
+                .help(.ui("큐도 같은 박을 따라 이동"))
             Button { deck.revertGrid() } label: {
                 if density == .iconDiscard || density == .shortToggle {
                     Image(systemName: "arrow.uturn.backward")
@@ -170,7 +167,8 @@ struct GridEditorBar: View {
                 .disabled(!deck.canDiscardGridDraft)
                 .buttonStyle(GridEditorControlStyle(height: TextScale.length(20, scale: textScale)))
                 .accessibilityLabel(.ui("그리드 초안 버리기"))
-                .help(.ui("그리드 초안을 버리고 원래 그리드로 되돌립니다"))
+                // 글자 라벨이 보일 때는 이름을 되풀이하지 않는다. 아이콘만 보일 때만 이름을 알린다.
+                .help(density == .iconDiscard || density == .shortToggle ? String(ui: "그리드 초안 버리기") : "")
         }
         .fixedSize()
     }
@@ -347,8 +345,7 @@ struct GridTempoSegments: View {
                     .foregroundStyle(UIColors.draft.color)
                     .disabled(!deck.canEditGrid)
                     .accessibilityLabel(.ui("여기서 BPM 변경"))
-                    .help(deck.quantize ? String(ui: "변속곡: 가장 가까운 박부터 새 템포 구간을 시작합니다(Q를 끄면 재생 위치 그대로)")
-                                          : String(ui: "변속곡: 재생 위치에서 새 템포 구간을 시작합니다(Q를 켜면 가장 가까운 박)"))
+                    .help(deck.quantize ? String(ui: "새 템포 구간 시작 (가까운 박)") : String(ui: "새 템포 구간 시작 (재생 위치)"))
                     .position(x: min(max(cursorX, height / 2), max(height / 2, geometry.size.width - height / 2)),
                               y: height / 2)
                 }

@@ -18,12 +18,12 @@ struct StorageSettingsView: View {
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
                             Button(.ui("비우기")) { model.startClear([kind]) }
-                                .disabled(held != nil || model.isWorking || (model.clearable[kind] ?? 0) == 0)
-                                .help(held ?? String(ui: "\(kind.title) 캐시를 비웁니다"))
+                                .disabled(model.isWorking || (model.clearable[kind] ?? 0) == 0)
+                                .disabled(because: held)
                         }
                     } label: {
                         Text(kind.title)
-                        Text(kind.detail)
+                        if let detail = kind.detail { Text(detail) }
                     }
                 }
                 HStack {
@@ -34,13 +34,13 @@ struct StorageSettingsView: View {
                     }
                     Spacer()
                     Button(.ui("모두 비우기")) { model.startClear(DJCCacheKind.allCases) }
-                        .disabled(blocked != nil || model.isWorking || !model.clearable.values.contains { $0 > 0 })
-                        .help(blocked ?? String(ui: "모든 캐시를 비웁니다. 초안·백업은 그대로 둡니다"))
+                        .disabled(model.isWorking || !model.clearable.values.contains { $0 > 0 })
+                        .disabled(because: blocked)
                 }
             } header: {
                 Text(.ui("캐시"))
             } footer: {
-                Text(.ui("캐시는 다시 만들어지므로 확인 없이 비웁니다. 초안·추가 목록·백업은 지우지 않습니다."))
+                Text(.ui("캐시는 다시 만들어집니다. 초안·백업은 지우지 않습니다."))
                     .foregroundStyle(.secondary)
             }
             Section {
@@ -53,8 +53,9 @@ struct StorageSettingsView: View {
                 }
                 Toggle(isOn: $model.autoSnapshotEnabled) {
                     Text(.ui("하루 한 번 자동 시점 스냅샷"))
-                    Text(model.autoSnapshotNote ?? String(ui: "rekordbox가 꺼져 있고 라이브러리가 바뀌었을 때 뒤에서 조용히 남깁니다."))
+                    Text(model.autoSnapshotCaption)
                 }
+                .disabled(because: model.autoSnapshotNote, announcedAs: .hint)
                 Stepper(value: $model.autoSnapshotDays, in: 1...90) {
                     LabeledContent(.ui("자동 시점 스냅샷 보관")) {
                         Text(.ui("\(model.autoSnapshotDays)일"))
@@ -63,9 +64,12 @@ struct StorageSettingsView: View {
                     }
                 }
             } header: {
-                Text(.ui("백업(읽기만)"))
+                HStack(spacing: 4) {
+                    Text(.ui("백업(읽기만)"))
+                    InfoPopoverButton(label: String(ui: "보관 규칙"), lines: Self.retentionLines)
+                }
             } footer: {
-                Text(.ui("같은 디스크의 복사본은 공간을 나눠 써서 실제로 차지하는 공간은 더 작을 수 있습니다. 백업과 자동 시점 스냅샷은 오래된 것부터 저절로 정리되고, rekordbox 수동·고정 시점 스냅샷은 지우지 않고, USB 시점 스냅샷은 볼륨마다 최근 5개와 고정한 것을 남깁니다."))
+                Text(.ui("오래된 것부터 자동 정리되며 고정한 스냅샷은 남습니다."))
                     .foregroundStyle(.secondary)
             }
             Section {
@@ -86,6 +90,14 @@ struct StorageSettingsView: View {
         .formStyle(.grouped)
         .frame(width: 520, height: 720)
         .task { await model.refresh() }
+    }
+
+    /// 백업 구역 ⓘ 팝오버: 처음 한 번만 필요한 보관 규칙과 용량 읽는 법
+    private static var retentionLines: [String] {
+        [String(ui: "백업과 자동 시점 스냅샷은 오래된 것부터 저절로 정리됩니다."),
+         String(ui: "rekordbox 수동·고정 시점 스냅샷은 지우지 않습니다."),
+         String(ui: "USB 시점 스냅샷은 볼륨마다 최근 5개와 고정한 것을 남깁니다."),
+         String(ui: "같은 디스크의 복사본은 공간을 나눠 써서 실제로 차지하는 공간은 더 작을 수 있습니다.")]
     }
 
     private func bytes(of kind: DJCCacheKind) -> Int64? { model.usage?.first { $0.kind == kind }?.bytes }

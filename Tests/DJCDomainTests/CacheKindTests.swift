@@ -44,7 +44,16 @@ struct CacheKindTests {
         #expect(DJCCacheKind.allCases.map(\.rawValue) == ["waveforms", "analysis", "loudness", "preview-waveforms", "usb-snapshots", "snapshots",
                                                      "link-audio"])
         for kind in DJCCacheKind.allCases {
-            #expect(!kind.title.isEmpty && !kind.detail.isEmpty)
+            #expect(!kind.title.isEmpty)
+        }
+    }
+
+    /// #309: 행 부제는 "비우면 남는 것"이 있는 종류에만 둔다. 나머지는 "다시 만들어진다"뿐이라 화면 머리 문장이 말한다.
+    @Test func 부제는_일부러_남기는_사본이_있는_종류에만_있다() {
+        let withDetail = DJCCacheKind.allCases.filter { $0.detail != nil }
+        #expect(Set(withDetail) == [.snapshots, .usbSnapshots])
+        for kind in withDetail {
+            #expect(kind.detail?.contains("남깁니다") == true, "\(kind): \(kind.detail ?? "")")
         }
     }
 

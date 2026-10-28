@@ -13,17 +13,17 @@ struct WriteResult: Codable, Equatable {
     var createdAt = Date.now
 
     var toast: AppToast {
-        AppToast(kind: kind, title: title, detail: shortfall ?? String(ui: "전체 내용과 백업 위치는 ‘활동 기록…’에서 다시 볼 수 있습니다."))
+        AppToast(kind: kind, title: title, detail: shortfall)
     }
 
-    /// "그리드 1곡은 쓰지 않았습니다 — 이유". 막힘 이유는 할 일까지 적은 문장이라 하나뿐이면 그대로 보이고, 여럿이면 결과 보기로 안내한다.
+    /// "그리드 1곡은 쓰지 않았습니다 — 이유". 막힘 이유는 할 일까지 적은 문장이라 하나뿐이면 그대로 보인다. 여럿이면 알림의 [결과 보기]가 말하므로 되풀이하지 않는다.
     static func shortfallLine(_ what: [String], reasons: [String]) -> String? {
         guard !what.isEmpty else { return nil }
         let what = what.joined(separator: " · ")
         let reasons = Set(reasons)
         // 줄 모양은 언어와 관계없고 내용만 번역한다.
         if reasons.count == 1, let reason = reasons.first { return "\(what) — \(reason)" }
-        return String(ui: "\(what) — 이유와 할 일은 ‘결과 보기’에서 확인하세요")
+        return what
     }
 
     static func written(_ report: RekordboxWriteReport, preview: RekordboxWriteReport) -> Self {
