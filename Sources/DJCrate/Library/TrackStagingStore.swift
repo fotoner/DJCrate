@@ -39,11 +39,6 @@ final class TrackStagingStore {
     }
     private(set) var hasXMLExportJob = false
     @ObservationIgnored var xmlExportTask: Task<Void, Never>?
-    /// 곡 추가·내보내기 결과 안내
-    var stagingMessage: AppMessage? {
-        didSet { if let stagingMessage { library.feedback.announce(stagingMessage) } }
-    }
-
     /// 곡을 추가해도 되는지(rekordbox에 쓰는 동안은 추가 목록을 바꾸지 않는다, `WriteLockPolicy`)
     var libraryBusy: Bool { library.libraryBusy }
 
@@ -54,9 +49,12 @@ final class TrackStagingStore {
         let reload = library.useCases.stage.reloadList(rows: library.rows, shareRoot: library.shareRoot,
                                                        takingMovedFiles: library.location.movesDamagedDrafts)
         staged = reload.list
-        if reload.saveError != nil { reportStagedSaveFailure(reload.saveError) } else { library.reportDraftFilesMovedBySave(reload.moved) }
-        if let summary = reload.summary, stagingMessage?.kind != .failure {
-            stagingMessage = AppMessage(kind: summary.allMatched ? .success : .warning, text: summary.text)
+        if let error = reload.saveError {
+            // 읽은 뒤 저절로 하는 일이라 떠 있는 경고는 덮지 않는다
+            library.notify(Self.stagedSaveFailure(error))
+        } else {
+            library.reportDraftFilesMovedBySave(reload.moved)
+            library.notifyState(.importCheck, reload.summary.map { .notice(text: $0.text, kind: $0.allMatched ? .success : .warning) })
         }
         library.playlists.resolvePlaylistImports()
         rebuildStagedRows()
@@ -85,15 +83,21 @@ final class TrackStagingStore {
         rebuildStagedRows()
     }
 
-    private func persistStaged() {
+    /// 추가 목록을 저장한다. 저장하지 못하면 알리고 false
+    /// - Parameter byUser: 사용자가 누른 일이면 떠 있는 알림을 덮고 바로 알린다. 그리드·키 추정, 쓰기 뒤 정리는 덮지 않는다(`notify`)
+    @discardableResult
+    private func persistStaged(byUser: Bool = false) -> Bool {
         do {
             library.reportDraftFilesMovedBySave(try library.useCases.stage.saveList(staged, takingMovedFiles: library.location.movesDamagedDrafts))
-        } catch { reportStagedSaveFailure(error) }
+            return true
+        } catch {
+            if byUser { library.showToast(Self.stagedSaveFailure(error)) } else { library.notify(Self.stagedSaveFailure(error)) }
+            return false
+        }
     }
 
-    private func reportStagedSaveFailure(_ error: (any Error)?) {
-        guard let error else { return }
-        stagingMessage = AppMessage(kind: .failure, text: String(ui: "추가한 곡 목록을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"))
+    private static func stagedSaveFailure(_ error: any Error) -> AppToast {
+        .notice(text: String(ui: "추가한 곡 목록을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .failure)
     }
 
     /// 파일 선택 창·메뉴가 고른 파일을 추가하기 시작한다(MVVM-4). 기다리지 않는다. 돌려주는 손잡이는 시험이 기다린다.
@@ -109,20 +113,24 @@ final class TrackStagingStore {
 
     /// 파일·폴더를 추가한다. 이미 rekordbox 컬렉션에 있는 파일은 건너뛴다
     /// (XML로 다시 가져오면 rekordbox의 기존 큐·그리드를 덮을 수 있다).
+    /// - Returns: 알린 결과 문구(Apple Music 가져오기 창이 제 자리에 다시 보인다). 추가하지 않았으면 nil
+    @discardableResult
     func addFiles(_ urls: [URL], appleMusicOrigins: [String: [AppleMusicOrigin]] = [:],
-                  createPlaylists: Bool = false, toPlaylist playlistID: String? = nil) async {
+                  createPlaylists: Bool = false, toPlaylist playlistID: String? = nil) async -> String? {
         guard !library.libraryBusy,
-              playlistID.map({ library.playlists.canEditTracks(of: $0) }) ?? true else { return }
+              playlistID.map({ library.playlists.canEditTracks(of: $0) }) ?? true else { return nil }
         let stage = library.useCases.stage
         let files = stage.audioFiles(in: urls)
         guard !files.isEmpty else {
-            stagingMessage = AppMessage(kind: .warning, text: String(ui: "추가할 음원이 없습니다. MP3·M4A·WAV·AIFF·FLAC 파일을 고르세요."))
-            return
+            let text = String(ui: "추가할 음원이 없습니다. MP3·M4A·WAV·AIFF·FLAC 파일을 고르세요.")
+            library.showToast(.notice(text: text, kind: .warning))
+            return text
         }
         let addition = await stage.add(files, current: staged, library: library.rows, origins: appleMusicOrigins)
         // 태그를 읽는 동안 반영이 시작되면 추가 목록도 바꾸지 않는다.
-        guard !library.libraryBusy else { return }
-        stagingMessage = nil
+        guard !library.libraryBusy else { return nil }
+        // 목록·연결을 저장하지 못했으면 결과 요약 대신 그 실패를 알린다
+        var failure: AppToast?
         // 읽는 동안 다른 곳(그리드 추정·편집본 넣기)이 고친 줄은 그대로 두고 결과만 얹어 저장하고, 재생 목록에 이으면 연결 기록을 더해 저장한다(유스케이스).
         let linksPlaylists = createPlaylists || playlistID != nil
         let playlists = library.playlists
@@ -133,20 +141,22 @@ final class TrackStagingStore {
                                                    takingMovedFiles: library.location.movesDamagedDrafts)
         if let list = commit.list {
             staged = list
-            if commit.listSaveError != nil { reportStagedSaveFailure(commit.listSaveError) } else { library.reportDraftFilesMovedBySave(commit.moved) }
+            if let error = commit.listSaveError { failure = Self.stagedSaveFailure(error) } else { library.reportDraftFilesMovedBySave(commit.moved) }
             rebuildStagedRows()
         }
         if let link = commit.link {
-            if playlists.applyImportsChange(link) {
+            if playlists.applyImportsChange(link, notifying: false) {
                 playlists.resolvePlaylistImports()
+            } else if case .blocked = link.result {
+                // 연결 기록을 읽지 못해 막혔다: 다시 해도 같으니 그 파일을 보게 한다
+                failure = .notice(text: PlaylistEditStore.importsLoadFailureText, kind: .failure)
             } else {
-                stagingMessage = AppMessage(kind: .failure, text: playlists.playlistMessage?.text ?? String(ui: "재생 목록 연결을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하고 다시 시도하세요."))
+                failure = .notice(text: PlaylistEditStore.importsSaveFailureText, kind: .failure)
             }
         }
         let summary = addition.summary(linksPlaylists: linksPlaylists)
-        if stagingMessage?.kind != .failure {
-            stagingMessage = AppMessage(kind: summary.warning ? .warning : .success, text: summary.text)
-        }
+        let result = failure ?? .notice(text: summary.text, kind: summary.warning ? .warning : .success)
+        library.showToast(result)
         // 넣은 곡은 목록에서 골라 보여 주기만 한다. 덱은 그대로 둔다(덱에 올리기는 더블클릭·⌘→, #93).
         if !addition.added.isEmpty || (!addition.stagedIDs.isEmpty && addition.libraryRows.isEmpty) {
             // 새 곡(또는 이미 추가한 곡)은 "추가한 곡"에서 고른다.
@@ -158,6 +168,7 @@ final class TrackStagingStore {
             library.selection = Set(addition.libraryRows.map(\.id))
         }
         enqueueGrid(addition.added.map { GridJobItem(uuid: $0.uuid, path: $0.path, staged: true) })
+        return result.text
     }
 
     func removeStaged(_ ids: Set<TrackRow.ID>) {
@@ -168,15 +179,12 @@ final class TrackStagingStore {
         guard library.playlists.savePlaylistImports(imports) else { return }
         let uuids = Set(removing.map(\.uuid))
         gridQueue.removeAll { uuids.contains($0.uuid) }
-        stagingMessage = nil
         staged.removeAll { ids.contains($0.id) }
-        persistStaged()
+        let saved = persistStaged(byUser: true)
         library.selection.subtract(ids)
         rebuildStagedRows()
         library.refreshDeckTrack()
-        if stagingMessage?.kind != .failure {
-            stagingMessage = AppMessage(text: String(ui: "\(removing.count)곡을 추가 목록에서 뺐습니다(파일은 그대로)."))
-        }
+        if saved { library.showToast(.notice(text: String(ui: "\(removing.count)곡을 추가 목록에서 뺐습니다(파일은 그대로)."), kind: .success)) }
     }
 
     /// rekordbox에 바로 넣은 곡을 추가 목록에서 뺀다(초안은 남긴다: 되돌리면 다시 붙는다). 뺀 곡을 돌려준다.
@@ -257,7 +265,7 @@ final class TrackStagingStore {
         case .skipped:
             break
         case let .saved(bpm, confident, failure):
-            if let failure { library.reportLibraryError(failure.message) }
+            if let failure { library.reportLibraryError(failure.message, kind: .failure) }
             library.draftChanged(trackUUID: item.uuid, kind: .grid, exists: true)
             if item.staged { updateStaged(item.uuid, bpm: bpm, confident: confident) }
             library.onGridDraftSaved?(item.uuid)
@@ -308,7 +316,7 @@ final class TrackStagingStore {
         let log: @Sendable (String) -> Void = { useCases.log($0) }
         Task { [library] in
             await library.staging.addFiles(urls)
-            log("[staging] 추가: \(stagingMessage?.text ?? "")")
+            log("[staging] 추가: \(library.activityLog.latest?.text ?? "")")
             while gridJob != nil { try? await Task.sleep(for: .milliseconds(300)) }
             for track in staged {
                 let draft = useCases.stage.gridDraft(track.uuid)

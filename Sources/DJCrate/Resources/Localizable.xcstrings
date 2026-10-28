@@ -2731,23 +2731,7 @@
         }
       }
     },
-    "%lld곡을 연동 XML에 썼습니다 · rekordbox: rekordbox xml 새로고침 › \"DJCrate 반영\" › 곡 모두 선택 › Import To Collection → DJCrate rekordbox와 동기화(⟳)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wrote %lld tracks to the link XML · In rekordbox: refresh rekordbox xml › \"DJCrate 반영\" › select all tracks › Import To Collection → Sync with rekordbox (⟳) in DJCrate"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld曲を連携XMLに書き出しました · rekordbox: rekordbox xmlを更新 › 「DJCrate 반영」 › 全曲選択 › Import To Collection → DJCrateでrekordboxと同期（⟳）"
-          }
-        }
-      }
-    },
-    "%lld곡을 연동 XML에 썼습니다 · rekordbox: rekordbox xml 새로고침 › \"DJCrate 추가\" › Import To Collection" : {
+    "%lld곡을 연동 XML에 썼습니다" : {
       "localizations" : {
         "en" : {
           "variations" : {
@@ -2755,13 +2739,13 @@
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "Wrote %lld track to the link XML · In rekordbox: refresh rekordbox xml › \"DJCrate 추가\" › Import To Collection"
+                  "value" : "Wrote %lld track to the link XML"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "Wrote %lld tracks to the link XML · In rekordbox: refresh rekordbox xml › \"DJCrate 추가\" › Import To Collection"
+                  "value" : "Wrote %lld tracks to the link XML"
                 }
               }
             }
@@ -2770,7 +2754,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld曲を連携XMLに書き込みました · rekordbox：rekordbox xmlを更新 › 「DJCrate 추가」 › コレクションにインポート"
+            "value" : "%lld曲を連携XMLに書き出しました"
           }
         }
       }
@@ -5195,22 +5179,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxに追加できるのは、DJCrateに追加した曲だけです。"
-          }
-        }
-      }
-    },
-    "DJCrate에 추가할 음원 파일이나 폴더를 고르세요. 이미 rekordbox에 있는 파일은 건너뜁니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose audio files or folders to add to DJCrate. Files already in rekordbox are skipped."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrateに追加する音源ファイルまたはフォルダを選んでください。すでにrekordboxにあるファイルはスキップします。"
           }
         }
       }
@@ -12049,34 +12017,6 @@
         }
       }
     },
-    "rekordbox 라이브러리와 추가 목록에 없는 곡의 초안이 %lld곡 있습니다." : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "There are drafts for %lld track that is not in the rekordbox library or Added Tracks."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "There are drafts for %lld tracks that are not in the rekordbox library or Added Tracks."
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxライブラリにも追加した曲にもない曲の下書きが%lld曲あります。"
-          }
-        }
-      }
-    },
     "rekordbox 라이브러리의 잠금을 풀지 못했습니다" : {
       "localizations" : {
         "en" : {
@@ -13035,6 +12975,38 @@
         }
       }
     },
+    "rekordbox: rekordbox xml 새로고침 › \"DJCrate 반영\" › 곡 모두 선택 › Import To Collection → DJCrate rekordbox와 동기화(⟳)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In rekordbox: refresh rekordbox xml › \"DJCrate 반영\" › select all tracks › Import To Collection → Sync with rekordbox (⟳) in DJCrate"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox: rekordbox xmlを更新 › 「DJCrate 반영」 › 全曲選択 › Import To Collection → DJCrateでrekordboxと同期（⟳）"
+          }
+        }
+      }
+    },
+    "rekordbox: rekordbox xml 새로고침 › \"DJCrate 추가\" › Import To Collection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In rekordbox: refresh rekordbox xml › \"DJCrate 추가\" › Import To Collection"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox：rekordbox xmlを更新 › 「DJCrate 추가」 › コレクションにインポート"
+          }
+        }
+      }
+    },
     "rekordbox·DJCrate의 데이터 폴더는 후보 폴더로 쓸 수 없습니다. 음악이 있는 폴더를 고르세요" : {
       "localizations" : {
         "en" : {
@@ -13539,6 +13511,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxを「%@」の時点に復元しますか？"
+          }
+        }
+      }
+    },
+    "rekordbox를 먼저 종료하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit rekordbox first."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先にrekordboxを終了してください。"
           }
         }
       }
@@ -24073,22 +24061,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリ全体をこのバックアップに復元します。そのときのキュー・グリッド・ゲイン・タグ・アルバムアートの下書きもDJCrateに復元されます。"
-          }
-        }
-      }
-    },
-    "라이브러리 전체를 이번 쓰기 전으로 복원합니다. rekordbox를 먼저 종료하세요." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Restore the entire library before this write. Quit rekordbox first."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ライブラリ全体を今回の書き込み前に復元します。先にrekordboxを終了してください。"
           }
         }
       }
@@ -35455,6 +35427,34 @@
         }
       }
     },
+    "연결되지 않은 초안 %lld곡" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld unlinked track draft"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld unlinked track drafts"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクされていない下書き%lld曲"
+          }
+        }
+      }
+    },
     "연결되지 않은 초안 보기…" : {
       "localizations" : {
         "en" : {
@@ -36889,6 +36889,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "音源ファイルがあるかを再確認します。rekordboxには書き込みません。"
+          }
+        }
+      }
+    },
+    "음원 파일이나 폴더를 고르세요. rekordbox에 있는 파일은 건너뜁니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose audio files or folders. Files already in rekordbox are skipped."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音源ファイルまたはフォルダを選んでください。rekordboxにあるファイルはスキップします。"
           }
         }
       }

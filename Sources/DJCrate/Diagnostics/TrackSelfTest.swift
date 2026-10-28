@@ -117,7 +117,7 @@ extension DevSelfTests {
             await store.refreshIfRekordboxChanged()
             log("창으로 돌아옴: 목록에 남은 곡 \(rows(at: paths).count) · 선택 \(store.selection.count) · 덱 \(store.deckTrackID == nil ? "비움" : "남음")")
             await store.staging.addFiles(files)
-            log("다시 추가: 추가 목록 \(store.staging.staged.count)곡 · \(store.staging.stagingMessage?.text ?? "")")
+            log("다시 추가: 추가 목록 \(store.staging.staged.count)곡 · \(store.activityLog.latest?.text ?? "")")
             log("끝")
             exit(0)
         }

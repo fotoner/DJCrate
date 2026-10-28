@@ -98,8 +98,7 @@ final class AppleMusicImportModel {
             return
         }
         if !urls.isEmpty {
-            await staging.addFiles(urls, appleMusicOrigins: origins, createPlaylists: createPlaylists)
-            message = staging.stagingMessage?.text
+            message = await staging.addFiles(urls, appleMusicOrigins: origins, createPlaylists: createPlaylists)
         }
         if rejected > 0 {
             let warning = String(ui: "\(rejected)곡은 파일을 확인하지 못해 제외했습니다. 각 곡의 안내를 확인하세요.")

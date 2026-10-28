@@ -30,7 +30,7 @@ extension TrackStagingStore {
             // 저장 창이 덮어쓰기를 이미 물었다
             try exporter.checkOutput(url, overwrite: true, dryRun: false)
         } catch {
-            stagingMessage = AppMessage(kind: .failure, text: Self.xmlExportFailure(error))
+            library.showToast(.notice(text: Self.xmlExportFailure(error), kind: .failure))
             return
         }
         xmlExportJob = LibraryXMLExportJob()
@@ -52,9 +52,9 @@ extension TrackStagingStore {
         xmlExportTask = nil
         switch result {
         case let .success(summary):
-            stagingMessage = AppMessage(kind: .success, text: Self.xmlExportSuccess(summary, name: url.lastPathComponent))
+            library.showToast(.notice(text: Self.xmlExportSuccess(summary, name: url.lastPathComponent), kind: .success))
         case let .failure(error):
-            stagingMessage = AppMessage(kind: .failure, text: Self.xmlExportFailure(error))
+            library.showToast(.notice(text: Self.xmlExportFailure(error), kind: .failure))
         }
     }
 

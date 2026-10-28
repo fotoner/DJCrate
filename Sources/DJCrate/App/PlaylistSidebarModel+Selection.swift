@@ -193,7 +193,7 @@ extension PlaylistSidebarModel {
     }
 
     private func announce(_ text: String, warning: Bool) {
-        playlists.playlistMessage = AppMessage(kind: warning ? .warning : .success, text: text)
+        library.showToast(.notice(text: text, kind: warning ? .warning : .success))
     }
 
     /// 이름을 보일 수(넘으면 "외 N개"로 줄인다)

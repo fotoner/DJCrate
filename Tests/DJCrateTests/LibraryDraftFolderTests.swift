@@ -85,7 +85,7 @@ struct ExternalDraftDiscardTests {
         store.testDrafts.flush()
 
         #expect(FileManager.default.fileExists(atPath: home.appending(path: "damaged-drafts").path))
-        #expect(store.draftFileMessage != nil)
+        #expect(store.activityLog.latest?.title.contains("damaged-drafts") == true)
         #expect(TagDraftStore.load(trackUUID: track.uuid, directory: tags)?.fields.comment == "메모리 입력")
         // 다음 확인도 메모리 입력을 지우지 않는다
         store.allowsLibrarySync = { true }

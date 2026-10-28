@@ -39,7 +39,7 @@ struct TrackStagingStoreObservationTests {
     @Test(.tags(.perfContract)) func 핵심은_조각_속성을_관찰하지_않는다() {
         let store = store()
         #expect(!observes({ _ = store.staging }) { store.staging.staged = [staged("a")] })
-        #expect(!observes({ _ = store.staging }) { store.staging.stagingMessage = AppMessage(text: "합성 안내") })
+        #expect(!observes({ _ = store.staging }) { store.showToast(.notice(text: "합성 안내", kind: .success)) })
     }
 
     @Test(.tags(.perfContract)) func 사이드바_줄은_각자_읽는_값에만_다시_계산한다() {
@@ -49,7 +49,7 @@ struct TrackStagingStoreObservationTests {
         let exportRow = { _ = SidebarXMLExportRow(staging: store.staging).body }
         #expect(observes(stagedRow) { store.staging.staged = [staged("a")] })
         #expect(!observes(stagedRow) { store.staging.gridJob = GridJob(done: 0, total: 1) })
-        #expect(!observes(stagedRow) { store.staging.stagingMessage = AppMessage(text: "합성 안내") })
+        #expect(!observes(stagedRow) { store.showToast(.notice(text: "합성 안내", kind: .success)) })
         #expect(observes(gridRow) { store.staging.gridJob = GridJob(done: 1, total: 1) })
         #expect(!observes(gridRow) { store.staging.xmlExportJob = LibraryXMLExportJob() })
         store.staging.xmlExportJob = LibraryXMLExportJob()
@@ -131,11 +131,11 @@ struct TrackStagingStoreObservationTests {
         let store = store()
         let body = bar(store)
         #expect(!observes(body) { store.staging.staged = [staged("a")] })
-        #expect(!observes(body) { store.staging.stagingMessage = AppMessage(text: "합성 안내") })
+        #expect(!observes(body) { store.showToast(.notice(text: "합성 안내", kind: .success)) })
         #expect(!observes(body) { store.staging.gridJob = GridJob(done: 0, total: 1) })
         store.sidebar = .staged
         #expect(observes(body) { store.staging.staged = [staged("b")] })
-        #expect(!observes(body) { store.staging.stagingMessage = AppMessage(text: "합성 안내 2") })
+        #expect(!observes(body) { store.showToast(.notice(text: "합성 안내 2", kind: .success)) })
         #expect(!observes(body) { store.staging.gridJob = nil })
     }
 

@@ -35,7 +35,7 @@ extension PlaylistEditStore {
     @discardableResult
     func blockSmartPlaylistEdit(_ id: String) -> Bool {
         guard library.showSmartPlaylists, playlistItem(id)?.isSmart == true else { return false }
-        playlistMessage = AppMessage(kind: .warning, text: SmartPlaylistSource.readOnlyReason)
+        library.showToast(.notice(text: SmartPlaylistSource.readOnlyReason, kind: .warning))
         return true
     }
 }

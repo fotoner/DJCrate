@@ -2,7 +2,7 @@ import DJCApplication
 import DJCDomain
 import SwiftUI
 
-/// 쓰기 대기 목록 위: 라이브러리·추가 목록에 없는 곡의 초안이 있으면 알리고 목록을 연다(#175).
+/// 쓰기 대기 목록 머리: 라이브러리·추가 목록에 없는 곡의 초안이 있으면 그 수를 보이고 목록을 연다(#175). 어떤 초안인지는 시트가 말한다.
 struct UnlinkedDraftsBar: View {
     let store: LibraryStore
     /// 시트를 띄우는 주 창 모델
@@ -10,8 +10,7 @@ struct UnlinkedDraftsBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Label(String(ui: "rekordbox 라이브러리와 추가 목록에 없는 곡의 초안이 \(store.unlinkedDraftUUIDs.count)곡 있습니다."),
-                  systemImage: "questionmark.folder")
+            Label(String(ui: "연결되지 않은 초안 \(store.unlinkedDraftUUIDs.count)곡"), systemImage: "questionmark.folder")
             Spacer(minLength: 0)
             Button(.ui("연결되지 않은 초안 보기…")) { window.openUnlinkedDrafts() }
                 .disabled(store.libraryBusy)

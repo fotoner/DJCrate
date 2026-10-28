@@ -45,21 +45,22 @@ struct ReflectionPromptLayoutTests {
         #expect(textView.string.contains("Import To Collection") && textView.string.contains("라이브러리 백업"))
     }
 
-    /// XML 만들기는 연동 파일만 쓰므로 묻지 않고, 막혀서 뺀 곡과 XML에 넣지 않은 초안을 결과 줄에 알린다(#212).
-    @Test func XML_결과_줄은_막힌_곡과_넣지_않은_초안을_알린다() {
+    /// XML 만들기는 연동 파일만 쓰므로 묻지 않고, 막혀서 뺀 곡과 XML에 넣지 않은 초안을 결과 알림에 적는다(#212, #307).
+    @Test func XML_결과_알림은_막힌_곡과_넣지_않은_초안을_알린다() {
         var plan = Reflection.plan(track: Fixture.row("x").track, rawCues: [], cueDraft: nil, gridDraft: nil)
         plan.blockers = ["막힌 이유"]
         let clean = ReflectionPanels.resultMessage(written: 2, blocked: [], exclusions: [])
-        #expect(clean.kind == .success && clean.text.hasPrefix("2곡을 연동 XML에 썼습니다"))
+        #expect(clean.kind == .success && clean.title == "2곡을 연동 XML에 썼습니다")
+        #expect(clean.detail?.contains("Import To Collection") == true && !clean.showsResult)
         let warned = ReflectionPanels.resultMessage(written: 1, blocked: [plan],
                                                     exclusions: ["• 곡 x: 막힌 이유", "• 곡 t: 태그 쓰지 않음: 기존 곡의 XML은 큐·그리드만 지원하니…"])
         #expect(warned.kind == .warning)
-        #expect(warned.text.contains("막혀서 뺀 곡 1: 곡 x(막힌 이유)"))
-        #expect(warned.text.contains("XML에 넣지 않은 초안 1: 곡 t: 태그 쓰지 않음"))
+        #expect(warned.detail?.contains("막혀서 뺀 곡 1: 곡 x(막힌 이유)") == true)
+        #expect(warned.detail?.contains("XML에 넣지 않은 초안 1: 곡 t: 태그 쓰지 않음") == true)
     }
 
-    /// XML로 만들 곡이 없으면 창을 띄우지 않고 XML 결과 줄 자리에 남긴다(#230). 막힌 곡은 결과 줄처럼 앞 둘과 수를 적는다.
-    @Test func XML로_만들_곡이_없으면_창_대신_결과_줄로_알린다() {
+    /// XML로 만들 곡이 없으면 확인 창을 띄우지 않고 결과 알림으로 남긴다(#230, #307). 막힌 곡은 결과처럼 앞 둘과 수를 적는다.
+    @Test func XML로_만들_곡이_없으면_창_대신_결과_알림으로_알린다() {
         let plans = (1...100).map { index in
             var plan = Reflection.plan(track: Fixture.row("xml-\(index)").track, rawCues: [], cueDraft: nil, gridDraft: nil)
             plan.blockers = ["막힌 이유"]
@@ -67,9 +68,9 @@ struct ReflectionPromptLayoutTests {
         }
         let message = ReflectionPanels.blockedMessage(plans)
         #expect(message.kind == .warning)
-        #expect(message.text == "XML로 만들 곡이 없습니다 · 막혀서 뺀 곡 100: 곡 xml-1(막힌 이유), 곡 xml-2(막힌 이유)")
+        #expect(message.title == "XML로 만들 곡이 없습니다" && message.detail == "막혀서 뺀 곡 100: 곡 xml-1(막힌 이유), 곡 xml-2(막힌 이유)")
         let empty = ReflectionPanels.blockedMessage([])
-        #expect(empty.kind == .warning && empty.text == "XML로 만들 곡이 없습니다 · 고른 곡에 rekordbox와 다른 큐·그리드 초안이 없습니다.")
+        #expect(empty.kind == .warning && empty.title == "XML로 만들 곡이 없습니다" && empty.detail == "고른 곡에 rekordbox와 다른 큐·그리드 초안이 없습니다.")
     }
 
     /// 곡이 많아도 쓴 곡마다의 결과는 쓰기 결과에 남는다(묻지 않고 모두 쓰는 판정은 반영 세션 시험).

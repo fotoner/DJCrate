@@ -150,11 +150,12 @@ struct RekordboxXMLImportTests {
         let fixture = try library()
         let store = await loadedStore(fixture)
         let window = LibraryWindowModel(store: store)
+        let notices = store.noticeCount
         window.xmlImport.start(from: try changedXML(fixture), shareRoot: fixture.shareRoot)
         window.xmlImport.cancel()
         await window.xmlImport.task?.value
         #expect(window.xmlImport.preview == nil && !window.xmlImport.isReading)
-        #expect(store.staging.stagingMessage == nil, "취소는 실패로 알리지 않는다")
+        #expect(store.noticeCount == notices, "취소는 어떤 안내도 남기지 않는다")
     }
 
     @Test func rekordbox_XML이_아니면_이유를_알리고_미리_보기를_열지_않는다() async throws {
@@ -166,6 +167,6 @@ struct RekordboxXMLImportTests {
         window.xmlImport.start(from: bad, shareRoot: fixture.shareRoot)
         await window.xmlImport.task?.value
         #expect(window.xmlImport.preview == nil && !window.xmlImport.isReading)
-        #expect(store.staging.stagingMessage?.kind == .failure && store.staging.stagingMessage?.text.contains("DJ_PLAYLISTS") == true)
+        #expect(store.activityLog.latest?.kind == .failure && store.activityLog.latest?.text.contains("DJ_PLAYLISTS") == true)
     }
 }

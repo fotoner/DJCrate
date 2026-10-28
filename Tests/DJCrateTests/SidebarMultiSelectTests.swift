@@ -170,7 +170,7 @@ struct SidebarMultiSelectTests {
         #expect(prompt.text.contains("‘안 폴더’, ‘나’, ‘다’"))
         #expect(prompt.destructive)
         #expect(layout.item("B") == nil && layout.item("D") == nil && layout.item("G") == nil && layout.item("H") == nil)
-        #expect(store.playlists.playlistMessage?.kind == .success)
+        #expect(store.activityLog.latest?.kind == .success)
         // 보던 목록이 사라지면 전체 곡으로 돌아간다
         #expect(store.sidebar == .filter(.all))
 
@@ -201,7 +201,7 @@ struct SidebarMultiSelectTests {
         #expect(prompt.title == "재생 목록 1개를 지울까요?")
         #expect(prompt.text.contains("‘스마트’"), "건너뛸 항목을 확인 창에 보인다")
         #expect(layout.item("B") == nil && layout.item("S") != nil)
-        let message = try #require(store.playlists.playlistMessage)
+        let message = try #require(store.activityLog.latest)
         #expect(message.kind == .warning)
         #expect(message.text.contains("‘스마트’") && message.text.contains("인텔리전트"))
     }
@@ -210,7 +210,7 @@ struct SidebarMultiSelectTests {
         model.deletePlaylists(["S"])
         #expect(prompter.shown.isEmpty)
         #expect(store.playlists.playlistDraft.isEmpty)
-        #expect(try #require(store.playlists.playlistMessage).text.contains("인텔리전트"))
+        #expect(try #require(store.activityLog.latest).text.contains("인텔리전트"))
     }
 
     @Test func 이름은_열_개까지_보이고_나머지는_줄인다() throws {
@@ -238,7 +238,7 @@ struct SidebarMultiSelectTests {
         model.movePlaylists(["F", "B"], to: .into("G"))
         #expect(layout.item("F")?.parentID == PlaylistLayout.root)
         #expect(layout.item("B")?.parentID == "G")
-        let message = try #require(store.playlists.playlistMessage)
+        let message = try #require(store.activityLog.latest)
         #expect(message.kind == .warning && message.text.contains("‘폴더’") && message.text.contains("제 안으로"))
     }
 

@@ -54,6 +54,9 @@ struct AppToast: Identifiable, Equatable {
     /// 이 알림을 남긴 활동 기록 항목(결과 보기가 그 항목을 고른다). 띄울 때 `LibraryStore.showToast`가 정한다
     var activityID: ActivityEntry.ID?
 
+    /// 제목과 설명을 한 덩어리로(접근성 알림·진단 기록)
+    var text: String { [title, detail].compactMap { $0 }.joined(separator: "\n") }
+
     /// 결과 보기 단추를 붙일지(rekordbox 쓰기 결과일 때만)
     var showsResult: Bool { !isUsb && !isNotice }
     /// 열기 단추를 붙일지(#298): 결과 보기가 없는 경고·실패. 누르면 상태 줄의 활동 팝오버에서 이 알림을 펼친다
@@ -62,6 +65,12 @@ struct AppToast: Identifiable, Equatable {
     /// 창 대신 띄우는 안내(기본은 경고)
     static func notice(_ title: String, _ detail: String?, kind: Kind = .warning, isUsb: Bool = false) -> Self {
         Self(kind: kind, title: title, detail: detail?.isEmpty == true ? nil : detail, isUsb: isUsb, isNotice: true)
+    }
+
+    /// 한 덩어리 안내 문구를 알림으로(첫 줄이 제목, 나머지 줄이 설명). 목록 위 안내 줄이던 문구를 옮겼다(#307)
+    static func notice(text: String, kind: Kind) -> Self {
+        let lines = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        return .notice(String(lines.first ?? ""), lines.count > 1 ? String(lines[1]) : nil, kind: kind)
     }
 
     /// 저절로 닫히기까지의 시간(초). 성공·경고는 읽을 시간만큼(4초 + 글자마다 0.06초) 남기고, 단추가 있으면 누를 시간으로 적어도 7초 둔다.
@@ -73,6 +82,22 @@ struct AppToast: Identifiable, Equatable {
     }
     func automaticallyDismisses(voiceOverEnabled: Bool) -> Bool {
         duration.isFinite && !voiceOverEnabled
+    }
+}
+
+/// 알림 글 칸: 내용 폭에 맞추되 `maxWidth`를 넘으면 그 폭에서 줄을 바꾸고, 그 폭으로 잰 높이를 알린다.
+/// 카드는 가로를 내용 폭으로 고정(`fixedSize`)하므로, 그냥 `frame(maxWidth:)`를 쓰면 글 높이를 줄바꿈 없이 재서 긴 글이 카드 밖으로 넘친다(#307)
+private struct ToastTextLayout: Layout {
+    var maxWidth: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let text = subviews.first else { return .zero }
+        let width = min(text.sizeThatFits(.unspecified).width, maxWidth, proposal.width ?? .infinity)
+        return CGSize(width: width, height: text.sizeThatFits(ProposedViewSize(width: width, height: nil)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 
@@ -100,15 +125,15 @@ struct AppToastView: View {
                 .imageScale(.large)
                 .foregroundStyle(toast.kind.tint)
                 .symbolEffect(.bounce, options: .nonRepeating, isActive: !reduceMotion)
-            // 카드는 내용 폭에 맞춘다(긴 설명만 이 폭에서 줄을 바꾼다)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(toast.title).font(.scaled(.body, textScale).weight(.semibold))
-                if let detail = toast.detail {
-                    Text(detail).font(.scaled(.caption, textScale)).foregroundStyle(.secondary).textSelection(.enabled)
+            // 카드는 내용 폭에 맞춘다(긴 설명만 이 폭에서 줄을 바꾸고 그만큼 높아진다)
+            ToastTextLayout(maxWidth: TextScale.length(420, scale: textScale)) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(toast.title).font(.scaled(.body, textScale).weight(.semibold))
+                    if let detail = toast.detail {
+                        Text(detail).font(.scaled(.caption, textScale)).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
                 }
             }
-            .frame(maxWidth: TextScale.length(420, scale: textScale), alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
             if let onDetails {
                 Button(.ui("결과 보기"), action: onDetails).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .details)
             }
@@ -121,7 +146,8 @@ struct AppToastView: View {
             if let onUndo, toast.undoBackup != nil {
                 Button(.ui("쓰기 전으로 복원"), action: onUndo)
                     .controlSize(ControlSize.small.scaled(textScale))
-                    .help(.ui("라이브러리 전체를 이번 쓰기 전으로 복원합니다. rekordbox를 먼저 종료하세요."))
+                    // 무엇을 하는지는 단추 이름이 말한다. 툴팁은 안전 조건만 둔다
+                    .help(.ui("rekordbox를 먼저 종료하세요"))
                     .focused($focus, equals: .undo)
             }
             Button(action: onClose) {

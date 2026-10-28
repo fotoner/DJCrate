@@ -94,7 +94,7 @@ struct PlaylistImportIntegrationTests {
         store.playlists.refreshPlaylists()
         store.staging.staged = [StagedTrack(uuid: UUID().uuidString.lowercased(), path: file.path, title: "합성 곡", duration: 0.1, addedOn: "2026-09-27")]
         await store.staging.addFiles([file], toPlaylist: "P")
-        #expect(store.staging.stagingMessage?.kind == .failure)
+        #expect(store.activityLog.latest?.kind == .failure)
         #expect(store.playlists.playlistImports.requests.isEmpty)
     }
 
@@ -104,7 +104,7 @@ struct PlaylistImportIntegrationTests {
         store.playlists.playlistImports.addFiles(["/fixtures/a"], to: .id("P"))
         store.playlists.resolvePlaylistImports(contentIDsByPath: ["/fixtures/a": "1"])
         #expect(store.playlists.playlistDraft.isEmpty && store.playlists.playlistImports.pendingCount == 1)
-        #expect(store.playlists.playlistMessage?.kind == .warning)
+        #expect(store.activityLog.latest?.kind == .warning)
     }
 
     @Test func 이미_추가한_파일도_목록_연결을_기억하고_컬렉션_등록_뒤에만_초안을_만든다() async throws {
@@ -130,10 +130,10 @@ struct PlaylistImportIntegrationTests {
         store.playlists.rekordboxPlaylists = PlaylistLayout([(.init(id: "F", name: "폴더", isFolder: true), 1)])
         store.playlists.refreshPlaylists()
         await store.staging.addFiles([], toPlaylist: "F")
-        #expect(store.staging.stagingMessage == nil && store.playlists.playlistImports.requests.isEmpty)
+        #expect(store.activityLog.entries.isEmpty && store.playlists.playlistImports.requests.isEmpty)
         store.isWritingRekordbox = true
         await store.staging.addFiles([])
-        #expect(store.staging.stagingMessage == nil)
+        #expect(store.activityLog.entries.isEmpty)
     }
 
     @Test func 가져오기_선택을_끄면_출처만_기억하고_목록은_만들지_않는다() async throws {

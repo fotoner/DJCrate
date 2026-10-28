@@ -5,7 +5,7 @@ import Foundation
 /// 읽지 못한 초안 파일과 재생 목록 초안 저장 실패(#174).
 /// 손상된 파일은 지우지 않고 `damaged-drafts`에 옮겨 알리고, 메모리에 남은 입력은 다시 저장한다.
 extension LibraryStore {
-    /// 옮긴 초안 파일을 알린다(닫을 때까지 남고, 그사이 더 옮기면 수를 더한다).
+    /// 옮긴 초안 파일을 창 알림으로 알린다(알림이 떠 있는 사이 더 옮기면 수를 더한다).
     /// 추가 목록(`staged.json`)은 초안이 아니라 곡 파일 경로의 목록이라 파일 수에 세지 않고 다시 추가할 일을 따로 안내한다(#178).
     func reportDamagedDrafts(_ entries: [DamagedDraftFile]) {
         guard !entries.isEmpty else { return }
@@ -21,12 +21,14 @@ extension LibraryStore {
             }
             if let kind { unreadableDraftKinds[uuid, default: []].insert(kind) }
         }
-        let fresh = draftFileMessage == nil
+        // 앞 알림이 아직 떠 있으면 그 알림의 수에 더한다(닫혔거나 다른 알림이 덮었으면 새로 센다)
+        let showing = damagedDraftToast.map { toast?.id == $0 } ?? false
         let drafts = entries.filter { $0.kind != .staged }
-        damagedDraftCount = (fresh ? 0 : damagedDraftCount) + drafts.count
-        damagedStagedList = (fresh ? false : damagedStagedList) || drafts.count < entries.count
+        damagedDraftCount = (showing ? damagedDraftCount : 0) + drafts.count
+        damagedStagedList = (showing ? damagedStagedList : false) || drafts.count < entries.count
         useCases.log("[초안 파일] 읽지 못해 옮긴 파일 \(entries.count)개: \(entries.map(\.name).joined(separator: ", "))")
-        draftFileMessage = AppMessage(kind: .warning, text: Self.damagedDraftText(damagedDraftCount, stagedList: damagedStagedList))
+        damagedDraftToast = notify(.notice(text: Self.damagedDraftText(damagedDraftCount, stagedList: damagedStagedList), kind: .warning),
+                                   updating: damagedDraftToast)
     }
 
     static func damagedDraftText(_ count: Int, stagedList: Bool = false) -> String {

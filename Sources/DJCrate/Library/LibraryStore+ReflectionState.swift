@@ -42,14 +42,19 @@ extension LibraryStore {
         case let .deckTrackMoved(id): moveDeckTrack(to: id)
         case let .playlistImportsReset(reset): playlists.applyPlaylistImportsReset(reset)
         case .unlinkedDraftsChanged: refreshUnlinkedDrafts()
-        case let .libraryError(text): reportLibraryError(text)
+        case let .libraryError(text):
+            // 뒤따른 경고 바로 뒤의 같은 줄은 쓰기 결과 알림이 담는다. 오류 상태만 남기고 또 띄우지 않는다(#307)
+            if followUpAwaitingError { setLibraryErrorQuietly(text) } else { reportLibraryError(text) }
+            followUpAwaitingError = false
         case let .showAdded(id):
             sidebar = .filter(.all)
             search = ""
             selection = [id]
         case let .deselected(ids): selection.subtract(ids)
         case let .lastWriteBackup(url): lastWriteBackup = url
-        case let .followUp(notes): writeFollowUp = notes
+        case let .followUp(notes):
+            writeFollowUp = notes
+            followUpAwaitingError = !notes.isEmpty
         case .writeBackupsChanged: refreshWriteBackups()
         case let .historyMarkFailed(warning): showToast(.notice(ArchiveUsbHistories.queueSaveFailureTitle, warning))
         }

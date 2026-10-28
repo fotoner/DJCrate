@@ -69,7 +69,7 @@ struct LibraryWindowModelTests {
         let window = LibraryWindowModel(store: store)
         await window.addDroppedFiles([NSItemProvider(object: text as NSURL)]).value
         // 음원이 아니라 추가하지 않고 이유를 알린다(곡 추가까지 왔다는 뜻)
-        #expect(store.staging.stagingMessage?.text.contains("추가할 음원이 없습니다") == true, "\(store.staging.stagingMessage?.text ?? "")")
+        #expect(store.activityLog.latest?.text.contains("추가할 음원이 없습니다") == true, "\(store.activityLog.latest?.text ?? "")")
     }
 
     @Test func 재생_목록에_놓은_파일도_그_목록으로_곡_추가에_넘긴다() async throws {
@@ -79,11 +79,11 @@ struct LibraryWindowModelTests {
         let store = TrackListDragTests.playlistStore(count: 1)
         // 사이드바 재생 목록에 놓은 파일은 추가 목록 조각의 입구로 간다(주 창 모델을 거치지 않는다)
         await store.staging.startAddingFiles([text], toPlaylist: "A").value
-        #expect(store.staging.stagingMessage?.text.contains("추가할 음원이 없습니다") == true, "\(store.staging.stagingMessage?.text ?? "")")
+        #expect(store.activityLog.latest?.text.contains("추가할 음원이 없습니다") == true, "\(store.activityLog.latest?.text ?? "")")
         // 고칠 수 없는 목록이면 곡 추가 전에 멈춘다
-        store.staging.stagingMessage = nil
+        let notices = store.noticeCount
         await store.staging.startAddingFiles([text], toPlaylist: "없는 목록").value
-        #expect(store.staging.stagingMessage == nil)
+        #expect(store.noticeCount == notices)
     }
 
     @Test func rekordbox에_쓰는_중에_놓은_파일은_넣지_않는다() async throws {
@@ -94,7 +94,7 @@ struct LibraryWindowModelTests {
         let window = LibraryWindowModel(store: store)
         store.isWritingRekordbox = true
         await window.addDroppedFiles([NSItemProvider(object: text as NSURL)]).value
-        #expect(store.staging.stagingMessage == nil)
+        #expect(store.activityLog.entries.isEmpty)
     }
 
     @Test func 주_창이_떠_있는_동안_바깥_초안을_다시_읽고_사라지면_멈춘다() async throws {

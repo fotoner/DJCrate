@@ -295,7 +295,7 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - 초안: `cue-drafts/`, `grid-drafts/`, `gain-drafts.json`, `tag-drafts/`
 - 앨범아트 초안: `artwork-drafts/`. 앨범아트 초안과 고른 앨범아트 사본이 있다.
 - 재생 목록 초안: `playlist-drafts.json`. 재생 목록 편집을 순서대로 적는다. 옆의 `playlist-drafts.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다.
-- `damaged-drafts/`: 읽지 못한 초안 파일을 옮겨 둔 곳이다. 그 파일을 지우지 않는다. 빈 값으로 덮지도 않는다. 합치기 초안 `merge-drafts.json`과 추가 목록 `staged.json`도 여기로 옮긴다. 앱은 읽기·저장 때 파일을 옮긴 뒤 목록 위에 알린다.
+- `damaged-drafts/`: 읽지 못한 초안 파일을 옮겨 둔 곳이다. 그 파일을 지우지 않는다. 빈 값으로 덮지도 않는다. 합치기 초안 `merge-drafts.json`과 추가 목록 `staged.json`도 여기로 옮긴다. 앱은 읽기·저장 때 파일을 옮긴 뒤 창 아래 알림으로 알린다.
 - 추가한 곡: `staged.json`
 - 활동 기록: `activity-log.json`(권한 0600). 창 알림과 쓰기 결과의 최근 200건이다.
   - 옛 결과 파일 `last-write-result.json`은 처음 열 때 첫 항목으로 이어 받는다. 이어 받은 옛 파일은 지운다(#296).
@@ -391,6 +391,8 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
 - **아무것도 쓰지 않았으면 창 대신 토스트로 알린다(#230).** 손실과 상태 불명만 창으로 멈춘다.
   - rekordbox가 켜져 있을 때와 쓸 초안·넣을 곡·뺄 곡이 없을 때는 경고 토스트 `AppToast.notice`를 띄운다. 이 토스트는 결과 보기 없이 읽을 시간이 지나면 닫힌다. 활동 기록에는 남는다.
 - **창 토스트는 `LibraryStore.showToast` 한 길로 띄운다(#296).** 띄운 알림은 모두 활동 기록 `ActivityLog`에 남는다. 쓰기 결과는 결과(전체 문구·백업 위치)를 함께 남긴다. 저장소의 `toast`는 밖에서 바꿀 수 없다. USB 흐름은 `UsbWriteHost.showToast`로 같은 길을 지난다.
+- **사용자가 누르지 않은 일의 안내는 `LibraryStore.notify`로 띄운다(#307).** 읽기·저장 실패, 손상 파일, XML 검증, 재생 기록 가져오기가 그렇다. 떠 있는 알림이 경고·실패면 그 알림을 그대로 둔다. 단추가 있는 알림도 같다. 새 알림은 활동 기록에만 남긴다(`unshown`).
+- **목록 위 오류·안내 줄은 없앴다(#307).** 오류 상태 `lastError`는 읽기·쓰기 흐름이 보는 값으로만 남는다.
   - 수명은 `AppToast.duration`이 정한다. 성공·경고는 4초 + 글자마다 0.06초다. 되돌리기·동작 단추가 있으면 적어도 7초다. 실패만 닫을 때까지 남는다.
   - 마우스를 올린 동안과 알림 안 단추에 키보드 포커스가 있는 동안은 시간을 세지 않는다(`AppToastTimer`). VoiceOver가 켜져 있으면 닫지 않는다.
   - 활동 기록은 최근 200건이다. 바로 앞 항목과 종류·제목·내용(쓰기 결과는 백업도)이 같으면 새 항목 대신 시각과 횟수를 고친다.

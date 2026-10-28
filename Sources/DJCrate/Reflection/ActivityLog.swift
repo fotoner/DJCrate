@@ -30,6 +30,9 @@ struct ActivityEntry: Codable, Equatable, Identifiable {
         self.init(kind: result.kind, title: result.title, detail: result.text, result: result, date: date)
     }
 
+    /// 제목과 자세한 내용을 한 덩어리로(목록 위 안내 줄이던 문구를 알림 하나로 옮겼다, #307)
+    var text: String { [title, detail].compactMap { $0 }.joined(separator: "\n") }
+
     /// 상태 줄이 읽지 않은 수로 셀 항목인지: 경고·실패, 그리고 띄우지 못한 알림(종류와 관계없이)
     var needsAttention: Bool { kind != .success || unshown == true }
 
@@ -113,10 +116,18 @@ final class ActivityLog {
     }
 
     /// 창 알림을 남기고 그 항목(합쳤으면 합친 항목)을 돌려준다. `shown`이 거짓이면 다른 알림이 떠 있어 띄우지 못하고 기록만 남긴 알림이다.
+    /// `replacing` 항목이 있으면 새 항목을 쌓지 않고 그 항목을 고쳐 맨 앞으로 옮긴다(떠 있는 안내의 수를 더할 때, #307).
     @discardableResult
-    func record(_ toast: AppToast, shown: Bool = true) -> ActivityEntry.ID {
+    func record(_ toast: AppToast, shown: Bool = true, replacing previous: ActivityEntry.ID? = nil) -> ActivityEntry.ID {
         var entry = ActivityEntry(kind: toast.kind, title: toast.title, detail: toast.detail, date: now())
         if !shown { entry.unshown = true }
+        if let previous, let index = entries.firstIndex(where: { $0.id == previous }) {
+            entry.id = previous
+            entries.remove(at: index)
+            entries.insert(entry, at: 0)
+            save()
+            return previous
+        }
         return append(entry)
     }
 

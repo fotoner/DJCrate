@@ -195,7 +195,12 @@ struct WriteFollowUpTests {
         #expect(store.reflectionBatch?.plans == [plan])
         #expect(store.testPorts.batches.load()?.plans == [plan])
         #expect(FileManager.default.fileExists(atPath: store.draftLocations.reflection.path), "저장소에 준 초안 폴더에 남긴다(사용자 폴더가 아니라)")
-        #expect(store.reflectionMessage?.kind == .warning)
-        #expect(store.reflectionMessage?.text.contains("확인하지 못함 1") == true)
+        #expect(store.activityLog.latest?.kind == .warning)
+        #expect(store.activityLog.latest?.text.contains("확인하지 못함 1") == true)
+        // 다시 읽어도 바뀌지 않은 결과는 다시 알리지 않는다(사이에 다른 알림이 끼어도, #307 리뷰)
+        let warnings = store.activityLog.entries.filter { $0.kind == .warning }.reduce(0) { $0 + $1.count }
+        store.showToast(.notice(text: "끼어든 안내", kind: .success))
+        store.verifyReflection()
+        #expect(store.activityLog.entries.filter { $0.kind == .warning }.reduce(0) { $0 + $1.count } == warnings)
     }
 }

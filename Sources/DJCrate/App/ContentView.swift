@@ -65,8 +65,8 @@ struct ContentView: View {
                 .modifier(LibraryWindowTitle(store: store))
                 // 안쪽 가드가 없는 조작을 막아 주므로 libraryBusy다(사이드바와 같다).
                 .disabled(store.libraryBusy)
-                // 위쪽 알림 줄(스냅샷 오류·반영·곡 추가)과 겹치지 않게 아래에 띄운다(#122). 덮개는 아래 덧댄 상태 줄의 자리를 모르므로
-                // 그 높이만큼 올린다(#298)
+                // 덱을 가리지 않게 아래에 띄운다(#122). 목록 위 오류·안내 줄도 모두 이 알림으로 옮겼다(#307).
+                // 덮개는 아래 덧댄 상태 줄의 자리를 모르므로 그 높이만큼 올린다(#298)
                 .overlay(alignment: .bottom) {
                     if let toast = store.toast {
                         AppToastView(toast: toast,

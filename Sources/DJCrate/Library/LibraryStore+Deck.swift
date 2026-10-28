@@ -28,7 +28,7 @@ extension LibraryStore {
     func loadSelectionToDeck() {
         guard !editsFrozen else { return }
         guard let row = primaryRow else {
-            staging.stagingMessage = AppMessage(kind: .warning, text: String(ui: "고른 곡을 찾을 수 없으니 목록에서 곡을 다시 선택한 뒤 덱에 불러오세요"))
+            showToast(.notice(text: String(ui: "고른 곡을 찾을 수 없으니 목록에서 곡을 다시 선택한 뒤 덱에 불러오세요"), kind: .warning))
             return
         }
         loadToDeck(row)
@@ -60,11 +60,11 @@ extension LibraryStore {
     /// 짝 로컬 ContentID → 덱에 올릴 줄. 짝이 없거나 목록에 없으면 덱을 바꾸지 않고 할 일을 알린다
     private func localDeckRow(_ id: String?) -> TrackRow? {
         guard let id else {
-            staging.stagingMessage = AppMessage(kind: .warning, text: String(ui: "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요"))
+            showToast(.notice(text: String(ui: "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요"), kind: .warning))
             return nil
         }
         guard let row = rowsByID[id] else {
-            staging.stagingMessage = AppMessage(kind: .warning, text: String(ui: "USB 곡과 짝인 로컬 곡을 찾을 수 없으니 라이브러리를 다시 읽은 뒤 덱에 불러오세요"))
+            showToast(.notice(text: String(ui: "USB 곡과 짝인 로컬 곡을 찾을 수 없으니 라이브러리를 다시 읽은 뒤 덱에 불러오세요"), kind: .warning))
             return nil
         }
         return row
