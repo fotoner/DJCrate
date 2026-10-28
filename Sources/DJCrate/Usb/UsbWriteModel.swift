@@ -12,7 +12,7 @@ final class UsbWriteModel {
     private(set) var busyVolumes: Set<String> = []
     /// 지금 쓰는 볼륨과 진행(덮개가 읽는다)
     private(set) var activeWrite: UsbActiveWrite?
-    /// 이 실행에서 옮긴 쓰기의 백업(사이드바 "쓰기 전으로 되돌리기…")
+    /// 이 실행에서 옮긴 쓰기의 백업(사이드바 "OneLibrary 더하기 되돌리기…")
     private(set) var migrationBackups: [String: URL] = [:]
     /// 시점 스냅샷 되돌리기를 취소할 쓰기 전 백업
     private(set) var pointRestoreBackups: [String: URL] = [:]

@@ -146,7 +146,7 @@ struct EditZoomBar: View {
                     .accessibilityLabel(.ui("\(name) 축소"))
                 Button { model.zoom(lane, by: 2) } label: { Image(systemName: "plus.magnifyingglass") }
                     .disabled(length <= 0 || closest)
-                    .help(.ui("재생선을 두고 확대합니다(= 키). 세로 휠·핀치는 포인터 자리를 둡니다"))
+                    .help(.ui("확대(= 키)"))
                     .accessibilityLabel(.ui("\(name) 확대"))
                 Button { model.fit(lane) } label: { Image(systemName: "arrow.left.and.right.square") }
                     .disabled(!zoomed)
