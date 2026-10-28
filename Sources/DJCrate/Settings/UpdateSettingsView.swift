@@ -10,17 +10,14 @@ struct UpdateSettingsView: View {
             Section {
                 Toggle(isOn: $model.automaticallyChecks) {
                     Text(.ui("새 버전 자동 확인"))
-                    Text(.ui("하루 한 번 GitHub Releases에서 새 버전을 찾아 알립니다."))
+                    Text(.ui("하루 한 번 새 버전을 확인합니다."))
                 }
-                .disabled(!model.isAvailable)
+                .disabled(because: model.unavailableReason, announcedAs: .hint)
                 Toggle(isOn: $model.automaticallyDownloads) {
                     Text(.ui("자동으로 받아 설치"))
-                    Text(.ui("새 버전을 뒤에서 받아 두고 앱을 끌 때 설치합니다."))
+                    Text(.ui("받아 두었다가 종료할 때 설치합니다."))
                 }
-                .disabled(!model.canChangeAutomaticDownloads)
-            } footer: {
-                Text(.ui("업데이트는 DJCrate 서명을 확인한 뒤에만 설치합니다. rekordbox·USB에 쓰는 중이면 쓰기가 끝난 뒤 설치합니다."))
-                    .foregroundStyle(.secondary)
+                .disabled(because: model.automaticDownloadsDisabledReason, announcedAs: .hint)
             }
             Section {
                 LabeledContent(.ui("지금 버전")) {
@@ -33,19 +30,15 @@ struct UpdateSettingsView: View {
                         .monospacedDigit()
                 }
                 HStack {
-                    if let reason = model.unavailableReason {
-                        Text(reason)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                     Spacer()
                     Button(.ui("지금 확인")) { model.checkNow() }
                         .disabled(!model.canCheck)
+                        .disabled(because: model.unavailableReason)
                 }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 400)
+        .frame(width: 520, height: 290)
     }
 }
 

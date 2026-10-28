@@ -38,17 +38,7 @@ struct SettingsView: View {
                 ShortcutSettingsView(deck: deck)
             }
             Tab(.ui("파형"), systemImage: "waveform", value: SettingsTab.waveform) {
-                Form {
-                    Picker(.ui("색 모드"), selection: $deck.waveformColorMode) {
-                        ForEach(WaveformColorMode.allCases, id: \.self) { Text($0.title).tag($0) }
-                    }
-                    Text(.ui("덱의 확대·전체 파형과 곡 목록 미리 보기에 함께 적용합니다."))
-                        .foregroundStyle(.secondary)
-                    Toggle(.ui("전체 파형 아래 조성 띠 보이기"), isOn: $deck.showKeyBand)
-                        .help(.ui("끄면 조성 띠가 차지하던 높이만큼 전체 파형이 낮아집니다"))
-                }
-                .formStyle(.grouped)
-                .frame(width: 520, height: 230)
+                WaveformSettingsView(deck: deck)
             }
             Tab(.ui("저장 공간"), systemImage: "internaldrive", value: SettingsTab.storage) {
                 StorageSettingsView(model: storage())
@@ -109,32 +99,24 @@ struct GeneralSettingsView: View {
                 }
             } header: {
                 Text(.ui("화면"))
-            } footer: {
-                Text(.ui("곡 목록·태그 시트·덱·알림의 글자를 키웁니다. 보기 › 글자 크게·작게(⌘+ · ⌘−)로도 바꿀 수 있습니다."))
-                    .foregroundStyle(.secondary)
             }
             Section {
                 Toggle(.ui("현황·스냅샷 보이기"), isOn: $sidebarShowsStatus)
             } header: {
                 Text(.ui("사이드바"))
             } footer: {
-                Text(.ui("실제 컬렉션·삭제 행·수동 큐 곡 수와 지금 연 스냅샷 파일 이름을 사이드바 맨 아래에 보여 줍니다."))
+                Text(.ui("사이드바 맨 아래에 곡 수와 스냅샷 이름을 보입니다."))
                     .foregroundStyle(.secondary)
             }
             Section {
                 Toggle(.ui("스트리밍 곡 숨기기"), isOn: $store.hideStreaming)
             } header: {
                 Text(.ui("곡 목록"))
-            } footer: {
-                Text(.ui("곡 목록과 곡 수에서 스트리밍 곡을 뺍니다. rekordbox 라이브러리는 바뀌지 않습니다."))
-                    .foregroundStyle(.secondary)
             }
             Section(.ui("코멘트")) {
                 Picker(.ui("코멘트 프리셋"), selection: $store.commentPreset) {
-                    ForEach(CommentPreset.allCases, id: \.self) { Text($0.title).tag($0) }
+                    ForEach(CommentPreset.allCases, id: \.self) { Text($0.pickerTitle).tag($0) }
                 }
-                Text(.ui("애니송을 고르면 코멘트 분류·필터·현황·형식 검사를 켭니다."))
-                    .foregroundStyle(.secondary)
             }
             Section {
                 Picker(.ui("재생을 멈춘 뒤 오디오 엔진 끄기"), selection: $deck.idleSeconds) {
@@ -145,13 +127,13 @@ struct GeneralSettingsView: View {
             } header: {
                 Text(.ui("오디오"))
             } footer: {
-                Text(.ui("짧을수록 쉬는 동안 CPU를 덜 쓰고, 길수록 멈춘 뒤 CUE·재생이 바로 소리 납니다."))
+                Text(.ui("짧으면 CPU를 아끼고, 길면 재생이 바로 시작됩니다."))
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         // 묶음 폼은 스크롤 뷰라 내용 높이를 스스로 알리지 않는다. 설정 창 높이를 탭마다 정한다.
-        .frame(width: 520, height: 640)
+        .frame(width: 520, height: 540)
     }
 
     static func durationText(_ seconds: Double) -> String {
@@ -159,30 +141,36 @@ struct GeneralSettingsView: View {
     }
 }
 
+extension CommentPreset {
+    /// 설정 항목 이름. 고르면 켜지는 것을 이름에 달아 따로 설명 줄을 두지 않는다.
+    var pickerTitle: String {
+        switch self {
+        case .none: title
+        case .anisong: String(ui: "애니송 — 분류·필터·현황·형식 검사")
+        }
+    }
+}
+
 // MARK: - 실험실
 
 /// 아직 rekordbox와 결과를 견주지 않은 실험 기능을 켜고 끄는 곳. 모두 기본으로 꺼 두고, 끄면 그 기능이 없던 때와 똑같이 보인다.
-/// 새 실험 기능은 `SettingKeys`에 `lab.` 이름으로 더하고 아래에 구역을 하나 더한다.
+/// 새 실험 기능은 `SettingKeys`에 `lab.` 이름으로 더하고 아래 '검증 전 기능' 구역에 토글을 더한다. 기능마다 알아야 할 단서가 있으면 구역을 나눠 꼬리말로 쓴다.
 struct LabSettingsView: View {
     @Bindable var store: LibraryStore
 
     var body: some View {
         Form {
             Section {
-                Text(.ui("여기 기능은 아직 rekordbox와 결과를 견주지 않았습니다. 기본은 꺼져 있습니다."))
-                    .foregroundStyle(.secondary)
-            }
-            Section {
                 Toggle(.ui("인텔리전트 재생 목록 보기"), isOn: $store.showSmartPlaylists)
             } header: {
-                Text(.ui("재생 목록"))
+                Text(.ui("검증 전 기능"))
             } footer: {
-                Text(.ui("인텔리전트 재생 목록의 조건을 DJCrate가 계산해 읽기 전용으로 보입니다. rekordbox 화면과 곡이 다를 수 있고, 계산하지 못하는 조건이 있으면 곡을 보이지 않습니다."))
+                Text(.ui("읽기 전용이며 rekordbox와 곡이 다를 수 있습니다."))
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 400)
+        .frame(width: 520, height: 150)
     }
 }
 
@@ -194,8 +182,9 @@ struct DeckSettingsView: View {
     var body: some View {
         Form {
             Section(.ui("재생")) {
-                Toggle(.ui("키 고정(템포를 바꿔도 음정 유지)"), isOn: $deck.keyLock)
-                Toggle(.ui("퀀타이즈(Q): 큐·루프 등록과 핫큐 점프"), isOn: $deck.playQuantize)
+                Toggle(.ui("키 고정"), isOn: $deck.keyLock)
+                Toggle(.ui("퀀타이즈(Q)"), isOn: $deck.playQuantize)
+                    .help(.ui("큐·루프 등록, 핫큐 점프에 적용"))
                 LabeledContent(.ui("메트로놈 소리 크기")) {
                     HStack {
                         Slider(value: $deck.metronomeVolume, in: 0...1)
@@ -207,31 +196,30 @@ struct DeckSettingsView: View {
                 }
             }
             Section(.ui("편집")) {
-                Toggle(.ui("그리드를 고칠 때 큐도 함께 옮기기(핫큐·메모리 큐·루프)"), isOn: $deck.carryCues)
+                Toggle(.ui("그리드를 고칠 때 큐도 함께 옮기기"), isOn: $deck.carryCues)
                 Toggle(.ui("메모리 큐 제안 보이기(섹션 경계)"), isOn: $deck.showSuggestions)
             }
             Section(.ui("게인")) {
-                Toggle(.ui("오토게인(곡마다 목표 음량에 맞춤)"), isOn: $deck.autoGain)
+                Toggle(.ui("오토게인"), isOn: $deck.autoGain)
                 Toggle(.ui("rekordbox 값 사용"), isOn: $deck.useRekordboxGain)
                     .disabled(!deck.autoGain)
                 Picker(.ui("목표 음량"), selection: $deck.gainTarget) {
                     ForEach(SettingKeys.gainTargetChoices, id: \.self) { Text(String(format: "%.0f LUFS", $0)).tag($0) }
                 }
                 .disabled(!deck.autoGain)
-                Toggle(.ui("피크 보호(0dBFS를 넘지 않을 만큼만 올림)"), isOn: $deck.peakProtection)
+                Toggle(.ui("피크 보호"), isOn: $deck.peakProtection)
+                    .help(.ui("0dBFS를 넘지 않게 제한"))
                     .disabled(!deck.autoGain)
             }
             Section {
                 HStack {
                     Spacer()
                     Button(.ui("기본값으로 되돌리기")) { deck.resetDeckSettings() }
+                        .help(.ui("볼륨·확대·트림은 그대로 둡니다"))
                 }
-            } footer: {
-                Text(.ui("덱에서 바로 만지는 볼륨·확대·트림은 그대로 둡니다."))
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 700)
+        .frame(width: 520, height: 580)
     }
 }

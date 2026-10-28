@@ -26,8 +26,13 @@ final class StorageSettingsModel {
     var autoSnapshotEnabled: Bool {
         didSet { settings?.set(SettingKeys.pointSnapshotAuto, autoSnapshotEnabled) }
     }
-    /// 클론이 안 돼(다른 디스크) 자동 스냅샷을 뜨지 않을 때의 안내
+    /// 클론이 안 돼(다른 디스크) 자동 스냅샷을 뜨지 않는 사정. 있으면 토글을 막고 이 글이 이유 툴팁이 된다
     private(set) var autoSnapshotNote: String?
+    /// 토글 아래 늘 보이는 짧은 줄. 못 뜨는 사정은 전문(`autoSnapshotNote`)을 툴팁으로 미룬다
+    var autoSnapshotCaption: String {
+        autoSnapshotNote == nil ? String(ui: "rekordbox가 꺼져 있고 라이브러리가 바뀌었을 때만 남깁니다")
+            : String(ui: "다른 디스크라 쓸 수 없습니다")
+    }
     @ObservationIgnored private let settings: SettingsStore?
     @ObservationIgnored private let canClone: @Sendable () -> Bool
     @ObservationIgnored private let openSnapshot: () -> URL?

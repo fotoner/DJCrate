@@ -66,8 +66,14 @@ final class UpdateSettingsModel {
         lastCheckDate.map { $0.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(UIStrings.locale)) }
             ?? String(ui: "아직 확인하지 않음")
     }
+    /// 업데이트 도구가 없어 확인·자동 설정을 막는 이유. 막힌 컨트롤의 툴팁으로 보인다
     var unavailableReason: String? {
         isAvailable ? nil : String(ui: "개발 빌드에서는 업데이트를 확인하지 않습니다. 배포한 앱에서 확인하세요")
+    }
+    /// 자동 설치 토글을 막는 이유. 막지 않으면 nil
+    var automaticDownloadsDisabledReason: String? {
+        if canChangeAutomaticDownloads { return nil }
+        return isAvailable ? String(ui: "새 버전 자동 확인을 켜면 쓸 수 있습니다") : unavailableReason
     }
 
     func checkNow() {
