@@ -272,6 +272,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | 소리 분석·렌더 | DJCAnalysis |
 | Pro DJ Link(CDJ·DJM) 장치·패킷 | DJCLink. DJLinkKit 타입은 이 모듈 밖에 내지 않는다 |
 | 화면 상태·의도 전달 | 앱 화면 모델. 유스케이스를 부른다. 모양은 [MVVM 패턴](mvvm.md) |
+| 여러 화면이 쓰는 뷰 장치(ⓘ 팝오버 `InfoPopoverButton`, 비활성 이유 `disabled(because:)`) | 앱의 `Sources/DJCrate/Support/`. 값만 받는 잎 뷰·수정자로 둔다(MVVM-3) |
 | 실제 구현 연결 | 앱은 `AppComposition`, CLI는 `CLIComposition` |
 | 외부 프레임워크(예: Sparkle) 연결 | 앱의 연결 파일 한 곳. `scripts/check-imports.py`의 `EXTERNAL_FILES`에 적는다. 판정은 DJCDomain·DJCApplication에 둔다 |
 | CLI 인자·출력 | `djc` 명령 |

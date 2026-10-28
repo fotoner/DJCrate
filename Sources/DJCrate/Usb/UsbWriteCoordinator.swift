@@ -100,7 +100,7 @@ struct UsbWriteCoordinator {
         return Task { await migrate(volume) }
     }
 
-    /// 사이드바 "쓰기 전으로 되돌리기…": 붙어 있는 볼륨이면 되돌리기를 시작한다. 없으면 nil
+    /// 사이드바 "OneLibrary 더하기 되돌리기…": 붙어 있는 볼륨이면 되돌리기를 시작한다. 없으면 nil
     @discardableResult
     func startRestoreMigration(volumeKey: String) -> Task<Void, Never>? {
         guard let volume = usb.volume(volumeKey) else { return nil }

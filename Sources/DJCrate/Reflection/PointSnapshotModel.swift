@@ -10,6 +10,8 @@ final class PointSnapshotModel {
     var selection: PointSnapshotRow.ID?
     var newName = ""
     private(set) var isWorking = false
+    /// rekordbox 라이브러리를 실제로 되돌리는 동안(비교·확인 창 동안은 아니다). 이 창은 주 창과 따로라 주 창의 진행 카드가 가려질 수 있어 창이 직접 안내를 보인다(#310)
+    private(set) var isRestoring = false
     /// 마지막 동작 결과 한 줄(실패면 `isError`)
     private(set) var message: String?
     private(set) var isError = false
@@ -158,9 +160,15 @@ final class PointSnapshotModel {
     /// 비교한 뒤 확인 창 하나로 묻고 그 시점으로 되돌린다(순서는 유스케이스). 복원 직전 상태는 시점 스냅샷으로 남는다.
     func restore(_ row: PointSnapshotRow) async {
         guard let entry = row.entry, !isWorking else { return }
+        let action = restoreAction
         let outcome = await points.restore(entry, blockReason: blockReason, confirmation: prompter.confirmation,
                                            compared: { [weak self] in self?.showComparison($0, of: row) },
-                                           working: { [weak self] in self?.isWorking = $0 }, perform: restoreAction)
+                                           working: { [weak self] in self?.isWorking = $0 },
+                                           perform: { [weak self] entry, changed in
+                                               self?.isRestoring = true
+                                               defer { self?.isRestoring = false }
+                                               return try await action(entry, changed)
+                                           })
         switch outcome {
         case let .refused(refusal):
             show(refusal.message, error: true)

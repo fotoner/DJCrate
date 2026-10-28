@@ -34,7 +34,7 @@ struct ReflectionMenu: View {
         // ⇧⌘E는 AppCommands가 맡아 툴바·사이드바를 숨겨도 한 번만 실행한다.
         .help(LibraryMenuAction.reflect.disabledReason(in: window)
               ?? (!store.writeTargets(store.selectedRows).isEmpty
-                  ? String(ui: "선택한 곡과 재생 목록의 초안을 확인한 뒤 rekordbox에 씁니다(⇧⌘E)")
-                  : String(ui: "선택한 곡에 쓸 초안이 없어 쓰기 대기 전체와 재생 목록 초안을 확인하니 미리 보기에서 대상을 확인하세요")))
+                  ? String(ui: "rekordbox에 씁니다(⇧⌘E)")
+                  : String(ui: "선택한 곡에 초안이 없어 쓰기 대기 전체가 대상입니다(⇧⌘E)")))
     }
 }

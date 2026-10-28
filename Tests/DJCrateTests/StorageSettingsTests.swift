@@ -107,6 +107,19 @@ struct StorageSettingsTests {
         #expect(other.autoSnapshotNote?.contains("다른 디스크") == true, "\(other.autoSnapshotNote ?? "")")
     }
 
+    /// #309: 토글 아래 늘 보이는 줄은 짧게, 못 뜨는 사정은 토글을 막는 이유(툴팁)로 옮긴다.
+    @Test func 자동_스냅샷_부제는_짧고_못_뜨는_사정은_이유_툴팁으로_간다() async throws {
+        let scene = try scene()
+        defer { try? FileManager.default.removeItem(at: scene.root) }
+        let cloning = StorageSettingsModel(paths: scene.paths, files: .live, canClone: { true })
+        await cloning.refresh()
+        #expect(cloning.autoSnapshotCaption == String(ui: "rekordbox가 꺼져 있고 라이브러리가 바뀌었을 때만 남깁니다"))
+        let other = StorageSettingsModel(paths: scene.paths, files: .live, canClone: { false })
+        await other.refresh()
+        #expect(other.autoSnapshotCaption == String(ui: "다른 디스크라 쓸 수 없습니다"))
+        #expect(other.autoSnapshotNote != nil && other.autoSnapshotNote != other.autoSnapshotCaption, "전문은 이유 툴팁으로 남는다")
+    }
+
     @Test func 앱을_켜면_지금_설정을_공유_파일에_맞춘다() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: "djc-shared-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }

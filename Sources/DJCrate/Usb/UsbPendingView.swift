@@ -79,7 +79,7 @@ struct UsbPendingView: View {
             if model.isPreviewing { ProgressView().controlSize(.small) }
             Button(.ui("미리 보기")) { model.previewTapped() }
                 .disabled(!list.canPreview || model.isPreviewing)
-                .help(.ui("초안을 지금 USB 상태로 계획해 편집마다 쓸지·막힐지 봅니다. USB에는 쓰지 않습니다."))
+                .help(.ui("쓰기 결과를 미리 봅니다"))
             Button(.ui("USB에 쓰기…")) { model.writeTapped() }
                 .disabled(!list.canWrite || model.isPreviewing)
                 .help(list.writeHelp)
@@ -87,7 +87,7 @@ struct UsbPendingView: View {
                 model.discardTapped()
             }
             .disabled(list.rows.isEmpty || model.isBusy)
-            .help(.ui("이 USB에 아직 쓰지 않은 편집을 모두 버립니다. 편집 › 실행 취소(⌘Z)로 되살립니다."))
+            .help(.ui("이 USB의 쓰기 대기를 모두 버립니다(⌘Z로 되살림)"))
         }
         .controlSize(.small)
         .padding(.horizontal, Spacing.edge)

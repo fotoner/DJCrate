@@ -42,7 +42,7 @@ struct UsbSidebarTests {
         let store = UsbTestData.store(host)
         await store.refresh()
         let row = try #require(UsbSidebarModel.volumes(store).first)
-        #expect(row.help == "Device Library만 있습니다. OneLibrary를 더하려면 ‘OneLibrary 더하기…’를 누르세요")
+        #expect(row.help == "Device Library", "형식 이름만 보인다. 더하는 방법은 펼친 볼륨 안의 ‘OneLibrary 더하기…’ 항목이 말한다")
     }
 
     @Test("OneLibrary 더하기는 Device Library 전용 USB에만 보인다", arguments: [Set<UsbFormat>(), [.deviceLibrary], [.oneLibrary], UsbFormat.defaultSet])
@@ -69,7 +69,7 @@ struct UsbSidebarTests {
         await store.refresh()
         let row = try #require(UsbSidebarModel.volumes(store).first)
         #expect(row.showsMigration && row.canMigrate)
-        #expect(row.migrationHelp == "Device Library를 읽어 OneLibrary를 더합니다. 확인 창에서 CDJ에서 확인하지 않은 항목을 확인하세요")
+        #expect(row.migrationHelp == "Device Library를 읽어 OneLibrary를 더합니다")
         #expect(store.physicalWriteBlock(volume) == nil)
         #expect(UsbStore(host: host, readPolicy: .diskImagesOnly, writeService: FakeUsbWriteService(), localLibrary: { nil }).physicalWriteBlock(volume)
             == UsbTestData.physicalBlock.message)

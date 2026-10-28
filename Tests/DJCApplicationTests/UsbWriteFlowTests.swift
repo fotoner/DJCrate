@@ -239,4 +239,60 @@ struct UsbWriteFlowTests {
         #expect(world.dismissed == [key] && world.ejected == [key])
         #expect(world.toasts == [.notice(title: UsbWriteFlow.Text.ejectFailedTitle, text: "사용 중인 앱을 닫으세요")])
     }
+
+    // MARK: - 확인 창 본문과 진행 안내(#310)
+
+    /// 확인 창이 쓰는 볼륨(시험 이미지·실물)마다, 쓰기·수정·OneLibrary 더하기·그 되돌리기·시점 되돌리기·그 취소 확인 창
+    static func writePrompts(for volume: UsbVolumeInfo, in world: UsbWriteWorld) -> [ReflectionPrompt] {
+        let test = volume.isDiskImage
+        var summary = world.service.state.withLock { $0.summary }
+        summary.isTestVolume = test
+        var edit = UsbRecoveryRecordsFlowTests.editSummary
+        edit.isTestVolume = test
+        var job = world.job()
+        job.volume = volume
+        let migration = UsbMigrationSummary(trackCount: 3, playlistCount: 1, artworkFiles: 6, blocks: [], rules: [], notes: [],
+                                            hasChanges: true, isTestVolume: test)
+        let point = UsbPointRestoreSummary(result: UsbPointSnapshotsFlowTests.planned(), blocks: [], deviceChanged: false)
+        return [
+            UsbWriteFlow.confirmation(summary, job: job),
+            UsbWriteFlow.editConfirmation(edit, volume: volume),
+            UsbWriteFlow.editConfirmation(edit, volume: volume, draftChanged: true),
+            UsbWriteFlow.migrationConfirmation(migration, volume: volume),
+            UsbWriteFlow.migrationRestoreConfirmation(volume),
+            UsbWriteFlow.pointRestoreConfirmation(volume, entry: UsbPointSnapshotsFlowTests.entry(), summary: point),
+            UsbWriteFlow.pointUndoConfirmation(volume),
+        ]
+    }
+
+    @Test("USB 쓰기 확인 창 본문에는 대상만 있고, 백업·다시 읽기·뽑지 마세요 같은 절차 문장은 없다")
+    func confirmationBodiesHaveNoProcedureSentences() {
+        let world = UsbWriteWorld()
+        for volume in [world.volume, FakeUsbVolume.physicalFAT32()] {
+            for prompt in Self.writePrompts(for: volume, in: world) {
+                let shown = ([prompt.title, prompt.text] + prompt.details).joined(separator: "\n")
+                for sentence in ["뽑지 마세요", "Mac에 백업", "다시 읽어 확인", "기기에 꽂기 전에", UsbWriteFlow.Text.progressNotice] {
+                    #expect(!shown.contains(sentence), "\(prompt.title): \(sentence)")
+                }
+                #expect(prompt.text.contains(volume.name), "본문이 대상 볼륨을 말한다: \(prompt.title)")
+            }
+        }
+    }
+
+    @Test("실물 USB 확인 창은 볼륨 이름·용량·형식과 '실물 USB입니다'를 보인다(쓰기 동의 줄)")
+    func physicalConsentLineStays() {
+        let world = UsbWriteWorld()
+        let physical = FakeUsbVolume.physicalFAT32()
+        let capacity = physical.capacity.formatted(ByteCountFormatStyle(style: .file))
+        // OneLibrary 되돌리기 확인 창은 예전부터 details가 없고 본문에 볼륨 이름만 있다(USB-23과 어긋남, 보고서 "남은 것"). 이 시험은 그 창을 뺀다.
+        for prompt in Self.writePrompts(for: physical, in: world) where prompt.title != UsbWriteFlow.migrationRestoreConfirmation(physical).title {
+            #expect(prompt.details.contains("실물 USB입니다: DJCPHYS · \(capacity) · FAT32 · MBR"), "\(prompt.title)")
+        }
+        #expect(UsbWriteFlow.volumeLines(physical, isTestVolume: false) == ["실물 USB입니다: DJCPHYS · \(capacity) · FAT32 · MBR"])
+        #expect(UsbWriteFlow.volumeLines(world.volume, isTestVolume: true) == ["시험 볼륨(디스크 이미지)입니다"])
+    }
+
+    @Test func 쓰는_동안의_진행_안내는_상수_한_곳에서_온다() {
+        #expect(UsbWriteFlow.Text.progressNotice == "끝날 때까지 USB를 뽑지 마세요")
+    }
 }

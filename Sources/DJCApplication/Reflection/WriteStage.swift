@@ -21,6 +21,11 @@ public struct WriteStage: Equatable, Sendable {
         self.readsBack = readsBack
     }
 
+    /// 진행 카드에 보이는 안내 한 줄: 아직 쓰기 전이면 취소해도 된다는 것, 쓰는 동안은 rekordbox를 켜지 말라는 것(#310)
+    public var notice: String {
+        cancellable ? ReflectionPrompts.beforeWriteNotice : ReflectionPrompts.progressNotice
+    }
+
     /// 앱 종료 판정의 단계(취소할 수 있으면 아직 쓰지 않은 단계가 먼저다)
     public var phase: RekordboxWritePhase {
         if cancellable { return .cancellable }

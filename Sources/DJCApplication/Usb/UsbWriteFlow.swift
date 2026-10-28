@@ -369,9 +369,7 @@ public struct UsbWriteFlow {
     /// 이 실행에서 옮긴 쓰기의 백업으로만 되돌린다. 다른 쓰기 뒤에는 메뉴를 숨긴다.
     public func restoreMigration(_ volume: UsbVolumeInfo) async {
         guard let backup = session.migrationBackups[volume.usbKey], await ready(volume) else { return }
-        guard confirmation.confirm(ReflectionPrompt(title: String(ui: "USB를 쓰기 전으로 되돌릴까요?"),
-                                            text: String(ui: "\(volume.name)에 OneLibrary를 더하기 전의 백업으로 되돌립니다. 끝날 때까지 USB를 뽑지 마세요."),
-                                            confirm: String(ui: "되돌리기"), destructive: true)) else { return }
+        guard confirmation.confirm(Self.migrationRestoreConfirmation(volume)) else { return }
         guard begin(volume, title: String(ui: "USB를 되돌리는 중…"), cancellable: false) != nil else { return }
         await restore(volume, backup: backup)
     }
@@ -382,7 +380,7 @@ public struct UsbWriteFlow {
         details += summary.notes
         details += deviceCheckLines(summary.rules.map { ($0, 0) }, trackCount: 0)
         return ReflectionPrompt(title: String(ui: "OneLibrary를 더할까요?"),
-                                text: String(ui: "\(volume.name)의 Device Library를 읽어 OneLibrary를 더합니다. 쓰기 전에 Mac에 백업하고 쓴 뒤 USB에서 다시 읽어 확인합니다. 끝날 때까지 USB를 뽑지 마세요."),
+                                text: String(ui: "\(volume.name)의 Device Library를 읽어 OneLibrary를 더합니다."),
                                 confirm: String(ui: "OneLibrary 더하기"), details: details)
     }
 

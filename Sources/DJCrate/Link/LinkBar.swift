@@ -95,7 +95,7 @@ private struct LinkToggle: View {
         }
         .buttonStyle(.plain)
         .opacity(blockReason == nil ? 1 : 0.5)
-        .help(blockReason ?? String(ui: "누르면 네트워크의 Pro DJ Link 장치를 보이고 DJCrate 라이브러리를 CDJ에 내어 줍니다"))
+        .help(blockReason ?? String(ui: "Pro DJ Link · CDJ에 라이브러리 제공"))
         .accessibilityLabel(Text(.ui("LINK")))
         .accessibilityValue(blockReason ?? (isOn ? String(ui: "펼침") : String(ui: "접힘")))
     }

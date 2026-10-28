@@ -77,14 +77,75 @@ struct ReflectionPromptsTests {
         let report = Self.report(cues: [Self.outcome("a", .written)], grids: [Self.outcome("b", .blocked, reason: "분석 전")])
         let prompt = ReflectionPrompts.confirmation(report)
         #expect(prompt.title == "큐 1곡을 rekordbox에 쓸까요?")
-        #expect(prompt.text == "백업한 뒤 쓰고 다시 확인합니다. 끝날 때까지 rekordbox를 켜지 마세요.")
+        // 대상은 제목이, 막힘·손실은 목록이 말한다. 절차 문장은 본문에 없다(#310)
+        #expect(prompt.text.isEmpty)
         #expect(prompt.details == ["쓰지 않는 것 1:", "• 곡 b: 분석 전"])
         #expect(ReflectionPrompts.summaryLine(["• 가", "• 나", "• 다"], prefix: "쓰지 않는 것") == "쓰지 않는 것 3: 가, 나 외 1건")
-        // 넣기·빼기 확인도 쓰기와 같은 백업 안내로 끝난다
         var deleted = RekordboxTrackWriteReport(dryRun: true)
         deleted.deleted = [Self.track("a")]
-        #expect(ReflectionPrompts.addConfirmation(Self.addPreview([Self.track("a")]), writesArtwork: true).text == prompt.text)
-        #expect(ReflectionPrompts.deleteConfirmation(TrackDeletePreview(report: deleted, contentIDs: ["id-a"])).text.hasSuffix("\n" + prompt.text))
+        #expect(ReflectionPrompts.addConfirmation(Self.addPreview([Self.track("a")]), writesArtwork: true).text.isEmpty)
+        // 빼기는 함께 사라지는 것(손실 줄)만 본문에 둔다
+        #expect(ReflectionPrompts.deleteConfirmation(TrackDeletePreview(report: deleted, contentIDs: ["id-a"])).text
+                == "음원 파일은 지우지 않습니다. rekordbox의 큐·재생 목록 항목·재생 기록·분석 파일·앨범아트가 함께 사라집니다.")
+    }
+
+    /// 절차·진행 안내("백업한 뒤 쓰고 다시 확인", "끝날 때까지 … 마세요")는 쓰는 동안의 진행 카드가 한 번만 말한다(#310).
+    static let procedureSentences = ["켜지 마세요", "백업한 뒤", "다시 확인합니다", ReflectionPrompts.progressNotice]
+
+    static func shown(_ prompt: ReflectionPrompt) -> String {
+        ([prompt.title, prompt.text] + prompt.details).joined(separator: "\n")
+    }
+
+    @Test func 쓰기_넣기_빼기_복원_확인_창에는_절차_문장이_없다() {
+        var merged = Self.report(cues: [Self.outcome("a", .written), Self.outcome("b", .blocked, reason: "분석 전")])
+        merged.mergeOutcomes = [Self.outcome("m", .written)]
+        var deleted = RekordboxTrackWriteReport(dryRun: true)
+        deleted.deleted = [Self.track("a"), Self.track("b", written: false, reason: "동기화된 곡")]
+        var tracks = RekordboxTrackWriteReport(dryRun: false)
+        tracks.added = [Self.track("a")]
+        tracks.deleted = [Self.track("c")]
+        let prompts = [
+            ReflectionPrompts.confirmation(merged, exclusions: ["• 곡 z: 읽지 못함"], canBackUp: false),
+            ReflectionPrompts.addConfirmation(Self.addPreview([Self.track("a")], without: ["a": "ALAC"]), writesArtwork: true, canBackUp: false),
+            ReflectionPrompts.deleteConfirmation(TrackDeletePreview(report: deleted, contentIDs: ["id-a"])),
+            ReflectionPrompts.restoreConfirmation(Self.backup(), changedSince: false),
+            ReflectionPrompts.restoreConfirmation(Self.backup(), changedSince: true, later: 2),
+            ReflectionPrompts.restoreConfirmation(Self.backup(), changedSince: nil, conflicts: ["• 곡 a — 큐"]),
+            ReflectionPrompts.restoreConfirmation(Self.backup(tracks: tracks), changedSince: false),
+        ]
+        for prompt in prompts {
+            for sentence in Self.procedureSentences { #expect(!Self.shown(prompt).contains(sentence), "\(prompt.title): \(sentence)") }
+        }
+    }
+
+    @Test func 절차_문장을_걷어도_손실_줄과_막힘_줄은_남는다() {
+        var merged = Self.report(cues: [Self.outcome("a", .written)])
+        merged.mergeOutcomes = [Self.outcome("m", .written)]
+        let merge = ReflectionPrompts.confirmation(merged, canBackUp: false)
+        #expect(merge.destructive && merge.details.contains(DuplicateMerge.lossNotice) && merge.details.contains(ReflectionPrompts.noBackupText))
+        var deleted = RekordboxTrackWriteReport(dryRun: true)
+        deleted.deleted = [Self.track("a")]
+        let delete = ReflectionPrompts.deleteConfirmation(TrackDeletePreview(report: deleted, contentIDs: ["id-a"]))
+        #expect(delete.critical && delete.text.contains("함께 사라집니다") && delete.details == ["• 곡 a"])
+        let changed = ReflectionPrompts.restoreConfirmation(Self.backup(), changedSince: true, later: 2)
+        #expect(changed.critical && changed.destructive)
+        #expect(changed.text.contains("복원하면 그 변경도 함께 사라집니다") && changed.text.contains("2번도 분석 파일까지 함께 되돌립니다"))
+        #expect(changed.text.hasPrefix("백업: "))
+        let unknown = ReflectionPrompts.restoreConfirmation(Self.backup(), changedSince: nil)
+        #expect(unknown.text.contains("그 뒤 rekordbox에서 한 변경은 함께 사라집니다"))
+    }
+
+    @Test func 진행_카드_안내는_상수_한_곳에서_오고_쓰는_동안만_켜지_말라고_한다() {
+        #expect(ReflectionPrompts.progressNotice == "끝날 때까지 rekordbox를 켜지 마세요")
+        #expect(ReflectionPrompts.beforeWriteNotice == "아직 rekordbox에 쓰지 않았습니다")
+        // 쓰기·복원·다시 읽기 단계는 취소할 수 없고 모두 같은 안내를 보인다
+        for stage in [WriteStage("rekordbox에 쓰는 중…"), WriteStage("rekordbox를 복원하는 중…"), .reloadingLibrary,
+                      WriteStage("넣은 곡을 읽는 중…", readsBack: true)] {
+            #expect(stage.notice == ReflectionPrompts.progressNotice, "\(stage.text)")
+        }
+        // 아직 쓰기 전인 취소할 수 있는 단계는 켜지 말라고 하지 않는다
+        let preview = WriteStage("미리 보기 1/2단계 · 사본을 만드는 중…", completed: 0, total: 2, cancellable: true)
+        #expect(preview.notice == ReflectionPrompts.beforeWriteNotice && !preview.notice.contains("켜지"))
     }
 
     @Test func 쓰기_전_확인_정책() {
@@ -180,11 +241,11 @@ struct ReflectionPromptsTests {
         let conflicted = ReflectionPrompts.restoreConfirmation(Self.backup(), changedSince: false, conflicts: ["• 곡 a — 큐"])
         #expect(conflicted.alternate != nil && conflicted.confirm != calm.confirm)
         #expect(conflicted.details.suffix(1) == ["• 곡 a — 큐"])
-        // 문장마다 번역하고 뒤 빈칸은 원래 모양 그대로 둔다.
+        // 문장마다 번역하고 문장 뒤 빈칸은 원래 모양 그대로 둔다.
         var tracks = RekordboxTrackWriteReport(dryRun: false)
         tracks.added = [Self.track("a")]
         #expect(ReflectionPrompts.restoreConfirmation(Self.backup(tracks: tracks), changedSince: false).text
-            .contains("라이브러리 전체를 이 백업으로 복원합니다. 넣었던 1곡은 컬렉션에서 빠지고 DJCrate 추가 목록으로 돌아옵니다(분석·앨범아트 파일도 삭제). \n\n"))
+            .hasSuffix("라이브러리 전체를 이 백업으로 복원합니다. 넣었던 1곡은 컬렉션에서 빠지고 DJCrate 추가 목록으로 돌아옵니다(분석·앨범아트 파일도 삭제). "))
     }
 
     @Test func 자동_복원까지_실패하면_터미널_명령을_안내하는_심각_경고() throws {
