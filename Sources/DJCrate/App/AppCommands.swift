@@ -92,6 +92,8 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .help) {
             Button(.ui("DJCrate 단축키")) { openWindow(id: "shortcuts") }
                 .keyboardShortcut("?", modifiers: .command)
+            Divider()
+            ForEach(LibraryMenuAction.helpActions, id: \.self) { libraryButton($0) }
         }
     }
 

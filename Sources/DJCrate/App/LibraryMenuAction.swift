@@ -6,6 +6,9 @@ enum LibraryMenuAction: CaseIterable {
 
     static let fileActions: [Self] = [.addFiles, .importAppleMusic, .snapshot, .exportXML, .exportLibraryXML, .importRekordboxXML]
     static let rekordboxActions: [Self] = [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks]
+    /// 도움말 메뉴에도 보이는 rekordbox 메뉴 항목. 툴바 쓰기 메뉴가 없어진 뒤(#325) 문제가 생긴 사용자가 복원 입구를 한 곳 더 찾을 수 있게 한다.
+    /// 같은 항목을 그대로 부르므로 이름·켜짐 조건·꺼진 이유가 rekordbox 메뉴와 같다.
+    static let helpActions: [Self] = [.restore]
 
     var title: String {
         switch self {

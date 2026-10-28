@@ -7,7 +7,7 @@
 > [!WARNING]
 > DJCrate는 아직 **베타**(0.x)라서 예상하지 못한 문제가 생길 수 있습니다.
 >
-> DJCrate는 rekordbox에 쓰기 전에 라이브러리 전체를 자동으로 백업합니다. 쓴 뒤 문제가 생기면 툴바 [rekordbox에 쓰기] 메뉴의 [쓰기 전으로 복원…]으로 되돌려 주세요. 그래도 문제가 남으면 [이슈](https://github.com/fotoner/DJCrate/issues)로 연락해 주세요.
+> DJCrate는 rekordbox에 쓰기 전에 라이브러리 전체를 자동으로 백업합니다. 쓴 뒤 문제가 생기면 메뉴 막대 rekordbox › [쓰기 전으로 복원…]이나 도움말 메뉴의 같은 항목으로 되돌려 주세요. 그래도 문제가 남으면 [이슈](https://github.com/fotoner/DJCrate/issues)로 연락해 주세요.
 >
 > DJCrate는 [GPL-2.0-or-later 라이선스](LICENSE)에 따라 있는 그대로 제공됩니다. 사용 중 생긴 데이터 손실이나 손해는 개발자가 책임지지 않습니다.
 

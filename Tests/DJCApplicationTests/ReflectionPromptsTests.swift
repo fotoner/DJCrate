@@ -254,6 +254,9 @@ struct ReflectionPromptsTests {
         #expect(prompt.critical && prompt.confirm == nil)
         #expect(prompt.text.contains(DJCError.restoreCommand(backup: "/tmp/b", database: nil)))
         #expect(!prompt.text.contains("검증 실패") && !prompt.text.contains("복원 실패"))
+        // 툴바 쓰기 메뉴가 없어진 뒤(#325) 읽기 상태와 상관없이 늘 있는 메뉴 막대 경로를 안내한다(`DJCError.restoreFailed`와 같은 경로)
+        #expect(prompt.text.contains("메뉴 막대 rekordbox › 쓰기 전으로 복원…"))
+        #expect(!prompt.text.contains("사이드바") && !prompt.text.contains("목록 위"))
         #expect(ReflectionPrompts.restoreFailureAlert(DJCError.writeRolledBack("x")) == nil)
     }
 }

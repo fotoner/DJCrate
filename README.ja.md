@@ -7,7 +7,7 @@
 > [!WARNING]
 > DJCrate はまだ **ベータ版**（0.x）のため、予期しない問題が起きる可能性があります。
 >
-> DJCrate は rekordbox に書き込む前に、ライブラリ全体を自動でバックアップします。書き込んだ後に問題が起きたときは、ツールバーの [rekordboxに書き込む] メニューにある [書き込み前に復元…] で元に戻してください。それでも問題が残る場合は、[Issues](https://github.com/fotoner/DJCrate/issues) からご連絡ください。
+> DJCrate は rekordbox に書き込む前に、ライブラリ全体を自動でバックアップします。書き込んだ後に問題が起きたときは、メニューバーの rekordbox › [書き込み前に復元…]、またはヘルプメニューの同じ項目で元に戻してください。それでも問題が残る場合は、[Issues](https://github.com/fotoner/DJCrate/issues) からご連絡ください。
 >
 > DJCrate は [GPL-2.0-or-later ライセンス](LICENSE)に基づき「現状のまま」提供されます。使用中に生じたデータの損失や損害について、開発者は責任を負いません。
 
