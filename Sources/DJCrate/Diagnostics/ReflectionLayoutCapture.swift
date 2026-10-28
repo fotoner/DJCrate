@@ -12,6 +12,12 @@ extension DevSelfTests {
     /// - `unread-`: 읽지 않은 알림 3건(경고·실패·띄우지 못한 USB 알림)이 있는 상태 줄
     /// - `popover-`: 그 3건을 둔 채 맨 위 경고를 펼친 활동 팝오버
     /// - `open-`: [열기]가 붙은 경고 알림(결과 보기 없음)
+    /// 쓰기 상태 칩 장면(#324)은 알림 없이 상태 줄만 보인다. 칩·Dock 배지 값은 표준 오류에 `[쓰기 상태]` 줄로 남긴다.
+    /// - `idle-`: 쓰기 대기 없음(큐 초안을 만들지 않는다)
+    /// - `plonly-`: 재생 목록 편집만 있는 상태(「재생 목록 편집 1건」)
+    /// - `busy-`: 쓰는 중(쓰기 잠금을 걸고 1초를 넘겨 기다린 뒤 찍는다)
+    /// - `chip-`: 곡 초안 1곡과 마지막 쓰기가 있는 채 쓰기 상태 팝오버를 연 모습(팝오버는 `<캡처 이름>-popover.png`)
+    /// 곡 초안이 있는 장면(위 `status-` 등)의 칩은 「쓰기 대기 1건」이다.
     static func runReflectionLayoutIfRequested(store: LibraryStore, libraryWindow: LibraryWindowModel, statusBar: StatusBarModel) {
         let args = ProcessInfo.processInfo.arguments
         guard let argument = args.first(where: { $0.hasPrefix("--reflection-layout=") }),
@@ -26,10 +32,13 @@ extension DevSelfTests {
             NSApp.appearance = NSAppearance(named: argument.hasSuffix("dark") ? .darkAqua : .aqua)
             window.setContentSize(NSSize(width: 1100, height: 700))
             window.center()
-            var draft = CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues, newID: { UUID() })
-            draft.cues.append(EditableCue(id: UUID(), kind: .memory, time: 10, name: "레이아웃 시험"))
-            try? CueDraftStore.save(draft)
-            store.cueDraftChanged(draft)
+            let writeScene = ["idle-", "plonly-", "busy-", "chip-"].first(where: argument.contains)
+            if writeScene != "idle-", writeScene != "plonly-" {
+                var draft = CueDraft(trackUUID: row.track.uuid, rekordboxCues: row.cues, newID: { UUID() })
+                draft.cues.append(EditableCue(id: UUID(), kind: .memory, time: 10, name: "레이아웃 시험"))
+                try? CueDraftStore.save(draft)
+                store.cueDraftChanged(draft)
+            }
             store.selection = [row.id]
             store.loadToDeck(row)
             let backup = DJCPaths.userData.appending(path: "synthetic-backup")
@@ -43,7 +52,8 @@ extension DevSelfTests {
                 store.showToast(AppToast(title: String(ui: "현재 rekordbox 내용을 불러왔습니다")))
                 store.activityLog.record(WriteResult(kind: .failure, title: String(ui: "rekordbox에 쓰지 않았습니다"), text: detail))
             }
-            let statusScene = ["status-", "unread-", "popover-", "open-"].first(where: argument.contains)
+            // 쓰기 상태 장면은 알림 없는 상태 줄(`status-`)과 같은 바탕이다
+            let statusScene = writeScene != nil ? "status-" : ["status-", "unread-", "popover-", "open-"].first(where: argument.contains)
             if let statusScene {
                 if statusScene != "status-" {
                     store.activityLog.record(AppToast(title: String(ui: "현재 rekordbox 내용을 불러왔습니다")))
@@ -67,6 +77,33 @@ extension DevSelfTests {
                                 for: WriteResult(kind: .warning, title: title, text: detail, backups: [backup]))
             }
             if argument.contains("activity-") { libraryWindow.showActivityLog(selecting: store.toast?.activityID) }
+            if let writeScene {
+                if writeScene == "plonly-" {
+                    var playlists = PlaylistDraft()
+                    try? playlists.append(.create(key: "layout", name: "LAYOUT", isFolder: false, parent: PlaylistRef(PlaylistLayout.root)),
+                                          rekordbox: PlaylistLayout())
+                    // 메모리에만 두면 1초마다 하는 바깥 초안 확인이 빈 디스크 초안으로 되돌린다. 저장하는 입구로 넣는다
+                    store.playlists.setPlaylistDraft(playlists, actionName: "LAYOUT")
+                }
+                if writeScene == "chip-" {
+                    store.activityLog.record(WriteResult(kind: .success, title: title, text: detail, backups: [backup]))
+                    NSApp.activate()
+                    window.makeKeyAndOrderFront(nil)
+                    statusBar.write?.isPresented = true
+                }
+                if writeScene == "busy-" {
+                    store.setWriteLock(true)
+                    // 쓰는 중 칩은 쓰기가 1초를 넘길 때만 보인다
+                    try? await Task.sleep(for: .milliseconds(1500))
+                }
+                // 시작 직후 메인 스레드가 바쁜 동안은 칩이 따라오지 못한다. 값이 맞을 때까지(최대 3초) 기다린 뒤 읽는다
+                let expected = writeScene == "idle-" ? ReflectionChip.clean : writeScene == "plonly-" ? .pending(items: 0, playlistEdits: 1)
+                    : writeScene == "busy-" ? .writing : .pending(items: 1, playlistEdits: 0)
+                for _ in 0..<30 where statusBar.write?.chip != expected { try? await Task.sleep(for: .milliseconds(100)) }
+                try? await Task.sleep(for: .milliseconds(300))
+                let dock = NSApplication.shared.dockTile.badgeLabel ?? "없음"
+                FileHandle.standardError.write(Data("[쓰기 상태] 칩 \(statusBar.write?.chip.title ?? "-") · Dock 배지 \(dock) · 보조 글 \(statusBar.write?.lastWriteText ?? "없음")\n".utf8))
+            }
             if argument.contains("locked-") || argument.contains("reload-") {
                 store.dismissToast()
                 store.setWriteLock(true)

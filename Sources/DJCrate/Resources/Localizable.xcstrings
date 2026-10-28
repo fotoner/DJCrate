@@ -25659,6 +25659,38 @@
         }
       }
     },
+    "마지막 쓰기 %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last write %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後の書き込み %@"
+          }
+        }
+      }
+    },
+    "마지막 쓰기 %@ · 백업 있음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last write %@ · Backup available"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後の書き込み %@ · バックアップあり"
+          }
+        }
+      }
+    },
     "마지막 확인" : {
       "localizations" : {
         "en" : {
@@ -32709,6 +32741,22 @@
         }
       }
     },
+    "쓰기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Write"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込む"
+          }
+        }
+      }
+    },
     "쓰기 결과가 예상과 달라 변경을 취소했습니다" : {
       "localizations" : {
         "en" : {
@@ -32773,6 +32821,34 @@
         }
       }
     },
+    "쓰기 대기 %lld건" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Item Pending"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Items Pending"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み待ち%lld件"
+          }
+        }
+      }
+    },
     "쓰기 대기 목록 보기" : {
       "localizations" : {
         "en" : {
@@ -32785,6 +32861,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "書き込み待ちを表示"
+          }
+        }
+      }
+    },
+    "쓰기 대기 없음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Pending Writes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み待ちなし"
           }
         }
       }
@@ -40889,6 +40981,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "プレイリストの下書きを保存できませんでした。DJCrateのデータフォルダの書き込み権限を確認してから、書き込みを再試行してください。"
+          }
+        }
+      }
+    },
+    "재생 목록 편집 %lld건" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Playlist Edit"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Playlist Edits"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリスト編集%lld件"
           }
         }
       }

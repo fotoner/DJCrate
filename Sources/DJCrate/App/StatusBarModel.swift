@@ -16,6 +16,8 @@ final class StatusBarModel {
     @ObservationIgnored private let settings: SettingsStore
     /// 활동 기록 창을 연다(모두 보기·항목의 활동 기록에서 보기). 조립 지점이 주 창 모델에 잇는다
     @ObservationIgnored var showLog: (ActivityEntry.ID?) -> Void = { _ in }
+    /// 같은 줄의 rekordbox 쓰기 상태(#324). 조립 지점이 한 번 붙인다. 주 창이 상태 줄을 이 모델 하나로 만들 수 있게 여기서 건넨다
+    @ObservationIgnored var write: ReflectionStatusModel?
     /// 이 시각까지 뜬 알림은 읽었다
     private(set) var seenThrough: Date
     /// 팝오버를 연 동안 참. 열 때와 닫을 때 그때까지 뜬 알림을 읽음으로 본다(연 동안 뜬 알림도 팝오버에 보였다)
