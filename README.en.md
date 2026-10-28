@@ -7,7 +7,7 @@
 > [!WARNING]
 > DJCrate is still in **beta** (0.x), so you may run into unexpected problems.
 >
-> DJCrate automatically backs up your entire library before it writes to rekordbox. If something goes wrong after a write, roll it back with [Restore Before Write…] in the toolbar's [Write to rekordbox] menu. If the problem remains, please contact us through [Issues](https://github.com/fotoner/DJCrate/issues).
+> DJCrate automatically backs up your entire library before it writes to rekordbox. If something goes wrong after a write, roll it back with [Restore Before Write…] in the menu bar under rekordbox, or the same item in the Help menu. If the problem remains, please contact us through [Issues](https://github.com/fotoner/DJCrate/issues).
 >
 > DJCrate is provided "as is" under the [GPL-2.0-or-later license](LICENSE). The developer is not responsible for any data loss or damage that occurs while using it.
 

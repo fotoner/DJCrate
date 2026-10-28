@@ -5,7 +5,7 @@ import Foundation
 /// rekordbox 쓰기(반영 세션, DJCApplication `ReflectionSession`)가 보는 이 화면의 초안 상태와, 세션이 쓰거나 되돌린 결과를 화면에 맞추는 곳.
 /// 무엇을 지우고 되살리고 옮길지는 세션이 정한다. 이 확장은 메모리 초안·표시·선택만 맞춘다(조립 지점 `AppComposition.reflection`이 세션의 포트에 잇는다).
 extension LibraryStore {
-    /// 고른 곡 가운데 rekordbox에 쓸 곡(메뉴·툴바가 보일지·곡 수를 정한다). 반영 세션과 같은 규칙(`ReflectionTargets`, 저장 대기 입력 포함)
+    /// 고른 곡 가운데 rekordbox에 쓸 곡(곡 오른쪽 클릭 메뉴가 보일지·곡 수를 정한다). 반영 세션과 같은 규칙(`ReflectionTargets`, 저장 대기 입력 포함)
     func writeTargets(_ rows: [TrackRow]) -> [TrackRow] {
         ReflectionTargets.write(rows, pending: ReflectionTargets.pending(marked: pendingUUIDs, unsaved: useCases.watch.unsavedUUIDs()))
     }

@@ -224,11 +224,10 @@ struct ContentView: View {
                 } label: {
                     Label(.ui("rekordbox와 동기화"), systemImage: "arrow.clockwise")
                 }
+                // 아이콘만 보이면 USB·iTunes 다시 확인의 ⟳와 구분되지 않는다
+                .labelStyle(.titleAndIcon)
                 .disabled(!LibraryMenuAction.snapshot.isEnabled(in: window))
                 .help(LibraryMenuAction.snapshot.disabledReason(in: window) ?? String(ui: "rekordbox 내용을 새로 읽고 편집 중인 초안을 보존합니다(⌘R)."))
-            }
-            ToolbarItem(id: "reflection", placement: .primaryAction) {
-                ReflectionMenu(store: store, window: window)
             }
     }
 

@@ -149,13 +149,12 @@ public enum ReflectionPrompts {
     }
 
     /// 쓰기 확인도 자동 복원도 실패했을 때의 경고(상태를 알 수 없음 + 할 일). 그 밖의 오류면 nil.
-    /// 반영·넣기·빼기 모두 '반영 대기' 목록의 '되돌리기…'(가장 최근 쓰기 백업으로 되돌림)를 안내한다.
-    /// 툴바의 '마지막 반영 되돌리기…'는 쓰기가 성공했을 때만 활성화된다.
+    /// 반영·넣기·빼기 모두 메뉴 막대 rekordbox › '쓰기 전으로 복원…'(가장 최근 쓰기 백업으로 복원)을 안내한다. 메뉴는 읽기 상태와 상관없이 늘 있다.
     public static func restoreFailureAlert(_ error: any Error) -> ReflectionPrompt? {
         guard case let DJCError.restoreFailed(_, _, backup, database) = error else { return nil }
         let command = DJCError.restoreCommand(backup: backup, database: database)
         let text = [
-            String(ui: "rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다. rekordbox를 켜지 말고, 사이드바에서 'rekordbox 쓰기 대기'를 고른 뒤 목록 위 '쓰기 전으로 복원…'으로 백업을 복원하세요."),
+            String(ui: "rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다. rekordbox를 켜지 말고, 메뉴 막대 rekordbox › 쓰기 전으로 복원…으로 백업을 복원하세요."),
             String(ui: "터미널에서는: \(command)"),
         ]
         return ReflectionPrompt(title: String(ui: "쓰기 확인에 실패했고 자동 복원도 하지 못했습니다"), text: text.joined(separator: "\n\n"), critical: true)

@@ -11825,18 +11825,18 @@
         }
       }
     },
-    "rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다. rekordbox를 켜지 말고, 사이드바에서 'rekordbox 쓰기 대기'를 고른 뒤 목록 위 '쓰기 전으로 복원…'으로 백업을 복원하세요." : {
+    "rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다. rekordbox를 켜지 말고, 메뉴 막대 rekordbox › 쓰기 전으로 복원…으로 백업을 복원하세요." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The state of the rekordbox library (master.db) and analysis files is unknown. Keep rekordbox closed, select ‘Pending rekordbox Writes’ in the sidebar, then use ‘Restore Before Write…’ above the list to restore the backup."
+            "value" : "The state of the rekordbox library (master.db) and analysis files is unknown. Do not open rekordbox. Restore the backup from rekordbox › Restore Before Write… in the menu bar."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "rekordboxのライブラリ（master.db）と解析ファイルの状態が不明です。rekordboxを起動せず、サイドバーの「rekordbox書き込み待ち」を選び、リスト上部の「書き込み前に復元…」からバックアップを復元してください。"
+            "value" : "rekordboxのライブラリ（master.db）と解析ファイルの状態が不明です。rekordboxを起動せず、メニューバーのrekordbox › 書き込み前に復元…でバックアップを復元してください。"
           }
         }
       }
@@ -13659,18 +13659,18 @@
         }
       }
     },
-    "rekordbox를 켜지 말고 ‘rekordbox 쓰기 대기’의 ‘쓰기 전으로 복원…’으로 백업을 복원하세요." : {
+    "rekordbox를 켜지 말고 메뉴 막대 rekordbox › 쓰기 전으로 복원…으로 백업을 복원하세요." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keep rekordbox closed and use Restore Before Write… in Pending rekordbox Writes to restore the backup."
+            "value" : "Do not open rekordbox. Restore the backup from rekordbox › Restore Before Write… in the menu bar."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "rekordboxを起動せず、「rekordbox書き込み待ち」の「書き込み前に復元…」からバックアップを復元してください。"
+            "value" : "rekordboxを起動せず、メニューバーのrekordbox › 書き込み前に復元…でバックアップを復元してください。"
           }
         }
       }
@@ -14173,22 +14173,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "書き込み待ちの曲の下書きとUSBの演奏履歴を表示します。プレイリストの下書きも一緒に書き込めます。"
-          }
-        }
-      }
-    },
-    "rekordbox에 씁니다(⇧⌘E)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Writes to rekordbox (⇧⌘E)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに書き込みます（⇧⌘E）"
           }
         }
       }
@@ -30949,22 +30933,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選択した曲の現在値を取得…"
-          }
-        }
-      }
-    },
-    "선택한 곡에 초안이 없어 쓰기 대기 전체가 대상입니다(⇧⌘E)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The selected tracks have no drafts, so all pending writes are targeted (⇧⌘E)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選択した曲に下書きがないため、書き込み待ち全体が対象です（⇧⌘E）"
           }
         }
       }

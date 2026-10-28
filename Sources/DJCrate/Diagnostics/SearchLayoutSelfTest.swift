@@ -37,6 +37,9 @@ extension DevSelfTests {
             await wait()
             let originalSize = window.contentView?.frame.size ?? NSSize(width: 1440, height: 900)
             var failures = 0
+            // 사용자화로 저장된 구성이 지운 항목(옛 `reflection`)을 들고 있어도 빈 칸 없이 남은 항목만 보이는지 알 수 있게 항목 목록을 남긴다
+            let itemList = toolbar.items.map(\.itemIdentifier.rawValue).joined(separator: ",")
+            FileHandle.standardError.write(Data("[검색 배치 시험] 도구 막대 항목: \(itemList)\n".utf8))
             for width: CGFloat in [1100, 1155, 1200, 1440, 1800] {
                 search.endSearchInteraction()
                 window.setContentSize(NSSize(width: width, height: 700))
@@ -59,8 +62,8 @@ extension DevSelfTests {
                 }.max() ?? 0
                 let focused = (window.firstResponder as? NSTextView)?.delegate === field
                 let visibleIDs = Set((toolbar.visibleItems ?? []).map { $0.itemIdentifier.rawValue })
-                let controlsVisible = ["viewMode", "addFiles", "tagEditor", "snapshot", "reflection"]
-                    .allSatisfy { visibleIDs.contains($0) }
+                let hiddenControls = ["viewMode", "addFiles", "tagEditor", "snapshot"].filter { !visibleIDs.contains($0) }
+                let controlsVisible = hiddenControls.isEmpty
                 // 상태 줄 자리는 위 왼쪽 원점의 창 좌표다. 도구 막대 아래 끝은 내용 영역(`contentLayoutRect`)의 위 끝이다
                 let content = window.contentView?.frame.size ?? .zero
                 let toolbarBottom = content.height - window.contentLayoutRect.maxY
@@ -75,7 +78,7 @@ extension DevSelfTests {
                 let line = String(format: "[검색 배치 시험] 창 %.0f(실제 %.0f) · 검색 폭 %.2f → %.2f · 선호 폭 %.2f · 이웃 %d개 최대 이동 %.2f · 포커스 %@ · 버튼 표시 %@ · 상태 줄 %@(%@) · %@\n",
                                   width, window.contentView?.frame.width ?? 0, before.width, after.width,
                                   search.preferredWidthForSearchField, neighbors.count, movement,
-                                  focused ? "있음" : "없음", controlsVisible ? "모두" : "일부", buttonFits ? "맞음" : "어긋남",
+                                  focused ? "있음" : "없음", controlsVisible ? "모두" : "일부(접힘: \(hiddenControls.joined(separator: ",")))", buttonFits ? "맞음" : "어긋남",
                                   bar.map { NSStringFromRect($0) } ?? "없음", stable ? "통과" : "실패")
                 FileHandle.standardError.write(Data(line.utf8))
             }

@@ -7,7 +7,7 @@
 > [!WARNING]
 > DJCrate 目前仍处于 **测试版**（0.x）阶段，可能会出现意料之外的问题。
 >
-> DJCrate 在写入 rekordbox 之前，会自动备份整个资料库。如果写入后出现问题，请通过工具栏 [Write to rekordbox]（写入 rekordbox）菜单中的 [Restore Before Write…]（恢复到写入前）进行还原。如果问题仍然存在，请通过 [Issues](https://github.com/fotoner/DJCrate/issues) 联系我们。
+> DJCrate 在写入 rekordbox 之前，会自动备份整个资料库。如果写入后出现问题，请通过菜单栏 rekordbox › [Restore Before Write…]（恢复到写入前）或帮助菜单中的同名项进行还原。如果问题仍然存在，请通过 [Issues](https://github.com/fotoner/DJCrate/issues) 联系我们。
 >
 > DJCrate 依据 [GPL-2.0-or-later 许可证](LICENSE)按“原样”提供。对于使用过程中发生的任何数据丢失或损害，开发者不承担责任。
 
