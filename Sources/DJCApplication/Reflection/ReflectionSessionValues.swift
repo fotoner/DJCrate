@@ -105,7 +105,7 @@ public enum ReflectionLibraryChange: Sendable {
     case showAdded(String)
     /// 뺀 곡(ContentID)을 선택에서 뺀다
     case deselected(Set<String>)
-    /// 이번 실행의 마지막 쓰기 백업(툴바·토스트의 되돌리기)
+    /// 이번 실행의 마지막 쓰기 백업(토스트의 되돌리기)
     case lastWriteBackup(URL?)
     /// 쓰기·복원은 끝났지만 뒤따른 일(초안 정리·다시 읽기·복원 충돌)에 남은 경고(#175)
     case followUp([String])

@@ -11830,13 +11830,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The state of the rekordbox library (master.db) and analysis files is unknown. Keep rekordbox closed and restore the backup from the menu bar under rekordbox › Restore Before Write…."
+            "value" : "The state of the rekordbox library (master.db) and analysis files is unknown. Do not open rekordbox. Restore the backup from rekordbox › Restore Before Write… in the menu bar."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "rekordboxのライブラリ（master.db）と解析ファイルの状態が不明です。rekordboxを起動せず、メニューバーの rekordbox › 書き込み前に復元…からバックアップを復元してください。"
+            "value" : "rekordboxのライブラリ（master.db）と解析ファイルの状態が不明です。rekordboxを起動せず、メニューバーのrekordbox › 書き込み前に復元…でバックアップを復元してください。"
           }
         }
       }
@@ -13664,13 +13664,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Do not open rekordbox. Restore the backup from the menu bar under rekordbox › Restore Before Write…."
+            "value" : "Do not open rekordbox. Restore the backup from rekordbox › Restore Before Write… in the menu bar."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "rekordboxを起動せず、メニューバーの rekordbox › 書き込み前に復元…でバックアップを復元してください。"
+            "value" : "rekordboxを起動せず、メニューバーのrekordbox › 書き込み前に復元…でバックアップを復元してください。"
           }
         }
       }
