@@ -271,7 +271,7 @@ final class LibraryStore {
     @ObservationIgnored var adoptImportedGridDraft: ((GridDraft) -> Bool)?
     /// 마지막으로 내보낸 반영 묶음(가져온 뒤 검증 대기). 앱을 다시 켜면 유스케이스가 남긴 묶음을 읽는다(`ExportXML.verifyReflection`)
     var reflectionBatch: ReflectionXMLBatch?
-    /// 이번 실행에서 rekordbox에 쓴 마지막 백업(토스트·툴바의 되돌리기)
+    /// 이번 실행에서 rekordbox에 쓴 마지막 백업
     var lastWriteBackup: URL?
     /// detail 아래쪽에 뜨는 알림(rekordbox 반영 완료 등). 띄우고 닫기는 `showToast`·`dismissToast`로만 한다(띄운 알림은 모두 활동 기록에 남는다, #296)
     private(set) var toast: AppToast? {
