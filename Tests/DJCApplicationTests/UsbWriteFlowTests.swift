@@ -284,10 +284,11 @@ struct UsbWriteFlowTests {
         let world = UsbWriteWorld()
         let physical = FakeUsbVolume.physicalFAT32()
         let capacity = physical.capacity.formatted(ByteCountFormatStyle(style: .file))
-        // OneLibrary 되돌리기 확인 창은 예전부터 details가 없고 본문에 볼륨 이름만 있다(USB-23과 어긋남, 보고서 "남은 것"). 이 시험은 그 창을 뺀다.
-        for prompt in Self.writePrompts(for: physical, in: world) where prompt.title != UsbWriteFlow.migrationRestoreConfirmation(physical).title {
+        // 끊긴 쓰기 알림의 [회복하기]·[되돌리기]도 누르면 바로 USB에 쓰니 같은 동의 줄을 보인다(#318)
+        for prompt in Self.writePrompts(for: physical, in: world) + [UsbWriteFlow.pendingPrompt(physical)] {
             #expect(prompt.details.contains("실물 USB입니다: DJCPHYS · \(capacity) · FAT32 · MBR"), "\(prompt.title)")
         }
+        #expect(UsbWriteFlow.pendingPrompt(world.volume).details == ["시험 볼륨(디스크 이미지)입니다"])
         #expect(UsbWriteFlow.volumeLines(physical, isTestVolume: false) == ["실물 USB입니다: DJCPHYS · \(capacity) · FAT32 · MBR"])
         #expect(UsbWriteFlow.volumeLines(world.volume, isTestVolume: true) == ["시험 볼륨(디스크 이미지)입니다"])
     }

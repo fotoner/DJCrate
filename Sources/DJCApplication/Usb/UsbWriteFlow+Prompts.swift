@@ -118,14 +118,16 @@ extension UsbWriteFlow {
     public static func pendingPrompt(_ volume: UsbVolumeInfo) -> ReflectionPrompt {
         ReflectionPrompt(title: String(ui: "지난 USB 쓰기가 끝나지 않았습니다"),
                          text: String(ui: "\(volume.name)에 쓰다가 끊긴 기록이 있습니다. 회복하면 USB를 보고 마저 쓰거나 쓰기 전으로 되돌립니다. 되돌리기는 그 쓰기를 백업으로 되돌립니다. 기기에 꽂기 전에 하세요."),
-                         confirm: String(ui: "회복하기"), alternate: String(ui: "되돌리기"), cancel: String(ui: "나중에"))
+                         confirm: String(ui: "회복하기"), details: volumeLines(volume, isTestVolume: volume.isDiskImage),
+                         alternate: String(ui: "되돌리기"), cancel: String(ui: "나중에"))
     }
 
     /// OneLibrary를 더하기 전의 백업으로 되돌리는 확인 창
     public static func migrationRestoreConfirmation(_ volume: UsbVolumeInfo) -> ReflectionPrompt {
         ReflectionPrompt(title: String(ui: "USB를 쓰기 전으로 되돌릴까요?"),
                          text: String(ui: "\(volume.name)에 OneLibrary를 더하기 전의 백업으로 되돌립니다."),
-                         confirm: String(ui: "되돌리기"), destructive: true)
+                         confirm: String(ui: "되돌리기"), destructive: true,
+                         details: volumeLines(volume, isTestVolume: volume.isDiskImage))
     }
 
     /// 시점 스냅샷으로 되돌리기 직전의 백업으로 되돌리는(되돌리기를 취소하는) 확인 창
