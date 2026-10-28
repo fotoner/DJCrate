@@ -248,7 +248,7 @@ struct SidebarHistoryRow: View {
         if archived.source.isLink { return linkHelp(archived, pending: pending) }
         let volume = archived.source.volumeName
         if pending {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에 있어 rekordbox에 쓰기(⇧⌘E) 때 rekordbox 재생 기록에 넣습니다")
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에 있습니다")
         }
         if archived.excludedFromRekordbox {
             return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
@@ -271,7 +271,7 @@ struct SidebarHistoryRow: View {
             return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남기는 기록입니다. 곡이 계속 붙으므로 LINK를 끄면 rekordbox 쓰기 대기에 올립니다")
         }
         if pending {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에 있어 rekordbox에 쓰기(⇧⌘E) 때 rekordbox 재생 기록에 넣습니다")
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에 있습니다")
         }
         if archived.excludedFromRekordbox {
             return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
@@ -408,8 +408,6 @@ struct ListActionBar: View {
                 if model.libraryBusy {
                     ProgressView().controlSize(.small)
                     Text(.ui("rekordbox 라이브러리 확인·쓰는 중…")).font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text(.ui("rekordbox가 꺼져 있을 때만 씁니다 · 쓰기 전에 전체 백업")).font(.caption).foregroundStyle(.secondary)
                 }
             }
         case let .itunesPlaylist(id):
@@ -434,7 +432,7 @@ struct ListActionBar: View {
                             .foregroundStyle(UIColors.warning.color)
                             .lineLimit(2)
                     } else {
-                        Label(.ui("아직 쓰지 않은 목록 초안입니다 · rekordbox에 쓰기(⇧⌘E)로 저장합니다"), systemImage: DraftMark.symbol)
+                        Label(.ui("쓰기 전 목록 초안"), systemImage: DraftMark.symbol)
                             .foregroundStyle(UIColors.draft.color)
                     }
                     if node.blockedReason != nil {
@@ -491,7 +489,7 @@ struct ListActionBar: View {
                 }
                 Button { model.checkMissingFiles() } label: { Label(.ui("다시 확인"), systemImage: "arrow.clockwise") }
                     .disabled(model.isCheckingFiles)
-                    .help(.ui("음원 파일이 있는지 다시 확인합니다. rekordbox에는 쓰지 않습니다."))
+                    .help(.ui("음원 파일이 있는지 다시 확인합니다."))
                 RelocateEntryButton(store: model.store, isCheckingFiles: model.isCheckingFiles,
                                     hasMissingFiles: !model.missingFiles.trackIDs.isEmpty)
                 if model.isCheckingFiles {
@@ -507,7 +505,7 @@ struct ListActionBar: View {
                     Label(.ui("이 목록 그리드 추정 (\(model.displayedCount)곡)"), systemImage: "metronome")
                 }
                 .disabled(model.isGridEstimateBlocked)
-                .help(.ui("rekordbox가 분석하지 않은 곡의 BPM·박 위치를 추정해 그리드 초안으로 저장합니다(rekordbox는 바뀌지 않습니다)."))
+                .help(.ui("rekordbox가 분석하지 않은 곡의 BPM·박 위치를 추정해 그리드 초안으로 저장합니다."))
                 Text(.ui("초안만 만듭니다 · 덱에서 확인·수정")).font(.caption).foregroundStyle(.secondary)
             }
         default:

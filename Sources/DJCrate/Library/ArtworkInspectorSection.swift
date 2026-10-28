@@ -40,9 +40,6 @@ struct ArtworkInspectorSection: View {
                 Label(message.text, systemImage: WarningMark.symbol)
                     .font(.scaled(.caption, textScale)).foregroundStyle(UIColors.warning.color)
             }
-            // 결정(#66): rekordbox는 음원의 그림도 바꾸지만 DJCrate는 음원을 읽기만 한다.
-            Text(.ui("앨범아트는 rekordbox 라이브러리에만 씁니다. 음원 파일에 든 앨범아트는 바뀌지 않습니다."))
-                .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
         }
     }
 

@@ -256,7 +256,7 @@ struct RelocateEntryButton: View {
     var body: some View {
         Button { open() } label: { Label(.ui("폴더에서 찾기…"), systemImage: "folder.badge.questionmark") }
             .disabled(isCheckingFiles || !hasMissingFiles || store.snapshotURL == nil)
-            .help(.ui("고른 폴더에서 파일 없는 곡의 새 위치 후보를 찾아 미리 봅니다. rekordbox에는 쓰지 않습니다."))
+            .help(.ui("고른 폴더에서 파일 없는 곡의 새 위치 후보를 찾아 미리 봅니다."))
             // 창을 닫을 때(어떤 방법이든) 훑는 중이던 일을 멈춘다.
             .sheet(item: Binding(get: { model }, set: { next in
                 if next == nil { model?.cancel() }
