@@ -2,6 +2,7 @@
 import DJCApplication
 import DJCDomain
 import Foundation
+import Observation
 import Testing
 
 /// 창 아래 상태 줄의 rekordbox 쓰기 상태 칩(#324): 쓰기 대기·쓰는 중(1초 넘을 때만)·마지막 쓰기, 팝오버 단추, Dock 배지.
@@ -45,11 +46,20 @@ struct ReflectionStatusModelTests {
         var badge: DockBadge { DockBadge { [self] in labels.append($0) } }
     }
 
+    /// 가짜 감지(#326): 판정을 시험이 정한다. 관찰할 수 있어 모델이 스스로 알아챈다
+    @MainActor @Observable
+    final class FakeRun {
+        var state: RekordboxRunState?
+    }
+
     @MainActor
     struct Harness {
         let store: LibraryStore
         let window: LibraryWindowModel
         let gate = SleepGate()
+        /// 켜짐→꺼짐 전이 뒤 확인 시간(제안 3초)을 시험이 직접 풀어 준다
+        let settle = SleepGate()
+        let run = FakeRun()
         let dock = FakeDock()
         let model: ReflectionStatusModel
         let backupFolder: URL
@@ -61,8 +71,9 @@ struct ReflectionStatusModelTests {
                                       rekordboxDatabase: folder.appending(path: "master.db"))
             backupFolder = folder.appending(path: "backups")
             window = LibraryWindowModel(store: store)
+            let run = run
             model = ReflectionStatusModel(store: store, window: window, windows: windows, reflection: store.reflection,
-                                          dock: dock.badge, sleep: gate.sleep)
+                                          dock: dock.badge, runState: { run.state }, sleep: gate.sleep, settleSleep: settle.sleep)
         }
 
         func addRows(_ uuids: String...) { for uuid in uuids { store.rowsByUUID[uuid] = PendingCountCacheTests.track(uuid) } }

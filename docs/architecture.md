@@ -88,6 +88,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - **주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다(#254).** 그 시트는 활동 기록, 연결되지 않은 초안, rekordbox XML 가져오기다. 처음 읽기, 스냅샷, 동기화, 끌어 놓기 같은 주 창 단추는 이 모델의 입구를 부른다. 메뉴 막대의 메뉴 항목(`LibraryMenuAction`)도 이 모델을 받는다. 재생 목록 고르기, USB, 막힌 초안 복구의 시트는 그 주인이 든다.
 - 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`, `StatusBarModel`, `ReflectionStatusModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`, `ActivityLogModel`.
 - **쓰기 대기 수는 공유 핵심 `LibraryStore`가 한 곳에서 센다(#324).** 사이드바 배지, 상태 줄 칩, Dock 배지가 `pendingWriteCount`를 읽는다. 초안 여섯 종류와 곡 목록이 바뀌면 낡은 것으로 표시한다. 합집합은 다음 읽기에서 한 번만 만든다(#129). 상태 줄 쓰기 상태는 `ReflectionStatusModel`이 저장소를 관찰해 칩·보조 글·Dock 배지를 고친다. 팝오버 단추는 메뉴 막대와 같은 `LibraryMenuAction`을 부르므로 새 쓰기 경로가 아니다.
+- **칩의 rekordbox 켜짐·꺼짐 이유는 감지 서비스를 읽어 붙인다(#326).** 감지 서비스를 읽는 연결은 조립 지점 `AppComposition`이 한다. 화면 시험의 조립은 늘 모름이라 칩이 바뀌지 않는다. 이 값은 표시만 바꾼다. 쓸지 말지는 메뉴와 같은 판단과 쓰기 관문이 정한다.
 - **곡 목록 표와 덱 묶음은 공유 핵심을 통째로 받지 않는다(#254).** 표는 읽는 값 13개만 든 프로토콜 `TrackListSource`를 받는다. 메뉴·칸 편집·끌기는 조정자 `TrackListCoordinator`가 핵심을 부른다. 덱 묶음은 프로토콜 `DeckLibrarySource`와 태그 편집 조각을 받는다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
@@ -250,6 +251,17 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 종료를 취소로 끝내면 Mac을 끄는 중 표시를 푼다. 로그아웃을 취소해도 알림이 오지 않는다.
   - 쓰는 동안 `WriteSystemGuard`가 갑작스러운 종료와 App Nap을 막는다.
   - 자가 테스트는 `--quit-wait-selftest`다(스킬 `app-selftest`).
+- **켜진 채 종료 시트(#326).** 사용자가 고른 종료에서 한 번 묻는다. 조건은 쓰기 대기 있음, rekordbox(또는 rekordboxAgent만) 켜짐, 쓰는 중 아님이다. 판정은 `AppQuitPolicy.confirmation`, 문구는 `QuitConfirmation`(DJCDomain `Update/QuitConfirmation.swift`)이 한다. 쓰기 대기 수는 상태 줄 칩과 같은 `LibraryStore.pendingWriteSummary`(`PendingWriteCount`)다.
+  - 쓰는 중(어느 쓰기 단계든)과 USB 쓰기는 시트보다 위 종료 판정(`AppQuitDecision`)이 앞선다. 감지가 모름·읽기 전이면 묻지 않는다.
+  - 종료 이유는 `AppQuitCause`로 가른다. 사용자가 고른 종료만 묻는다.
+  - Mac을 끄는 중이라는 알림 `willPowerOff`가 오면 시스템 종료다.
+  - Apple 이벤트 `quit`의 종료 이유(`kAEQuitReason`)도 본다. 열쇠는 「why?」다. 로그아웃은 `rlgo`·`logo`다. 재시작은 `rest`·`rrst`다. 전원 끔은 `shut`·`rsdn`다. 값은 헤더 AERegistry.h에 있다.
+  - 업데이트 도구가 다시 켜기 직전에 표시한다(`AppUpdater.consumeRelaunchMark`). 이 종료도 묻지 않는다.
+  - 이유가 없으면 사용자 종료다. ⌘Q와 메뉴 종료는 Apple 이벤트가 아니다. 일반 종료 이유(`quia`)도 사용자 종료다. 모르는 이유는 묻지 않는다.
+  - 컨트롤러 `AppQuitController`는 종료를 취소로 답한다. 그다음 시트(`QuitConfirmationAlert`)를 띄운다.
+  - [그냥 종료]는 종료를 다시 요청한다. 그 요청 한 번만 묻지 않는다.
+  - 시트가 떠 있는 동안 온 사용자 종료는 시트를 더 띄우지 않는다. 시스템 종료와 업데이트 다시 켜기는 기존 판정을 따른다.
+  - 이 시트는 쓰기를 열지 않는다. 쓸지 말지는 쓰기 관문이 정한다.
 - 앱 자동 업데이트(#59)의 Sparkle 연결 `AppUpdater`는 `live()`가 만든다. Info.plist에 정보 파일 주소와 공개 키가 있는 배포 번들에서만 만든다. 쓰기 상태는 `LibraryStore.writeActivity`에서 읽는다. 설정 › 업데이트와 앱 메뉴는 화면 모델 `UpdateSettingsModel` 하나를 함께 쓴다.
 - **목록 그림 캐시 싱글턴은 없앴다.** 옛 `PreviewWaveformCache.shared`·`Thumbnails.shared` 대신 라이브러리 저장소가 하나씩 든다(`previewImages`·`thumbnails`).
 - 남은 싱글턴은 넷이다.
@@ -816,7 +828,8 @@ rekordbox 쓰기의 규칙·절차·막아 둔 것은 `docs/rekordbox-internals.
 - **rekordbox 실행은 두 길로 따로 본다(#323).** 두 길은 같은 이름 목록과 판정(`RekordboxRunState`)을 쓴다.
   - 쓰기 관문은 그때그때 `pgrep -x`를 띄워 본다(`RekordboxProcessCheck`). 복원, 시점 스냅샷, USB, LINK도 이 확인을 쓴다.
   - 이 확인은 실패하면 켜진 것으로 본다. 실패는 띄우지 못함, 0·1 밖의 종료 코드, 2초 초과다.
-  - 앱의 감지 서비스(`RekordboxRunModel`)는 커널 프로세스 목록을 읽는다. 프로세스를 띄우지 않는다. 처음 한 번, 앱 실행·종료 알림이 올 때, 5초마다 읽는다. 읽지 못하면 '모름'이다. 이 값은 화면 표시용이다. 이 값으로 쓰기를 허용하지 않는다.
+  - 앱의 감지 서비스(`RekordboxRunModel`)는 커널 프로세스 목록을 읽는다. 프로세스를 띄우지 않는다. 처음 한 번, 앱 실행·종료 알림이 올 때, 5초마다 읽는다. 읽지 못하면 '모름'이다.
+  - 이 값은 화면 표시용이다. 상태 줄 칩과 켜진 채 종료 시트가 읽는다(#326). 이 값으로 쓰기를 허용하지 않는다.
 
 ## USB
 
