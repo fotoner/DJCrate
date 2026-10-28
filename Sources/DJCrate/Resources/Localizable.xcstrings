@@ -21725,22 +21725,6 @@
         }
       }
     },
-    "넣을 구간이 없으니 원곡 파형을 끌어 마디 구간을 고르세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No section is selected, so drag on the source waveform to select a range of bars"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "追加する区間がないため、原曲の波形をドラッグして小節区間を選んでください"
-          }
-        }
-      }
-    },
     "넣을 앨범아트(JPEG·PNG)를 고르세요" : {
       "localizations" : {
         "en" : {
@@ -25675,22 +25659,6 @@
         }
       }
     },
-    "마지막 클립은 더 뒤로 옮길 수 없으니 앞으로 옮기거나 다른 클립을 고르세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The last clip cannot move further back, so move it forward or select another clip"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最後のクリップはこれ以上後ろに移動できないため、前に移動するか別のクリップを選んでください"
-          }
-        }
-      }
-    },
     "마지막 확인" : {
       "localizations" : {
         "en" : {
@@ -28365,22 +28333,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "復旧する下書きを確認できませんでした。編集を保存してから曲を選び直してください。"
-          }
-        }
-      }
-    },
-    "복귀할 편집이 없으니 실행 취소한 뒤 실행 복귀하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "There is no edit to redo, so undo an edit before using Redo"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "やり直す編集がないため、編集を取り消してからやり直してください"
           }
         }
       }
@@ -43639,22 +43591,6 @@
         }
       }
     },
-    "첫 클립은 더 앞으로 옮길 수 없으니 뒤로 옮기거나 다른 클립을 고르세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The first clip cannot move further forward, so move it back or select another clip"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最初のクリップはこれ以上前に移動できないため、後ろに移動するか別のクリップを選んでください"
-          }
-        }
-      }
-    },
     "초안" : {
       "localizations" : {
         "en" : {
@@ -44729,22 +44665,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キャンセル"
-          }
-        }
-      }
-    },
-    "취소할 편집이 없으니 구간을 편집한 뒤 실행 취소하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "There is no edit to undo, so edit a section before using Undo"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取り消す編集がないため、区間を編集してから取り消してください"
           }
         }
       }

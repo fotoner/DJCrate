@@ -177,7 +177,7 @@ private struct SourceLaneBar: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(model.selection == nil)
-            .help(model.selection == nil ? String(ui: "넣을 구간이 없으니 원곡 파형을 끌어 마디 구간을 고르세요") : String(ui: "고른 클립 뒤(없으면 끝)에 넣기(⏎) · 끌어 놓으면 그 자리에"))
+            .help(String(ui: "고른 클립 뒤(없으면 끝)에 넣기(⏎) · 끌어 놓으면 그 자리에"))
         }
         .controlSize(.small)
     }
@@ -206,11 +206,11 @@ private struct OutputLaneBar: View {
                 Button { model.undo() } label: { Label(.ui("실행 취소"), systemImage: "arrow.uturn.backward") }
                     .labelStyle(.iconOnly)
                     .disabled(!model.canUndo)
-                    .help(model.canUndo ? String(ui: "실행 취소(⌘Z)") : String(ui: "취소할 편집이 없으니 구간을 편집한 뒤 실행 취소하세요"))
+                    .help(String(ui: "실행 취소(⌘Z)"))
                 Button { model.redo() } label: { Label(.ui("실행 복귀"), systemImage: "arrow.uturn.forward") }
                     .labelStyle(.iconOnly)
                     .disabled(!model.canRedo)
-                    .help(model.canRedo ? String(ui: "실행 복귀(⇧⌘Z)") : String(ui: "복귀할 편집이 없으니 실행 취소한 뒤 실행 복귀하세요"))
+                    .help(String(ui: "실행 복귀(⇧⌘Z)"))
             }
         }
         .controlSize(.small)
@@ -251,11 +251,11 @@ private struct ClipInspector: View {
                 HStack(spacing: 2) {
                     Button { model.move(entry.id, by: -1) } label: { Image(systemName: "arrow.left") }
                         .disabled(index == 0)
-                        .help(index == 0 ? String(ui: "첫 클립은 더 앞으로 옮길 수 없으니 뒤로 옮기거나 다른 클립을 고르세요") : String(ui: "앞으로"))
+                        .help(String(ui: "앞으로"))
                         .accessibilityLabel(.ui("클립 \(index + 1) 앞으로"))
                     Button { model.move(entry.id, by: 1) } label: { Image(systemName: "arrow.right") }
                         .disabled(index == model.entries.count - 1)
-                        .help(index == model.entries.count - 1 ? String(ui: "마지막 클립은 더 뒤로 옮길 수 없으니 앞으로 옮기거나 다른 클립을 고르세요") : String(ui: "뒤로"))
+                        .help(String(ui: "뒤로"))
                         .accessibilityLabel(.ui("클립 \(index + 1) 뒤로"))
                 }
                 .buttonStyle(.borderless)
