@@ -83,7 +83,6 @@ struct CueListView: View {
                                 in: RoundedRectangle(cornerRadius: 6))
                     .disabled(deck.draft?.hasChanges != true)
                     .opacity(deck.draft?.hasChanges == true ? 1 : 0.5)
-                    .help(.ui("큐 초안을 버리고 rekordbox에서 불러온 큐로 돌아갑니다."))
             }
 
             if let issues = deck.draft?.issues(duration: deck.duration), !issues.isEmpty {
@@ -288,7 +287,6 @@ struct CueRow: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .foregroundStyle(cue.loop == nil ? Color.secondary : UIColors.loop.color)
-        .help(.ui("이 큐를 루프로 만들거나 길이를 바꿉니다"))
         if cue.loop != nil {
             Button { deck.toggleActiveLoop(cue.id) } label: {
                 Image(systemName: "repeat.circle")
@@ -296,7 +294,7 @@ struct CueRow: View {
                     .foregroundStyle(cue.loop?.active == true ? UIColors.loop.color : .secondary)
             }
             .buttonStyle(.borderless)
-            .help(cue.loop?.active == true ? .ui("활성 루프(곡을 불러오면 자동 반복) — 눌러서 끄기") : .ui("활성 루프로 만들기(곡을 불러오면 이 루프를 자동 반복)"))
+            .help(.ui("활성 루프 (곡을 불러오면 자동 반복)"))
             .accessibilityLabel(.ui("활성 루프"))
             .accessibilityValue(cue.loop?.active == true ? .ui("켜짐") : .ui("꺼짐"))
             .accessibilityAddTraits(.isToggle)
@@ -314,7 +312,7 @@ struct CueRow: View {
                 .padding(.horizontal, 3).padding(.vertical, 1)
                 .foregroundStyle(.secondary)
                 .background(.quaternary, in: Capsule())
-                .help(.ui("rekordbox가 분석 때 넣은 메모리 큐입니다. 고치면 일반 큐가 됩니다"))
+                .help(.ui("rekordbox 자동 큐 · 고치면 일반 큐"))
                 .accessibilityLabel(.ui("rekordbox 자동 큐"))
         }
     }

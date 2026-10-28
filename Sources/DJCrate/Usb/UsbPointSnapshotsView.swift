@@ -85,7 +85,7 @@ private struct UsbPointSnapshotRow: View {
             .disabled(busy)
             Button(.ui("지우기…"), role: .destructive, action: onDelete)
                 .disabled(busy || entry.metadata.pinned)
-                .help(entry.metadata.pinned ? String(ui: "고정을 푼 뒤 지우세요") : String(ui: "이 시점 스냅샷을 지웁니다"))
+                .help(entry.metadata.pinned ? String(ui: "고정을 푼 뒤 지우세요") : "")
             Button(.ui("되돌리기…"), action: onRestore).disabled(busy || !canRestore)
         }
         .padding(.vertical, 8)

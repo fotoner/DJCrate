@@ -41,7 +41,7 @@ public struct DeckSuggestion: Equatable, Sendable, Identifiable {
     public static var applyTitle: String { String(ui: "적용") }
     public static var dismissTitle: String { String(ui: "무시") }
     public static var checkTitle: String { String(ui: "확인 필요") }
-    public static var checkHelp: String { String(ui: "박이 흔들리거나 템포가 바뀌는 곡입니다. 적용 뒤 메트로놈으로 확인하고 고쳐 주세요.") }
+    public static var checkHelp: String { String(ui: "박이 흔들리거나 템포가 바뀌는 곡입니다. 적용 뒤 메트로놈으로 확인하세요.") }
 
     /// rekordbox 오토게인이 DJCrate 측정과 크게 다를 때: DJCrate 계산값(dB)을 제안한다.
     /// - Parameter mismatch: rekordbox 값과 DJCrate 계산의 차이(dB)
@@ -50,7 +50,7 @@ public struct DeckSuggestion: Equatable, Sendable, Identifiable {
             kind: .gain, title: String(ui: "게인"),
             value: String(ui: "\(suggested, specifier: "%+.1f") dB (rekordbox \(rekordbox, specifier: "%+.1f"))"),
             needsCheck: false,
-            applyHelp: String(ui: "DJCrate가 잰 음량으로 계산한 게인을 이 곡의 게인 초안으로 넣습니다. rekordbox에는 쓰기 전까지 들어가지 않습니다(실행 취소 가능)."),
+            applyHelp: String(ui: "게인을 초안으로 넣습니다 (실행 취소 가능)"),
             dismissHelp: String(ui: "이 곡에서는 rekordbox 값을 그대로 쓰고 제안을 더 보이지 않습니다"),
             detail: String(ui: "rekordbox 오토게인이 이 파일의 실제 음량과 \(abs(mismatch), specifier: "%.1f")dB 다릅니다"))
     }
@@ -69,13 +69,8 @@ public struct DeckSuggestion: Equatable, Sendable, Identifiable {
             parts.append(String(ui: "변속 \(flow)"))
         }
         if !hasRekordboxGrid { parts.append(String(ui: "rekordbox 그리드 없음")) }
-        let apply = !hasRekordboxGrid
-            ? String(ui: "추정한 템포·박 위치를 그리드 초안으로 넣습니다. 적용 뒤 그리드 편집으로 고칠 수 있습니다.")
-            : isConfident
-            ? String(ui: "추정 그리드로 초안을 바꿉니다(실행 취소 가능).")
-            : String(ui: "추정 그리드로 초안을 바꿉니다. 신뢰도가 낮으니 소리로 확인하세요(실행 취소 가능).")
         return DeckSuggestion(kind: .grid, title: String(ui: "그리드"), value: parts.joined(separator: " · "), needsCheck: !isConfident,
-                              applyHelp: apply, dismissHelp: String(ui: "이 곡에서는 제안을 더 보이지 않습니다"), detail: nil)
+                              applyHelp: String(ui: "그리드를 초안으로 넣습니다 (실행 취소 가능)"), dismissHelp: String(ui: "이 곡에서는 제안을 더 보이지 않습니다"), detail: nil)
     }
 
     /// 키가 빈 곡의 키: DJCrate 추정, 추가한 곡이면 음원 태그의 키(태그에 없으면 추가할 때 추정한 키).
@@ -83,8 +78,8 @@ public struct DeckSuggestion: Equatable, Sendable, Identifiable {
         DeckSuggestion(
             kind: .key, title: String(ui: "키"), value: fromFileTag ? String(ui: "\(name) (음원 태그)") : name, needsCheck: false,
             applyHelp: fromFileTag
-                ? String(ui: "음원 파일 태그에 적힌 키입니다. 누르면 이 키로 초안을 만들고, 곡을 rekordbox에 넣을 때 함께 씁니다. 음원 파일은 바꾸지 않습니다.")
-                : String(ui: "DJCrate가 곡을 분석해 추정한 키입니다. 누르면 이 키로 초안을 만들고, rekordbox에는 쓰기 전까지 들어가지 않습니다."),
+                ? String(ui: "음원 태그의 키를 초안으로 넣습니다. 곡을 넣을 때 함께 씁니다")
+                : String(ui: "추정한 키를 초안으로 넣습니다"),
             dismissHelp: String(ui: "이 곡에서는 제안을 더 보이지 않습니다"), detail: nil)
     }
 }

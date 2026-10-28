@@ -87,7 +87,7 @@ struct WriteResultTests {
                                                                 reason: "이름을 적어 주세요")]
         let many = WriteResult.written(actual, preview: predicted)
         #expect(many.kind == .warning)
-        #expect(many.toast.detail == "큐 1곡 · 그리드 1곡 · 재생 목록 1건은 쓰지 않았습니다 — 이유와 할 일은 ‘결과 보기’에서 확인하세요")
+        #expect(many.toast.detail == "큐 1곡 · 그리드 1곡 · 재생 목록 1건은 쓰지 않았습니다", "이유가 여럿이면 [결과 보기] 단추가 안내하므로 글로 되풀이하지 않는다")
     }
 
     /// #147: 쓴 항목에 붙은 참고 사유(경로가 예상과 달라 분석 파일을 남김)만 있으면 성공으로 보이고, 사유는 결과에 남긴다.
@@ -98,7 +98,7 @@ struct WriteResultTests {
         merge.mergeOutcomes = [Fixture.outcome("m", .written, reason: note)]
         let merged = WriteResult.written(merge, preview: merge)
         #expect(merged.kind == .success && merged.text.contains(note))
-        #expect(merged.toast.detail == "전체 내용과 백업 위치는 ‘활동 기록…’에서 다시 볼 수 있습니다.")
+        #expect(merged.toast.detail == nil, "쓰지 않은 것이 없으면 둘째 줄이 없다([결과 보기] 단추가 활동 기록을 연다)")
 
         var tracks = RekordboxTrackWriter.Report(dryRun: false)
         tracks.deleted = [Fixture.track("d", reason: note)]
@@ -130,7 +130,7 @@ struct WriteResultTests {
 
         report.added[0].cueReason = "큐가 바뀜"
         let all = WriteResult.tracks(report, preview: preview, adding: true, withoutAnalysis: ["a": "ALAC"])
-        #expect(all.toast.detail == "1곡은 넣지 않았습니다 · 1곡은 분석 없이 넣었습니다 · 1곡의 큐는 쓰지 않았습니다 — 이유와 할 일은 ‘결과 보기’에서 확인하세요")
+        #expect(all.toast.detail == "1곡은 넣지 않았습니다 · 1곡은 분석 없이 넣었습니다 · 1곡의 큐는 쓰지 않았습니다")
     }
 
     @Test func 태그_결과도_곡마다_남긴다() {
