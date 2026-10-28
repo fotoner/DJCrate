@@ -35,6 +35,8 @@ final class AppComposition {
     let libraryWindow: LibraryWindowModel
     /// 창 아래 상태 줄 화면 모델(#298): 활동 단추의 읽지 않은 수와 활동 팝오버. 알림의 [열기]도 이 모델로 팝오버를 연다
     let statusBar: StatusBarModel
+    /// 창 아래 상태 줄의 rekordbox 쓰기 상태(#324): 칩·마지막 쓰기·상태 팝오버·Dock 배지. 저장소를 관찰해 스스로 고친다. 상태 줄(`StatusBar`)이 읽는다
+    let writeStatus: ReflectionStatusModel
     /// 설정 › AI 에이전트 화면 모델(#262). 설정 창과 켤 때 알림이 함께 쓴다. 화면 시험의 조립(`init(store:deck:)`)은 nil이다
     /// (사용자 홈의 `~/.claude*`·`~/.agents`·`~/.local/bin`을 읽거나 쓰지 않게)
     let agentTools: AgentToolsSettingsModel?
@@ -46,15 +48,21 @@ final class AppComposition {
     private let updater: AppUpdater?
     /// 창 아래 LINK 막대 화면 모델(#272). 실제 앱만 장치 알림을 받는다. 화면 시험·자가 테스트·측정 실행은 nil이다(네트워크 포트를 열지 않게)
     let link: LinkBarModel?
+    /// rekordbox·rekordboxAgent 실행 감지 서비스(#323). 앱에 하나만 두고 `start()`가 돌린다. 화면 표시용이다(쓰기 판정은 관문이 한다)
+    let rekordboxRun: RekordboxRunModel
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
 
-    /// - Parameter persistsActivityReadMark: 상태 줄의 읽음 기준을 설정에 남길지. 진단 실행(캡처·자가 테스트)은 사용자 설정을 바꾸지 않게 거짓이다
+    /// - Parameters:
+    ///   - persistsActivityReadMark: 상태 줄의 읽음 기준을 설정에 남길지. 진단 실행(캡처·자가 테스트)은 사용자 설정을 바꾸지 않게 거짓이다
+    ///   - dock: Dock 아이콘 배지. 실제 앱만 붙인다(화면 시험은 Dock을 건드리지 않는다)
+    ///   - rekordboxRun: 실행 감지 서비스. 주지 않으면(화면 시험) 프로세스 목록을 읽지 않는 자리(`.none`)를 둔다
     init(settings: SettingsStore, store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
          agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil, link: LinkBarModel? = nil,
-         persistsActivityReadMark: Bool = true) {
+         persistsActivityReadMark: Bool = true, dock: DockBadge = .none, rekordboxRun: RekordboxRunModel? = nil) {
         self.link = link
+        self.rekordboxRun = rekordboxRun ?? RekordboxRunModel(source: .none)
         self.settings = settings
         self.updater = updater
         updates = UpdateSettingsModel(updater: updater, version: .of(.main))
@@ -70,6 +78,9 @@ final class AppComposition {
         listActionBar = ListActionBarModel(store: store)
         libraryWindow = LibraryWindowModel(store: store)
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
+        writeStatus = ReflectionStatusModel(store: store, window: libraryWindow, windows: windows, reflection: reflection, dock: dock)
+        statusBar.write = writeStatus
+        writeStatus.start()
         libraryWindow.agentTools = agentTools
         statusBar.showLog = { [weak window = libraryWindow] in window?.showActivityLog(selecting: $0) }
         libraryWindow.activityLogSeen = { [weak bar = statusBar] in bar?.markSeen() }
@@ -119,7 +130,8 @@ final class AppComposition {
                               agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
                               updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
                                   : linkBar(store: store, deck: deck),
-                              persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments))
+                              persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments), dock: .live,
+                              rekordboxRun: RekordboxRunModel(source: .live(workspace: NSWorkspace.shared.notificationCenter)))
     }
 
     /// 자가 테스트·측정·캡처 실행의 LINK 막대: 장치 찾기를 붙이지 않는다(LNK-6). LINK 캡처만 포트 없는 가상 장치를 보인다
@@ -337,9 +349,10 @@ final class AppComposition {
         }
     }
 
-    /// 창을 띄운 뒤: 사이드바 USB 절을 붙이고, 읽을 때마다 도는 캐시 정리를 붙이고, 라이브러리를 처음 읽는다.
+    /// 창을 띄운 뒤: rekordbox 실행 감지를 돌리고, 사이드바 USB 절을 붙이고, 읽을 때마다 도는 캐시 정리를 붙이고, 라이브러리를 처음 읽는다.
     func start() async {
         updater?.start()
+        rekordboxRun.start()
         UsbAppSetup.attach(to: store)
         // CLI가 앱의 시점 스냅샷 보관 일수를 따르게 공유 파일에 맞춘다
         settings.syncShared()
@@ -439,4 +452,9 @@ final class AppWindows {
 extension EnvironmentValues {
     /// 주 창 아래 화면이 여는 보조 창(곡 편집·Flip). 조립 지점이 붙이지 않은 화면(시험·미리 보기)에서는 nil이다.
     @Entry var appWindows: AppWindows? = nil
+}
+
+extension DockBadge {
+    /// 실제 Dock 아이콘 배지(조립 지점만 고른다, UI-7)
+    static var live: DockBadge { DockBadge { NSApplication.shared.dockTile.badgeLabel = $0 } }
 }

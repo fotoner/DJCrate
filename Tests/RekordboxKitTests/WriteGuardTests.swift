@@ -34,6 +34,19 @@ struct WriteGuardTests {
         #expect(try fixture.rows("SELECT * FROM djmdCue").isEmpty)
     }
 
+    /// 실행 확인이 실패하면(띄우지 못함·종료 코드 2·시간 초과) 켜진 것으로 보고 쓰지 않는다(#323: 전에는 꺼진 것으로 봐 관문이 열렸다)
+    @Test func rekordbox_실행을_확인하지_못하면_쓰지_않는다() throws {
+        let fixture = try RekordboxFixture()
+        let track = try fixture.add(TrackSpec())
+        for failure in [RekordboxProcessCheck.Probe.launchFailed, .exited(2), .timedOut] {
+            let check = RekordboxProcessCheck { _ in failure }
+            let writeGuard = RekordboxWriteGuard(isLive: { _ in true }, isRekordboxRunning: check.isRunning, appVersion: { "7.2.18" })
+            #expect(refusal { _ = try write(fixture, track, guard: writeGuard) }?.contains("켜져") == true, "\(failure)")
+        }
+        #expect(try fixture.rows("SELECT * FROM djmdCue").isEmpty)
+        #expect(((try? FileManager.default.contentsOfDirectory(atPath: fixture.backups.path)) ?? []).isEmpty, "막힐 쓰기는 백업도 뜨지 않는다")
+    }
+
     @Test func WAL이_남아_있으면_쓰지_않는다() throws {
         let fixture = try RekordboxFixture()
         let track = try fixture.add(TrackSpec())

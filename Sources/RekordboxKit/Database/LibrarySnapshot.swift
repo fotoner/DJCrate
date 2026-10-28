@@ -40,22 +40,10 @@ public enum LibrarySnapshot {
         DJCIdentity.snapshotsDirectory(environment: environment, support: DJCIdentity.supportDirectory)
     }
 
-    /// rekordbox가 실행 중인지 프로세스 이름으로 확인한다.
+    /// rekordbox·rekordboxAgent가 실행 중인지 프로세스 이름으로 확인한다. 확인하지 못해도 실행 중으로 본다(#323, `RekordboxProcessCheck`).
+    /// 쓰기 관문·복원·시점 스냅샷·USB·LINK가 모두 이 확인을 쓴다.
     public static func isRekordboxRunning() -> Bool {
-        ["rekordbox", "rekordboxAgent"].contains { name in
-            let process = Process()
-            process.executableURL = URL(filePath: "/usr/bin/pgrep")
-            process.arguments = ["-x", name]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            do {
-                try process.run()
-                process.waitUntilExit()
-                return process.terminationStatus == 0
-            } catch {
-                return false
-            }
-        }
+        RekordboxProcessCheck.system.isRunning()
     }
 
     /// master.db를 복사한다. 복사 전후로 원본 크기·수정 시각이 같아야 성공이다.

@@ -86,7 +86,8 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 앱이 잠금을 잡지 못한 드문 경우의 대비가 있다. 쓴 뒤 정리(`EditPlaylists.finishWrite`)는 디스크 초안이 쓴 초안 뒤에 편집을 더했으면 쓴 편집만 뺀다(`keepingExternal`).
 - **추가한 곡·그리드 일괄 추정·XML 내보내기는 기능 조각 `TrackStagingStore`가 든다(#252).** 조각은 저장소의 `staging` 속성이다. 넣기·저장·추정의 규칙과 순서는 유스케이스 `StageTracks`와 `ExportXML`이 정한다. 목록 아래 막대의 단추·막힘 이유는 화면 모델 `ListActionBarModel`이 든다. 파일 없음 확인은 곡 행을 바꾸므로 공유 핵심이 한다(#254).
 - **주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다(#254).** 그 시트는 활동 기록, 연결되지 않은 초안, rekordbox XML 가져오기다. 처음 읽기, 스냅샷, 동기화, 끌어 놓기 같은 주 창 단추는 이 모델의 입구를 부른다. 메뉴 막대의 메뉴 항목(`LibraryMenuAction`)도 이 모델을 받는다. 재생 목록 고르기, USB, 막힌 초안 복구의 시트는 그 주인이 든다.
-- 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`, `StatusBarModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`, `ActivityLogModel`.
+- 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`, `StatusBarModel`, `ReflectionStatusModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`, `ActivityLogModel`.
+- **쓰기 대기 수는 공유 핵심 `LibraryStore`가 한 곳에서 센다(#324).** 사이드바 배지, 상태 줄 칩, Dock 배지가 `pendingWriteCount`를 읽는다. 초안 여섯 종류와 곡 목록이 바뀌면 낡은 것으로 표시한다. 합집합은 다음 읽기에서 한 번만 만든다(#129). 상태 줄 쓰기 상태는 `ReflectionStatusModel`이 저장소를 관찰해 칩·보조 글·Dock 배지를 고친다. 팝오버 단추는 메뉴 막대와 같은 `LibraryMenuAction`을 부르므로 새 쓰기 경로가 아니다.
 - **곡 목록 표와 덱 묶음은 공유 핵심을 통째로 받지 않는다(#254).** 표는 읽는 값 13개만 든 프로토콜 `TrackListSource`를 받는다. 메뉴·칸 편집·끌기는 조정자 `TrackListCoordinator`가 핵심을 부른다. 덱 묶음은 프로토콜 `DeckLibrarySource`와 태그 편집 조각을 받는다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
@@ -811,6 +812,11 @@ PR #151·#139·#152가 든 `a365937`과 수정본을 교대 A/B로 쟀다. 두 �
 ## rekordbox 쓰기
 
 rekordbox 쓰기의 규칙·절차·막아 둔 것은 `docs/rekordbox-internals.md`에 있다. 쓰기 전에 확인하는 버전, DB 구조, 카운터도 그 문서에 있다.
+
+- **rekordbox 실행은 두 길로 따로 본다(#323).** 두 길은 같은 이름 목록과 판정(`RekordboxRunState`)을 쓴다.
+  - 쓰기 관문은 그때그때 `pgrep -x`를 띄워 본다(`RekordboxProcessCheck`). 복원, 시점 스냅샷, USB, LINK도 이 확인을 쓴다.
+  - 이 확인은 실패하면 켜진 것으로 본다. 실패는 띄우지 못함, 0·1 밖의 종료 코드, 2초 초과다.
+  - 앱의 감지 서비스(`RekordboxRunModel`)는 커널 프로세스 목록을 읽는다. 프로세스를 띄우지 않는다. 처음 한 번, 앱 실행·종료 알림이 올 때, 5초마다 읽는다. 읽지 못하면 '모름'이다. 이 값은 화면 표시용이다. 이 값으로 쓰기를 허용하지 않는다.
 
 ## USB
 
