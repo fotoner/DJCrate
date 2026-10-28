@@ -10,8 +10,7 @@ extension UsbWriteFlow {
         if isTestVolume { return [String(ui: "시험 볼륨(디스크 이미지)입니다")] }
         let capacity = volume.capacity.formatted(ByteCountFormatStyle(style: .file))
         let scheme = volume.partitionScheme == .gpt ? "GPT" : "MBR"
-        var lines = [String(ui: "실물 USB입니다: \(volume.name) · \(capacity) · \(volume.fileSystem.displayName) · \(scheme)"),
-                     String(ui: "쓰기 전 바꿀 파일을 Mac에 백업합니다. 기기에 꽂기 전에 결과를 확인하세요")]
+        var lines = [String(ui: "실물 USB입니다: \(volume.name) · \(capacity) · \(volume.fileSystem.displayName) · \(scheme)")]
         lines += UsbVolumePolicy.warnings(volume).map(\.message)
         return lines
     }
@@ -38,7 +37,7 @@ extension UsbWriteFlow {
         details.append(summary.spaceText)
         details += blockLines(summary)
         return ReflectionPrompt(title: String(ui: "곡 \(summary.trackCount)개·재생 목록 \(summary.playlistCount)개를 USB에 쓸까요?"),
-                                text: String(ui: "\(job.volume.name)에 \(formats)로 씁니다. 쓰기 전에 Mac에 백업하고 쓴 뒤 USB에서 다시 읽어 확인합니다. 끝날 때까지 USB를 뽑지 마세요."),
+                                text: String(ui: "\(job.volume.name)에 \(formats)로 씁니다."),
                                 confirm: String(ui: "USB에 쓰기"), details: details)
     }
 
@@ -72,7 +71,7 @@ extension UsbWriteFlow {
         var details: [String] = []
         details += volumeLines(volume, isTestVolume: summary.isTestVolume)
         details += editLines(summary)
-        let text = String(ui: "\(volume.name)의 rekordbox 라이브러리를 고칩니다. 쓰기 전에 Mac에 백업하고 쓴 뒤 USB에서 다시 읽어 확인합니다. 끝날 때까지 USB를 뽑지 마세요.")
+        let text = String(ui: "\(volume.name)의 rekordbox 라이브러리를 고칩니다.")
         return ReflectionPrompt(title: String(ui: "USB에 편집 \(summary.writtenCount)건을 쓸까요?"),
                                 text: draftChanged ? draftChangedText + "\n\n" + text : text,
                                 confirm: String(ui: "USB에 쓰기"), details: details)
@@ -122,6 +121,21 @@ extension UsbWriteFlow {
                          confirm: String(ui: "회복하기"), alternate: String(ui: "되돌리기"), cancel: String(ui: "나중에"))
     }
 
+    /// OneLibrary를 더하기 전의 백업으로 되돌리는 확인 창
+    public static func migrationRestoreConfirmation(_ volume: UsbVolumeInfo) -> ReflectionPrompt {
+        ReflectionPrompt(title: String(ui: "USB를 쓰기 전으로 되돌릴까요?"),
+                         text: String(ui: "\(volume.name)에 OneLibrary를 더하기 전의 백업으로 되돌립니다."),
+                         confirm: String(ui: "되돌리기"), destructive: true)
+    }
+
+    /// 시점 스냅샷으로 되돌리기 직전의 백업으로 되돌리는(되돌리기를 취소하는) 확인 창
+    public static func pointUndoConfirmation(_ volume: UsbVolumeInfo) -> ReflectionPrompt {
+        ReflectionPrompt(title: String(ui: "시점 스냅샷 되돌리기를 취소할까요?"),
+                         text: String(ui: "\(volume.name)을 시점 스냅샷으로 되돌리기 직전의 백업으로 되돌립니다."),
+                         confirm: String(ui: "되돌리기 취소"), destructive: true,
+                         details: volumeLines(volume, isTestVolume: volume.isDiskImage))
+    }
+
     public static func discardDeviceChangesPrompt(_ volume: UsbVolumeInfo) -> ReflectionPrompt {
         ReflectionPrompt(title: String(ui: "USB를 쓰기 전으로 되돌릴까요?"),
                          text: String(ui: "\(volume.name)은 DJCrate가 쓴 뒤 기기에서 바뀌었습니다. 되돌리면 기기가 그 뒤에 쓴 내용을 잃습니다(재생 기록 등)."),
@@ -131,6 +145,8 @@ extension UsbWriteFlow {
     // MARK: - 알림 문구(흐름과 시험이 같은 이름으로 가리킨다)
 
     public enum Text {
+        /// 쓰는 동안 진행 덮개에만 한 번 보이는 안내. 확인 창 본문에는 쓰지 않는다(#310).
+        public static var progressNotice: String { String(ui: "끝날 때까지 USB를 뽑지 마세요") }
         public static var cancelledTitle: String { String(ui: "USB 쓰기를 취소했습니다") }
         public static var unchangedDetail: String { String(ui: "USB는 쓰기 전 그대로입니다.") }
         public static var rekordboxRunningTitle: String { String(ui: "rekordbox가 켜져 있어 USB에 쓰지 않았습니다") }

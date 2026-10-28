@@ -71,10 +71,7 @@ extension UsbWriteFlow {
     public func undoPointRestore(_ volume: UsbVolumeInfo) async -> Bool {
         let key = volume.usbKey
         guard let backup = session.pointRestoreBackups[key], await ready(volume) else { return false }
-        guard confirmation.confirm(ReflectionPrompt(title: String(ui: "시점 스냅샷 되돌리기를 취소할까요?"),
-                                                    text: String(ui: "\(volume.name)을 시점 스냅샷으로 되돌리기 직전의 백업으로 되돌립니다. 끝날 때까지 USB를 뽑지 마세요."),
-                                                    confirm: String(ui: "되돌리기 취소"), destructive: true,
-                                                    details: Self.volumeLines(volume, isTestVolume: volume.isDiskImage))) else { return false }
+        guard confirmation.confirm(Self.pointUndoConfirmation(volume)) else { return false }
         guard begin(volume, title: String(ui: "USB를 되돌리는 중…"), cancellable: false) != nil else { return false }
         return await restore(volume, backup: backup)
     }
@@ -86,7 +83,7 @@ extension UsbWriteFlow {
         details.append(String(ui: "바꿀 DB \(result.databases)개 · 만들 파일 \(result.created)개 · 덮을 파일 \(result.overwritten)개 · 지울 파일 \(result.removed)개"))
         details += result.notes
         return ReflectionPrompt(title: String(ui: "USB를 ‘\(entry.displayName)’ 시점으로 되돌릴까요?"),
-                                text: String(ui: "\(volume.name)의 라이브러리 파일을 이 스냅샷으로 바꿉니다. 음원과 동기화 선택은 그대로 두며, 쓰기 전 백업으로 되돌리기를 취소할 수 있습니다. 끝날 때까지 USB를 뽑지 마세요."),
+                                text: String(ui: "\(volume.name)의 라이브러리 파일을 이 스냅샷으로 바꿉니다. 음원과 동기화 선택은 그대로 두며, 쓰기 전 백업으로 되돌리기를 취소할 수 있습니다."),
                                 confirm: String(ui: "되돌리기"), destructive: true, details: details)
     }
 

@@ -246,6 +246,37 @@ struct PointSnapshotModelTests {
         #expect(model.rows.contains { $0.entry?.metadata.kind == .beforeRestore && $0.name == "‘정리 전’ 복원 전" })
     }
 
+    /// 시점 스냅샷 창은 주 창과 따로 떠서 주 창의 진행 카드가 가려질 수 있다. 확인 창에서 뺀 "끝날 때까지 rekordbox를 켜지 마세요"는
+    /// 이 창이 되돌리는 동안만 직접 보인다(비교·취소·확인 창 동안은 아니다, #310).
+    @Test func 복원하는_동안에만_진행_안내를_켠다() async throws {
+        final class Probe { var model: PointSnapshotModel?; var restoring: [Bool] = [] }
+        let fixture = try RekordboxFixture()
+        let probe = Probe()
+        let prompter = ScriptedPrompter()
+        let points = PointSnapshots(database: fixture.database, shareRoot: fixture.shareRoot, directory: fixture.root.appending(path: "point-snapshots"),
+                                    backupDirectory: fixture.backups, files: .live(guard: Self.copyGuard), backups: .live())
+        let clock = Date()
+        let model = PointSnapshotModel(points: points, busyReason: { nil }, prompter: prompter, now: { clock }, restore: { entry, _ in
+            probe.restoring.append(probe.model?.isRestoring == true)
+            return try RekordboxWriteGate.live(guard: Self.copyGuard).restorePointSnapshot(
+                entry.url, .init(database: fixture.database, shareRoot: fixture.shareRoot, backups: fixture.backups),
+                fixture.root.appending(path: "point-snapshots"), Int(SettingKeys.pointSnapshotAutoDays.defaultValue), clock)
+        })
+        probe.model = model
+        await model.create()
+        let row = try #require(model.rows.first { $0.entry != nil })
+        #expect(!model.isRestoring)
+
+        prompter.answer = false
+        await model.restore(row)
+        #expect(probe.restoring.isEmpty && !model.isRestoring, "취소하면 되돌리지 않아 안내도 켜지 않는다")
+
+        prompter.answer = true
+        await model.restore(row)
+        #expect(probe.restoring == [true], "되돌리는 동안 안내가 켜져 있다")
+        #expect(!model.isRestoring && !model.isWorking, "끝나면 꺼진다")
+    }
+
     @Test func rekordbox가_켜져_있으면_묻지_않고_이유를_알린다() async throws {
         let fixture = try RekordboxFixture()
         let prompter = ScriptedPrompter()
