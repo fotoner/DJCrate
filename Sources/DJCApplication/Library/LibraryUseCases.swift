@@ -29,8 +29,10 @@ public struct LibraryPorts: Sendable {
     public var recovery: RecoveryReader
     /// 재생 목록 연결 기록
     public var playlistImports: PlaylistImportsStore
-    /// 쓰기 전 백업 폴더(되돌릴 백업이 있는지)
+    /// 쓰기 전 백업 폴더(되돌릴 백업이 있는지, 쓸 수 있는지)
     public var backups: RekordboxBackups
+    /// 쓰기 전 확인(`djc compat`와 같은 판정). 읽은 사본으로 쓸 수 있는지 미리 본다(#327)
+    public var compatibility: CompatibilityPorts
     /// 앨범아트 그림(확인·사본 이름)
     public var artwork: ArtworkFiles
     /// 파일 없는 곡의 새 위치 찾기(사본 DB 파일 크기·폴더 훑기·볼륨)
@@ -61,7 +63,8 @@ public struct LibraryPorts: Sendable {
     public init(source: LibrarySource, music: MusicLibrarySource, drafts: DraftStore, musicOrder: ITunesRefreshCoordinator,
                 previews: PreviewWaveforms, xml: XMLFiles, draftFiles: DraftFiles, batches: ReflectionBatchStore,
                 staging: StagingStore, files: TrackFiles, analysis: StagingAnalysis, recovery: RecoveryReader,
-                playlistImports: PlaylistImportsStore, backups: RekordboxBackups, artwork: ArtworkFiles, relocate: RelocateSource,
+                playlistImports: PlaylistImportsStore, backups: RekordboxBackups, compatibility: CompatibilityPorts,
+                artwork: ArtworkFiles, relocate: RelocateSource,
                 query: LibraryQuerySource, appleMusic: AppleMusicFiles, liveShare: URL, linkedXML: URL, usbSnapshots: UsbSyncSnapshots,
                 snapshots: SnapshotTaker, localKeys: LocalLibraryKeysSource,
                 prepareMerge: @escaping @Sendable (_ keeping: String, _ removing: [String], _ snapshot: URL) throws -> DuplicateMergeDraft,
@@ -80,6 +83,7 @@ public struct LibraryPorts: Sendable {
         self.recovery = recovery
         self.playlistImports = playlistImports
         self.backups = backups
+        self.compatibility = compatibility
         self.artwork = artwork
         self.relocate = relocate
         self.query = query
@@ -139,7 +143,8 @@ public struct LibraryUseCases: Sendable {
     public init(ports: LibraryPorts) {
         self.ports = ports
         load = LoadLibrary(source: ports.source, music: ports.music, drafts: ports.drafts, order: ports.musicOrder,
-                           snapshots: ports.snapshots, usbSnapshots: ports.usbSnapshots, localKeys: ports.localKeys)
+                           snapshots: ports.snapshots, usbSnapshots: ports.usbSnapshots, localKeys: ports.localKeys,
+                           compatibility: CompatibilityCheck(ports: ports.compatibility), backups: ports.backups)
         watch = WatchDrafts(drafts: ports.drafts)
         importXML = ImportXML(files: ports.xml, source: ports.source, drafts: ports.drafts, draftFiles: ports.draftFiles,
                               newKey: ports.newKey)

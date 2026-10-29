@@ -231,6 +231,46 @@ struct LayoutRecomputeTests {
         try await change(to: .unknown, expecting: nil, "모름")
     }
 
+    /// 쓸 수 없는 라이브러리(#327)의 판정도 상태 줄 쓰기 상태 구역만 읽는다. 판정이 지원 밖 버전·DB 구조·백업 폴더·풀림으로 바뀌어도
+    /// 주 창 본문(`ContentView`·`LibraryDetail`)을 다시 계산하지 않는다. 판정은 읽기 흐름이 화면에 알리는 길(`readScreen`)로 넣는다.
+    @Test func 쓰기_막힘_판정이_바뀌어도_주_창_본문은_다시_계산하지_않고_쓰기_상태만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedApp: AppComposition?
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 }, prepareApp: { capturedApp = $0 })
+        defer { close() }
+        let app = try #require(capturedApp)
+        let store = try #require(capturedStore)
+        let row = try #require(store.rows.first)
+        store.setDraftMark(.cue, trackUUID: row.track.uuid, exists: true)
+        // 읽은 합성 사본의 실제 판정(쓸 수 있는 모양)이 끝난 뒤에 바꾼다
+        await store.readFlow.writeBlockCheck?.value
+        #expect(store.writeBlock == nil)
+        #expect(await waitForState { app.writeStatus.chip == .pending(items: 1, playlistEdits: 0) })
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+
+        /// 판정을 바꾸고 칩이 따라온 뒤 본문 계산 횟수를 본다
+        func change(to block: LibraryWriteBlock?, expecting chip: ReflectionChip, _ note: String) async throws {
+            PerfProbe.resetBodyCounts()
+            store.readScreen.apply(.writeBlock(block))
+            #expect(await waitForState { app.writeStatus.chip == chip }, Comment(rawValue: note))
+            try await settle(window)
+            print("TRACE 쓰기 막힘 \(note):", PerfProbe.bodySummary() ?? "-")
+            #expect(PerfProbe.bodyCount("ContentView") == 0, Comment(rawValue: "ContentView — \(note)"))
+            #expect(PerfProbe.bodyCount("LibraryDetail") == 0, Comment(rawValue: "LibraryDetail — \(note)"))
+            #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1, Comment(rawValue: "WriteStatusSection — \(note)"))
+        }
+        try await change(to: .unsupportedVersion("7.3.1"), expecting: .blocked(.unsupportedVersion("7.3.1"), items: 1, playlistEdits: 0), "지원 밖 버전")
+        try await change(to: .schema, expecting: .blocked(.schema, items: 1, playlistEdits: 0), "DB 구조")
+        try await change(to: .backupFolder, expecting: .blocked(.backupFolder, items: 1, playlistEdits: 0), "백업 폴더")
+        try await change(to: nil, expecting: .pending(items: 1, playlistEdits: 0), "풀림")
+    }
+
     @Test func 창_폭을_조금씩_바꿔도_주_창_본문은_거의_다시_계산되지_않는다() async throws {
         let (window, _, close) = try await mainWindow()
         defer { close() }

@@ -38,6 +38,9 @@ final class LibraryStore {
     /// 분석 파일·그림을 찾을 share 뿌리(쓰기 대상과 같은 곳). 정하지 않았으면 위치 값의 rekordbox 폴더
     var shareRoot: URL { rekordboxShareRoot ?? location.liveShare }
     private(set) var hasWriteBackup = false
+    /// 읽은 사본으로 미리 본 rekordbox 쓰기 막힘(#327, 판정은 읽기 흐름). nil이면 막힘이 없거나 아직 모른다.
+    /// 상태 줄 쓰기 상태만 읽는다. 표시만 바꾼다: 쓸지 말지는 이 값을 보지 않고 쓰기 판단·관문이 정한다
+    var writeBlock: LibraryWriteBlock?
 
     func refreshWriteBackups() {
         hasWriteBackup = useCases.hasWriteBackup(in: backupDirectory)
