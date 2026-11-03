@@ -104,8 +104,11 @@ extension LibraryStore {
             AppErrorMessage.log(error)
             reportReadFailure(failure)
         case let .unsupportedRekordbox(version):
-            // 읽기는 됐으니 실패 화면이 아니라 알림으로 알린다. 지나간 알림은 활동 기록에서 다시 본다
-            showToast(.notice(UnsupportedRekordboxNotice.title(version: version), UnsupportedRekordboxNotice.guidance))
+            // 늘 보이는 표시는 상태 줄의 「rekordbox에 쓸 수 없음」 칩이 맡는다(#327). 같은 이유를 창 알림으로 겹쳐 띄우지 않고 활동 기록에만 남긴다
+            activityLog.record(.notice(UnsupportedRekordboxNotice.title(version: version), UnsupportedRekordboxNotice.guidance), shown: false)
+        case let .writeBlock(block):
+            // 같은 값을 다시 쓰면 상태 줄이 쓸데없이 다시 그려진다
+            if writeBlock != block { writeBlock = block }
         }
     }
 

@@ -123,16 +123,18 @@ struct FirstRunReadTests {
         if case let .failed(message) = store.phase { #expect(message == "사본을 뜨지 않았습니다") } else { Issue.record("실패 화면이 아니다") }
     }
 
-    @Test func 지원하지_않는_rekordbox_버전은_경고_알림으로_알리고_활동_기록에_남는다() throws {
+    /// 늘 보이는 표시는 상태 줄의 「rekordbox에 쓸 수 없음」 칩이 맡으므로(#327) 창 알림은 띄우지 않고 활동 기록에만 경고로 남긴다
+    @Test func 지원하지_않는_rekordbox_버전은_창_알림을_띄우지_않고_활동_기록에_경고로_남긴다() throws {
         let home = try TemporaryFolder(), rekordbox = try TemporaryFolder()
         let (store, _) = Self.store(launch: LibraryLaunchOptions(), home: home, rekordbox: rekordbox)
 
         store.readScreen.apply(.unsupportedRekordbox("7.3.1"))
 
-        let toast = try #require(store.toast)
-        #expect(toast.kind == .warning)
-        #expect(toast.title == "이 rekordbox 버전(7.3)은 아직 지원하지 않습니다")
-        #expect(toast.detail == "읽기만 하고 rekordbox에 쓰기는 막혀 있습니다")
+        #expect(store.toast == nil)
+        let entry = try #require(store.activityLog.entries.first)
+        #expect(entry.kind == .warning)
+        #expect(entry.title == "이 rekordbox 버전(7.3)은 아직 지원하지 않습니다")
+        #expect(entry.detail == "읽기만 하고 rekordbox에 쓰기는 막혀 있습니다")
         // 지금 목록은 실패 화면으로 바뀌지 않는다
         guard case .idle = store.phase else {
             Issue.record("알림만 띄워야 하는데 화면이 바뀌었다: \(store.phase)")

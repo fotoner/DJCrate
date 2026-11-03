@@ -95,6 +95,9 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 읽기 순번: 늦게 끝난 옛 결과를 버린다
   - 사본 뜨기 요청 합치기(`SnapshotRequestQueue`)
   - 읽은 뒤 Music 최신화 잇기, iTunes 동기화 창의 목록 열기와 쓰기 전 확인
+  - 읽은 뒤 쓰기 막힘 미리 보기(#327). 판정은 `djc compat`와 같은 `CompatibilityCheck.verdict`와 쓰기 확인 창과 같은 `RekordboxBackups.canWrite`다. 이유 고르기는 `LibraryWriteBlock`이 한다.
+    - 읽은 사본만 메인 밖에서 연다. 읽기는 이 판정을 기다리지 않는다.
+    - 저장소의 `writeBlock`은 상태 줄 칩만 읽는다. 쓰기 판단과 관문은 이 값을 보지 않는다.
 - **화면 모델은 포트를 들지 않는다.** `LibraryUseCases.ports`는 모듈 밖에 공개하지 않는다. 화면에 보일 값은 묶음의 읽기 메서드로 받는다.
   - `linkedXML`, `hasWriteBackup`, `writeBackups`
   - `missingFiles`, `log`

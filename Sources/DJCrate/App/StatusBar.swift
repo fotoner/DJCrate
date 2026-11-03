@@ -140,6 +140,7 @@ struct ActivityPopoverRow: View {
 
 /// rekordbox 쓰기 상태 구역(#324): 보조 글(마지막 쓰기) + 상태 칩 + 쓰기 대기가 있을 때 [쓰기] 단추. 칩을 누르면 상태 팝오버가 열린다.
 /// rekordbox가 켜져 있는지·꺼졌는지(#326)는 칩 글자에 이유로 붙고, 꺼진 것을 확인하면 [쓰기]가 [지금 쓰기]로 강조된다(같은 명령).
+/// 쓸 수 없는 라이브러리(#327)는 칩이 「rekordbox에 쓸 수 없음」이고 이유를 칩 툴팁과 팝오버 맨 위에 보인다. 그때는 [쓰기]를 보이지 않는다.
 /// 이 구역만 쓰기 상태를 읽는다. 값과 클로저만 잎 뷰에 넘긴다.
 struct WriteStatusSection: View {
     @Bindable var model: ReflectionStatusModel
@@ -155,10 +156,9 @@ struct WriteStatusSection: View {
                 }
                 .layoutPriority(-1)
             }
-            WriteStatusChip(chip: model.chip, action: { model.isPresented.toggle() })
+            WriteStatusChip(chip: model.chip, help: model.chip.blockReason, action: { model.isPresented.toggle() })
                 .popover(isPresented: $model.isPresented, arrowEdge: .top) {
-                    WriteStatusPopover(title: model.chip.title, lines: [model.todoLine, model.extraLine, model.lastWriteText].compactMap { $0 },
-                                       items: model.items, perform: { model.perform($0) })
+                    WriteStatusPopover(title: model.chip.title, lines: model.popoverLines, items: model.items, perform: { model.perform($0) })
                 }
             if model.showsWriteButton {
                 WriteStatusButton(title: model.writeButtonTitle, isEmphasized: model.emphasizesWrite, isEnabled: model.canWrite,
@@ -191,9 +191,11 @@ struct WriteStatusButton: View {
     }
 }
 
-/// 쓰기 상태 칩: 모양과 글자로 상태를 알린다(쓰기 대기는 초안 표식과 같은 연필, 쓰는 중은 진행 표시)
+/// 쓰기 상태 칩: 모양과 글자로 상태를 알린다(쓰기 대기는 초안 표식과 같은 연필, 쓸 수 없음은 경고 삼각형, 쓰는 중은 진행 표시)
 struct WriteStatusChip: View {
     let chip: ReflectionChip
+    /// 툴팁(쓸 수 없는 이유). 없으면 달지 않는다
+    let help: String?
     let action: () -> Void
 
     var body: some View {
@@ -202,6 +204,7 @@ struct WriteStatusChip: View {
                 switch chip {
                 case .clean: Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
                 case .pending: Image(systemName: DraftMark.symbol).foregroundStyle(UIColors.draft.color)
+                case .blocked: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(AppToast.Kind.warning.tint)
                 case .writing: ProgressView().controlSize(.mini)
                 }
                 Text(chip.title).monospacedDigit()
@@ -212,7 +215,9 @@ struct WriteStatusChip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
+        .help(help ?? "")
         .accessibilityLabel(chip.title)
+        .accessibilityHint(help ?? "")
         .selfTestFrame("statusBarWriteChip")
     }
 }
@@ -220,7 +225,7 @@ struct WriteStatusChip: View {
 /// 쓰기 상태 팝오버: 상태 한 줄과 보조 글, 그 아래 메뉴 막대와 같은 명령 넷. 막힌 명령은 흐리게 두고 이유를 툴팁으로 알린다.
 struct WriteStatusPopover: View {
     let title: String
-    /// 상태 아래 보조 글(재생 목록 편집 건수·마지막 쓰기)
+    /// 상태 아래 보조 글(쓸 수 없는 이유·할 일·재생 목록 편집 건수·마지막 쓰기)
     let lines: [String]
     let items: [ReflectionStatusModel.Item]
     let perform: (LibraryMenuAction) -> Void
@@ -229,7 +234,8 @@ struct WriteStatusPopover: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline)
-                ForEach(lines, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary) }
+                // 쓸 수 없는 이유는 할 일까지 한 문장이라 길다. 잘라 보이지 않고 줄을 바꾼다
+                ForEach(lines, id: \.self) { Text($0).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             Divider()

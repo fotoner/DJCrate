@@ -61,8 +61,11 @@ public enum LibraryReadChange: Sendable {
     case damagedDrafts([DamagedDraftFile])
     /// 읽기 실패. 오류는 진단 기록에 남긴다
     case readFailed(LibraryReadFailure, any Error)
-    /// 설치된 rekordbox가 쓰기를 확인한 버전이 아니다(읽기는 됐다). 화면은 목록 위 알림으로 알린다(인자: 설치된 버전)
+    /// 설치된 rekordbox가 쓰기를 확인한 버전이 아니다(읽기는 됐다, 앱을 켜고 한 번). 화면은 활동 기록에 남긴다(인자: 설치된 버전).
+    /// 늘 보이는 표시는 아래 쓰기 막힘이 맡는다
     case unsupportedRekordbox(String)
+    /// 읽은 사본으로 미리 본 rekordbox 쓰기 막힘(#327). nil이면 막힘이 없다. 화면은 상태 줄에 보이기만 한다(쓰기 관문은 따로 막는다)
+    case writeBlock(LibraryWriteBlock?)
 }
 
 /// 한 번 읽은 결과(화면이 곡 목록·초안 표시에 넣는다)

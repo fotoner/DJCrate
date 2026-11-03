@@ -11301,6 +11301,22 @@
         }
       }
     },
+    "rekordbox DB 구조가 DJCrate가 확인한 모양과 다르니 DJCrate 업데이트를 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The rekordbox database structure differs from what DJCrate has verified; check for a DJCrate update"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxのデータベース構造がDJCrateで確認した形と異なるため、DJCrateのアップデートを確認してください"
+          }
+        }
+      }
+    },
     "rekordbox DB 구조가 DJCrate가 확인한 모양과 다릅니다: %@. rekordbox가 업데이트됐다면 DJCrate도 확인이 필요합니다" : {
       "localizations" : {
         "en" : {
@@ -12089,6 +12105,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxの変更カウンターが想定と異なります"
+          }
+        }
+      }
+    },
+    "rekordbox 변경 카운터가 클라우드 동기화 카운터보다 작으니 rekordbox를 켜서 동기화를 끝낸 뒤 종료하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox's change counter is lower than its cloud sync counter; open rekordbox, let it finish syncing, then quit it"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxの変更カウンターがクラウド同期カウンターより小さいため、rekordboxを起動して同期を終えてから終了してください"
           }
         }
       }
@@ -14387,6 +14419,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "書き込み待ちの曲の下書きとUSBの演奏履歴を表示します。プレイリストの下書きも一緒に書き込めます。"
+          }
+        }
+      }
+    },
+    "rekordbox에 쓸 수 없음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't Write to rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxに書き込み不可"
           }
         }
       }
@@ -33225,6 +33273,22 @@
         }
       }
     },
+    "쓰기 전 백업을 만들 폴더에 쓸 수 없으니 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate can't write to the folder for the pre-write backup; check write permission for the DJCrate data folder"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み前のバックアップを作るフォルダに書き込めないため、DJCrateのデータフォルダの書き込み権限を確認してください"
+          }
+        }
+      }
+    },
     "쓰기 전 백업이 없으니 활동 기록을 확인하세요" : {
       "localizations" : {
         "en" : {
@@ -37745,6 +37809,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "このrekordboxのバージョン（%@）にはまだ対応していません"
+          }
+        }
+      }
+    },
+    "이 rekordbox 버전(%@)은 아직 지원하지 않으니 DJCrate 업데이트를 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This rekordbox version (%@) isn't supported yet; check for a DJCrate update"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このrekordboxのバージョン（%@）にはまだ対応していないため、DJCrateのアップデートを確認してください"
           }
         }
       }

@@ -17,9 +17,14 @@ public struct LoadLibrary: Sendable {
     let usbSnapshots: UsbSyncSnapshots
     /// 읽은 사본의 USB 짝짓기 키(보존한 기기 재생 기록의 짝·쓴 표시 검증, #43). nil이면 읽지 않는다
     let localKeys: LocalLibraryKeysSource?
+    /// 읽은 사본으로 rekordbox에 쓸 수 있는지 미리 보는 확인(`djc compat`와 같다, #327). nil이면 보지 않는다
+    let compatibility: CompatibilityCheck?
+    /// 쓰기 전 백업 폴더(쓸 수 있는지 미리 본다, #327). nil이면 보지 않는다
+    let backups: RekordboxBackups?
 
     public init(source: LibrarySource, music: MusicLibrarySource, drafts: DraftStore, order: ITunesRefreshCoordinator,
-                snapshots: SnapshotTaker, usbSnapshots: UsbSyncSnapshots, localKeys: LocalLibraryKeysSource? = nil) {
+                snapshots: SnapshotTaker, usbSnapshots: UsbSyncSnapshots, localKeys: LocalLibraryKeysSource? = nil,
+                compatibility: CompatibilityCheck? = nil, backups: RekordboxBackups? = nil) {
         self.source = source
         self.music = music
         self.drafts = drafts
@@ -27,6 +32,8 @@ public struct LoadLibrary: Sendable {
         self.snapshots = snapshots
         self.usbSnapshots = usbSnapshots
         self.localKeys = localKeys
+        self.compatibility = compatibility
+        self.backups = backups
     }
 
     // MARK: - 어떤 사본을 읽을지
@@ -102,6 +109,19 @@ public struct LoadLibrary: Sendable {
 
     /// 설치된 rekordbox가 쓰기를 확인한 버전이 아니면 그 버전(메인 밖에서 부른다)
     public func unsupportedRekordboxVersion() -> String? { source.unsupportedRekordboxVersion() }
+
+    /// 읽은 사본으로 rekordbox에 쓸 수 없는 이유를 미리 본다(#327, 메인 밖에서 부른다). 판정은 `djc compat`와 같은 확인(`CompatibilityCheck`)과
+    /// 쓰기 확인 창과 같은 백업 폴더 확인(`RekordboxBackups.canWrite`)이고, 이유는 `LibraryWriteBlock.first`가 고른다.
+    /// 사본만 연다(라이브 DB는 열지 않는다). 확인을 붙이지 않았으면 nil
+    /// - Parameter snapshot: 읽은 사본
+    /// - Parameter backupDirectory: 쓰기 전 백업 폴더(쓰기 확인 창이 보는 것과 같은 위치 값)
+    public func writeBlock(snapshot: URL, backupDirectory: URL) -> LibraryWriteBlock? {
+        guard let compatibility, let backups else { return nil }
+        return LibraryWriteBlock.first(compatibility.verdict(database: snapshot), canBackUp: backups.canWrite(backupDirectory))
+    }
+
+    /// 쓰기 막힘을 미리 보는 확인이 붙어 있다(앱·시험 조립. 붙이지 않은 읽기는 막힘을 알리지 않는다)
+    public var checksWriteBlock: Bool { compatibility != nil && backups != nil }
 
     /// 사본 지문(메인 밖에서 뜬다). 뜨지 못하면 nil
     public func usbStamp(of snapshot: URL) async -> UsbSyncSnapshotProvenance? {

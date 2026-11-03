@@ -31,6 +31,10 @@ public final class LibraryReadFlow {
     public var retryPause: @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(2)) }
     /// 설치된 rekordbox 버전을 이미 확인했다(앱을 켜고 한 번만 알린다)
     private var checkedRekordboxVersion = false
+    /// 마지막으로 시작한 쓰기 막힘 판정(#327). 읽기를 기다리게 하지 않고 뒤에서 돈다. 시험이 끝을 기다린다
+    public private(set) var writeBlockCheck: Task<Void, Never>?
+    /// 쓰기 막힘 판정 순번. 채택한 읽기가 판정을 시작할 때만 오른다(사본 뜨기 시작은 읽기 세대만 올리고 목록은 그대로라 판정을 버리지 않는다)
+    private var writeBlockSerial: UInt64 = 0
     /// 흐름이 보는 화면. 화면 모델이 만들 때 붙인다(붙이지 않으면 읽은 결과를 버린다)
     public var screen: LibraryReadScreen = .none
     /// 읽기 세대·요청 순번. 늦게 끝난 읽기·Music 최신화·파일 확인·USB 사본 출처를 이것으로 가른다.
@@ -258,6 +262,25 @@ public final class LibraryReadFlow {
         screen.apply(.unsupportedRekordbox(version))
     }
 
+    /// 읽은 사본으로 rekordbox에 쓸 수 없는 이유를 미리 본다(#327). 읽을 때마다 다시 본다.
+    /// 사본 DB를 한 번 더 여는 일이라 메인 밖에서 하고, 읽기(와 뒤따르는 Music 최신화)를 기다리게 하지 않는다.
+    /// 그사이 다른 사본을 채택해 새 판정이 시작됐으면 결과를 버린다(새 판정이 대신 알린다). 새 사본 뜨기가 시작만 되고 채택되지 않으면
+    /// (복사 실패·더 나중 요청에 밀림) 화면에는 이 사본의 목록이 남으므로 이 판정을 알린다. 화면은 보이기만 한다: 쓰기 관문은 따로 막는다
+    private func checkWriteBlock(snapshot: URL) {
+        guard loader.checksWriteBlock else { return }
+        let loader = loader, backupDirectory = location.backupDirectory
+        writeBlockSerial &+= 1
+        let serial = writeBlockSerial
+        writeBlockCheck?.cancel()
+        writeBlockCheck = Task { [weak self] in
+            // 막힘 없음(nil)도 알려야 지난 막힘이 풀린다(`try?`로 받으면 nil이 실패와 섞인다)
+            let block: LibraryWriteBlock?
+            do { block = try await LoadLibrary.background { loader.writeBlock(snapshot: snapshot, backupDirectory: backupDirectory) } } catch { return }
+            guard let self, !Task.isCancelled, writeBlockSerial == serial else { return }
+            screen.apply(.writeBlock(block))
+        }
+    }
+
     /// 사본을 뜨는 동안 동기화 선택을 저장했다면, 뜨기 전에 붙든 이전 선택보다 지금 화면의 목록을 우선한다.
     public func latestMusicFallback(_ previous: LoadedLibrary.ITunesFallback?) -> LoadedLibrary.ITunesFallback? {
         let state = screen.state()
@@ -326,6 +349,7 @@ public final class LibraryReadFlow {
                 return
             }
             start.adopt(LibraryReadResult(opened: opened, snapshot: snapshot, generation: generation, synchronizingDrafts: synchronizingDrafts))
+            checkWriteBlock(snapshot: snapshot)
             await reportUnsupportedVersionOnce()
         } catch {
             guard reads.isCurrent(generation) else { return }

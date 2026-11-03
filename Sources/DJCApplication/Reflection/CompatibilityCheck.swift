@@ -15,6 +15,26 @@ public struct CompatibilityCheck: Sendable {
         case counters(local: Int?, cloud: Int?)
     }
 
+    /// 확인하는 단계(차례대로). 앱이 막힌 단계로 이유를 고른다
+    public enum Stage: Equatable, Sendable {
+        /// 설치된 rekordbox 버전
+        case app
+        /// 사본 열기
+        case snapshot
+        /// DB 구조·DB 버전
+        case schema
+        /// 변경 카운터 읽기·판정
+        case counters
+    }
+
+    /// 확인 결과 한 값(앱의 라이브러리 읽기, #327). `run`과 같은 차례·같은 판정 함수로 보고, 막힌 단계만 남긴다
+    public enum Verdict: Equatable, Sendable {
+        /// 모두 통과했다
+        case passed
+        /// 이 단계에서 막혔다(`djc compat`가 그 자리에서 던지는 것과 같다). 설치된 rekordbox 버전을 함께 든다(찾지 못하면 nil)
+        case blocked(Stage, installed: String?)
+    }
+
     public var ports: CompatibilityPorts
 
     public init(ports: CompatibilityPorts) {
@@ -23,13 +43,36 @@ public struct CompatibilityCheck: Sendable {
 
     /// - Parameter database: 명시한 사본(`--db`). nil이면 마지막 스냅샷(라이브 DB는 열지 않는다)
     public func run(database: URL?, report: (Finding) -> Void) throws {
+        try check(database: database, report: report, entering: { _ in })
+    }
+
+    /// `run`과 같은 확인을 던지지 않고 한 값으로 돌려준다(앱이 읽은 사본으로 쓸 수 있는지 미리 본다, 메인 밖에서 부른다)
+    /// - Parameter database: 읽은 사본. nil이면 마지막 스냅샷(라이브 DB는 열지 않는다)
+    public func verdict(database: URL?) -> Verdict {
+        var stage = Stage.app, installed: String?
+        do {
+            try check(database: database, report: { finding in
+                if case let .app(version, _) = finding { installed = version }
+            }, entering: { stage = $0 })
+            return .passed
+        } catch {
+            return .blocked(stage, installed: installed)
+        }
+    }
+
+    /// 확인 차례 하나(`run`·`verdict`가 함께 쓴다). 단계에 들어갈 때마다 `entering`을 부른다
+    private func check(database: URL?, report: (Finding) -> Void, entering: (Stage) -> Void) throws {
+        entering(.app)
         let installed = ports.installedAppVersion()
         report(.app(installed: installed, verified: ports.verifiedAppVersions))
         try ports.checkApp(installed)
+        entering(.snapshot)
         let snapshot = try ports.openSnapshot(database)
         defer { snapshot.close() }
+        entering(.schema)
         try snapshot.checkSchema()
         report(.schema(databaseVersion: ports.databaseVersion, file: snapshot.fileName))
+        entering(.counters)
         let counters = try snapshot.updateCounters()
         report(.counters(local: counters.local, cloud: counters.cloud))
         if let local = counters.local { try ports.checkCounters(local, counters.cloud) }
