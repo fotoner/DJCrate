@@ -26,6 +26,22 @@ struct PlaylistImportTests {
         #expect(draft.edits == [.addTracks(playlist: .id("P"), contentIDs: ["1"])])
     }
 
+    /// 놓은 곡의 경로와 rekordbox가 기록한 경로가 한글 NFC·NFD만 다르면 같은 곡이다(Finder는 NFD로 줄 때가 있다)
+    @Test(arguments: [true, false])
+    func 한글_경로는_NFC_NFD_표기가_달라도_같은_곡으로_잇는다(_ droppedAsNFD: Bool) {
+        let composed = "/음원/한글 곡.mp3".precomposedStringWithCanonicalMapping
+        let decomposed = composed.decomposedStringWithCanonicalMapping
+        var imports = PlaylistImports(), draft = PlaylistDraft()
+        let rb = PlaylistLayout([(.init(id: "P", name: "세트"), 1)])
+        imports.addFiles([droppedAsNFD ? decomposed : composed], to: .id("P"))
+        // 컬렉션 쪽 키는 앱이 만드는 방식 그대로(`pathKey`)
+        let reasons = imports.reconcile(contentIDsByPath: [PlaylistImports.pathKey(droppedAsNFD ? composed : decomposed): "1"],
+                                        draft: &draft, rekordbox: rb)
+        #expect(reasons.isEmpty)
+        #expect(draft.edits == [.addTracks(playlist: .id("P"), contentIDs: ["1"])])
+        #expect(imports.pendingCount == 0)
+    }
+
     @Test func 컬렉션에_있는_곡만_초안에_넣고_같은_이름은_새로_만든다() throws {
         var imports = PlaylistImports()
         imports.addAppleMusic(origins("/a", position: 0).merging(origins("/b", position: 1)) { $0 + $1 }, unidentifiedLibraryID: UUID().uuidString,
