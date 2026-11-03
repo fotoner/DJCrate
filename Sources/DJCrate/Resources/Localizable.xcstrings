@@ -582,6 +582,28 @@
         }
       }
     },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
     "%@ · %@ · %@ · %lld곡" : {
       "localizations" : {
         "en" : {
@@ -13007,6 +13029,94 @@
         }
       }
     },
+    "rekordboxAgent가 켜져 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxAgent is running"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxAgentが起動しています"
+          }
+        }
+      }
+    },
+    "rekordboxAgent가 켜져 있어 쓰기 대기 %lld건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordboxAgent를 종료한 뒤 DJCrate에서 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "rekordboxAgent is running, so %lld pending item has not been written to rekordbox yet. Your edits stay in DJCrate. Quit rekordboxAgent, then write from DJCrate."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "rekordboxAgent is running, so %lld pending items have not been written to rekordbox yet. Your edits stay in DJCrate. Quit rekordboxAgent, then write from DJCrate."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxAgentが起動しているため、書き込み待ち%lld件はまだrekordboxに書き込まれていません。編集はDJCrateに残っているので、rekordboxAgentを終了してからDJCrateで書き込んでください"
+          }
+        }
+      }
+    },
+    "rekordboxAgent가 켜져 있어 재생 목록 편집 %lld건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordboxAgent를 종료한 뒤 DJCrate에서 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "rekordboxAgent is running, so %lld playlist edit has not been written to rekordbox yet. Your edits stay in DJCrate. Quit rekordboxAgent, then write from DJCrate."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "rekordboxAgent is running, so %lld playlist edits have not been written to rekordbox yet. Your edits stay in DJCrate. Quit rekordboxAgent, then write from DJCrate."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxAgentが起動しているため、プレイリスト編集%lld件はまだrekordboxに書き込まれていません。編集はDJCrateに残っているので、rekordboxAgentを終了してからDJCrateで書き込んでください"
+          }
+        }
+      }
+    },
+    "rekordboxAgent를 종료한 뒤 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit rekordboxAgent, then write."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxAgentを終了してから書き込んでください"
+          }
+        }
+      }
+    },
     "rekordbox·DJCrate의 데이터 폴더는 후보 폴더로 쓸 수 없습니다. 음악이 있는 폴더를 고르세요" : {
       "localizations" : {
         "en" : {
@@ -13067,6 +13177,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "復元ポイントはrekordboxが終了しているときだけ作成します。手動・ピン留めしたものは自動では削除せず、書き込み前のバックアップは別に整理されます。"
+          }
+        }
+      }
+    },
+    "rekordbox가 꺼졌습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox has quit"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxが終了しました"
+          }
+        }
+      }
+    },
+    "rekordbox가 끝나는 중…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox is quitting…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxが終了しています…"
           }
         }
       }
@@ -13407,6 +13549,34 @@
         }
       }
     },
+    "rekordbox가 켜져 있어 쓰기 대기 %lld건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "rekordbox is running, so %lld pending item has not been written to rekordbox yet. Your edits stay in DJCrate. Quit rekordbox, then write from DJCrate."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "rekordbox is running, so %lld pending items have not been written to rekordbox yet. Your edits stay in DJCrate. Quit rekordbox, then write from DJCrate."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxが起動しているため、書き込み待ち%lld件はまだrekordboxに書き込まれていません。編集はDJCrateに残っているので、rekordboxを終了してからDJCrateで書き込んでください"
+          }
+        }
+      }
+    },
     "rekordbox가 켜져 있어 쓰지 않았습니다" : {
       "localizations" : {
         "en" : {
@@ -13419,6 +13589,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxが起動しているため書き込みませんでした"
+          }
+        }
+      }
+    },
+    "rekordbox가 켜져 있어 재생 목록 편집 %lld건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "rekordbox is running, so %lld playlist edit has not been written to rekordbox yet. Your edits stay in DJCrate. Quit rekordbox, then write from DJCrate."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "rekordbox is running, so %lld playlist edits have not been written to rekordbox yet. Your edits stay in DJCrate. Quit rekordbox, then write from DJCrate."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxが起動しているため、プレイリスト編集%lld件はまだrekordboxに書き込まれていません。編集はDJCrateに残っているので、rekordboxを終了してからDJCrateで書き込んでください"
           }
         }
       }
@@ -13495,6 +13693,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxを「%@」の時点に復元しますか？"
+          }
+        }
+      }
+    },
+    "rekordbox를 끈 뒤 쓰세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit rekordbox, then write."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxを終了してから書き込んでください"
           }
         }
       }
@@ -19591,6 +19805,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "そのホットキューを削除"
+          }
+        }
+      }
+    },
+    "그냥 종료" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit Anyway"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このまま終了"
           }
         }
       }
@@ -32817,6 +33047,22 @@
         }
       }
     },
+    "쓰기 대기가 남아 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Writes are still pending"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み待ちが残っています"
+          }
+        }
+      }
+    },
     "쓰기 대기에 오른 USB 재생 기록입니다. 고르면 그 기록을 보고, 빼면 실행 취소로 되돌립니다." : {
       "localizations" : {
         "en" : {
@@ -42875,6 +43121,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "復元ポイントを作成"
+          }
+        }
+      }
+    },
+    "지금 쓰기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Write Now"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今すぐ書き込む"
           }
         }
       }

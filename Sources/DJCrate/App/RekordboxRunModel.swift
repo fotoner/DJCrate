@@ -33,4 +33,12 @@ final class RekordboxRunModel {
     private func apply(_ state: RekordboxRunState) {
         self.state = state
     }
+
+    #if DEBUG
+    /// 캡처 장면이 감지 판정을 정한다(`--reflection-layout=run-…`). 지켜보기를 멈추고 값만 넣는다. 디버그 빌드에만 있다
+    func inject(_ state: RekordboxRunState?) {
+        stop()
+        self.state = state
+    }
+    #endif
 }

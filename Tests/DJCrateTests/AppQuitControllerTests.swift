@@ -23,19 +23,33 @@ struct AppQuitControllerTests {
         var raised = 0
         var terminated = 0
         var cancelledTerminations = 0
+        /// 켜진 채 종료 시트(#326): 감지 값과 쓰기 대기 수는 시험이 정하고, 시트는 띄운 내용만 남긴다(답은 시험이 준다)
+        var run: RekordboxRunState?
+        var pendingCount = PendingWriteCount(items: 0, playlistEdits: 0)
+        var presented: [QuitConfirmation] = []
+        var answers: [@MainActor (Bool) -> Void] = []
+        /// 종료를 다시 요청할 때 컨트롤러가 준 답(실제 앱은 `terminate:`가 `applicationShouldTerminate`를 바로 부른다)
+        var reentrantReplies: [NSApplication.TerminateReply] = []
+        var terminateReenters = false
         /// 답하는 순간 초안 저장이 먼저 비워졌는지 보려고 남기는 순서
         var order: [String] = []
         let model = QuitWaitModel()
 
-        lazy var controller = AppQuitController(
+        lazy var controller: AppQuitController = AppQuitController(
             model: model, activity: { [unowned self] in activity },
             cancelPreparation: { [unowned self] in cancelled += 1; order.append("cancel") },
             flushDrafts: { [unowned self] in flushed += 1; order.append("flush") },
             reply: { [unowned self] in replies.append($0); order.append("reply \($0)") },
-            terminate: { [unowned self] in terminated += 1; order.append("terminate") },
+            terminate: { [unowned self] in
+                terminated += 1
+                order.append("terminate")
+                if terminateReenters { reentrantReplies.append(controller.requestTermination()) }
+            },
             inform: { [unowned self] in informed.append($0) },
             terminationCancelled: { [unowned self] in cancelledTerminations += 1 },
             bringForward: { [unowned self] in raised += 1 },
+            runState: { [unowned self] in run }, pending: { [unowned self] in pendingCount },
+            present: { [unowned self] confirmation, answer in presented.append(confirmation); answers.append(answer) },
             now: { [unowned self] in now })
     }
 
@@ -266,6 +280,138 @@ struct AppQuitControllerTests {
         #expect(w.terminated == 0 && w.replies.isEmpty && w.raised == 1 && w.model.current == nil)
     }
 
+    // MARK: - 켜진 채 종료 시트(#326)
+
+    /// 켜져 있고 쓰기 대기가 있는 상태. 시트 판정표는 DJCDomainTests `QuitConfirmationTests`가 보고, 여기서는 시트가 흐름에 붙는 모습을 본다.
+    private func runningWithPending(_ run: RekordboxRunState = .running) {
+        w.run = run
+        w.pendingCount = PendingWriteCount(items: 3, playlistEdits: 0)
+    }
+
+    @Test func 켜진_채_쓰기_대기가_있으면_종료를_취소로_답하고_시트를_띄운다() {
+        runningWithPending()
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.presented == [QuitConfirmation(running: .rekordbox, pending: PendingWriteCount(items: 3, playlistEdits: 0))])
+        // 아직 끄지 않았고 기다림도 만들지 않았다. 확인할 창이 뒤에 있을 수 있어 앞으로 가져온다
+        #expect(w.terminated == 0 && w.replies.isEmpty && w.model.current == nil && w.raised == 1)
+    }
+
+    @Test func rekordboxAgent만_켜져_있어도_시트를_띄운다() {
+        runningWithPending(.agentOnly)
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.presented.map(\.running) == [.agentOnly])
+    }
+
+    @Test func 그냥_종료를_누르면_다시_종료를_요청하고_그_요청은_묻지_않고_끈다() {
+        runningWithPending()
+        w.terminateReenters = true
+        _ = w.controller.requestTermination()
+        w.answers[0](true)
+        #expect(w.terminated == 1)
+        #expect(w.reentrantReplies == [.terminateNow], "다시 한 요청은 묻지 않고 끈다: \(w.reentrantReplies)")
+        #expect(w.presented.count == 1 && w.cancelledTerminations == 0)
+    }
+
+    /// [그냥 종료]는 다음 종료 요청 한 번만 건너뛴다. 종료가 이어지지 않았으면(그 사이 다시 켜졌다 등) 다음 종료는 다시 묻는다
+    @Test func 그냥_종료는_다음_요청_한_번만_건너뛴다() {
+        runningWithPending()
+        _ = w.controller.requestTermination()
+        w.answers[0](true)
+        #expect(w.terminated == 1)
+        // 종료가 실제로 이어지지 않았다면 다음 종료 요청은 다시 묻는다
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.presented.count == 2)
+    }
+
+    @Test func 취소를_누르면_종료하지_않고_다음_종료에서_다시_묻는다() {
+        runningWithPending()
+        _ = w.controller.requestTermination()
+        w.answers[0](false)
+        #expect(w.terminated == 0 && w.replies.isEmpty && w.cancelledTerminations == 1)
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.presented.count == 2)
+    }
+
+    @Test func 시트가_떠_있는_동안_다시_종료를_요청해도_시트를_더_띄우지_않는다() {
+        runningWithPending()
+        _ = w.controller.requestTermination()
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.presented.count == 1)
+        // 하나를 닫은 뒤에는 다시 물을 수 있다
+        w.answers[0](false)
+        _ = w.controller.requestTermination()
+        #expect(w.presented.count == 2)
+    }
+
+    /// 시트가 열린 채 사용자가 rekordbox를 끄러 갔다가 로그아웃하거나 업데이트가 다시 켜려 할 수 있다. 그 종료를 취소로 답하면 그 일이 통째로 멈춘다(리뷰 지적)
+    @Test func 시트가_떠_있어도_시스템_종료와_업데이트_다시_켜기는_취소로_답하지_않는다() {
+        runningWithPending()
+        _ = w.controller.requestTermination()
+        #expect(w.presented.count == 1)
+        #expect(w.controller.requestTermination(nested: true, cause: .systemShutdown) == .terminateNow, "Mac을 끄는 중")
+        #expect(w.controller.requestTermination(cause: .systemShutdown) == .terminateNow, "종료 이유가 로그아웃·재시작·전원 끔")
+        #expect(w.controller.requestTermination(cause: .updateRelaunch) == .terminateNow, "업데이트 다시 켜기")
+        #expect(w.controller.requestTermination(cause: .unknown) == .terminateNow, "이유를 알 수 없는 종료")
+        #expect(w.presented.count == 1, "시트를 더 띄우지 않는다")
+        // 사용자가 고른 종료는 시트가 떠 있는 동안 계속 취소로만 답한다
+        #expect(w.controller.requestTermination() == .terminateCancel)
+    }
+
+    @Test func 쓰기_대기가_없거나_꺼져_있거나_모르면_묻지_않고_바로_끈다() {
+        w.run = .running
+        #expect(w.controller.requestTermination() == .terminateNow, "대기 없음")
+        runningWithPending(.stopped)
+        #expect(w.controller.requestTermination() == .terminateNow, "꺼짐")
+        w.run = .unknown
+        #expect(w.controller.requestTermination() == .terminateNow, "모름")
+        w.run = nil
+        #expect(w.controller.requestTermination() == .terminateNow, "읽기 전")
+        #expect(w.presented.isEmpty)
+    }
+
+    @Test(arguments: [AppQuitCause.systemShutdown, .updateRelaunch, .unknown])
+    func 로그아웃_재시작_업데이트_모르는_이유의_종료는_묻지_않고_끈다(_ cause: AppQuitCause) {
+        runningWithPending()
+        #expect(w.controller.requestTermination(cause: cause) == .terminateNow)
+        #expect(w.presented.isEmpty)
+    }
+
+    /// 미루는 방식(`nested`)은 시스템이 Mac을 끄는 중일 때다. 이유를 잘못 알려 와도 이 방식으로 온 종료는 묻지 않는다
+    @Test func Mac을_끄는_중인_종료는_이유와_상관없이_묻지_않는다() {
+        runningWithPending()
+        #expect(w.controller.requestTermination(nested: true, cause: .user) == .terminateNow)
+        #expect(w.presented.isEmpty)
+    }
+
+    /// 쓰는 중이면 시트보다 종료 대기(#300)가 앞선다
+    @Test func 쓰는_중이면_시트_없이_종료_대기를_따른다() {
+        runningWithPending()
+        w.activity = AppWriteActivity(rekordbox: .writing, writingUsb: false)
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.presented.isEmpty && w.model.isWaiting)
+        // 쓰기가 끝나 대기가 없어지면 묻지 않고 다시 요청해 끈다
+        w.pendingCount = PendingWriteCount(items: 0, playlistEdits: 0)
+        w.activity = AppWriteActivity(rekordbox: .readingBack, writingUsb: false)
+        w.controller.activityChanged()
+        #expect(w.terminated == 1 && w.presented.isEmpty)
+    }
+
+    @Test func USB에_쓰는_중이면_시트_없이_기존_거절을_따른다() {
+        runningWithPending()
+        w.activity = AppWriteActivity(rekordbox: .idle, writingUsb: true)
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.presented.isEmpty && w.informed.count == 1)
+    }
+
+    @Test func 종료를_기다리는_중_다시_요청하면_시트가_아니라_종료_취소다() {
+        runningWithPending()
+        w.activity = AppWriteActivity(rekordbox: .writing, writingUsb: false)
+        _ = w.controller.requestTermination()
+        w.activity = .idle
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.presented.isEmpty && !w.model.isWaiting)
+    }
+
     // MARK: - 실제 저장소와 관찰
 
     /// 실제 저장소의 쓰기 상태를 관찰해 기다림이 끝나는지(관찰을 다시 걸어 가며 한 번만 답한다). 미루는 방식은 Mac을 끄는 중일 때다.
@@ -351,5 +497,114 @@ struct AppQuitControllerTests {
         delegate.store = store
         store.quitWait.cancel()
         #expect(replies == [false] && !store.quitWait.isWaiting)
+    }
+
+    // MARK: - 켜진 채 종료 시트와 실제 저장소(#326)
+
+    /// 켜진 채 종료 시트의 가짜 주변을 건 델리게이트와 쓰기 대기 곡 하나가 있는 저장소
+    @MainActor private final class SheetWorld {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        let delegate = AppDelegate()
+        var presented: [QuitConfirmation] = []
+        var answers: [@MainActor (Bool) -> Void] = []
+        var terminations = 0
+        var terminateReplies: [NSApplication.TerminateReply] = []
+
+        init(run: RekordboxRunState? = .running, reason: UInt32? = nil, updateRelaunch: Bool = false, pending: Bool = true) {
+            delegate.rekordboxRunState = { run }
+            delegate.quitReason = { reason }
+            delegate.consumeUpdateRelaunch = { updateRelaunch }
+            delegate.presentQuitConfirmation = { [unowned self] confirmation, answer in
+                presented.append(confirmation)
+                answers.append(answer)
+            }
+            delegate.terminateApp = { [unowned self] in
+                terminations += 1
+                terminateReplies.append(delegate.applicationShouldTerminate(NSApplication.shared))
+            }
+            delegate.store = store
+            if pending {
+                store.rowsByUUID["a"] = PendingCountCacheTests.track("a")
+                store.setDraftMark(.cue, trackUUID: "a", exists: true)
+            }
+        }
+
+        func quit() -> NSApplication.TerminateReply { delegate.applicationShouldTerminate(NSApplication.shared) }
+    }
+
+    @Test func 저장소에_쓰기_대기가_있고_rekordbox가_켜져_있으면_사용자_종료에_시트를_띄운다() {
+        let world = SheetWorld()
+        #expect(world.quit() == .terminateCancel)
+        #expect(world.presented == [QuitConfirmation(running: .rekordbox, pending: PendingWriteCount(items: 1, playlistEdits: 0))],
+                "시트의 수는 상태 줄 칩과 같다(\(world.store.pendingWriteCount))")
+    }
+
+    @Test func 시트에서_그냥_종료를_누르면_델리게이트가_종료를_다시_요청하고_그_요청은_끈다() {
+        let world = SheetWorld()
+        _ = world.quit()
+        world.answers[0](true)
+        #expect(world.terminations == 1 && world.terminateReplies == [.terminateNow])
+        #expect(world.presented.count == 1)
+    }
+
+    @Test func 시트에서_취소를_누르면_종료하지_않는다() {
+        let world = SheetWorld()
+        _ = world.quit()
+        world.answers[0](false)
+        #expect(world.terminations == 0)
+    }
+
+    @Test func 쓰기_대기가_없거나_rekordbox가_꺼져_있거나_모르면_묻지_않는다() {
+        #expect(SheetWorld(pending: false).quit() == .terminateNow)
+        #expect(SheetWorld(run: .stopped).quit() == .terminateNow)
+        #expect(SheetWorld(run: .unknown).quit() == .terminateNow)
+        #expect(SheetWorld(run: nil).quit() == .terminateNow)
+    }
+
+    /// 로그아웃·재시작·전원 끔은 Apple 이벤트의 종료 이유(「why?」)나 Mac을 끄는 중이라는 알림으로 알아본다. 업데이트 다시 켜기는 업데이트 도구가 표시한다
+    @Test func 로그아웃_재시작_전원_끔_업데이트_다시_켜기에서는_묻지_않는다() {
+        for code in ["rlgo", "logo", "rest", "shut", "rrst", "rsdn"] {
+            let world = SheetWorld(reason: AppQuitCause.fourCC(code))
+            #expect(world.quit() == .terminateNow, "종료 이유 \(code)")
+            #expect(world.presented.isEmpty)
+        }
+        let power = SheetWorld()
+        power.store.isPoweringOff = true
+        #expect(power.quit() == .terminateNow && power.presented.isEmpty, "Mac을 끄는 중")
+        let update = SheetWorld(updateRelaunch: true)
+        #expect(update.quit() == .terminateNow && update.presented.isEmpty, "업데이트 다시 켜기")
+    }
+
+    @Test func 일반_종료_이유_quia는_사용자_종료로_본다() {
+        let world = SheetWorld(reason: AppQuitCause.fourCC("quia"))
+        #expect(world.quit() == .terminateCancel)
+        #expect(world.presented.count == 1)
+    }
+
+    @Test func 모르는_종료_이유는_묻지_않는다() {
+        let world = SheetWorld(reason: AppQuitCause.fourCC("zzzz"))
+        #expect(world.quit() == .terminateNow && world.presented.isEmpty)
+    }
+
+    /// 감지 서비스를 이어 주지 않은 델리게이트(시험·화면 시험의 조립)는 늘 모름이라 시트를 띄우지 않는다
+    @Test func 감지를_이어_주지_않으면_묻지_않는다() {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        let delegate = AppDelegate()
+        delegate.presentQuitConfirmation = { _, _ in Issue.record("시트를 띄우면 안 된다") }
+        delegate.store = store
+        store.rowsByUUID["a"] = PendingCountCacheTests.track("a")
+        store.setDraftMark(.cue, trackUUID: "a", exists: true)
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
+    }
+
+    // MARK: - 경고창
+
+    @Test func 시트는_취소가_기본_단추이고_그냥_종료가_두_번째다() {
+        let alert = QuitConfirmationAlert.makeAlert(QuitConfirmation(running: .rekordbox, pending: PendingWriteCount(items: 2, playlistEdits: 0)))
+        #expect(alert.messageText == "쓰기 대기가 남아 있습니다")
+        #expect(alert.informativeText.hasPrefix("rekordbox가 켜져 있어 쓰기 대기 2건을"))
+        #expect(alert.buttons.map(\.title) == ["취소", "그냥 종료"])
+        #expect(QuitConfirmationAlert.isQuitAnyway(.alertSecondButtonReturn))
+        #expect(!QuitConfirmationAlert.isQuitAnyway(.alertFirstButtonReturn))
     }
 }

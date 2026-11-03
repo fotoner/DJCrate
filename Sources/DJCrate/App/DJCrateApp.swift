@@ -81,6 +81,10 @@ struct DJCrateApp: App {
                 .background(MainWindowFrame { windowFrameRestored = true })
                 .task {
                     appDelegate.store = store
+                    // 켜진 채 종료 시트(#326)가 읽는 감지 서비스와 업데이트 다시 켜기 표시
+                    let composition = app
+                    appDelegate.rekordboxRunState = { composition.rekordboxRun.state }
+                    appDelegate.consumeUpdateRelaunch = { composition.consumeUpdateRelaunch() }
                     #if DEBUG
                     // 쓰기 시험(`--write-selftest`)도 키 입력 없이 스토어로만 돌아 사용 중인 앱의 포커스를 가져오지 않는다
                     if !ResizePerfSelfTest.isRequested,

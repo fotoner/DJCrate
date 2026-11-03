@@ -154,6 +154,7 @@ SPARKLE_ED_PRIVATE_KEY="$(cat <임시 폴더>/priv.txt)" scripts/sparkle-appcast
 - 자동으로 받은 업데이트는 앱을 끌 때 설치한다. 받아 둔 업데이트를 다시 켜기로 설치할 때 Sparkle은 미룸 판정을 부르지 않는다.
 - 두 경로 모두 앱 끄기를 지난다. 앱은 끄기 입구에서 쓰기 단계를 본다. 판정은 `AppQuitPolicy`가 한다.
 - rekordbox에 쓰는 중이면 끝날 때까지 기다렸다 끈다. USB에 쓰는 중이면 끄지 않는다(`AppDelegate`·`AppQuitController`, #300).
+- 업데이트 다시 켜기는 켜진 채 종료 시트(#326)를 띄우지 않는다. 업데이트 도구가 다시 켜기 직전에 표시한다(`AppUpdater.consumeRelaunchMark`). 업데이트를 끌 때 설치하는 경로는 사용자가 고른 종료라 시트를 지난다.
 
 ### 신뢰 모델
 

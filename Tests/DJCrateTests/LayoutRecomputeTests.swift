@@ -8,6 +8,7 @@ import Foundation
 import QuartzCore
 import RekordboxFixtures
 import SwiftUI
+import Synchronization
 import Testing
 
 #if DEBUG
@@ -22,7 +23,7 @@ import Testing
                 || ProcessInfo.processInfo.environment["DJC_LAYOUT_BENCHMARK_DB"] != nil))
 struct LayoutRecomputeTests {
     /// 합성 곡 하나를 덱에 올린 주 창(사이드바 열림)
-    private func mainWindow(width: Double = 1440, waveformHeight: Double = 150,
+    private func mainWindow(width: Double = 1440, waveformHeight: Double = 150, rekordboxRun: RekordboxRunModel? = nil,
                             prepareStore: (LibraryStore) -> Void = { _ in },
                             prepareApp: (AppComposition) -> Void = { _ in }) async throws -> (window: NSWindow, deck: DeckModel, close: () -> Void) {
         _ = NSApplication.shared
@@ -46,7 +47,7 @@ struct LayoutRecomputeTests {
         await store.load(snapshot: snapshot)
         prepareStore(store)
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
-        let app = AppComposition(store: store, deck: deck)
+        let app = AppComposition(store: store, deck: deck, rekordboxRun: rekordboxRun)
         prepareApp(app)
         let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: app, windowFrameRestored: false))
         let window = UnconstrainedWindow(contentViewController: controller)
@@ -176,6 +177,58 @@ struct LayoutRecomputeTests {
         store.isWritingRekordbox = false
         try await settle(window)
         #expect(app.writeStatus.chip == .pending(items: rows.count, playlistEdits: 0))
+    }
+
+    /// rekordbox 켜짐·꺼짐 감지(#326)도 상태 줄 쓰기 상태 구역만 읽는다. 감지 상태가 켜짐·Agent만·끝나는 중·꺼짐 강조·모름으로 바뀌어도
+    /// 주 창 본문(`ContentView`·`LibraryDetail`)을 다시 계산하지 않는다. 감지는 가짜 감시(신호로 다시 읽는다)로, 확인 시간은 가짜 시계로 정한다.
+    @Test func 감지_상태가_바뀌어도_주_창_본문은_다시_계산하지_않고_쓰기_상태만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        let processes = RekordboxRunModelTests.Processes(.running)
+        let run = RekordboxRunModel(source: processes.source)
+        defer { run.stop() }
+        var capturedApp: AppComposition?
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(rekordboxRun: run, prepareStore: { capturedStore = $0 }, prepareApp: { capturedApp = $0 })
+        defer { close() }
+        let app = try #require(capturedApp)
+        let store = try #require(capturedStore)
+        let stopGate = ReflectionStatusModelTests.SleepGate()
+        app.writeStatus.settleSleep = stopGate.sleep
+        let row = try #require(store.rows.first)
+        store.setDraftMark(.cue, trackUUID: row.track.uuid, exists: true)
+        run.start()
+        #expect(await waitForState { app.writeStatus.chip.reason == .rekordboxRunning })
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+
+        /// 감지 상태를 바꾸고 칩이 따라온 뒤 본문 계산 횟수를 본다
+        func change(to state: RekordboxRunState, expecting reason: ReflectionChip.Reason?, _ note: String) async throws {
+            PerfProbe.resetBodyCounts()
+            processes.current.withLock { $0 = state }
+            processes.signal()
+            #expect(await waitForState { app.writeStatus.chip.reason == reason }, Comment(rawValue: note))
+            try await settle(window)
+            print("TRACE 감지 \(note):", PerfProbe.bodySummary() ?? "-")
+            #expect(PerfProbe.bodyCount("ContentView") == 0, Comment(rawValue: "ContentView — \(note)"))
+            #expect(PerfProbe.bodyCount("LibraryDetail") == 0, Comment(rawValue: "LibraryDetail — \(note)"))
+            #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1, Comment(rawValue: "WriteStatusSection — \(note)"))
+        }
+        try await change(to: .agentOnly, expecting: .agentRunning, "Agent만")
+        try await change(to: .stopped, expecting: .rekordboxStopping, "끝나는 중")
+        PerfProbe.resetBodyCounts()
+        stopGate.release()
+        #expect(await waitForState { app.writeStatus.chip.reason == .rekordboxStopped })
+        try await settle(window)
+        print("TRACE 감지 꺼짐 강조:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1)
+        try await change(to: .running, expecting: .rekordboxRunning, "켜짐")
+        try await change(to: .unknown, expecting: nil, "모름")
     }
 
     @Test func 창_폭을_조금씩_바꿔도_주_창_본문은_거의_다시_계산되지_않는다() async throws {
