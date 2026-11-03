@@ -28,6 +28,23 @@ struct LibraryReadFailureLiveTests {
         }
     }
 
+    /// 라이브 포트는 위치 값의 master.db를 늘 라이브로 본다(#292). 위치가 이 프로세스의 환경과 다른 폴더를 가리켜도(시험·다른 조립) 켜져 있으면 뜨지 않는다.
+    /// 실행 여부는 주입해 이 Mac의 rekordbox와 상관없다. `force`는 켜짐을 알고 뜨는 길이라 그대로 뜬다.
+    @Test func 위치의_master_db는_환경과_어긋나도_라이브로_보고_켜져_있으면_뜨지_않는다() throws {
+        let folder = try TemporaryFolder()
+        let (location, rekordbox) = Self.location(in: folder)
+        try Data("자리".utf8).write(to: rekordbox.appending(path: "master.db"))
+
+        #expect { try SnapshotTaker.live(location, isRekordboxRunning: { true }).take(false) }
+            throws: { if case DJCError.rekordboxRunning = $0 { true } else { false } }
+        #expect(!FileManager.default.fileExists(atPath: location.snapshotDirectory.path)
+                || ((try? FileManager.default.contentsOfDirectory(atPath: location.snapshotDirectory.path)) ?? []).isEmpty)
+        let forced = try SnapshotTaker.live(location, isRekordboxRunning: { true }).take(true)
+        #expect(try Data(contentsOf: forced) == Data("자리".utf8))
+        let stopped = try SnapshotTaker.live(location, isRekordboxRunning: { false }).take(false)
+        #expect(try Data(contentsOf: stopped) == Data("자리".utf8))
+    }
+
     @Test func master_db가_없으면_라이브러리를_찾지_못했다고_알린다() throws {
         let folder = try TemporaryFolder()
         let (location, _) = Self.location(in: folder)

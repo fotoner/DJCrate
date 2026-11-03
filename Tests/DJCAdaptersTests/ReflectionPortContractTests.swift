@@ -6,6 +6,7 @@ import Foundation
 import PortTestKit
 import RekordboxFixtures
 import RekordboxKit
+import Synchronization
 import Testing
 
 /// 반영 세션 포트의 계약(실제 구현): 세션 시험(DJCApplicationTests)이 가짜에 돌리는 계약 함수(PortTestKit)를 실제 구현(DJCAdapters)에 돌린다
@@ -40,6 +41,35 @@ struct ReflectionPortContractTests {
         try await writeGateContract(.live(guard: Self.copyGuard),
                                     target: RekordboxWriteTarget(database: fixture.database, shareRoot: fixture.shareRoot, backups: fixture.backups),
                                     batch: DraftWriteBatch(drafts: [cue]))
+    }
+
+    /// 미리 보기의 사본 뜨기는 관문이 받은 라이브 판정·실행 확인을 따른다(#292): 라이브 대상은 켜져 있으면 사본을 뜨지 않고,
+    /// 라이브가 아닌 사본 대상은 켜져 있어도 미리 본다. 이 Mac의 rekordbox 실행 여부와 상관없이 주입한 관문으로 정한다.
+    @Test func 미리_보기는_관문의_라이브_판정과_실행_확인을_따른다() async throws {
+        let fixture = try RekordboxFixture(localUpdateCount: 1000)
+        let spec = TrackSpec()
+        try fixture.add(spec)
+        var cue = CueDraft(trackUUID: spec.uuid)
+        cue.place(EditableCue(kind: .hot(0), time: 4))
+        let target = RekordboxWriteTarget(database: fixture.database, shareRoot: fixture.shareRoot, backups: fixture.backups)
+        let before = try Data(contentsOf: fixture.database)
+
+        let liveRunning = RekordboxWriteGuard(isLive: { _ in true }, isRekordboxRunning: { true }, appVersion: { "7.2.18" })
+        do {
+            _ = try await RekordboxWriteGate.live(guard: liveRunning).preview(DraftWriteBatch(drafts: [cue]), [:], target) {
+                Issue.record("켜진 rekordbox의 라이브 대상으로 사본을 뜸")
+            }
+            Issue.record("라이브 대상을 거절하지 않음")
+        } catch DJCError.rekordboxRunning {
+        }
+
+        let copyRunning = RekordboxWriteGuard(isLive: { _ in false }, isRekordboxRunning: { true }, appVersion: { "7.2.18" })
+        let copied = Mutex(0)
+        let report = try await RekordboxWriteGate.live(guard: copyRunning).preview(DraftWriteBatch(drafts: [cue]), [:], target) {
+            copied.withLock { $0 += 1 }
+        }
+        #expect(copied.withLock { $0 } == 1 && report.dryRun)
+        #expect(try Data(contentsOf: fixture.database) == before)
     }
 
     /// 목록이 없는 masterPlaylists6.xml(재생 목록 쓰기의 출발점)

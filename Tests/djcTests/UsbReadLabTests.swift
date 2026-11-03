@@ -259,7 +259,10 @@ struct UsbReadLabTests {
         #expect(a.tree() == beforeA && b.tree() == beforeB)
     }
 
-    @Test func anlzRelocateChangesCopyOnly() throws {
+    /// 실제 분석 파일 옮기기는 rekordbox가 켜져 있으면 거절한다(임시 폴더 사본이어도). `djc`를 띄워 실제 감지를 따르므로 켜져 있으면 건너뛴다.
+    /// 사용법·scratch 밖 거부는 실행 확인보다 앞이라 아래 시험이 늘 본다.
+    @Test(.enabled(if: !RealRekordboxProcess.isRunning, "djc가 실제 rekordbox 감지를 따라 rekordbox가 켜져 있으면 막는 시험이라 건너뛴다(#292)"))
+    func anlzRelocateChangesCopyOnly() throws {
         let tree = UsbTreeFixture()
         defer { tree.remove() }
         try UsbLibraryFixture().write(to: tree)
@@ -273,7 +276,13 @@ struct UsbReadLabTests {
 
         let (decoyStatus, decoy) = try run(["usb-anlz-relocate", tree.base.path, "--track", "2", "--decoy-slot0"])
         #expect(decoyStatus == 0 && decoy.hasPrefix("모드 decoySlot0"))
-        // 사용법·거부
+    }
+
+    /// 사용법·거부는 rekordbox 실행 여부와 상관없이 같다(실행 확인보다 앞에서 거절한다)
+    @Test func anlzRelocateRefusesBeforeTouchingAnything() throws {
+        let tree = UsbTreeFixture()
+        defer { tree.remove() }
+        try UsbLibraryFixture().write(to: tree)
         let (_, usage) = try run(["usb-anlz-relocate", tree.base.path, "--track", "3"])
         #expect(usage.contains("사용법"))
         let (_, twoModes) = try run(["usb-anlz-relocate", tree.base.path, "--track", "3", "--folder", "P123/0ABCDEF1", "--db-only", "--files-only"])
