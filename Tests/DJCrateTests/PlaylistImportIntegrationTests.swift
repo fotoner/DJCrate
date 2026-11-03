@@ -160,7 +160,14 @@ struct PlaylistImportIntegrationTests {
                           activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                           backupDirectory: fixture.backups, draftHome: home,
                           rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot,
-                          arguments: ["test", "--db", fixture.database.path], environment: ["DJC_REKORDBOX_DIR": fixture.root.path])
+                          arguments: ["test", "--db", fixture.database.path], environment: ["DJC_REKORDBOX_DIR": fixture.root.path],
+                          ports: Self.withoutAnalysis)
+    }
+
+    /// 실제 그리드·조성 분석(MusicUnderstanding)은 CI 러너에서 음원 읽기가 끝나지 않아 시험 전체가 멈춘다. 이 시험은 놓은 곡의 연결만 보므로 분석을 비운다
+    static func withoutAnalysis(_ ports: inout LibraryPorts) {
+        ports.analysis.estimateGrid = { _, _ in nil }
+        ports.analysis.mainKey = { _, _, _, _, _ in .some(nil) }
     }
 
     /// 컬렉션에 없는 합성 음원을 목록 `P`에 놓은 채 읽어 둔 저장소. 음원은 `audio` 폴더에 있다
@@ -212,7 +219,7 @@ struct PlaylistImportIntegrationTests {
                                  activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, draftHome: home,
                                  rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot,
-                                 arguments: ["test"], environment: [:], takeLiveSnapshot: { _ in database })
+                                 arguments: ["test"], environment: [:], takeLiveSnapshot: { _ in database }, ports: Self.withoutAnalysis)
     }
 
     @Test func 목록에_놓은_새_곡은_앱의_넣기_흐름이_끝나면_그_목록_초안에_들어간다() async throws {
