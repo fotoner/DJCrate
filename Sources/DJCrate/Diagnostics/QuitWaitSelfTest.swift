@@ -10,7 +10,8 @@ import RekordboxKit
 /// 쓰기 관문을 몇 초 붙잡아 "rekordbox에 쓰는 중…" 단계를 길게 만든 뒤, 앱의 실제 종료 입구(`NSApp.terminate`)로 종료를 요청한다.
 /// 1. [종료 취소]: 종료를 요청(이벤트 처리 자리, ⌘Q와 같다) → 기다림 카드 → 카드의 [종료 취소] 단추 자리에 마우스 이벤트를 넣는다 → 종료만 취소되고 쓰기는 끝까지 간다
 /// 2. 종료를 메인 큐 블록 안에서 요청(`terminateLater`로 미루면 멈추는 자리) → 한 번 더 요청 → 종료만 취소된다
-/// 3. 종료를 요청하고 그대로 둔다 → 쓰기가 끝나면 앱이 스스로 종료 코드 0으로 끝난다(`willTerminate` 줄에 그때 쓰기 상태를 남긴다)
+/// 3. 종료를 요청하고 그대로 둔다 → 쓰기가 끝나면 앱이 스스로 종료 코드 0으로 끝난다(`willTerminate` 줄에 그때 쓰기 상태를 남긴다).
+///    종료 대기 중이었으니 쓴 뒤 다시 읽기는 건너뛰고(#305) 쓰기 결과가 활동 기록에 남은 뒤에 종료해야 한다. 아니면 종료 코드 1이다
 /// `--quit-wait-poweroff`를 함께 주면 쓰는 도중에 Mac을 끄는 중이라고 알린 채(`isPoweringOff`) 같은 순서를 한다.
 /// 이때는 종료를 `terminateLater`로 미루고 `reply`로 답한다(요청은 모두 이벤트 처리 자리에서 한다).
 /// `--quit-wait-capture=<폴더>`를 주면 기다리는 동안의 창을 `waiting-card.jpg`로 남긴다. 결과는 표준 오류의 "[종료 대기 시험]" 줄이다.
@@ -74,6 +75,7 @@ enum QuitWaitSelfTest {
             @MainActor func elapsed() -> Int { store.quitWait.current?.elapsedSeconds(at: Date()) ?? -1 }
 
             // 1. [종료 취소]
+            let loadsBefore1 = store.completedLoadCount
             startWriteOfNewRating()
             check(await reachWritingStage(), "1. 쓰는 단계(끊지 않는 단계)에 들어섰다")
             arm()
@@ -89,6 +91,8 @@ enum QuitWaitSelfTest {
             check(await finishWrite(), "1. 종료만 취소됐고 쓰기는 끝까지 갔다")
             disarm()
             check(store.lastError == nil && store.toast?.kind != .failure, "1. 쓰기 결과가 실패가 아니다")
+            // 쓰기가 끝나기 전에 취소했으니 다시 읽기를 미루지 않고 평소처럼 읽는다
+            check(store.completedLoadCount > loadsBefore1 && !store.reloadPostponedForQuit, "1. 종료를 취소했으니 쓴 뒤 다시 읽기를 했다(읽기 \(store.completedLoadCount - loadsBefore1)번)")
 
             // 2. ⌘Q를 한 번 더
             startWriteOfNewRating()
@@ -114,9 +118,19 @@ enum QuitWaitSelfTest {
             startWriteOfNewRating()
             check(await reachWritingStage(), "3. 쓰는 단계에 들어섰다")
             let expectedRating = rating
+            let loadsBefore3 = store.completedLoadCount
+            let lastRecord3 = store.activityLog.latest?.id
             _ = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
                 MainActor.assumeIsolated {
+                    // 종료를 기다리던 중이라 쓴 뒤 다시 읽기를 건너뛰고, 쓰기 결과는 종료 전에 활동 기록에 남아 있어야 한다(#305)
+                    let recorded = store.activityLog.latest.map { $0.id != lastRecord3 && $0.result != nil } ?? false
+                    let reads = store.completedLoadCount - loadsBefore3
                     log("종료 직전: 쓰기 잠금=\(store.quitBlocked) · 단계=\(store.writeStage?.text ?? "-") · 남은 평점 초안=\(store.tagDrafts[rated.track.uuid] != nil) · 쓴 평점=\(expectedRating)")
+                    log("종료 직전: 활동 기록에 쓰기 결과=\(recorded) · 종료 대기 중 읽은 횟수=\(reads) · 미룬 읽기=\(store.reloadPostponedForQuit)")
+                    if !recorded || reads != 0 || !store.reloadPostponedForQuit {
+                        log("실패: 종료 대기 중이면 다시 읽기를 건너뛰고 쓰기 결과를 먼저 남긴 뒤 종료해야 한다")
+                        exit(1)
+                    }
                 }
             }
             check(failures == 0, "3. 앞 단계가 모두 통과했다(\(failures)건 실패)")

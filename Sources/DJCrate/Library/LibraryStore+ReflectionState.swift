@@ -74,6 +74,8 @@ extension LibraryStore {
         }
         isWritingRekordbox = locked
         if deck { onWriteLock?(locked) }
+        // 종료를 기다리느라 미룬 다시 읽기는 종료를 취소했는데 쓰기 잠금이 아직 걸려 있었을 때 여기서 이어 한다(#305)
+        if !locked { resumePostponedReload() }
     }
 
     /// CLI가 초안 파일 잠금을 잠깐 들고 있었으면 풀린 뒤 잡는다. 한 번 못 잡았다고 쓰기 내내 잠금 없이 두지 않는다(그동안 고친 CLI 편집은 쓴 뒤 정리가 덮을 수 있다)

@@ -222,11 +222,10 @@ extension ReflectionSession {
             ? String(ui: "rekordbox에는 썼지만 재생 목록 초안을 정리하지 못했습니다.") + " " + Self.playlistSaveFailureText : nil
         // 화면을 처음부터 다시 불러오지 않고 뒤에서 조용히 다시 읽는다.
         // 덱은 새 스냅샷을 읽은 뒤에만 그 곡을 다시 읽는다(그리드만 바뀐 곡도 초안·그리드를 맞춘다). 읽지 못하면 다음 읽기까지 미룬다.
-        stage(.reloadingLibrary)
         let written = Set(cues).union(report.gridWritten.map(\.trackUUID)).union(gains).union(report.analysisWritten.map(\.trackUUID))
             .union(tagWritten).union(artworks)
             .union(batch.merges.filter { merged.contains($0.id) }.flatMap { $0.members.map(\.trackUUID) })
-        let reloaded = await ports.reload.reload(written, [])
+        let reloaded = await reloadLibrary(during: .reloadingLibrary, written: written)
         apply(.lastWriteBackup(report.backup.map { URL(filePath: $0) }))
         return finishFollowUp([saveWarning, playlistWarning, historyWarning] + (report.warnings ?? []), reloaded: reloaded, restoring: false)
     }

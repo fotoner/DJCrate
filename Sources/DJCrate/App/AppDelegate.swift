@@ -92,8 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reply: { [weak self] in self?.replyToTermination($0) },
             terminate: { [weak self] in self?.terminateApp() },
             inform: { [weak self] in self?.inform($0) },
-            // 종료를 취소로 끝냈으면 Mac을 끄는 일도 멈췄다. 취소된 로그아웃은 알림이 없으니 여기서 푼다
-            terminationCancelled: { [weak store] in store?.isPoweringOff = false },
+            // 종료를 취소로 끝냈으면 Mac을 끄는 일도 멈췄다. 취소된 로그아웃은 알림이 없으니 여기서 푼다.
+            // 종료를 기다리느라 미룬 쓴 뒤 다시 읽기도 여기서 이어서 한다(#305)
+            terminationCancelled: { [weak store] in store?.quitCancelled() },
             bringForward: { NSApplication.shared.activate() },
             runState: { [weak self] in self?.rekordboxRunState() },
             pending: { [weak store] in store?.pendingWriteSummary ?? PendingWriteCount(items: 0, playlistEdits: 0) },

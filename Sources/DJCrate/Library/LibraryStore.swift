@@ -390,6 +390,8 @@ final class LibraryStore {
     @ObservationIgnored var onLibraryLoaded: ((Set<String>) -> Void)?
     /// rekordbox에 쓰거나 되돌렸지만 아직 새 스냅샷으로 다시 읽지 못한 곡. 다음 읽기가 성공하면 덱에 알린다.
     @ObservationIgnored var writtenAwaitingReload: Set<String> = []
+    /// 종료를 기다리느라 쓴 뒤 다시 읽기를 미뤘다(#305). 종료를 취소하면 한 번 이어서 읽는다. 읽은 뒤 알릴 곡·쌓을 편집은 위 값들이 들고 있다.
+    @ObservationIgnored var reloadPostponedForQuit = false
     /// 마지막 쓰기·복원은 끝났지만 뒤따른 일(초안 정리·다시 읽기·복원 충돌)에 남은 경고. 쓰기 결과와 나눠 알린다.
     @ObservationIgnored var writeFollowUp: [String] = []
 

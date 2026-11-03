@@ -130,6 +130,27 @@ struct AppQuitControllerTests {
         #expect(w.order == ["flush", "reply true"], "초안 저장 큐를 비운 뒤에 답한다: \(w.order)")
     }
 
+    /// 종료를 기다리는 중 쓴 뒤 다시 읽기를 미룬 길(#305)은 다시 읽는 단계를 거치지 않는다. 쓰기가 끝났다는 알림이 올 때 잠금은 이미 풀려 단계가 `idle`이다.
+    /// 그래도 기다린 것은 쓰기였으니 종료 전에 쓴 초안 정리가 걸린 저장 큐를 비워야 한다.
+    @Test func 다시_읽기_단계를_거치지_않고_쓰기가_끝나도_초안_저장을_비운_뒤_종료로_답한다() {
+        w.activity = AppWriteActivity(rekordbox: .writing, writingUsb: false)
+        _ = w.controller.requestTermination(nested: true)
+        w.activity = .idle
+        w.controller.activityChanged()
+        w.controller.activityChanged()
+        #expect(w.replies == [true] && w.model.current == nil)
+        #expect(w.order == ["flush", "reply true"], "초안 저장 큐를 비운 뒤에 답한다: \(w.order)")
+    }
+
+    @Test func 미루지_않은_종료도_다시_읽기_단계_없이_쓰기가_끝나면_초안_저장을_비운_뒤_다시_요청한다() {
+        w.activity = AppWriteActivity(rekordbox: .writing, writingUsb: false)
+        _ = w.controller.requestTermination()
+        w.activity = .idle
+        w.controller.activityChanged()
+        #expect(w.replies.isEmpty && w.terminated == 1 && w.model.current == nil)
+        #expect(w.order == ["flush", "terminate"], "초안 저장 큐를 비운 뒤 다시 요청한다: \(w.order)")
+    }
+
     @Test func 쓰기가_모두_끝나_잠금이_풀려도_종료로_답한다() {
         w.activity = AppWriteActivity(rekordbox: .writing, writingUsb: false)
         _ = w.controller.requestTermination(nested: true)

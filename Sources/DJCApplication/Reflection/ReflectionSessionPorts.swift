@@ -79,9 +79,14 @@ public struct LibraryReloader {
     ///   - written: 읽은 뒤 덱에 알릴 쓰거나 되돌린 곡. 읽지 못하면 다음에 읽을 때 알린다(옛 스냅샷을 새것으로 보지 않게)
     ///   - playlistEdits: 읽은 뒤 되돌린 rekordbox 상태에 다시 쌓을 재생 목록 편집(복원). 읽지 못하면 다음 읽기 뒤에 쌓는다
     public var reload: @MainActor (_ written: Set<String>, _ playlistEdits: [PlaylistEdit]) async -> Bool
+    /// 종료를 기다리는 중이면 읽지 않고 미뤄 두고 true를 돌려준다(#305). 같은 인자로 `reload`를 부른 것과 같게 읽은 뒤 알릴 곡·쌓을 편집을 기억해 두고,
+    /// 종료를 취소하면 앱이 미룬 읽기를 이어서 한다. 종료를 기다리지 않으면 아무것도 하지 않고 false다.
+    public var postpone: @MainActor (_ written: Set<String>, _ playlistEdits: [PlaylistEdit]) -> Bool
 
-    public init(reload: @escaping @MainActor (Set<String>, [PlaylistEdit]) async -> Bool) {
+    public init(reload: @escaping @MainActor (Set<String>, [PlaylistEdit]) async -> Bool,
+                postpone: @escaping @MainActor (Set<String>, [PlaylistEdit]) -> Bool = { _, _ in false }) {
         self.reload = reload
+        self.postpone = postpone
     }
 
     /// 다시 읽을 라이브러리가 없는 곳(CLI)
