@@ -2,10 +2,11 @@ import DJCDomain
 import SwiftUI
 
 enum LibraryMenuAction: CaseIterable {
-    case addFiles, importAppleMusic, snapshot, exportXML, exportLibraryXML, importRekordboxXML, reflect, pending, activityLog, restore, pointSnapshots, removeTracks
+    case addFiles, importAppleMusic, snapshot, exportXML, exportLibraryXML, importRekordboxXML, reflect, pending, activityLog, restore, pointSnapshots, removeTracks, find
 
     static let fileActions: [Self] = [.addFiles, .importAppleMusic, .snapshot, .exportXML, .exportLibraryXML, .importRekordboxXML]
     static let rekordboxActions: [Self] = [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks]
+    static let editActions: [Self] = [.find]
     /// 도움말 메뉴에도 보이는 rekordbox 메뉴 항목. 툴바 쓰기 메뉴가 없어진 뒤(#325) 문제가 생긴 사용자가 복원 입구를 한 곳 더 찾을 수 있게 한다.
     /// 같은 항목을 그대로 부르므로 이름·켜짐 조건·꺼진 이유가 rekordbox 메뉴와 같다.
     static let helpActions: [Self] = [.restore]
@@ -27,6 +28,7 @@ enum LibraryMenuAction: CaseIterable {
         // 라이브러리 읽기 사본(스냅샷)과 달리 DB·분석 파일·앨범아트를 한 시점으로 남기고 되돌린다(#224).
         case .pointSnapshots: String(ui: "시점 스냅샷…")
         case .removeTracks: String(ui: "rekordbox에서 빼기…")
+        case .find: String(ui: "찾기")
         }
     }
 
@@ -35,6 +37,7 @@ enum LibraryMenuAction: CaseIterable {
         case .addFiles: KeyboardShortcut("o", modifiers: .command)
         case .snapshot: KeyboardShortcut("r", modifiers: .command)
         case .reflect: KeyboardShortcut("e", modifiers: [.command, .shift])
+        case .find: KeyboardShortcut("f", modifiers: .command)
         default: nil
         }
     }
@@ -73,6 +76,10 @@ enum LibraryMenuAction: CaseIterable {
         case .restore: return store.hasWriteBackup
         case .pointSnapshots: return true
         case .removeTracks: return !store.deleteTargets(store.selectedRows).isEmpty
+        case .find:
+            // 머리 줄 검색칸이 있는 화면: 목록을 읽은 뒤 검색이 걸리는 목록. 쓰는 동안은 위의 잠금이 막는다
+            guard case .loaded = store.phase else { return false }
+            return store.listIsSearchable
         }
     }
 
@@ -101,6 +108,7 @@ enum LibraryMenuAction: CaseIterable {
         case .restore: reflection?.startRestoreLatest()
         case .pointSnapshots: if let reflection { windows?.pointSnapshots.open(store: store, reflection: reflection) }
         case .removeTracks: reflection?.startDeleteTracks(rows: store.selectedRows)
+        case .find: window.focusSearch()
         }
     }
 
@@ -125,6 +133,9 @@ enum LibraryMenuAction: CaseIterable {
                 ? String(ui: "지금 가져오는 XML이 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 가져오세요")
         case .restore: return String(ui: "쓰기 전 백업이 없으니 활동 기록을 확인하세요")
         case .addFiles, .importAppleMusic: return String(ui: "라이브러리를 먼저 불러온 뒤 곡을 추가하세요")
+        case .find:
+            guard case .loaded = store.phase else { return String(ui: "라이브러리를 먼저 불러온 뒤 검색하세요") }
+            return String(ui: "USB 쓰기 대기에는 검색할 곡이 없으니 곡 목록을 고르세요")
         case .pending, .activityLog, .pointSnapshots: return nil
         }
     }

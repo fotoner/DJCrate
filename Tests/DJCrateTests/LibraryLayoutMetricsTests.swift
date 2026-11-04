@@ -151,6 +151,26 @@ struct LibraryLayoutMetricsTests {
         #expect(layout.viewportHeight == 403)
     }
 
+    /// 머리 줄(#338)이 늘 한 줄이라 '전체' 목록에서도 목록 위 높이가 머리 줄 + 핸들이다(전에는 핸들뿐이었다).
+    /// 앱 최소 창 높이 700에서 제목·도구 막대(약 52)와 상태 줄(25)을 뺀 본문은 약 623이다. 안전하게 620으로 본다.
+    @Test func 머리_줄이_늘_한_줄이어도_최소_창_높이에서_기본_덱과_파형은_줄지_않는다() {
+        let header = Double(ListHeaderBar.height)
+        let layout = LibraryLayoutMetrics()
+        layout.measureListHeader(header)
+        layout.measureDetail(height: 620, deckHeight: 240 + DeckLayout.defaultWaveformHeight,
+                             waveformHeight: DeckLayout.defaultWaveformHeight, hasTrack: true)
+        layout.request(DeckLayout.defaultWaveformHeight)
+        #expect(layout.waveformHeight == DeckLayout.defaultWaveformHeight)
+        #expect(layout.viewportHeight == 240 + DeckLayout.defaultWaveformHeight)
+        // 덱 + 머리 줄 + 핸들 + 목록 최소 높이가 본문에 들어간다
+        #expect(layout.viewportHeight + header + DeckLayout.splitHandleHeight + DeckLayout.minimumLibraryHeight <= 620)
+        // 파형을 가장 크게 요청해도 목록 최소 높이를 남긴다. 머리 줄 높이만큼 상한이 낮아졌다(전: 223)
+        layout.request(DeckLayout.maximumWaveformHeight)
+        #expect(layout.waveformHeight == layout.maximumWaveformHeight)
+        #expect(layout.maximumWaveformHeight == 620 - 240 - header - DeckLayout.splitHandleHeight - DeckLayout.minimumLibraryHeight)
+        #expect(layout.maximumWaveformHeight >= DeckLayout.defaultWaveformHeight)
+    }
+
     @Test func 곡_내용만_늘면_파형을_보존하고_창을_줄였다_키우면_요청값을_복원한다() {
         let layout = LibraryLayoutMetrics()
         layout.measureDetail(height: 1000, deckHeight: 390, waveformHeight: 150, hasTrack: true)

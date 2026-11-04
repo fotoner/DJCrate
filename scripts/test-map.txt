@@ -170,6 +170,7 @@ target DJCAdaptersTests
 # 화면 관찰 범위(#129·#137·#138). LayoutRecomputeTests는 환경 변수가 있어야 돈다.
 group observation
 when Sources/DJCrate/App/ContentView.swift
+when Sources/DJCrate/App/ListHeaderBar.swift
 when Sources/DJCrate/App/Sidebar*.swift
 when Sources/DJCrate/App/StatusBar*.swift
 when Sources/DJCrate/App/ReflectionStatusModel.swift

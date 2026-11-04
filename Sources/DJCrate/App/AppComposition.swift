@@ -346,7 +346,7 @@ final class AppComposition {
         UsbSnapshotCapture.runIfRequested(store: store)
         AgentToolsCapture.runIfRequested()
         LinkCapture.runIfRequested(link: link, store: store)
-        DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows)
+        DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows, libraryWindow: libraryWindow)
         #endif
         deck.onDraftChange = { [weak store] uuid, kind, exists in
             store?.draftChanged(trackUUID: uuid, kind: kind, exists: exists)

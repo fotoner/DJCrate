@@ -30,6 +30,7 @@ struct ShortcutsList: View {
                 row(["⌘", "I"], String(ui: "태그 편집"))
                 row(["⌘", "O"], String(ui: "곡 추가"))
                 row(["⌘", "R"], String(ui: "rekordbox와 동기화"))
+                row(["⌘", "F"], String(ui: "목록 검색"))
                 row(["⌘", "N", "/", "⇧", "⌘", "N"], String(ui: "새 재생 목록 · 새 폴더"))
                 row(["⇧", "⌘", "P"], String(ui: "마지막에 쓴 목록에 넣기"))
                 row(["⌥", "⌘", "P"], String(ui: "재생 목록에 넣기…"))

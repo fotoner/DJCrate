@@ -271,6 +271,52 @@ struct LayoutRecomputeTests {
         try await change(to: nil, expecting: .pending(items: 1, playlistEdits: 0), "풀림")
     }
 
+    /// 머리 줄 검색칸(#338): 검색어를 바꿔도 주 창 본문(`ContentView`·`LibraryDetail`)과 머리 줄은 다시 계산하지 않는다.
+    /// 검색어를 읽는 곳은 검색칸 잎(`ListSearchField`)뿐이다. 칸에 친 글자도 같은 길로 검색어가 된다.
+    @Test func 검색어를_바꿔도_주_창_본문은_다시_계산하지_않고_검색칸만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 })
+        defer { close() }
+        let store = try #require(capturedStore)
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+        PerfProbe.resetBodyCounts()
+        // 걸리는 검색어와 아무 곡도 걸리지 않는 검색어(결과 없음 안내가 뜬다)를 오간다
+        let queries = ["합", "합성", "합성 Al", "없는 곡을 찾는 검색어", ""]
+        for query in queries {
+            store.search = query
+            try await settle(window)
+        }
+        print("TRACE 검색어 \(queries.count)번:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderBar") == 0)
+        #expect(PerfProbe.bodyCount("ListSearchField") >= queries.count)
+
+        // 칸에 친 글자는 검색어가 되고, 다른 곳에서 지운 검색어는 칸에서 지워진다
+        func searchField(in view: NSView) -> NSSearchField? {
+            if let field = view as? NSSearchField { return field }
+            return view.subviews.lazy.compactMap { searchField(in: $0) }.first
+        }
+        let field = try #require(window.contentView.flatMap { searchField(in: $0) })
+        PerfProbe.resetBodyCounts()
+        field.stringValue = "합성 Beta"
+        field.sendAction(field.action, to: field.target)
+        try await settle(window)
+        #expect(store.search == "합성 Beta")
+        #expect(store.displayRows.map(\.title) == ["합성 Beta"])
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        store.search = ""
+        try await settle(window)
+        #expect(field.stringValue.isEmpty)
+    }
+
     @Test func 창_폭을_조금씩_바꿔도_주_창_본문은_거의_다시_계산되지_않는다() async throws {
         let (window, _, close) = try await mainWindow()
         defer { close() }
