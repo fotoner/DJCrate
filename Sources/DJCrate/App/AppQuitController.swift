@@ -183,7 +183,9 @@ final class AppQuitController {
         case .waitForRekordboxWrite:
             return
         case .terminateNow:
-            flushAfterWrite(current)
+            // 기다린 것은 쓰기였으니 단계와 관계없이 큐를 비운다. 쓴 뒤 다시 읽기를 미룬 길(#305)은 다시 읽는 단계를 거치지 않아
+            // 쓰기가 끝났다고 알려 올 때 이미 잠금이 풀려 단계가 idle이다
+            flushDrafts()
             finish(terminating: true)
         case .cancelPreparationThenTerminate:
             cancelPreparation()

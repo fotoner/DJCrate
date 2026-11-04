@@ -177,10 +177,11 @@ extension ReflectionSession {
         let revivedUUIDs = Set(saved.cues.map(\.trackUUID)).union(saved.grids.map(\.trackUUID)).union(saved.gains.keys)
         let saveWarning = draftSaveWarning(for: revivedUUIDs, restoring: true)
         let keptWarning = kept.isEmpty ? nil : Self.keptDraftsText(conflictTrackUUIDs(kept, merges: ports.library.state().mergeDrafts).count)
-        stage(WriteStage(String(ui: "복원한 라이브러리를 읽는 중…")))
         // 재생 목록 편집은 되돌린 rekordbox 상태에 다시 쌓는다. 다시 읽지 못하면 옛 목록 상태에 쌓지 않고 다음 읽기 뒤에 쌓는다.
-        let reloaded = await ports.reload.reload(revivedUUIDs.union(saved.tags.map(\.trackUUID)).union(artworks.keys).union(touched),
-                                                 saved.playlistEdits)
+        // 읽은 뒤에도 이 일이 남아서 종료를 기다리는 중에도 미루지 않는다(`readsBack`이 아니다).
+        let reloaded = await reloadLibrary(during: WriteStage(String(ui: "복원한 라이브러리를 읽는 중…")),
+                                           written: revivedUUIDs.union(saved.tags.map(\.trackUUID)).union(artworks.keys).union(touched),
+                                           playlistEdits: saved.playlistEdits)
         let restaged = restoreStaged(from: backup)
         apply(.lastWriteBackup(nil))
         return finishFollowUp([saveWarning, artworkWarning, keptWarning,
@@ -276,8 +277,7 @@ extension ReflectionSession {
         defer { stage(nil) }
         let gate = ports.gate
         let report = try await BlockingWork.run { try gate.restorePointSnapshot(entry, target, snapshots, autoDays, now) }
-        stage(WriteStage(String(ui: "복원한 라이브러리를 읽는 중…"), readsBack: true))
-        _ = await ports.reload.reload(changedTracks, [])
+        _ = await reloadLibrary(during: WriteStage(String(ui: "복원한 라이브러리를 읽는 중…"), readsBack: true), written: changedTracks)
         apply(.writeBackupsChanged)
         return report
     }

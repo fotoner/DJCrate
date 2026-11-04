@@ -36,6 +36,11 @@ final class ReflectionHarness {
     var onPublish: (@MainActor (ReflectionOutcome) -> Void)?
     var reloads: [(written: Set<String>, playlistEdits: [PlaylistEdit])] = []
     var reloadSucceeds = true
+    /// 종료를 기다리는 중이다(#305): 다시 읽기 포트가 읽지 않고 미룬다
+    var postponesReload = false
+    /// 포트가 미루라고 물은 횟수와 미룬 읽기(미룬 것만 쌓는다)
+    var postponeAsks = 0
+    var postponed: [(written: Set<String>, playlistEdits: [PlaylistEdit])] = []
     /// 다시 읽기가 실패했을 때 목록 위에 남는 이유
     var reloadError: String?
     var running = false
@@ -92,11 +97,17 @@ final class ReflectionHarness {
                                                        self.recordedHistories.append(outcomes)
                                                        return self.historyMarkWarning
                                                    }),
-                        reload: LibraryReloader { written, edits in
+                        reload: LibraryReloader(reload: { written, edits in
                             self.log.record("reload")
                             self.reloads.append((written, edits))
                             return self.reloadSucceeds
-                        },
+                        }, postpone: { written, edits in
+                            self.postponeAsks += 1
+                            guard self.postponesReload else { return false }
+                            self.log.record("postpone")
+                            self.postponed.append((written, edits))
+                            return true
+                        }),
                         lock: WriteLock(isLocked: { self.locked }, set: { locked, deck in
                             self.locked = locked
                             self.locks.append("\(locked)\(deck ? "" : " (덱 빼고)")")

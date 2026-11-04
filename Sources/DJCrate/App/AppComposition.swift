@@ -243,9 +243,12 @@ final class AppComposition {
                              stage: { [weak store] in store?.writeStage = $0 })
         // 반영 세션은 라이브러리와 같은 초안 저장 큐·스냅샷 뜨기·연결 기록을 쓴다(라이브러리 유스케이스 묶음에서 받는다).
         let ports = ReflectionPorts(gate: gate, backups: backups, sharing: store.useCases, audio: audio, library: library,
-                                    reload: LibraryReloader { [weak store] written, edits in
+                                    reload: LibraryReloader(reload: { [weak store] written, edits in
                                         await store?.reloadAfterWrite(written: written, playlistEdits: edits) ?? false
-                                    },
+                                    }, postpone: { [weak store] written, edits in
+                                        // 종료를 기다리는 중이면 쓴 뒤 다시 읽기를 미루고 쓰기 결과를 먼저 남긴다(#305)
+                                        store?.postponeReloadForQuit(written: written, playlistEdits: edits) ?? false
+                                    }),
                                     lock: lock,
                                     // 확인 창이 떠 있는 동안은 아직 아무것도 쓰지 않았다: 종료 판정이 이 때를 가른다(#300)
                                     confirmation: UserConfirmation(
