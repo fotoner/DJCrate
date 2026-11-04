@@ -47,17 +47,21 @@ public enum LibrarySnapshot {
     }
 
     /// master.db를 복사한다. 복사 전후로 원본 크기·수정 시각이 같아야 성공이다.
-    /// - Parameter force: rekordbox 실행 중이거나 WAL이 남아 있어도 읽기용 사본을 뜬다.
+    /// - Parameters:
+    ///   - force: rekordbox 실행 중이거나 WAL이 남아 있어도 읽기용 사본을 뜬다.
+    ///   - writeGuard: 라이브 원본 판정과 실행 확인(#292). 쓰기 관문과 같은 `isLive`로 라이브 원본(`DJC_REKORDBOX_DIR`로 고른 폴더와 실제 rekordbox 폴더)을
+    ///     가려, 라이브 원본만 실행 확인을 거친다. 임시 사본은 rekordbox가 건드리지 못하므로 실행 여부를 보지 않는다. 기본은 실제 감지(`.system`).
     @discardableResult
     public static func take(
         from source: URL = rekordboxDirectory.appending(path: "master.db"),
         into directory: URL = defaultDirectory,
         force: Bool = false,
-        now: Date = .now
+        now: Date = .now,
+        guard writeGuard: RekordboxWriteGuard = .system
     ) throws -> URL {
         let fm = FileManager.default
         if !force {
-            if isRekordboxRunning() { throw DJCError.rekordboxRunning }
+            if writeGuard.isLive(source), writeGuard.isRekordboxRunning() { throw DJCError.rekordboxRunning }
             let wal = source.deletingLastPathComponent().appending(path: source.lastPathComponent + "-wal")
             if let size = try? fm.attributesOfItem(atPath: wal.path)[.size] as? Int, size > 0 {
                 throw DJCError.writeAheadLogPresent(path: wal.path)

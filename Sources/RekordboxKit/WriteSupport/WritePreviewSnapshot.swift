@@ -10,21 +10,23 @@ public enum WritePreviewSnapshot {
                                     grids: [GridDraft] = [], merges: [DuplicateMergeDraft] = [],
                                     artworks: [String] = [],
                                     directory: URL = FileManager.default.temporaryDirectory,
+                                    guard writeGuard: RekordboxWriteGuard = .system,
                                     body: (URL, URL) async throws -> T) async throws -> T {
         try await withCopy(from: source, shareRoot: shareRoot, grids: grids, merges: merges, artworks: artworks, directory: directory,
-                           checkpoint: {}, body: body)
+                           guard: writeGuard, checkpoint: {}, body: body)
     }
 
     /// `checkpoint`는 시험 이음매다. 사본 뜨기의 단계(취소 확인)마다 그 단계를 도는 스레드에서 불린다.
     static func withCopy<T>(from source: URL, shareRoot: URL, grids: [GridDraft] = [], merges: [DuplicateMergeDraft] = [],
                             artworks: [String] = [], directory: URL = FileManager.default.temporaryDirectory,
+                            guard writeGuard: RekordboxWriteGuard = .system,
                             checkpoint: @escaping @Sendable () -> Void,
                             body: (URL, URL) async throws -> T) async throws -> T {
         let root = directory.appending(path: "djc-preview-\(UUID().uuidString)")
         do {
             // 사본 뜨기(DB·XML·분석 파일 복사)는 오래 막는 입출력이라 협력 풀 밖에서 한다. 작업 취소는 단계마다 신호로 본다(#247).
             let (database, share) = try await OffPoolIO.run { cancellation in
-                try copy(from: source, shareRoot: shareRoot, grids: grids, merges: merges, artworks: artworks, into: root,
+                try copy(from: source, shareRoot: shareRoot, grids: grids, merges: merges, artworks: artworks, into: root, guard: writeGuard,
                          check: { checkpoint(); try cancellation.check() })
             }
             try Task.checkCancellation()
@@ -44,13 +46,13 @@ public enum WritePreviewSnapshot {
     }
 
     private static func copy(from source: URL, shareRoot: URL, grids: [GridDraft], merges: [DuplicateMergeDraft], artworks: [String],
-                             into root: URL, check: () throws -> Void) throws -> (URL, URL) {
+                             into root: URL, guard writeGuard: RekordboxWriteGuard, check: () throws -> Void) throws -> (URL, URL) {
         let fm = FileManager.default
         try fm.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try check()
         // DB 별칭도 링크 자체가 아닌 실제 파일을 복사한다. 읽기용 상시 스냅샷을 교체하거나 가지치기하지 않는다.
         let original = source.resolvingSymlinksInPath()
-        let database = try LibrarySnapshot.take(from: original, into: root)
+        let database = try LibrarySnapshot.take(from: original, into: root, guard: writeGuard)
         let share = root.appending(path: "share")
         try fm.createDirectory(at: share, withIntermediateDirectories: true)
         let xml = original.deletingLastPathComponent().appending(path: "masterPlaylists6.xml")

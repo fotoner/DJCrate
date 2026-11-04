@@ -75,6 +75,36 @@ struct WritePreviewSnapshotTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }
 
+    /// 미리보기 사본 뜨기도 스냅샷과 같은 실행 확인을 쓴다(#292). 라이브 원본은 켜져 있으면 막고, 임시 사본은 실행 여부와 상관없이 뜬다.
+    @Test func 임시_사본_원본은_rekordbox가_켜져_있어도_미리본다() async throws {
+        let fixture = try RekordboxFixture()
+        let other = fixture.root.appending(path: "other-live")
+        let copyOnly = RekordboxWriteGuard(isRekordboxRunning: { true }, appVersion: { nil }, liveDirectories: [other])
+        let directory = fixture.root.appending(path: "preview")
+        let opened = try await WritePreviewSnapshot.withCopy(from: fixture.database, shareRoot: fixture.shareRoot, directory: directory,
+                                                             guard: copyOnly) { database, _ in
+            FileManager.default.fileExists(atPath: database.path)
+        }
+        #expect(opened)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+
+    @Test func 라이브_원본은_rekordbox가_켜져_있으면_사본을_뜨지_않는다() async throws {
+        let fixture = try RekordboxFixture()
+        let directory = fixture.root.appending(path: "preview")
+        let before = try Data(contentsOf: fixture.database)
+        do {
+            _ = try await WritePreviewSnapshot.withCopy(from: fixture.database, shareRoot: fixture.shareRoot, directory: directory,
+                                                        guard: WriteTargetGuardTests().guardFor(fixture, running: true)) { _, _ in
+                Issue.record("켜진 rekordbox의 라이브 원본으로 미리보기를 실행함")
+            }
+            Issue.record("라이브 원본을 거절하지 않음")
+        } catch DJCError.rekordboxRunning {
+        }
+        #expect(try Data(contentsOf: fixture.database) == before)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
+
     @Test(arguments: ["traversal", "file-link", "folder-link", "xml-link"])
     func 경로_이탈과_링크를_막고_불완전한_사본도_지운다(kind: String) async throws {
         let fixture = try RekordboxFixture()

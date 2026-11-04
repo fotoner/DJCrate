@@ -16,7 +16,7 @@ extension RekordboxWriteGate {
             preview: { batch, inputs, source, copied in
                 try await WritePreviewSnapshot.withCopy(from: source.database, shareRoot: source.shareRoot ?? RekordboxShare.directory,
                                                         grids: batch.grids, merges: batch.merges,
-                                                        artworks: batch.artworks.map(\.trackUUID)) { snapshot, share in
+                                                        artworks: batch.artworks.map(\.trackUUID), guard: writeGuard) { snapshot, share in
                     await copied()
                     try Task.checkCancellation()
                     // 사본에 끝까지 써 보는 일은 오래 막는 DB 입출력이라 협력 풀 밖에서 한다(사본 뜨기도 풀 밖에서 작업 취소를 보며 한다)
