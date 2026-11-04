@@ -8003,6 +8003,22 @@
         }
       }
     },
+    "USB 쓰기 대기에는 검색할 곡이 없으니 곡 목록을 고르세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There are no tracks to search in Pending USB Changes, so choose a track list"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "USB書き込み待ちには検索できる曲がないため、曲リストを選んでください"
+          }
+        }
+      }
+    },
     "USB 쓰기 대기에서 뺐습니다" : {
       "localizations" : {
         "en" : {
@@ -24391,6 +24407,22 @@
         }
       }
     },
+    "라이브러리를 먼저 불러온 뒤 검색하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load the library before searching"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリを読み込んでから検索してください"
+          }
+        }
+      }
+    },
     "라이브러리를 먼저 불러온 뒤 곡을 추가하세요" : {
       "localizations" : {
         "en" : {
@@ -26949,6 +26981,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "リスト・タグシート"
+          }
+        }
+      }
+    },
+    "목록 검색" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search List"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リストを検索"
           }
         }
       }

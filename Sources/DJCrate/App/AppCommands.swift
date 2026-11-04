@@ -65,6 +65,10 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .newItem) {
             ForEach(LibraryMenuAction.fileActions, id: \.self) { libraryButton($0) }
         }
+        // 편집 › 찾기(⌘F): 머리 줄 검색칸으로 간다(#338). 시스템 찾기 항목은 `.searchable`이 만들었고 지금은 쓰지 않는다
+        CommandGroup(after: .textEditing) {
+            ForEach(LibraryMenuAction.editActions, id: \.self) { libraryButton($0) }
+        }
         CommandGroup(before: .sidebar) {
             Toggle(.ui("목록"), isOn: Binding(get: { !sheetMode }, set: { if $0 { sheetMode = false } }))
                 .keyboardShortcut("1", modifiers: .command)

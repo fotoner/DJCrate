@@ -122,7 +122,6 @@ struct ContentView: View {
         }
         .modifier(RecoverySheetHost(store: store, anchor: .library))
         .animation(.easeInOut(duration: 0.15), value: store.writeStage)
-        .searchable(text: $store.search, placement: .toolbar, prompt: Text(.ui("제목·아티스트·코멘트")))
         .toolbar(id: "main") { toolbarContent }
         .focusedSceneValue(\.appCommands, AppCommandContext(window: window, windows: app.windows, reflection: app.reflection,
                                                             showTagEditor: $showTagEditor))

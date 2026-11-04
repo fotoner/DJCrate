@@ -132,6 +132,10 @@ extension LibraryStore {
         TrackListProjection.matchesAttributes(row, minimumRating: minimumRating, color: color)
     }
 
+    /// 검색이 거를 곡 줄이 있는 화면인지(#338). 머리 줄 검색칸과 편집 › 찾기(⌘F)가 같은 판정을 쓴다.
+    /// USB 쓰기 대기는 곡 줄이 아니라 그 볼륨의 쓰기 대기 표라 검색이 걸리지 않는다
+    var listIsSearchable: Bool { if case .usb(.pending) = sidebar { false } else { true } }
+
     var sidebarTitle: String {
         switch sidebar {
         case let .filter(filter): filter.title

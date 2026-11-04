@@ -13,9 +13,9 @@ struct LibraryDetail: View {
     var windowFrameRestored: Bool
     /// 폭이 모자라면 탐색 열을 접는다. 값은 읽지 않고 쓰기만 한다(읽으면 이 뷰가 사이드바를 여닫을 때마다 다시 계산된다).
     let sidebarVisible: ObservedSetting<Bool>
-    /// 목록 아래 작업 막대의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 막대에 넘긴다
+    /// 목록 위 작업 막대의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 막대에 넘긴다
     let listActionBar: ListActionBarModel
-    /// 주 창 화면 모델(연결되지 않은 초안 시트·파일 끌어 놓기). 본문은 읽지 않고 넘긴다
+    /// 주 창 화면 모델(머리 줄 검색칸 포커스 요청·연결되지 않은 초안 시트·파일 끌어 놓기). 본문은 읽지 않고 넘긴다
     let window: LibraryWindowModel
     @AppStorage(SettingKeys.waveformHeight.name) private var waveformHeight = SettingKeys.waveformHeight.defaultValue
     @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
@@ -37,6 +37,8 @@ struct LibraryDetail: View {
             LibraryDeckViewport(library: store, tags: store.tags, deck: deck, layout: layout, widthClass: widthClass)
             LibrarySplitHandle(layout: layout, height: $waveformHeight)
             VStack(spacing: 0) {
+                // 목록 바로 위의 늘 한 줄인 머리 줄(검색칸, #338). 높이는 아래 작업 줄 등과 함께 재어 덱 높이 계산에 넣는다
+                ListHeaderBar(store: store, window: window)
                 ListActionBar(model: listActionBar)
                 // 연결되지 않은 초안은 사건이 아니라 쓰기 대기 목록의 상태라 알림 대신 그 목록 머리에 둔다
                 if store.sidebar == .pending, !store.unlinkedDraftUUIDs.isEmpty {

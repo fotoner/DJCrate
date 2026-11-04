@@ -32,10 +32,12 @@ struct MenuCommandTests {
         #expect(!WaveformHeightControl(displayed: DeckLayout.minimumWaveformHeight, maximum: 260) { _ in }.canShrink)
     }
 
-    @Test func 앱_명령은_파일과_rekordbox_메뉴로_나뉜다() {
+    @Test func 앱_명령은_파일과_rekordbox_편집_메뉴로_나뉜다() {
         #expect(LibraryMenuAction.fileActions == [.addFiles, .importAppleMusic, .snapshot, .exportXML, .exportLibraryXML, .importRekordboxXML])
         #expect(LibraryMenuAction.rekordboxActions == [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks])
-        #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions == LibraryMenuAction.allCases)
+        // 편집 메뉴의 찾기(⌘F, #338)
+        #expect(LibraryMenuAction.editActions == [.find])
+        #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions + LibraryMenuAction.editActions == LibraryMenuAction.allCases)
     }
 
     @Test func 도움말_메뉴의_쓰기_전으로_복원은_rekordbox_메뉴와_같은_명령이다() throws {
@@ -106,7 +108,11 @@ struct MenuCommandTests {
         #expect(LibraryMenuAction.addFiles.shortcut == KeyboardShortcut("o", modifiers: .command))
         #expect(LibraryMenuAction.snapshot.shortcut == KeyboardShortcut("r", modifiers: .command))
         #expect(LibraryMenuAction.reflect.shortcut == KeyboardShortcut("e", modifiers: [.command, .shift]))
-        #expect(LibraryMenuAction.allCases.filter { $0.shortcut != nil } == [.addFiles, .snapshot, .reflect])
+        // 편집 › 찾기(#338)
+        #expect(LibraryMenuAction.find.shortcut == KeyboardShortcut("f", modifiers: .command))
+        let shortcuts = LibraryMenuAction.allCases.filter { $0.shortcut != nil }
+        #expect(shortcuts == [.addFiles, .snapshot, .reflect, .find])
+        #expect(Set(shortcuts.compactMap(\.shortcut).map { "\($0.key.character)\($0.modifiers.rawValue)" }).count == shortcuts.count)
     }
 
     @Test func 빈_라이브러리와_쓰기_잠금에서_명령의_활성_조건을_지킨다() {

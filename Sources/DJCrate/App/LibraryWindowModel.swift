@@ -38,6 +38,14 @@ final class LibraryWindowModel {
 
     func openUnlinkedDrafts() { unlinkedDrafts = UnlinkedDraftsModel(store: store) }
 
+    // MARK: - 검색칸
+
+    /// 편집 › 찾기(⌘F)가 올리는 검색칸 포커스 요청 번호. 머리 줄 검색칸(잎 뷰)만 읽고, 번호가 바뀌면 칸으로 포커스를 옮긴다.
+    /// 칸이 없는 화면에서는 메뉴가 꺼져 있어 요청이 오지 않는다(`LibraryMenuAction.find`)
+    private(set) var searchFocusRequest = 0
+
+    func focusSearch() { searchFocusRequest += 1 }
+
     // MARK: - 입구
 
     @discardableResult
