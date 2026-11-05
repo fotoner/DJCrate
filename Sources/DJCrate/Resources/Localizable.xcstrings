@@ -506,6 +506,22 @@
         }
       }
     },
+    "%@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (%2$@)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@（%2$@）"
+          }
+        }
+      }
+    },
     "%@ (%lld개)" : {
       "localizations" : {
         "en" : {
@@ -1707,6 +1723,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@は空でない文字列です"
+          }
+        }
+      }
+    },
+    "%@도 함께 씁니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Also writes %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@も一緒に書き込みます。"
           }
         }
       }
@@ -5029,22 +5061,6 @@
         }
       }
     },
-    "DJCrate가 계산한 결과입니다. rekordbox 화면과 다를 수 있습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This is DJCrate's calculation. It may differ from what rekordbox shows."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrateが計算した結果です。rekordboxの画面と異なる場合があります。"
-          }
-        }
-      }
-    },
     "DJCrate가 설치하지 않았거나 설치한 뒤 고친 것입니다. 휴지통에서 되살릴 수 있습니다." : {
       "localizations" : {
         "en" : {
@@ -5093,22 +5109,6 @@
         }
       }
     },
-    "DJCrate가 이 목록의 조건을 계산하지 못해 곡을 보이지 않습니다 · rekordbox에서 확인하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrate couldn't calculate this playlist's conditions, so no tracks are shown · Check it in rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このプレイリストの条件をDJCrateで計算できないため、曲を表示しません · rekordboxで確認してください"
-          }
-        }
-      }
-    },
     "DJCrate가 이 목록의 조건을 계산하지 못했습니다: %@" : {
       "localizations" : {
         "en" : {
@@ -5125,18 +5125,18 @@
         }
       }
     },
-    "DJCrate가 조건으로 계산한 읽기 전용 목록입니다 · rekordbox 화면과 곡이 다를 수 있습니다" : {
+    "DJCrate가 조건으로 계산한 목록입니다. rekordbox 화면과 곡이 다를 수 있습니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Read-only playlist calculated by DJCrate from its conditions · Tracks may differ from what rekordbox shows"
+            "value" : "This list is calculated by DJCrate from its conditions. Tracks may differ from what rekordbox shows."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "DJCrateが条件から計算した読み取り専用のプレイリストです · rekordboxの画面と曲が異なる場合があります"
+            "value" : "このリストはDJCrateが条件から計算したものです。rekordboxの画面と曲が異なる場合があります。"
           }
         }
       }
@@ -8489,22 +8489,6 @@
         }
       }
     },
-    "USB 편집은 초안으로 쌓고 ‘USB에 쓰기…’로 반영합니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USB edits are collected as drafts and applied with ‘Write to USB…’"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USBの編集は下書きとしてためて、「USBに書き込む…」で反映します"
-          }
-        }
-      }
-    },
     "USB 폴더를 찾지 못했습니다. 볼륨이나 폴더 경로를 확인하세요" : {
       "localizations" : {
         "en" : {
@@ -9261,6 +9245,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "USBに入れられない曲 %lld曲："
+          }
+        }
+      }
+    },
+    "USB에 반영 (%lld곡)" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Apply to USB (%lld Track)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Apply to USB (%lld Tracks)"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "USBに反映（%lld曲）"
           }
         }
       }
@@ -14045,22 +14057,6 @@
         }
       }
     },
-    "rekordbox에 들어간 것이 확인된 곡을 추가 목록에서 뺍니다(파일·초안은 그대로)." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Removes tracks confirmed to be in rekordbox from the added list (files and drafts are kept)."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに入ったことを確認できた曲を追加リストから外します（ファイル・下書きはそのままです）。"
-          }
-        }
-      }
-    },
     "rekordbox에 바로 넣기 (%lld곡)" : {
       "localizations" : {
         "en" : {
@@ -14117,100 +14113,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxに書き込む"
-          }
-        }
-      }
-    },
-    "rekordbox에 쓰기 (%lld곡 · 재생 기록 %lld건)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Write to rekordbox (Tracks: %1$lld · Histories: %2$lld)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに書き込む（%1$lld曲・演奏履歴%2$lld件）"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "rekordbox에 쓰기 (%1$lld곡 · 재생 기록 %2$lld건)"
-          }
-        }
-      }
-    },
-    "rekordbox에 쓰기 (%lld곡 · 재생 목록 %lld건 · 재생 기록 %lld건)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Write to rekordbox (Tracks: %1$lld · Playlist Edits: %2$lld · Histories: %3$lld)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに書き込む（%1$lld曲・プレイリスト%2$lld件・演奏履歴%3$lld件）"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "rekordbox에 쓰기 (%1$lld곡 · 재생 목록 %2$lld건 · 재생 기록 %3$lld건)"
-          }
-        }
-      }
-    },
-    "rekordbox에 쓰기 (%lld곡 · 재생 목록 %lld건)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Write to rekordbox (Tracks: %1$lld · Playlist Edits: %2$lld)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに書き込む（%1$lld曲・プレイリスト%2$lld件）"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "rekordbox에 쓰기 (%1$lld곡 · 재생 목록 %2$lld건)"
-          }
-        }
-      }
-    },
-    "rekordbox에 쓰기 (%lld곡)" : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Write to rekordbox (%lld Track)"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Write to rekordbox (%lld Tracks)"
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに書き込む（%lld曲）"
           }
         }
       }
@@ -14451,22 +14353,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxには何も書き込んでいません。"
-          }
-        }
-      }
-    },
-    "rekordbox에 아직 쓰지 않은 재생 목록 편집을 모두 버립니다(⌘Z로 되돌림)." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Discards all playlist edits not yet written to rekordbox (undo with ⌘Z)."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxにまだ書き込んでいないプレイリストの編集をすべて破棄します（⌘Zで取り消せます）。"
           }
         }
       }
@@ -16005,6 +15891,22 @@
         }
       }
     },
+    "⌘Z로 되돌릴 수 있습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can undo this with ⌘Z."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "⌘Zで元に戻せます。"
+          }
+        }
+      }
+    },
     "⌘·⌃·⌥ 조합은 메뉴 단축키와 겹쳐 쓸 수 없습니다. 키 하나만 누르세요." : {
       "localizations" : {
         "en" : {
@@ -16133,18 +16035,30 @@
         }
       }
     },
-    "가져온 곡 정리" : {
+    "가져온 곡 정리 (%lld곡)" : {
       "localizations" : {
         "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clean Up Imported Tracks"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Clean Up Imported Tracks (%lld Track)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Clean Up Imported Tracks (%lld Tracks)"
+                }
+              }
+            }
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "インポートした曲を整理"
+            "value" : "インポートした曲を整理（%lld曲）"
           }
         }
       }
@@ -17595,6 +17509,62 @@
         }
       }
     },
+    "고른 %lld곡 바로 넣기" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add %lld Selected Track to rekordbox Directly"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add %lld Selected Tracks to rekordbox Directly"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択した%lld曲をrekordboxに直接追加"
+          }
+        }
+      }
+    },
+    "고른 %lld곡 쓰기" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Write %lld Selected Track"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Write %lld Selected Tracks"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択した%lld曲を書き込む"
+          }
+        }
+      }
+    },
     "고른 %lld곡에 모두 적용합니다" : {
       "localizations" : {
         "en" : {
@@ -17619,38 +17589,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選んだ%lld曲すべてに適用します"
-          }
-        }
-      }
-    },
-    "고른 곡(없으면 목록 전체)과 재생 목록 초안·재생 기록(USB·LINK)을 rekordbox에 씁니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Writes the selected tracks (or the whole list), playlist drafts, and histories (USB and LINK) to rekordbox."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選んだ曲（なければリスト全体）とプレイリストの下書き・演奏履歴（USB・LINK）をrekordboxに書き込みます。"
-          }
-        }
-      }
-    },
-    "고른 곡(없으면 추가 목록 전체)을 확인한 뒤 rekordbox 컬렉션에 넣습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Preview and add selected tracks, or all added tracks, to rekordbox."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選択した曲（未選択なら追加した全曲）を確認してrekordboxに追加します。"
           }
         }
       }
@@ -21875,18 +21813,18 @@
         }
       }
     },
-    "넣은 곡에 남아 있던 %@ 초안 %lld곡은 지우지 않고 연결되지 않은 초안으로 남겼습니다. 필요 없으면 ‘연결되지 않은 초안 보기…’에서 버리세요." : {
+    "넣은 곡에 남아 있던 %@ 초안 %lld곡은 지우지 않고 연결되지 않은 초안으로 남겼습니다. 필요 없으면 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리세요." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ drafts left on %2$lld added track(s) were kept as unlinked drafts instead of being deleted. Discard them in “Show Unlinked Drafts…” if you don't need them."
+            "value" : "%1$@ drafts left on %2$lld added track(s) were kept as unlinked drafts instead of being deleted. Discard them with “View…” next to “Unlinked drafts” in the pending writes list if you don't need them."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "追加した曲に残っていた%2$lld曲分の%1$@の下書きは、削除せず、リンクされていない下書きとして残しました。不要な場合は「リンクされていない下書きを表示…」で破棄してください。"
+            "value" : "追加した曲に残っていた%2$lld曲分の%1$@の下書きは、削除せず、リンクされていない下書きとして残しました。不要な場合は、書き込み待ちリストの「リンクされていない下書き」の横にある「表示…」で破棄してください。"
           }
         }
       }
@@ -22307,18 +22245,18 @@
         }
       }
     },
-    "다른 목록을 선택하거나 rekordbox와 동기화로 라이브러리를 다시 읽어 보세요." : {
+    "다른 목록을 고르거나 rekordbox와 동기화하세요." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Select another playlist or reload the library using Sync with rekordbox."
+            "value" : "Choose another list or sync with rekordbox."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "別のプレイリストを選ぶか、rekordboxと同期でライブラリを読み込み直してください。"
+            "value" : "別のリストを選ぶか、rekordboxと同期してください。"
           }
         }
       }
@@ -22837,6 +22775,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "対象がUSBから消えました。USBを読み込み直してから編集してください"
+          }
+        }
+      }
+    },
+    "더 보기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その他"
           }
         }
       }
@@ -25187,22 +25141,6 @@
         }
       }
     },
-    "로컬에서 더 고친 곡(갱신 가능)을 USB 쓰기 대기에 더합니다. USB는 ‘USB에 쓰기…’를 누를 때 바뀝니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adds tracks changed further in the local library (Needs Update) to Pending USB Changes. The USB changes only when you click ‘Write to USB…’."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ローカルでさらに変更した曲（更新あり）をUSB書き込み待ちに追加します。USBは「USBに書き込む…」を押したときに変更されます。"
-          }
-        }
-      }
-    },
     "로컬에서 더 고친 곡(갱신 가능)이 없습니다" : {
       "localizations" : {
         "en" : {
@@ -25215,6 +25153,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ローカルでさらに変更した曲（更新あり）はありません"
+          }
+        }
+      }
+    },
+    "로컬에서 더 고친 곡을 USB 쓰기 대기에 더합니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adds tracks edited further locally to the pending USB changes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ローカルでさらに編集した曲をUSB書き込み待ちに加えます。"
           }
         }
       }
@@ -26985,18 +26939,18 @@
         }
       }
     },
-    "목록 구성과 순서는 Music에서 바꿉니다 · 큐·태그는 여기서 편집할 수 있습니다" : {
+    "목록 구성은 Music에서 바꿉니다" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Edit playlist contents and order in Music · Cues and tags can be edited here"
+            "value" : "Change this list's contents in Music"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "プレイリストの内容と曲順はMusicで変更します · キューとタグはここで編集できます"
+            "value" : "リストの構成はMusicで変更します"
           }
         }
       }
@@ -28499,6 +28453,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "表示"
+          }
+        }
+      }
+    },
+    "보기…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表示…"
+          }
+        }
+      }
+    },
+    "보이기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表示"
+          }
+        }
+      }
+    },
+    "보이는 %lld곡 쓰기" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Write %lld Visible Track"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Write %lld Visible Tracks"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表示中の%lld曲を書き込む"
           }
         }
       }
@@ -31675,6 +31689,22 @@
         }
       }
     },
+    "숨긴 곡이 있으면 끌어서 순서를 바꿀 수 없습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You can't reorder by dragging while tracks are hidden."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "非表示の曲があるとドラッグで順番を変更できません。"
+          }
+        }
+      }
+    },
     "숫자패드 %@" : {
       "localizations" : {
         "en" : {
@@ -32103,7 +32133,7 @@
         }
       }
     },
-    "스트리밍 %lld곡을 숨기는 중 · 순서를 바꾸려면 설정에서 숨기기를 끄세요" : {
+    "스트리밍 %lld곡 숨김" : {
       "localizations" : {
         "en" : {
           "variations" : {
@@ -32111,13 +32141,13 @@
               "one" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld streaming track hidden · To reorder, turn off hiding in Settings"
+                  "value" : "%lld streaming track hidden"
                 }
               },
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld streaming tracks hidden · To reorder, turn off hiding in Settings"
+                  "value" : "%lld streaming tracks hidden"
                 }
               }
             }
@@ -32126,7 +32156,7 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ストリーミングの曲%lld曲を非表示中 · 順序を変えるには設定で非表示をオフにしてください"
+            "value" : "ストリーミング%lld曲を非表示"
           }
         }
       }
@@ -32143,6 +32173,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ストリーミング曲"
+          }
+        }
+      }
+    },
+    "스트리밍 곡 보이기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Streaming Tracks"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ストリーミングの曲を表示"
           }
         }
       }
@@ -32271,22 +32317,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ストリーミングの曲は編集できません。ファイルの曲を選んでください。"
-          }
-        }
-      }
-    },
-    "스트리밍 곡을 숨기고 있습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Streaming Tracks Are Hidden"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ストリーミングの曲を非表示にしています"
           }
         }
       }
@@ -33123,22 +33153,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "書き込み待ちが残っています"
-          }
-        }
-      }
-    },
-    "쓰기 대기에 오른 USB 재생 기록입니다. 고르면 그 기록을 보고, 빼면 실행 취소로 되돌립니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USB histories in Pending rekordbox Writes. Choose one to view it; removing them can be undone."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "書き込み待ちに入っているUSBの演奏履歴です。選ぶとその履歴を表示し、外しても取り消せます。"
           }
         }
       }
@@ -35669,18 +35683,46 @@
         }
       }
     },
-    "연결되지 않은 외장 디스크: %@ · 연결하면 다시 확인합니다" : {
+    "연결되지 않은 외장 디스크 %lld개" : {
       "localizations" : {
         "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "External drives not connected: %@ · Checks again when you connect one"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld external disk not connected"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld external disks not connected"
+                }
+              }
+            }
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未接続の外部ディスク：%@・接続すると再確認します"
+            "value" : "未接続の外付けディスク%lld台"
+          }
+        }
+      }
+    },
+    "연결되지 않은 외장 디스크: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "External disk not connected: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未接続の外付けディスク：%@"
           }
         }
       }
@@ -35725,22 +35767,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "リンクされていない下書き%lld曲"
-          }
-        }
-      }
-    },
-    "연결되지 않은 초안 보기…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show Unlinked Drafts…"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "リンクされていない下書きを表示…"
           }
         }
       }
@@ -36713,6 +36739,22 @@
         }
       }
     },
+    "위 쓰기 단추로 재생 기록을 rekordbox에 넣습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use the Write button above to put play history into rekordbox."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上の書き込みボタンで再生履歴をrekordboxに入れます。"
+          }
+        }
+      }
+    },
     "위로 옮기기" : {
       "localizations" : {
         "en" : {
@@ -36943,18 +36985,18 @@
         }
       }
     },
-    "음원 파일을 끌어다 놓거나 ‘곡 추가’를 눌러 시작하세요." : {
+    "음원 파일을 끌어다 놓으세요." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drag audio files here or click Add Tracks to get started."
+            "value" : "Drag audio files here."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "音源ファイルをドラッグするか、「曲を追加」を押して始めてください。"
+            "value" : "音源ファイルをドラッグ＆ドロップしてください。"
           }
         }
       }
@@ -37115,22 +37157,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "音源ファイルがないため、外付けドライブを接続するかrekordboxでファイルの場所を確認してください"
-          }
-        }
-      }
-    },
-    "음원 파일이 있는지 다시 확인합니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Checks again whether the audio files exist."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音源ファイルがあるかを再確認します。"
           }
         }
       }
@@ -38295,18 +38321,18 @@
         }
       }
     },
-    "이 목록의 곡은 모두 스트리밍 곡입니다. 설정 › 일반에서 ‘스트리밍 곡 숨기기’를 끄면 보입니다." : {
+    "이 목록은 스트리밍 곡뿐입니다" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Every track in this list is a streaming track. Turn off “Hide Streaming Tracks” in Settings › General to see them."
+            "value" : "This list has only streaming tracks"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このリストの曲はすべてストリーミングの曲です。設定 › 一般で「ストリーミングの曲を非表示」をオフにすると表示されます。"
+            "value" : "このリストはストリーミングの曲だけです"
           }
         }
       }
@@ -39727,6 +39753,22 @@
         }
       }
     },
+    "읽기 전용" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read-only"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み取り専用"
+          }
+        }
+      }
+    },
     "읽기 전용이며 rekordbox와 곡이 다를 수 있습니다." : {
       "localizations" : {
         "en" : {
@@ -40457,34 +40499,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "演奏履歴%lld件"
-          }
-        }
-      }
-    },
-    "재생 기록 %lld건이 쓰기 대기에 있습니다. 위 ‘rekordbox에 쓰기’로 rekordbox 재생 기록에 넣습니다." : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld history is pending. Use ‘Write to rekordbox’ above to add it to rekordbox History."
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld histories are pending. Use ‘Write to rekordbox’ above to add them to rekordbox History."
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "演奏履歴%lld件が書き込み待ちです。上の「rekordboxに書き込む」でrekordboxの演奏履歴に入れます。"
           }
         }
       }
@@ -42187,6 +42201,62 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "すべて %lld"
+          }
+        }
+      }
+    },
+    "전체 %lld곡 바로 넣기" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add All %lld Track to rekordbox Directly"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add All %lld Tracks to rekordbox Directly"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全%lld曲をrekordboxに直接追加"
+          }
+        }
+      }
+    },
+    "전체 %lld곡 쓰기" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Write All %lld Track"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Write All %lld Tracks"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全%lld曲を書き込む"
           }
         }
       }
@@ -44205,22 +44275,6 @@
         }
       }
     },
-    "초안만 만듭니다 · 덱에서 확인·수정" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Creates drafts only · Check and fix them on the deck"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下書きだけを作成します・デッキで確認・修正"
-          }
-        }
-      }
-    },
     "초안에 담지 못한 차이 %lld" : {
       "localizations" : {
         "en" : {
@@ -44703,22 +44757,6 @@
         }
       }
     },
-    "추가 목록에서만 뺍니다. 파일은 지우지 않습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Removes them from the added list only. Files aren't deleted."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "追加リストから外すだけです。ファイルは削除しません。"
-          }
-        }
-      }
-    },
     "추가한 곡" : {
       "localizations" : {
         "en" : {
@@ -44763,18 +44801,18 @@
         }
       }
     },
-    "추가한 곡 %lld곡의 초안을 백업에 저장하지 못해 연결되지 않은 초안으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 ‘연결되지 않은 초안 보기…’에서 버리지 마세요." : {
+    "추가한 곡 %lld곡의 초안을 백업에 저장하지 못해 연결되지 않은 초안으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리지 마세요." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Drafts for %lld added track(s) could not be saved to the backup and were kept as unlinked drafts, so don't discard them in “Show Unlinked Drafts…” if you want them to reconnect when an undo returns the tracks to the added list."
+            "value" : "Drafts for %lld added track(s) could not be saved to the backup and were kept as unlinked drafts, so don't discard them with “View…” next to “Unlinked drafts” in the pending writes list if you want them to reconnect when an undo returns the tracks to the added list."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "追加した%lld曲分の下書きをバックアップに保存できず、リンクされていない下書きとして残しました。元に戻して曲が追加リストに戻ったときに再びつながるよう、「リンクされていない下書きを表示…」で破棄しないでください。"
+            "value" : "追加した%lld曲分の下書きをバックアップに保存できず、リンクされていない下書きとして残しました。元に戻して曲が追加リストに戻ったときに再びつながるよう、書き込み待ちリストの「リンクされていない下書き」の横にある「表示…」で破棄しないでください。"
           }
         }
       }
@@ -44839,22 +44877,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "追加した曲は既存の曲の下書きの書き込みから除外するため、「rekordboxに追加」または追加した曲のXML作成を使用してください"
-          }
-        }
-      }
-    },
-    "추가한 곡을 rekordbox에서 가져올 XML로 만듭니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Create XML to import added tracks into rekordbox."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "追加した曲をrekordboxにインポートするXMLを作成します。"
           }
         }
       }
@@ -46279,22 +46301,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キュー・グリッドの下書きに変更がないため、変更する下書きを確認してください"
-          }
-        }
-      }
-    },
-    "큐·그리드 초안을 rekordbox에서 가져올 XML로 만듭니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Create XML to import cue and grid drafts into rekordbox."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "キュー・グリッドの下書きをrekordboxにインポートするXMLを作成します。"
           }
         }
       }
@@ -48015,6 +48021,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ファイルはCBR MP3ですが、rekordboxにはVBRのように（ビットレート0・MPEG位置）記録されているため、直接書き込みません"
+          }
+        }
+      }
+    },
+    "파일은 지우지 않습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Files are not deleted."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルは削除されません。"
           }
         }
       }

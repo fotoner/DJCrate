@@ -245,18 +245,20 @@ enum RelocatePanels {
     }
 }
 
-/// 파일 없음 필터의 작업 줄에 놓는 '폴더에서 찾기…' 단추. 고른 폴더로 후보를 맞추는 창(시트)을 연다.
+/// 파일 없음 필터의 머리 줄 주 단추 '폴더에서 찾기…'(#340). 고른 폴더로 후보를 맞추는 창(시트)을 연다.
+/// 이름·켜짐·툴팁은 머리 줄 구성(`ListHeaderActions.Command`)이 정한다(파일 확인 중이거나 파일 없는 곡이 없으면 막힌다).
 struct RelocateEntryButton: View {
     let store: LibraryStore
-    /// 파일 확인이 도는 중인지와 파일 없는 곡이 있는지(목록 아래 막대 화면 모델의 값)
-    let isCheckingFiles: Bool
-    let hasMissingFiles: Bool
+    let title: String
+    let isEnabled: Bool
+    let help: String?
     @State private var model: RelocateModel?
 
     var body: some View {
-        Button { open() } label: { Label(.ui("폴더에서 찾기…"), systemImage: "folder.badge.questionmark") }
-            .disabled(isCheckingFiles || !hasMissingFiles || store.snapshotURL == nil)
-            .help(.ui("고른 폴더에서 파일 없는 곡의 새 위치 후보를 찾아 미리 봅니다."))
+        Button { open() } label: { Text(verbatim: title).lineLimit(1) }
+            .fixedSize()
+            .disabled(!isEnabled)
+            .help(help ?? "")
             // 창을 닫을 때(어떤 방법이든) 훑는 중이던 일을 멈춘다.
             .sheet(item: Binding(get: { model }, set: { next in
                 if next == nil { model?.cancel() }

@@ -261,6 +261,10 @@ extension DevSelfTests {
                    "실제 \(Int(content.width)) · \(mode) · 순서·겹침 \(ordered ? "맞음" : "어긋남") · 창 안 \(inside ? "맞음" : "어긋남") · ⓘ \(infoOK ? "맞음" : "어긋남") · 툴바 \(hidden.isEmpty ? "모두 보임" : "접힘 \(hidden.joined(separator: ","))") · \(line)")
             if !capture(window, "header-\(Int(scene.width))-\(scene.name)") { failures += 1 }
         }
+        // 머리 줄 오른쪽 구성(#340): 모드마다 가장 긴 이름을 값으로 넣어 실제 창에서 폭을 잰다. 칩 두 개를 켠 가장 좁은 상태다
+        // 앞 장면이 남긴 긴 곡 색 이름을 되돌린 뒤 기본 글자 크기에서 잰다
+        store.trackColors = colors
+        failures += await runActionScenes(window: window, toolbar: toolbar, store: store, capture: capture, report: report, wait: wait)
         // 필터 칩 하나를 눌러 끄는 길: 칩 값이 같은 입구로 그 조건만 끈다(눌러 보기는 사람이 한다)
         store.minimumRating = 0
         store.colorFilter = nil
@@ -277,6 +281,107 @@ extension DevSelfTests {
         await wait()
         restore([SettingKeys.sidebarVisible.name])
         await wait()
+        return failures
+    }
+
+    /// 머리 줄 오른쪽 구성(#340)이 모드마다 겹치거나 잘리지 않는지 실제 창에서 본다. 저장소 상태를 만들기 어려운 가장 긴 이름
+    /// (세 자리 곡 수, 함께 쓰는 재생 목록·재생 기록 건수, 연결되지 않은 초안)을 `ListHeaderActionsDebugOverride`로 값 그대로 넣는다.
+    /// 칩 두 개를 켠 채 창 1155의 사이드바 열림(본문 약 925)과 인스펙터 열림(본문 약 815)에서 잰다. 파일 없음·BPM 없음은 저장소 상태 그대로 본다.
+    /// 반환값은 캡처를 못 남긴 횟수다. 통과·실패는 `report`가 센다.
+    @MainActor
+    static func runActionScenes(window: NSWindow, toolbar: NSToolbar, store: LibraryStore,
+                                capture: (NSWindow, String) -> Bool, report: (String, Bool, String) -> Void,
+                                wait: () async -> Void) async -> Int {
+        typealias A = ListHeaderActions
+        let locks = A.Locks()
+        let restore = A.Restore(isEnabled: true, help: "라이브러리 전체를 마지막 쓰기 전 백업으로 복원합니다.")
+        let histories = [A.HistoryMenu.Entry(id: "h1", name: "HISTORY 2026-10-05"), .init(id: "h2", name: "HISTORY 2026-10-06")]
+        // (이름, 값). 값이 nil이면 저장소 상태 그대로(사이드바만 그 목록으로)
+        let modes: [(String, A?, SidebarItem)] = [
+            ("staged", A.staged(selected: true, count: 123, canRemove: true, canExportXML: true, importedCount: 12, locks: locks), .filter(.all)),
+            ("pending", A.pending(selected: true, tracks: 123, playlistEdits: 12, histories: histories, unlinkedDrafts: 0, restore: restore, locks: locks), .filter(.all)),
+            ("pending-unlinked", A.pending(selected: false, tracks: 123, playlistEdits: 12, histories: histories, unlinkedDrafts: 14, restore: restore, locks: locks), .filter(.all)),
+            ("music", A.music(unavailable: 12), .filter(.all)),
+            ("smart", A.smartPlaylist(unsupported: false), .filter(.all)),
+            ("playlist-draft", A.playlist(id: "P", isDraft: true, blockedReason: "곡이 rekordbox에서 사라졌습니다", hiddenStreaming: nil, canCompare: true, locks: locks), .filter(.all)),
+            ("hidden-streaming", A.playlist(id: "P", isDraft: false, blockedReason: nil, hiddenStreaming: 123, canCompare: true, locks: locks), .filter(.all)),
+            ("usb", A.usb(volumeKey: "V", editing: (updatable: 123, blockReason: nil, draftCount: 45), playlistMismatch: true), .filter(.all)),
+            ("missing-injected", A.missingFiles(volumes: [.init(name: "공연용 SSD", trackCount: 12)], checking: false, hasMissing: true, canFindInFolder: true), .filter(.all)),
+            ("missing", nil, .filter(.missingFile)),
+            ("no-bpm", nil, .filter(.noBPM)),
+        ]
+        let keys = [SettingKeys.showTagEditor.name, SettingKeys.sheetMode.name]
+        let saved = keys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
+        let selection = store.sidebar
+        let rating = store.minimumRating, color = store.colorFilter
+        UserDefaults.standard.set(false, forKey: SettingKeys.sheetMode.name)
+        // 글자 배율은 호출한 쪽이 끝에서 되돌린다(`runHeaderScenes`)
+        UserDefaults.standard.set(1.0, forKey: SettingKeys.textScale.name)
+        var failures = 0
+        defer {
+            ListHeaderActionsDebugOverride.shared.value = nil
+            store.sidebar = selection
+            store.minimumRating = rating
+            store.colorFilter = color
+            for (key, value) in saved {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
+        }
+        for inspector in [false, true] {
+            for (name, actions, sidebar) in modes {
+                ListHeaderActionsDebugOverride.shared.value = actions
+                store.sidebar = sidebar
+                // 파일 없음·BPM 없음 목록은 필터가 걸리지 않게 두면 칩이 없다. 그 밖은 칩 두 개를 켠 가장 좁은 상태로 잰다
+                store.minimumRating = actions == nil ? 0 : 3
+                store.colorFilter = actions == nil ? nil : "2"
+                UserDefaults.standard.set(inspector, forKey: SettingKeys.showTagEditor.name)
+                window.makeFirstResponder(nil)
+                // 사이드바·인스펙터를 바꾸면 창이 본문 폭을 지키려고 넓어지고, 사이드바는 늦게 열린다.
+                // 창이 1155이고 (인스펙터 장면이 아니면) 검색칸이 사이드바 오른쪽으로 밀려날 때까지 다시 맞춘다
+                func settled() -> Bool {
+                    Int(window.contentView?.frame.width ?? 0) == 1155
+                        && (inspector || (SelfTestFrames.frames["listHeader.search"]?.minX ?? 0) > 100)
+                }
+                for _ in 0..<5 {
+                    // 앞 장면(인스펙터+글자 키움)이 접은 사이드바를 연다. 인스펙터가 닫히는 중에 열면 폭이 모자라 다시 접히므로 매번 다시 연다.
+                    // 사이드바는 호출한 쪽이 끝에서 되돌린다(`runHeaderScenes`)
+                    if !inspector { UserDefaults.standard.set(true, forKey: SettingKeys.sidebarVisible.name) }
+                    window.setContentSize(NSSize(width: 1155, height: 700))
+                    await wait()
+                    window.contentView?.layoutSubtreeIfNeeded()
+                    await wait()
+                    if settled() { break }
+                }
+                let atWidth = settled()
+                let frames = SelfTestFrames.frames
+                let content = window.contentView?.frame.size ?? .zero
+                // 칩 자리는 ViewThatFits가 고른 한 모양만 보인다(전부, 「필터 2」 하나, 숨김). 앞 장면에서 사라진 칩의 늦은 배치 알림이 남긴 자리는 뺀다
+                let chipValues = store.attributeFilterChips
+                let collapsedKey = "listHeader.chip.\(chipValues.collapsedTitle)"
+                let expectedChips = actions == nil ? [] : [collapsedKey] + chipValues.chips.map { "listHeader.chip.\($0.title)" }
+                let shown = frames.filter { expectedChips.contains($0.key) }
+                let allChips = (shown[collapsedKey] != nil ? shown.filter { $0.key == collapsedKey } : shown).sorted { $0.value.minX < $1.value.minX }
+                var parts: [(String, CGRect)] = []
+                for key in ["search", "filter"] { if let frame = frames["listHeader.\(key)"] { parts.append((key, frame)) } }
+                parts += allChips.map { (String($0.key.dropFirst("listHeader.".count)), $0.value) }
+                for key in ["status", "primary", "menu", "info", "viewMode"] { if let frame = frames["listHeader.\(key)"] { parts.append((key, frame)) } }
+                var ordered = true
+                for (previous, next) in zip(parts, parts.dropFirst()) where previous.1.maxX > next.1.minX + 0.5 { ordered = false }
+                let inside = parts.allSatisfy { $0.1.width > 0 && $0.1.minX >= -0.5 && $0.1.maxX <= content.width + 0.5 && $0.1.height <= ListHeaderBar.height + 0.5 }
+                // 값을 넣은 장면은 주 단추·메뉴가 늘 남아야 한다. 저장소 상태 장면은 단추가 있거나(파일 없음·BPM 없음) 곡이 없어 막혀도 자리는 있다
+                let expectedPrimary = actions.map { $0.primary != nil } ?? true
+                let expectedMenu = actions.map { !$0.menu.isEmpty } ?? (sidebar == .filter(.missingFile))
+                let present = (frames["listHeader.primary"] != nil) == expectedPrimary && (frames["listHeader.menu"] != nil) == expectedMenu
+                    && frames["listHeader.viewMode"] != nil
+                let visibleIDs = Set((toolbar.visibleItems ?? []).map { $0.itemIdentifier.rawValue })
+                let hidden = toolbarItemIDs.filter { !visibleIDs.contains($0) }
+                let line = parts.map { "\($0.0) \(Int($0.1.minX))–\(Int($0.1.maxX))" }.joined(separator: " · ")
+                // 다른 폭이나 사이드바가 닫힌 채 잰 통과는 그 장면의 증거가 아니다
+                report("머리 줄 오른쪽 \(name) 창 1155\(inspector ? " 인스펙터" : "")", atWidth && ordered && inside && present && hidden.isEmpty,
+                       "실제 \(Int(content.width)) · 폭·사이드바 \(atWidth ? "맞음" : "어긋남") · 순서·겹침 \(ordered ? "맞음" : "어긋남") · 창 안 \(inside ? "맞음" : "어긋남") · 단추·메뉴 \(present ? "맞음" : "어긋남") · 툴바 \(hidden.isEmpty ? "모두 보임" : "접힘 \(hidden.joined(separator: ","))") · \(line)")
+                if !capture(window, "actions-1155\(inspector ? "-inspector" : "")-\(name)") { failures += 1 }
+            }
+        }
         return failures
     }
 }

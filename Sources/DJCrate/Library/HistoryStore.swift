@@ -4,7 +4,7 @@ import Foundation
 import Observation
 
 /// 재생 기록(#43, 기능 조각): rekordbox Histories처럼 연 › 월 › 기록 트리에 rekordbox 기록과 USB에서 보존한 기기 기록을 섞는다.
-/// 사이드바 기록 칸·목록 아래 막대·사이드바 메뉴·반영(`pendingHistoryImports`·`recordWrittenHistories`)이 쓴다.
+/// 사이드바 기록 칸·머리 줄 오른쪽 구성·사이드바 메뉴·반영(`pendingHistoryImports`·`recordWrittenHistories`)이 쓴다.
 /// USB 기록은 USB를 읽을 때(`UsbStore.onLibraryEvaluated`) 유스케이스 `ArchiveUsbHistories`가 DJCrate 데이터 폴더(`usb-histories/`)에 보존하고
 /// (USB에는 쓰지 않는다), 다른 초안처럼 "rekordbox 쓰기 대기"에 올려(`pendingHistories`) rekordbox에 쓰기(⇧⌘E) 때 반영 세션이
 /// rekordbox Histories에 넣는다. 보존의 줄 세우기·채택·실패 알림은 그 유스케이스가 정하고, 이 조각은 결과를 화면 상태에 넣는다(#251).

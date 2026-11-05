@@ -126,7 +126,7 @@ final class LibraryStore {
     private(set) var duplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var displayDuplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var filterCounts: [LibraryFilter: Int] = [:]
-    /// 마지막 파일 확인 결과(#126). 연결되지 않은 외장 디스크는 목록 아래 막대가 알린다.
+    /// 마지막 파일 확인 결과(#126). 연결되지 않은 외장 디스크는 머리 줄 상태 표시가 알린다.
     private(set) var missingFiles = MissingFiles()
     private(set) var isCheckingFiles = false
     /// 마지막으로 시작한 파일 확인. 시험은 이것을 기다린다
@@ -625,7 +625,7 @@ final class LibraryStore {
         rowsByID[row.track.id] = row
     }
 
-    /// 음원 파일이 있는지 뒤에서 확인해 행·'파일 없음' 개수에 반영한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때·막대의 다시 확인 단추에서 부른다.
+    /// 음원 파일이 있는지 뒤에서 확인해 행·'파일 없음' 개수에 반영한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때·머리 줄 `…` 메뉴의 다시 확인 항목에서 부른다.
     /// 확인 결과는 곡 행·배지·필터 수를 바꾸므로 화면 모델이 아니라 핵심이 한다. 큰 라이브러리의 확인(곡마다 파일 시스템 조회)이 메인 스레드를 막지 않게 한다.
     func checkMissingFiles() {
         missingFileTask?.cancel()

@@ -74,6 +74,10 @@ extension LibraryStore {
         pruneHiddenSelection()
     }
 
+    /// 숨긴 스트리밍 곡을 그 자리에서 푼다('스트리밍 곡 숨기기' 설정을 끈다). 머리 줄 [보이기]와 가운데 안내 [스트리밍 곡 보이기]가 함께 쓰는 입구다.
+    /// 설정을 바꾸는 것이라 곡 목록·곡 수에 보이는 것만 달라지고, 읽은 곡·초안·쓰기 내용은 그대로다.
+    func showHiddenStreaming() { hideStreaming = false }
+
     /// 숨긴 스트리밍 곡은 선택에서도 뺀다(숨은 곡에 쓰기·덱 동작이 가지 않게). 검색으로 가려진 곡의 선택은 건드리지 않는다.
     private func pruneHiddenSelection() {
         guard hideStreaming, Self.hidesStreaming(in: sidebar), !selection.isEmpty else { return }
