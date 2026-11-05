@@ -45,9 +45,9 @@ struct UsbWriteCoordinator {
             service: service,
             confirmation: prompter.confirmation,
             results: UsbWriteResults(
-                show: { [weak host] in host?.toast = Self.toast($0) },
+                show: { [weak host] in host?.showToast(Self.toast($0)) },
                 dismissEject: { [weak host] key in
-                    if host?.toast?.action == .ejectUsb(volumeKey: key) { host?.toast = nil }
+                    if let toast = host?.toast, toast.action == .ejectUsb(volumeKey: key) { host?.dismissToast(toast.id) }
                 },
                 errorText: { AppErrorMessage.message(for: $0) },
                 log: { AppErrorMessage.log($0) },
@@ -66,6 +66,17 @@ struct UsbWriteCoordinator {
     }
 
     // MARK: - 내보내기
+
+    func openPointSnapshots(volumeKey: String) {
+        guard let volume = usb.volume(volumeKey), let snapshots = usb.pointSnapshots else { return }
+        usb.pointSnapshotSheet = UsbPointSnapshotsModel(volume: volume, usb: usb, snapshots: snapshots, coordinator: self)
+    }
+
+    func restorePointSnapshot(_ volume: UsbVolumeInfo, entry: UsbPointSnapshotEntry, snapshots: UsbPointSnapshots) async -> Bool {
+        await flow.restorePointSnapshot(volume, entry: entry, snapshots: snapshots)
+    }
+
+    func undoPointRestore(_ volume: UsbVolumeInfo) async -> Bool { await flow.undoPointRestore(volume) }
 
     /// 시트의 미리 보기. 막히면(rekordbox·잠금·끝나지 않은 쓰기·오류) 알리고 nil
     func preview(_ job: UsbExportJob) async -> UsbExportSummary? { await flow.preview(job) }
@@ -89,7 +100,7 @@ struct UsbWriteCoordinator {
         return Task { await migrate(volume) }
     }
 
-    /// 사이드바 "쓰기 전으로 되돌리기…": 붙어 있는 볼륨이면 되돌리기를 시작한다. 없으면 nil
+    /// 사이드바 "OneLibrary 더하기 되돌리기…": 붙어 있는 볼륨이면 되돌리기를 시작한다. 없으면 nil
     @discardableResult
     func startRestoreMigration(volumeKey: String) -> Task<Void, Never>? {
         guard let volume = usb.volume(volumeKey) else { return nil }

@@ -198,7 +198,7 @@ struct DeckSuggestionBarContent: View {
         Button { reanalyze() } label: {
             Label(titles.reanalyze, systemImage: "arrow.triangle.2.circlepath")
         }
-        .help(.ui("이 곡의 섹션·그리드 추정·조성 분석 캐시를 지우고 다시 분석합니다(파형·초안은 그대로)"))
+        .help(.ui("섹션·그리드 추정·조성을 다시 분석합니다 (파형·초안은 그대로)"))
         .accessibilityLabel(titles.reanalyze)
     }
 }

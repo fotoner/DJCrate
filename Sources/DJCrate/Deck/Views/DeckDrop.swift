@@ -46,7 +46,7 @@ private struct DeckDropDelegate: DropDelegate {
 
     /// 덱 표시는 곡을 끌 때만(음원 파일은 덱에 올리지 않고 추가한다)
     func dropEntered(info: DropInfo) {
-        highlight.enter(accepted: info.hasItemsConforming(to: Self.trackTypes) && library.allowsLibraryInteraction)
+        highlight.enter(accepted: info.hasItemsConforming(to: Self.trackTypes) && !library.editsFrozen)
     }
 
     func dropExited(info: DropInfo) { highlight.exit() }
@@ -56,7 +56,7 @@ private struct DeckDropDelegate: DropDelegate {
     }
 
     func validateDrop(info: DropInfo) -> Bool {
-        library.allowsLibraryInteraction
+        !library.editsFrozen
     }
 
     func performDrop(info: DropInfo) -> Bool {

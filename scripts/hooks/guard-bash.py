@@ -54,7 +54,7 @@ DJC_COMMANDS = {"compat", "lab", "cache", "search", "track", "playlists", "playl
                 "duplicates", "draft", "snapshot-point", "xml-export", "xml-diff", "snapshot", "report", "analyze",
                 "reflection-dry-run", "cue-write", "track-add", "track-delete", "playlist-write", "rekordbox-restore",
                 "schema-dump", "path", "parse", "usb-info", "usb-export", "usb-edit", "usb-migrate", "usb-restore",
-                "usb-recover"}
+                "usb-recover", "usb-snapshot"}
 # 라이브 경로를 받아도 되는 읽기 명령(라이브 DB 확인·사본 뜨기·분석 폴더 읽기·rekordbox 설정 읽기)
 DJC_READ = {"compat", "snapshot", "usb-info", "xml-export", "xml-diff"}
 SNAPSHOT_POINT_READ = {"create", "list", "diff"}
@@ -352,7 +352,9 @@ def check_djc(params, state):
         return LIVE_FLAG_REASON
     dry_run = "--dry-run" in params
     lab_usb_write = sub in USB_LAB_WRITES and not (sub == "usb-image" and (len(words) < 3 or words[2] == "info"))
-    if (name in USB_WRITE_COMMANDS or lab_usb_write) and not dry_run:
+    # usb-snapshot은 restore만 USB에 쓴다(create·list·pin·unpin·delete는 USB를 읽기만 한다)
+    snapshot_write = name == "usb-snapshot" and len(words) > 1 and words[1] == "restore"
+    if (name in USB_WRITE_COMMANDS or lab_usb_write or snapshot_write) and not dry_run:
         if any(protected(p, state.cwd) == "volume" for p in params):
             return VOLUME_REASON
     reading = (name in DJC_READ or (name == "snapshot-point" and len(words) > 1 and words[1] in SNAPSHOT_POINT_READ)

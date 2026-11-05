@@ -31,10 +31,12 @@ public struct UsbEditSource: Sendable {
     /// USB의 Device Library에 작성기가 NFC로 바꿔 쓸 이름·제목(rekordbox가 쓴 NFD 등)이 있다(#233).
     /// 그러면 쓰는 편집이 모델이 바뀌지 않아도 Device Library를 다시 만들어 CDJ에서 보이게 고친다
     public var deviceLibraryNeedsNFC: Bool
+    /// 합치기 전에 읽은 Device Library 모델. 다시 쓴 pdb가 편집이 건드리지 않은 행을 이 값 그대로 지키는지 본다(#238)
+    public var deviceLibrary: UsbLibrary?
 
     public init(snapshot: UsbSnapshot?, formats: Set<UsbFormat>, current: UsbLibrary, mismatches: [UsbFormatMismatch],
                 pdbReport: PdbReadReport?, blocks: [UsbBlock], formatsBlocked: [UsbFormat: UsbBlock], notes: [String],
-                deviceLibraryNeedsNFC: Bool = false) {
+                deviceLibraryNeedsNFC: Bool = false, deviceLibrary: UsbLibrary? = nil) {
         self.snapshot = snapshot
         self.formats = formats
         self.current = current
@@ -44,6 +46,7 @@ public struct UsbEditSource: Sendable {
         self.formatsBlocked = formatsBlocked
         self.notes = notes
         self.deviceLibraryNeedsNFC = deviceLibraryNeedsNFC
+        self.deviceLibrary = deviceLibrary
     }
 
     /// 이번에 고칠 수 있는 형식
@@ -118,7 +121,7 @@ public enum UsbEditEngine {
         if differing > 0 { notes.append(String(ui: "형식 사이 목록 불일치 \(differing)")) }
         return UsbEditSource(snapshot: snapshot, formats: formats, current: current, mismatches: mismatches, pdbReport: report,
                              blocks: unique(blocks), formatsBlocked: formatsBlocked, notes: notes,
-                             deviceLibraryNeedsNFC: deviceLibrary.map(PdbWriter.needsNFC) ?? false)
+                             deviceLibraryNeedsNFC: deviceLibrary.map(PdbWriter.needsNFC) ?? false, deviceLibrary: deviceLibrary)
     }
 
     /// Device Library만 막는 조건(그 형식만 고치지 않고 OneLibrary는 쓴다)

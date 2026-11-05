@@ -30,7 +30,7 @@ extension DevSelfTests {
                 do { try process.run(); process.waitUntilExit() } catch { failures += 1; return }
                 if process.terminationStatus != 0 { failures += 1 }
             }
-            log("안내: \(store.draftFileMessage?.text ?? "없음") · 연결되지 않은 초안 \(store.unlinkedDraftUUIDs.count)곡")
+            log("안내: \(store.activityLog.latest?.text ?? "없음") · 연결되지 않은 초안 \(store.unlinkedDraftUUIDs.count)곡")
             store.sidebar = .filter(.all)
             await wait(1.5)
             capture(window, "after-notice")

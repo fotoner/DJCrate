@@ -17,7 +17,7 @@ extension LibraryStore {
     /// 고른 곡의 초안(큐·그리드·게인·태그·그림)을 버리고(유스케이스 `WatchDrafts.discardUnlinked`) 표시를 맞춘다. 버리지 못한 곡 수를 돌려준다.
     func discardUnlinkedDrafts(_ uuids: Set<String>) -> Int {
         let targets = uuids.intersection(unlinkedDraftUUIDs)
-        guard !targets.isEmpty, !isWritingRekordbox else { return 0 }
+        guard !targets.isEmpty, !libraryBusy else { return 0 }
         let result = useCases.watch.discardUnlinked(targets, attemptedTags: tagSaveAttempts)
         for uuid in result.removedArtwork {
             artworkDrafts[uuid] = nil

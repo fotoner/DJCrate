@@ -5,7 +5,7 @@ import SwiftUI
 import Testing
 
 @MainActor
-@Suite("메뉴 — 구성·단축키·덱 동작")
+@Suite("메뉴 — 구성·단축키")
 struct MenuCommandTests {
     @Test func 설정_메뉴와_단축키는_Settings_장면에서만_등록한다() throws {
         // Settings가 메뉴와 ⌘,를 함께 만든다. 다른 장면의 수동 링크가 겹치지 않게 고정한다.
@@ -15,126 +15,6 @@ struct MenuCommandTests {
         #expect(app.components(separatedBy: "Settings {").count - 1 == 1)
         #expect(!(app + commands).contains("SettingsLink"))
         #expect(!(app + commands).contains(".appSettings"))
-    }
-
-    @Test func 덱_메뉴는_단축키_표의_모든_동작을_한번씩_포함한다() {
-        let actions = DeckAction.Group.allCases.flatMap { DeckMenuCommand.actions(in: $0) }
-        #expect(actions == DeckAction.allCases)
-        #expect(Set(actions).count == actions.count)
-    }
-
-    @Test func 메뉴의_키_안내는_바꾼_키와_삭제한_키를_따른다() throws {
-        var shortcuts = DeckShortcuts.standard
-        #expect(DeckMenuCommand.action(.playPause).keyLabel(shortcuts: shortcuts) == "Space")
-        try shortcuts.replace(49, with: 35, in: .playPause)
-        #expect(DeckMenuCommand.action(.playPause).keyLabel(shortcuts: shortcuts) == "P")
-        shortcuts.remove(35, from: .playPause)
-        #expect(DeckMenuCommand.action(.playPause).keyLabel(shortcuts: shortcuts).isEmpty)
-        try shortcuts.replace(18, with: 7, in: .hotCueA)
-        #expect(DeckMenuCommand.deleteHotCue(0).keyLabel(shortcuts: shortcuts) == "⇧X · ⇧숫자패드 1")
-        #expect(DeckMenuCommand.moveHotCue(0).keyLabel(shortcuts: shortcuts).isEmpty)
-    }
-
-    @Test func 키가_없거나_겹쳐도_메뉴는_고른_동작을_한번만_실행한다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        h.deck.shortcuts.remove(49, from: .playPause)
-        let play = DeckMenuCommand.action(.playPause)
-        play.perform(on: h.deck)
-        #expect(h.deck.isPlaying)
-        play.perform(on: h.deck)
-        #expect(!h.deck.isPlaying)
-        try h.deck.shortcuts.add(46, to: .tapTempo)
-        DeckMenuCommand.action(.tapTempo).perform(on: h.deck)
-        #expect(h.deck.taps.count == 1)
-        #expect(h.deck.draft?.cues.isEmpty == true)
-    }
-
-    @Test func 메뉴_CUE는_누르기와_떼기를_마쳐_미리듣기가_남지_않는다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        h.deck.seek(10.5)
-        let cue = DeckMenuCommand.action(.cue)
-        cue.perform(on: h.deck)
-        #expect(h.deck.cuePoint == 10.5)
-        cue.perform(on: h.deck)
-        #expect(!h.deck.isCuePreviewing)
-        #expect(!h.deck.isPlaying)
-        h.deck.togglePlay()
-        cue.perform(on: h.deck)
-        #expect(!h.deck.isPlaying)
-    }
-
-    @Test func 핫큐_메뉴는_찍기_옮기기_지우기를_제공한다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        let move = DeckMenuCommand.moveHotCue(0), delete = DeckMenuCommand.deleteHotCue(0)
-        #expect(!move.isEnabled(on: h.deck))
-        #expect(!delete.isEnabled(on: h.deck))
-        h.deck.seek(10.5)
-        DeckMenuCommand.action(.hotCueA).perform(on: h.deck)
-        #expect(move.isEnabled(on: h.deck))
-        h.deck.seek(20.5)
-        move.perform(on: h.deck)
-        #expect(h.deck.hotCue(slot: 0)?.time == 20.5)
-        delete.perform(on: h.deck)
-        #expect(h.deck.hotCue(slot: 0) == nil)
-    }
-
-    @Test func 쓰기_중에는_메뉴로_재생하거나_편집할_수_없다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        h.deck.isWriteLocked = true
-        for action in DeckAction.allCases {
-            let command = DeckMenuCommand.action(action)
-            #expect(!command.isEnabled(on: h.deck))
-            command.perform(on: h.deck)
-        }
-        #expect(!h.deck.isPlaying)
-        #expect(h.deck.draft?.cues.isEmpty == true)
-        #expect(h.deck.taps.isEmpty)
-    }
-
-    @Test func 박_이동과_제안_메뉴는_단축키와_같은_함수를_부른다() async throws {
-        let h = try DeckHarness()
-        try await h.loaded()
-        h.deck.seek(10)
-        #expect(DeckMenuCommand.action(.nudgeForward).isEnabled(on: h.deck), "선택한 큐가 없으면 재생 위치를 옮긴다")
-        DeckMenuCommand.action(.nudgeForward).perform(on: h.deck)
-        #expect(h.deck.currentTime == 10.5)
-        DeckMenuCommand.stepBar(forward: true).perform(on: h.deck)
-        #expect(h.deck.currentTime == 12.5)
-        DeckMenuCommand.stepBar(forward: false).perform(on: h.deck)
-        DeckMenuCommand.action(.nudgeBack).perform(on: h.deck)
-        #expect(h.deck.currentTime == 10)
-
-        for command in [DeckMenuCommand.action(.nextSuggestion), .previousSuggestion, .action(.acceptSuggestion)] {
-            #expect(!command.isEnabled(on: h.deck), "제안이 없으면 끈다")
-        }
-        h.deck.suggestions = [20, 30]
-        DeckMenuCommand.action(.nextSuggestion).perform(on: h.deck)
-        DeckMenuCommand.action(.nextSuggestion).perform(on: h.deck)
-        #expect(h.deck.currentTime == 30)
-        DeckMenuCommand.previousSuggestion.perform(on: h.deck)
-        #expect(h.deck.currentTime == 20)
-        h.deck.seek(21)
-        DeckMenuCommand.action(.acceptSuggestion).perform(on: h.deck)
-        #expect(h.deck.draft?.cues.map(\.time) == [20])
-        h.deck.isWriteLocked = true
-        for command in [DeckMenuCommand.stepBar(forward: true), .stepBar(forward: false), .previousSuggestion] {
-            #expect(!command.isEnabled(on: h.deck))
-        }
-    }
-
-    @Test func Shift_동작은_메뉴에서_원래_동작_바로_아래에_Shift_키와_함께_있다() {
-        #expect(DeckMenuCommand.variants(after: .memoryCue) == [.deleteMemoryCue])
-        #expect(DeckMenuCommand.variants(after: .nudgeBack) == [.stepBar(forward: false)])
-        #expect(DeckMenuCommand.variants(after: .nudgeForward) == [.stepBar(forward: true)])
-        #expect(DeckMenuCommand.variants(after: .nextSuggestion) == [.previousSuggestion])
-        #expect(DeckMenuCommand.variants(after: .acceptSuggestion).isEmpty)
-        #expect(DeckMenuCommand.stepBar(forward: false).keyLabel(shortcuts: .standard) == "⇧←")
-        #expect(DeckMenuCommand.previousSuggestion.keyLabel(shortcuts: .standard) == "⇧S")
-        #expect(DeckMenuCommand.action(.acceptSuggestion).keyLabel(shortcuts: .standard) == "A")
     }
 
     @Test func 파형_높이_메뉴는_보이는_높이에서_한_칸씩_범위_안으로_바꾼다() {
@@ -152,10 +32,67 @@ struct MenuCommandTests {
         #expect(!WaveformHeightControl(displayed: DeckLayout.minimumWaveformHeight, maximum: 260) { _ in }.canShrink)
     }
 
-    @Test func 앱_명령은_파일과_rekordbox_메뉴로_나뉜다() {
+    @Test func 앱_명령은_파일과_rekordbox_편집_메뉴로_나뉜다() {
         #expect(LibraryMenuAction.fileActions == [.addFiles, .importAppleMusic, .snapshot, .exportXML, .exportLibraryXML, .importRekordboxXML])
-        #expect(LibraryMenuAction.rekordboxActions == [.reflect, .pending, .writeResult, .restore, .pointSnapshots, .removeTracks])
-        #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions == LibraryMenuAction.allCases)
+        #expect(LibraryMenuAction.rekordboxActions == [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks])
+        // 편집 메뉴의 찾기(⌘F, #338)
+        #expect(LibraryMenuAction.editActions == [.find])
+        #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions + LibraryMenuAction.editActions == LibraryMenuAction.allCases)
+    }
+
+    @Test func 도움말_메뉴의_쓰기_전으로_복원은_rekordbox_메뉴와_같은_명령이다() throws {
+        // 도움말 메뉴는 rekordbox 메뉴의 항목을 그대로 다시 보인다(새 경로 없음). 이름·켜짐 조건·꺼진 이유가 같다.
+        #expect(LibraryMenuAction.helpActions == [.restore])
+        #expect(LibraryMenuAction.rekordboxActions.contains(.restore))
+        let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let commands = try String(contentsOf: root.appending(path: "Sources/DJCrate/App/AppCommands.swift"), encoding: .utf8)
+        // 등록 줄이 도움말 그룹(`CommandGroup(replacing: .help)`) 안에 있어야 한다. 다른 메뉴로 옮기면 실패한다
+        let helpStart = try #require(commands.range(of: "CommandGroup(replacing: .help) {"))
+        var depth = 0
+        var helpEnd = commands.endIndex
+        for index in commands[helpStart.lowerBound...].indices {
+            if commands[index] == "{" { depth += 1 }
+            if commands[index] == "}" { depth -= 1; if depth == 0 { helpEnd = index; break } }
+        }
+        let helpGroup = commands[helpStart.lowerBound..<helpEnd]
+        #expect(helpGroup.contains("ForEach(LibraryMenuAction.helpActions, id: \\.self) { libraryButton($0) }"), "도움말 메뉴도 rekordbox 메뉴와 같은 libraryButton으로 항목을 만든다")
+
+        let backups = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: backups) }
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, backupDirectory: backups)
+        let window = LibraryWindowModel(store: store)
+        for action in LibraryMenuAction.helpActions {
+            #expect(action.menuTitle(in: window) == "쓰기 전으로 복원…")
+            // 백업이 없으면 막히고 이유는 활동 기록을 보라고 알린다
+            #expect(!action.isEnabled(in: window))
+            #expect(action.disabledReason(in: window) == "쓰기 전 백업이 없으니 활동 기록을 확인하세요")
+        }
+        let backup = backups.appending(path: "2026-01-02-write")
+        try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
+        try Data().write(to: backup.appending(path: "master.db"))
+        store.refreshWriteBackups()
+        for action in LibraryMenuAction.helpActions {
+            #expect(action.isEnabled(in: window))
+            #expect(action.disabledReason(in: window) == nil)
+        }
+        // 쓰는 동안은 막힌다(rekordbox 메뉴와 같은 잠금)
+        store.isWritingRekordbox = true
+        for action in LibraryMenuAction.helpActions {
+            #expect(!action.isEnabled(in: window))
+            #expect(action.disabledReason(in: window) == "rekordbox 쓰기가 끝난 뒤 다시 시도하세요")
+        }
+    }
+
+    @Test func 툴바에는_rekordbox_쓰기_단추가_없고_입구는_메뉴와_상태_줄이_맡는다() throws {
+        // 툴바 분할 단추(`reflection`)와 ▾ 메뉴(`ReflectionMenu`)는 상태 줄 칩·[쓰기]·팝오버와 rekordbox 메뉴가 대신한다(#325).
+        let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let content = try String(contentsOf: root.appending(path: "Sources/DJCrate/App/ContentView.swift"), encoding: .utf8)
+        #expect(!content.contains("id: \"reflection\""))
+        #expect(!content.contains("ReflectionMenu("))
+        #expect(!FileManager.default.fileExists(atPath: root.appending(path: "Sources/DJCrate/Reflection/ReflectionMenu.swift").path))
+        // 쓰기·복원 입구가 남아 있다: 메뉴 막대 rekordbox(⇧⌘E)와 상태 팝오버
+        #expect(LibraryMenuAction.rekordboxActions.contains(.reflect))
+        #expect(ReflectionStatusModel.popoverActions.contains(.reflect) && ReflectionStatusModel.popoverActions.contains(.restore))
     }
 
     @Test func 쓰기와_복원은_확인을_예고하고_XML은_바로_만든다() {
@@ -171,11 +108,15 @@ struct MenuCommandTests {
         #expect(LibraryMenuAction.addFiles.shortcut == KeyboardShortcut("o", modifiers: .command))
         #expect(LibraryMenuAction.snapshot.shortcut == KeyboardShortcut("r", modifiers: .command))
         #expect(LibraryMenuAction.reflect.shortcut == KeyboardShortcut("e", modifiers: [.command, .shift]))
-        #expect(LibraryMenuAction.allCases.filter { $0.shortcut != nil } == [.addFiles, .snapshot, .reflect])
+        // 편집 › 찾기(#338)
+        #expect(LibraryMenuAction.find.shortcut == KeyboardShortcut("f", modifiers: .command))
+        let shortcuts = LibraryMenuAction.allCases.filter { $0.shortcut != nil }
+        #expect(shortcuts == [.addFiles, .snapshot, .reflect, .find])
+        #expect(Set(shortcuts.compactMap(\.shortcut).map { "\($0.key.character)\($0.modifiers.rawValue)" }).count == shortcuts.count)
     }
 
     @Test func 빈_라이브러리와_쓰기_잠금에서_명령의_활성_조건을_지킨다() {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString))
         let window = LibraryWindowModel(store: store)
         #expect(LibraryMenuAction.snapshot.isEnabled(in: window))

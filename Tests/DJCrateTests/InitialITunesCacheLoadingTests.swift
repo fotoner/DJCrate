@@ -44,7 +44,7 @@ struct InitialITunesCacheLoadingTests {
                        liveDatabase: Bool = false) -> LibraryStore {
         let ports: ((inout LibraryPorts) -> Void)? = liveDatabase ? nil : { $0.source = .withoutDatabase }
         return LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("initial-itunes-cache"), persist: false),
-                          resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                          activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                           backupDirectory: root.appending(path: "backups"), playlistDraftSaver: { _ in },
                           mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                           rekordboxDatabase: root.appending(path: "master.db"),

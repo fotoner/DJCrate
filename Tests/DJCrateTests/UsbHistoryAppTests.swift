@@ -53,7 +53,7 @@ struct UsbHistoryAppTests {
     static func newStore(_ fixture: RekordboxFixture, histories: UsbHistoryFiles? = nil) -> LibraryStore {
         let fixed = now
         return LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbhistory"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  ports: { ports in
@@ -151,13 +151,37 @@ struct UsbHistoryAppTests {
         #expect(store.canLoadSelectionToDeck)
         store.loadSelectionToDeck()
         #expect(store.deckTrackID == nil)
-        #expect(store.staging.stagingMessage?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
+        #expect(store.activityLog.latest?.text == "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요")
 
         // 재생 목록으로 만들기: 짝 있는 곡만 튼 순서대로(같은 곡은 처음 한 번), 이름은 기록 이름
         store.playlists.createPlaylist(fromHistory: archived.id)
         let created = try #require(store.playlists.playlistTree.first?.id)
         #expect(store.playlists.playlistItem(created)?.name == archived.name)
         #expect(store.playlists.playlistItem(created)?.trackIDs == ["102", "101"])
+    }
+
+    /// 경고가 저절로 닫히게 된 뒤(#296)에도 가져오기 알림이 경고를 덮지 않게 하되, 버리지 않고 활동 기록에 남긴다(#298)
+    @Test("경고 알림이 떠 있으면 가져오기 알림은 덮지 않고 활동 기록에만 남겨 읽지 않은 수에 넣는다")
+    func importNoticeBehindWarningIsRecorded() async throws {
+        let scratch = Self.scratch()
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let fixture = try historyFixture()
+        let store = try await Self.libraryStore(fixture, histories: Self.histories(scratch))
+        store.showToast(.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        let warning = try #require(store.toast)
+        let (host, _) = Self.host()
+        let usb = UsbTestData.store(host, local: Self.localKeys())
+        await Self.connect(store, usb)
+        await usb.refresh()
+        await store.history.waitForHistoryImports()
+
+        #expect(store.history.archivedHistories.count == 1)
+        #expect(store.toast?.id == warning.id)
+        let entry = try #require(store.activityLog.latest)
+        #expect(entry.title == "USB에서 재생 기록 1개를 가져왔습니다" && entry.kind == .success && entry.unshown == true)
+        #expect(store.activityLog.entries.count == 2)
+        // 띄우지 못한 알림도 떠 있던 경고와 함께 상태 줄의 읽지 않은 수에 든다
+        #expect(StatusBarModel(log: store.activityLog, settings: store.settings).unreadCount == 2)
     }
 
     @Test("같은 USB를 다시 읽거나 앱을 다시 켜도 보존 기록이 늘지 않고 알리지 않는다")
@@ -174,7 +198,7 @@ struct UsbHistoryAppTests {
         let first = store.history.archivedHistories
         #expect(first.count == 1)
 
-        store.toast = nil
+        store.dismissToast()
         await usb.refresh()
         await store.history.waitForHistoryImports()
         await usb.localLibraryChanged()

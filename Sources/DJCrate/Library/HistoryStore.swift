@@ -4,7 +4,7 @@ import Foundation
 import Observation
 
 /// 재생 기록(#43, 기능 조각): rekordbox Histories처럼 연 › 월 › 기록 트리에 rekordbox 기록과 USB에서 보존한 기기 기록을 섞는다.
-/// 사이드바 기록 칸·목록 아래 막대·사이드바 메뉴·반영(`pendingHistoryImports`·`recordWrittenHistories`)이 쓴다.
+/// 사이드바 기록 칸·머리 줄 오른쪽 구성·사이드바 메뉴·반영(`pendingHistoryImports`·`recordWrittenHistories`)이 쓴다.
 /// USB 기록은 USB를 읽을 때(`UsbStore.onLibraryEvaluated`) 유스케이스 `ArchiveUsbHistories`가 DJCrate 데이터 폴더(`usb-histories/`)에 보존하고
 /// (USB에는 쓰지 않는다), 다른 초안처럼 "rekordbox 쓰기 대기"에 올려(`pendingHistories`) rekordbox에 쓰기(⇧⌘E) 때 반영 세션이
 /// rekordbox Histories에 넣는다. 보존의 줄 세우기·채택·실패 알림은 그 유스케이스가 정하고, 이 조각은 결과를 화면 상태에 넣는다(#251).
@@ -62,6 +62,11 @@ final class HistoryStore {
     private(set) var pendingHistories: [ArchivedHistory] = []
     /// 쓰기 대기 기록 ID(사이드바 기록 줄이 대기 표시를 고른다)
     private(set) var pendingHistoryIDs: Set<String> = []
+    /// 보존 기록이 rekordbox에 쓰일 이름(보존본 이름과 다를 때만, `HistoryNaming.displayNames`). 사이드바·목록 제목·쓰기 대기 메뉴가 보인다
+    private(set) var archivedDisplayNames: [String: String] = [:]
+
+    /// 보존 기록을 화면에 보일 이름(rekordbox에 같은 이름이 있으면 rekordbox처럼 " (n)"을 붙인 이름)
+    func displayName(_ history: ArchivedHistory) -> String { archivedDisplayNames[history.id] ?? history.name }
     /// rekordbox에 썼지만 아직 새 스냅샷으로 읽지 못한 기록의 rekordbox ID. 다시 읽을 때까지 rekordbox에 있는 것으로 본다
     /// (쓴 뒤 다시 읽지 못해도 같은 기록을 또 쓰지 않게). 라이브러리를 새로 읽으면 비운다
     @ObservationIgnored var historyIDsAwaitingReload: Set<String> = []
@@ -76,9 +81,10 @@ final class HistoryStore {
         let rows = library.rowsByID
         let view = UsbHistoryRules.view(histories: histories, archived: archivedHistories, local: historyLocalKeys,
                                         inCollection: { rows[$0] != nil }, queueOpen: library.snapshotURL != nil && writesHistories,
-                                        awaitingReload: historyIDsAwaitingReload, calendar: .current)
+                                        awaitingReload: historyIDsAwaitingReload, calendar: .current, openLinkSessions: openLinkSessions)
         if view.shadowed != shadowedArchiveIDs { shadowedArchiveIDs = view.shadowed }
         if view.tree != historyTree { historyTree = view.tree }
+        if view.displayNames != archivedDisplayNames { archivedDisplayNames = view.displayNames }
         guard view.pending != pendingHistories else { return }
         pendingHistories = view.pending
         pendingHistoryIDs = Set(view.pending.map(\.id))
@@ -181,6 +187,37 @@ final class HistoryStore {
         archive.startImport(volumeKey: volume.usbKey, volumeName: volume.name, library: library, matches: matches, calendar: .current)
     }
 
+    // MARK: - PRO DJ LINK 재생 기록
+
+    /// 연결 중인 LINK 세션. 그 기록은 곡이 계속 붙으므로 rekordbox 쓰기 대기에 올리지 않는다(LINK를 끄면 올린다)
+    private(set) var openLinkSessions: Set<String> = [] {
+        didSet { if openLinkSessions != oldValue { refreshHistoryTree() } }
+    }
+    /// 닫은 LINK 세션(늦게 온 곡이 세션을 다시 열지 않게)
+    @ObservationIgnored private var closedLinkSessions: Set<String> = []
+
+    /// LINK를 껐다: 연결 중이던 세션의 기록을 rekordbox 쓰기 대기에 올린다
+    func closeLinkSessions() {
+        closedLinkSessions.formUnion(openLinkSessions)
+        openLinkSessions = []
+    }
+
+    /// 그 LINK 기록이 연결 중이라 아직 쓰기 대기에 오르지 않았는지(사이드바 도움말)
+    func isOpenLinkHistory(_ history: ArchivedHistory) -> Bool { LinkHistory.isOpen(history, openSessions: openLinkSessions) }
+
+    /// CDJ가 LINK 재생 기록에 넣거나 뺀 곡을 그 세션 기록에 반영한다(보존만 한다. rekordbox에는 쓰기 대기로 올린다).
+    /// 원본 키는 채택한 스냅샷에서 그 곡 자신의 것을 쓴다(`LinkHistory.entry`)
+    /// - Parameter session: LINK 세션 열쇠(조립 지점이 앱 실행·연결 차례로 짓는다)
+    func recordLinkPlay(_ play: LinkPlay, session: String) {
+        if !closedLinkSessions.contains(session) { openLinkSessions.insert(session) }
+        if play.removed {
+            archive.removeLinkPlay(contentID: play.contentID, session: session)
+            return
+        }
+        guard let row = library.rowsByID[play.contentID] else { return }
+        archive.recordLinkPlay(LinkHistory.entry(row: row, keys: historyLocalKeys, linkID: play.linkID), session: session, calendar: .current)
+    }
+
     /// 줄 선 USB 기록 보존이 모두 끝날 때까지(시험·자가 테스트)
     func waitForHistoryImports() async { await archive.waitUntilIdle() }
 
@@ -209,22 +246,19 @@ final class HistoryStore {
         case let .imported(shown, saved, notice):
             if library.snapshotURL != nil { seedHistoryFolders() }
             for id in shown { revealHistory(id) }
-            // 닫을 때까지 남는 경고·동작 단추가 있는 알림(USB 꺼내기 등)은 덮지 않는다
-            if let notice, canReplaceToast { show(notice) }
+            // 경고·실패나 동작 단추가 있는 알림(USB 꺼내기 등)은 덮지 않는다. 그때 가져오기 알림은 버리지 않고 활동 기록에만 남겨
+            // 상태 줄의 읽지 않은 수에 넣는다(#298, `LibraryStore.notify`)
+            if let notice { library.notify(toast(notice)) }
             if case let .history(id) = library.sidebar, saved.contains(id) { library.refreshBase() }
         case let .notice(notice):
             show(notice)
         }
     }
 
-    private func show(_ notice: UsbHistoryNotice) {
-        library.toast = .notice(notice.title, notice.detail, kind: notice.kind == .success ? .success : .warning, isUsb: true)
-    }
+    private func show(_ notice: UsbHistoryNotice) { library.showToast(toast(notice)) }
 
-    /// 지금 알림을 기록 가져오기 알림으로 바꿔도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만
-    private var canReplaceToast: Bool {
-        guard let toast = library.toast else { return true }
-        return toast.kind == .success && toast.undoBackup == nil && toast.action == nil
+    private func toast(_ notice: UsbHistoryNotice) -> AppToast {
+        .notice(notice.title, notice.detail, kind: notice.kind == .success ? .success : .warning, isUsb: true)
     }
 
     // MARK: - rekordbox 쓰기 대기
@@ -241,7 +275,7 @@ final class HistoryStore {
     /// 보존 기록을 rekordbox 쓰기 대기에서 빼거나 다시 넣는다(보존본은 그대로). 편집 › 실행 취소로 되돌린다.
     /// 화면 상태는 바로 바꾸고 파일 저장은 보존 줄에 세운다. 저장하지 못하면 유스케이스가 알린다(다시 켜면 옛 상태로 읽힌다)
     func setHistoriesExcluded(_ ids: [String], excluded: Bool) {
-        guard library.writeLockPolicy.allowsLibraryInteraction else { return }
+        guard !library.editsFrozen else { return }
         let changedIDs = archive.exclude(ids, excluded: excluded)
         guard !changedIDs.isEmpty, let undoManager = library.undoManager else { return }
         // 한 이벤트 안에서 여러 번 바꿔도 각각 한 단계로 남긴다(태그·덱 초안과 같다)
@@ -253,7 +287,7 @@ final class HistoryStore {
         }
         // 되돌리기 대상은 핵심이다(쓰기 잠금이 핵심 대상으로 되돌리기를 지운다)
         undoManager.registerUndo(withTarget: library) { target in
-            guard !target.isWritingRekordbox else { return }
+            guard !target.editsFrozen else { return }
             target.history.setHistoriesExcluded(changedIDs, excluded: !excluded)
         }
         undoManager.setActionName(excluded ? String(ui: "rekordbox 쓰기 대기에서 빼기") : String(ui: "rekordbox 쓰기 대기에 넣기"))

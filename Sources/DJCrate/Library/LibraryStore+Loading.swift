@@ -17,6 +17,11 @@ extension LibraryStore {
         await readFlow.loadInitial(snapshotDirectory: snapshotDirectory, capture: captureITunes)
     }
 
+    /// 읽기 실패 화면의 [다시 시도]: 새 사본을 떠서 읽는다(명시한 사본은 그 사본을 다시 읽는다).
+    func retryLoad() async {
+        await readFlow.retry()
+    }
+
     /// 창으로 돌아올 때: 지금 읽은 스냅샷 뒤에 rekordbox가 라이브러리를 바꿨으면 뒤에서 조용히 새로 읽는다.
     func refreshIfRekordboxChanged() async {
         await readFlow.refreshIfChanged()
@@ -68,7 +73,7 @@ extension LibraryStore {
         case let .failed(message): .failed(message)
         }
         return LibraryReadState(phase: readPhase, snapshot: snapshotURL, revision: previewRevision, hasRows: !rows.isEmpty,
-                                hasError: lastError != nil, isWriting: isWritingRekordbox, music: music.snapshot,
+                                hasError: lastError != nil, isWriting: libraryBusy, music: music.snapshot,
                                 musicStatus: music.library.status)
     }
 
@@ -79,7 +84,7 @@ extension LibraryStore {
             case .idle: self.phase = .idle
             case let .loading(message): self.phase = .loading(message)
             case .loaded: self.phase = .loaded
-            case let .failed(message): self.phase = .failed(message)
+            case let .failed(message): showUnclassifiedFailure(message)
             }
         case let .readSequence(sequence):
             setReads(sequence)
@@ -98,6 +103,12 @@ extension LibraryStore {
         case let .readFailed(failure, error):
             AppErrorMessage.log(error)
             reportReadFailure(failure)
+        case let .unsupportedRekordbox(version):
+            // 늘 보이는 표시는 상태 줄의 「rekordbox에 쓸 수 없음」 칩이 맡는다(#327). 같은 이유를 창 알림으로 겹쳐 띄우지 않고 활동 기록에만 남긴다
+            activityLog.record(.notice(UnsupportedRekordboxNotice.title(version: version), UnsupportedRekordboxNotice.guidance), shown: false)
+        case let .writeBlock(block):
+            // 같은 값을 다시 쓰면 상태 줄이 쓸데없이 다시 그려진다
+            if writeBlock != block { writeBlock = block }
         }
     }
 
@@ -167,12 +178,12 @@ extension LibraryStore {
         markLoadSucceeded()
         refreshUnlinkedDrafts()
         warmPreviewWaveforms(loaded.rows)
-        if failedTagSaves().isEmpty { clearLibraryError() } else { reportLibraryError(DraftSaveFailure.tagSaveMessage) }
+        if failedTagSaves().isEmpty { clearLibraryError() } else { reportLibraryError(DraftSaveFailure.tagSaveMessage, kind: .failure) }
         if synchronizingDrafts {
-            toast = conflicts == 0
+            showToast(conflicts == 0
                 ? AppToast(title: String(ui: "현재 rekordbox 내용을 불러왔습니다"))
                 : AppToast(kind: .warning, title: String(ui: "태그 충돌을 확인하세요"),
-                           detail: String(ui: "같은 칸이 바뀐 \(conflicts)곡의 초안을 보존했습니다. 곡 정보에서 현재 값과 초안을 확인하세요."))
+                           detail: String(ui: "같은 칸이 바뀐 \(conflicts)곡의 초안을 보존했습니다. 곡 정보에서 현재 값과 초안을 확인하세요.")))
         }
         useCases.log("라이브러리 로드 \(ContinuousClock.now - started) · \(rows.count)곡")
         // 동기화 중 시작한 드래그는 메모리에만 있을 수 있어 덱을 덮지 않는다.

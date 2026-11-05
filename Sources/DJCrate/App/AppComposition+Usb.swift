@@ -19,6 +19,12 @@ enum UsbAppComposition {
                                engine: .live(fileSystem: fileSystem), device: .live(), drafts: .live(directory: drafts), now: { Date() })
     }
 
+    /// 같은 가드·폴더·엔진을 쓰는 USB 시점 스냅샷 유스케이스.
+    static func pointSnapshots(service: UsbWriteService, directory: URL = DJCPaths.usbPointSnapshots) -> UsbPointSnapshots {
+        UsbPointSnapshots(directory: directory, paths: service.paths, writeGuard: service.writeGuard, engine: service.engine,
+                          device: service.device, now: service.now)
+    }
+
     /// 사이드바 읽기 입출력: 사본은 `snapshots/<볼륨키>/`에 뜨고, 꺼내기는 DiskArbitration
     static func hostIO(snapshots: URL = DJCPaths.usbSnapshots,
                        recheck: (@Sendable (UsbVolumeInfo) throws -> UsbVolumeInfo)? = nil) -> SystemUsbHost.IO {
@@ -58,6 +64,7 @@ enum UsbAppSetup {
                            journal: { service.journal(volumeKey: $0) })
         // 초안은 DJC_HOME 아래(시험 실행이 사용자 초안을 건드리지 않게)
         usb.drafts = .live(directory: DJCPaths.usbDrafts)
+        usb.pointSnapshots = UsbAppComposition.pointSnapshots(service: service)
         usb.syncSelectionDirectory = DJCPaths.usbSyncSelections
         usb.syncFiles = .live
         usb.localKeys = source

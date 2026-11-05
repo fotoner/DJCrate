@@ -30,6 +30,8 @@ struct UsbWriteProgressModel: Equatable {
     var fraction: Double?
     /// DB 교체가 시작되면(`cancellable == false`) 숨긴다
     var showsCancel: Bool
+    /// 덮개에 한 번 보이는 안내(확인 창에는 쓰지 않는다, #310)
+    var notice: String { UsbWriteFlow.Text.progressNotice }
 
     init(_ write: UsbActiveWrite) {
         title = write.title

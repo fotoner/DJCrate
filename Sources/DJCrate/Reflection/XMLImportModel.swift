@@ -91,8 +91,8 @@ final class XMLImportModel {
                 return try await importer.makeDrafts(comparison, selection: selection, context: store.xmlImportContext())
             },
             draftsChanged: { [weak store] in await store?.refreshExternalDrafts() },
-            isWriting: { [weak store] in store?.isWritingRekordbox ?? false },
-            fail: { [weak store] in store?.staging.stagingMessage = AppMessage(kind: .failure, text: $0) }))
+            isWriting: { [weak store] in store?.libraryBusy ?? false },
+            fail: { [weak store] in store?.showToast(.notice(text: $0, kind: .failure)) }))
     }
 
     /// 읽는 중이거나 미리 보기가 열려 있다(메뉴가 새 가져오기를 막는다)

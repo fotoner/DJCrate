@@ -16,7 +16,7 @@ import Testing
 struct DraftSafetyFollowupTests {
     /// 초안 폴더는 합성 사본 폴더. 명시한 사본(`--db`)으로 연 창처럼 띄울 수 있다.
     func makeStore(_ fixture: RekordboxFixture, writer: DraftWriter = DraftWriter(), environment: [String: String]) -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
                           playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                           draftHome: fixture.root, arguments: ["test", "--db", fixture.database.path],
                           environment: environment, writer: writer)

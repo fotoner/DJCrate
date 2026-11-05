@@ -36,6 +36,11 @@ quick·stress·changed는 릴리스 빌드와 전체 커버리지 보고를 하�
 
 - quick·stress: `swift build --build-tests --enable-code-coverage`로 시험 타깃 전체의 계측 디버그 빌드를 만들되, 이미 있으면 재사용한다.
 - changed: 시험 타깃을 뺀 소스 타깃 전체(앱·CLI 제품 포함)를 `swift build --enable-code-coverage`로 먼저 빌드한 뒤 고른 시험 타깃만 빌드한다. 그래서 앱이나 CLI에 컴파일 오류가 있으면 changed도 실패한다. 이 빌드로 더 드는 시간은 공개 인터페이스가 그대로면 약 3초, DJCDomain 공개 API를 바꾸면 17~19초다.
+  - `swift test --skip-build`는 `--filter`를 줘도 패키지의 모든 시험 번들(`.build/out/Products/Debug/<타깃>.xctest`)을 열어 시험을 나열한다. 고르지 않은 타깃의 번들도 필요하다. 번들이 하나라도 빠지면 실행이 곧바로 실패한다.
+  - 그래서 번들이 없는 시험 타깃은 고른 타깃과 함께 더 빌드한다. 새 작업 트리의 첫 실행이 그렇다. 번들이 모두 있는 작업 트리에서는 번들 때문에 더 빌드하지 않는다. 추가로 빌드하면 이유와 타깃을 한 줄로 알린다.
+  - 시험 타깃을 하나씩 빌드하면 그 타깃이 쓰지 않는 `Sparkle.framework`를 지울 수 있다. 앱 시험 번들(`DJCrateTests`)이 그것을 링크한다. 그래서 `DJCrateTests`는 빌드 목록의 맨 끝에 둔다. 빌드를 마친 뒤 `Sparkle.framework`가 없으면 `DJCrateTests`를 다시 빌드한다.
+  - 이 다시 빌드는 `RekordboxKitTests`만 골라도 일어난다. 7초쯤 더 든다. 고치기 전에는 그 실행이 실패했다.
+  - 번들 확인은 `affected-tests.py`가 내는 패키지의 모든 시험 타깃(`plan_test_targets`)을 쓴다. 시험 고르기 규칙과는 관계가 없다.
 
 quick의 필터는 Swift 시험 필터 정규식이다. 타깃 이름으로 앵커하면 그 타깃의 시험만 돈다(예: `'^DJCDomainTests\.LoopPlannerTests/'`). 다음 경우는 성공시키지 않는다.
 
@@ -60,8 +65,8 @@ quick의 필터는 Swift 시험 필터 정규식이다. 타깃 이름으로 앵�
 
 1. 고른 범위와 이유, 필터를 출력한다. 이유는 파일 → 규칙 → Suite 순서로 보인다.
 2. Swift 변경이 있으면 모듈 경계 검사를 돈다.
-3. 소스 타깃 전체를 빌드한 뒤 고른 시험 타깃을 빌드한다.
-4. 고른 시험을 돌린 뒤 1개 이상 끝났는지 필터 결과로 본다.
+3. 소스 타깃 전체를 빌드한 뒤 고른 시험 타깃을 빌드한다. 번들이 없는 시험 타깃도 함께 빌드한다.
+4. 고른 시험을 돌린 뒤 1개 이상 끝났는지 필터 결과로 본다. 선택 실행 Suite만 골라 모두 건너뛰면 이 단계가 원인을 알린다.
 5. 바뀐 파일에 따른 조건부 검사를 돈다.
 
 Swift 소스를 바꾸면 그 파일이 선언한 타입을 쓰는 Suite를 고른다. 시험 파일을 바꾸면 그 파일의 Suite를 고른다. 그 밖의 경우는 다음 표를 따른다.
@@ -78,7 +83,7 @@ Swift 소스를 바꾸면 그 파일이 선언한 타입을 쓰는 Suite를 고�
 | 쓰기 커버리지 그룹 파일 | 쓰기 그룹 커버리지(80%). 코어 60%는 전체 검사·CI만 본다 |
 | 문서, `skills/**` | `scripts/check-docs.py`와 문장 규칙 |
 | 하네스: `scripts/hooks/**`, `.claude/**`, `scripts/test-harness.py`, `scripts/check-docs.py`, `scripts/check-prose.py`, `scripts/prose-*.txt`, `scripts/worker-lock.sh` | `scripts/test-harness.py`와 `scripts/check-docs.py`. 이것만 바뀌면 넓히지 않는다 |
-| 검사 스크립트: `scripts/test-check.py`, `affected-tests.py`, `test-map.txt`, `check-imports.py`, `ci-base.sh`, `ci-mtimes.py`, `check.sh` | `python3 scripts/test-check.py`. `check.sh`는 전체 검사로도 넓힌다 |
+| 검사 스크립트: `scripts/test-check.py`, `affected-tests.py`, `test-map.txt`, `optin-suites.txt`, `check-imports.py`, `ci-base.sh`, `ci-mtimes.py`, `check.sh` | `python3 scripts/test-check.py`. `check.sh`는 전체 검사로도 넓힌다 |
 | `Sources/**`, `Tests/**`(위 시험에 더해) | 안전 시험 선택 검사: `python3 scripts/test-check.py affected-real-map safety-`(몇 초) |
 
 고른 Suite가 전체의 절반을 넘어도 전체 검사로 넓힌다. 넓힐 때는 이유를 담아 `▸ 전체 검사로 넓힙니다: <이유>`를 출력한다. 넓힌 실행은 문서·훅 검사를 포함해 전체 검사와 같은 단계를 돈다. 검사 스크립트가 바뀌었으면 `scripts/test-check.py`도 돈다. 전체 검사만으로는 이 검사가 돌지 않는다.
@@ -121,6 +126,7 @@ Swift·Package 변경이 없으면(문서만) 빌드와 시험 없이 가벼운 
 
 - 없는 Suite
 - 어느 파일에도 맞지 않는 `when`
+- 선택 실행 Suite 목록(`scripts/optin-suites.txt`)이 시험 파일과 다름("선택 실행 장치")
 
 멈출 때는 줄 번호와 묶음 이름을 낸다. Suite 이름 바꾸기, Suite 지우기, 파일 옮기기 뒤에는 지도도 함께 고친다. 일부러 비워 둔 자리는 `maybe`로 적는다.
 
@@ -250,6 +256,47 @@ DJC_LAYOUT_RECOMPUTE_TESTS=1 scripts/check.sh --quick --filter 'LayoutRecomputeT
 - 파형 높이 메뉴 문맥(`LibraryWaveformHeightContext`): 2회 이하
 
 낮은 창, 내용 변경, 수동 파형 높이 복원도 검사한다. 시험 창은 `orderBack`으로 열어 활성화하지 않는다. 실제 입력도 보내지 않는다.
+
+#### 선택 실행 Suite를 `--changed`가 고를 때
+
+환경 변수가 있어야 도는 Suite(선택 실행 Suite)의 목록은 `scripts/optin-suites.txt` 한 곳에 있다. 줄마다 종류, `<시험 타깃>.<Suite>`, 켜는 변수를 적는다. 문법은 그 파일 머리에 있다.
+
+- `regression`: 안 돌면 회귀를 놓치는 시험이다. 지금은 `LayoutRecomputeTests`다.
+- `tool`: 픽스처를 만드는 도구와 rekordbox 실험 재현 도구다(`…FixtureCapture`·`…ExperimentRepro`). 안 돌아도 회귀가 아니다.
+
+시험 파일과 목록이 어긋나면 `python3 scripts/affected-tests.py --check-map`과 `--changed`가 종료 코드 2로 멈춘다. 어긋남은 다음과 같다.
+
+- 환경 변수 조건을 단 Suite가 목록에 없다. Suite 전체에 `.enabled(if: …environment["…"])`를 단 Suite와 `@Test`마다 단 Suite가 그렇다.
+- 목록의 Suite에서 그 조건을 찾지 못했다. 조건을 지웠을 때와 일부 시험에만 걸었을 때다.
+- 목록의 변수와 시험 파일의 변수가 다르다.
+- 목록 줄의 모양이 틀렸다. 없는 Suite를 적은 경우도 같다.
+
+일부 시험만 거는 Suite는 선택 실행이 아니다. 목록에 적지 않는다. `extension`으로 나눈 Suite는 모든 파일의 `@Test`를 합쳐 본다. 시험 파일의 조건을 바꾸면 목록도 바꾼다.
+
+`--changed`는 고른 Suite와 변수에 따라 다음처럼 처리한다.
+
+| 고른 것 | 변수 | 결과 |
+|---|---|---|
+| 선택 실행 Suite만 | 없음 | 모두 건너뛰어 "필터 결과" 단계가 종료 코드 1로 실패한다. 실패 줄이 Suite 이름, 변수, 할 일을 알린다 |
+| 선택 실행 Suite만 | 있음 | 그 Suite가 돈다 |
+| 다른 Suite와 함께 | 없음 | 다른 Suite만 돌고 통과한다. `regression`이면 고른 범위와 끝 요약에 `⚠ 건너뜀: …`이 남는다. `tool`은 알리지 않는다 |
+| 시험 타깃 통째로, 또는 전체로 넓힘 | 없음 | 건너뛴다. 그 Suite를 직접 골랐으면 위와 같이 알린다. 타깃에 딸려 온 Suite는 알리지 않는다 |
+
+실패 줄은 이렇게 나온다. `--quick --filter`에서도 같다.
+
+```
+실제로 완료한 시험이 없습니다: ^(DJCrateTests\.(LayoutRecomputeTests)/)
+LayoutRecomputeTests는 환경 변수가 있어야 돕니다(DJC_LAYOUT_RECOMPUTE_TESTS=1 또는 DJC_LAYOUT_BENCHMARK_DB=<사본>). 그 변수를 주고 다시 돌리세요
+```
+
+변수는 `--changed`가 켜지 않는다. 그 이유는 다음과 같다(SAFE-11).
+
+- `LayoutRecomputeTests`는 실제 창을 띄운다(`orderBack`). 설정 5개를 `UserDefaults.standard`에 쓴다. 이 영역은 시험 프로세스의 표준 설정 영역(`swiftpm-testing-helper`)이라 `TestDefaults`의 임시 영역과 환경설정 누수 검사 밖이다. 같은 Mac의 다른 작업자 시험과도 나눠 쓴다.
+- 이 Suite는 뷰 본문 다시 계산 횟수를 전역 계측으로 센다. `--changed`는 다른 UI Suite와 한 프로세스로 돌리므로 횟수가 섞인다. 그래서 단독으로 돌린다.
+- CI 러너(`xcode-27`)에서 창을 띄워 돌린 적이 없다. 켜면 모든 UI 변경의 CI가 이 시험에 걸린다.
+- 건너뛴 시험을 통과로 치지도 않는다. 아무 시험도 돌지 않은 실행을 통과로 남기면 안 되기 때문이다.
+
+CI는 이 변수를 주지 않는다. 그래서 선택 실행 Suite 파일만 바꾼 PR은 CI의 `--changed`에서도 같은 이유로 실패한다. 변수를 준 로컬 `--changed`(예: `DJC_LAYOUT_RECOMPUTE_TESTS=1 scripts/check.sh --changed`)나 `--quick --filter`가 통과했는지 확인한다. 선택 실행 Suite는 다른 UI 시험과 겹치지 않게 단독으로 돌린다. `--changed`가 다른 Suite도 함께 골랐다면 변수를 준 `--quick --filter '<Suite>'`로 따로 돌린다.
 
 ## 진행 로그·실패 진단
 

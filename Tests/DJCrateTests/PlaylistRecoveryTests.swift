@@ -13,7 +13,7 @@ import Testing
 struct PlaylistRecoveryTests {
     func makeStore(_ fixture: RekordboxFixture, save: @escaping (PlaylistDraft) throws -> Void = { _ in }) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("recovery"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, backupDirectory: fixture.backups,
                                  playlistDraftSaver: save, playlistImportURL: nil, stagingSaver: { _ in },
                                  rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
         store.phase = .loaded

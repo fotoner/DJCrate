@@ -129,6 +129,13 @@ extension UsbEditEngine {
             let reread = try PdbReader.read(export: pdb.export, exportExt: pdb.exportExt).0
             let differences = UsbLibraryDiff.compare(reread, pdb.written, options: .init(formats: [.deviceLibrary])).differences
             guard differences.isEmpty else { throw UsbError.planCheckFailed(detail: "pdb reread: " + OneLibraryWriter.summary(differences)) }
+            // 편집이 건드리지 않은 행은 USB의 Device Library 값 그대로여야 한다. 위 비교는 같은 모델끼리라 두 형식 값이 다른 행을
+            // OneLibrary 값으로 덮어도 걸리지 않는다(#238)
+            if let original = source.deviceLibrary {
+                let changed = UsbLibraryDiff.untouchedRowChanges(in: .deviceLibrary, original: original, before: source.current, after: applied,
+                                                                 written: reread)
+                guard changed.isEmpty else { throw UsbError.planCheckFailed(detail: "pdb untouched: " + OneLibraryWriter.summary(changed)) }
+            }
             try context.database(.deviceLibrary, UsbLayout.exportPdb, data: pdb.export, write: true)
             try context.database(.deviceLibrary, UsbLayout.exportExtPdb, data: pdb.exportExt, write: true)
             rules.formUnion(pdb.rules)
@@ -274,7 +281,9 @@ extension UsbEditEngine {
     /// 분석 파일은 그 곡의 것일 때만(PPTH), 음원은 로컬 원본이 같을 때만(크기·SHA-1) 넣는다. 나머지는 남기고 알린다
     public static func planRemovals(before: UsbLibrary, after: UsbLibrary, root: UsbRoot, fileSystem: any UsbFileSystem,
                              localDatabase: CipherDatabase?) throws -> RemovalPlan {
-        let kept = Set(references(after).map(\.key))
+        // 두 형식 값이 다른 곡은 Device Library에서 다른 파일(그림·분석 파일)을 가리킬 수 있다(#238). 그 투영이 가리키는 파일도 남긴다
+        var kept = Set(references(after).map(\.key))
+if after.hasDeviceLibraryValues { kept.formUnion(references(after.projected(to: .deviceLibrary)).map(\.key)) }
         var plan = RemovalPlan()
         var checkedAnalysis: [Int: Bool] = [:]
         for (key, path, reference) in references(before) where !kept.contains(key) {

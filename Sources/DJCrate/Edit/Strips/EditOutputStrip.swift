@@ -258,7 +258,7 @@ private struct EditSeamBar: View {
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
                     .disabled(!model.canPlay(.output))
-                    .help(.ui("이음새 앞 2마디부터 뒤 2마디까지 들어 봅니다(섞는 소리까지 결과와 같습니다)"))
+                    .help(.ui("이음새 앞뒤 2마디 듣기"))
                     .accessibilityLabel(playing ? String(ui: "멈추기") : String(ui: "이음새 \(piece) 듣기"))
                     .position(x: min(max(scale.x(item.outputStart), 20), geo.size.width - 20), y: geo.size.height / 2)
                 }

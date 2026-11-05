@@ -2,26 +2,6 @@ import DJCApplication
 import DJCDomain
 import SwiftUI
 
-/// 쓰기 대기 목록 위: 라이브러리·추가 목록에 없는 곡의 초안이 있으면 알리고 목록을 연다(#175).
-struct UnlinkedDraftsBar: View {
-    let store: LibraryStore
-    /// 시트를 띄우는 주 창 모델
-    let window: LibraryWindowModel
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Label(String(ui: "rekordbox 라이브러리와 추가 목록에 없는 곡의 초안이 \(store.unlinkedDraftUUIDs.count)곡 있습니다."),
-                  systemImage: "questionmark.folder")
-            Spacer(minLength: 0)
-            Button(.ui("연결되지 않은 초안 보기…")) { window.openUnlinkedDrafts() }
-                .disabled(store.isWritingRekordbox)
-        }
-        .font(.callout)
-        .padding(.horizontal, Spacing.edge).padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
 /// 연결되지 않은 초안 목록. 어디서 왔는지 모르므로 자동으로 지우지 않고, 고른 것만 확인한 뒤 버린다.
 struct UnlinkedDraftsView: View {
     @Bindable var model: UnlinkedDraftsModel

@@ -4,7 +4,7 @@ import Foundation
 
 extension LibraryStore {
     func stageMerge(_ draft: DuplicateMergeDraft) throws {
-        guard !isWritingRekordbox else { return }
+        guard !libraryBusy else { return }
         try setMergeDrafts(MergeDuplicates.staging(draft, onto: mergeDrafts, pending: pendingUUIDs, playlistDraftEmpty: playlists.playlistDraft.isEmpty))
     }
 
@@ -16,9 +16,9 @@ extension LibraryStore {
         refreshBase()
         guard let undoManager else { return }
         undoManager.registerUndo(withTarget: self) { target in
-            guard !target.isWritingRekordbox else { return }
+            guard !target.libraryBusy else { return }
             do { try target.setMergeDrafts(before) }
-            catch { target.reflectionMessage = AppMessage(kind: .warning, text: error.localizedDescription) }
+            catch { target.showToast(.notice(text: error.localizedDescription, kind: .warning)) }
         }
         undoManager.setActionName(String(ui: "중복 곡 합치기 초안"))
     }
@@ -30,15 +30,15 @@ extension LibraryStore {
         if failure == nil {
             reportDraftFilesMovedBySave(moved)
         } else {
-            reflectionMessage = AppMessage(kind: .warning, text: String(ui: "라이브러리에는 썼지만 합치기 초안 파일을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요"))
+            notify(.notice(text: String(ui: "라이브러리에는 썼지만 합치기 초안 파일을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요"), kind: .warning))
         }
     }
 
     func prepareMerge(keeping id: String, removing: [String], prompter: any ReflectionPrompter = AlertPrompter()) async {
-        guard let snapshotURL, !isWritingRekordbox else { return }
+        guard let snapshotURL, !libraryBusy else { return }
         do {
             let draft = try await useCases.merge.draft(keeping: id, removing: removing, snapshot: snapshotURL)
-            guard !isWritingRekordbox else { return }
+            guard !libraryBusy else { return }
             // 초안 단계는 같은 음원인지 비교만 한다. 잃는 정보는 rekordbox에 쓸 때 한 번 경고로 묻는다(#212).
             let paths = rowsByID.filter { ([id] + removing).contains($0.key) }.mapValues(\.track.folderPath)
             if prompter.show(MergeDuplicates.confirmation(draft, paths: paths)) { try stageMerge(draft) }

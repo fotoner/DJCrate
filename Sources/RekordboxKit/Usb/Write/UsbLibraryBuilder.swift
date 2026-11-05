@@ -232,10 +232,13 @@ struct NamedRowAllocator {
     private var next: Int
     private(set) var added: [UsbNamedRow] = []
 
-    init(existing: [UsbNamedRow]?, deadIDs: Set<Int>, highWater: Int = 0) {
+    /// differing: 두 형식 값이 다른 행(#238). 이름으로 다시 쓰면 새 곡이 한 형식에서 다른 이름을 가리키므로 이름으로 고르지 않는다
+    init(existing: [UsbNamedRow]?, deadIDs: Set<Int>, highWater: Int = 0, differing: Set<Int> = []) {
         reuseNames = existing != nil
         next = max(((existing ?? []).map(\.id) + deadIDs).max() ?? 0, highWater) + 1
-        for row in existing ?? [] where byName[UsbLayout.nfc(row.name)] == nil { byName[UsbLayout.nfc(row.name)] = row.id }
+        for row in existing ?? [] where byName[UsbLayout.nfc(row.name)] == nil && !differing.contains(row.id) {
+            byName[UsbLayout.nfc(row.name)] = row.id
+        }
     }
 
     /// 로컬 ID가 비었거나 이름 행이 없으면 nil(NULL)
@@ -274,13 +277,18 @@ struct NameAllocator {
     init(existing: UsbLibrary?, highWater: [UsbIDKind: Int] = [:]) {
         let dead = existing?.deadIDs ?? [:]
         func ids(_ kind: UsbIDKind) -> Set<Int> { dead[kind.rawValue] ?? [] }
-        artists = NamedRowAllocator(existing: existing?.artists, deadIDs: ids(.artist), highWater: highWater[.artist] ?? 0)
-        genres = NamedRowAllocator(existing: existing?.genres, deadIDs: ids(.genre), highWater: highWater[.genre] ?? 0)
-        keys = NamedRowAllocator(existing: existing?.keys, deadIDs: ids(.key), highWater: highWater[.key] ?? 0)
-        labels = NamedRowAllocator(existing: existing?.labels, deadIDs: ids(.label), highWater: highWater[.label] ?? 0)
+        func differing(_ table: String) -> Set<Int> { existing?.deviceLibraryValueIDs(table: table) ?? [] }
+        artists = NamedRowAllocator(existing: existing?.artists, deadIDs: ids(.artist), highWater: highWater[.artist] ?? 0,
+                                    differing: differing("artist"))
+        genres = NamedRowAllocator(existing: existing?.genres, deadIDs: ids(.genre), highWater: highWater[.genre] ?? 0,
+                                   differing: differing("genre"))
+        keys = NamedRowAllocator(existing: existing?.keys, deadIDs: ids(.key), highWater: highWater[.key] ?? 0, differing: differing("key"))
+        labels = NamedRowAllocator(existing: existing?.labels, deadIDs: ids(.label), highWater: highWater[.label] ?? 0,
+                                   differing: differing("label"))
         reuseAlbums = existing != nil
         nextAlbum = max(((existing?.albums.map(\.id) ?? []) + ids(.album)).max() ?? 0, highWater[.album] ?? 0) + 1
-        for album in existing?.albums ?? [] {
+        let differingAlbums = differing("album")
+        for album in existing?.albums ?? [] where !differingAlbums.contains(album.id) {
             let key = AlbumKey(name: UsbLayout.nfc(album.name), artistID: album.artistID)
             if albumByName[key] == nil { albumByName[key] = album.id }
         }

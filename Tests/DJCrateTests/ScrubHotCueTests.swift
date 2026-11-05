@@ -152,11 +152,11 @@ struct DragHotCueKeysTests {
         let keys = Keys(), watcher = watcher(keys)
         dragging(h)
         watcher.begin(deck: h.deck, polling: false)
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         keys.pressed = [20]
         watcher.poll()
         #expect(h.deck.hotCue(slot: 2) == nil)
-        h.deck.isWriteLocked = false
+        h.deck.editsFrozen = false
         keys.pressed = []
         watcher.poll()
         keys.mouse = false

@@ -30,6 +30,7 @@ paths:
 | `DJCDomainTests` | 순수 규칙(아래), 환경 읽기 `DJCEnvironment`의 경로 | 값만, `DJCTestKit` |
 | `RekordboxKitTests` | rekordbox 형식 읽기·쓰기·복원·관문, USB 형식·쓰기. 새 쓰기 규칙은 실험 곡·날짜를 적은 골든 시험 | `RekordboxFixtures`(구조만 있는 7.2.18 DB `RekordboxFixture`·합성 ANLZ `AnlzBuilder`·pdb) |
 | `DJCAnalysisTests` | 소리 분석·편집 렌더 | 합성 음원 |
+| `DJCLinkTests` | Pro DJ Link 장치·패킷 읽기(`DJCLink`가 감싼 DJLinkKit) | 실기 캡처 바이트(MAC 가림, 개인 정보 없음). 소켓을 열지 않는다 |
 | `DJCApplicationTests` | 유스케이스의 순서·판정, 순수 USB 규칙(아래) | 가짜 포트만(아래), `DJCTestKit`. DB 재료 없음 |
 | `DJCStorageTests` | DJCrate 자신의 파일(초안 저장소·라이브러리·재생 기록·중복 읽기·볼륨·도구 실행·iTunes 읽기) | 합성 DB 재료, `FakeToolRunner` |
 | `DJCAdaptersTests` | 포트의 실제 구현(`.live`), 실제 엔진을 묶은 USB 세션·읽기 통합, 같은 포트의 가짜·실제 계약 시험 | 합성 DB 재료·USB 트리, `Tests/DJCAdaptersTests/Support/` |
@@ -109,6 +110,7 @@ paths:
 - **TEST-35** 부하 재현을 필터로 좁히지 않는다. 좁히면 다른 `@MainActor` 시험과 메인 액터를 나눠 쓰는 정체가 없어 재현할 수 없다.
 - **TEST-36** 골든 시험은 rekordbox 실험에서 확인한 칸 값을 그대로 기대값으로 둔다. 실험 곡과 날짜를 주석으로 단다.
 - **TEST-37** 평소 건너뛰는 묶음과 줄여 도는 묶음은 `docs/ci.md` "선택 실행 장치"로 켠다. 레이아웃 다시 계산, 태그 쓰기 전체 조합, cold-open stress가 그 묶음이다.
+- **TEST-38** 환경 변수가 있어야 도는 Suite를 더하면 `scripts/optin-suites.txt`에도 적는다(HAR-43). 목록이 있어야 `--changed`가 그 Suite만 골랐을 때 원인을 알린다. 다른 Suite와 함께 골랐을 때는 건너뜀을 경고한다.
 
 ## 더 보기
 

@@ -14,6 +14,13 @@ extension CLIComposition {
                         engine: .live(fileSystem: PosixUsbFileSystem()), device: usbDevice, drafts: usbDrafts, now: { Date() })
     }
 
+    /// USB 시점 스냅샷 유스케이스(앱과 같은 `UsbPointSnapshots`). 가드는 되돌리기의 실물 쓰기 동의(`--allow-physical`)로 만들고,
+    /// 스냅샷은 DJC_HOME 아래 `usb-point-snapshots`에 둔다. `paths`(백업·저널·준비)는 명령이 넘긴다
+    static func usbPointSnapshots(allowPhysical: Bool, paths: UsbWritePaths) -> UsbPointSnapshots {
+        UsbPointSnapshots(directory: DJCPaths.usbPointSnapshots, paths: paths, writeGuard: { .system(physicalWrite: allowPhysical) },
+                          engine: .live(fileSystem: PosixUsbFileSystem()), device: usbDevice, now: { Date() })
+    }
+
     /// 이 Mac의 일(rekordbox 버전·라이브 master.db 판정·세션 사본·볼륨 정보)
     static var usbDevice: UsbDevice { .live() }
 

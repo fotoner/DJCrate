@@ -10,7 +10,7 @@ extension DeckModel {
     /// Flip 기록을 시작할 수 없는 이유와 할 일(기록 중이면 nil: 마치기는 언제든 된다)
     var flipUnavailableReason: String? {
         guard !isFlipRecording else { return nil }
-        if isWriteLocked { return String(ui: "rekordbox 쓰기가 끝난 뒤 Flip을 기록하세요") }
+        if editsFrozen { return String(ui: "rekordbox 쓰기가 끝난 뒤 Flip을 기록하세요") }
         if row == nil || draft == nil { return String(ui: "곡을 덱에 불러오고 초안 읽기가 끝난 뒤 Flip을 기록하세요") }
         return playbackUnavailableReason
     }

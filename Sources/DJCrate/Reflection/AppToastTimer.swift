@@ -1,11 +1,13 @@
 import AppKit
 
-/// 알림이 저절로 닫히기까지 남은 시간을 센다. 마우스를 올려 둔 동안은 세지 않는다.
-/// 실패·경고와 VoiceOver를 켠 동안은 닫지 않는다(`AppToast.automaticallyDismisses`). 알림 뷰가 하나씩 든다.
+/// 알림이 저절로 닫히기까지 남은 시간을 센다. 마우스를 올려 두거나 알림 안 단추에 키보드 포커스가 있는 동안은 세지 않는다.
+/// 실패와 VoiceOver를 켠 동안은 닫지 않는다(`AppToast.automaticallyDismisses`). 알림 뷰가 하나씩 든다.
 @MainActor
 final class AppToastTimer {
     /// 마우스를 올려 둔 동안 참(본문이 읽지 않아 바뀌어도 다시 그리지 않는다)
     var hovering = false
+    /// 알림 안 단추에 키보드 포커스가 있는 동안 참(#296)
+    var focused = false
     private let voiceOver: () -> Bool
     private let sleep: (Duration) async throws -> Void
     private static let tick = 0.25
@@ -24,7 +26,7 @@ final class AppToastTimer {
         while remaining > 0 {
             try? await sleep(.milliseconds(Int(Self.tick * 1000)))
             if Task.isCancelled || voiceOver() { return }
-            if !hovering { remaining -= Self.tick }
+            if !hovering && !focused { remaining -= Self.tick }
         }
         close()
     }

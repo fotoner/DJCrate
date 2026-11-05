@@ -97,6 +97,30 @@
         }
       }
     },
+    "NSLocalNetworkUsageDescription": {
+      "comment": "로컬 네트워크 접근 권한 안내(Pro DJ Link, #272)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DJCrate needs local network access to find CDJ and DJM devices (Pro DJ Link) on your network."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同じネットワークの CDJ・DJM(Pro DJ Link)を見つけるにはローカルネットワークへのアクセスが必要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "같은 네트워크의 CDJ·DJM(Pro DJ Link)을 찾으려면 로컬 네트워크 접근이 필요합니다."
+          }
+        }
+      }
+    },
     "NSNetworkVolumesUsageDescription": {
       "comment": "네트워크 드라이브 접근 권한 안내",
       "extractionState": "manual",

@@ -8,6 +8,7 @@ import Foundation
 import QuartzCore
 import RekordboxFixtures
 import SwiftUI
+import Synchronization
 import Testing
 
 #if DEBUG
@@ -22,8 +23,9 @@ import Testing
                 || ProcessInfo.processInfo.environment["DJC_LAYOUT_BENCHMARK_DB"] != nil))
 struct LayoutRecomputeTests {
     /// 합성 곡 하나를 덱에 올린 주 창(사이드바 열림)
-    private func mainWindow(width: Double = 1440, waveformHeight: Double = 150,
-                            prepareStore: (LibraryStore) -> Void = { _ in }) async throws -> (window: NSWindow, deck: DeckModel, close: () -> Void) {
+    private func mainWindow(width: Double = 1440, waveformHeight: Double = 150, rekordboxRun: RekordboxRunModel? = nil,
+                            prepareStore: (LibraryStore) -> Void = { _ in },
+                            prepareApp: (AppComposition) -> Void = { _ in }) async throws -> (window: NSWindow, deck: DeckModel, close: () -> Void) {
         _ = NSApplication.shared
         let settingNames = [SettingKeys.sidebarVisible.name, SettingKeys.showTagEditor.name, SettingKeys.sheetMode.name, SettingKeys.waveformHeight.name, SettingKeys.cueListFilter.name]
         let savedSettings = settingNames.map { UserDefaults.standard.object(forKey: $0) }
@@ -40,12 +42,14 @@ struct LayoutRecomputeTests {
         UserDefaults.standard.set(CueListFilter.all.rawValue, forKey: SettingKeys.cueListFilter.name)
         let fixture = try historyFixture()
         let snapshot = ProcessInfo.processInfo.environment["DJC_LAYOUT_BENCHMARK_DB"].map { URL(filePath: $0) } ?? fixture.database
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                       rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
         await store.load(snapshot: snapshot)
         prepareStore(store)
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
-        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: AppComposition(store: store, deck: deck), windowFrameRestored: false))
+        let app = AppComposition(store: store, deck: deck, rekordboxRun: rekordboxRun)
+        prepareApp(app)
+        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: app, windowFrameRestored: false))
         let window = UnconstrainedWindow(contentViewController: controller)
         window.isReleasedWhenClosed = false
         cleanup = { window.close(); restoreSettings() }
@@ -91,6 +95,326 @@ struct LayoutRecomputeTests {
         }
         print("TRACE 선택별 목록 첫 줄:", positions)
         #expect(positions.allSatisfy { abs($0 - positions[0]) < 0.5 })
+    }
+
+    /// 창 아래 상태 줄(#298)의 읽지 않은 수는 상태 줄만 읽는다. 알림이 쌓이고 팝오버를 여닫아도 주 창 본문을 다시 계산하지 않는다.
+    @Test func 활동_기록이_쌓이고_팝오버를_여닫아도_주_창_본문은_다시_계산하지_않는다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var captured: AppComposition?
+        let (window, _, close) = try await mainWindow(prepareApp: { captured = $0 })
+        defer { close() }
+        let statusBar = try #require(captured?.statusBar)
+        // 창을 띄운 직후 늦게 자리 잡는 배치(파형 높이 맞춤)가 멎을 때까지 기다린 뒤 센다
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+        PerfProbe.resetBodyCounts()
+        for index in 0..<5 {
+            statusBar.log.record(AppToast.notice("레이아웃 시험 경고 \(index)", nil))
+            try await settle(window)
+        }
+        #expect(statusBar.unreadCount == 5)
+        print("TRACE 활동 기록 5건:", PerfProbe.bodySummary() ?? "-")
+        statusBar.togglePopover()
+        try await settle(window)
+        statusBar.togglePopover()
+        try await settle(window)
+        print("TRACE 활동 기록 5건·팝오버 여닫기:", PerfProbe.bodySummary() ?? "-")
+        #expect(statusBar.unreadCount == 0)
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("StatusBar") >= 5)
+    }
+
+    /// 상태 줄의 rekordbox 쓰기 상태(#324)도 상태 줄만 읽는다. 초안이 쌓이거나 쓰기 상태가 바뀌어도 주 창 본문을 다시 계산하지 않는다.
+    /// 쓰기가 시작되는 순간 `libraryBusy`를 읽는 `ContentView`가 다시 계산되는 것은 덮개·잠금(기존 동작)이라 센 뒤 세지 않고,
+    /// 그 뒤 칩이 「쓰는 중」으로 바뀌는 것만 센다.
+    @Test func 초안이_쌓이고_쓰기_상태가_바뀌어도_주_창_본문은_다시_계산하지_않고_쓰기_상태만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedApp: AppComposition?
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 }, prepareApp: { capturedApp = $0 })
+        defer { close() }
+        let app = try #require(capturedApp)
+        let store = try #require(capturedStore)
+        let gate = ReflectionStatusModelTests.SleepGate()
+        app.writeStatus.sleep = gate.sleep
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+        let rows = Array(store.rows.prefix(3))
+        try #require(!rows.isEmpty)
+        PerfProbe.resetBodyCounts()
+        for row in rows {
+            store.setDraftMark(.cue, trackUUID: row.track.uuid, exists: true)
+            try await settle(window)
+        }
+        print("TRACE 초안 \(rows.count)곡 추가:", PerfProbe.bodySummary() ?? "-")
+        #expect(app.writeStatus.chip == .pending(items: rows.count, playlistEdits: 0))
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1)
+
+        // 쓰기가 시작되는 순간(잠금)은 기존 동작이라 센 뒤 지운다
+        store.isWritingRekordbox = true
+        try await settle(window)
+        print("TRACE 쓰기 시작(잠금):", PerfProbe.bodySummary() ?? "-")
+        #expect(app.writeStatus.chip != .writing, "1초가 지나기 전에는 쓰는 중을 보이지 않는다")
+        PerfProbe.resetBodyCounts()
+        gate.release()
+        #expect(await waitForState { app.writeStatus.chip == .writing })
+        try await settle(window)
+        print("TRACE 칩이 쓰는 중으로:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1)
+        store.isWritingRekordbox = false
+        try await settle(window)
+        #expect(app.writeStatus.chip == .pending(items: rows.count, playlistEdits: 0))
+    }
+
+    /// rekordbox 켜짐·꺼짐 감지(#326)도 상태 줄 쓰기 상태 구역만 읽는다. 감지 상태가 켜짐·Agent만·끝나는 중·꺼짐 강조·모름으로 바뀌어도
+    /// 주 창 본문(`ContentView`·`LibraryDetail`)을 다시 계산하지 않는다. 감지는 가짜 감시(신호로 다시 읽는다)로, 확인 시간은 가짜 시계로 정한다.
+    @Test func 감지_상태가_바뀌어도_주_창_본문은_다시_계산하지_않고_쓰기_상태만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        let processes = RekordboxRunModelTests.Processes(.running)
+        let run = RekordboxRunModel(source: processes.source)
+        defer { run.stop() }
+        var capturedApp: AppComposition?
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(rekordboxRun: run, prepareStore: { capturedStore = $0 }, prepareApp: { capturedApp = $0 })
+        defer { close() }
+        let app = try #require(capturedApp)
+        let store = try #require(capturedStore)
+        let stopGate = ReflectionStatusModelTests.SleepGate()
+        app.writeStatus.settleSleep = stopGate.sleep
+        let row = try #require(store.rows.first)
+        store.setDraftMark(.cue, trackUUID: row.track.uuid, exists: true)
+        run.start()
+        #expect(await waitForState { app.writeStatus.chip.reason == .rekordboxRunning })
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+
+        /// 감지 상태를 바꾸고 칩이 따라온 뒤 본문 계산 횟수를 본다
+        func change(to state: RekordboxRunState, expecting reason: ReflectionChip.Reason?, _ note: String) async throws {
+            PerfProbe.resetBodyCounts()
+            processes.current.withLock { $0 = state }
+            processes.signal()
+            #expect(await waitForState { app.writeStatus.chip.reason == reason }, Comment(rawValue: note))
+            try await settle(window)
+            print("TRACE 감지 \(note):", PerfProbe.bodySummary() ?? "-")
+            #expect(PerfProbe.bodyCount("ContentView") == 0, Comment(rawValue: "ContentView — \(note)"))
+            #expect(PerfProbe.bodyCount("LibraryDetail") == 0, Comment(rawValue: "LibraryDetail — \(note)"))
+            #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1, Comment(rawValue: "WriteStatusSection — \(note)"))
+        }
+        try await change(to: .agentOnly, expecting: .agentRunning, "Agent만")
+        try await change(to: .stopped, expecting: .rekordboxStopping, "끝나는 중")
+        PerfProbe.resetBodyCounts()
+        stopGate.release()
+        #expect(await waitForState { app.writeStatus.chip.reason == .rekordboxStopped })
+        try await settle(window)
+        print("TRACE 감지 꺼짐 강조:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1)
+        try await change(to: .running, expecting: .rekordboxRunning, "켜짐")
+        try await change(to: .unknown, expecting: nil, "모름")
+    }
+
+    /// 쓸 수 없는 라이브러리(#327)의 판정도 상태 줄 쓰기 상태 구역만 읽는다. 판정이 지원 밖 버전·DB 구조·백업 폴더·풀림으로 바뀌어도
+    /// 주 창 본문(`ContentView`·`LibraryDetail`)을 다시 계산하지 않는다. 판정은 읽기 흐름이 화면에 알리는 길(`readScreen`)로 넣는다.
+    @Test func 쓰기_막힘_판정이_바뀌어도_주_창_본문은_다시_계산하지_않고_쓰기_상태만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedApp: AppComposition?
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 }, prepareApp: { capturedApp = $0 })
+        defer { close() }
+        let app = try #require(capturedApp)
+        let store = try #require(capturedStore)
+        let row = try #require(store.rows.first)
+        store.setDraftMark(.cue, trackUUID: row.track.uuid, exists: true)
+        // 읽은 합성 사본의 실제 판정(쓸 수 있는 모양)이 끝난 뒤에 바꾼다
+        await store.readFlow.writeBlockCheck?.value
+        #expect(store.writeBlock == nil)
+        #expect(await waitForState { app.writeStatus.chip == .pending(items: 1, playlistEdits: 0) })
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+
+        /// 판정을 바꾸고 칩이 따라온 뒤 본문 계산 횟수를 본다
+        func change(to block: LibraryWriteBlock?, expecting chip: ReflectionChip, _ note: String) async throws {
+            PerfProbe.resetBodyCounts()
+            store.readScreen.apply(.writeBlock(block))
+            #expect(await waitForState { app.writeStatus.chip == chip }, Comment(rawValue: note))
+            try await settle(window)
+            print("TRACE 쓰기 막힘 \(note):", PerfProbe.bodySummary() ?? "-")
+            #expect(PerfProbe.bodyCount("ContentView") == 0, Comment(rawValue: "ContentView — \(note)"))
+            #expect(PerfProbe.bodyCount("LibraryDetail") == 0, Comment(rawValue: "LibraryDetail — \(note)"))
+            #expect(PerfProbe.bodyCount("WriteStatusSection") >= 1, Comment(rawValue: "WriteStatusSection — \(note)"))
+        }
+        try await change(to: .unsupportedVersion("7.3.1"), expecting: .blocked(.unsupportedVersion("7.3.1"), items: 1, playlistEdits: 0), "지원 밖 버전")
+        try await change(to: .schema, expecting: .blocked(.schema, items: 1, playlistEdits: 0), "DB 구조")
+        try await change(to: .backupFolder, expecting: .blocked(.backupFolder, items: 1, playlistEdits: 0), "백업 폴더")
+        try await change(to: nil, expecting: .pending(items: 1, playlistEdits: 0), "풀림")
+    }
+
+    /// 머리 줄 검색칸(#338): 검색어를 바꿔도 주 창 본문(`ContentView`·`LibraryDetail`)과 머리 줄은 다시 계산하지 않는다.
+    /// 검색어를 읽는 곳은 검색칸 잎(`ListSearchField`)뿐이다. 칸에 친 글자도 같은 길로 검색어가 된다.
+    @Test func 검색어를_바꿔도_주_창_본문은_다시_계산하지_않고_검색칸만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 })
+        defer { close() }
+        let store = try #require(capturedStore)
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+        PerfProbe.resetBodyCounts()
+        // 걸리는 검색어와 아무 곡도 걸리지 않는 검색어(결과 없음 안내가 뜬다)를 오간다
+        let queries = ["합", "합성", "합성 Al", "없는 곡을 찾는 검색어", ""]
+        for query in queries {
+            store.search = query
+            try await settle(window)
+        }
+        print("TRACE 검색어 \(queries.count)번:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderBar") == 0)
+        #expect(PerfProbe.bodyCount("ListSearchField") >= queries.count)
+
+        // 칸에 친 글자는 검색어가 되고, 다른 곳에서 지운 검색어는 칸에서 지워진다
+        func searchField(in view: NSView) -> NSSearchField? {
+            if let field = view as? NSSearchField { return field }
+            return view.subviews.lazy.compactMap { searchField(in: $0) }.first
+        }
+        let field = try #require(window.contentView.flatMap { searchField(in: $0) })
+        PerfProbe.resetBodyCounts()
+        field.stringValue = "합성 Beta"
+        field.sendAction(field.action, to: field.target)
+        try await settle(window)
+        #expect(store.search == "합성 Beta")
+        #expect(store.displayRows.map(\.title) == ["합성 Beta"])
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        store.search = ""
+        try await settle(window)
+        #expect(field.stringValue.isEmpty)
+    }
+
+    /// 머리 줄 필터(#339): 필터를 바꿔도 주 창 본문(`ContentView`·`LibraryDetail`)과 머리 줄은 다시 계산하지 않는다.
+    /// 필터 값을 읽는 곳은 필터 단추(`AttributeFilterMenu`)와 칩(`ListFilterChips`) 잎뿐이다. 칩을 눌러 끄는 길도 같다.
+    @Test func 필터를_바꿔도_주_창_본문은_다시_계산하지_않고_필터_잎만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 })
+        defer { close() }
+        let store = try #require(capturedStore)
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+        PerfProbe.resetBodyCounts()
+        // 평점만 → 곡 색도 → 평점 끔 → 평점 다시 → 모두 끔. 아무 곡도 걸리지 않는 조합도 거친다(결과 없음 안내가 뜬다)
+        let steps: [(rating: Int, color: String?)] = [(3, nil), (3, "2"), (0, "2"), (5, "2"), (0, nil)]
+        for step in steps {
+            store.minimumRating = step.rating
+            store.colorFilter = step.color
+            try await settle(window)
+        }
+        print("TRACE 필터 \(steps.count)번:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderBar") == 0)
+        #expect(PerfProbe.bodyCount("ListFilterChips") >= steps.count)
+
+        // 칩을 눌러 끄는 길(그 조건만, 모두)도 같은 잎만 다시 계산한다
+        store.minimumRating = 4
+        store.colorFilter = "6"
+        try await settle(window)
+        PerfProbe.resetBodyCounts()
+        store.clearAttributeFilter(.rating(4))
+        try await settle(window)
+        #expect(store.minimumRating == 0 && store.colorFilter == "6")
+        store.clearAttributeFilters()
+        try await settle(window)
+        #expect(!store.isAttributeFiltered)
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderBar") == 0)
+        #expect(PerfProbe.bodyCount("ListFilterChips") >= 2)
+    }
+
+    /// 머리 줄 오른쪽 구성(#340): 고른 곡이 바뀌어 단추 이름(「고른 N곡 바로 넣기」 ↔ 「전체 N곡 바로 넣기」)이 달라져도
+    /// 주 창 본문(`ContentView`·`LibraryDetail`)과 머리 줄은 다시 계산하지 않는다. 구성을 읽는 곳은 오른쪽 구성 잎(`ListHeaderActionsView`)뿐이다.
+    /// 오른쪽 구성이 없는 목록(전체)에서는 곡을 골라도 그 잎조차 다시 계산하지 않는다.
+    @Test func 고른_곡을_바꿔도_주_창_본문은_다시_계산하지_않고_단추_이름이_바뀌는_잎만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 })
+        defer { close() }
+        let store = try #require(capturedStore)
+        let staged = (1...3).map {
+            StagedTrack(uuid: UUID().uuidString.lowercased(), path: "/synthetic/layout-\($0).wav", title: "합성 추가 \($0)", duration: 60, addedOn: "2026-10-10")
+        }
+        store.staging.staged = staged
+        store.staging.rebuildStagedRows()
+        store.sidebar = .staged
+        func settleCounts() async throws {
+            for _ in 0..<20 {
+                PerfProbe.resetBodyCounts()
+                try await settle(window)
+                if PerfProbe.bodySnapshot().isEmpty { break }
+            }
+            PerfProbe.resetBodyCounts()
+        }
+        try await settleCounts()
+        let ids = store.staging.stagedRows.map(\.id)
+        let model = try #require(store.staging.stagedRows.isEmpty ? nil : ListActionBarModel(store: store))
+        #expect(model.actions.primary?.title == "전체 3곡 바로 넣기")
+        // 전체 → 고른 1 → 고른 2 → 전체 → 고른 1: 이름이 네 번 바뀐다
+        let steps: [Set<String>] = [[ids[0]], [ids[0], ids[1]], [], [ids[2]]]
+        for step in steps {
+            store.selection = step
+            try await settle(window)
+        }
+        print("TRACE 추가한 곡 고르기 \(steps.count)번:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderBar") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderActionsView") >= steps.count)
+
+        // 오른쪽 구성이 없는 목록에서는 곡을 골라도 그 잎이 다시 계산되지 않는다
+        store.selection = []
+        store.sidebar = .filter(.all)
+        try await settleCounts()
+        let row = try #require(store.displayRows.first)
+        store.selection = [row.id]
+        try await settle(window)
+        store.selection = []
+        try await settle(window)
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderBar") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderActionsView") == 0)
     }
 
     @Test func 창_폭을_조금씩_바꿔도_주_창_본문은_거의_다시_계산되지_않는다() async throws {
@@ -258,13 +582,38 @@ struct LayoutRecomputeTests {
         try await settle(window)
         #expect(try #require(PerfProbe.lastWaveformHeight) < grown)
         #expect(UserDefaults.standard.double(forKey: SettingKeys.waveformHeight.name) == 480)
+        // 저장값 80은 최소 확대 높이보다 낮다(옛 최소값). 그려진 높이만 최소로 올리고 저장값은 건드리지 않는다.
         UserDefaults.standard.set(80.0, forKey: SettingKeys.waveformHeight.name)
         try await settle(window)
-        #expect(PerfProbe.lastWaveformHeight == 80)
+        #expect(PerfProbe.lastWaveformHeight == Self.minimumZoomHeight)
         window.setContentSize(NSSize(width: 1440, height: 900))
         try await settle(window)
         #expect(UserDefaults.standard.double(forKey: SettingKeys.waveformHeight.name) == 80)
-        #expect(PerfProbe.lastWaveformHeight == 80)
+        #expect(PerfProbe.lastWaveformHeight == Self.minimumZoomHeight)
+    }
+
+    /// 확대 파형의 최소 높이(글자 배율 1배). 조작부 최소 190pt − 여백 8 − 개요·조성 띠 62 − 템포 띠 15 = 105pt다.
+    /// 80pt였던 것이 #263에서 개요(52→28pt, `abcdc8a5`)와 템포 띠(28→15pt, `bd9fb953`)를 줄이며 올랐다(#266).
+    private static let minimumZoomHeight = 105.0
+
+    @Test func 설정에서_고를_수_있는_가장_작은_파형_높이는_창_높이를_바꿔도_저장값과_그려진_높이가_같다() async throws {
+        #expect(Self.minimumZoomHeight == DeckLayout.minimumZoomWaveformHeight(scale: 1))
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        let (window, _, close) = try await mainWindow()
+        defer { close() }
+        try await settle(window)
+        #expect(PerfProbe.lastWaveformHeight == 150)
+        // 핸들·메뉴 '파형 작게'가 멈추는 값을 저장한다.
+        UserDefaults.standard.set(Self.minimumZoomHeight, forKey: SettingKeys.waveformHeight.name)
+        try await settle(window)
+        #expect(PerfProbe.lastWaveformHeight == Self.minimumZoomHeight)
+        for height in [680.0, 900.0] {
+            window.setContentSize(NSSize(width: 1440, height: height))
+            try await settle(window)
+            #expect(UserDefaults.standard.double(forKey: SettingKeys.waveformHeight.name) == Self.minimumZoomHeight)
+            #expect(PerfProbe.lastWaveformHeight == Self.minimumZoomHeight)
+        }
     }
 
     /// 실제 커서·키·포커스를 건드리지 않는 테스트 창에서 번갈아 A/B할 때 쓴다.

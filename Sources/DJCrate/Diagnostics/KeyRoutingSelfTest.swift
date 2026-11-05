@@ -11,7 +11,7 @@ extension DevSelfTests {
     }
 
     /// 앱 큐에만 키를 넣는다. active 모드는 사용자 직접 클릭을 기다리며 OS 키 입력은 보내지 않는다.
-    static func runKeyRoutingSelfTestIfRequested(store: LibraryStore, deck: DeckModel, windows: AppWindows) {
+    static func runKeyRoutingSelfTestIfRequested(store: LibraryStore, deck: DeckModel, windows: AppWindows, libraryWindow: LibraryWindowModel) {
         guard ProcessInfo.processInfo.arguments.contains("--key-routing-selftest"),
               ProcessInfo.processInfo.environment["DJC_HOME"] != nil,
               ProcessInfo.processInfo.environment["DJC_REKORDBOX_DIR"] != nil else { return }
@@ -32,7 +32,7 @@ extension DevSelfTests {
                     try? await Task.sleep(for: .milliseconds(20))
                 }
             }
-            @MainActor func send(_ window: NSWindow, code: UInt16, text: String) async {
+            @MainActor func send(_ window: NSWindow, code: UInt16, text: String, modifiers: NSEvent.ModifierFlags = []) async {
                 if mode == .active {
                     guard NSApp.isActive, window.isKeyWindow,
                           NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier else {
@@ -41,7 +41,7 @@ extension DevSelfTests {
                     }
                 }
                 for type: NSEvent.EventType in [.keyDown, .keyUp] {
-                    if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [],
+                    if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: modifiers,
                                                     timestamp: ProcessInfo.processInfo.systemUptime,
                                                     windowNumber: window.windowNumber, context: nil,
                                                     characters: text, charactersIgnoringModifiers: text,
@@ -151,10 +151,11 @@ extension DevSelfTests {
                 check(table.coordinator?.isEditing == false && window.firstResponder === table, "곡 목록 Esc는 편집 취소로")
             } else { check(false, "실제 곡 목록 찾기") }
 
-            // 실제 검색칸의 필드 에디터가 글자 키를 받으며 덱은 그대로다.
-            let search = window.toolbar?.items.compactMap { ($0 as? NSSearchToolbarItem)?.searchField }.first
-                ?? find(NSSearchField.self, in: window.contentView?.superview)
-            if let search {
+            // 검색칸은 툴바가 아니라 곡 목록 바로 위 머리 줄에 있다(#338). 실제 검색칸의 필드 에디터가 글자 키를 받으며 덱은 그대로다.
+            await waitUntil { find(NSSearchField.self, in: window.contentView) != nil }
+            check(!(window.toolbar?.items.contains { $0 is NSSearchToolbarItem } ?? false), "툴바에 검색칸 없음")
+            if let search = find(NSSearchField.self, in: window.contentView), let table = find(TrackListTableView.self, in: window.contentView) {
+                func typing() -> Bool { (window.firstResponder as? NSTextView)?.delegate === search }
                 store.search = ""
                 search.stringValue = ""
                 window.makeFirstResponder(search)
@@ -163,9 +164,36 @@ extension DevSelfTests {
                 await send(window, code: 46, text: "m")
                 check(search.currentEditor()?.string == "m" && deck.memoryCueCount == before, "글자 입력은 덱 키를 가로채지 않음")
                 capture(window, "search-after")
-                window.makeFirstResponder(nil)
+                check(store.search == "m", "칸에 친 글자가 검색어가 됨")
+                // Esc: 검색어를 지우고 목록으로 포커스를 옮긴다
+                await send(window, code: 53, text: "\u{1b}")
+                await waitUntil { window.firstResponder === table }
+                check(search.stringValue.isEmpty && store.search.isEmpty && window.firstResponder === table, "검색칸 Esc는 검색어를 지우고 목록으로")
+                // 목록에 있어도 ⌘F는 검색칸으로 간다. 이미 있는 검색어는 전체를 골라 바로 덮어쓸 수 있다.
+                // 활성 모드는 ⌘F 키를 보낸다. 비활성 모드는 SwiftUI가 메뉴 켜짐 상태를 주지 않아 키가 메뉴에 닿지 못하므로,
+                // 메뉴 항목이 부르는 입구(`LibraryMenuAction.find`)를 부른다(실제 ⌘F 키는 활성 모드나 사람이 본다)
+                @MainActor func pressFind() async {
+                    if mode == .active { await send(window, code: 3, text: "f", modifiers: .command) }
+                    else { LibraryMenuAction.find.perform(in: libraryWindow) }
+                }
+                let findRoute = mode == .active ? "⌘F" : "찾기 메뉴 입구"
+                store.search = "합성"
+                window.makeFirstResponder(table)
+                await pressFind()
+                await waitUntil { typing() }
+                check(typing(), "\(findRoute)는 목록에서 머리 줄 검색칸으로")
+                check(search.currentEditor()?.selectedRange.length == search.stringValue.count && !search.stringValue.isEmpty, "\(findRoute)는 검색어 전체를 고름")
+                // 칸에 있을 때 다시 눌러도 칸에 남는다
+                await pressFind()
+                await waitUntil { typing() }
+                check(typing(), "검색칸에서 \(findRoute)를 다시 눌러도 칸에 남음")
+                // Return: 검색어는 두고 목록으로 포커스를 옮긴다
+                await send(window, code: 36, text: "\r")
+                await waitUntil { window.firstResponder === table }
+                check(store.search == "합성" && window.firstResponder === table, "검색칸 Return은 검색어를 두고 목록으로")
                 store.search = ""
-            } else { check(false, "실제 검색칸 찾기") }
+                window.makeFirstResponder(nil)
+            } else { check(false, "머리 줄 검색칸 찾기") }
 
             // 태그 시트의 방향키는 셀로 전달한다.
             setKeyRoutingSheetMode(true, settings: store.settings)

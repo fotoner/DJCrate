@@ -21,6 +21,7 @@ enum UsbCommands {
                 String(ui: "USB에 쓴 것을 그 쓰기 전 백업으로 되돌린다(그 뒤 기기가 바꾼 것이 있으면 막는다)"), { try await restore($0) }),
         Command("usb-recover", String(ui: "--volume <마운트> [--discard-temp] [--allow-physical --confirm <볼륨 이름>]"),
                 String(ui: "끝나지 않은 USB 쓰기를 마저 쓰거나 되돌린다"), { try await recover($0) }),
+        UsbSnapshotCommand.command,
     ]
 
     /// `usb-restore` 인자

@@ -27,11 +27,32 @@ enum SelfTestFrames {
 
 extension View {
     /// 디버그 빌드에서만 자리를 기록한다(릴리스에서는 아무것도 하지 않는다).
-    @ViewBuilder func selfTestFrame(_ name: String) -> some View {
+    /// `clearsOnDisappear`면 뷰가 사라질 때 그 자리를 지운다(폭에 따라 나타났다 사라지는 뷰가 옛 자리를 남기지 않게).
+    /// 환경 값 `selfTestFrameScope`를 주면 그 글자를 이름 앞에 붙여 기록한다. 같은 화면을 여럿 띄워 따로 재는 시험이 쓴다.
+    @ViewBuilder func selfTestFrame(_ name: String, clearsOnDisappear: Bool = false) -> some View {
         #if DEBUG
-        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SelfTestFrames.frames[name] = $0 }
+        modifier(SelfTestFrameModifier(name: name, clearsOnDisappear: clearsOnDisappear))
         #else
         self
         #endif
     }
 }
+
+#if DEBUG
+extension EnvironmentValues {
+    /// 자리 이름 앞에 붙일 글자. 비어 있으면 이름 그대로 기록한다
+    @Entry var selfTestFrameScope = ""
+}
+
+private struct SelfTestFrameModifier: ViewModifier {
+    @Environment(\.selfTestFrameScope) private var scope
+    let name: String
+    let clearsOnDisappear: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SelfTestFrames.frames[scope + name] = $0 }
+            .onDisappear { if clearsOnDisappear { SelfTestFrames.frames[scope + name] = nil } }
+    }
+}
+#endif

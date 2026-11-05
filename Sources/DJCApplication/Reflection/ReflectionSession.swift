@@ -115,10 +115,28 @@ public struct ReflectionSession {
     /// 쓰기·복원 뒤 초안 저장에 실패한 곡이 있으면 그 경고
     func draftSaveWarning(for uuids: Set<String>, restoring: Bool) -> String? { ports.drafts.saveWarning(for: uuids, restoring: restoring) }
 
+    /// 쓴 뒤 다시 읽기의 결과
+    enum ReloadResult: Equatable {
+        case reloaded, failed
+        /// 종료를 기다리는 중이라 읽지 않고 미뤘다(#305). 실패가 아니다
+        case postponed
+    }
+
+    /// 쓴 뒤·복원 뒤 다시 읽기의 한 길(#305). 모든 다시 읽기가 여기를 지난다.
+    /// 읽기만 남은 단계(`readsBack`)에서 종료를 기다리는 중이면 읽지 않고 미룬다. 쓴 것은 이미 끝났으니 쓰기 결과를 활동 기록에 먼저 남기고 종료한다.
+    /// 이때 다시 읽는 단계를 알리지 않는다: 앱은 그 단계에서 곧바로 종료해 결과가 남지 않는다. 종료를 취소하면 앱이 미룬 읽기를 이어서 한다.
+    /// 읽은 뒤에도 할 일이 남은 복원의 다시 읽기(`readsBack`이 아닌 단계)는 미루지 않는다.
+    func reloadLibrary(during stage: WriteStage, written: Set<String>, playlistEdits: [PlaylistEdit] = []) async -> ReloadResult {
+        if stage.readsBack, ports.reload.postpone(written, playlistEdits) { return .postponed }
+        self.stage(stage)
+        return await ports.reload.reload(written, playlistEdits) ? .reloaded : .failed
+    }
+
     /// 쓰기·복원 결과와 나눠 알릴 경고를 정리해 화면에 남긴다(목록 위 경고 줄에도, 다시 읽기 실패 이유는 그 뒤에 잇는다, #175)
-    func finishFollowUp(_ notes: [String?], reloaded: Bool, restoring: Bool) -> [String] {
-        let reloadError = reloaded ? nil : ports.library.state().lastError
-        let followUp = notes.compactMap { $0 } + (reloaded ? [] : [Self.reloadFailureText(restoring: restoring)])
+    func finishFollowUp(_ notes: [String?], reloaded: ReloadResult, restoring: Bool) -> [String] {
+        let failed = reloaded == .failed
+        let reloadError = failed ? ports.library.state().lastError : nil
+        let followUp = notes.compactMap { $0 } + (failed ? [Self.reloadFailureText(restoring: restoring)] : [])
         apply(.followUp(followUp))
         let line = (followUp + [reloadError].compactMap { $0 }).joined(separator: " ")
         if !line.isEmpty { apply(.libraryError(line)) }
@@ -153,7 +171,7 @@ extension ReflectionSession {
     }
 
     public static func keptDraftsText(_ count: Int) -> String {
-        String(ui: "쓴 뒤 새로 만든 초안이 있는 \(count)곡은 지금 초안을 남겼고, 백업의 초안은 ‘마지막 쓰기 결과…’의 백업 폴더에 남아 있습니다.")
+        String(ui: "쓴 뒤 새로 만든 초안이 있는 \(count)곡은 지금 초안을 남겼고, 백업의 초안은 ‘활동 기록…’의 백업 폴더에 남아 있습니다.")
     }
 
     public static func artworkRestoreFailureText(_ count: Int) -> String {
@@ -167,13 +185,13 @@ extension ReflectionSession {
 
     /// 넣기 끝에 추가한 곡의 초안 사본을 백업 폴더에 남기지 못한 곡이 있을 때(#202). 그 초안은 되돌릴 때 이어질 유일한 사본이라 지우지 않는다.
     public static func stagedDraftsBackupFailureText(_ count: Int) -> String {
-        String(ui: "추가한 곡 \(count)곡의 초안을 백업에 저장하지 못해 연결되지 않은 초안으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 ‘연결되지 않은 초안 보기…’에서 버리지 마세요.")
+        String(ui: "추가한 곡 \(count)곡의 초안을 백업에 저장하지 못해 연결되지 않은 초안으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리지 마세요.")
     }
 
     /// 되돌린 새 곡에 남아 있던 초안을 지우지 않고 남긴 곡이 있을 때(#197·#202)
     public static func keptNewTrackDraftsText(_ count: Int, kinds: [AddedTrackDrafts.Kind]) -> String? {
         guard count > 0 else { return nil }
         let labels = kinds.map(\.label).joined(separator: "·")
-        return String(ui: "넣은 곡에 남아 있던 \(labels) 초안 \(count)곡은 지우지 않고 연결되지 않은 초안으로 남겼습니다. 필요 없으면 ‘연결되지 않은 초안 보기…’에서 버리세요.")
+        return String(ui: "넣은 곡에 남아 있던 \(labels) 초안 \(count)곡은 지우지 않고 연결되지 않은 초안으로 남겼습니다. 필요 없으면 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리세요.")
     }
 }

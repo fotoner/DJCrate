@@ -108,10 +108,9 @@ enum UsbSidebarModel {
                 row.help = UsbFormat.allCases.filter(formats.contains).map(\.displayName).joined(separator: " · ")
                 if formats == [.deviceLibrary] {
                     row.showsMigration = true
-                    row.help = String(ui: "Device Library만 있습니다. OneLibrary를 더하려면 ‘OneLibrary 더하기…’를 누르세요")
                     let reason = store.migrationBlockReasons[key] ?? store.physicalWriteBlock(volume)
                     row.canMigrate = idle && reason == nil
-                    row.migrationHelp = reason ?? String(ui: "Device Library를 읽어 OneLibrary를 더합니다. 확인 창에서 CDJ에서 확인하지 않은 항목을 확인하세요")
+                    row.migrationHelp = reason ?? String(ui: "Device Library를 읽어 OneLibrary를 더합니다")
                 }
                 if let library = store.libraries[key] {
                     row.collection = .collection(volumeKey: key)
@@ -150,7 +149,7 @@ enum UsbSidebarModel {
             let key = absent.volume.usbKey
             guard store.acceptsEdits(key) else { return nil }
             return UsbSidebarVolume(id: key, name: absent.volume.name, symbol: "externaldrive.badge.xmark", isWarning: false,
-                                    status: String(ui: "연결 안 됨"), help: String(ui: "USB를 연결하면 쓰기 대기의 초안을 쓸 수 있습니다"),
+                                    status: String(ui: "연결 안 됨"), help: "",
                                     showsExport: false, canExport: false, collection: nil, collectionCount: 0, playlists: [], mismatchHelp: nil,
                                     canEject: false, pending: .pending(volumeKey: key), pendingCount: store.draftCounts[key] ?? 0)
         }
@@ -224,7 +223,7 @@ struct UsbSidebarSection: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                 }
                 .buttonStyle(.borderless)
-                .disabled(!volume.canSync || store.isLoading || store.isWritingRekordbox || store.snapshotURL == nil)
+                .disabled(!volume.canSync || store.isLoading || store.libraryBusy || store.snapshotURL == nil)
                 .help(.ui("USB 동기화 설정…"))
                 .accessibilityLabel(.ui("\(volume.name) 동기화…"))
                 .accessibilityIdentifier("usb-sync-\(volume.id)")
@@ -248,6 +247,10 @@ struct UsbSidebarSection: View {
     }
 
     @ViewBuilder private func migrationButtons(_ volume: UsbSidebarVolume) -> some View {
+        if usb.volume(volume.id) != nil, usb.pointSnapshots != nil {
+            Button(.ui("USB 시점 스냅샷…")) { store.usbCoordinator?.openPointSnapshots(volumeKey: volume.id) }
+                .disabled(usb.activeWrite != nil)
+        }
         if volume.showsMigration {
             Button {
                 store.usbCoordinator?.startMigrate(volumeKey: volume.id)
@@ -259,12 +262,11 @@ struct UsbSidebarSection: View {
             .help(volume.migrationHelp ?? volume.help)
         }
         if volume.showsMigrationRestore {
-            Button(.ui("쓰기 전으로 되돌리기…")) {
+            Button(.ui("OneLibrary 더하기 되돌리기…")) {
                 store.usbCoordinator?.startRestoreMigration(volumeKey: volume.id)
             }
             .buttonStyle(.plain)
             .disabled(usb.activeWrite != nil)
-            .help(.ui("이번에 OneLibrary를 더하기 전에 만든 백업으로 USB를 되돌립니다"))
         }
     }
 
@@ -277,7 +279,6 @@ struct UsbSidebarSection: View {
             }
             .buttonStyle(.plain)
             .disabled(!volume.canExport)
-            .help(.ui("로컬 재생 목록·곡을 이 USB에 OneLibrary·Device Library로 내보냅니다"))
         }
         migrationButtons(volume)
         if let collection = volume.collection {
@@ -291,14 +292,12 @@ struct UsbSidebarSection: View {
             Label(.ui("USB 쓰기 대기"), systemImage: "square.and.arrow.up.on.square")
                 .badge(volume.pendingCount)
                 .tag(SidebarItem.usb(pending))
-                .help(.ui("이 USB에 쓸 초안(곡 더하기·빼기·갱신, 재생 목록 편집)을 모아 봅니다"))
         }
         if volume.collection != nil {
-            if let help = volume.mismatchHelp {
+            if volume.mismatchHelp != nil {
                 Label(.ui("재생 목록이 형식마다 다릅니다"), systemImage: WarningMark.symbol)
                     .font(.caption)
                     .foregroundStyle(UIColors.warning.color)
-                    .help(help)
             }
             OutlineGroup(volume.playlists, children: \.children) { node in
                 UsbDropRow(store: store, target: .playlist(volumeKey: volume.id, id: node.id)) {
@@ -357,13 +356,13 @@ private struct UsbDropDelegate: DropDelegate {
 enum UsbDrop {
     /// 놓을 수 있는지: 로컬 곡은 컬렉션·일반 재생 목록, USB 곡은 끄는 USB와 같은 USB의 일반 재생 목록
     static func accepts(local: Bool, usb: Bool, on target: UsbSidebarTarget, store: LibraryStore) -> Bool {
-        guard store.writeLockPolicy.allowsLibraryInteraction, let actions = store.usbEdits else { return false }
+        guard !store.libraryBusy, let actions = store.usbEdits else { return false }
         if usb { return actions.acceptsUsbDrop(from: store.usbDragVolume, on: target) }
         return local && actions.acceptsDrop(on: target)
     }
 
     static func perform(_ providers: [NSItemProvider], on target: UsbSidebarTarget, store: LibraryStore) -> Bool {
-        guard store.writeLockPolicy.allowsLibraryInteraction, let actions = store.usbEdits else { return false }
+        guard !store.libraryBusy, let actions = store.usbEdits else { return false }
         let usbTracks = providers.filter { $0.hasItemConformingToTypeIdentifier(PlaylistDragType.usbTracks.identifier) }
         if !usbTracks.isEmpty {
             guard actions.acceptsUsbDrop(from: store.usbDragVolume, on: target) else { return false }
@@ -437,7 +436,7 @@ struct UsbSidebarMenu: View {
         let reason = count == 0 ? nil : actions.refreshBlockReason(volumeKey: key)
         return Button(.ui("로컬 변경을 USB에 반영 (\(count)곡)")) { actions.start(.refreshLocalChanges(volumeKey: key)) }
             .disabled(count == 0 || reason != nil)
-            .help(reason ?? String(ui: "로컬에서 더 고친 곡(갱신 가능)을 USB 쓰기 대기에 더합니다. USB는 ‘USB에 쓰기…’를 누를 때 바뀝니다."))
+            .help(reason ?? String(ui: "갱신 가능한 곡을 쓰기 대기에 더합니다"))
     }
 
     /// 같은 부모 안에서 한 칸 옮기기: 초안을 적용한 자리에서 옮길 곳이 없거나 막히면 누를 수 없고, 막힌 이유를 도움말로
@@ -445,7 +444,7 @@ struct UsbSidebarMenu: View {
         let reason = actions.moveBlockReason(id, by: step, volumeKey: key)
         return Button(title) { actions.start(.movePlaylist(id, by: step, volumeKey: key)) }
             .disabled(!actions.canMovePlaylist(id, by: step, volumeKey: key) || reason != nil)
-            .help(reason ?? title)
+            .help(reason ?? "")
     }
 
     private var pendingButton: some View {
@@ -457,7 +456,7 @@ struct UsbSidebarMenu: View {
         let reason = actions.blockReason(edit, volumeKey: key)
         return Button(title) { actions.start(intent) }
             .disabled(reason != nil)
-            .help(reason ?? title)
+            .help(reason ?? "")
     }
 }
 

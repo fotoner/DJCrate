@@ -20,6 +20,10 @@
 - 어느 규칙에도 맞지 않는 파일 → 전체 검사로 넓힌다.
 - 고른 Suite가 전체의 절반을 넘으면 전체 검사로 넓힌다.
 
+환경 변수가 있어야 도는 선택 실행 Suite(scripts/optin-suites.txt)는 변수 없이 고르면 건너뛴다. 직접 고른 `regression` Suite가
+건너뛰어지면 plan의 skipped에 경고를 남기고, --optin-hint는 고른 필터가 모두 건너뛰어졌을 때(check.sh) 원인과 할 일을 낸다.
+목록과 시험 파일의 `.enabled(if: …environment["…"])`가 어긋나면 --check-map과 고르기가 종료 코드 2로 끝난다.
+
 기호 이름 grep이라 놓치는 경우가 있다(프로토콜 증인·전역 함수·다른 타입을 거쳐 닿는 동작 변화). 그 몫은 릴리스 전체 검사
 (main·release/* CI)가 덮는다.
 """
@@ -39,6 +43,7 @@ from pathlib import Path
 
 ROOT = Path.cwd() if (Path.cwd() / "scripts/affected-tests.py").exists() else Path(__file__).resolve().parent.parent
 MAP = ROOT / "scripts/test-map.txt"
+OPTIN = ROOT / "scripts/optin-suites.txt"
 CACHE = ROOT / ".build/affected-tests"
 
 WIDEN = ["Package.swift", "Package.resolved", "scripts/check.sh", ".github/**"]
@@ -48,7 +53,7 @@ HARNESS = ["scripts/hooks/**", ".claude/**", "scripts/test-harness.py", "scripts
            "scripts/prose-*.txt", "scripts/worker-lock.sh"]
 IMPORT_FILES = ["scripts/check-imports.py", "scripts/import-debt.txt"]
 # scripts/test-check.py가 시험하는 스크립트. CI에 늘 돌던 test-check.py 단계를 없앴으므로 이것이 바뀔 때 돈다.
-SCRIPT_FILES = ["scripts/test-check.py", "scripts/affected-tests.py", "scripts/test-map.txt", "scripts/check.sh",
+SCRIPT_FILES = ["scripts/test-check.py", "scripts/affected-tests.py", "scripts/test-map.txt", "scripts/optin-suites.txt", "scripts/check.sh",
                 "scripts/check-imports.py", "scripts/ci-base.sh", "scripts/ci-mtimes.py"]
 TRANSLATION_FILES = ["scripts/i18n.swift", "**/*.xcstrings"]
 HALF = 0.5
@@ -302,6 +307,191 @@ def check_map_paths(groups):
             if not any(regex.match(f) for f in files):
                 raise PlanError(f"test-map.txt {number}행: when {pattern}에 맞는 파일이 없습니다({group['name']} 묶음). "
                                 "파일을 옮겼으면 지도를 고치고, 앞으로 생길 자리면 maybe로 적으세요")
+
+
+# ── 선택 실행 Suite(scripts/optin-suites.txt) ─────────────────
+
+# regression: 안 돌면 회귀를 놓치는 시험(건너뜀 경고를 남긴다). tool: 픽스처·실험 재현 도구(안 돌아도 회귀가 아니라 경고하지 않는다).
+OPTIN_KINDS = ("regression", "tool")
+OPTIN_SWITCH = re.compile(r"[A-Z][A-Z0-9_]*=\S+")
+
+
+def parse_optin(path=OPTIN):
+    """`<regression|tool> <시험 타깃>.<Suite> <변수=켜는 값>…`. 변수 중 하나라도 있으면 돈다(Swift의 `!= nil`, 빈 값도 켠 것이다).
+    파일이 없으면 빈 목록이다. 문법이 틀리면 PlanError."""
+    entries, seen = [], set()
+    if not path.exists():
+        return entries
+    for number, raw in enumerate(path.read_text().splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        where = f"{path.name} {number}행"
+        words = line.split()
+        if len(words) < 3 or words[0] not in OPTIN_KINDS or "." not in words[1]:
+            raise PlanError(f"{where}: `<{'|'.join(OPTIN_KINDS)}> <시험 타깃>.<Suite> <변수=켜는 값>…` 모양이 아닙니다: {raw.strip()}")
+        target, _, suite = words[1].partition(".")
+        switches = []
+        for word in words[2:]:
+            if not OPTIN_SWITCH.fullmatch(word):
+                raise PlanError(f"{where}: 변수는 `이름=켜는 값`(대문자·숫자·밑줄, 값에 빈칸 없음)으로 적습니다: {word}")
+            switches.append(tuple(word.split("=", 1)))
+        if words[1] in seen:
+            raise PlanError(f"{where}: {words[1]}이(가) 목록에 두 번 있습니다")
+        seen.add(words[1])
+        entries.append({"kind": words[0], "target": target, "suite": suite, "switches": switches, "line": number})
+    return entries
+
+
+def switch_text(entry):
+    return " 또는 ".join(f"{name}={value}" for name, value in entry["switches"])
+
+
+def optin_enabled(entry):
+    return any(name in os.environ for name, _ in entry["switches"])
+
+
+def optin_hint_lines(entries, test_filter):
+    """고른 필터에 맞는 선택 실행 Suite 가운데 변수가 없는 것의 안내. 필터는 Swift 시험 이름(`타깃.Suite/시험`)에 맞춘다.
+    시험 이름까지 적은 필터(`Suite/시험`)는 시험 이름 앞에서 잘라 Suite에 맞춘다(시험 이름은 목록에 없다)."""
+    patterns = []
+    for text in [test_filter] + [alt.split("/", 1)[0] for alt in test_filter.split("|") if "/" in alt]:
+        try:
+            patterns.append(re.compile(text))
+        except re.error:
+            continue
+    return [f"{e['suite']}는 환경 변수가 있어야 돕니다({switch_text(e)}). 그 변수를 주고 다시 돌리세요"
+            for e in entries
+            if not optin_enabled(e) and any(p.search(f"{e['target']}.{e['suite']}/") for p in patterns)]
+
+
+def optin_skipped(plan, entries):
+    """직접 고른 regression Suite가 변수 없이 건너뛰어지는 경고. 직접 고른 Suite는 타깃을 통째로 골랐을 때도, 전체로 넓혔을 때도 센다.
+    통째로 고른 타깃에 딸려 온 Suite(plan.suites에 없는 것)는 세지 않는다."""
+    return [f"{e['suite']}는 환경 변수가 없어 돌지 않았습니다({switch_text(e)}). 이 통과에는 그 시험이 들어 있지 않으니 변수를 주고 따로 돌리세요"
+            for e in entries
+            if e["kind"] == "regression" and e["suite"] in plan.suites.get(e["target"], ()) and not optin_enabled(e)]
+
+
+def swift_balanced(text, start):
+    """text[start]의 `(`와 짝이 맞는 `)` 앞까지의 글. 문자열 리터럴·줄 주석 안의 괄호는 세지 않는다. 짝이 없으면 None."""
+    depth, i = 0, start
+    while i < len(text):
+        c = text[i]
+        if c == '"':
+            literal = PLAIN_LITERAL.match(text, i)
+            i = literal.end() if literal else i + 1
+            continue
+        if text.startswith("//", i):
+            i = text.find("\n", i)
+            if i < 0:
+                return None
+            continue
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:i]
+        i += 1
+    return None
+
+
+def swift_attributes(text, name):
+    """`@name` 속성마다 (시작 위치, 끝 위치, 괄호 안 글 또는 None)."""
+    found = []
+    for match in re.finditer(r"@" + name + r"\b", text):
+        j = match.end()
+        while j < len(text) and text[j] in " \t":
+            j += 1
+        inner = swift_balanced(text, j) if j < len(text) and text[j] == "(" else None
+        found.append((match.start(), j + len(inner) + 2 if inner is not None else match.end(), inner))
+    return found
+
+
+def env_gate_names(arguments):
+    """속성 인자의 `.enabled(if: …)` 조건이 읽는 환경 변수 이름. 조건이 환경 변수를 읽지 않으면 빈 집합."""
+    names = set()
+    for match in re.finditer(r"\.enabled\(", arguments or ""):
+        names.update(re.findall(r'environment\["([A-Za-z0-9_]+)"\]', swift_balanced(arguments, match.end() - 1) or ""))
+    return names
+
+
+def swift_gating(text):
+    """시험 파일의 최상위 타입(extension 포함)마다 환경 변수 조건: {이름: {"suite": Suite 속성이 거는 변수, "tests": @Test 수,
+    "gated": 조건을 단 @Test 수, "names": 그 조건의 변수}}. 같은 이름이 여럿이면(본문과 extension) 합친다."""
+    found = list(TOP_DECLARATION.finditer(text))
+    suite_attributes = swift_attributes(text, "Suite")
+    result = {}
+    for i, match in enumerate(found):
+        name = match.group(2)
+        if not (name[0].isupper() or name[0] == "_"):
+            continue
+        entry = result.setdefault(name, {"suite": set(), "tests": 0, "gated": 0, "names": set()})
+        for begin, end, inner in suite_attributes:
+            # 이 타입에 붙은 속성: 속성 끝과 타입 이름 사이에 다른 속성·개행만 있다(앞 타입의 본문을 건너뛰지 않는다)
+            if end <= match.start(2) and not set("{};") & set(text[end:match.start(2)]):
+                entry["suite"] |= env_gate_names(inner)
+        body = text[match.start():found[i + 1].start() if i + 1 < len(found) else len(text)]
+        for _, _, inner in swift_attributes(body, "Test"):
+            entry["tests"] += 1
+            names = env_gate_names(inner)
+            if names:
+                entry["gated"] += 1
+                entry["names"] |= names
+    return result
+
+
+def env_gate_of_suite(texts, suite):
+    """Suite를 이룬 파일들의 글에서 환경 변수가 있어야 도는 조건의 변수들(없으면 빈 집합). 둘 중 하나다.
+    - `@Suite(.enabled(if: …environment[…]))`로 Suite 전체를 건다
+    - 모든 파일을 합쳐 `@Test`가 모두 그런 조건을 단다(일부만 거는 Suite는 선택 실행이 아니다)"""
+    names, tests, gated, test_names = set(), 0, 0, set()
+    for text in texts:
+        entry = swift_gating(text).get(suite)
+        if entry:
+            names |= entry["suite"]
+            tests += entry["tests"]
+            gated += entry["gated"]
+            test_names |= entry["names"]
+    return names | (test_names if tests and gated == tests else set())
+
+
+def load_optin(index, path=OPTIN):
+    """목록을 읽고 Suite가 있는지 본다."""
+    entries = parse_optin(path)
+    for entry in entries:
+        if entry["target"] not in index.tests or entry["suite"] not in index.suites.get(entry["target"], {}):
+            raise PlanError(f"{path.name} {entry['line']}행: 없는 Suite입니다: {entry['target']}.{entry['suite']}. 이름이 바뀌었으면 목록도 고치세요")
+    return entries
+
+
+def check_optin(index, entries, path=OPTIN):
+    """목록과 시험 파일의 환경 변수 조건이 같은 Suite·같은 변수를 가리키는지 본다. 어긋나면 조용히 건너뛰거나 안내가 틀린다."""
+    detected = {}
+    for target in index.tests:
+        for suite, files in index.suites.get(target, {}).items():
+            names = env_gate_of_suite([index.texts.get(file, "") for file in files], suite)
+            if names:
+                detected[(target, suite)] = names
+    listed = {(e["target"], e["suite"]): e for e in entries}
+    problems = []
+    for (target, suite), names in sorted(detected.items()):
+        entry = listed.get((target, suite))
+        if entry is None:
+            problems.append(f"{target}.{suite}는 환경 변수({', '.join(sorted(names))})가 있어야 도는 Suite인데 {path.name}에 없습니다. "
+                            "목록에 더하세요(회귀를 지키는 시험이면 regression, 픽스처·실험 도구면 tool)")
+            continue
+        have = {name for name, _ in entry["switches"]}
+        if have != names:
+            problems.append(f"{path.name} {entry['line']}행: {target}.{suite}의 변수가 시험 파일과 다릅니다. "
+                            f"목록 {', '.join(sorted(have))}, 시험 파일 {', '.join(sorted(names))}")
+    for (target, suite), entry in sorted(listed.items()):
+        if (target, suite) not in detected:
+            problems.append(f"{path.name} {entry['line']}행: {target}.{suite}의 시험 파일에서 환경 변수 조건을 찾지 못했습니다. "
+                            "조건을 지웠거나 일부 시험에만 걸었다면 목록에서도 지우세요")
+    if problems:
+        raise PlanError("\n".join(problems))
 
 
 # ── 바꾼 파일 ─────────────────────────────────────────────────
@@ -694,7 +884,7 @@ def make_plan(files, base, index, groups, needs):
     return plan, selected, total, needs
 
 
-def render(plan, base, files, selected, total, needs):
+def render(plan, base, files, selected, total, needs, optin=()):
     targets = sorted(set(plan.whole) | set(plan.suites))
     if plan.widen:
         scope = "full"
@@ -723,6 +913,8 @@ def render(plan, base, files, selected, total, needs):
         "scope": scope,
         "filter": test_filter,
         "targets": targets,
+        # 패키지의 모든 시험 타깃. swift test --skip-build는 고르지 않은 타깃의 번들도 열어 본다(#270)
+        "testTargets": list(plan.index.tests),
         "products": products,
         "suites": suites,
         "wholeTargets": sorted(plan.whole) if scope == "tests" else [],
@@ -731,6 +923,7 @@ def render(plan, base, files, selected, total, needs):
         "checks": plan.checks,
         "notes": plan.notes,
         "required": plan.required,
+        "skipped": optin_skipped(plan, optin) if scope in ("tests", "full") else [],
         "counts": {"selectedSuites": selected if scope == "tests" else 0, "totalSuites": total},
     }
 
@@ -761,6 +954,8 @@ def human(result):
         lines.append(f"안내: {note}")
     for required in result["required"]:
         lines.append(f"남은 필수 검사: {required}")
+    for skipped in result["skipped"]:
+        lines.append(f"건너뜀: {skipped}")
     return "\n".join(lines)
 
 
@@ -769,6 +964,7 @@ def shell(result):
         "plan_scope": result["scope"],
         "plan_filter": result["filter"] or "",
         "plan_targets": " ".join(result["targets"]),
+        "plan_test_targets": " ".join(result["testTargets"]),
         "plan_products": " ".join(result["products"]),
         "plan_checks": " ".join(n for n, on in result["checks"].items() if on),
         "plan_widen": result["widen"] or "",
@@ -776,6 +972,7 @@ def shell(result):
         "plan_suites": str(result["counts"]["selectedSuites"]),
         "plan_total_suites": str(result["counts"]["totalSuites"]),
         "plan_required": "\n".join(result["required"]),
+        "plan_skipped": "\n".join(result["skipped"]),
         "plan_text": human(result),
         "plan_json": json.dumps(result, ensure_ascii=False, indent=1),
     }
@@ -809,17 +1006,30 @@ def main():
     output.add_argument("--worktree-tree", action="store_true", help="작업 트리 해시만 출력(통과 기록 재사용 판정)")
     output.add_argument("--check-map", action="store_true", help="test-map.txt가 지금 Tests/와 맞는지만 본다")
     output.add_argument("--list-check", metavar="검사", help="--files 중 지도에서 그 검사를 켜는 파일만 출력")
+    output.add_argument("--optin-hint", metavar="필터", help="시험 필터에 맞는 선택 실행 Suite 가운데 변수가 없는 것의 안내만 출력(check.sh가 부른다)")
     args = parser.parse_args()
     try:
         if args.worktree_tree:
             print(worktree_tree())
             return 0
+        if args.optin_hint is not None:
+            # 빌드·시험이 끝난 뒤 실패 안내만 낸다: 패키지 그래프를 읽지 않고, 목록이 틀렸어도 안내 없이 끝낸다
+            try:
+                lines = optin_hint_lines(parse_optin(), args.optin_hint)
+            except PlanError:
+                lines = []
+            if lines:
+                print("\n".join(lines))
+            return 0
         index = Index(package_targets())
         groups, needs = load_map(index)
+        optin = load_optin(index)
         if args.check_map or not args.files:
             check_map_paths(groups)
+            check_optin(index, optin)
         if args.check_map:
             print(f"test-map.txt: 묶음 {len(groups)}개, Suite {sum(len(g['suites']) for g in groups)}개 확인")
+            print(f"optin-suites.txt: 선택 실행 Suite {len(optin)}개 확인")
             return 0
         if args.list_check:
             for path in args.files or []:
@@ -832,7 +1042,7 @@ def main():
             base = resolve_base(args.base)
             files = changed_files(base)
         plan, selected, total, needs = make_plan(files, base, index, groups, needs)
-        result = render(plan, base, files, selected, total, needs)
+        result = render(plan, base, files, selected, total, needs, optin)
     except PlanError as error:
         print(f"affected-tests: {error}", file=sys.stderr)
         return 2

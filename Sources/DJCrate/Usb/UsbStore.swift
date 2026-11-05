@@ -52,6 +52,8 @@ import Observation
     var activeWrite: UsbActiveWrite? { write.activeWrite }
     /// 열 내보내기 시트(볼륨·다시 미리 보기 결과)
     var exportSheet: UsbExportSheetRequest?
+    var pointSnapshotSheet: UsbPointSnapshotsModel?
+    @ObservationIgnored var pointSnapshots: UsbPointSnapshots?
     /// 볼륨 이름 옆에서 연 동기화 시트
     var syncSheet: UsbSyncSheetRequest?
     /// 볼륨별 동기화 선택. 시험에서는 폴더를 주입할 때만 저장한다.

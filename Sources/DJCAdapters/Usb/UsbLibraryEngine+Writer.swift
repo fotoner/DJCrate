@@ -40,7 +40,8 @@ extension UsbLibraryEngine.Writer {
             databaseFingerprint: { try UsbWriter.databaseFingerprint(root: UsbRoot($0), fileSystem: fileSystem) })
     }
 
-    /// 형식별 쓰기 뒤 검증기와 쓰기 전 검사기(내보내기: 빈 볼륨, 수정: 수정 전제, 옮기기: 원래 파일 그대로)
+    /// 형식별 쓰기 뒤 검증기와 쓰기 전 검사기(내보내기: 빈 볼륨, 수정: 수정 전제, 옮기기: 원래 파일 그대로,
+    /// 시점 스냅샷 되돌리기: 담은 파일을 그대로 돌려놓으므로 목표 지문만)
     static func checks(_ verification: UsbWriteVerification, preexisting: Set<String>)
         -> (verifiers: [any UsbWriteVerifier], inspectors: [any UsbWriteInspector]) {
         switch verification {
@@ -50,6 +51,8 @@ extension UsbLibraryEngine.Writer {
             (result.verifiers(preexistingAppleDoubles: preexisting), [UsbEditInspector()])
         case let .migration(result):
             (result.verifiers(preexistingAppleDoubles: preexisting), [UsbMigrationInspector()])
+        case .pointRestore:
+            ([UsbFingerprintVerifier()], [])
         }
     }
 }

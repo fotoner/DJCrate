@@ -166,7 +166,7 @@ struct UsbEditActions {
         let name = usb.editName(volumeKey) ?? "USB"
         switch await mutateDraft(volumeKey, { $0 + edits }) {
         case .success:
-            host.toast = AppToast(kind: .success, title: Text.appendedTitle, detail: "\(name) · \(detail)", isUsb: true)
+            host.showToast(AppToast(kind: .success, title: Text.appendedTitle, detail: "\(name) · \(detail)", isUsb: true))
             return true
         case let .failure(error):
             draftFailed(error)
@@ -191,13 +191,13 @@ struct UsbEditActions {
     }
 
     private func warnNotAdded(_ reason: String) {
-        host.toast = AppToast(kind: .warning, title: Text.notAppendedTitle, detail: reason, isUsb: true)
+        host.showToast(AppToast(kind: .warning, title: Text.notAppendedTitle, detail: reason, isUsb: true))
     }
 
     private func draftFailed(_ error: any Error) {
         AppErrorMessage.log(error)
-        host.toast = AppToast(kind: .warning, title: Text.draftFailedTitle,
-                              detail: String(ui: "DJCrate 데이터 폴더의 usb-drafts를 확인한 뒤 다시 시도하세요"), isUsb: true)
+        host.showToast(AppToast(kind: .warning, title: Text.draftFailedTitle,
+                                detail: String(ui: "DJCrate 데이터 폴더의 usb-drafts를 확인한 뒤 다시 시도하세요"), isUsb: true))
     }
 
     /// 그 볼륨의 초안(없으면 nil)
@@ -427,8 +427,8 @@ struct UsbEditActions {
         }
         switch result {
         case .success(nil):
-            host.toast = AppToast(kind: .warning, title: String(ui: "실행 취소하지 않았습니다"),
-                                  detail: String(ui: "그 뒤에 USB 쓰기 대기가 바뀌었습니다. USB 쓰기 대기에서 편집을 빼세요"), isUsb: true)
+            host.showToast(AppToast(kind: .warning, title: String(ui: "실행 취소하지 않았습니다"),
+                                    detail: String(ui: "그 뒤에 USB 쓰기 대기가 바뀌었습니다. USB 쓰기 대기에서 편집을 빼세요"), isUsb: true))
         case .success:
             break
         case let .failure(error):
@@ -510,7 +510,7 @@ struct UsbEditActions {
     func refreshLocalChanges(volumeKey: String, rows: [TrackRow]? = nil) async {
         let edits = refreshEdits(volumeKey: volumeKey, rows: rows)
         guard !edits.isEmpty else {
-            host.toast = AppToast(kind: .success, title: Text.nothingNewerTitle, detail: usb.editName(volumeKey), isUsb: true)
+            host.showToast(AppToast(kind: .success, title: Text.nothingNewerTitle, detail: usb.editName(volumeKey), isUsb: true))
             return
         }
         let ids = edits.flatMap { edit -> [Int] in if case let .refreshTracks(ids, _) = edit { ids } else { [] } }
@@ -579,12 +579,12 @@ struct UsbEditActions {
             let created = UsbEditText.createdNames(change.after)
             if change.after.count < change.before.count {
                 let playlist = library.playlists.first { $0.id == id }?.name ?? String(ui: "재생 목록 \(String(id))")
-                host.toast = AppToast(kind: .success, title: Text.removedFromQueueTitle,
-                                      detail: String(ui: "\(name) · ‘\(playlist)’ 순서를 처음대로 돌렸습니다"), isUsb: true)
+                host.showToast(AppToast(kind: .success, title: Text.removedFromQueueTitle,
+                                        detail: String(ui: "\(name) · ‘\(playlist)’ 순서를 처음대로 돌렸습니다"), isUsb: true))
             } else if let last = change.after.last {
                 let detail = "\(name) · \(UsbEditText.describe(last, library: library, created: created))"
-                host.toast = AppToast(kind: .success, title: change.after.count > change.before.count ? Text.appendedTitle
-                                          : Text.changedQueueTitle, detail: detail, isUsb: true)
+                host.showToast(AppToast(kind: .success, title: change.after.count > change.before.count ? Text.appendedTitle
+                                            : Text.changedQueueTitle, detail: detail, isUsb: true))
             }
         case .success(nil):
             break

@@ -24,7 +24,7 @@ struct ExternalPlaylistDraftTests {
 
         init() {
             let home = FileManager.default.temporaryDirectory.appending(path: "djc-external-playlist-\(UUID().uuidString)")
-            store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, draftHome: home,
+            store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, draftHome: home,
                                       movesDamagedDrafts: false)
             store.undoManager = undo
             store.phase = .loaded
@@ -75,7 +75,7 @@ struct ExternalPlaylistDraftTests {
         h.undo.undo()
         #expect(h.store.playlists.playlistDraft == external)
         #expect(try PlaylistDraftStore.read(url: h.file) == external)
-        #expect(h.store.playlists.playlistMessage?.kind == .warning)
+        #expect(h.store.activityLog.latest?.kind == .warning)
         #expect(!h.undo.canUndo && !h.undo.canRedo)
     }
 

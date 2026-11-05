@@ -1,0 +1,34 @@
+# 환경 변수가 있어야 도는 선택 실행 Suite의 목록(scripts/affected-tests.py가 읽는다). 사람이 관리한다. 규칙은 docs/ci.md "선택 실행 장치".
+# 시험 파일의 `.enabled(if: …environment["…"])`와 이 목록이 어긋나면 `affected-tests.py --check-map`과 --changed가 종료 코드 2로 끝난다.
+# Suite 전체를 `@Suite(.enabled(if:))`로 걸거나, Suite의 `@Test`를 모두 그렇게 걸면 선택 실행이다. 일부 시험만 거는 Suite는 적지 않는다.
+#
+# <종류> <시험 타깃>.<Suite> <변수=켜는 값> [<변수=켜는 값> …]
+#   변수 중 하나라도 있으면 돈다(Swift의 `!= nil`이라 빈 값도 켠 것이다). 첫 변수가 안내에 먼저 나온다. 값에 빈칸을 쓰지 않는다.
+#   regression  안 돌면 회귀를 놓치는 시험. --changed가 직접 골랐는데 변수가 없으면 "건너뜀" 경고를 남긴다.
+#   tool        픽스처·실험 재현 도구. 안 돌아도 회귀가 아니라 경고하지 않는다. 경로를 받는 변수에는 임시 폴더만 준다(SAFE-7·SAFE-9).
+# 고른 Suite가 모두 건너뛰어져 "실제로 완료한 시험이 없습니다"로 실패하면(check.sh) 두 종류 모두 이 목록으로 원인과 할 일을 안내한다.
+
+# 화면 관찰 범위(#129·#137·#138). 실제 창을 띄우고 본문 다시 계산 횟수를 센다. 다른 UI 시험과 겹치지 않게 단독으로 돌린다.
+regression DJCrateTests.LayoutRecomputeTests DJC_LAYOUT_RECOMPUTE_TESTS=1 DJC_LAYOUT_BENCHMARK_DB=<사본>
+
+# 앱 자가 테스트·화면 확인용 픽스처를 만드는 도구(.claude/skills/app-selftest/SKILL.md)
+tool DJCrateTests.AsyncGuidanceFixtureCapture DJC_ASYNC_FIXTURE=<임시경로>
+tool DJCrateTests.EditLayoutFixtureCapture DJC_EDIT_LAYOUT_FIXTURE=<임시경로>
+tool DJCrateTests.HistorySelfTestFixtureCapture DJC_HISTORY_SELFTEST_FIXTURE=<임시경로>
+tool DJCrateTests.ITunesFixtureCapture DJC_ITUNES_FIXTURE=<임시경로>
+tool DJCrateTests.LayoutFixtureCapture DJC_LAYOUT_FIXTURE=<임시경로>
+tool DJCrateTests.PlaylistRecoveryFixtureCapture DJC_PLAYLIST_RECOVERY_FIXTURE=<임시경로>
+tool DJCrateTests.PlaylistWriteFixtureCapture DJC_PLAYLIST_FIXTURE=<임시경로>
+tool DJCrateTests.TrackListFixtureCapture DJC_TRACK_LIST_FIXTURE=<임시경로>
+tool DJCrateTests.UIPerfFixtureCapture DJC_UI_PERF_FIXTURE=<임시경로>
+tool DJCrateTests.UsbColumnsFixtureCapture DJC_USB_COLUMNS_FIXTURE=<임시폴더>
+tool DJCrateTests.UsbDragFixtureCapture DJC_USB_DRAG_FIXTURE=<임시경로>
+tool DJCrateTests.UsbMigrateAppFixtureCapture DJC_USB_SELFTEST_SCRATCH=<임시폴더>
+tool DJCrateTests.UsbSelfTestScenarioCapture DJC_USB_SELFTEST_SCRATCH=<임시폴더>
+tool DJCrateTests.XMLExportFixtureCapture DJC_XMLEXPORT_FIXTURE=<임시경로>
+
+# rekordbox 실험 재현(사용자가 rekordbox에서 바꾼 전후 사본으로만 돈다, .claude/skills/rekordbox-experiment/SKILL.md)과 파서 픽스처
+tool RekordboxKitTests.ArtworkExperimentRepro DJC_ARTWORK_EXPERIMENT=<실험폴더>
+tool RekordboxKitTests.GridTempoExperimentRepro DJC_GRID_EXPERIMENT=<실험폴더>
+tool RekordboxKitTests.ITunesSyncExperimentRepro DJC_ITUNES_SYNC_EXPERIMENT=<실험폴더>
+tool RekordboxKitTests.UsbParserFixtureCapture DJC_USB_PARSER_FIXTURE=<임시폴더>

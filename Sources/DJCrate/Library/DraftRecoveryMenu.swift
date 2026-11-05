@@ -63,7 +63,7 @@ final class DraftRecoveryMenu: NSObject, NSMenuItemValidation {
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard let target = item.representedObject as? Target else { return false }
-        return !store.isRecoveringDraft && !store.isWritingRekordbox && (store.allowsLibrarySync?() ?? true)
+        return !store.isRecoveringDraft && !store.libraryBusy && (store.allowsLibrarySync?() ?? true)
             && store.recoveryKinds(for: target.row).contains(target.kind)
     }
 

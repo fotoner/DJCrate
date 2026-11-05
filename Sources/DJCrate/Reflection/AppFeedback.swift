@@ -7,7 +7,7 @@ struct AppMessage: Equatable {
     var text: String
 }
 
-/// 토스트·덱·안내 줄의 접근성 알림은 이 주입 지점 하나를 거친다.
+/// 토스트·덱·시트 안 안내 줄의 접근성 알림은 이 주입 지점 하나를 거친다.
 @MainActor
 struct AppFeedback {
     var announce: (AppMessage) -> Void = { message in
@@ -18,6 +18,7 @@ struct AppFeedback {
     var isVoiceOverEnabled: () -> Bool = { NSWorkspace.shared.isVoiceOverEnabled }
 }
 
+/// 시트 안 안내 줄(USB 내보내기). 주 창 목록 위 줄은 창 알림으로 옮겼다(#307)
 struct AppMessageView: View {
     let message: AppMessage
     let onClose: () -> Void

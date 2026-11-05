@@ -55,7 +55,7 @@ public enum DJCError: Error, LocalizedError, CustomStringConvertible {
         case .writeAheadLogPresent:
             String(ui: "rekordbox를 한 번 켰다가 완전히 종료한 뒤 스냅샷을 다시 뜨세요.")
         case .snapshotNotFound:
-            String(ui: "‘스냅샷 뜨기’를 눌러 라이브러리를 불러오세요.")
+            String(ui: "‘rekordbox와 동기화’로 라이브러리를 읽어 오세요.")
         case .invalidAnalysisFile:
             String(ui: "rekordbox에서 트랙 분석을 다시 한 뒤 시도하세요.")
         case .invalidCueJSON:
@@ -65,7 +65,7 @@ public enum DJCError: Error, LocalizedError, CustomStringConvertible {
         case .writeVerificationFailed, .writeRolledBack:
             String(ui: "라이브러리를 다시 불러오고 초안을 확인한 뒤 다시 시도하세요.")
         case .restoreFailed:
-            String(ui: "rekordbox를 켜지 말고 ‘rekordbox 쓰기 대기’의 ‘쓰기 전으로 복원…’으로 백업을 복원하세요.")
+            String(ui: "rekordbox를 켜지 말고 메뉴 막대 rekordbox › 쓰기 전으로 복원…으로 백업을 복원하세요.")
         case .pointRestoreFailed:
             String(ui: "rekordbox를 켜지 말고 rekordbox › 시점 스냅샷…에서 ‘복원 직전’ 스냅샷으로 복원하세요.")
         case .editRefused:

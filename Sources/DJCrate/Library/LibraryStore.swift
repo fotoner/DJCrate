@@ -29,7 +29,7 @@ final class LibraryStore {
     var linkedXMLFile: URL { useCases.linkedXML }
     /// 이번 실행에서 저장을 맡긴 태그 초안 곡(저장 실패를 이 저장소 것만 본다, `LibraryStore+DraftIndex`)
     @ObservationIgnored private(set) var tagSaveAttempts: Set<String> = []
-    var mergeDrafts: [DuplicateMergeDraft] = []
+    var mergeDrafts: [DuplicateMergeDraft] = [] { didSet { pendingInputsChanged() } }
     var backupDirectory: URL { location.backupDirectory }
     /// 쓰기·복원 대상 rekordbox DB와 분석 파일 뿌리(사본이면 그 share). 앱은 라이브 라이브러리, 시험은 합성 사본을 준다.
     /// 복원은 늘 이 DB로 되돌린다(#182: 대상 없이 되돌려 시험이 실제 라이브러리를 덮었다).
@@ -38,12 +38,16 @@ final class LibraryStore {
     /// 분석 파일·그림을 찾을 share 뿌리(쓰기 대상과 같은 곳). 정하지 않았으면 위치 값의 rekordbox 폴더
     var shareRoot: URL { rekordboxShareRoot ?? location.liveShare }
     private(set) var hasWriteBackup = false
+    /// 읽은 사본으로 미리 본 rekordbox 쓰기 막힘(#327, 판정은 읽기 흐름). nil이면 막힘이 없거나 아직 모른다.
+    /// 상태 줄 쓰기 상태만 읽는다. 표시만 바꾼다: 쓸지 말지는 이 값을 보지 않고 쓰기 판단·관문이 정한다
+    var writeBlock: LibraryWriteBlock?
 
     func refreshWriteBackups() {
         hasWriteBackup = useCases.hasWriteBackup(in: backupDirectory)
     }
 
-    let resultHistory: WriteResultHistory
+    /// 창 알림과 쓰기 결과의 기록(활동 기록 창, #296)
+    let activityLog: ActivityLog
     @ObservationIgnored var feedback: AppFeedback
     @ObservationIgnored var writeTask: Task<Void, Never>?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
@@ -88,7 +92,7 @@ final class LibraryStore {
     /// 실제 구현(초안 파일·스냅샷·위치)은 조립 지점(`AppComposition.live`)이 고른다. 시험은 `LibraryStore.test(…)`로 만든다.
     /// rekordbox 쓰기는 이 저장소가 하지 않는다: 조립 지점이 만든 반영 세션(`ReflectionSession`)이 이 저장소의 상태를 읽고 결과를 알린다.
     /// - Parameter launch: 개발용 실행 인자(`--select`·`--add-files`)
-    init(settings: SettingsStore, location: LibraryLocation, useCases: LibraryUseCases, resultHistory: WriteResultHistory,
+    init(settings: SettingsStore, location: LibraryLocation, useCases: LibraryUseCases, activityLog: ActivityLog,
          feedback: AppFeedback = AppFeedback(), launch: LibraryLaunchOptions = LibraryLaunchOptions()) {
         self.settings = settings
         self.commentPreset = settings.commentPreset
@@ -98,10 +102,12 @@ final class LibraryStore {
         self.useCases = useCases
         previewImages = PreviewWaveformCache(previews: useCases.previews)
         thumbnails = Thumbnails(artwork: useCases.artwork)
-        self.resultHistory = resultHistory
+        self.activityLog = activityLog
         self.feedback = feedback
         self.launch = launch
         readFlow = LibraryReadFlow(loader: useCases.load, location: location)
+        // 자가 테스트·측정·캡처 실행은 읽을 사본이 없어도 자동으로 읽지 않는다(그 상태에 기대는 캡처 장면이 있다)
+        readFlow.readsOnFirstRun = launch.readsOnFirstRun
         music = MusicLibraryStore(readFlow: readFlow)
         readFlow.screen = readScreen
         music.host = musicHost
@@ -120,7 +126,7 @@ final class LibraryStore {
     private(set) var duplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var displayDuplicateGroups: [LibraryRecords.DuplicateGroup] = []
     private(set) var filterCounts: [LibraryFilter: Int] = [:]
-    /// 마지막 파일 확인 결과(#126). 연결되지 않은 외장 디스크는 목록 아래 막대가 알린다.
+    /// 마지막 파일 확인 결과(#126). 연결되지 않은 외장 디스크는 머리 줄 상태 표시가 알린다.
     private(set) var missingFiles = MissingFiles()
     private(set) var isCheckingFiles = false
     /// 마지막으로 시작한 파일 확인. 시험은 이것을 기다린다
@@ -189,10 +195,8 @@ final class LibraryStore {
     /// 재생 목록 상태와 초안 편집(기능 조각, `PlaylistEditStore`). 조각이 핵심(곡·사이드바·설정·되돌리기)을 붙들어 처음 쓸 때 만든다
     /// (init 끝에서 최근 목록·연결 기록을 읽을 때). 관찰하지 않는다: 화면은 조각의 값을 읽는다
     @ObservationIgnored private(set) lazy var playlists = PlaylistEditStore(library: self)
-    /// 읽지 못해 옮겨 보관한 초안 파일 안내(#174). 닫을 때까지 남는다.
-    var draftFileMessage: AppMessage? {
-        didSet { if let draftFileMessage { feedback.announce(draftFileMessage) } }
-    }
+    /// 읽지 못해 옮겨 보관한 초안 파일 안내(#174)의 창 알림. 떠 있는 동안 더 옮기면 그 알림의 수를 더한다
+    @ObservationIgnored var damagedDraftToast: AppToast.ID?
     @ObservationIgnored var damagedDraftCount = 0
     @ObservationIgnored var damagedStagedList = false
     /// 스냅샷 곡·추가한 곡 어디에도 이어지지 않는 초안이 있는 곡(#175). 쓰기 대기 목록에서 보여 주고 고른 것만 버린다.
@@ -213,20 +217,24 @@ final class LibraryStore {
     var onLoadToDeck: ((TrackRow?) -> Void)?
     /// 덱의 곡을 다른 곡으로 바꿔도 되는지(Flip 기록을 버리기 전에 묻는다). false면 올리지 않는다.
     @ObservationIgnored var confirmDeckReplacement: ((TrackRow) -> Bool)?
+    /// 덱이 이 곡을 받지 않는지(CDJ에 LINK로 실려 있는 곡, #278). 받지 않으면 덱이 까닭을 알리고 덱 곡 ID도 바꾸지 않는다
+    @ObservationIgnored var deckRefuses: ((TrackRow) -> Bool)?
+    /// rekordbox에 쓰는 동안 CDJ가 덱의 곡을 실었다. 쓰기가 끝나면 덱에서 내린다(쓰는 동안은 덱을 바꾸지 않는다, #278)
+    @ObservationIgnored var unloadsDeckAfterWrite = false
     /// 스냅샷을 새로 읽었을 때(USB 갱신 상태의 로컬 짝짓기 키를 다시 읽는다)
     @ObservationIgnored var onSnapshotLoaded: ((URL) -> Void)?
     var allowsLibrarySync: (() -> Bool)?
     private(set) var isSynchronizingLibrary = false
-    var canSynchronizeLibrary: Bool { !isLoading && !isSynchronizingLibrary && !isWritingRekordbox && (allowsLibrarySync?() ?? true) }
+    var canSynchronizeLibrary: Bool { !isLoading && !isSynchronizingLibrary && !libraryBusy && (allowsLibrarySync?() ?? true) }
     /// 덱에 올린 곡(ContentID, 추가한 곡은 djc- ID). 목록의 덱 표시와 새로 읽을 때 덱을 맞추는 데 쓴다.
     private(set) var deckTrackID: String?
 
     /// 초안 상태(메모리). 표의 ✎ 표시는 디스크를 다시 읽지 않고 이것으로 계산한다.
-    var tagDrafts: [String: TagDraft] = [:]
+    var tagDrafts: [String: TagDraft] = [:] { didSet { pendingInputsChanged() } }
     /// 태그 편집 조각(인스펙터·태그 시트·목록 칸·덱 제안 줄). 위 태그 초안을 바꾼다. 조각이 이 핵심을 붙들어야 해서 처음 쓸 때 만든다(관찰하지 않는다).
     @ObservationIgnored private(set) lazy var tags = TagEditStore(library: self)
     /// 그림 초안(곡 UUID별, 그림 바이트 없이). 그림 사본은 `ArtworkDraftStore`에 있다(#66).
-    var artworkDrafts: [String: ArtworkDraft] = [:]
+    var artworkDrafts: [String: ArtworkDraft] = [:] { didSet { pendingInputsChanged() } }
     /// 곡의 살아 있는 그림 파일 행(ContentID별). 그림 초안의 base로 쓴다(스냅샷에서 읽음).
     @ObservationIgnored var artworkFileRows: [String: [ArtworkFileRow]] = [:]
     /// rekordbox 곡 색 목록(이름·순서, #65). 라이브러리에서 읽지 못하면 rekordbox 기본 여덟 색이다.
@@ -244,13 +252,18 @@ final class LibraryStore {
     var recoverySheet: RecoverySheetModel?
     /// 복구가 rekordbox 사본을 읽은 횟수(시험이 시트 하나가 줄마다 사본을 뜨지 않는지 센다)
     @ObservationIgnored var recoverySnapshotReads = 0
-    private(set) var cueDraftUUIDs: Set<String> = []
-    private(set) var gridDraftUUIDs: Set<String> = []
-    private(set) var gainDraftUUIDs: Set<String> = []
+    /// CDJ 큐 편집(#280)을 받은 차례대로 하나씩 얹는 줄의 끝
+    @ObservationIgnored var linkCueTail: Task<Void, Never>?
+    /// LINK로 내어 주는 큐를 바꿀 곡(rekordbox 곡 ID)과 지금 큐(#281). LINK가 연결된 동안만 받는다(`isLinkServing`)
+    @ObservationIgnored var onLinkCuesChanged: ((_ contentID: String, _ cues: [Cue]) -> Void)?
+    @ObservationIgnored var isLinkServing: () -> Bool = { false }
+    private(set) var cueDraftUUIDs: Set<String> = [] { didSet { pendingInputsChanged() } }
+    private(set) var gridDraftUUIDs: Set<String> = [] { didSet { pendingInputsChanged() } }
+    private(set) var gainDraftUUIDs: Set<String> = [] { didSet { pendingInputsChanged() } }
     private(set) var editedUUIDs: Set<String> = []
 
     var rowsByID: [TrackRow.ID: TrackRow] = [:]
-    var rowsByUUID: [String: TrackRow] = [:]
+    var rowsByUUID: [String: TrackRow] = [:] { didSet { pendingInputsChanged() } }
 
     /// 추가한 곡·그리드 일괄 추정·XML 내보내기(기능 조각, `TrackStagingStore`). 조각이 핵심(곡·사이드바·선택·초안 표시)을 붙들어 처음 쓸 때 만든다.
     /// 관찰하지 않는다: 화면은 조각의 값을 읽는다
@@ -259,37 +272,116 @@ final class LibraryStore {
     @ObservationIgnored var deckGridDraftState: (() -> (uuid: String, hasChanges: Bool)?)?
     /// 가져온 그리드 초안을 덱이 받아 저장한다. 받지 못하면(덱에서 고쳤거나 다른 곡) false.
     @ObservationIgnored var adoptImportedGridDraft: ((GridDraft) -> Bool)?
-    /// rekordbox 반영 내보내기·검증 결과 안내
-    var reflectionMessage: AppMessage? {
-        didSet { if let reflectionMessage { feedback.announce(reflectionMessage) } }
-    }
     /// 마지막으로 내보낸 반영 묶음(가져온 뒤 검증 대기). 앱을 다시 켜면 유스케이스가 남긴 묶음을 읽는다(`ExportXML.verifyReflection`)
     var reflectionBatch: ReflectionXMLBatch?
-    /// 이번 실행에서 rekordbox에 쓴 마지막 백업(토스트·툴바의 되돌리기)
+    /// 이번 실행에서 rekordbox에 쓴 마지막 백업
     var lastWriteBackup: URL?
-    /// detail 아래쪽에 뜨는 알림(rekordbox 반영 완료 등)
-    var toast: AppToast? {
+    /// detail 아래쪽에 뜨는 알림(rekordbox 반영 완료 등). 띄우고 닫기는 `showToast`·`dismissToast`로만 한다(띄운 알림은 모두 활동 기록에 남는다, #296)
+    private(set) var toast: AppToast? {
         didSet {
-            if let toast { feedback.announce(AppMessage(kind: toast.kind, text: [toast.title, toast.detail].compactMap { $0 }.joined(separator: "\n"))) }
+            if let toast { feedback.announce(AppMessage(kind: toast.kind, text: toast.text)) }
         }
+    }
+
+    /// 창 알림을 띄우고 활동 기록에 남긴다.
+    func showToast(_ toast: AppToast) {
+        present(toast, entry: activityLog.record(toast))
+    }
+
+    /// 쓰기 결과 알림을 띄우고 결과(전체 내용·백업 위치)를 활동 기록에 남긴다.
+    func showToast(_ toast: AppToast, for result: WriteResult) {
+        present(toast, entry: activityLog.record(result))
+    }
+
+    /// 알림을 닫는다. `id`를 주면 그 알림이 아직 떠 있을 때만 닫는다(그 사이 뜬 새 알림은 두고).
+    func dismissToast(_ id: AppToast.ID? = nil) {
+        guard let toast, id == nil || toast.id == id else { return }
+        self.toast = nil
+    }
+
+    /// 사용자가 누른 일의 결과가 아닌 안내(읽기·저장 실패, 손상 파일, 검증 결과 등)를 띄운다. 목록 위 줄이던 안내다(#307).
+    /// 떠 있는 알림이 경고·실패이거나 단추가 있으면 덮지 않고 활동 기록에만 남긴다(상태 줄의 읽지 않은 수에 든다, #298).
+    /// `updating`이 아직 떠 있는 알림이면 그 알림과 기록 항목을 새 내용으로 고친다(같은 안내의 수를 더할 때).
+    /// - Returns: 띄운 알림. 띄우지 못했으면 nil
+    @discardableResult
+    func notify(_ toast: AppToast, updating previous: AppToast.ID? = nil) -> AppToast.ID? {
+        if let previous, let current = self.toast, current.id == previous {
+            present(toast, entry: activityLog.record(toast, replacing: current.activityID))
+            return toast.id
+        }
+        guard canReplaceToast else {
+            activityLog.record(toast, shown: false)
+            // 화면에 띄우지 못해도 VoiceOver로는 알린다
+            feedback.announce(AppMessage(kind: toast.kind, text: toast.text))
+            return nil
+        }
+        showToast(toast)
+        return toast.id
+    }
+
+    /// 읽을 때마다 다시 구하는 상태 안내의 출처
+    enum StateNotice: Hashable { case importCheck, reflectionCheck }
+
+    /// 읽을 때마다 다시 구하는 상태 안내(가져온 곡 확인·XML 반영 확인)는 내용이 바뀔 때만 알린다.
+    /// 바뀌지 않은 상태가 읽을 때마다 새 알림과 읽지 않은 경고로 쌓이지 않게 한다(#307). `toast`가 nil이면 상태가 풀렸다
+    func notifyState(_ source: StateNotice, _ toast: AppToast?) {
+        guard let toast else { stateNotices[source] = nil; return }
+        guard stateNotices[source] != toast.text else { return }
+        stateNotices[source] = toast.text
+        notify(toast)
+    }
+
+    /// 지금 알림을 덮어도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만
+    private var canReplaceToast: Bool {
+        guard let toast else { return true }
+        return toast.kind == .success && toast.undoBackup == nil && toast.action == nil
+    }
+
+    /// 기록을 보관하지 못했거나 지난 기록을 읽지 못했으면 알림에도 덧붙인다(앱을 닫기 전에 내용을 복사하게).
+    private func present(_ toast: AppToast, entry: ActivityEntry.ID) {
+        var toast = toast
+        toast.activityID = entry
+        if let error = activityLog.toastNote() {
+            if toast.kind == .success { toast.kind = .warning }
+            toast.detail = [toast.detail, error].compactMap { $0 }.joined(separator: "\n")
+        }
+        self.toast = toast
     }
     /// rekordbox 쓰기 단계 안내(있으면 창 전체를 덮어 조작을 막는다. 확인 창이 떠 있는 동안은 nil)
     var writeStage: WriteStage?
-    /// rekordbox에 쓰는 중(미리 보기 포함)
     /// rekordbox 쓰기를 시작한 횟수(자동 시점 스냅샷이 뜨는 동안 쓰기가 끼어들었는지 본다, #228)
     @ObservationIgnored private(set) var rekordboxWriteCount = 0
+    /// rekordbox에 쓰거나 되돌리는 중(미리 보기 포함). 아래 세 값의 원천이다. 읽는 쪽은 이 값 대신 용도에 맞는 값을 읽는다(#301).
+    /// 이 값을 직접 읽는 곳은 시작·끝 전이(`didSet`)와 용도별 값 셋뿐이다.
     var isWritingRekordbox = false {
         didSet {
+            // 시작 횟수와 끝난 뒤 백업 확인은 libraryBusy, ⌘Z 기록 비우기와 덱 내리기는 editsFrozen이 하는 일이다.
             if isWritingRekordbox, !oldValue { rekordboxWriteCount += 1 }
             if isWritingRekordbox { undoManager?.removeAllActions(withTarget: self) }
             // 쓰기·되돌리기 실패 때도 백업이 남거나 정리될 수 있다.
             if oldValue && !isWritingRekordbox { refreshWriteBackups() }
+            if oldValue && !isWritingRekordbox, unloadsDeckAfterWrite { unloadDeckForCDJ() }
         }
     }
+    /// 라이브러리 내부 배타: 읽기·복원·USB·iTunes·자동 시점 스냅샷·재생 목록 복구·곡 추가 목록이 쓰기와 겹치지 않게 막는다. 초안 파일 잠금(flock)도 이 동안 든다.
+    /// 사이드바·상세를 통째로 막는 줄도 이 값이다(안쪽에 가드가 없는 조작을 막아 준다). 판단이 어려운 자리는 이 값을 읽는다(나중에 편집 잠금만 풀 때 잘못 풀리지 않게).
+    var libraryBusy: Bool { isWritingRekordbox }
+    /// 편집 잠금: 덱 큐·그리드·게인, 태그·그림·재생 목록 편집, 키 입력, ⌘Z 기록, 덱 재생·곡 올리기를 막는다. 풀어 갈 값이다.
+    var editsFrozen: Bool { isWritingRekordbox }
+    /// 종료 판단: 앱 끄기와 업데이트 설치를 미룬다(`writeActivity`의 rekordbox 단계, #300).
+    var quitBlocked: Bool { isWritingRekordbox }
     /// 쓰는 동안 든 재생 목록 초안 파일 잠금을 푸는 함수(#260)
     @ObservationIgnored var playlistDraftUnlock: (@Sendable () -> Void)?
     /// 쓰는 동안 덱 큐 편집을 잠근다
     var onWriteLock: ((Bool) -> Void)?
+    /// 쓰기·복원 확인 창이 떠 있다(잠금은 걸려 있고 아직 쓰지 않았다). 종료 판정이 단계를 가른다(#300)
+    var isAwaitingConfirmation = false
+    /// 쓰기가 실패해 복원까지 실패한 경고창이 떠 있다. 이 창을 확인하기 전에는 앱을 끄지 않는다(#300)
+    var isAwaitingAcknowledgement = false
+    /// Mac을 끄는 중(로그아웃·재시작·전원 끔). 새 rekordbox 쓰기를 시작하지 않는다(#300)
+    var isPoweringOff = false
+    /// 종료를 기다리는 중(「rekordbox에 쓰는 중… 끝나면 종료합니다」)
+    let quitWait = QuitWaitModel()
     /// rekordbox에 쓰거나 되돌린 곡(UUID). 덱이 그 곡이면 다시 읽는다. 새 스냅샷을 읽은 뒤에만 부른다(#175).
     var onRekordboxWritten: ((Set<String>) -> Void)?
     /// 성공한 라이브러리 읽기 수(쓰기 뒤 다시 읽기가 실제로 끝났는지 본다)
@@ -298,6 +390,8 @@ final class LibraryStore {
     @ObservationIgnored var onLibraryLoaded: ((Set<String>) -> Void)?
     /// rekordbox에 쓰거나 되돌렸지만 아직 새 스냅샷으로 다시 읽지 못한 곡. 다음 읽기가 성공하면 덱에 알린다.
     @ObservationIgnored var writtenAwaitingReload: Set<String> = []
+    /// 종료를 기다리느라 쓴 뒤 다시 읽기를 미뤘다(#305). 종료를 취소하면 한 번 이어서 읽는다. 읽은 뒤 알릴 곡·쌓을 편집은 위 값들이 들고 있다.
+    @ObservationIgnored var reloadPostponedForQuit = false
     /// 마지막 쓰기·복원은 끝났지만 뒤따른 일(초안 정리·다시 읽기·복원 충돌)에 남은 경고. 쓰기 결과와 나눠 알린다.
     @ObservationIgnored var writeFollowUp: [String] = []
 
@@ -305,14 +399,43 @@ final class LibraryStore {
     var draftCueCounts: [String: CueCounts] = [:]
     var draftPreviewCues: [String: [PreviewCueMark]] = [:]
 
-    /// 큐·그리드·게인·태그 초안이 있는 곡(태그도 반영하면 rekordbox 곡 정보에 쓴다).
-    /// 부를 때마다 합집합을 새로 만든다. 곡마다 거를 때는 한 번 받아 두고 쓴다(#129: 초안 600곡이면 곡을 고를 때마다 수백 ms였다).
-    var pendingUUIDs: Set<String> { cueDraftUUIDs.union(gridDraftUUIDs).union(gainDraftUUIDs).union(tagDrafts.keys)
-        .union(artworkDrafts.keys).union(mergeDrafts.flatMap { $0.members.map(\.trackUUID) }) }
+    /// 큐·그리드·게인·태그·앨범아트·합치기 초안이 있는 곡(태그도 반영하면 rekordbox 곡 정보에 쓴다).
+    /// 입력이 바뀐 뒤 처음 읽을 때 한 번 만들고 그 뒤는 캐시를 돌려준다(#129: 초안 600곡이면 읽을 때마다 수백 ms였다, #324).
+    var pendingUUIDs: Set<String> { pending.uuids }
     /// 반영 대기 중인 rekordbox 곡 수(추가한 곡 제외)
-    var pendingLibraryCount: Int { pendingUUIDs.filter { rowsByUUID[$0].map { !$0.isStaged } ?? false }.count }
+    var pendingLibraryCount: Int { pending.libraryCount }
     /// 사이드바 'rekordbox 쓰기 대기' 배지: 쓸 곡 수 + 쓰기 대기 재생 기록 수(#43). 재생 목록 초안은 목록 구역 머리에 따로 알린다
+    /// 상태 줄 칩과 Dock 배지도 이 값을 읽는다(화면마다 다른 수가 나오지 않게 한 곳에서 센다, #324).
     var pendingWriteCount: Int { pendingLibraryCount + history.pendingHistories.count }
+
+    /// 쓰기 대기 곡 집합과 추가한 곡을 뺀 곡 수. 입력(초안 여섯 종류와 곡 목록)이 바뀌면 낡은 것으로 보고 다음 읽기에서 다시 만든다.
+    private struct PendingSnapshot {
+        var uuids: Set<String>
+        var libraryCount: Int
+    }
+    @ObservationIgnored private var pendingCache: PendingSnapshot?
+    /// 입력이 바뀔 때마다 오른다. 읽는 쪽은 이 값을 읽어 캐시를 읽을 때도 입력 변화를 지켜본다
+    private var pendingRevision = 0
+    /// 합집합을 만든 횟수(시험이 읽기마다 새로 만들지 않는지 센다)
+    @ObservationIgnored private(set) var pendingRebuildCount = 0
+
+    /// 입력이 바뀔 때마다 부른다. 여기서는 낡았다고 표시만 한다(바뀔 때마다 합집합을 만들지 않는다)
+    private func pendingInputsChanged() {
+        pendingCache = nil
+        pendingRevision &+= 1
+    }
+
+    private var pending: PendingSnapshot {
+        _ = pendingRevision
+        if let pendingCache { return pendingCache }
+        pendingRebuildCount += 1
+        let uuids = cueDraftUUIDs.union(gridDraftUUIDs).union(gainDraftUUIDs).union(tagDrafts.keys)
+            .union(artworkDrafts.keys).union(mergeDrafts.flatMap { $0.members.map(\.trackUUID) })
+        let snapshot = PendingSnapshot(uuids: uuids, libraryCount: uuids.filter { rowsByUUID[$0].map { !$0.isStaged } ?? false }.count)
+        pendingCache = snapshot
+        return snapshot
+    }
+
     /// 백그라운드 추정이 초안을 저장했을 때(덱이 같은 곡을 보고 있으면 다시 읽게)
     var onGridDraftSaved: ((String) -> Void)?
     var onCueDraftsReloaded: (([String: CueDraft]) -> Void)?
@@ -336,14 +459,14 @@ final class LibraryStore {
     @ObservationIgnored private(set) var usbSnapshotStamp: UsbSyncSnapshotProvenance?
     @ObservationIgnored private(set) var usbSnapshotEpoch: Int?
 
-    private(set) var lastError: String? {
-        didSet { lastErrorDismissed = false }
-    }
-    /// 목록 위 오류 줄을 닫았는지. 오류 상태(`lastError`)는 그대로 두고 줄만 숨긴다(#230). 새로 알리면 다시 보인다.
-    private var lastErrorDismissed = false
-    /// 목록 위에 보일 오류 줄
-    var visibleLastError: String? { lastErrorDismissed ? nil : lastError }
-    func dismissLastError() { lastErrorDismissed = true }
+    /// 마지막 라이브러리 오류. 읽기·쓰기 흐름이 이 상태를 본다. 화면에는 알릴 때 창 알림으로 띄운다(목록 위 오류 줄은 없앴다, #307)
+    private(set) var lastError: String?
+    /// 오류 상태를 알린 창 알림. 오류가 풀리면 아직 떠 있는 그 알림을 거둔다
+    @ObservationIgnored private var lastErrorToast: AppToast.ID?
+    /// 상태 안내마다 마지막으로 알린 내용(`notifyState`)
+    @ObservationIgnored private var stateNotices: [StateNotice: String] = [:]
+    /// 반영 세션이 뒤따른 경고(`.followUp`)를 알렸다. 세션은 바로 뒤 같은 경고를 오류 상태로도 남긴다(`.libraryError`, 쓰기 결과 알림이 이미 담는다)
+    @ObservationIgnored var followUpAwaitingError = false
     private(set) var lastReadFailure: LibraryReadFailure?
     var unreadableDraftKinds: [String: Set<WritePart>] = [:]
 
@@ -395,25 +518,58 @@ final class LibraryStore {
         completedLoadCount += 1
     }
 
-    /// 읽기 실패: 이미 라이브러리가 있으면 그대로 두고 오류만, 없으면 실패 화면으로 알린다.
-    /// 목록 위 경고는 초안 저장 오류와 같은 자리이므로 무엇이 실패했는지 문구 앞에 적는다.
+    /// 읽기 실패: 이미 라이브러리가 있으면 그대로 두고 알림으로, 없으면 실패 화면으로 알린다.
+    /// 알림은 초안 저장 오류와 같은 자리이므로 무엇이 실패했는지 문구 앞에 적는다.
     func reportReadFailure(_ failure: LibraryReadFailure) {
         lastReadFailure = failure
         if failure.keepsPreviousLibrary {
             phase = .loaded
-            lastError = failure.message
+            reportLibraryError(failure.message)
         } else {
             phase = .failed(failure.message)
         }
     }
 
-    func reportLibraryError(_ message: String) { lastError = message }
-    func clearLibraryError() { lastError = nil }
+    /// 원인 분류 없이 실패 화면으로 간다(사본을 뜨지 않은 이유 등). 이전 실패의 원인을 끌고 오지 않는다.
+    func showUnclassifiedFailure(_ message: String) {
+        lastReadFailure = nil
+        phase = .failed(message)
+    }
+
+    /// 라이브러리 오류를 오류 상태에 두고 창 알림으로 알린다(활동 기록에 남는다). 초안을 잃을 수 있는 저장 실패는 `.failure`로 닫을 때까지 남긴다.
+    func reportLibraryError(_ message: String, kind: AppToast.Kind = .warning) {
+        let showing = lastErrorToast != nil && toast?.id == lastErrorToast
+        // 같은 오류의 알림이 아직 떠 있으면 다시 띄우지 않는다. 읽을 때마다 같은 실패가 쌓이고 떠 있는 실패 알림을 놓치지 않게(#307).
+        // 닫았거나 띄우지 못했으면 다시 알린다(다시 일어난 오류다, #230)
+        if showing, lastError == message { return }
+        lastError = message
+        // 앞 오류의 알림이 아직 떠 있으면 새 오류로 바꾼다(닫을 때까지 남는 실패가 새 오류를 막지 않게)
+        if showing, let lastErrorToast { dismissToast(lastErrorToast) }
+        lastErrorToast = notify(.notice(text: message, kind: kind))
+    }
+    /// 다른 알림이 이미 담은 오류: 상태만 남긴다
+    func setLibraryErrorQuietly(_ message: String) { lastError = message }
+    func clearLibraryError() {
+        lastError = nil
+        // 풀린 오류를 계속 보이지 않는다. 닫을 때까지 남는 실패는 그동안 다른 안내도 막는다
+        if let lastErrorToast { dismissToast(lastErrorToast) }
+        lastErrorToast = nil
+    }
 
     func whileSynchronizingLibrary(_ body: () async -> Void) async {
         isSynchronizingLibrary = true
         defer { isSynchronizingLibrary = false }
         await body()
+    }
+
+    /// CDJ가 덱의 곡을 실었다: 덱 곡 ID와 함께 내린다. rekordbox에 쓰는 동안이면 끝난 뒤에 내린다(#278)
+    func unloadDeckForCDJ() {
+        guard !editsFrozen else {
+            unloadsDeckAfterWrite = true
+            return
+        }
+        unloadsDeckAfterWrite = false
+        setDeckTrack(nil)
     }
 
     /// 덱의 곡을 정하고 덱에 알린다(nil이면 내리기)
@@ -469,7 +625,7 @@ final class LibraryStore {
         rowsByID[row.track.id] = row
     }
 
-    /// 음원 파일이 있는지 뒤에서 확인해 행·'파일 없음' 개수에 반영한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때·막대의 다시 확인 단추에서 부른다.
+    /// 음원 파일이 있는지 뒤에서 확인해 행·'파일 없음' 개수에 반영한다(#126). 읽은 뒤·디스크를 연결하거나 뺄 때·머리 줄 `…` 메뉴의 다시 확인 항목에서 부른다.
     /// 확인 결과는 곡 행·배지·필터 수를 바꾸므로 화면 모델이 아니라 핵심이 한다. 큰 라이브러리의 확인(곡마다 파일 시스템 조회)이 메인 스레드를 막지 않게 한다.
     func checkMissingFiles() {
         missingFileTask?.cancel()

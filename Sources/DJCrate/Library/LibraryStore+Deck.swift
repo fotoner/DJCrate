@@ -6,7 +6,7 @@ extension LibraryStore {
     /// 이 곡을 덱에 올린다(더블클릭·⌘→·오른쪽 클릭·끌어다 놓기). 재생 기록의 반복 행도 컬렉션 곡으로 올린다.
     /// USB 곡은 짝인 로컬 곡을 올린다(#255). rekordbox에 쓰는 동안은 덱을 바꾸지 않는다.
     func loadToDeck(_ row: TrackRow?) {
-        guard writeLockPolicy.allowsLibraryInteraction, let row else { return }
+        guard !editsFrozen, let row else { return }
         let target: TrackRow
         if row.isUsb {
             guard let local = localDeckRow(localTrackID(ofUsb: row)) else { return }
@@ -16,17 +16,19 @@ extension LibraryStore {
         }
         // 다른 곡으로 바꾸기 전에 덱이 버릴 것(Flip 기록)을 묻는다. 취소하면 덱도 덱 곡 ID도 그대로다.
         if target.track.id != deckTrackID, confirmDeckReplacement?(target) == false { return }
+        // CDJ에 실려 있는 곡은 덱 곡 ID도 바꾸지 않는다(다시 읽을 때 `refreshDeckTrack`이 그 곡을 올리지 않게, #278)
+        if target.track.id != deckTrackID, deckRefuses?(target) == true { return }
         setDeckTrack(target)
     }
 
     /// 짝 없는 USB 곡을 골라도 막지 않는다: 누르면 이유를 알린다
-    var canLoadSelectionToDeck: Bool { writeLockPolicy.allowsLibraryInteraction && primaryRow != nil }
+    var canLoadSelectionToDeck: Bool { !editsFrozen && primaryRow != nil }
 
-    /// 고른 곡 중 표 순서로 첫 곡을 덱에 올린다(⌘→·덱 메뉴).
+    /// 고른 곡 중 표 순서로 첫 곡을 덱에 올린다(⌘→).
     func loadSelectionToDeck() {
-        guard writeLockPolicy.allowsLibraryInteraction else { return }
+        guard !editsFrozen else { return }
         guard let row = primaryRow else {
-            staging.stagingMessage = AppMessage(kind: .warning, text: String(ui: "고른 곡을 찾을 수 없으니 목록에서 곡을 다시 선택한 뒤 덱에 불러오세요"))
+            showToast(.notice(text: String(ui: "고른 곡을 찾을 수 없으니 목록에서 곡을 다시 선택한 뒤 덱에 불러오세요"), kind: .warning))
             return
         }
         loadToDeck(row)
@@ -39,7 +41,7 @@ extension LibraryStore {
 
     /// 덱 위에 놓은 USB 곡(#240 끌기 형식) 중 첫 곡의 짝 로컬 곡을 올린다(#255).
     func loadDroppedUsbTracks(_ dragged: [UsbTrackDrag]) {
-        guard writeLockPolicy.allowsLibraryInteraction, let first = dragged.first else { return }
+        guard !editsFrozen, let first = dragged.first else { return }
         loadToDeck(localDeckRow(usb?.localMatches[first.volumeKey]?[first.contentID]))
     }
 
@@ -58,11 +60,11 @@ extension LibraryStore {
     /// 짝 로컬 ContentID → 덱에 올릴 줄. 짝이 없거나 목록에 없으면 덱을 바꾸지 않고 할 일을 알린다
     private func localDeckRow(_ id: String?) -> TrackRow? {
         guard let id else {
-            staging.stagingMessage = AppMessage(kind: .warning, text: String(ui: "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요"))
+            showToast(.notice(text: String(ui: "로컬 rekordbox에 없는 USB 곡이라 덱에 올릴 수 없으니 rekordbox 컬렉션에 먼저 더하세요"), kind: .warning))
             return nil
         }
         guard let row = rowsByID[id] else {
-            staging.stagingMessage = AppMessage(kind: .warning, text: String(ui: "USB 곡과 짝인 로컬 곡을 찾을 수 없으니 라이브러리를 다시 읽은 뒤 덱에 불러오세요"))
+            showToast(.notice(text: String(ui: "USB 곡과 짝인 로컬 곡을 찾을 수 없으니 라이브러리를 다시 읽은 뒤 덱에 불러오세요"), kind: .warning))
             return nil
         }
         return row

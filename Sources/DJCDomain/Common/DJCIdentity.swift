@@ -31,4 +31,12 @@ public enum DJCIdentity {
         }
         return support
     }
+
+    /// `DJC_HOME`을 주면 그 아래 `link-audio`(자가 테스트·실험이 사용자 음악 폴더에 쓰지 않게), 아니면 `fallback`
+    public static func linkAudioDirectory(environment: [String: String], fallback: URL) -> URL {
+        if let override = environment["DJC_HOME"], !override.isEmpty {
+            return URL(filePath: override).appending(path: "link-audio")
+        }
+        return fallback
+    }
 }

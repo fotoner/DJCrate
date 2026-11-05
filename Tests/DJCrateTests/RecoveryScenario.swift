@@ -74,7 +74,7 @@ struct RecoveryScenario {
                                     PlaylistSpec(id: "P2", name: "합성 목록 둘", seq: 2, contentIDs: [c.id])])
         // 초안은 옛 rekordbox 상태를 기준으로 만들어 뒀고, 그 뒤 rekordbox에서 바뀐 것처럼 합성 사본이 다르다.
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("recovery"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: fixture.root, rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot,

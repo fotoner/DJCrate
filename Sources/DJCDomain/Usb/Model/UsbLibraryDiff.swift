@@ -145,6 +145,34 @@ public enum UsbLibraryDiff {
         return (comparer.summaries, comparer.differences)
     }
 
+    /// 편집 전후 합친 모델(`before`·`after`)에서 같은 곡·공유 표 행, 곧 편집이 건드리지 않은 행이 `format`에 다시 쓴 모델(`written`)에서
+    /// 그 형식을 읽은 원래 모델(`original`)과 달라진 곳(#238: 두 형식 값이 다른 행을 다른 형식 값으로 덮지 않았는지).
+    /// 값이 같아도 편집이 다시 쓴 곡(`forgetDeviceLibraryValues`)은 건드린 행이다.
+    /// 원래 그 형식에 없던 행이 생긴 것(`onlyRight`)은 편집이 가리키게 되어 넣은 한 형식 행이라 세지 않는다(#234)
+    public static func untouchedRowChanges(in format: UsbFormat, original: UsbLibrary, before: UsbLibrary, after: UsbLibrary,
+                                           written: UsbLibrary) -> [Difference] {
+        func untouched<Row: Hashable & Sendable>(_ rows: KeyPath<UsbLibrary, [Row]>, id: KeyPath<Row, Int>,
+                                                 _ values: KeyPath<UsbDeviceLibraryValues, [Int: UsbDifferingRow<Row>]>) -> Set<String> {
+            let old = Dictionary(before[keyPath: rows].map { ($0[keyPath: id], $0) }) { first, _ in first }
+            let oldValues = before.deviceLibraryValues[keyPath: values], newValues = after.deviceLibraryValues[keyPath: values]
+            return Set(after[keyPath: rows].filter { row in
+                let key = row[keyPath: id]
+                return old[key] == row && oldValues[key] == newValues[key]
+            }.map { String($0[keyPath: id]) })
+        }
+        let keys: [String: Set<String>] = [
+            "content": untouched(\.tracks, id: \.id, \.tracks), "artist": untouched(\.artists, id: \.id, \.artists),
+            "album": untouched(\.albums, id: \.id, \.albums), "genre": untouched(\.genres, id: \.id, \.genres),
+            "key": untouched(\.keys, id: \.id, \.keys), "label": untouched(\.labels, id: \.id, \.labels),
+            "color": untouched(\.colors, id: \.id, \.colors), "image": untouched(\.images, id: \.id, \.images),
+            "myTag": untouched(\.myTags, id: \.intID, \.myTags), "menuItem": untouched(\.menuItems, id: \.id, \.menuItems),
+            "category": untouched(\.categories, id: \.id, \.categories), "sort": untouched(\.sorts, id: \.id, \.sorts),
+        ]
+        return compare(original, written, options: Options(formats: [format])).differences.filter {
+            $0.field != onlyRight && keys[$0.table]?.contains($0.key) == true
+        }
+    }
+
     static func fileName(_ path: String) -> String {
         path.split(separator: "/").last.map(String.init) ?? path
     }

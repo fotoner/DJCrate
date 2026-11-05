@@ -5,13 +5,14 @@ import DJCTestKit
 import Foundation
 import Testing
 
-/// 목록 아래 막대 화면 모델(`ListActionBarModel`, #252): 사이드바 항목마다 보일 단추의 대상·막힘 이유와 파일 없음 확인.
+/// 머리 줄 오른쪽 구성의 화면 모델(`ListActionBarModel`, #252·#340): 사이드바 항목마다 보일 단추의 대상·막힘 이유와 파일 없음 확인.
 /// 값은 공유 핵심(`LibraryStore`)과 기능 조각(추가 목록·재생 목록·재생 기록)에서 읽는다. DB는 열지 않는다.
+/// 단추 이름·메뉴 항목·상태 표시의 값은 `ListHeaderActionsTests`가 본다.
 @MainActor
-@Suite("목록 아래 막대 화면 모델")
+@Suite("머리 줄 오른쪽 구성 화면 모델")
 struct ListActionBarModelTests {
     private func store() -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in })
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in })
     }
 
     private func staged(_ name: String, imported: StagedTrack.ImportCheck.Result? = nil) -> StagedTrack {
@@ -51,33 +52,33 @@ struct ListActionBarModelTests {
         #expect(model.stagedAddTargets.map(\.id) == [b.id])
     }
 
-    @Test func 바로_넣기는_대상이_없거나_쓰는_중이거나_비교_창이_열려_있으면_막고_이유를_알린다() {
+    @Test func 바로_넣기는_대상이_없거나_쓰는_중이거나_비교_창이_열려_있으면_막고_이유만_툴팁으로_알린다() {
         let (empty, emptyModel) = stagedBar([])
-        #expect(emptyModel.isAddBlocked(emptyModel.stagedAddTargets))
+        #expect(emptyModel.actions.primary?.isEnabled == false)
         #expect(!empty.writesBlockedBySheet)
 
         let (store, model) = stagedBar([staged("a")])
-        let targets = model.stagedAddTargets
-        #expect(!model.isAddBlocked(targets))
-        #expect(model.addHelp == String(ui: "고른 곡(없으면 추가 목록 전체)을 확인한 뒤 rekordbox 컬렉션에 넣습니다."))
+        #expect(model.actions.primary?.isEnabled == true)
+        // 대상을 설명하던 툴팁("고른 곡(없으면 추가 목록 전체)을…")은 없다. 이름이 대상과 개수를 말한다
+        #expect(model.actions.primary?.help == nil)
         store.isWritingRekordbox = true
-        #expect(model.isAddBlocked(targets) && model.isWritingRekordbox)
+        #expect(model.actions.primary?.isEnabled == false && model.libraryBusy && model.editsFrozen)
         store.isWritingRekordbox = false
         openRecoverySheet(store)
-        #expect(model.isAddBlocked(targets))
-        #expect(model.addHelp == LibraryStore.writesBlockedBySheetReason)
+        #expect(model.actions.primary?.isEnabled == false)
+        #expect(model.actions.primary?.help == LibraryStore.writesBlockedBySheetReason)
     }
 
     @Test func 빼기는_추가한_곡을_골랐을_때만_XML은_목록이_있을_때만_가져온_곡_정리는_확인된_곡이_있을_때만_보인다() {
         let a = staged("a"), pending = staged("p", imported: .pending)
         let (store, model) = stagedBar([a, pending])
-        #expect(!model.canRemoveStaged && model.canExportStaged && !model.hasImportedStaged)
+        #expect(!model.canRemoveStaged && model.canExportStaged && model.importedStagedCount == 0)
         store.selection = [a.id]
         #expect(model.canRemoveStaged)
         let (_, empty) = stagedBar([])
         #expect(!empty.canExportStaged)
         let (_, imported) = stagedBar([staged("m", imported: .matched)])
-        #expect(imported.hasImportedStaged)
+        #expect(imported.importedStagedCount == 1)
     }
 
     @Test func 고른_곡_빼기와_가져온_곡_정리는_추가_목록_조각에_넘긴다() {
@@ -93,33 +94,41 @@ struct ListActionBarModelTests {
 
     // MARK: - rekordbox 쓰기 대기
 
-    @Test func 쓰기는_쓸_것이_없거나_쓰는_중이거나_비교_창이_열려_있으면_막는다() {
+    @Test func 쓰기는_쓸_것이_없거나_쓰는_중이거나_비교_창이_열려_있으면_막는다() throws {
         let store = store()
         store.sidebar = .pending
         let model = ListActionBarModel(store: store)
         #expect(model.pendingTargets.isEmpty && model.pendingPlaylistEdits == 0 && model.pendingHistories.isEmpty)
-        #expect(model.isWriteBlocked(targets: [], playlistEdits: 0, histories: 0))
-        // 곡이 없어도 재생 목록 초안·재생 기록만으로 쓸 수 있다
-        #expect(!model.isWriteBlocked(targets: [], playlistEdits: 1, histories: 0))
-        #expect(!model.isWriteBlocked(targets: [], playlistEdits: 0, histories: 1))
-        #expect(model.writeHelp == String(ui: "고른 곡(없으면 목록 전체)과 재생 목록 초안·USB 재생 기록을 rekordbox에 씁니다."))
+        #expect(model.actions.primary?.isEnabled == false)
+        #expect(model.actions.primary?.title == "전체 0곡 쓰기")
+        #expect(model.actions.primary?.help == nil)
+        // 쓸 것(재생 목록 초안)이 있을 때 쓰는 중·비교 창이 따로 막는지 본다
+        var draft = PlaylistDraft()
+        try draft.append(.create(key: "k", name: "새 목록", isFolder: false, parent: PlaylistRef(PlaylistLayout.root)), rekordbox: PlaylistLayout())
+        store.playlists.playlistDraft = draft
+        #expect(model.pendingPlaylistEdits == 1)
+        #expect(model.actions.primary?.isEnabled == true)
         store.isWritingRekordbox = true
-        #expect(model.isWriteBlocked(targets: [], playlistEdits: 1, histories: 0))
+        #expect(model.actions.primary?.isEnabled == false)
         store.isWritingRekordbox = false
+        #expect(model.actions.primary?.isEnabled == true)
         openRecoverySheet(store)
-        #expect(model.isWriteBlocked(targets: [], playlistEdits: 1, histories: 0))
-        #expect(model.writeHelp == LibraryStore.writesBlockedBySheetReason)
+        #expect(model.actions.primary?.isEnabled == false)
+        #expect(model.actions.primary?.help == LibraryStore.writesBlockedBySheetReason)
     }
 
     @Test func 쓰기_전으로_복원은_백업이_없으면_막고_백업이_없다고_알린다() {
         let store = store()
         store.sidebar = .pending
         let model = ListActionBarModel(store: store)
+        func restore() -> ListHeaderActions.Command? {
+            model.actions.menu.compactMap { if case let .command(command) = $0, command.action == .restoreLatest { command } else { nil } }.first
+        }
         #expect(!store.hasWriteBackup)
-        #expect(model.isRestoreBlocked)
-        #expect(model.restoreHelp == String(ui: "복원할 백업이 없습니다. rekordbox에 쓰면 쓰기 전 백업이 생깁니다."))
+        #expect(restore()?.isEnabled == false)
+        #expect(restore()?.help == String(ui: "복원할 백업이 없습니다. rekordbox에 쓰면 쓰기 전 백업이 생깁니다."))
         openRecoverySheet(store)
-        #expect(model.restoreHelp == LibraryStore.writesBlockedBySheetReason)
+        #expect(restore()?.help == LibraryStore.writesBlockedBySheetReason)
     }
 
     // MARK: - 재생 목록·그리드 추정·USB
@@ -157,7 +166,7 @@ struct ListActionBarModelTests {
     private func missingFileStore(_ folder: TemporaryFolder, present: TestSwitch) -> LibraryStore {
         let volume = "/Volumes/DJC 시험 디스크 \(UUID().uuidString)"
         let tracks = [track("1"), track("2", path: "\(volume)/Music/b.wav")]
-        return LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
+        return LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
                                  draftHome: folder.url.appending(path: "drafts"), ports: { ports in
                                      var source = LibrarySource.withoutDatabase
                                      source.library = { _ in RekordboxLibrary(allTracks: tracks, cues: [], playCounts: [:]) }

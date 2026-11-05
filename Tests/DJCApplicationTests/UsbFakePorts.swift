@@ -91,6 +91,12 @@ final class FakeUsbPorts: @unchecked Sendable {
         var trackReads: [Int: Result<UsbCueGridRead, UsbCueGridReadFailure>] = [:]
         var localGrid = BeatGrid(beats: [])
         var databasesUnchanged = true
+        // 시점 스냅샷
+        var pointSnapshots: [UsbPointSnapshotEntry] = []
+        var pointCreates: [UsbPointSnapshotCreateRequest] = []
+        var pointPlan = UsbPointRestoreResult()
+        var pointPlans: [UsbPointRestoreInput] = []
+        var volumeEvents: [UsbVolumeEvent] = []
     }
 
     /// 세션이 엔진 쓰기에 넘긴 것(요청에는 닫힘이 있어 고를 칸만 적는다)
@@ -239,6 +245,7 @@ final class FakeUsbPorts: @unchecked Sendable {
                         case .export: kind = "export"
                         case .edit: kind = "edit"
                         case .migration: kind = "migration"
+                        case .pointRestore: kind = "pointRestore"
                         }
                         state.writes.append(UsbWriteRequestRecord(verification: kind, root: request.root, options: request.options,
                                                                   preexisting: request.preexistingAppleDoubles, guardGate: request.writeGuard.gate))
@@ -256,6 +263,31 @@ final class FakeUsbPorts: @unchecked Sendable {
                         return next
                     }
                 }),
+            pointSnapshot: .init(
+                create: { [self] request in
+                    let entry = read("pointCreate") { state -> UsbPointSnapshotEntry? in
+                        state.pointCreates.append(request)
+                        return state.pointSnapshots.first
+                    }
+                    guard let entry else { throw UsbError.readFailed(detail: "가짜: 스냅샷 없음") }
+                    return entry
+                },
+                list: { [self] _, key in read("pointList") { $0.pointSnapshots.filter { $0.metadata.volumeUUID == key } } },
+                setPinned: { [self] pinned, entry, _ in
+                    read("pointPin") { _ in
+                        var pinnedEntry = entry
+                        pinnedEntry.metadata.pinned = pinned
+                        return pinnedEntry
+                    }
+                },
+                delete: { [self] entry, _ in read("pointDelete") { $0.pointSnapshots.removeAll { $0 == entry } } },
+                planRestore: { [self] input in
+                    read("pointPlan") { state in
+                        state.pointPlans.append(input)
+                        return state.pointPlan
+                    }
+                },
+                volumeEvents: { [self] _, _, _ in read("volumeEvents") { $0.volumeEvents } }),
             syncGate: UsbSyncSelectionGate(gateBlock: { [self] _, _ in current.syncGateBlock }, productionBlock: { nil }, draftBlock: { _ in nil }),
             syncSelectionFiles: { [self] _, _ in read("syncFiles") { $0.syncFiles } })
     }

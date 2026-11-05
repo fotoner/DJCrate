@@ -139,6 +139,50 @@ public enum UsbWriteVerification: Sendable {
     case export(UsbExportAssembled)
     case edit(UsbEditResult)
     case migration(UsbMigrationResult)
+    /// 시점 스냅샷 되돌리기(#226): 담은 파일을 그대로 돌려놓으므로 목표 지문(크기·SHA-256)만 다시 읽어 본다
+    case pointRestore(UsbPointRestoreResult)
+}
+
+/// USB 시점 스냅샷 만들기 한 번(USB는 읽기만 한다). 가드·Mac 쪽 폴더는 유스케이스가 조립 지점에서 받은 것을 그대로 넘긴다
+public struct UsbPointSnapshotCreateRequest: Sendable {
+    public var name: String
+    public var root: URL
+    /// 스냅샷 폴더(볼륨마다 하위 폴더)
+    public var directory: URL
+    /// 저널·잠금을 보는 Mac 쪽 USB 폴더
+    public var paths: UsbWritePaths
+    public var writeGuard: UsbWriteGuard
+    public var now: Date
+
+    public init(name: String, root: URL, directory: URL, paths: UsbWritePaths, guard writeGuard: UsbWriteGuard, now: Date) {
+        self.name = name
+        self.root = root
+        self.directory = directory
+        self.paths = paths
+        self.writeGuard = writeGuard
+        self.now = now
+    }
+}
+
+/// 시점 스냅샷 되돌리기 계획 입력(스냅샷 → 변경 묶음, 준비 폴더에 둔다)
+public struct UsbPointRestoreInput: Sendable {
+    public var entry: UsbPointSnapshotEntry
+    public var root: URL
+    /// 기기 변경을 판정한 USB DB 지문. 변경 묶음의 base가 되고, 계획하는 동안 USB가 이것과 달라지면 막는다
+    public var base: UsbFingerprint
+    public var staging: URL
+    public var session: String
+    /// 닫힌 저널이 이어 쓰라고 남긴 ID 상한(옛 상태로 돌아가도 그대로 잇는다)
+    public var highWater: [String: Int]
+
+    public init(entry: UsbPointSnapshotEntry, root: URL, base: UsbFingerprint, staging: URL, session: String, highWater: [String: Int]) {
+        self.entry = entry
+        self.root = root
+        self.base = base
+        self.staging = staging
+        self.session = session
+        self.highWater = highWater
+    }
 }
 
 /// `UsbWriter.write` 한 번. 가드·Mac 쪽 폴더는 세션이 조립 지점에서 받은 것을 그대로 넘긴다
@@ -241,7 +285,7 @@ public struct UsbSyncSelectionGate: Sendable {
     }
 }
 
-/// USB 라이브러리 엔진(피동 포트): USB DB 셋 읽기(OneLibrary·Device Library), 내보내기·수정·옮기기의 계획·준비, 쓰기·회복·되돌리기·저널.
+/// USB 라이브러리 엔진(피동 포트): USB DB 셋 읽기(OneLibrary·Device Library), 내보내기·수정·옮기기의 계획·준비, 쓰기·회복·되돌리기·저널, 시점 스냅샷.
 /// 실제 구현(`.live(fileSystem:)`)은 DJCAdapters가 RekordboxKit/Usb를 감싸 만든다(쓰기는 `UsbWriter.write` 한 곳). 유스케이스는 순서·판정만 한다.
 public struct UsbLibraryEngine: Sendable {
     /// USB 볼륨을 읽기만 하는 일. USB에는 아무것도 쓰지 않고 열지 않는 경로는 열지 않는다
@@ -416,6 +460,35 @@ public struct UsbLibraryEngine: Sendable {
         }
     }
 
+    /// USB 시점 스냅샷(#226): USB 라이브러리 파일을 Mac에 남기고(USB는 읽기만), 되돌리기는 변경 묶음으로 바꿔 `writer.write`로 쓴다
+    public struct PointSnapshot: Sendable {
+        /// 지금 USB를 스냅샷으로 남기고 그 볼륨의 보존 정리(최근 5개 + 고정)를 한다
+        public var create: @Sendable (UsbPointSnapshotCreateRequest) throws -> UsbPointSnapshotEntry
+        /// 그 볼륨의 스냅샷(최근 것부터)
+        public var list: @Sendable (_ directory: URL, _ volumeKey: String) -> [UsbPointSnapshotEntry]
+        public var setPinned: @Sendable (_ pinned: Bool, _ entry: UsbPointSnapshotEntry, _ directory: URL) throws -> UsbPointSnapshotEntry
+        /// 고정한 것은 지우지 않는다
+        public var delete: @Sendable (_ entry: UsbPointSnapshotEntry, _ directory: URL) throws -> Void
+        /// 스냅샷 → 변경 묶음(준비 폴더에 둔다). USB는 읽기만 한다
+        public var planRestore: @Sendable (UsbPointRestoreInput) throws -> UsbPointRestoreResult
+        /// 그 볼륨에서 DJCrate가 본 것과 한 일(스냅샷·쓰기·되돌리기). 기기 변경 판정(`UsbPointSnapshotRules.deviceChanged`)이 따라간다
+        public var volumeEvents: @Sendable (_ directory: URL, _ paths: UsbWritePaths, _ volumeKey: String) -> [UsbVolumeEvent]
+
+        public init(create: @escaping @Sendable (UsbPointSnapshotCreateRequest) throws -> UsbPointSnapshotEntry,
+                    list: @escaping @Sendable (URL, String) -> [UsbPointSnapshotEntry],
+                    setPinned: @escaping @Sendable (Bool, UsbPointSnapshotEntry, URL) throws -> UsbPointSnapshotEntry,
+                    delete: @escaping @Sendable (UsbPointSnapshotEntry, URL) throws -> Void,
+                    planRestore: @escaping @Sendable (UsbPointRestoreInput) throws -> UsbPointRestoreResult,
+                    volumeEvents: @escaping @Sendable (URL, UsbWritePaths, String) -> [UsbVolumeEvent]) {
+            self.create = create
+            self.list = list
+            self.setPinned = setPinned
+            self.delete = delete
+            self.planRestore = planRestore
+            self.volumeEvents = volumeEvents
+        }
+    }
+
     /// 세션 사본을 읽기 전용으로 연다(라이브 master.db 판정은 세션이 사본을 뜨기 전에 한다)
     public var openLocal: @Sendable (_ copy: URL) throws -> any UsbOpenedLibrary
     public var read: Read
@@ -424,12 +497,13 @@ public struct UsbLibraryEngine: Sendable {
     public var migration: Migration
     public var cueGrid: CueGrid
     public var writer: Writer
+    public var pointSnapshot: PointSnapshot
     public var syncGate: UsbSyncSelectionGate
     /// USB 동기화 선택 파일 원문(형식별, 없는 형식은 키가 없다)
     public var syncSelectionFiles: @Sendable (_ root: URL, _ formats: Set<UsbFormat>) throws -> [UsbFormat: Data]
 
     public init(openLocal: @escaping @Sendable (URL) throws -> any UsbOpenedLibrary, read: Read, export: Export, edit: Edit,
-                migration: Migration, cueGrid: CueGrid, writer: Writer, syncGate: UsbSyncSelectionGate,
+                migration: Migration, cueGrid: CueGrid, writer: Writer, pointSnapshot: PointSnapshot, syncGate: UsbSyncSelectionGate,
                 syncSelectionFiles: @escaping @Sendable (URL, Set<UsbFormat>) throws -> [UsbFormat: Data]) {
         self.openLocal = openLocal
         self.read = read
@@ -438,6 +512,7 @@ public struct UsbLibraryEngine: Sendable {
         self.migration = migration
         self.cueGrid = cueGrid
         self.writer = writer
+        self.pointSnapshot = pointSnapshot
         self.syncGate = syncGate
         self.syncSelectionFiles = syncSelectionFiles
     }

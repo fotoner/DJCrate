@@ -37,6 +37,46 @@ struct UsbLibraryDiffTests {
         #expect(!dump.contains("비밀 제목") && !dump.contains("비밀 아티스트") && !dump.contains("시험 곡"))
     }
 
+    @Test("편집이 건드리지 않은 행이 다시 쓴 형식에서 원래 그 형식 값과 달라진 곳만 센다(#238)")
+    func untouchedRowChanges() throws {
+        var (ol, original) = Samples.pair()
+        ol.keys.append(UsbNamedRow(id: 3, name: "3A", nameForSearch: nil))
+        var dl = original
+        dl.artists[0].name = "다른 아티스트"
+        let (before, _) = UsbLibrary.merge(oneLibrary: ol, deviceLibrary: dl)
+        var after = before
+        after.tracks[1].title = "새 제목"
+        // 편집이 OneLibrary에만 있던 key 행을 가리키게 해 Device Library에도 그 행이 생긴다(#234)
+        after.tracks[1].keyID = 3
+        func changes(_ written: UsbLibrary) -> Set<UsbLibraryDiff.Difference> {
+            Set(UsbLibraryDiff.untouchedRowChanges(in: .deviceLibrary, original: dl, before: before, after: after, written: written))
+        }
+        #expect(changes(after.projected(to: .deviceLibrary)).isEmpty)
+
+        // 건드리지 않은 행이 OneLibrary 값으로 바뀌거나 빠진 pdb는 그 행만 센다. 편집이 바꾼 곡은 세지 않는다
+        var written = after.projected(to: .deviceLibrary)
+        written.artists[0].name = ol.artists[0].name
+        written.tracks[0].comment = "바뀐 주석"
+        written.tracks[1].comment = "바뀐 주석"
+        written.genres = []
+        #expect(changes(written) == [UsbLibraryDiff.Difference(table: "content", key: "1", field: "comment"),
+                                     UsbLibraryDiff.Difference(table: "artist", key: "1", field: "name"),
+                                     UsbLibraryDiff.Difference(table: "genre", key: "1", field: UsbLibraryDiff.onlyLeft)])
+
+        // 값이 같아도 편집이 다시 쓴 곡(곡 갱신)은 건드린 행이라 두 형식에 같은 값을 써도 세지 않는다. 다시 쓰지 않은 곡이면 센다
+        var titled = dl
+        titled.tracks[0].title = "다른 제목"
+        let (base, _) = UsbLibrary.merge(oneLibrary: ol, deviceLibrary: titled)
+        #expect(base.deviceLibraryTrack(1)?.title == "다른 제목")
+        var rewritten = base
+        rewritten.setDeviceLibraryTrack(try #require(base.tracks.first { $0.id == 1 }))
+        let written2 = rewritten.projected(to: .deviceLibrary)
+        #expect(written2.tracks[0].title == ol.tracks[0].title && written2.artists[0].name == dl.artists[0].name)
+        #expect(UsbLibraryDiff.untouchedRowChanges(in: .deviceLibrary, original: titled, before: base, after: rewritten, written: written2).isEmpty)
+        #expect(UsbLibraryDiff.untouchedRowChanges(in: .deviceLibrary, original: titled, before: base, after: base, written: written2)
+            == [UsbLibraryDiff.Difference(table: "content", key: "1", field: "title")])
+    }
+
     @Test func rowsOnlyOnOneSideCounted() {
         let a = Self.merged()
         var b = a

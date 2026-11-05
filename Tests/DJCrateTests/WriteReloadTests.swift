@@ -24,7 +24,7 @@ struct WriteReloadTests {
         let cached = ITunesLibrarySnapshot(playlists: [.init(id: "A", name: "이전 목록")])
         try cached.save(for: previous)
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("write-reload"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                                  backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, arguments: ["test"], environment: [:])
         await store.load(snapshot: previous)

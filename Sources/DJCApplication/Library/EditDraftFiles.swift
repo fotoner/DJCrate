@@ -59,14 +59,7 @@ public struct EditDraftFiles: Sendable {
     /// 있던 초안을 먼저 읽고 그다음 요청을 푼다(`request`가 인자 오류를 던질 수 있다)
     public func addCue(_ makeRequest: () throws -> CueRequest, track: Track, rekordboxCues cues: [Cue], dryRun: Bool) throws -> CueDraft {
         try Self.io {
-            let saved = try existing { try files.cue(track.uuid) }
-            var draft = saved?.includingAutoCues(from: cues, newID: files.newCueID)
-                ?? CueDraft(trackUUID: track.uuid, rekordboxCues: cues, newID: files.newCueID)
-            guard draft.trackUUID == track.uuid, Set(draft.base.map(\.id)).count == draft.base.count,
-                  Set(draft.cues.map(\.id)).count == draft.cues.count,
-                  (draft.base + draft.cues).allSatisfy({ cue in
-                      switch cue.kind { case .memory: true; case let .hot(slot): (0..<8).contains(slot) }
-                  }) else { throw Self.corrupt() }
+            var draft = try cueDraft(track: track, rekordboxCues: cues)
             let request = try makeRequest()
             let length = Double(track.lengthSeconds)
             guard request.time >= 0, request.time <= length,
@@ -95,6 +88,38 @@ public struct EditDraftFiles: Sendable {
             if !dryRun { try files.saveCue(draft) }
             return draft
         }
+    }
+
+    /// LINK로 CDJ가 보낸 큐 저장·삭제(#280)를 곡의 큐 초안(있으면 그 초안, 없으면 rekordbox 큐로 새로)에 옮겨 저장한다.
+    /// 바뀐 것이 없으면 저장하지 않는다. rekordbox에는 쓰지 않는다(앱의 rekordbox 쓰기 때 나간다)
+    public func applyLinkCue(_ edit: LinkCueEdit, track: Track, rekordboxCues cues: [Cue]) throws -> LinkCueEditResult {
+        try Self.io {
+            var draft = try cueDraft(track: track, rekordboxCues: cues)
+            // 곡 길이는 초 단위로 버린 값이라 1초를 더 둔다(CDJ는 실제 길이 안에서만 찍는다)
+            let length = Double(track.lengthSeconds + 1)
+            guard edit.time <= length, (edit.loopEnd ?? 0) <= length else {
+                throw Self.invalid(String(ui: "CDJ가 보낸 큐가 곡 길이를 벗어났습니다"))
+            }
+            let result = draft.apply(edit, newID: files.newCueID)
+            guard result == .applied else { return result }
+            let issues = draft.issues(duration: length)
+            guard issues.isEmpty else { throw Self.invalid(issues.joined(separator: "; ")) }
+            try files.saveCue(draft)
+            return result
+        }
+    }
+
+    /// 곡의 큐 초안: 저장한 초안(rekordbox 자동 큐를 채워서)이나 rekordbox 큐로 새로 만든 초안. 저장한 초안이 깨졌으면 던진다
+    private func cueDraft(track: Track, rekordboxCues cues: [Cue]) throws -> CueDraft {
+        let saved = try existing { try files.cue(track.uuid) }
+        let draft = saved?.includingAutoCues(from: cues, newID: files.newCueID)
+            ?? CueDraft(trackUUID: track.uuid, rekordboxCues: cues, newID: files.newCueID)
+        guard draft.trackUUID == track.uuid, Set(draft.base.map(\.id)).count == draft.base.count,
+              Set(draft.cues.map(\.id)).count == draft.cues.count,
+              (draft.base + draft.cues).allSatisfy({ cue in
+                  switch cue.kind { case .memory: true; case let .hot(slot): (0..<8).contains(slot) }
+              }) else { throw Self.corrupt() }
+        return draft
     }
 
     /// 곡의 태그 초안(있으면 그 초안, 없으면 지금 rekordbox 값으로 새로)의 칸을 바꾸고 저장한다(미리 보기면 저장하지 않는다).

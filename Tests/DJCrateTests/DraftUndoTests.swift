@@ -121,11 +121,11 @@ struct DraftUndoTests {
         try await h.loaded()
         let undo = manager(h.deck)
         h.deck.pressHotCue(slot: 0)
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         undo.undo()
         #expect(h.deck.hotCue(slot: 0) != nil)
         #expect(!undo.canUndo && !undo.canRedo)
-        h.deck.isWriteLocked = false
+        h.deck.editsFrozen = false
         h.deck.setGridBPM(140)
         h.deck.load(nil)
         #expect(!undo.canUndo && !undo.canRedo)
@@ -192,7 +192,7 @@ struct DraftUndoTests {
         let h = try DeckHarness(autoGain: RekordboxAutoGain(gain: 1, peak: 0.9))
         try await h.loaded()
         let undo = manager(h.deck), before = h.deck.draftSnapshot
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         h.deck.pressHotCue(slot: 0)
         h.deck.setTrackGain(-3)
         h.deck.shiftGrid(ms: 100)

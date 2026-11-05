@@ -93,7 +93,7 @@ struct UsbHistoryWriteTests {
         try fixture.execute("UPDATE djmdContent SET MasterSongID = ID, FileNameL = 'history-' || ID || '.mp3', MasterDBID = (SELECT DBID FROM djmdProperty LIMIT 1) WHERE ID IN ('101', '102')")
         let database = fixture.database
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("historywrite"), persist: false),
-                                      resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                      activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                       saveTagDrafts: { _ in }, backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
                                       mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                       draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: database,
@@ -416,7 +416,7 @@ struct UsbHistoryWriteTests {
         await ReflectionCoordinator.test(store: store, prompter: prompter).write(rows: [])
         // 막힘·제외·손실이 없으니 묻지 않고 쓴다(#210)
         #expect(prompter.shown.isEmpty)
-        let result = try #require(store.resultHistory.latest)
+        let result = try #require(store.activityLog.latest?.result)
         #expect(result.title == "rekordbox에 썼습니다 · 재생 기록 1건")
         #expect(result.text.hasPrefix("• \(target.name) — 재생 기록 쓰기 완료: "))
         #expect(result.text.contains("컬렉션에 없는 1곡은 뺐습니다"))

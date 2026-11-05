@@ -15,7 +15,7 @@ struct BlockedEntryReasonTests {
         let notLoaded = try #require(h.deck.trackEditUnavailableReason)
         try await h.loaded()
         #expect(h.deck.trackEditUnavailableReason == nil && h.deck.canOpenTrackEdit)
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         // 불러온 곡에서 막는 것은 쓰기 잠금뿐이고, 그 이유는 불러오기 전 이유와 다르다
         let locked = try #require(h.deck.trackEditUnavailableReason)
         #expect(locked != notLoaded)
@@ -34,7 +34,7 @@ struct BlockedEntryReasonTests {
         #expect(h.deck.hotCue(slot: 0)?.loop?.end == 3)
         h.deck.grid = BeatGrid(beats: [.init(number: 1, bpm: 120, time: 0)])
         #expect(h.deck.hotCueCreationUnavailableReason == nil)
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         #expect(h.deck.hotCueCreationUnavailableReason != nil, "그리드가 있어도 쓰는 중에는 막는다")
     }
 
@@ -56,7 +56,7 @@ struct BlockedEntryReasonTests {
     @Test func 동기화_미확정_입력과_쓰기_대기_없음을_구분한다() throws {
         let folder = try TemporaryFolder()
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("entry"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), backupDirectory: folder.url.appending(path: "backups"),
+                                 activityLog: ActivityLog(url: nil), backupDirectory: folder.url.appending(path: "backups"),
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil,
                                  stagingSaver: { _ in }, draftHome: folder.url.appending(path: "drafts"),
                                  rekordboxDatabase: folder.url.appending(path: "master.db"), rekordboxShareRoot: folder.url.appending(path: "share"))
@@ -73,7 +73,7 @@ struct BlockedEntryReasonTests {
         #expect(LibraryMenuAction.restore.disabledReason(in: window)?.contains("백업") == true)
         #expect(LibraryMenuAction.removeTracks.disabledReason(in: window)?.contains("고르세요") == true)
         LibraryMenuAction.reflect.perform(in: window)
-        #expect(store.staging.stagingMessage?.text == LibraryMenuAction.reflect.disabledReason(in: window))
+        #expect(store.activityLog.latest?.text == LibraryMenuAction.reflect.disabledReason(in: window))
         store.isWritingRekordbox = true
         #expect(LibraryMenuAction.snapshot.disabledReason(in: window)?.contains("쓰기") == true)
     }

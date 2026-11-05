@@ -11,7 +11,7 @@
                  │ 유스케이스를 부른다                                   │ 실제 구현을 고른다(조립 지점만)
 핵심부        DJCApplication(유스케이스·포트) ──▶ DJCDomain(엔티티·값·순수 규칙)
                  ▲ 포트를 구현한다
-피동 어댑터   DJCAdapters(포트의 실제 구현 .live, 오디오 엔진) ──▶ RekordboxKit · DJCStorage · DJCAnalysis · DJCEnvironment(인프라, 포트를 모른다)
+피동 어댑터   DJCAdapters(포트의 실제 구현 .live, 오디오 엔진) ──▶ RekordboxKit · DJCStorage · DJCAnalysis · DJCEnvironment · DJCLink(인프라, 포트를 모른다)
 실행 파일     DJCrateExecutable · djcExecutable(main.swift 몇 줄)
 ```
 
@@ -32,6 +32,7 @@ DJCrate는 헥사고날 구조다(#167). 바깥 층은 안쪽 층을 안다. 안
 | DJCStorage | 인프라 | DJCrate 자신의 파일, iTunes 읽기, USB 볼륨 |
 | DJCAnalysis | 인프라 | 소리 분석과 곡 편집 렌더 |
 | DJCEnvironment | 인프라 | 이 프로세스의 환경 읽기 |
+| DJCLink | 인프라 | Pro DJ Link(CDJ·DJM 네트워크). DJLinkKit을 감싼다 |
 | DJCrate·djc | 주도 어댑터 | 앱 화면과 CLI 명령, 조립 지점 |
 
 ### DJCDomain
@@ -58,7 +59,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | `Edit/` | `RenderEdit`, `StageEdit` |
 | `Library/` | `LoadLibrary`, `LibraryReadFlow`, `ImportXML`, `RecoverDrafts`, `RelocateTracks`, `StageTracks`, `EditPlaylists`, `EditTags`, `ArchiveUsbHistories` |
 | `Reflection/` | `ReflectionSession`, `CompatibilityCheck` |
-| `Update/` | `UpdateDeferral`(앱 업데이트 설치를 쓰기가 끝날 때까지 미룬다, #59) |
+| `Update/` | `UpdateDeferral`(앱 업데이트 설치를 쓰기가 끝날 때까지 미룬다, #59). 순수 규칙은 DJCDomain `Update/`의 `UpdateInstallPolicy`·`AppQuitPolicy`가 쓰기 단계 `RekordboxWritePhase`로 판정한다 |
 | `Usb/` | `UsbSync`, `UsbExportSession`, `UsbWriteFlow` |
 | `AgentTools/` | `AgentTools`(스킬·djc 설치, #262) |
 
@@ -83,15 +84,20 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
   - 앱은 쓰기 잠금(`setWriteLock`) 동안 초안 파일 잠금 `PlaylistDraftLock`(flock)을 든다. 포트는 `DraftStore.lockPlaylistDraft`다. 0.3초까지 기다려 잡은 뒤 바깥 초안을 받는다. 못 잡으면 쓰는 동안 20ms마다 다시 잡아 본다. 그때는 바깥 초안을 받지 않는다. 쓸 초안을 이미 정했기 때문이다.
   - CLI(`EditDraftFiles`, `ImportXML.makeDraftsNow`)는 `DraftFiles.lockPlaylist` 안에서 읽고 저장한다. `makeDraftsNow`는 마지막 비교와 저장 동안만 든다. 잡지 못하면 쌓지 않는다. 쓴 뒤 정리가 앞 단계를 접은 바깥 편집을 지우지 않게 하려는 것이다.
   - 앱이 잠금을 잡지 못한 드문 경우의 대비가 있다. 쓴 뒤 정리(`EditPlaylists.finishWrite`)는 디스크 초안이 쓴 초안 뒤에 편집을 더했으면 쓴 편집만 뺀다(`keepingExternal`).
-- **추가한 곡·그리드 일괄 추정·XML 내보내기는 기능 조각 `TrackStagingStore`가 든다(#252).** 조각은 저장소의 `staging` 속성이다. 넣기·저장·추정의 규칙과 순서는 유스케이스 `StageTracks`와 `ExportXML`이 정한다. 목록 아래 막대의 단추·막힘 이유는 화면 모델 `ListActionBarModel`이 든다. 파일 없음 확인은 곡 행을 바꾸므로 공유 핵심이 한다(#254).
-- **주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다(#254).** 그 시트는 쓰기 결과, 연결되지 않은 초안, rekordbox XML 가져오기다. 처음 읽기, 스냅샷, 동기화, 끌어 놓기 같은 주 창 단추는 이 모델의 입구를 부른다. 메뉴 막대의 메뉴 항목(`LibraryMenuAction`)도 이 모델을 받는다. 재생 목록 고르기, USB, 막힌 초안 복구의 시트는 그 주인이 든다.
-- 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`.
+- **추가한 곡·그리드 일괄 추정·XML 내보내기는 기능 조각 `TrackStagingStore`가 든다(#252).** 조각은 저장소의 `staging` 속성이다. 넣기·저장·추정의 규칙과 순서는 유스케이스 `StageTracks`와 `ExportXML`이 정한다. 머리 줄 오른쪽의 주 단추·`…` 메뉴·상태 표시는 화면 모델 `ListActionBarModel`이 값 `ListHeaderActions`로 계산한다. 단추 이름과 막힘 이유도 그 값에 있다. 파일 없음 확인은 곡 행을 바꾸므로 공유 핵심이 한다(#254).
+- **주 창이 띄우는 시트와 단추 입구는 화면 모델 `LibraryWindowModel`이 든다(#254).** 그 시트는 활동 기록, 연결되지 않은 초안, rekordbox XML 가져오기다. 처음 읽기, 스냅샷, 동기화, 끌어 놓기 같은 주 창 단추는 이 모델의 입구를 부른다. 메뉴 막대의 메뉴 항목(`LibraryMenuAction`)도 이 모델을 받는다. 재생 목록 고르기, USB, 막힌 초안 복구의 시트는 그 주인이 든다.
+- 패널 화면 모델은 조립 지점 `AppComposition`이 한 번 만든다. 예: `LibraryWindowModel`, `TagInspectorModel`, `PlaylistSidebarModel`, `ListActionBarModel`, `StatusBarModel`, `ReflectionStatusModel`. 시트 모델은 띄울 때 한 번 만든다. 예: `UnlinkedDraftsModel`, `ITunesSyncModel`, `ActivityLogModel`.
+- **쓰기 대기 수는 공유 핵심 `LibraryStore`가 한 곳에서 센다(#324).** 사이드바 배지, 상태 줄 칩, Dock 배지가 `pendingWriteCount`를 읽는다. 초안 여섯 종류와 곡 목록이 바뀌면 낡은 것으로 표시한다. 합집합은 다음 읽기에서 한 번만 만든다(#129). 상태 줄 쓰기 상태는 `ReflectionStatusModel`이 저장소를 관찰해 칩·보조 글·Dock 배지를 고친다. 팝오버 단추는 메뉴 막대와 같은 `LibraryMenuAction`을 부르므로 새 쓰기 경로가 아니다.
+- **칩의 rekordbox 켜짐·꺼짐 이유는 감지 서비스를 읽어 붙인다(#326).** 감지 서비스를 읽는 연결은 조립 지점 `AppComposition`이 한다. 화면 시험의 조립은 늘 모름이라 칩이 바뀌지 않는다. 이 값은 표시만 바꾼다. 쓸지 말지는 메뉴와 같은 판단과 쓰기 관문이 정한다.
 - **곡 목록 표와 덱 묶음은 공유 핵심을 통째로 받지 않는다(#254).** 표는 읽는 값 13개만 든 프로토콜 `TrackListSource`를 받는다. 메뉴·칸 편집·끌기는 조정자 `TrackListCoordinator`가 핵심을 부른다. 덱 묶음은 프로토콜 `DeckLibrarySource`와 태그 편집 조각을 받는다.
 - **라이브러리 읽기 순서는 유스케이스 `LibraryReadFlow`가 정한다(#246).** 저장소가 하나를 만들어 화면 포트 `LibraryReadScreen`을 붙인다. 흐름은 그 포트로 화면 상태를 읽는다. 결과도 그 포트로 알린다. 흐름이 정하는 것은 아래와 같다.
   - 처음 열기와 창으로 돌아올 때 바뀜 확인
   - 읽기 순번: 늦게 끝난 옛 결과를 버린다
   - 사본 뜨기 요청 합치기(`SnapshotRequestQueue`)
   - 읽은 뒤 Music 최신화 잇기, iTunes 동기화 창의 목록 열기와 쓰기 전 확인
+  - 읽은 뒤 쓰기 막힘 미리 보기(#327). 판정은 `djc compat`와 같은 `CompatibilityCheck.verdict`와 쓰기 확인 창과 같은 `RekordboxBackups.canWrite`다. 이유 고르기는 `LibraryWriteBlock`이 한다.
+    - 읽은 사본만 메인 밖에서 연다. 읽기는 이 판정을 기다리지 않는다.
+    - 저장소의 `writeBlock`은 상태 줄 칩만 읽는다. 쓰기 판단과 관문은 이 값을 보지 않는다.
 - **화면 모델은 포트를 들지 않는다.** `LibraryUseCases.ports`는 모듈 밖에 공개하지 않는다. 화면에 보일 값은 묶음의 읽기 메서드로 받는다.
   - `linkedXML`, `hasWriteBackup`, `writeBackups`
   - `missingFiles`, `log`
@@ -114,6 +120,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - **DJCStorage**는 DJCrate 자신의 파일을 맡는다. 초안과 추가한 곡, 반영 묶음과 USB 초안이 그 파일이다. iTunes 읽기와 USB 볼륨·도구 실행도 맡는다.
 - **DJCAnalysis**는 소리 분석과 곡 편집 렌더를 맡는다. 파형, 그리드 추정, 조성을 분석한다. 음량과 섹션도 분석한다. DJCAnalysis는 rekordbox를 모르므로 시간축 차이를 인자로 받는다.
 - **DJCEnvironment**는 이 프로세스의 환경을 읽는다. 시험 프로세스인지와 그 임시 폴더를 안다(`TestProcess`, #182). 데이터·로그·캐시 위치는 `DJC_HOME`과 `DJC_REKORDBOX_DIR`에 따라 정한다. 환경을 인자로 받는 순수 규칙은 DJCDomain에 남는다. 인프라가 막는 입출력을 협력 풀 밖에서 돌리는 `OffPoolIO`도 여기 있다(#247).
+- **DJCLink**는 Pro DJ Link(CDJ·DJM 네트워크)를 맡는다. 외부 패키지 [DJLinkKit](https://github.com/ImBada/DJLinkKit)(GPL-2.0-or-later)을 import하는 유일한 모듈이다. DJLinkKit 타입은 공개 API에 내지 않는다. DJCrate의 값(`LinkDevice` 등)으로 바꿔 낸다. 그래서 DJLinkKit이 바뀌어도 고칠 곳은 이 모듈뿐이다. 어댑터 `DJCAdapters/Link`만 부른다(#272).
 - 앱 **DJCrate**와 CLI **djc**의 본체는 라이브러리 타깃이다. 그래서 실행 파일과 시험이 컴파일 결과를 함께 쓴다. 실행 진입점만 `DJCrateExecutable`·`djcExecutable`로 나눈다. 제품 이름과 리소스 번들 이름은 그대로다.
 
 ### 경계 규칙
@@ -131,6 +138,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | import 예외 | 조립 지점은 파일 이름 목록 `ASSEMBLY_FILES` 5개다. 아래 층을 모두 import한다 |
 | import 예외 | 디버그 자가 테스트(`Sources/DJCrate/Diagnostics/`), 실험 명령(`Sources/djc/Lab/`)은 `BROAD_FOLDERS`에 적은 import만 더 받는다 |
 | import 제한 | 외부 모듈 Sparkle은 `EXTERNAL_FILES`에 적은 파일 하나(`Sources/DJCrate/App/AppUpdater.swift`)만 import한다. 화면 모델과 핵심부로 번지지 않게 한다 |
+| import 제한 | DJLinkKit 패키지의 제품(`DJLinkKit`·`DJLinkControl`·`DJLinkPassive`·`DJLinkExport`)은 DJCLink만 import한다. DJCLink도 `ALLOWED`에 적은 제품만 쓴다 |
 | api | 핵심부(DJCDomain·DJCApplication)는 `FileManager`, `ProcessInfo`, `UserDefaults`를 직접 쓰지 않는다 |
 | api | 핵심부는 `Bundle` 타입, `Date()`·`Date.now`, `UUID()`도 직접 쓰지 않는다. `.init()` 꼴도 같다. 시계·ID·환경·파일·번들은 포트나 주입으로 받는다 |
 | api | 핵심부는 `Locale`·`TimeZone`·`Calendar`의 `.current`·`.autoupdatingCurrent`를 쓰지 않는다. 타입 없이 쓴 `.main`·`.current`·`.now`도 쓰지 않는다 |
@@ -232,6 +240,35 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 - 예외 파일은 `Diagnostics/`, CLI `Lab/`, 조립 지점뿐이다.
 - 설정 › 저장 공간의 화면 모델은 `AppComposition.storageSettings()`가 만든다.
 - 설정 › AI 에이전트의 화면 모델은 `AppComposition.agentTools(arguments:settings:)`가 한 번 만든다. 설정 창과 켤 때 알림이 이 모델을 함께 쓴다. 설치 자리의 뿌리(홈)는 조립 지점이 준다. 디버그 빌드는 `--agent-home=<폴더>`로 홈과 휴지통을 임시 폴더로 바꾼다.
+- **쓰는 중 앱 종료(#300).** 종료 입구 `AppDelegate`는 얇다. 판정은 DJCDomain `AppQuitPolicy`가 쓰기 단계 `RekordboxWritePhase`로 한다. 업데이트 미루기 `UpdateInstallPolicy`와 같은 판단 `isFinished`를 쓴다.
+  - 단계는 `LibraryStore.rekordboxWritePhase`가 만든다. 재료는 쓰기 잠금, 진행 안내 `WriteStage`, 창 표시 둘이다.
+  - 끊어도 되는 단계는 둘뿐이다. 아직 아무것도 쓰지 않은 단계가 하나다. 쓴 뒤 읽기만 하는 단계 `readsBack`이 다른 하나다.
+  - 백업, DB, 분석 파일, 초안 정리, 복원은 끝까지 기다린다. 복원의 다시 읽기는 읽은 뒤에도 초안 되살리기가 남아서 `readsBack`이 아니다.
+  - 종료를 기다리는 중이면 `readsBack` 단계의 다시 읽기는 건너뛴다(#305). 쓰기 결과를 활동 기록에 먼저 남긴 뒤 종료하려는 것이다.
+  - 건너뛰는 곳은 반영 세션의 다시 읽기 길 `ReflectionSession.reloadLibrary` 하나다. 이 길이 포트 `LibraryReloader.postpone`에 묻는다. 건너뛰면 다시 읽는 단계를 알리지 않는다. 그 단계가 알려지면 앱이 곧바로 종료해 결과가 남지 않는다.
+  - 건너뛴 읽기의 곡과 재생 목록 편집은 저장소가 들고 있다(`LibraryStore.postponeReloadForQuit`). 종료를 취소하면 `quitCancelled`가 한 번 이어서 읽는다. 쓰기 잠금이 아직 걸려 있으면 잠금이 풀릴 때 읽는다.
+  - 복원의 다시 읽기는 건너뛰지 않는다. 읽은 뒤에도 할 일이 남기 때문이다.
+  - 기다림은 `AppQuitController`가 맡는다. 쓰기 상태를 지켜본다. 끝나면 초안 저장 큐를 비운 뒤 종료한다. 종료를 취소해도 쓰기는 끊지 않는다.
+  - 안내는 쓰는 중 덮개의 단계 카드 안에 있다(`QuitWaitSection`). 진행 안내가 없는 틈에는 같은 카드를 따로 띄운다(`QuitWaitOverlay`).
+  - 종료를 미루는 방식은 둘이다. 기본은 이번 요청에 취소로 답하는 방식이다. 쓰기가 끝나면 앱이 종료를 다시 요청한다.
+  - `terminateLater`로 미루면 AppKit은 `terminate:` 안에서 이벤트 순환을 안쪽에서 다시 돈다. 그 `terminate:`가 메인 큐 블록 안에서 불렸다면 안쪽 순환이 메인 큐를 처리하지 못한다. 메인 액터의 쓰기가 끝나지 못한다. 자가 테스트로 확인했다.
+  - 로그아웃, 재시작, 전원 끔에 취소로 답하면 그 일 전체가 멈춘다. 그래서 `terminateLater`로 미룬다. 답은 `reply`로 한다. 알림은 `NSWorkspace.willPowerOffNotification`이다.
+  - ⌘Q로 기다리는 중에 Mac을 끄는 요청이 오면 취소하지 않는다. 미루는 방식으로 바꿔 같이 기다린다.
+  - Mac을 끄는 중에는 새 rekordbox 쓰기를 시작하지 않는다. 종료를 기다리는 중도 같다(`LibraryStore.writeRefusal`).
+  - 종료를 취소로 끝내면 Mac을 끄는 중 표시를 푼다. 로그아웃을 취소해도 알림이 오지 않는다.
+  - 쓰는 동안 `WriteSystemGuard`가 갑작스러운 종료와 App Nap을 막는다.
+  - 자가 테스트는 `--quit-wait-selftest`다(스킬 `app-selftest`).
+- **켜진 채 종료 시트(#326).** 사용자가 고른 종료에서 한 번 묻는다. 조건은 쓰기 대기 있음, rekordbox(또는 rekordboxAgent만) 켜짐, 쓰는 중 아님이다. 판정은 `AppQuitPolicy.confirmation`, 문구는 `QuitConfirmation`(DJCDomain `Update/QuitConfirmation.swift`)이 한다. 쓰기 대기 수는 상태 줄 칩과 같은 `LibraryStore.pendingWriteSummary`(`PendingWriteCount`)다.
+  - 쓰는 중(어느 쓰기 단계든)과 USB 쓰기는 시트보다 위 종료 판정(`AppQuitDecision`)이 앞선다. 감지가 모름·읽기 전이면 묻지 않는다.
+  - 종료 이유는 `AppQuitCause`로 가른다. 사용자가 고른 종료만 묻는다.
+  - Mac을 끄는 중이라는 알림 `willPowerOff`가 오면 시스템 종료다.
+  - Apple 이벤트 `quit`의 종료 이유(`kAEQuitReason`)도 본다. 열쇠는 「why?」다. 로그아웃은 `rlgo`·`logo`다. 재시작은 `rest`·`rrst`다. 전원 끔은 `shut`·`rsdn`다. 값은 헤더 AERegistry.h에 있다.
+  - 업데이트 도구가 다시 켜기 직전에 표시한다(`AppUpdater.consumeRelaunchMark`). 이 종료도 묻지 않는다.
+  - 이유가 없으면 사용자 종료다. ⌘Q와 메뉴 종료는 Apple 이벤트가 아니다. 일반 종료 이유(`quia`)도 사용자 종료다. 모르는 이유는 묻지 않는다.
+  - 컨트롤러 `AppQuitController`는 종료를 취소로 답한다. 그다음 시트(`QuitConfirmationAlert`)를 띄운다.
+  - [그냥 종료]는 종료를 다시 요청한다. 그 요청 한 번만 묻지 않는다.
+  - 시트가 떠 있는 동안 온 사용자 종료는 시트를 더 띄우지 않는다. 시스템 종료와 업데이트 다시 켜기는 기존 판정을 따른다.
+  - 이 시트는 쓰기를 열지 않는다. 쓸지 말지는 쓰기 관문이 정한다.
 - 앱 자동 업데이트(#59)의 Sparkle 연결 `AppUpdater`는 `live()`가 만든다. Info.plist에 정보 파일 주소와 공개 키가 있는 배포 번들에서만 만든다. 쓰기 상태는 `LibraryStore.writeActivity`에서 읽는다. 설정 › 업데이트와 앱 메뉴는 화면 모델 `UpdateSettingsModel` 하나를 함께 쓴다.
 - **목록 그림 캐시 싱글턴은 없앴다.** 옛 `PreviewWaveformCache.shared`·`Thumbnails.shared` 대신 라이브러리 저장소가 하나씩 든다(`previewImages`·`thumbnails`).
 - 남은 싱글턴은 넷이다.
@@ -253,7 +290,9 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | rekordbox 형식 읽기·쓰기, USB 형식 | RekordboxKit. 쓰기 입구는 최상위, USB 쓰기는 `Usb/Write/` |
 | DJCrate 자신의 파일 형식·저장 | DJCStorage |
 | 소리 분석·렌더 | DJCAnalysis |
+| Pro DJ Link(CDJ·DJM) 장치·패킷 | DJCLink. DJLinkKit 타입은 이 모듈 밖에 내지 않는다 |
 | 화면 상태·의도 전달 | 앱 화면 모델. 유스케이스를 부른다. 모양은 [MVVM 패턴](mvvm.md) |
+| 여러 화면이 쓰는 뷰 장치(ⓘ 팝오버 `InfoPopoverButton`, 비활성 이유 `disabled(because:)`) | 앱의 `Sources/DJCrate/Support/`. 값만 받는 잎 뷰·수정자로 둔다(MVVM-3) |
 | 실제 구현 연결 | 앱은 `AppComposition`, CLI는 `CLIComposition` |
 | 외부 프레임워크(예: Sparkle) 연결 | 앱의 연결 파일 한 곳. `scripts/check-imports.py`의 `EXTERNAL_FILES`에 적는다. 판정은 DJCDomain·DJCApplication에 둔다 |
 | CLI 인자·출력 | `djc` 명령 |
@@ -276,14 +315,19 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - 초안: `cue-drafts/`, `grid-drafts/`, `gain-drafts.json`, `tag-drafts/`
 - 앨범아트 초안: `artwork-drafts/`. 앨범아트 초안과 고른 앨범아트 사본이 있다.
 - 재생 목록 초안: `playlist-drafts.json`. 재생 목록 편집을 순서대로 적는다. 옆의 `playlist-drafts.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다.
-- `damaged-drafts/`: 읽지 못한 초안 파일을 옮겨 둔 곳이다. 그 파일을 지우지 않는다. 빈 값으로 덮지도 않는다. 합치기 초안 `merge-drafts.json`과 추가 목록 `staged.json`도 여기로 옮긴다. 앱은 읽기·저장 때 파일을 옮긴 뒤 목록 위에 알린다.
+- `damaged-drafts/`: 읽지 못한 초안 파일을 옮겨 둔 곳이다. 그 파일을 지우지 않는다. 빈 값으로 덮지도 않는다. 합치기 초안 `merge-drafts.json`과 추가 목록 `staged.json`도 여기로 옮긴다. 앱은 읽기·저장 때 파일을 옮긴 뒤 창 아래 알림으로 알린다.
 - 추가한 곡: `staged.json`
+- 활동 기록: `activity-log.json`(권한 0600). 창 알림과 쓰기 결과의 최근 200건이다.
+  - 옛 결과 파일 `last-write-result.json`은 처음 열 때 첫 항목으로 이어 받는다. 이어 받은 옛 파일은 지운다(#296).
+  - 읽지 못한 기록 파일은 `activity-log-unreadable-<시각>.json`으로 옮긴다. 그 파일은 덮지 않는다.
 - 읽기용 스냅샷: `snapshots/`
 - 쓰기 전 백업: `rekordbox-backups/`
 - 시점 스냅샷: `point-snapshots/`(#224)
 - 캐시: `analysis/`, `waveforms/`, `loudness.json`
+- LINK WAV 변환본: 데이터 폴더가 아니라 `~/Music/DJCrate/LINK`다. `DJC_HOME`이 있으면 그 안 `link-audio/`다. CDJ가 NFS로 읽으므로 음원이 보통 있는 음악 폴더에 둔다(#277·#287).
 - USB 백업과 초안: `usb-backups/`, `usb-drafts/`
 - USB DB의 Mac 사본: `usb-snapshots/`
+- USB 시점 스냅샷: `usb-point-snapshots/<볼륨>/`(#226). 사용자가 남긴 것이라 캐시가 아니다.
 - USB 저널과 잠금: `usb-sessions/`
 - USB 준비 폴더: `usb-staging/`
 - USB에서 가져와 보존한 기기 재생 기록: `usb-histories/`. 기록마다 JSON 한 파일이다. 캐시가 아니므로 지우지 않는다(#43).
@@ -362,12 +406,31 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
 4. 쓸 수 있는 것만 실제로 쓴다.
 5. 쓰기 전으로 복원할 수 있는 토스트를 띄운다.
 
-- **확인 창은 묻는 이유가 되는 항목만 보인다.** 곡마다의 결과는 쓰기 결과 창에 둔다.
+- **확인 창은 묻는 이유가 되는 항목만 보인다.** 곡마다의 결과는 활동 기록 창에 둔다.
 - **토스트에서 누른 복원은 그 뒤 rekordbox 변경이나 초안 충돌이 없으면 묻지 않는다.**
 - **아무것도 쓰지 않았으면 창 대신 토스트로 알린다(#230).** 손실과 상태 불명만 창으로 멈춘다.
-  - rekordbox가 켜져 있을 때와 쓸 초안·넣을 곡·뺄 곡이 없을 때는 경고 토스트 `AppToast.notice`를 띄운다. 이 토스트는 결과 보기 없이 닫을 때까지 남는다.
+  - rekordbox가 켜져 있을 때와 쓸 초안·넣을 곡·뺄 곡이 없을 때는 경고 토스트 `AppToast.notice`를 띄운다. 이 토스트는 결과 보기 없이 읽을 시간이 지나면 닫힌다. 활동 기록에는 남는다.
+- **창 토스트는 `LibraryStore.showToast` 한 길로 띄운다(#296).** 띄운 알림은 모두 활동 기록 `ActivityLog`에 남는다. 쓰기 결과는 결과(전체 문구·백업 위치)를 함께 남긴다. 저장소의 `toast`는 밖에서 바꿀 수 없다. USB 흐름은 `UsbWriteHost.showToast`로 같은 길을 지난다.
+- **사용자가 누르지 않은 일의 안내는 `LibraryStore.notify`로 띄운다(#307).** 읽기·저장 실패, 손상 파일, XML 검증, 재생 기록 가져오기가 그렇다. 떠 있는 알림이 경고·실패면 그 알림을 그대로 둔다. 단추가 있는 알림도 같다. 새 알림은 활동 기록에만 남긴다(`unshown`).
+- **목록 위 오류·안내 줄은 없앴다(#307).** 오류 상태 `lastError`는 읽기·쓰기 흐름이 보는 값으로만 남는다.
+  - 수명은 `AppToast.duration`이 정한다. 성공·경고는 4초 + 글자마다 0.06초다. 되돌리기·동작 단추가 있으면 적어도 7초다. 실패만 닫을 때까지 남는다.
+  - 마우스를 올린 동안과 알림 안 단추에 키보드 포커스가 있는 동안은 시간을 세지 않는다(`AppToastTimer`). VoiceOver가 켜져 있으면 닫지 않는다.
+  - 활동 기록은 최근 200건이다. 바로 앞 항목과 종류·제목·내용(쓰기 결과는 백업도)이 같으면 새 항목 대신 시각과 횟수를 고친다.
   - 모두 막힌 초안과 미리 보기에서 제외한 초안은 결과 토스트와 결과 보기로 알린다.
 - **쓰는 동안 덱은 재생을 멈춘 채 조작을 막는다.**
+- **쓰기 잠금은 용도별 값으로 읽는다(#301).** 원천은 `LibraryStore.isWritingRekordbox` 하나다. 쓰기·복원 중에 켜진다. 읽는 쪽은 용도에 맞는 값을 읽는다.
+  - `libraryBusy`는 라이브러리 내부 배타다. 아래가 쓰기와 겹치지 않게 막는다. 초안 파일 잠금(flock)도 이 동안 든다.
+    - 읽기, 복원, USB, iTunes
+    - 자동 시점 스냅샷, 재생 목록 복구, 곡 추가 목록
+    - 사이드바·상세를 통째로 막는 줄. 안쪽에 가드가 없는 조작을 막아 준다.
+  - `editsFrozen`은 편집 잠금이다. 아래를 막는다.
+    - 덱의 큐·그리드·게인 편집과 재생
+    - 태그·그림·재생 목록 편집
+    - 키 입력, ⌘Z 기록
+  - 덱은 사본 `DeckModel.editsFrozen`을 든다. iTunes 동기화는 덱을 잠그지 않아 저장소 값과 다를 수 있다.
+  - `quitBlocked`는 앱 종료와 업데이트 설치 판단이다. `writeActivity`의 rekordbox 단계가 이 값을 읽는다(#300).
+  - 지금은 셋이 늘 같은 값이다(`WriteLockSplitTests`). 편집 잠금만 풀 때는 `editsFrozen`의 정의와 그 시험의 기대를 함께 바꾼다.
+  - 판단이 어려운 자리는 `libraryBusy`를 읽는다.
 - **되돌리기는 쓰기 전 전체 백업으로 한다.** 백업은 `rekordbox-backups/<시각>-write/`에 최근 20개를 남긴다. 백업에 그때 쓴 초안도 넣어 두어, 되돌릴 때는 DB·분석 파일의 복원과 함께 초안도 다시 살린다.
   - 가장 최근이 아닌 백업이면 그 뒤 백업들의 분석·그림 파일도 최신부터 차례로 되돌린다. 그래서 파일이 DB와 같은 시점에 맞는다(#222). 구현은 `RekordboxWriter+RestoreChain`이다.
 
@@ -729,6 +792,7 @@ Time Profiler(`--attach`)로 본 원인은 아래 둘이다.
 - **덱의 큐 목록 폭 단계(`DeckWidthClass`)는 본문이 진짜 크기만 걸러(`DeckLayout.isDetailMeasurement`) 재서 덱에 넘긴다.** 덱이 자기 폭을 재면, SwiftUI가 창 최소·최대 크기를 알아볼 때 제안한 임시 폭에도 상태가 바뀐다. PR #151의 고정 헤더 배치는 유지한다.
 - **`FlowLayout`은 칸의 자연 크기를 캐시에 재 둔 뒤 제안 폭마다 줄을 나눈다.** 칸 내용이나 개수가 바뀌면 SwiftUI가 캐시를 갱신한다. PR #151의 양끝 맞춤·세로 가운데 정렬도 같은 크기를 쓴다.
 - **파형 높이에 쓰는 `fittedChromeHeight`는 곡이 있을 때 본문 높이가 1pt 넘게 바뀌어야만 갱신한다(PR #151).** 곡 로드나 덱 내용 증가 때는 파형 높이를 줄이는 대신 덱 뷰포트만 제한한다.
+- **확대 파형의 최소 높이는 고정 80pt가 아니라 `DeckLayout.minimumZoomWaveformHeight`다(#199, #266).** 조작부 최소 높이(190pt)에서 여백 8pt·전체 파형·템포 띠를 뺀 나머지다. 글자 배율 1배에서 105pt다. 핸들과 메뉴는 이 값에서 멈춘다. 저장한 요청값(예: 옛 최소 80)은 바꾸지 않는다. 화면에 보이는 높이만 올린다.
 
 #### 2026-09-30 재검증
 
@@ -767,6 +831,12 @@ PR #151·#139·#152가 든 `a365937`과 수정본을 교대 A/B로 쟀다. 두 �
 ## rekordbox 쓰기
 
 rekordbox 쓰기의 규칙·절차·막아 둔 것은 `docs/rekordbox-internals.md`에 있다. 쓰기 전에 확인하는 버전, DB 구조, 카운터도 그 문서에 있다.
+
+- **rekordbox 실행은 두 길로 따로 본다(#323).** 두 길은 같은 이름 목록과 판정(`RekordboxRunState`)을 쓴다.
+  - 쓰기 관문은 그때그때 `pgrep -x`를 띄워 본다(`RekordboxProcessCheck`). 복원, 시점 스냅샷, USB, LINK도 이 확인을 쓴다.
+  - 이 확인은 실패하면 켜진 것으로 본다. 실패는 띄우지 못함, 0·1 밖의 종료 코드, 2초 초과다.
+  - 앱의 감지 서비스(`RekordboxRunModel`)는 커널 프로세스 목록을 읽는다. 프로세스를 띄우지 않는다. 처음 한 번, 앱 실행·종료 알림이 올 때, 5초마다 읽는다. 읽지 못하면 '모름'이다.
+  - 이 값은 화면 표시용이다. 상태 줄 칩과 켜진 채 종료 시트가 읽는다(#326). 이 값으로 쓰기를 허용하지 않는다.
 
 ## USB
 

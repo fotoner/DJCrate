@@ -25,8 +25,12 @@ struct AgentToolsSettingsView: View {
                     }
                 }
             } footer: {
-                Text(.ui("DJCrate 스킬을 설치하면 Claude Code·Codex가 djc로 라이브러리를 조회하고 큐·태그 초안을 만듭니다. rekordbox에 쓰는 일은 앱에서 사람이 합니다."))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(.ui("에이전트가 djc로 초안을 만듭니다."))
+                    InfoPopoverButton(label: String(ui: "스킬이란?"), lines: [
+                        String(ui: "DJCrate 스킬을 설치하면 Claude Code·Codex가 djc로 라이브러리를 조회하고 큐·태그 초안을 만듭니다. rekordbox에 쓰는 일은 앱에서 사람이 합니다.")])
+                }
+                .foregroundStyle(.secondary)
             }
             Section {
                 ForEach(model.skillRows) { row in
@@ -42,11 +46,8 @@ struct AgentToolsSettingsView: View {
             } header: {
                 Text(.ui("스킬"))
             } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(.ui("Claude Code는 설정 폴더(기본 ~/.claude, CLAUDE_CONFIG_DIR로 바꾼 폴더)의 skills를, Codex는 ~/.agents/skills를 읽습니다. 사용자가 고친 파일과 DJCrate가 설치하지 않은 것은 바꾸기 전에 묻고 휴지통으로 옮깁니다."))
-                    if let legacy = model.legacyCodexText { Text(legacy).foregroundStyle(.orange) }
-                }
-                .foregroundStyle(.secondary)
+                // 위치는 행이, 휴지통으로 옮기는 일은 바꾸기 직전 확인 창이 말한다. 지금 할 일이 있는 경고만 남긴다
+                if let legacy = model.legacyCodexText { Text(legacy).foregroundStyle(.orange) }
             }
             if let command = model.commandRow {
                 Section {
@@ -54,7 +55,12 @@ struct AgentToolsSettingsView: View {
                                         onLink: { model.start(.linkCommand) }, onUnlink: { model.start(.unlinkCommand) })
                     if let path = model.pathText {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(path.text).foregroundStyle(.secondary)
+                            if path.isInPath {
+                                Label(path.text, systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            } else {
+                                Text(path.text).foregroundStyle(.secondary)
+                            }
                             if let line = path.line {
                                 Text(verbatim: line)
                                     .font(.body.monospaced())
@@ -66,9 +72,6 @@ struct AgentToolsSettingsView: View {
                     }
                 } header: {
                     Text(.ui("명령줄 도구 djc"))
-                } footer: {
-                    Text(.ui("링크는 앱 안의 djc를 가리켜 앱을 갱신하면 djc도 함께 바뀝니다. 셸 설정 파일은 고치지 않습니다."))
-                        .foregroundStyle(.secondary)
                 }
             }
             if let message = model.message {

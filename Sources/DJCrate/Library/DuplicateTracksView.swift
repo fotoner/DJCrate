@@ -23,7 +23,7 @@ struct DuplicateTracksView: View {
                     Spacer()
                     Button(.ui("초안 버리기")) {
                         do { try store.setMergeDrafts(store.mergeDrafts.filter { $0.id != draft.id }) }
-                        catch { store.reflectionMessage = AppMessage(kind: .warning, text: error.localizedDescription) }
+                        catch { store.showToast(.notice(text: error.localizedDescription, kind: .warning)) }
                     }
                 }
                 .padding(.horizontal, 12).padding(.vertical, 4)
@@ -69,7 +69,7 @@ struct DuplicateTracksView: View {
                 }
             }
         }
-        .disabled(!store.writeLockPolicy.allowsLibraryInteraction)
+        .disabled(store.editsFrozen)
         .navigationTitle(store.sidebarTitle)
         .navigationSubtitle(String(ui: "\(store.displayDuplicateGroups.count)묶음 · \(store.displayRows.count)곡"))
     }

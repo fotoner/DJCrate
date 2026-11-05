@@ -7,7 +7,7 @@ extension LibraryStore {
     /// USB를 읽고 로컬 큐·그리드 초안만 만든다(`UsbCueGridImport`). rekordbox와 USB에 쓰는 것은 별도의 반영 동작이다.
     func importUsbCueGrid(volumeKey: String) async -> UsbCueGridImportSummary {
         var summary = UsbCueGridImportSummary()
-        guard !isLoading, !isWritingRekordbox, !isSynchronizingLibrary, allowsLibrarySync?() != false,
+        guard !isLoading, !libraryBusy, !isSynchronizingLibrary, allowsLibrarySync?() != false,
               let snapshot = snapshotURL, let usb, let volume = usb.volume(volumeKey),
               let library = usb.libraries[volumeKey], !usb.ejecting.contains(volumeKey) else {
             summary.details = [String(ui: "로컬 라이브러리와 USB를 다 읽고 편집을 마친 뒤 다시 가져오세요.")]
@@ -31,7 +31,7 @@ extension LibraryStore {
                 try service.planCueGridImport(volume: volume, snapshot: snapshot, share: share, scratch: scratch, rows: tracks)
             }
             guard !Task.isCancelled, snapshotURL == snapshot, previewRevision == revision,
-                  !isLoading, !isWritingRekordbox, !isSynchronizingLibrary,
+                  !isLoading, !libraryBusy, !isSynchronizingLibrary,
                   allowsLibrarySync?() != false, usb.volume(volumeKey) == volume,
                   plan.rows.allSatisfy({ rowsByID[$0.row.track.id] == rows[$0.row.track.id] }) else {
                 summary.details = [String(ui: "읽는 동안 라이브러리나 편집 상태가 바뀌었으니 편집을 마친 뒤 다시 가져오세요.")]

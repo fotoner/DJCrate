@@ -129,11 +129,11 @@ struct DeckSuggestionBarTests {
         let row = Self.row("locked", key: "8B", staged: true)
         try await h.load(row)
         #expect(!h.bar.isLocked)
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         #expect(h.bar.isLocked && h.bar.list.shown.contains { $0.kind == .key }, "쓰는 동안 줄은 그대로 두고 단추만 막는다")
         h.bar.apply(.key)
         #expect(h.store.tagDrafts.isEmpty)
-        h.deck.isWriteLocked = false
+        h.deck.editsFrozen = false
         h.store.isWritingRekordbox = true
         #expect(h.bar.isLocked)
     }

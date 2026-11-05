@@ -26,13 +26,13 @@ extension LibraryStore {
     /// 읽는 사이 앱에서 초안을 고쳤거나(저장 입력·태그·앨범아트·초안 표시) 덱에서 큐·그리드를 끌기 시작했으면 결과를 버리고
     /// 다음 확인에서 다시 읽는다.
     func refreshExternalDrafts() async {
-        guard case .loaded = phase, !isWritingRekordbox else { return }
+        guard case .loaded = phase, !libraryBusy else { return }
         let watch = useCases.watch
         externalDraftRefreshCount += 1
         let request = externalDraftRefreshCount
         let tags = tagRevision, artwork = artworkChangeCount, marks = draftMarkRevision, playlist = playlists.playlistDraftRevision
         let refresh = await watch.refresh(since: draftFileStamps, preservingDamaged: location.movesDamagedDrafts)
-        guard request == externalDraftRefreshCount, case .loaded = phase, !isWritingRekordbox, allowsLibrarySync?() ?? true,
+        guard request == externalDraftRefreshCount, case .loaded = phase, !libraryBusy, allowsLibrarySync?() ?? true,
               watch.saveRevision() == refresh.saveRevision, tagRevision == tags,
               artworkChangeCount == artwork, draftMarkRevision == marks, playlists.playlistDraftRevision == playlist else {
             // 이 확인이 옮긴 손상 파일은 다음 확인이 다시 보지 못하니 결과를 버려도 알리고 메모리 태그 초안을 다시 저장한다(#174).
@@ -40,8 +40,10 @@ extension LibraryStore {
             return
         }
         let failedTags = refresh.failedTagSaves.intersection(tagSaveAttempts)
-        if !failedTags.isEmpty { reportLibraryError(DraftSaveFailure.tagSaveMessage) }
-        else if lastError == DraftSaveFailure.tagSaveMessage { clearLibraryError() }
+        // 1초마다 도는 확인이라 이미 알린 실패는 다시 띄우지 않는다(#307)
+        let reported = lastError == DraftSaveFailure.tagSaveMessage
+        if !failedTags.isEmpty, !reported { reportLibraryError(DraftSaveFailure.tagSaveMessage, kind: .failure) }
+        else if failedTags.isEmpty, reported { clearLibraryError() }
         guard let contents = refresh.contents else { return }
         rememberDraftFileStamps(refresh.stamps)
         // CLI가 바꾼 재생 목록 초안(#260). 받으면 라이브러리 ⌘Z 기록을 비운다(`adoptExternalDraft`)
@@ -50,6 +52,7 @@ extension LibraryStore {
         let previousTags = tagDrafts
         // 자동 큐를 빼고 만든 옛 초안에는 곡의 자동 큐를 채운다(#145).
         let cues = watch.visibleCueDrafts(contents.cueDrafts) { self.rowsByUUID[$0]?.cues ?? [] }
+        let previousCueDrafts = cueDraftUUIDs
         if let tags = WatchDrafts.externalTags(disk: contents.tagDrafts, memory: tagDrafts, failed: failedTags) {
             tagDrafts = tags
             // 외부 변경 뒤 옛 되돌리기가 새 초안을 덮지 않게 한다.
@@ -66,6 +69,8 @@ extension LibraryStore {
         applyMovedDrafts(contents.moved, previousTags: previousTags)
         refreshUnlinkedDrafts()
         onCueDraftsReloaded?(cues)
+        // 바깥(djc·LINK 큐 편집)에서 바뀌거나 사라진 큐 초안도 LINK로 내어 주는 큐에 옮긴다(#281). 같은 큐는 LINK 막대가 다시 보내지 않는다
+        publishLinkCues(previousCueDrafts.union(cues.keys), drafts: cues)
     }
 
     /// 실패한 저장의 입력이 디스크보다 최신이므로 다시 읽어도 복구 진입점을 남긴다(저장 대기 입력은 메모리라 파일을 읽지 않는다).
@@ -92,6 +97,7 @@ extension LibraryStore {
         draftMarkRevision += 1
         setDraftMark(kind, trackUUID: trackUUID, exists: exists)
         if kind == .cue, !exists { draftPreviewCues[trackUUID] = nil }
+        if kind == .cue { publishLinkCues([trackUUID]) }
         updateEdited(trackUUID)
         if case .pending = sidebar { refreshBase() }
     }

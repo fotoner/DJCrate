@@ -73,6 +73,7 @@ extension UsbLibraryEngine {
                 databasesUnchanged: { try UsbCueGridReader.databasesUnchanged(since: $0, root: UsbRoot($1)) },
                 newCueID: { UUID() }),
             writer: .live(fileSystem: fileSystem),
+            pointSnapshot: .live(fileSystem: fileSystem),
             syncGate: .live,
             syncSelectionFiles: { try UsbSyncSelectionBundle.read(root: UsbRoot($0), formats: $1).baseFiles })
     }

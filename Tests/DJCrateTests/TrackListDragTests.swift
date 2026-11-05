@@ -48,7 +48,7 @@ struct TrackListDragTests {
     /// 순서를 바꿀 수 있는 재생 목록(# 순)
     static func playlistStore(count: Int) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("drag"), persist: false),
-                                 resultHistory: WriteResultHistory(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
+                                 activityLog: ActivityLog(), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in })
         store.phase = .loaded
         let ids = (1...count).map(String.init)
         for id in ids { store.rowsByID[id] = PlaylistEditingTests.row(id) }

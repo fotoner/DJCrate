@@ -25,9 +25,12 @@ public struct LibraryLocation: Sendable, Equatable {
     public var draftHome: URL
     /// 읽지 못하는 초안 파일을 `damaged-drafts`로 옮기고 알릴지. 앱만 켠다(#174: 시험이 사용자 폴더의 파일을 옮기지 않게)
     public var movesDamagedDrafts: Bool
+    /// 사용자 홈 폴더 경로. 읽기 실패의 "자세히 보기"가 원문 오류의 개인 경로를 `~`로 줄이는 데 쓴다(비어 있으면 줄이지 않는다)
+    public var userHome: String
 
     public init(rekordboxDirectory: URL, rekordboxDirectoryOverridden: Bool, snapshotDirectory: URL, opensExplicitCopy: Bool,
-                explicitCopy: URL?, database: URL, shareRoot: URL?, backupDirectory: URL, draftHome: URL, movesDamagedDrafts: Bool) {
+                explicitCopy: URL?, database: URL, shareRoot: URL?, backupDirectory: URL, draftHome: URL, movesDamagedDrafts: Bool,
+                userHome: String = "") {
         self.rekordboxDirectory = rekordboxDirectory
         self.rekordboxDirectoryOverridden = rekordboxDirectoryOverridden
         self.snapshotDirectory = snapshotDirectory
@@ -38,6 +41,7 @@ public struct LibraryLocation: Sendable, Equatable {
         self.backupDirectory = backupDirectory
         self.draftHome = draftHome
         self.movesDamagedDrafts = movesDamagedDrafts
+        self.userHome = userHome
     }
 
     /// 라이브 master.db: 바뀌었는지 확인하고 스냅샷을 뜨는 원본(읽기만 한다)

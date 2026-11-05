@@ -42,6 +42,18 @@ struct CachePathsTests {
         for url in [current.waveforms, current.analysis, current.loudness] {
             #expect(!url.path.hasPrefix(userSupport + "/"), "\(url.path)")
         }
+        // LINK WAV 변환본은 사용자 음악 폴더에 쓰지 않는다(#287)
+        #expect(!current.linkAudio.path.hasPrefix(NSHomeDirectory() + "/Music/"), "\(current.linkAudio.path)")
+    }
+
+    @Test func LINK_WAV_변환본은_음악_폴더에_두고_DJC_HOME이_있으면_그_아래에_둔다() {
+        // CDJ가 NFS로 읽으므로 음원이 보통 있는 ~/Music 아래다(#277). 데이터 폴더(DJC_HOME)를 따르지 않으면 자가 테스트가 사용자 음악 폴더에 썼다
+        let music = URL(filePath: NSHomeDirectory() + "/Music/DJCrate/LINK")
+        for environment in [[:], ["DJC_HOME": ""]] as [[String: String]] {
+            #expect(DJCIdentity.linkAudioDirectory(environment: environment, fallback: music) == music)
+        }
+        let home = "/private/tmp/djc-home-\(UUID())"
+        #expect(DJCIdentity.linkAudioDirectory(environment: ["DJC_HOME": home], fallback: music).path == home + "/link-audio")
     }
 
     /// 실물 USB 거부 목록(`usb-physical-deny.json`)은 `supportDirectory`에 고정이다. 안전 목록이라 `DJC_HOME`을 따라가면 안 된다.

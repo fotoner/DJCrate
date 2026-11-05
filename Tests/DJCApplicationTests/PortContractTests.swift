@@ -40,6 +40,8 @@ struct PortContractTests {
 
     // MARK: - 라이브러리
 
+    @Test func rekordbox_실행_감시() async throws { try await rekordboxProcessSourceContract(FakeRekordboxProcesses().source) }
+
     @Test func 초안_저장소() throws { try draftStoreContract(MemoryDrafts().store) }
 
     @Test func 추가_목록() throws { try stagingStoreContract(MemoryStaging().store) }

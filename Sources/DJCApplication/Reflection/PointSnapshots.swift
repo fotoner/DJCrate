@@ -300,7 +300,6 @@ public struct PointSnapshots: Sendable {
                      String(ui: "지금 상태는 ‘복원 직전’ 스냅샷으로 남겨 다시 되돌릴 수 있습니다. DJCrate 초안은 그대로 둡니다.")]
         if diff.isEmpty { lines.append(String(ui: "지금 라이브러리와 다른 곳이 없습니다.")) }
         if diff.cloudSyncedSince(entry) { lines.append("⚠︎ " + RekordboxPointSnapshotDiff.cloudSyncNote) }
-        lines.append(String(ui: "끝날 때까지 rekordbox를 켜지 마세요."))
         var details = diff.summary
         for group in diff.details(limit: 20) { details += ["", group.title + ":"] + group.items.map { "• " + $0 } }
         return ReflectionPrompt(title: String(ui: "rekordbox를 ‘\(entry.displayName)’ 시점으로 복원할까요?"), text: lines.joined(separator: "\n\n"),

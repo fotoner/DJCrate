@@ -19,7 +19,7 @@ struct DraftRecovery168Tests {
     }
     /// 사본 DB를 열지 않는 시험은 폴더만 쓴다(TEST-16). 초안 폴더는 `home`, 백업은 그 아래 `backups`
     func makeStore(home: URL, writer: DraftWriter = DraftWriter(), database: URL? = nil) -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), backupDirectory: home.appending(path: "backups"),
+        LibraryStore.test(activityLog: ActivityLog(url: nil), backupDirectory: home.appending(path: "backups"),
                           playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                           draftHome: home, movesDamagedDrafts: false,
                           arguments: database.map { ["test", "--db", $0.path] } ?? ["test"],

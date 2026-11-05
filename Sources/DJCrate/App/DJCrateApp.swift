@@ -56,6 +56,12 @@ struct DJCrateApp: App {
 
     private static func checkHistorySelfTestStartup() {
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--usb-snapshot-capture=") }),
+           let refusal = UsbSelfTest.startupRefusal(arguments: ProcessInfo.processInfo.arguments,
+                                                  environment: ProcessInfo.processInfo.environment) {
+            UsbSelfTest.log(refusal)
+            exit(2)
+        }
         guard ProcessInfo.processInfo.arguments.contains("--history-selftest") else { return }
         do {
             _ = try HistorySelfTest.startupDatabase(arguments: ProcessInfo.processInfo.arguments, environment: ProcessInfo.processInfo.environment)
@@ -75,11 +81,15 @@ struct DJCrateApp: App {
                 .background(MainWindowFrame { windowFrameRestored = true })
                 .task {
                     appDelegate.store = store
+                    // 켜진 채 종료 시트(#326)가 읽는 감지 서비스와 업데이트 다시 켜기 표시
+                    let composition = app
+                    appDelegate.rekordboxRunState = { composition.rekordboxRun.state }
+                    appDelegate.consumeUpdateRelaunch = { composition.consumeUpdateRelaunch() }
                     #if DEBUG
                     // 쓰기 시험(`--write-selftest`)도 키 입력 없이 스토어로만 돌아 사용 중인 앱의 포커스를 가져오지 않는다
                     if !ResizePerfSelfTest.isRequested,
                        !ProcessInfo.processInfo.arguments.contains("--playlist-recovery-selftest"),
-                       !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--write-selftest" || $0 == "--history-selftest" }) {
+                       !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--write-selftest" || $0 == "--quit-wait-selftest" || $0 == "--history-selftest" }) {
                         NSApplication.shared.activate()
                     }
                     #else
@@ -97,7 +107,7 @@ struct DJCrateApp: App {
                     NSApp.sendAction(#selector(SheetTableView.fillDown(_:)), to: nil, from: nil)
                 }
                 .keyboardShortcut("d", modifiers: .command)
-                .disabled(!store.canFillDownTags || store.isWritingRekordbox)
+                .disabled(!store.canFillDownTags || store.editsFrozen)
             }
         }
         .defaultSize(width: 1440, height: 900)
@@ -132,7 +142,6 @@ private struct MainWindowFrame: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 
     final class TrackingView: NSView {
-        private weak var sizedSearchField: NSSearchField?
         private let onRestore: @MainActor () -> Void
 
         init(onRestore: @escaping @MainActor () -> Void) {
@@ -141,17 +150,6 @@ private struct MainWindowFrame: NSViewRepresentable {
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-        override func layout() {
-            super.layout()
-            guard let search = window?.toolbar?.items.compactMap({ $0 as? NSSearchToolbarItem }).first,
-                  sizedSearchField !== search.searchField else { return }
-            // 포커스 때만 240pt로 늘어나 이웃 버튼이 밀리지 않게 평상시에도 같은 폭을 확보한다.
-            let width: CGFloat = 240
-            search.preferredWidthForSearchField = width
-            search.searchField.widthAnchor.constraint(equalToConstant: width).isActive = true
-            sizedSearchField = search.searchField
-        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()

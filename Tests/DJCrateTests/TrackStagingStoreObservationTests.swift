@@ -6,8 +6,8 @@ import SwiftUI
 import Synchronization
 import Testing
 
-/// 추가 목록 조각(`TrackStagingStore`, #252)과 목록 아래 막대의 관찰 범위. 핵심(`LibraryStore`)은 조각을 관찰하지 않는다.
-/// 사이드바 줄은 각자 읽는 값에만 다시 계산하고(#141), 막대는 그 사이드바 항목일 때만 추가 목록·파일 확인 값을 읽는다.
+/// 추가 목록 조각(`TrackStagingStore`, #252)과 머리 줄 오른쪽 구성(`ListHeaderActionsView`, #340)의 관찰 범위. 핵심(`LibraryStore`)은 조각을 관찰하지 않는다.
+/// 사이드바 줄은 각자 읽는 값에만 다시 계산하고(#141), 오른쪽 구성은 그 사이드바 항목일 때만 추가 목록·파일 확인 값을 읽는다.
 /// 진행 줄을 넣고 빼는 값(`hasGridJob`·`hasXMLExportJob`)은 시작·끝에만 바뀌고, 같은 BPM은 다시 저장하지 않는다(R4). DB는 열지 않는다.
 @MainActor
 @Suite("추가 목록 조각 — 관찰 범위")
@@ -17,7 +17,7 @@ struct TrackStagingStoreObservationTests {
     private final class Saves: Sendable { let count = Mutex(0) }
 
     private func store(saves: Saves? = nil) -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                           stagingSaver: { _ in saves?.count.withLock { $0 += 1 } })
     }
 
@@ -39,7 +39,7 @@ struct TrackStagingStoreObservationTests {
     @Test(.tags(.perfContract)) func 핵심은_조각_속성을_관찰하지_않는다() {
         let store = store()
         #expect(!observes({ _ = store.staging }) { store.staging.staged = [staged("a")] })
-        #expect(!observes({ _ = store.staging }) { store.staging.stagingMessage = AppMessage(text: "합성 안내") })
+        #expect(!observes({ _ = store.staging }) { store.showToast(.notice(text: "합성 안내", kind: .success)) })
     }
 
     @Test(.tags(.perfContract)) func 사이드바_줄은_각자_읽는_값에만_다시_계산한다() {
@@ -49,7 +49,7 @@ struct TrackStagingStoreObservationTests {
         let exportRow = { _ = SidebarXMLExportRow(staging: store.staging).body }
         #expect(observes(stagedRow) { store.staging.staged = [staged("a")] })
         #expect(!observes(stagedRow) { store.staging.gridJob = GridJob(done: 0, total: 1) })
-        #expect(!observes(stagedRow) { store.staging.stagingMessage = AppMessage(text: "합성 안내") })
+        #expect(!observes(stagedRow) { store.showToast(.notice(text: "합성 안내", kind: .success)) })
         #expect(observes(gridRow) { store.staging.gridJob = GridJob(done: 1, total: 1) })
         #expect(!observes(gridRow) { store.staging.xmlExportJob = LibraryXMLExportJob() })
         store.staging.xmlExportJob = LibraryXMLExportJob()
@@ -90,7 +90,7 @@ struct TrackStagingStoreObservationTests {
         var grid: Task<Void, Never>?
         do {
             let path = "/synthetic/\(UUID().uuidString).wav"
-            let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
+            let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, stagingSaver: { _ in },
                                           ports: { ports in
                                               let exists = ports.files.exists
                                               ports.files.exists = { $0 == path || exists($0) }
@@ -120,29 +120,29 @@ struct TrackStagingStoreObservationTests {
         await adding?.value
     }
 
-    // MARK: - 목록 아래 막대
+    // MARK: - 머리 줄 오른쪽 구성(#340)
 
     private func bar(_ store: LibraryStore) -> () -> Void {
         let model = ListActionBarModel(store: store)
-        return { _ = ListActionBar(model: model).body }
+        return { _ = ListHeaderActionsView(model: model, window: LibraryWindowModel(store: store)).body }
     }
 
-    @Test(.tags(.perfContract)) func 막대는_추가한_곡을_볼_때만_추가_목록_조각을_읽는다() {
+    @Test(.tags(.perfContract)) func 머리_줄_오른쪽_구성은_추가한_곡을_볼_때만_추가_목록_조각을_읽는다() {
         let store = store()
         let body = bar(store)
         #expect(!observes(body) { store.staging.staged = [staged("a")] })
-        #expect(!observes(body) { store.staging.stagingMessage = AppMessage(text: "합성 안내") })
+        #expect(!observes(body) { store.showToast(.notice(text: "합성 안내", kind: .success)) })
         #expect(!observes(body) { store.staging.gridJob = GridJob(done: 0, total: 1) })
         store.sidebar = .staged
         #expect(observes(body) { store.staging.staged = [staged("b")] })
-        #expect(!observes(body) { store.staging.stagingMessage = AppMessage(text: "합성 안내 2") })
+        #expect(!observes(body) { store.showToast(.notice(text: "합성 안내 2", kind: .success)) })
         #expect(!observes(body) { store.staging.gridJob = nil })
     }
 
-    @Test(.tags(.perfContract)) func 막대는_파일_없음_필터에서만_파일_확인_진행을_읽는다() async {
+    @Test(.tags(.perfContract)) func 머리_줄_오른쪽_구성은_파일_없음_필터에서만_파일_확인_진행을_읽는다() async {
         let store = store()
         let model = ListActionBarModel(store: store)
-        let body = { _ = ListActionBar(model: model).body }
+        let body = { _ = ListHeaderActionsView(model: model, window: LibraryWindowModel(store: store)).body }
         #expect(!observes(body) { model.checkMissingFiles() })
         await store.missingFileTask?.value
         store.sidebar = .filter(.missingFile)

@@ -45,9 +45,9 @@ struct DJCErrorTests {
         }
     }
 
-    @Test func 복원_실패는_현재_화면의_복원_버튼을_안내한다() {
+    @Test func 복원_실패는_rekordbox_메뉴의_복원_항목을_안내한다() {
         let error = DJCError.restoreFailed(reason: "fixture", restoreError: "fixture", backup: "/fixture/backup", database: nil)
-        #expect(error.recoverySuggestion == "rekordbox를 켜지 말고 ‘rekordbox 쓰기 대기’의 ‘쓰기 전으로 복원…’으로 백업을 복원하세요.")
+        #expect(error.recoverySuggestion == "rekordbox를 켜지 말고 메뉴 막대 rekordbox › 쓰기 전으로 복원…으로 백업을 복원하세요.")
     }
 
     @Test func 쓰기_거부는_이유만_설명한다() {

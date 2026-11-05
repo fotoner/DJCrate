@@ -8,6 +8,8 @@ extension DJCPaths {
     public static var usbBackups: URL { userData.appending(path: "usb-backups") }
     /// USB DB를 맥에서 열려고 뜬 사본
     public static var usbSnapshots: URL { userData.appending(path: "usb-snapshots") }
+    /// USB 시점 스냅샷(#226): usb-point-snapshots/<볼륨키>/<시각>-<종류>/. 사용자가 남긴 것이라 캐시가 아니다
+    public static var usbPointSnapshots: URL { userData.appending(path: "usb-point-snapshots") }
     public static var usbDrafts: URL { userData.appending(path: "usb-drafts") }
     /// USB마다 기억하는 동기화 선택·목록 연결
     public static var usbSyncSelections: URL { userData.appending(path: "usb-sync-selections") }

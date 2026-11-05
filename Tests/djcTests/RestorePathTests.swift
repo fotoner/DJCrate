@@ -37,9 +37,11 @@ struct RestorePathTests {
         }
     }
 
+    /// 라이브 폴더(`DJC_REKORDBOX_DIR`)는 대상 사본과 다른 폴더로 준다. 대상 폴더를 주면 `djc`가 그 사본을 라이브로 봐 실제 rekordbox가 켜져 있을 때
+    /// 쓰기 관문이 먼저 막고(#292), 이 시험이 보려는 복원 경로 검사까지 가지 못한다.
     @Test(arguments: [false, true])
     func 지정한_share만_복원하고_바깥_경로는_DB도_바꾸지_않는다(_ malicious: Bool) throws {
-        let fixture = try RekordboxFixture()
+        let fixture = try RekordboxFixture(), live = try RekordboxFixture()
         let relative = "PIONEER/USBANLZ/abc/def/ANLZ0000.DAT"
         var track = TrackSpec(id: "1", uuid: "abcdef")
         track.analysisDataPath = "/" + relative
@@ -62,7 +64,7 @@ struct RestorePathTests {
         process.executableURL = executable
         process.arguments = ["rekordbox-restore", "--backup", backup.path, "--db", fixture.database.path, "--share", share.path]
         process.environment = ProcessInfo.processInfo.environment.merging([
-            "DJC_HOME": fixture.root.appending(path: "home").path, "DJC_REKORDBOX_DIR": fixture.root.path, "DJC_LANG": "ko",
+            "DJC_HOME": fixture.root.appending(path: "home").path, "DJC_REKORDBOX_DIR": live.root.path, "DJC_LANG": "ko",
         ]) { _, new in new }
         process.standardOutput = output; process.standardError = output
         try process.run()
@@ -71,6 +73,7 @@ struct RestorePathTests {
         #expect(process.terminationStatus == (malicious ? 1 : 0))
         #expect(text.contains(malicious ? "복원할 수 없습니다" : "되돌림 완료"))
         #expect(try fixture.localUpdateCount() == (malicious ? 2000 : 1000))
+        #expect(try live.localUpdateCount() == 1000)
         #expect(try Data(contentsOf: target) == Data((malicious ? "현재" : "백업").utf8))
         #expect(!FileManager.default.fileExists(atPath: fixture.shareRoot.appending(path: relative).path))
     }

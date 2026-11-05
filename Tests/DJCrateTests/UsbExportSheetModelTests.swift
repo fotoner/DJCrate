@@ -228,4 +228,19 @@ struct UsbExportSheetModelTests {
         #expect(usb.syncSheet == UsbSyncSheetRequest(volumeKey: image.usbKey))
         #expect(model.selection.retryJob == nil && model.selection.summary == nil)
     }
+
+    @Test("미리 보기를 막은 USB 안내는 시트 뒤 창 토스트가 저절로 닫혀도 시트에서 닫을 때까지 남는다(#296)")
+    @MainActor
+    func sheetKeepsUsbNotice() async throws {
+        let (model, _, _, _, _) = await sheet()
+        // USB 안내가 아닌 알림은 받지 않는다
+        model.toastChanged(AppToast(title: "현재 rekordbox 내용을 불러왔습니다"))
+        model.toastChanged(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        #expect(model.notice == nil)
+        let notice = AppToast.notice("rekordbox가 켜져 있어 미리 보지 않았습니다", "rekordbox를 종료하세요", isUsb: true)
+        model.toastChanged(notice)
+        model.toastChanged(nil)
+        #expect(model.notice == notice)
+        #expect(model.closeNotice() == notice.id && model.notice == nil)
+    }
 }

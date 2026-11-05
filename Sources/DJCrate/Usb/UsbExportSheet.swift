@@ -22,10 +22,11 @@ struct UsbExportSheet: View {
             formatsSection
             sourceSection
             previewSection
-            // 미리 보기를 막은 안내(rekordbox 켜짐·쓰는 중)는 창 대신 토스트로 알린다. 토스트는 시트 뒤에 가리므로 여기에도 보인다(#230)
-            if let toast = store.toast, toast.isNotice, toast.isUsb {
-                AppMessageView(message: AppMessage(kind: toast.kind, text: [toast.title, toast.detail].compactMap { $0 }.joined(separator: " — ")),
-                               onClose: { store.toast = nil })
+            // 미리 보기를 막은 안내(rekordbox 켜짐·쓰는 중)는 창 대신 토스트로 알린다. 토스트는 시트 뒤에 가리고 저절로 닫히므로
+            // 시트에서 닫을 때까지 여기에 보인다(#230·#296)
+            if let notice = model.notice {
+                AppMessageView(message: AppMessage(kind: notice.kind, text: [notice.title, notice.detail].compactMap { $0 }.joined(separator: " — ")),
+                               onClose: { if let id = model.closeNotice() { store.dismissToast(id) } })
             }
             HStack {
                 Spacer()
@@ -37,6 +38,7 @@ struct UsbExportSheet: View {
                     .disabled(!model.canExport)
             }
         }
+        .onChange(of: store.toast, initial: true) { _, toast in model.toastChanged(toast) }
         .onDisappear { model.disappeared() }
         .padding(20)
         .frame(width: 520)
@@ -164,8 +166,8 @@ struct UsbWritingOverlay: View {
                     Text(verbatim: [phase, model.items, model.bytes].compactMap { $0 }.joined(separator: " · "))
                         .font(.scaled(.caption, textScale).monospacedDigit())
                 }
-                Text(.ui("끝날 때까지 USB를 뽑지 마세요"))
-                    .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
+                // 확인 창에는 절차 문장을 두지 않는다. 쓰는 동안의 안내는 이 덮개가 한 번만 말한다(#310).
+                Text(verbatim: model.notice).font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
                 if model.showsCancel {
                     Button(.ui("취소"), action: onCancel).keyboardShortcut(.cancelAction)
                 }

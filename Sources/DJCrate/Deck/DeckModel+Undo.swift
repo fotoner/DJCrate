@@ -31,7 +31,7 @@ extension DeckModel {
             undoManager.beginUndoGrouping()
         }
         undoManager.registerUndo(withTarget: self) { target in
-            guard !target.isWriteLocked, target.row?.track.uuid == change.before.cue.trackUUID else { return }
+            guard !target.editsFrozen, target.row?.track.uuid == change.before.cue.trackUUID else { return }
             target.restoreDraft(change.before)
             target.registerDraftUndo(change.reversed, name: name)
         }

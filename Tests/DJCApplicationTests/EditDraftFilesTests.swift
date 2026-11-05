@@ -24,6 +24,25 @@ struct EditDraftFilesTests {
         #expect(files.cue("u7")?.cues.first?.name == "B")
     }
 
+    @Test func LINK_큐_편집은_있던_초안이나_rekordbox_큐에_얹어_저장한다() throws {
+        // #280: CDJ MEMORY로 더한 큐가 DJCrate 초안에 쌓인다. 바뀌지 않으면 저장하지 않는다
+        let files = MemoryDraftFiles()
+        let edits = EditDraftFiles(files: files.files)
+        let rekordbox = [Cue(id: "1", contentID: "7", kind: 0, inMsec: 10_000, name: "", colorTableIndex: nil)]
+        let memory = LinkCueEdit(contentID: "7", deleted: false, kind: 0, inMs: 30_000, outMs: nil, comment: "")
+        #expect(try edits.applyLinkCue(memory, track: Self.track, rekordboxCues: rekordbox) == .applied)
+        #expect(files.cue("u7")?.cues.map(\.time) == [10, 30])
+        #expect(try edits.applyLinkCue(memory, track: Self.track, rekordboxCues: rekordbox) == .unchanged)
+        let delete = LinkCueEdit(contentID: "7", deleted: true, kind: 0, inMs: 10_000, outMs: nil, comment: "")
+        #expect(try edits.applyLinkCue(delete, track: Self.track, rekordboxCues: rekordbox) == .applied)
+        #expect(files.cue("u7")?.cues.map(\.time) == [30])
+        // 곡 길이(초 단위로 버린 값) 마지막 1초 안은 받고, 그 밖은 받지 않는다
+        let end = LinkCueEdit(contentID: "7", deleted: false, kind: 0, inMs: 120_600, outMs: nil, comment: "")
+        #expect(try edits.applyLinkCue(end, track: Self.track, rekordboxCues: rekordbox) == .applied)
+        let late = LinkCueEdit(contentID: "7", deleted: false, kind: 0, inMs: 500_000, outMs: nil, comment: "")
+        #expect(Self.code { _ = try edits.applyLinkCue(late, track: Self.track, rekordboxCues: rekordbox) } == "invalid_arguments")
+    }
+
     @Test func 곡_길이_밖이나_읽지_못하는_기존_초안은_막는다() {
         let files = MemoryDraftFiles()
         let edits = EditDraftFiles(files: files.files)

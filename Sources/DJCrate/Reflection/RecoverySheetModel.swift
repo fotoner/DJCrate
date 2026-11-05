@@ -219,7 +219,7 @@ final class RecoverySheetModel: Identifiable {
             line.canKeep = keepable
             if !line.isStale {
                 // rekordbox가 바뀐 것이 아니면 다시 적용할 것이 없다. 쓰지 못한 이유는 쓰기 결과에 있다.
-                line.keepBlockedReason = String(ui: "이 초안은 rekordbox가 바뀌어서 막힌 것이 아니니 ‘마지막 쓰기 결과…’에서 쓰지 못한 이유를 확인하세요.")
+                line.keepBlockedReason = String(ui: "이 초안은 rekordbox가 바뀌어서 막힌 것이 아니니 ‘활동 기록…’에서 쓰지 못한 이유를 확인하세요.")
             } else if !keepable {
                 if missing.isEmpty {
                     line.keepBlockedReason = review.keepRefusal
@@ -340,11 +340,11 @@ final class RecoverySheetModel: Identifiable {
         }
         if saved > 0 {
             hasSaved = true
-            host.toast = failed == 0
+            host.showToast(failed == 0
                 ? AppToast(kind: .success, title: String(ui: "초안을 저장했습니다"),
                            detail: String(ui: "쓰기 미리 보기에서 지원 제한과 최신 상태를 다시 확인하세요."))
                 : AppToast(kind: .warning, title: String(ui: "초안 일부만 저장했습니다"),
-                           detail: String(ui: "저장하지 못한 줄은 비교 창에서 이유를 확인하세요."))
+                           detail: String(ui: "저장하지 못한 줄은 비교 창에서 이유를 확인하세요.")))
         }
         // 앞서 저장에 실패한 줄이 남아 있으면 이유를 볼 수 있게 시트를 열어 둔다.
         if !lines.contains(where: { if case .failed = $0.phase { true } else { false } }) { close() }

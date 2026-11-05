@@ -131,6 +131,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>NSDocumentsFolderUsageDescription</key><string>문서 폴더에 있는 음원을 재생·분석하거나 rekordbox XML을 저장하려면 접근이 필요합니다.</string>
     <key>NSDownloadsFolderUsageDescription</key><string>다운로드 폴더에 있는 음원을 재생·분석하려면 접근이 필요합니다.</string>
     <key>NSDesktopFolderUsageDescription</key><string>데스크탑에 있는 음원을 재생·분석하려면 접근이 필요합니다.</string>
+    <key>NSLocalNetworkUsageDescription</key><string>같은 네트워크의 CDJ·DJM(Pro DJ Link)을 찾으려면 로컬 네트워크 접근이 필요합니다.</string>
 </dict>
 </plist>
 PLIST

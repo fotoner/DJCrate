@@ -152,6 +152,9 @@ struct AgentToolsSettingsModelTests {
         let inside = self.model(shellPath: "/usr/bin:\(home.path)/.local/bin")
         await inside.refresh()
         #expect(inside.pathText?.line == nil)
+        // 정상일 때는 문장 없이 'PATH에 있음' 한 칸만 보인다(#309)
+        #expect(inside.pathText?.text == String(ui: "PATH에 있음") && inside.pathText?.isInPath == true)
+        #expect(outside.pathText?.isInPath == false && path.isInPath == false)
         model.start(.unlinkCommand)
         await model.task?.value
         #expect(model.commandRow?.status == String(ui: "없음"))
@@ -175,6 +178,7 @@ struct AgentToolsSettingsModelTests {
         let toast = try #require(await updated.launchNotice())
         #expect(toast.action == .updateAgentTools)
         #expect(toast.kind == .warning)
+        #expect(toast.detail == String(ui: "이 앱 버전에 맞춰 갱신하세요."))
         #expect(await updated.launchNotice() == nil)
         #expect(settings.value(SettingKeys.agentToolsNotifiedVersion) == v2.key)
 
@@ -182,7 +186,7 @@ struct AgentToolsSettingsModelTests {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("agent-window"), persist: false))
         let window = LibraryWindowModel(store: store)
         window.agentTools = updated
-        store.toast = toast
+        store.showToast(toast)
         await window.performToastAction(.updateAgentTools).value
         #expect(store.toast?.kind == .success)
         #expect(store.toast?.title == String(ui: "모두 갱신했습니다. 에이전트의 새 세션부터 새 스킬을 읽습니다."))

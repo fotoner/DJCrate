@@ -60,13 +60,13 @@ struct GridShiftButtonTests {
         button.stepMilliseconds = 10
         button.beginHold()
         button.moveGrid()
-        h.deck.isWriteLocked = true
+        h.deck.editsFrozen = true
         let locked = h.deck.draftSnapshot
         button.moveGrid()
         button.endHold()
         #expect(h.deck.draftSnapshot == locked)
 
-        h.deck.isWriteLocked = false
+        h.deck.editsFrozen = false
         button.beginHold()
         h.deck.reload()
         try await h.loaded()

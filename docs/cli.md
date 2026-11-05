@@ -38,7 +38,7 @@ CLI 조회·초안 명령은 `DJC_DB`로 DB를 고르지 않으므로 사본은 
 
 | 환경 변수 | 하는 일 |
 |---|---|
-| `DJC_HOME` | 초안·백업·캐시(`waveforms/`·`analysis/`·`loudness.json`)·오디오 기록(`logs/audio.log`) 폴더를 바꾼다. 스냅샷은 옮기지 않는다. 시험에서는 늘 임시 폴더 |
+| `DJC_HOME` | 초안·백업·캐시(`waveforms/`·`analysis/`·`loudness.json`)·LINK WAV 변환본(`link-audio/`)·오디오 기록(`logs/audio.log`) 폴더를 바꾼다. 스냅샷은 옮기지 않는다. 시험에서는 늘 임시 폴더 |
 | `DJC_REKORDBOX_DIR` | rekordbox 폴더 대신 쓸 사본 폴더. 그 안 `share/PIONEER/USBANLZ`는 링크가 아닌 실제 사본. 이 실행의 "라이브"가 이 사본이 된다 |
 | `DJC_DB` | 앱이 열 스냅샷(앱 인자 `--db <스냅샷>`과 같음). CLI 조회·초안 명령의 DB 선택에는 쓰지 않는다 |
 | `DJC_IDLE_SECONDS` | 재생을 멈춘 뒤 오디오 엔진을 끄기까지의 초. 설정 › 일반보다 먼저 적용 |
@@ -525,6 +525,8 @@ djc cache --clear waveforms analysis --dry-run   # 지울 양만 보기
 djc cache --clear all                       # 모든 종류 비우기
 ```
 
+USB 시점 스냅샷(`usb-point-snapshots/`)의 개수와 사용량도 보인다. USB 쓰기 전 백업처럼 용량만 보고, `--clear all`로도 지우지 않는다.
+
 캐시는 앱이 다시 만든다. 그래서 따로 묻지 않는다. 플래그가 곧 동의다. 종류는 허용 목록 하나(`DJCCacheKind`)뿐이다. 지우는 규칙은 `DJCCache` 한 곳에 있다.
 
 | 종류 | 자리 | 비우는 것 | 다시 만들어지는 때 |
@@ -535,6 +537,7 @@ djc cache --clear all                       # 모든 종류 비우기
 | `preview-waveforms` | `preview-waveforms.plist` | 파일 | 곡 목록을 그릴 때 |
 | `usb-snapshots` | `usb-snapshots/<볼륨키>/<시각>/` | 볼륨마다 가장 새 사본을 뺀 나머지 | USB를 열 때 |
 | `snapshots` | 스냅샷 폴더(`DJC_REKORDBOX_DIR`이 있으면 그 안 `djc-snapshots/`) | 가장 새 사본을 뺀 나머지(곁 `-wal`·`-shm`·`.itunes.json` 포함) | rekordbox와 동기화할 때 |
+| `link-audio` | `~/Music/DJCrate/LINK`(`DJC_HOME`이 있으면 그 안 `link-audio/`) | 하위 파일(바꾸다 끊긴 `.….djc-partial.wav` 포함, 폴더는 남김) | FLAC·ALAC 곡을 LINK로 CDJ에 실을 때 |
 
 - 다음 항목은 어떤 종류에도 없어 지우지 않는다.
   - 초안(`*-drafts/`·`*-drafts.json`)
@@ -556,6 +559,7 @@ djc cache --clear all                       # 모든 종류 비우기
 - `usb-snapshots`는 쓰기 세션 사본(`local-`·`usb-`·`info-`)을 건드리지 않는다.
 - `snapshots`는 뜨는 중인 `.part`를 건드리지 않는다. 앱 화면(설정 › 저장 공간)에서 비우면 앱이 연 사본도 남긴다.
 - CLI는 앱이 연 사본을 모른다. 그래서 앱을 `--db`로 옛 사본에 연 채 비우지 않는다.
+- CLI는 앱이 LINK로 내어 주는지도 모른다. CDJ가 변환본을 읽는 중일 수 있으니 LINK를 켠 채 `link-audio`를 비우지 않는다. 앱 화면은 LINK를 켠 동안 이 종류를 막는다.
 - 크기는 논리 크기 합이다. 같은 APFS 볼륨의 복사는 클론이라 실제로 비는 양은 더 작을 수 있다.
 - 앱이 켜져 있으면 앱이 기억한 음량·목록 미리 보기 파형을 나중에 다시 저장할 수 있다. 앱에서는 설정 › 저장 공간에서 비운다.
 
@@ -1086,6 +1090,36 @@ djc usb-restore --volume <마운트> [--backup <폴더>] [--discard-device-chang
 - `--allow-physical --confirm <볼륨 이름>`은 실물 USB를 되돌리거나 회복할 때 요구한다. 쓰기와 같은 관문이다.
 - 출력은 결과, 백업 폴더, 파일 수다. USB 경로가 붙은 알림은 이유별 개수만 찍는다. 건너뛴 분석 파일 등이 그 예다.
 - 종료 코드는 성공 0, 막힘·실패 1이다. 막힘 이유는 무엇을 하면 되는지까지 한 문장으로 나온다.
+
+## USB 시점 스냅샷(`usb-snapshot`)
+
+USB의 라이브러리 파일을 이름 붙인 시점 스냅샷으로 Mac에 남기고, 같은 USB를 그 시점으로 되돌린다(#226). 규칙은 `docs/usb-internals.md` §7.13에 있다.
+
+```sh
+djc usb-snapshot create --volume <마운트> [--name <이름>]
+djc usb-snapshot list --volume <마운트>
+djc usb-snapshot restore <ID|이름> --volume <마운트> [--discard-device-changes] [--dry-run] [--allow-physical --confirm <볼륨 이름>]
+djc usb-snapshot pin|unpin|delete <ID|이름> --volume <마운트>
+```
+
+- 담는 것은 `PIONEER/rekordbox`의 DB 셋과 사이드카, `PIONEER/USBANLZ`, `PIONEER/Artwork`, 기기 설정 파일 넷이다. 음원(`Contents/`)은 담지 않는다.
+- 스냅샷은 `DJC_HOME`의 `usb-point-snapshots/<볼륨>/`에 둔다. USB DB를 읽으려고 뜨는 사본(`usb-snapshots/`)과 다른 폴더다. 캐시가 아니므로 `djc cache`가 비우지 않는다.
+- `create`·`list`는 USB를 읽기만 한다. 실물 USB도 동의 없이 뜬다. rekordbox가 켜져 있거나, 끝나지 않은 USB 쓰기가 있거나, 라이브러리 DB가 없으면 뜨지 않는다.
+- `DJC_HOME`이 그 볼륨 안이면 뜨지 않는다. 스냅샷이 그 볼륨에 쓰이기 때문이다.
+- 볼륨마다 최근 5개를 남긴다. `pin`한 것은 수와 상관없이 남는다. 고정한 것은 `unpin`한 뒤에만 지운다.
+- ID는 `list`가 보이는 폴더 이름이다. 겹치지 않는 이름도 받는다.
+- `restore`는 USB 쓰기다. 쓰기와 같은 확인을 거친다. 실물 USB는 `--allow-physical --confirm <볼륨 이름>`이 있어야 받는다.
+  - 다른 USB의 스냅샷은 거부한다.
+  - 스냅샷 뒤 USB에 DJCrate가 모르는 변경이 있으면 막는다. 기기가 쓴 재생 기록이 그 예다. `-wal`·`-journal`이 있어도 같다. `--discard-device-changes`를 줘야 그 변경을 버리고 되돌린다.
+  - 기기가 바꾼 뒤 DJCrate로 고쳐 쓴 USB도 막는다. 수정은 기기 기록을 이어 쓰기 때문이다.
+  - 음원은 되돌리지 않는다. 스냅샷 DB가 가리키는 음원이 지금 USB에 없으면 곡 수를 알린다.
+  - 스냅샷 뒤에 생긴 DB는 지우지 않으므로 막는다. 그 DB를 만든 쓰기를 `usb-restore`로 먼저 되돌린다.
+  - 지우기 허용 목록 밖의 파일은 남긴다. 스냅샷 뒤에 생긴 설정 파일이 그 예다.
+  - 기기 설정 파일을 되돌리면 그 수를 알린다. CDJ가 USB에 저장한 설정일 수 있다.
+  - 되돌리기도 쓰기 전 백업을 남긴다. `djc usb-restore --volume <마운트>`로 되돌리기 전 상태로 돌아간다.
+  - `--dry-run`은 계획과 준비까지만 하고 USB를 바꾸지 않는다.
+- 출력은 스냅샷 ID, 담은 파일 수, 바꿀 파일 수다. 스냅샷 폴더 경로와 곡 경로는 찍지 않는다. JSON 계약에는 포함하지 않는다.
+- 종료 코드는 성공 0, 막힘·실패 1이다.
 
 ## 실물 USB에 쓰기(`--allow-physical`)
 

@@ -104,11 +104,11 @@ PARTITIONS = {
 PREPARE_TARGETS = [
     ("SQLCipher", "binary", None),
     *((name, "regular", None) for name in ("DJCDomain", "DJCEnvironment", "DJCApplication", "RekordboxKit", "DJCStorage",
-                                           "DJCAnalysis", "DJCAdapters", "DJCrate", "djc")),
+                                           "DJCAnalysis", "DJCLink", "DJCAdapters", "DJCrate", "djc")),
     ("DJCrateExecutable", "executable", None), ("djcExecutable", "executable", None),
     ("DJCTestKit", "regular", "Tests/Support/Kit"), ("RekordboxFixtures", "regular", "Tests/Support/Fixtures"),
     ("PortTestKit", "regular", "Tests/Support/Ports"),
-    *((name, "test", None) for name in ("DJCDomainTests", "RekordboxKitTests", "DJCAnalysisTests", "DJCStorageTests",
+    *((name, "test", None) for name in ("DJCDomainTests", "RekordboxKitTests", "DJCAnalysisTests", "DJCLinkTests", "DJCStorageTests",
                                         "DJCApplicationTests", "DJCAdaptersTests", "djcTests", "DJCrateTests")),
 ]
 
@@ -136,8 +136,11 @@ def prepare(root):
     (root / "scripts").mkdir()
     (root / "bin").mkdir()
     (root / ".build/out/Products/Debug/FakeTests.xctest/Contents/MacOS").mkdir(parents=True)
-    for bundle in ("DJCDomainTests", "RekordboxKitTests", "djcTests"):
+    for bundle in ("DJCDomainTests", "RekordboxKitTests", "djcTests", "DJCApplicationTests"):
         (root / f".build/out/Products/Debug/{bundle}.xctest/Contents/MacOS").mkdir(parents=True)
+        (root / f".build/out/Products/Debug/{bundle}.xctest/Contents/MacOS/{bundle}").write_text("합성 실행 파일")
+    # 앱 시험 번들이 링크하는 프레임워크(#270). 시험 타깃을 빌드하면 지워질 수 있다.
+    (root / ".build/out/Products/Debug/Sparkle.framework").mkdir(parents=True)
     (root / "fake-index").write_text("합성 index")
     (root / ".build/out/Products/Debug/codecov").mkdir(parents=True)
     (root / ".build/out/Products/Debug/codecov/default.profdata").write_text("이전 실행의 프로파일")
@@ -187,6 +190,39 @@ with open("defaults-prefix.txt", "a") as log:
 if args[0] == "test":
     with open("kdf-env.txt", "a") as log:
         log.write(os.environ.get("DJC_CHECK_TEST_KDF", "unset") + "\n")
+# SwiftPM 모델(#270): 빌드 타깃마다 번들을 만들고, --skip-build 시험은 필터와 상관없이 패키지의 모든 시험 번들을 열어 본다.
+# 타깃을 하나씩 빌드하면 그 타깃이 쓰지 않는 Sparkle.framework를 지울 수 있다(SPARKLE_REMOVERS에 든 타깃). 앱 시험 번들이 그것을 링크한다.
+if os.environ.get("SWIFTPM_ALL_BUNDLES") == "1":
+    import shutil
+    products = root / ".build/out/Products/Debug"
+    sparkle = products / "Sparkle.framework"
+    tests = [t["name"] for t in json.loads((root / "dump.json").read_text())["targets"] if t["type"] == "test"]
+    if args[0] == "build" and "-c" not in args:
+        if "--build-tests" in args:
+            for name in tests:
+                (products / f"{name}.xctest/Contents/MacOS").mkdir(parents=True, exist_ok=True)
+                (products / f"{name}.xctest/Contents/MacOS/{name}").write_text("합성 실행 파일")
+            sparkle.mkdir(parents=True, exist_ok=True)
+        elif "--target" in args:
+            target = args[args.index("--target") + 1]
+            if target in tests:
+                (products / f"{target}.xctest/Contents/MacOS").mkdir(parents=True, exist_ok=True)
+                (products / f"{target}.xctest/Contents/MacOS/{target}").write_text("합성 실행 파일")
+            if target == "DJCrateTests":
+                sparkle.mkdir(parents=True, exist_ok=True)
+            elif target in os.environ.get("SPARKLE_REMOVERS", "").split(","):
+                shutil.rmtree(sparkle, ignore_errors=True)
+        else:
+            sparkle.mkdir(parents=True, exist_ok=True)
+    if args[0] == "test" and "--skip-build" in args:
+        for name in tests:
+            if not (products / f"{name}.xctest/Contents/MacOS/{name}").is_file():
+                print(f"error: {products}/{name}.xctest doesn't exist in file system", flush=True)
+                sys.exit(1)
+        if "DJCrateTests" in tests and not sparkle.is_dir():
+            print(f"error: terminated(1): swiftpm-xctest-helper {products}/DJCrateTests.xctest output:\n"
+                  "    error: Library not loaded: @rpath/Sparkle.framework/Versions/B/Sparkle", flush=True)
+            sys.exit(1)
 if mode == "pulse-orphan" and args[0] == "build":
     time.sleep(1.5)
 if mode == "build-silent" and args[0] == "build":
@@ -646,6 +682,14 @@ IMPORT_CASES = {
                                  "UpdateSettingsModel.swift\timport\tSparkle", False),
     "imports-external-stale": ({"Sources/DJCrate/App/AppUpdater.swift": None}, "", 1,
                                "예외 목록의 파일이 없습니다: Sources/DJCrate/App/AppUpdater.swift", False),
+    # DJLinkKit 패키지(Pro DJ Link, #268)는 DJCLink만 import한다. 그 DJCLink도 적은 제품(DJLinkKit)만 쓴다.
+    "imports-link-only": ({"Sources/DJCLink/LinkDevice.swift": "import DJLinkKit\n",
+                           "Tests/DJCLinkTests/LinkDeviceTests.swift": "import DJCLink\nimport Testing\n"}, "", 0, "위반 0개", True),
+    "imports-link-outside": ({"Sources/DJCAdapters/Link/LinkPorts+Live.swift": "import DJLinkKit\n",
+                              "Sources/DJCrate/Link/LinkModel.swift": "import DJLinkControl\n",
+                              "Sources/DJCLink/Passive.swift": "import DJLinkPassive\n",
+                              "Tests/DJCLinkTests/LinkDeviceTests.swift": "import DJLinkKit\n"}, "", 1,
+                             "LinkPorts+Live.swift\timport\tDJLinkKit", False),
     # 넓은 예외 폴더도 허용 import는 적은 것만: 목록 밖 모듈은 위반이고, 적었는데 아무도 쓰지 않으면 목록을 줄이게 한다.
     "imports-broad-folder": ({"Sources/djc/Lab/LabCipher.swift": "import SQLCipher\n"}, "", 1,
                              "LabCipher.swift\timport\tSQLCipher", False),
@@ -743,6 +787,11 @@ def check_imports(case, files, debt, expected, note, built):
         assert result.returncode == expected, f"종료코드 {result.returncode}, 기대값 {expected}\n{result.stdout}{result.stderr}"
         assert note in result.stdout, f"출력에 {note!r} 없음\n{result.stdout}"
         assert (root / "calls.txt").exists() == built, "모듈 경계 위반에도 빌드함" if not built else "통과했는데 빌드하지 않음"
+        if case == "imports-link-outside":
+            # 어댑터·앱·시험 타깃의 DJLinkKit 제품 import와 DJCLink의 적지 않은 제품 import를 모두 잡는다.
+            for line in ("LinkModel.swift\timport\tDJLinkControl", "Sources/DJCLink/Passive.swift\timport\tDJLinkPassive",
+                         "Tests/DJCLinkTests/LinkDeviceTests.swift\timport\tDJLinkKit"):
+                assert line in result.stdout, f"출력에 {line!r} 없음\n{result.stdout}"
         if case == "imports-summary":
             summary = subprocess.run([sys.executable, str(root / "scripts/check-imports.py"), "--summary"], cwd=root, env=env,
                                      capture_output=True, text=True, timeout=20)
@@ -840,14 +889,17 @@ def synthetic_dump():
     return json.dumps({"name": "DJCrate", "targets": targets})
 
 
-def make_synthetic_repo(root, test_map=SYNTHETIC_MAP):
-    """합성 패키지와 package dump-package만 아는 가짜 swift(부를 때마다 swift-calls.txt에 남김)."""
-    for relative, content in SYNTHETIC_FILES.items():
+def make_synthetic_repo(root, test_map=SYNTHETIC_MAP, optin=None, gated=None):
+    """합성 패키지와 package dump-package만 아는 가짜 swift(부를 때마다 swift-calls.txt에 남김).
+    optin이 있으면 선택 실행 목록(scripts/optin-suites.txt)을, gated가 있으면 그 시험 파일들(경로 → 내용)을 더한다."""
+    for relative, content in {**SYNTHETIC_FILES, **(gated or {})}.items():
         (root / relative).parent.mkdir(parents=True, exist_ok=True)
         (root / relative).write_text(content)
     (root / "scripts").mkdir(exist_ok=True)
     shutil.copy(AFFECTED, root / "scripts/affected-tests.py")
     (root / "scripts/test-map.txt").write_text(test_map)
+    if optin is not None:
+        (root / "scripts/optin-suites.txt").write_text(optin)
     (root / "dump.json").write_text(synthetic_dump())
     fake = root / "fakebin"
     fake.mkdir(exist_ok=True)
@@ -864,8 +916,13 @@ sys.exit(9)
     (fake / "swift").chmod(0o755)
 
 
-def run_affected(root, *arguments):
+def run_affected(root, *arguments, extra_env=None):
     env = dict(os.environ, PATH=str(root / "fakebin") + ":" + os.environ["PATH"])
+    for name, value in (extra_env or {}).items():
+        if value is None:
+            env.pop(name, None)
+        else:
+            env[name] = value
     return subprocess.run([sys.executable, str(root / "scripts/affected-tests.py"), *arguments], cwd=root, env=env,
                           capture_output=True, text=True, timeout=30)
 
@@ -1085,6 +1142,247 @@ def check_affected_extra(case):
 
 AFFECTED_EXTRA = ["affected-map-missing-suite", "affected-dump-cache", "affected-git-base", "affected-bad-base",
                   "affected-shell-format", "affected-map-stale-when", "affected-git-rename"]
+
+
+# 선택 실행 Suite(환경 변수가 있어야 도는 시험, scripts/optin-suites.txt). 합성 시험 파일 셋:
+# Suite 전체를 거는 것(GatedTests), 시험을 모두 거는 것(CaptureTests), 일부만 거는 것(PartialTests, 선택 실행이 아니다).
+OPTIN_FILES = {
+    "Tests/RekordboxKitTests/GatedTests.swift": """import Foundation
+import Testing
+@Suite("합성 선택 실행", .serialized,
+       .enabled(if: ProcessInfo.processInfo.environment["DJC_GATED_TESTS"] != nil
+                || ProcessInfo.processInfo.environment["DJC_GATED_DB"] != nil))
+struct GatedTests {
+    @Test func a() {}
+}
+""",
+    "Tests/RekordboxKitTests/CaptureTests.swift": """import Foundation
+import Testing
+struct CaptureTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DJC_CAPTURE_FIXTURE"] != nil))
+    func capture() throws {}
+}
+""",
+    "Sources/RekordboxKit/Orphan.swift": "struct Orphan {}\n",
+    "Tests/RekordboxKitTests/PartialTests.swift": """import Foundation
+import Testing
+struct PartialTests {
+    @Test func plain() {}
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DJC_PARTIAL_FIXTURE"] != nil))
+    func capture() {}
+}
+""",
+}
+SYNTHETIC_OPTIN = """# 합성 선택 실행 목록
+regression RekordboxKitTests.GatedTests DJC_GATED_TESTS=1 DJC_GATED_DB=<사본>
+tool RekordboxKitTests.CaptureTests DJC_CAPTURE_FIXTURE=<폴더>
+"""
+GATED = "Tests/RekordboxKitTests/GatedTests.swift"
+CAPTURE = "Tests/RekordboxKitTests/CaptureTests.swift"
+FOO = "Tests/DJCDomainTests/FooTests.swift"
+GATED_WARNING = "GatedTests는 환경 변수가 없어 돌지 않았습니다(DJC_GATED_TESTS=1 또는 DJC_GATED_DB=<사본>)"
+GATED_HINT = "GatedTests는 환경 변수가 있어야 돕니다(DJC_GATED_TESTS=1 또는 DJC_GATED_DB=<사본>). 그 변수를 주고 다시 돌리세요"
+CAPTURE_HINT = "CaptureTests는 환경 변수가 있어야 돕니다(DJC_CAPTURE_FIXTURE=<폴더>). 그 변수를 주고 다시 돌리세요"
+GATED_VARIABLES = {"DJC_GATED_TESTS": None, "DJC_GATED_DB": None, "DJC_CAPTURE_FIXTURE": None}
+
+
+def optin_repo(root, optin=SYNTHETIC_OPTIN):
+    make_synthetic_repo(root, optin=optin, gated=OPTIN_FILES)
+
+
+# 고르는 쪽: 같이 골라진 선택 실행 Suite가 변수 없이 건너뛰어지면 경고한다. regression만 경고하고(tool은 안 돌아도 회귀가 아니다),
+# Suite를 직접 고른 경우만 본다(타깃 통째로 딸려 온 Suite는 세지 않는다).
+OPTIN_PLAN_CASES = ["optin-plan-skipped", "optin-plan-alone", "optin-plan-enabled", "optin-plan-empty-value",
+                    "optin-plan-tool-silent", "optin-plan-whole-silent", "optin-plan-no-list",
+                    "optin-plan-whole-direct", "optin-plan-full-direct"]
+
+
+def check_optin_plan(case):
+    with tempfile.TemporaryDirectory(prefix="djc-optin-plan-") as directory:
+        root = Path(directory)
+        optin_repo(root, None if case == "optin-plan-no-list" else SYNTHETIC_OPTIN)
+        # whole-direct: 직접 고친 Suite가 있는데 같은 타깃이 통째로도 골라진 경우, full-direct: 전체로 넓혀진 경우(둘 다 경고한다)
+        files = {"optin-plan-alone": [GATED], "optin-plan-tool-silent": [CAPTURE, FOO],
+                 "optin-plan-whole-silent": ["Sources/RekordboxKit/Orphan.swift"],
+                 "optin-plan-whole-direct": [GATED, "Sources/RekordboxKit/Orphan.swift"],
+                 "optin-plan-full-direct": [GATED, "Package.swift"]}.get(case, [GATED, FOO])
+        extra = dict(GATED_VARIABLES)
+        if case == "optin-plan-enabled":
+            extra["DJC_GATED_DB"] = "/tmp/synthetic.db"
+        if case == "optin-plan-empty-value":
+            extra["DJC_GATED_TESTS"] = ""   # Swift의 `!= nil`은 빈 값도 켠 것으로 본다
+        result = run_affected(root, "--files", *files, "--json", extra_env=extra)
+        assert result.returncode == 0, result.stdout + result.stderr
+        plan = json.loads(result.stdout)
+        assert plan["scope"] == ("full" if case == "optin-plan-full-direct" else "tests"), plan["scope"]
+        if case == "optin-plan-whole-direct":
+            assert plan["wholeTargets"] == ["RekordboxKitTests"] and plan["suites"] == ["RekordboxKitTests.GatedTests"], plan
+        expected = [GATED_WARNING] if case in ("optin-plan-skipped", "optin-plan-alone", "optin-plan-whole-direct",
+                                               "optin-plan-full-direct") else []
+        assert len(plan["skipped"]) == len(expected), f"건너뜀 경고 불일치: {plan['skipped']}"
+        for want, line in zip(expected, plan["skipped"]):
+            assert want in line, f"경고 문장 불일치: {plan['skipped']}"
+        human = run_affected(root, "--files", *files, extra_env=extra).stdout
+        assert ("건너뜀: " + GATED_WARNING in human) == bool(expected), f"사람용 출력의 건너뜀 줄 불일치\n{human}"
+        shell = run_affected(root, "--files", *files, "--shell", extra_env=extra).stdout
+        shown = subprocess.run(["/bin/zsh", "-c", 'eval "$1"; print -r -- "$plan_skipped"', "_", shell],
+                               capture_output=True, text=True, check=True).stdout.strip()
+        assert (GATED_WARNING in shown) == bool(expected), f"check.sh가 읽는 plan_skipped 불일치: {shown!r}"
+
+
+# 실패 안내: 고른 필터가 선택 실행 Suite에 맞고 그 변수가 없으면 원인과 할 일을 한 줄로 낸다(--optin-hint).
+OPTIN_HINT_CASES = {
+    "optin-hint-unset": (r"^(RekordboxKitTests\.(GatedTests)/)", {}, [GATED_HINT]),
+    "optin-hint-tool": ("CaptureTests", {}, [CAPTURE_HINT]),
+    "optin-hint-both": ("GatedTests|CaptureTests", {}, [GATED_HINT, CAPTURE_HINT]),
+    "optin-hint-other-variable": (r"^(RekordboxKitTests\.(GatedTests)/)", {"DJC_GATED_DB": "/tmp/x.db"}, []),
+    "optin-hint-other-filter": ("FooTests", {}, []),
+    # 시험 이름까지 적은 필터(--quick --filter 'Suite/시험')도 그 Suite에 맞춘다
+    "optin-hint-test-name": ("GatedTests/a", {}, [GATED_HINT]),
+    "optin-hint-test-name-alt": ("FooTests/x|GatedTests/a", {}, [GATED_HINT]),
+    "optin-hint-test-name-other": ("FooTests/x", {}, []),
+    "optin-hint-bad-regex": ("(", {}, []),
+}
+
+
+def check_optin_hint(case, test_filter, env, expected):
+    with tempfile.TemporaryDirectory(prefix="djc-optin-hint-") as directory:
+        root = Path(directory)
+        optin_repo(root)
+        result = run_affected(root, "--optin-hint", test_filter, extra_env={**GATED_VARIABLES, **env})
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.splitlines() == expected, f"안내 불일치: {result.stdout!r}"
+    # 목록 파일이 없으면 안내할 것이 없다(빌드·시험 단계가 이 때문에 깨지지 않는다)
+    with tempfile.TemporaryDirectory(prefix="djc-optin-hint-") as directory:
+        root = Path(directory)
+        make_synthetic_repo(root)
+        result = run_affected(root, "--optin-hint", "GatedTests")
+        assert result.returncode == 0 and result.stdout == "", f"목록이 없는데 안내함: {result.stdout!r}{result.stderr}"
+
+
+# 어긋남: 목록과 시험 파일의 `.enabled(if: …environment["…"])`가 다르면 --check-map과 고르기가 종료 코드 2로 끝난다.
+def optin_without(*names):
+    return "".join(line + "\n" for line in SYNTHETIC_OPTIN.splitlines() if not any(n in line for n in names))
+
+
+OPTIN_DRIFT_CASES = {
+    "optin-drift-ok": (SYNTHETIC_OPTIN, 0, []),
+    # Suite 전체를 거는 `@Suite(.enabled(if:))`가 목록에 없다
+    "optin-drift-suite-gate-unlisted": (optin_without("GatedTests"), 2, ["GatedTests", "DJC_GATED_TESTS", "optin-suites.txt"]),
+    # 시험을 모두 거는 Suite가 목록에 없다
+    "optin-drift-tests-gate-unlisted": (optin_without("CaptureTests"), 2, ["CaptureTests", "DJC_CAPTURE_FIXTURE", "optin-suites.txt"]),
+    # 목록의 변수가 시험 파일의 조건에 없다
+    "optin-drift-variable-missing": (SYNTHETIC_OPTIN.replace("DJC_CAPTURE_FIXTURE=<폴더>", "DJC_CAPTURE_FIXTURE=<폴더> DJC_NOT_THERE=1"), 2,
+                                     ["CaptureTests", "DJC_NOT_THERE"]),
+    # 시험 파일의 조건에 있는 변수가 목록에 없다
+    "optin-drift-variable-unlisted": (SYNTHETIC_OPTIN.replace(" DJC_GATED_DB=<사본>", ""), 2, ["GatedTests", "DJC_GATED_DB"]),
+    "optin-drift-missing-suite": (SYNTHETIC_OPTIN + "tool RekordboxKitTests.GoneTests DJC_X=1\n", 2, ["GoneTests"]),
+    "optin-drift-bad-kind": (SYNTHETIC_OPTIN.replace("regression", "bogus"), 2, ["bogus", "regression"]),
+    "optin-drift-bad-switch": (SYNTHETIC_OPTIN.replace("DJC_GATED_TESTS=1", "DJC_GATED_TESTS"), 2, ["DJC_GATED_TESTS"]),
+    "optin-drift-duplicate": (SYNTHETIC_OPTIN + "tool RekordboxKitTests.CaptureTests DJC_CAPTURE_FIXTURE=<폴더>\n", 2, ["CaptureTests", "두 번"]),
+    "optin-drift-no-file": (None, 2, ["GatedTests", "optin-suites.txt"]),
+    # 파일을 나눠 쓴 Suite(본문과 extension): 조건 없는 시험이 다른 파일에 있으면 선택 실행이 아니다
+    "optin-drift-split-partial-ok": (SYNTHETIC_OPTIN, 0, []),
+    "optin-drift-split-all-gated": (SYNTHETIC_OPTIN, 2, ["SplitTests", "DJC_SPLIT_FIXTURE"]),
+}
+SPLIT_BODY = """import Foundation
+import Testing
+struct SplitTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DJC_SPLIT_FIXTURE"] != nil))
+    func capture() {}
+}
+"""
+OPTIN_DRIFT_EXTRA = {
+    "optin-drift-split-partial-ok": {
+        "Tests/RekordboxKitTests/SplitTests.swift": SPLIT_BODY,
+        "Tests/RekordboxKitTests/SplitTests+More.swift": "import Testing\nextension SplitTests {\n    @Test func plain() {}\n}\n"},
+    "optin-drift-split-all-gated": {
+        "Tests/RekordboxKitTests/SplitTests.swift": SPLIT_BODY,
+        "Tests/RekordboxKitTests/SplitTests+More.swift": "import Foundation\nimport Testing\nextension SplitTests {\n"
+        "    @Test(.enabled(if: ProcessInfo.processInfo.environment[\"DJC_SPLIT_FIXTURE\"] != nil))\n    func more() {}\n}\n"},
+}
+
+
+def check_optin_drift(case, optin, code, words):
+    with tempfile.TemporaryDirectory(prefix="djc-optin-drift-") as directory:
+        root = Path(directory)
+        optin_repo(root, optin)
+        for relative, content in OPTIN_DRIFT_EXTRA.get(case, {}).items():
+            (root / relative).write_text(content)
+        for arguments in (["--check-map"], ["--base", "HEAD", "--json"]):
+            if code == 0 and arguments[0] == "--base":
+                continue   # 기준(HEAD)을 풀려면 git 저장소가 필요하다. 어긋남이 없는 쪽은 --check-map만 본다
+            result = run_affected(root, *arguments)
+            assert result.returncode == code, f"{arguments}: 종료코드 {result.returncode}, 기대값 {code}\n{result.stdout}{result.stderr}"
+            for word in words:
+                assert word in result.stderr, f"{arguments}: 안내에 {word!r} 없음\n{result.stderr}"
+        if code == 0:
+            assert "optin-suites.txt" in run_affected(root, "--check-map").stdout, "--check-map이 선택 실행 목록을 확인했다고 알리지 않음"
+
+
+# check.sh: 선택 실행 Suite만 골라졌을 때의 실패 안내, 함께 골라졌을 때의 경고. 가짜 swift test의 all-skipped는 시험을 모두 건너뛴다.
+# (인자, 바뀐 파일, 가짜 명령 동작, 환경 변수, 종료코드, 출력에 있어야 할 말, 출력에 없어야 할 말)
+OPTIN_CHECK_CASES = {
+    "optin-changed-alone": (["--changed"], [GATED], "all-skipped", {}, 1,
+                            ["실제로 완료한 시험이 없습니다", GATED_HINT], ["필터를 확인하세요"]),
+    "optin-changed-alone-enabled": (["--changed"], [GATED], "ok", {"DJC_GATED_TESTS": "1"}, 0, ["✔ 통과: changed"], ["건너뜀"]),
+    "optin-changed-tool-alone": (["--changed"], [CAPTURE], "all-skipped", {}, 1,
+                                 ["실제로 완료한 시험이 없습니다", CAPTURE_HINT], ["필터를 확인하세요"]),
+    "optin-changed-with-others": (["--changed"], [GATED, FOO], "ok", {}, 0,
+                                  ["⚠ 건너뜀: " + GATED_WARNING, "✔ 통과: changed"], []),
+    "optin-changed-tool-with-others": (["--changed"], [CAPTURE, FOO], "ok", {}, 0, ["✔ 통과: changed"], ["건너뜀"]),
+    "optin-changed-other-all-skipped": (["--changed"], [FOO], "all-skipped", {}, 1,
+                                        ["실제로 완료한 시험이 없습니다. 필터를 확인하세요"], ["환경 변수가 있어야"]),
+    "optin-quick-alone": (["--quick", "--filter", "GatedTests"], [], "all-skipped", {}, 1,
+                          ["실제로 완료한 시험이 없습니다", GATED_HINT], ["필터를 확인하세요"]),
+    "optin-quick-enabled": (["--quick", "--filter", "GatedTests"], [], "ok", {"DJC_GATED_DB": "x"}, 0, ["✔ 통과: quick"], ["건너뜀"]),
+}
+
+
+def check_optin_check(case, arguments, changed, mode, extra, expected, words, absent):
+    with tempfile.TemporaryDirectory(prefix="djc-optin-check-") as directory:
+        root = Path(directory)
+        prepare(root)
+        optin_repo(root)
+        env = check_env(root, mode, CHANGED="\n".join(changed), **extra)
+        for name in GATED_VARIABLES:
+            if name not in extra:
+                env.pop(name, None)
+        result = run_check(root, env, *arguments)
+        output = result.stdout + result.stderr
+        assert result.returncode == expected, f"종료코드 {result.returncode}, 기대값 {expected}\n{output}"
+        for word in words:
+            assert word in output, f"출력에 {word!r} 없음\n{output}"
+        for word in absent:
+            assert word not in output, f"출력에 {word!r}가 있으면 안 됨\n{output}"
+        if case == "optin-changed-with-others":
+            run, = (root / ".build/check-logs").glob("run.*")
+            plan = json.loads((run / "affected.json").read_text())
+            assert len(plan["skipped"]) == 1 and GATED_WARNING in plan["skipped"][0], f"affected.json의 skipped: {plan['skipped']}"
+            assert "건너뜀: " + GATED_WARNING in (run / "affected.txt").read_text(), "고른 범위 기록에 건너뜀 줄이 없음"
+
+
+# 저장소의 실제 목록: LayoutRecomputeTests가 regression으로 있고, 그 변수가 없으면 고르는 쪽이 경고하고 실패 안내를 낸다(#267).
+def check_optin_real(case):
+    root = Path(__file__).resolve().parent.parent
+    layout = "Tests/DJCrateTests/LayoutRecomputeTests.swift"
+    warning = "LayoutRecomputeTests는 환경 변수가 없어 돌지 않았습니다(DJC_LAYOUT_RECOMPUTE_TESTS=1 또는 DJC_LAYOUT_BENCHMARK_DB=<사본>)"
+    hint = "LayoutRecomputeTests는 환경 변수가 있어야 돕니다(DJC_LAYOUT_RECOMPUTE_TESTS=1 또는 DJC_LAYOUT_BENCHMARK_DB=<사본>). 그 변수를 주고 다시 돌리세요"
+    environment = {k: v for k, v in os.environ.items() if k not in ("DJC_LAYOUT_RECOMPUTE_TESTS", "DJC_LAYOUT_BENCHMARK_DB")}
+    hinted = subprocess.run([sys.executable, str(AFFECTED), "--optin-hint", r"^(DJCrateTests\.(LayoutRecomputeTests)/)"], cwd=root,
+                            capture_output=True, text=True, timeout=60, env=environment)
+    assert hinted.returncode == 0 and hinted.stdout.splitlines() == [hint], f"실제 목록의 안내: {hinted.stdout!r}{hinted.stderr}"
+    # 시험 파일 하나만 바꾼 경우와 다른 Suite와 함께 고른 경우
+    for files in ([layout], [layout, "Tests/DJCrateTests/SidebarObservationTests.swift"]):
+        planned = subprocess.run([sys.executable, str(AFFECTED), "--files", *files, "--json"], cwd=root, capture_output=True, text=True,
+                                 timeout=120, env=environment)
+        assert planned.returncode == 0, planned.stderr
+        plan = json.loads(planned.stdout)
+        assert plan["scope"] == "tests", f"범위 {plan['scope']}"
+        assert any(warning in line for line in plan["skipped"]), f"실제 목록으로 경고하지 않음: {plan['skipped']}"
+    enabled = subprocess.run([sys.executable, str(AFFECTED), "--files", layout, "--json"], cwd=root, capture_output=True, text=True,
+                             timeout=120, env={**environment, "DJC_LAYOUT_RECOMPUTE_TESTS": "1"})
+    assert enabled.returncode == 0 and json.loads(enabled.stdout)["skipped"] == [], f"변수를 줬는데 경고함: {enabled.stdout}"
 
 
 # 화면 문구 파일의 바뀜 → 번역 검사를 고르는지(#245). 카탈로그 키(원문·보간 개수·형식 지정)가 바뀔 수 있으면 고르고,
@@ -1539,6 +1837,81 @@ def check_changed(case, arguments, changed, mode, expected, expected_calls, note
         assert "requested=changed" in info, info
 
 
+# 새 워크트리·낡은 번들(#270): swift test --skip-build --filter는 고르지 않은 타깃을 포함해 패키지의 모든 시험 번들을 연다.
+# 고른 타깃만 빌드하면 번들이 없는 새 워크트리에서 곧바로 "xctest doesn't exist"로 끝났고, 다른 타깃을 빌드하며 Sparkle.framework가
+# 지워지면 이미 있는 DJCrateTests 번들도 열리지 않았다. 합성 패키지에 앱 시험 타깃(DJCrateTests)을 더해 그 둘을 SwiftPM처럼 흉내 낸다.
+BUNDLE_TARGETS = ["DJCApplicationTests", "DJCDomainTests", "DJCrateTests", "RekordboxKitTests", "djcTests"]
+BUNDLE_FILES = {"Tests/DJCrateTests/CrateTests.swift": "import Testing\nstruct CrateTests {\n    @Test func a() {}\n}\n"}
+FOO_FILTER = TEST + r" --filter ^(DJCDomainTests\.(FooTests)/)"
+BUNDLE_CASES = {
+    # 이미 빌드된 작업 트리: 고른 타깃만 빌드한다(시간이 늘지 않는다)
+    "bundles-built": ("Tests/DJCDomainTests/FooTests.swift", [], "", [SOURCES, build_target("DJCDomainTests"), FOO_FILTER], 0, []),
+    # 새 워크트리: 없는 번들을 모두 빌드하고, Sparkle을 쓰는 DJCrateTests를 마지막에 빌드한다
+    "bundles-fresh": ("Tests/DJCDomainTests/FooTests.swift", BUNDLE_TARGETS, "",
+                      [SOURCES, *(build_target(name) for name in ("DJCDomainTests", "DJCApplicationTests", "RekordboxKitTests", "djcTests", "DJCrateTests")),
+                       FOO_FILTER], 0, ["더 빌드합니다", "DJCApplicationTests", "djcTests"]),
+    "bundles-one-missing": ("Tests/DJCDomainTests/FooTests.swift", ["djcTests"], "",
+                            [SOURCES, build_target("DJCDomainTests"), build_target("djcTests"), FOO_FILTER], 0, ["더 빌드합니다: djcTests"]),
+    # 고른 타깃을 빌드하며 Sparkle이 지워지면 이미 있는 DJCrateTests 번들을 다시 빌드한다
+    "bundles-sparkle-removed": ("Tests/RekordboxKitTests/KitMiscTests.swift", [], "RekordboxKitTests",
+                                [SOURCES, build_target("RekordboxKitTests"), build_target("DJCrateTests"),
+                                 TEST + r" --filter ^(RekordboxKitTests\.(KitMiscTests)/)"], 0, ["Sparkle.framework"]),
+    # 끊긴 빌드가 디렉터리만 남긴 번들(실행 파일 없음)도 없는 번들처럼 다시 빌드한다
+    "bundles-hollow": ("Tests/DJCDomainTests/FooTests.swift", [], "",
+                       [SOURCES, build_target("DJCDomainTests"), build_target("djcTests"), FOO_FILTER], 0, ["더 빌드합니다: djcTests"], ["djcTests"]),
+    # 앱 시험을 골랐어도 빠진 번들을 더 빌드하되 DJCrateTests를 마지막에 둔다
+    "bundles-crate-selected": ("Tests/DJCrateTests/CrateTests.swift", ["DJCApplicationTests", "DJCDomainTests", "RekordboxKitTests", "djcTests"],
+                               "DJCDomainTests,RekordboxKitTests",
+                               [SOURCES, *(build_target(name) for name in ("DJCApplicationTests", "DJCDomainTests", "RekordboxKitTests", "djcTests", "DJCrateTests")),
+                                TEST + r" --filter ^(DJCrateTests\.(CrateTests)/)"], 0, ["더 빌드합니다"]),
+}
+
+
+def check_bundles(case, changed, absent, removers, expected_calls, expected, notes, hollow=()):
+    with tempfile.TemporaryDirectory(prefix="djc-check-bundles-") as directory:
+        root = Path(directory)
+        prepare(root)
+        make_synthetic_repo(root)
+        for relative, content in BUNDLE_FILES.items():
+            (root / relative).parent.mkdir(parents=True, exist_ok=True)
+            (root / relative).write_text(content)
+        dump = json.loads((root / "dump.json").read_text())
+        dump["targets"].append({"name": "DJCrateTests", "type": "test", "dependencies": [{"byName": ["DJCrate", None]}]})
+        (root / "dump.json").write_text(json.dumps(dump))
+        products = root / ".build/out/Products/Debug"
+        (products / "DJCrateTests.xctest/Contents/MacOS").mkdir(parents=True)
+        (products / "DJCrateTests.xctest/Contents/MacOS/DJCrateTests").write_text("합성 실행 파일")
+        for name in absent:
+            shutil.rmtree(products / f"{name}.xctest", ignore_errors=True)
+        for name in hollow:
+            (products / f"{name}.xctest/Contents/MacOS/{name}").unlink()
+        if "DJCrateTests" in absent:
+            shutil.rmtree(products / "Sparkle.framework")
+        env = check_env(root, "ok", CHANGED=changed, SWIFTPM_ALL_BUNDLES="1", SPARKLE_REMOVERS=removers)
+        result = run_check(root, env, "--changed")
+        output = result.stdout + result.stderr
+        assert result.returncode == expected, f"종료코드 {result.returncode}, 기대값 {expected}\n{output}"
+        assert swift_calls(root) == expected_calls, f"swift 호출 불일치: {swift_calls(root)}\n{output}"
+        for note in notes:
+            assert note in output, f"출력에 {note!r} 없음\n{output}"
+        if not absent and not hollow and not removers:
+            assert "더 빌드" not in output and "Sparkle" not in output, f"이미 빌드된 작업 트리인데 안내를 냄\n{output}"
+
+
+def check_bundles_quick():
+    """--quick은 swift build --build-tests로 모든 번들을 만들어 새 워크트리에서도 이미 깨지지 않는다(이슈 본문은 --quick도 들었다)."""
+    with tempfile.TemporaryDirectory(prefix="djc-check-bundles-") as directory:
+        root = Path(directory)
+        prepare(root)
+        make_synthetic_repo(root)
+        products = root / ".build/out/Products/Debug"
+        for bundle in products.glob("*.xctest"):
+            shutil.rmtree(bundle)
+        result = run_check(root, check_env(root, "ok", SWIFTPM_ALL_BUNDLES="1"), "--quick", "--filter", "SampleTests")
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert swift_calls(root) == [DEBUG, QUICK], swift_calls(root)
+
+
 # 멈춤 감시: (가짜 swift 동작, 환경 변수, 종료코드). 시험 단계가 정한 초 동안 출력을 내지 않으면 끝나지 않은 시험과
 # 시험 프로세스의 스택을 남기고 124로 끝난다(CI에서 DJCrateTests가 출력 없이 30분 제한까지 갔다).
 STALL_CASES = {
@@ -1744,11 +2117,18 @@ def attempt(name, check, *arguments):
 runs = []
 runs += [(case, check_affected, (case, *arguments)) for case, arguments in AFFECTED_CASES.items()]
 runs += [(case, check_affected_extra, (case,)) for case in AFFECTED_EXTRA]
+runs += [(case, check_optin_plan, (case,)) for case in OPTIN_PLAN_CASES]
+runs += [(case, check_optin_hint, (case, *arguments)) for case, arguments in OPTIN_HINT_CASES.items()]
+runs += [(case, check_optin_drift, (case, *arguments)) for case, arguments in OPTIN_DRIFT_CASES.items()]
+runs += [("optin-real", check_optin_real, ("optin-real",))]
 runs += [(case, check_ui_diff, (case, *arguments)) for case, arguments in UI_DIFF_CASES.items()]
 runs += [("affected-real-map", check_real_map, ())]
 runs += [(case, check_real_safety, (case, *arguments)) for case, arguments in REAL_SAFETY_CASES.items()]
 runs += [(case, check_reuse, (case,)) for case in REUSE_CASES]
 runs += [(case, check_changed, (case, *arguments)) for case, arguments in CHANGED_CASES.items()]
+runs += [(case, check_bundles, (case, *arguments)) for case, arguments in BUNDLE_CASES.items()]
+runs += [("bundles-quick-fresh", check_bundles_quick, ())]
+runs += [(case, check_optin_check, (case, *arguments)) for case, arguments in OPTIN_CHECK_CASES.items()]
 runs += [(case, check_stall, (case, *arguments)) for case, arguments in STALL_CASES.items()]
 runs += [(case, check_ci_base, (case, *arguments)) for case, arguments in CI_BASE_CASES.items()]
 runs += [(case, check_ci_mtimes, (case,)) for case in CI_MTIMES_CASES]

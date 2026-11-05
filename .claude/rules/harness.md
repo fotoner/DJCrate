@@ -17,6 +17,7 @@ paths:
   - `scripts/check.sh`
   - `scripts/affected-tests.py`
   - `scripts/test-map.txt`
+  - `scripts/optin-suites.txt`
   - `scripts/check-imports.py`
   - `scripts/ci-base.sh`
   - `scripts/ci-mtimes.py`
@@ -49,6 +50,8 @@ paths:
 - **HAR-7** 지도가 맞지 않으면 `--changed`가 종료 코드 2로 끝난다. 지도에 없는 Suite나 어느 파일에도 맞지 않는 `when`이 그런 경우다.
 - **HAR-8** 지도는 `python3 scripts/affected-tests.py --check-map`으로 미리 확인한다. 문법은 그 지도 파일 머리에 있다. 앞으로 생길 자리는 `maybe`로 적는다.
 - **HAR-9** 안전 시험을 고르는 묶음은 경로로 넓게 둔다. 기호 grep은 프로세스로 띄우는 CLI 시험을 못 찾는다.
+- **HAR-43** 환경 변수가 있어야 도는 Suite를 더하면 `scripts/optin-suites.txt`에도 적는다. 그 조건을 바꾸면 목록도 맞춘다. Suite 전체에 `.enabled(if: …environment[…])`를 단 Suite가 그렇다. `@Test`마다 그 조건을 단 Suite도 그렇다. 목록이 어긋나면 `--check-map`과 `--changed`가 종료 코드 2로 끝난다. 처리 규칙은 `docs/ci.md` "선택 실행 장치"에 있다(#267).
+- **HAR-44** `--changed`의 시험 단계(`swift test --skip-build --filter`)는 고르지 않은 시험 타깃의 번들도 열어 본다. 빌드 단계는 번들이 없는 타깃을 더 빌드한다. `DJCrateTests`는 마지막에 둔다. 이 확인을 빼지 않는다. `scripts/test-check.py`의 `bundles-` 경우가 이를 본다. 설명은 `docs/ci.md` "로컬 검증 운영"의 changed 항목에 있다(#270).
 - **HAR-10** `.build/check-logs/last-pass` 형식을 바꾸면 Stop 훅(`scripts/hooks/stop-verify-reminder.py`)도 함께 고친다. `scripts/test-harness.py`의 실제 기록 줄 표본도 고친다. 형식은 `docs/ci.md` "끝 요약과 통과 기록"에 있다.
 
 ## 안전 장치

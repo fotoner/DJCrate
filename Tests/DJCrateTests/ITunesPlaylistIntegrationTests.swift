@@ -19,7 +19,7 @@ struct ITunesPlaylistIntegrationTests {
         let arguments = environmentOverride ? ["DJCrate"] : ["DJCrate", "--db", database.path]
         let environment = environmentOverride ? ["DJC_DB": database.path] : [String: String]()
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes.refresh"), persist: false),
-                                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                                      activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                                       playlistImportURL: nil, stagingSaver: { _ in }, arguments: arguments, environment: environment,
                                       ports: { $0.source = .withoutDatabase })
         await store.load(snapshot: database)
@@ -112,7 +112,7 @@ struct ITunesPlaylistIntegrationTests {
 
     @Test func 순서와_곡_ID를_유지하고_목록은_잠그되_태그는_초안으로_고친다() {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                                 activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                                  playlistImportURL: nil, stagingSaver: { _ in })
         let a = ReflectionPresenterTests.row("a"), b = ReflectionPresenterTests.row("b")
         store.rowsByID = [a.id: a, b.id: b]

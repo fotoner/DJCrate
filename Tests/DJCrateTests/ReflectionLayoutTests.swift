@@ -30,18 +30,20 @@ struct ReflectionLayoutTests {
             try fixture.add(track)
         }
         let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
         await store.load(snapshot: fixture.database)
         let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
-        store.toast = AppToast(kind: .warning, title: "배치 시험 결과", detail: "합성 데이터로 확인합니다")
+        store.showToast(AppToast(kind: .warning, title: "배치 시험 결과", detail: "합성 데이터로 확인합니다"))
         let toastID = try #require(store.toast?.id)
-        let toastKey = "toast.\(toastID)", contentKey = "reflectionLayout.\(toastID)"
+        let app = AppComposition(store: store, deck: deck)
+        let toastKey = "toast.\(toastID)", contentKey = "reflectionLayout.\(toastID)", barKey = app.statusBar.frameKey
         defer {
             SelfTestFrames.frames.removeValue(forKey: toastKey)
             SelfTestFrames.frames.removeValue(forKey: contentKey)
+            SelfTestFrames.frames.removeValue(forKey: barKey)
         }
-        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: AppComposition(store: store, deck: deck))
+        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: app)
             .defaultAppStorage(defaults).selfTestFrame(contentKey))
         let window = NSWindow(contentViewController: controller)
         window.isReleasedWhenClosed = false
@@ -66,15 +68,75 @@ struct ReflectionLayoutTests {
         }
         let content = try #require(SelfTestFrames.frames[contentKey])
         let toast = try #require(SelfTestFrames.frames[toastKey])
+        let bar = try #require(SelfTestFrames.frames[barKey])
         let bottomInset = content.maxY - toast.maxY
-        print("[알림 배치] 본문=\(content) 알림=\(toast) 아래 여백=\(bottomInset) 창 표시=\(window.isVisible) 화면 모드=\(appearance)")
+        print("[알림 배치] 본문=\(content) 알림=\(toast) 상태 줄=\(bar) 아래 여백=\(bottomInset) 창 표시=\(window.isVisible) 화면 모드=\(appearance)")
         #expect(settled == 2)
         #expect(!toast.isEmpty)
         #expect(toast.midY > content.midY)
         #expect(bottomInset * window.backingScaleFactor > 8)
-        #expect(abs(bottomInset - 16) < 1)
+        // 창 맨 아래 상태 줄(#298)과 겹치지 않게 그 줄 위 16pt에 뜬다
+        #expect(abs(bar.maxY - content.maxY) < 1 && abs(bar.height - StatusBar.height) < 1)
+        #expect(abs(bar.minY - toast.maxY - 16) < 1)
         #expect(content.contains(toast))
         #expect(!window.isVisible)
+    }
+
+    /// 목록 위 오류 줄은 덱 위에 끼어 덱을 밀어 내렸다(C10). 창 알림으로 옮겨 알림이 떠도 덱 자리·높이는 그대로다(#307).
+    @Test func 알림이_떠도_덱_자리와_높이는_그대로다() async throws {
+        _ = NSApplication.shared
+        let defaults = TestDefaults.make("notice-layout")
+        defaults.set(false, forKey: SettingKeys.sidebarVisible.name)
+        let toolbarKey = "NSToolbar Configuration main"
+        let savedToolbar = UserDefaults.standard.object(forKey: toolbarKey)
+        UserDefaults.standard.removeObject(forKey: toolbarKey)
+        defer { UserDefaults.standard.set(savedToolbar, forKey: toolbarKey) }
+        let fixture = try RekordboxFixture()
+        for index in 1...5 {
+            var track = TrackSpec(id: String(200 + index))
+            track.title = "합성 곡 \(index)"
+            try fixture.add(track)
+        }
+        let store = LibraryStore.test(settings: SettingsStore(defaults: defaults, persist: false),
+                                      activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                      rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot)
+        await store.load(snapshot: fixture.database)
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let app = AppComposition(store: store, deck: deck)
+        let deckKey = "library.deck.\(ObjectIdentifier(deck))"
+        defer { SelfTestFrames.frames.removeValue(forKey: deckKey) }
+        let controller = NSHostingController(rootView: ContentView(store: store, deck: deck, app: app).defaultAppStorage(defaults))
+        let window = NSWindow(contentViewController: controller)
+        window.isReleasedWhenClosed = false
+        window.setContentSize(NSSize(width: 1100, height: 700))
+        defer { window.close() }
+        // 배치가 잇달아 같을 때까지 기다린다(시간이 아니라 상태로 판정한다, TEST-31)
+        func settled(_ keys: [String]) async -> [CGRect]? {
+            var previous: [CGRect]?
+            var stable = 0
+            let done = await waitForState {
+                window.contentView?.layoutSubtreeIfNeeded()
+                let frames = keys.compactMap { SelfTestFrames.frames[$0] }
+                guard frames.count == keys.count, frames.allSatisfy({ !$0.isEmpty }) else {
+                    stable = 0
+                    previous = nil
+                    return false
+                }
+                stable = previous == frames ? stable + 1 : 0
+                previous = frames
+                return stable >= 5
+            }
+            return done ? previous : nil
+        }
+        let before = try #require(await settled([deckKey])?.first)
+        store.reportLibraryError("시험 오류라 이전 목록을 표시합니다. 잠시 뒤 다시 읽으세요")
+        let toast = try #require(store.toast)
+        let toastKey = "toast.\(toast.id)"
+        defer { SelfTestFrames.frames.removeValue(forKey: toastKey) }
+        let frames = try #require(await settled([deckKey, toastKey]))
+        print("[알림과 덱] 전=\(before) 후=\(frames[0]) 알림=\(frames[1])")
+        #expect(frames[0] == before)
+        #expect(!frames[0].intersects(frames[1]))
     }
 
     /// 넓은 창에서도 진행 카드는 막대가 남는 폭을 다 차지하지 않고 문구에 맞는 폭(최대 폭 안)으로 뜬다(#122).
@@ -131,5 +193,22 @@ struct ReflectionLayoutTests {
         let long = size(String(repeating: "아주 긴 단계 문구 ", count: 8))
         #expect(abs(long.width - (400 + 56)) < 1)
         #expect(long.height > short.height)
+    }
+
+    /// 뷰 본문(`body`)에 값으로 든 글을 모은다. 접근성 트리는 창을 띄우지 않으면 비어 있어 본문을 거울로 읽는다.
+    static func strings(in value: Any, depth: Int = 0) -> [String] {
+        if let text = value as? String { return [text] }
+        guard depth < 40 else { return [] }
+        return Mirror(reflecting: value).children.flatMap { strings(in: $0.value, depth: depth + 1) }
+    }
+
+    /// 확인 창에서 걷어 낸 "끝날 때까지 rekordbox를 켜지 마세요"는 쓰는 동안의 진행 카드가 한 번만 보인다(#310).
+    /// 아직 쓰기 전인 취소할 수 있는 단계는 켜지 말라고 하지 않는다.
+    @Test(arguments: [false, true]) func 진행_카드는_안내를_한_번만_보인다(_ cancellable: Bool) {
+        let stage = WriteStage(cancellable ? "바꿀 내용을 확인하는 중…" : "rekordbox에 쓰는 중…", cancellable: cancellable)
+        let texts = Self.strings(in: WritingStageCard(stage: stage, onCancel: {}).body)
+        #expect(texts.contains(stage.text), "본문에서 글을 읽을 수 있다: \(texts)")
+        #expect(texts.filter { $0 == stage.notice }.count == 1, "\(texts)")
+        #expect(texts.filter { $0.contains("켜지 마세요") }.count == (cancellable ? 0 : 1), "\(texts)")
     }
 }

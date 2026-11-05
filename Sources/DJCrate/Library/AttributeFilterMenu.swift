@@ -1,8 +1,9 @@
 import DJCDomain
 import SwiftUI
 
-/// 툴바의 평점·곡 색 거르기(#65). 지금 목록(사이드바·검색)에서 평점이 몇 개 이상이거나 곡 색이 같은 곡만 보인다.
-/// rekordbox 값(초안 전)으로 거른다: 정렬·사이드바 필터와 같다. 켜져 있으면 아이콘을 채우고 VoiceOver 값에 조건을 읽는다.
+/// 머리 줄의 평점·곡 색 필터 단추(#65, 화면 이름은 #299에서 '거르기' → '필터', 자리는 #339에서 툴바 → 머리 줄). 지금 목록(사이드바·검색)에서 평점이 몇 개 이상이거나 곡 색이 같은 곡만 보인다.
+/// rekordbox 값(초안 전)으로 거른다: 정렬·사이드바 항목과 같다. 켜져 있으면 아이콘을 채우고 VoiceOver 값에 조건을 읽는다.
+/// 켜진 조건은 단추 옆 칩(`ListFilterChips`)이 글로 보인다. 필터가 걸리지 않는 목록(`LibraryStore.listIsFilterable`)에서는 머리 줄이 이 단추를 두지 않는다.
 struct AttributeFilterMenu: View {
     @Bindable var store: LibraryStore
 
@@ -36,12 +37,18 @@ struct AttributeFilterMenu: View {
             }
             if active {
                 Divider()
-                Button(.ui("평점·곡 색 거르기 끄기")) { clear() }
+                Button(.ui("평점·곡 색 필터 끄기")) { store.clearAttributeFilters() }
             }
         } label: {
-            Label(.ui("평점·곡 색 거르기"), systemImage: active ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+            Label(.ui("평점·곡 색 필터"), systemImage: active ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                .labelStyle(.iconOnly)
         }
-        .help(active ? summary : String(ui: "평점·곡 색으로 목록을 거릅니다(초안 전 rekordbox 값)"))
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        // 아이콘만 있는 단추라 이름을 알리고, 거르는 기준(초안 전 값)을 함께 적는다. 켠 조건은 칩이 말한다
+        .help(.ui("평점·곡 색 필터: rekordbox에 들어 있는 값으로 목록을 거릅니다"))
+        .selfTestFrame("listHeader.filter", clearsOnDisappear: true)
         .accessibilityValue(active ? summary : String(ui: "꺼짐"))
     }
 
@@ -50,12 +57,7 @@ struct AttributeFilterMenu: View {
         var parts: [String] = []
         if store.minimumRating > 0 { parts.append(Self.ratingSpoken(store.minimumRating)) }
         if let color = store.colorFilter { parts.append(String(ui: "곡 색 \(TrackColor.name(of: color, in: store.trackColors))")) }
-        return String(ui: "거르는 중: \(parts.joined(separator: " · "))")
-    }
-
-    private func clear() {
-        store.minimumRating = 0
-        store.colorFilter = nil
+        return String(ui: "필터 켜짐: \(parts.joined(separator: " · "))")
     }
 
     /// "★★★ 이상"(별 다섯은 그것만)

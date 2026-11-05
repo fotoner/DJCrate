@@ -27,7 +27,7 @@ struct TrackWritePathTests {
     ///   nil을 줘 저장소의 초안 폴더에 쓴다.
     func makeStore(_ fixture: RekordboxFixture, saveTagDrafts: (([TagDraft]) -> Void)? = { _ in }) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("trackwrite"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: saveTagDrafts, backupDirectory: fixture.backups,
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: fixture.root.appending(path: "drafts"),
@@ -424,7 +424,7 @@ struct TrackWritePathTests {
         store.reflectionBatch = ReflectionXMLBatch(createdAt: "2026-10-01 00:00:00", xmlPath: "", plans: [plan], checks: [:])
         store.verifyReflection()
         writer.flush()
-        #expect(store.reflectionMessage?.kind == .success)
+        #expect(store.activityLog.latest?.kind == .success)
         // 디스크와 DraftWriter의 기록이 같이 비어야 덱·쓰기 전 확인이 옛 초안을 다시 읽지 않는다.
         #expect(CueDraftStore.load(trackUUID: spec.uuid, directory: store.draftLocations.cue) == nil && GridDraftStore.load(trackUUID: spec.uuid, directory: store.draftLocations.grid) == nil)
         #expect(writer.pendingCue(trackUUID: spec.uuid, directory: store.draftLocations.cue) == nil && writer.pendingGrid(trackUUID: spec.uuid, directory: store.draftLocations.grid) == nil)
@@ -446,7 +446,7 @@ struct TrackWritePathTests {
         store.reflectionBatch = ReflectionXMLBatch(createdAt: "2026-10-01 00:00:00", xmlPath: "", plans: [plan], checks: [:])
         store.verifyReflection()
         writer.flush()
-        #expect(store.reflectionMessage?.kind == .success)
+        #expect(store.activityLog.latest?.kind == .success)
         #expect(!writer.failures(in: store.draftLocations).contains { $0.trackUUID == spec.uuid })
     }
 
@@ -470,8 +470,8 @@ struct TrackWritePathTests {
         }
         store.reflectionBatch = ReflectionXMLBatch(createdAt: "2026-10-01 00:00:00", xmlPath: "", plans: [plan], checks: [:])
         store.verifyReflection()
-        #expect(store.reflectionMessage?.kind == .warning)
-        #expect(store.reflectionMessage?.text.contains("초안을 정리하지 못했습니다") == true)
+        #expect(store.activityLog.latest?.kind == .warning)
+        #expect(store.activityLog.latest?.text.contains("초안을 정리하지 못했습니다") == true)
         #expect(writer.failures(in: store.draftLocations).contains { $0.trackUUID == spec.uuid && $0.kind == .cue })
     }
 
@@ -684,7 +684,7 @@ struct TrackWritePathTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let wav = try AudioFixture.wav(seconds: 1, in: directory)
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("estimate"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+                                 activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: directory.appending(path: "backups"),
                                  playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                                  draftHome: directory.appending(path: "drafts"), writer: writer,

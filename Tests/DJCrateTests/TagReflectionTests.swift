@@ -59,7 +59,7 @@ struct TagReflectionTests {
         let drafts = fixture.root.appending(path: "drafts")
         let store = LibraryStore.test(
             settings: SettingsStore(defaults: TestDefaults.make("comment"), persist: false),
-            resultHistory: WriteResultHistory(url: nil), backupDirectory: fixture.backups,
+            activityLog: ActivityLog(url: nil), backupDirectory: fixture.backups,
             playlistDraftSaver: { _ in }, mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, draftHome: drafts)
         await store.load(snapshot: fixture.database)
         let row = try #require(store.rowsByUUID[spec.uuid])

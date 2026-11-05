@@ -105,7 +105,17 @@ extension UsbEditPlanner {
         }
         try checkAudio(track, row: row)
         var updated = track
-        if parts.contains(.info) { UsbLibraryBuilder.applyInfo(row, to: &updated, names: &names) }
+        // 두 형식 값이 다른 곡은 같은 갱신을 Device Library 값에도 해서 갱신이 쓴 칸만 두 형식에 같게 쓴다(#238)
+        let deviceBefore = working.deviceLibraryValueIDs(table: "content").contains(id) ? working.deviceLibraryTrack(id) : nil
+        var device = deviceBefore
+        if parts.contains(.info) {
+            UsbLibraryBuilder.applyInfo(row, to: &updated, names: &names)
+            // 같은 이름 할당기라 같은 로컬 행은 같은 번호를 받는다
+            if var copy = device {
+                UsbLibraryBuilder.applyInfo(row, to: &copy, names: &names)
+                device = copy
+            }
+        }
         let filesBefore = planned.files.writes.count
         if rewritesAnalysis {
             let analysis = try refreshAnalysis(track, localID: localID, row: row, database: database, share: share, into: &planned)
@@ -113,18 +123,37 @@ extension UsbEditPlanner {
             if analysis != .foreignPPTH {
                 if parts.contains(.cues) { updated.cueUpdateCount = row.cueUpdated ?? "" }
                 if parts.contains(.grid) { updated.analysisDataUpdateCount = row.analysisUpdated ?? "" }
+                // 분석 파일은 합친 모델의 경로에 있다. Device Library도 그 파일을 가리켜야 갱신 횟수와 맞는다
+                device?.cueUpdateCount = updated.cueUpdateCount
+                device?.analysisDataUpdateCount = updated.analysisDataUpdateCount
+                device?.analysisDataPath = updated.analysisDataPath
             }
-            if analysis == .written { UsbLibraryBuilder.applyAnalysis(row, to: &updated) }
+            if analysis == .written {
+                UsbLibraryBuilder.applyAnalysis(row, to: &updated)
+                if var copy = device {
+                    UsbLibraryBuilder.applyAnalysis(row, to: &copy)
+                    device = copy
+                }
+            }
         }
-        if parts.contains(.artwork) { try refreshArtwork(&updated, row: row, share: share, images: &upsert.images, into: &planned) }
-        guard updated != track || planned.files.writes.count > filesBefore else { return }
-        // Device Library에 쓸 때만 트랙 행을 미리 만들어 보고 pdb 문자열 규칙을 싣는다
+        if parts.contains(.artwork) {
+            let artworkBefore = planned.files.writes.count, imageBefore = updated.imageID
+            try refreshArtwork(&updated, row: row, share: share, images: &upsert.images, into: &planned)
+            // 갱신한 그림을 Device Library도 가리키게 한다. Device Library 그림 파일이 없는 행이면 그 형식 값을 그대로 둔다
+            if planned.files.writes.count > artworkBefore || updated.imageID != imageBefore,
+               updated.imageID.map({ id in (working.images + upsert.images).contains { $0.id == id && $0.pdbPath != nil } }) ?? true {
+                device?.imageID = updated.imageID
+            }
+        }
+        guard updated != track || device != deviceBefore || planned.files.writes.count > filesBefore else { return }
+        // Device Library에 쓸 때만 트랙 행을 미리 만들어 보고 pdb 문자열 규칙을 싣는다(실제로 쓸 Device Library 값으로)
         if writable.contains(.deviceLibrary), updated.presentIn.contains(.deviceLibrary) {
             let rows = newRows(names)
-            try deviceRowCheck(updated, newRows: rows)
-            strings += Self.pdbStrings(updated, in: working, extra: rows)
+            try deviceRowCheck(device ?? updated, newRows: rows)
+            strings += Self.pdbStrings(device ?? updated, in: working, extra: rows)
         }
         upsert.replaced.append(updated)
+        if let device { upsert.deviceLibraryTracks[id] = device }
         refreshed.insert(id)
     }
 
@@ -261,10 +290,13 @@ extension UsbEditPlanner {
         track.imageID = id
     }
 
-    /// 그 그림을 이 곡 말고도 곡·앨범·목록이 가리키는지
+    /// 그 그림을 이 곡 말고도 곡·앨범·목록이 가리키는지. 두 형식 값이 다른 곡은 Device Library에서 다른 그림을 가리킬 수 있어 그 투영도 본다(#238)
     func isShared(_ imageID: Int, except trackID: Int) -> Bool {
-        working.tracks.contains { $0.id != trackID && $0.imageID == imageID } || working.albums.contains { $0.imageID == imageID }
-            || working.playlists.contains { $0.imageID == imageID }
+        func shared(_ model: UsbLibrary) -> Bool {
+            model.tracks.contains { $0.id != trackID && $0.imageID == imageID } || model.albums.contains { $0.imageID == imageID }
+                || model.playlists.contains { $0.imageID == imageID }
+        }
+        return shared(working) || (working.hasDeviceLibraryValues && shared(working.projected(to: .deviceLibrary)))
     }
 
     /// ".../a12.jpg" → ".../a12_m.jpg"
@@ -443,14 +475,20 @@ extension UsbEditPlanner {
         return found
     }
 
-    /// 분석 폴더 하나의 (번호, PPTH): USB에 있는 `.DAT`와 DB가 그 폴더를 가리키는 곡
+    /// 분석 폴더 하나의 (번호, PPTH): USB에 있는 `.DAT`와 DB가 그 폴더를 가리키는 곡.
+    /// 두 형식의 분석 경로가 다른 곡은 Device Library 값의 경로도 센다. 그 `.DAT`가 USB에 없어도 새 곡이 그 번호를 받으면
+    /// 두 곡이 한 번호를 가리켜 쓴 뒤 검증(`slotDuplicate`)에 걸린다(#238)
     func analysisSlots(_ folder: String) throws -> [(slot: Int, ppth: String)] {
         var slots: [(slot: Int, ppth: String)] = []
         let prefix = UsbLayout.collisionKey(UsbLayout.analysisRoot + "/" + folder + "/")
-        for track in working.tracks {
+        func add(_ track: UsbTrack) {
             let path = Self.relative(track.analysisDataPath)
-            guard UsbLayout.collisionKey(path).hasPrefix(prefix), let slot = Self.slot(path) else { continue }
+            guard UsbLayout.collisionKey(path).hasPrefix(prefix), let slot = Self.slot(path) else { return }
             slots.append((slot, track.path))
+        }
+        working.tracks.forEach(add)
+        for id in working.deviceLibraryValueIDs(table: "content").sorted() {
+            if let track = working.deviceLibraryTrack(id) { add(track) }
         }
         let directory = root.url.appending(path: UsbLayout.analysisRoot + "/" + folder)
         guard let info = try fileSystem.stat(directory), info.kind == .directory else { return slots }

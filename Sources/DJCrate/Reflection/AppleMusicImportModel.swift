@@ -69,7 +69,7 @@ final class AppleMusicImportModel {
     func startAddSelected() { task = Task { await addSelected() } }
 
     func addSelected() async {
-        guard !isBusy, staging.allowsLibraryInteraction, let library else { return }
+        guard !isBusy, !staging.libraryBusy, let library else { return }
         let candidates = selectedTracks
         guard !candidates.isEmpty else { return }
         isBusy = true
@@ -93,13 +93,12 @@ final class AppleMusicImportModel {
             origins[url.path.precomposedStringWithCanonicalMapping, default: []].append(library.origin(for: track.id))
         }
         // 파일 검사 중 시작된 반영과 곡 추가가 겹치지 않게 다시 확인한다.
-        guard staging.allowsLibraryInteraction else {
+        guard !staging.libraryBusy else {
             message = String(ui: "rekordbox 쓰기가 끝난 뒤 선택한 곡을 다시 추가하세요.")
             return
         }
         if !urls.isEmpty {
-            await staging.addFiles(urls, appleMusicOrigins: origins, createPlaylists: createPlaylists)
-            message = staging.stagingMessage?.text
+            message = await staging.addFiles(urls, appleMusicOrigins: origins, createPlaylists: createPlaylists)
         }
         if rejected > 0 {
             let warning = String(ui: "\(rejected)곡은 파일을 확인하지 못해 제외했습니다. 각 곡의 안내를 확인하세요.")

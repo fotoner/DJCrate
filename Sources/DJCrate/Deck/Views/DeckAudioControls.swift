@@ -25,11 +25,11 @@ struct AudioControlsRow: View {
             Toggle(.ui("키 고정"), isOn: $deck.keyLock)
                 .toggleStyle(.checkbox)
                 .fixedSize()
-                .help(.ui("켜면 음정을 유지한 채 속도만 바꿉니다(마스터 템포). 끄면 바이닐처럼 음정도 함께 바뀝니다."))
+                .help(.ui("음정 유지 (마스터 템포)"))
             Toggle(.ui("큐 제안 표시"), isOn: $deck.showSuggestions)
                 .toggleStyle(.checkbox)
                 .fixedSize()
-                .help(.ui("큐 제안을 표시합니다. 파형 아래 + 배지를 누르면 메모리 큐로 추가합니다."))
+                .help(.ui("파형 아래에 큐 제안(+) 표시"))
             Spacer(minLength: 0)
             ShortcutsButton()
         }
@@ -131,7 +131,6 @@ struct GainDraftDiscardButton: View {
             Button(.ui("게인 초안 버리기")) { deck.clearGainDraft() }
                 .font(.scaled(.caption, textScale))
                 .controlSize(ControlSize.small.scaled(textScale))
-                .help(.ui("이 곡의 게인 초안을 지우고 rekordbox 오토게인으로 돌아갑니다"))
         }
     }
 }
@@ -208,6 +207,12 @@ struct GainControl: View {
     @Bindable var deck: DeckModel
     @State private var shown = false
 
+    /// 경고 표식이 보일 때만 이유를 알린다(안 보이는 표식에는 툴팁을 달지 않는다).
+    private var hotHelp: String {
+        guard let loudness = deck.loudness, loudness.isHot else { return "" }
+        return loudness.isLoud ? String(ui: "매우 큼(−6 LUFS 초과)") : String(ui: "클리핑 흔적 \(loudness.clippedRuns)곳 · 심함")
+    }
+
     var body: some View {
         let isHot = deck.loudness?.isHot == true
         Button { shown.toggle() } label: {
@@ -240,6 +245,7 @@ struct GainControl: View {
                     .foregroundStyle(UIColors.warning.color)
                     .frame(height: TextScale.length(12, scale: textScale))
                     .opacity(isHot ? 1 : 0)
+                    .help(hotHelp)
                     .accessibilityLabel(.ui("경고"))
                     .accessibilityHidden(!isHot)
             }
@@ -249,7 +255,7 @@ struct GainControl: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(.ui("오토게인·목표 음량·트림을 정합니다. LUFS 느낌표는 과도한 음량이나 클리핑 경고입니다."))
+        .help(.ui("게인 설정"))
         .popover(isPresented: $shown, arrowEdge: .trailing) { GainSettings(deck: deck).padding(16).frame(width: 340) }
     }
 }
@@ -261,10 +267,9 @@ struct GainSettings: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(.ui("게인")).font(.headline)
             Toggle(.ui("오토게인"), isOn: $deck.autoGain)
-                .help(.ui("곡마다 목표 음량에 맞춥니다"))
             Toggle(.ui("rekordbox 값 사용"), isOn: $deck.useRekordboxGain)
                 .disabled(!deck.autoGain)
-                .help(.ui("rekordbox 오토게인 값을 씁니다(rekordbox는 약 −10 LUFS에 맞춤)"))
+                .help(.ui("rekordbox 값 사용 (≈ −10 LUFS)"))
             Picker(.ui("목표 음량"), selection: $deck.gainTarget) {
                 ForEach([-14.0, -12, -11, -10, -9, -8], id: \.self) { Text(verbatim: $0.unitText(digits: 0) + " LUFS").tag($0) }
             }
@@ -318,14 +323,14 @@ struct GainSettings: View {
                             }
                         }
                         .controlSize(.small)
-                        .help(deck.gainDraft != nil ? String(ui: "rekordbox에 쓰면 이 곡의 오토게인이 초안 값으로 바뀝니다.") : String(ui: "이 곡의 rekordbox 오토게인을 고칩니다(초안)"))
+                        .help(deck.gainDraft != nil ? "" : String(ui: "이 곡의 rekordbox 오토게인을 고칩니다(초안)"))
                     } else {
                         Text(.ui("rekordbox 값 없음(분석 전)")).foregroundStyle(.secondary)
                     }
                     if deck.isGainSuspicious, let mismatch = deck.gainMismatchDB {
                         Label(.ui("rekordbox 값이 실제 음량과 \(abs(mismatch), specifier: "%.1f")dB 다름"), systemImage: "exclamationmark.triangle")
                             .foregroundStyle(UIColors.warning.color)
-                            .help(.ui("파일을 바꿨거나 분석이 오래됐을 수 있습니다. rekordbox에서 다시 분석하거나 DJCrate 값을 쓰세요"))
+                            .help(.ui("분석이 오래됐을 수 있습니다 · rekordbox에서 다시 분석하세요"))
                     }
                     if loudness.isLoud {
                         Label(.ui("매우 큼(−6 LUFS 초과)"), systemImage: "exclamationmark.triangle")
@@ -387,8 +392,8 @@ struct LevelMeterView: View {
                 }
                 .buttonStyle(.plain)
                 .help(reading.clipCount > 0
-                      ? String(ui: "최고 피크(dBFS, 게인 뒤). 0dBFS를 \(reading.clipCount)번 넘었습니다 — 게인을 낮추세요. 누르면 기록을 지웁니다")
-                      : String(ui: "곡을 올린 뒤 최고 피크(dBFS, 게인 뒤). 0dBFS를 넘으면 빨간 점이 켜집니다. 누르면 기록을 지웁니다"))
+                      ? String(ui: "최고 피크 (dBFS) · \(reading.clipCount)번 넘음 · 누르면 초기화")
+                      : String(ui: "최고 피크 (dBFS) · 누르면 초기화"))
                 // 최고 피크는 곡마다 가끔만 바뀐다(값이 바뀔 때만 VoiceOver에 알린다).
                 .accessibilityLabel(.ui("최고 피크"))
                 .accessibilityValue(reading.maxPeak > 0 ? Double(20 * log10(reading.maxPeak)).unitText(signed: true) + " dB" : String(ui: "없음"))

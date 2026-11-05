@@ -3,7 +3,7 @@ import DJCDomain
 import Foundation
 import Observation
 
-/// 주 창(`ContentView`)의 화면 모델(#254): 주 창이 띄우는 시트(쓰기 결과·연결되지 않은 초안·rekordbox XML 가져오기)와
+/// 주 창(`ContentView`)의 화면 모델(#254): 주 창이 띄우는 시트(활동 기록·연결되지 않은 초안·rekordbox XML 가져오기)와
 /// 주 창의 단추·알림·끌어 놓기·메뉴가 부르는 입구(MVVM-4). 입구는 핵심의 비동기 일을 시작만 하고 기다리지 않는다.
 /// 단추의 `Task {}`처럼 화면이 사라져도 취소하지 않는다. 돌려주는 손잡이는 시험이 기다린다.
 /// 상태는 공유 핵심(`LibraryStore`)에 있다. 이 모델은 주 창만 쓰는 시트 상태만 든다. 다른 화면 모델·기능 조각이 여는 시트
@@ -15,8 +15,10 @@ final class LibraryWindowModel {
     @ObservationIgnored let store: LibraryStore
     /// rekordbox XML 가져오기(읽는 중·미리 보기 시트·결과). 메뉴가 읽는 중인지 보므로 시트를 닫아도 남는다
     @ObservationIgnored let xmlImport: XMLImportModel
-    /// 마지막 쓰기 결과 시트(알림의 '자세히'·메뉴·사이드바 줄이 띄운다)
-    var showingWriteResult = false
+    /// 활동 기록 시트의 화면 모델(알림의 결과 보기·메뉴·사이드바 줄이 띄운다. 띄울 때마다 새로 만든다)
+    var activityLog: ActivityLogModel? { didSet { activityLogSeen() } }
+    /// 활동 기록 시트를 열고 닫을 때 부른다. 시트가 모든 알림을 보이므로 상태 줄이 그때까지의 알림을 읽음으로 본다(조립 지점이 잇는다)
+    @ObservationIgnored var activityLogSeen: () -> Void = {}
     /// 연결되지 않은 초안 시트의 화면 모델(띄울 때마다 새로 만든다)
     var unlinkedDrafts: UnlinkedDraftsModel?
     /// 켤 때 알림의 "모두 갱신"이 부르는 AI 에이전트 설치 모델(조립 지점이 붙인다. 시험은 nil)
@@ -29,17 +31,29 @@ final class LibraryWindowModel {
 
     // MARK: - 시트
 
-    func showWriteResult() { showingWriteResult = true }
+    /// 활동 기록을 연다. 알림의 결과 보기는 그 알림의 항목을 고른다(없으면 맨 위 항목)
+    func showActivityLog(selecting entry: ActivityEntry.ID? = nil) {
+        activityLog = ActivityLogModel(log: store.activityLog, selection: entry)
+    }
 
     func openUnlinkedDrafts() { unlinkedDrafts = UnlinkedDraftsModel(store: store) }
+
+    // MARK: - 검색칸
+
+    /// 편집 › 찾기(⌘F)가 올리는 검색칸 포커스 요청 번호. 머리 줄 검색칸(잎 뷰)만 읽고, 번호가 바뀌면 칸으로 포커스를 옮긴다.
+    /// 칸이 없는 화면에서는 메뉴가 꺼져 있어 요청이 오지 않는다(`LibraryMenuAction.find`)
+    private(set) var searchFocusRequest = 0
+
+    func focusSearch() { searchFocusRequest += 1 }
 
     // MARK: - 입구
 
     @discardableResult
     func startLoadInitial() -> Task<Void, Never> { Task { [store] in await store.loadInitial() } }
 
+    /// 읽기 실패 화면의 [다시 시도]
     @discardableResult
-    func startTakeSnapshot(force: Bool = false) -> Task<Void, Never> { Task { [store] in await store.takeSnapshot(force: force) } }
+    func startRetryLoad() -> Task<Void, Never> { Task { [store] in await store.retryLoad() } }
 
     @discardableResult
     func startSynchronizeLibrary() -> Task<Void, Never> { Task { [store] in await store.synchronizeLibrary() } }
@@ -53,9 +67,9 @@ final class LibraryWindowModel {
         switch action {
         case .updateAgentTools:
             Task { [store, agentTools] in
-                if store.toast?.action == action { store.toast = nil }
+                if let toast = store.toast, toast.action == action { store.dismissToast(toast.id) }
                 guard let agentTools else { return }
-                store.toast = await agentTools.updateAllFromNotice()
+                store.showToast(await agentTools.updateAllFromNotice())
             }
         case .ejectUsb:
             Task { [store] in await store.usbCoordinator?.perform(action) }
@@ -66,7 +80,7 @@ final class LibraryWindowModel {
 
     /// 창에 음원 파일을 놓을 수 있는지. 쓰는 중이거나 읽기 전용 목록(iTunes·USB)을 보는 중이면 받지 않는다
     var acceptsFileDrop: Bool {
-        store.writeLockPolicy.allowsLibraryInteraction && !store.isITunesSelection && !store.isUsbSelection
+        !store.libraryBusy && !store.isITunesSelection && !store.isUsbSelection
     }
 
     /// 창에 끌어다 놓은 파일을 읽어 추가한 곡에 넣는다. 읽는 사이 rekordbox 쓰기가 시작되면 넣지 않는다.
@@ -80,7 +94,7 @@ final class LibraryWindowModel {
                 }
                 if let url, url.isFileURL { urls.append(url) }
             }
-            guard !urls.isEmpty, store.writeLockPolicy.allowsLibraryInteraction else { return }
+            guard !urls.isEmpty, !store.libraryBusy else { return }
             await store.staging.addFiles(urls)
         }
     }

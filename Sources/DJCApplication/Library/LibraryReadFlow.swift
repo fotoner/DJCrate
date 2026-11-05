@@ -20,8 +20,21 @@ public final class LibraryReadFlow {
         public let task: Task<Void, Never>
     }
 
+    /// 복사하는 사이 rekordbox가 라이브러리를 바꿨을 때 자동으로 다시 뜨는 최대 횟수. 다 실패하면 "그 밖" 실패로 알린다
+    public static let copyRetryLimit = 5
+
     let loader: LoadLibrary
     let location: LibraryLocation
+    /// 읽을 사본이 없는 첫 실행에서 단추 없이 바로 사본을 떠 읽는다. 자가 테스트·성능 측정·화면 캡처 실행은 끈다(그 상태에 기대는 캡처 장면이 있다)
+    public var readsOnFirstRun = true
+    /// 복사 중 바뀜을 다시 뜨기 전에 잠깐 기다린다(rekordbox가 쓰기를 마칠 시간). 시험이 바꿔 넣는다
+    public var retryPause: @Sendable () async -> Void = { try? await Task.sleep(for: .seconds(2)) }
+    /// 설치된 rekordbox 버전을 이미 확인했다(앱을 켜고 한 번만 알린다)
+    private var checkedRekordboxVersion = false
+    /// 마지막으로 시작한 쓰기 막힘 판정(#327). 읽기를 기다리게 하지 않고 뒤에서 돈다. 시험이 끝을 기다린다
+    public private(set) var writeBlockCheck: Task<Void, Never>?
+    /// 쓰기 막힘 판정 순번. 채택한 읽기가 판정을 시작할 때만 오른다(사본 뜨기 시작은 읽기 세대만 올리고 목록은 그대로라 판정을 버리지 않는다)
+    private var writeBlockSerial: UInt64 = 0
     /// 흐름이 보는 화면. 화면 모델이 만들 때 붙인다(붙이지 않으면 읽은 결과를 버린다)
     public var screen: LibraryReadScreen = .none
     /// 읽기 세대·요청 순번. 늦게 끝난 읽기·Music 최신화·파일 확인·USB 사본 출처를 이것으로 가른다.
@@ -79,7 +92,22 @@ public final class LibraryReadFlow {
             startMusicRefresh(snapshot: latest, quiet: true, previous: nil, fallbackDirectory: snapshotDirectory,
                               sourceDatabase: sourceDatabase, capture: capture)
         case .none:
-            screen.apply(.phase(.idle))
+            // 처음 실행: 단추 없이 바로 읽는다. rekordbox가 켜져 있어도 읽기용 사본(사본 안에서 WAL을 합침)을 뜬다. 원본은 읽기만 한다.
+            guard readsOnFirstRun else {
+                screen.apply(.phase(.idle))
+                return
+            }
+            await takeSnapshot(force: loader.isRekordboxRunning(), snapshotDirectory: snapshotDirectory, capture: capture)
+        }
+    }
+
+    /// [다시 시도]: 새 사본을 떠서 읽는다. 저장된 사본을 다시 읽으면 읽지 못한 그 사본에서 같은 실패를 되풀이한다.
+    /// 명시한 사본(`--db PATH`·`DJC_DB`)은 뜨지 않고 그 사본을 다시 읽는다.
+    public func retry() async {
+        if location.opensExplicitCopy {
+            await loadInitial()
+        } else {
+            await takeSnapshot(force: loader.isRekordboxRunning())
         }
     }
 
@@ -166,10 +194,9 @@ public final class LibraryReadFlow {
         let previousMusic = loader.previousMusic(current: state.snapshot, snapshotDirectory: snapshotDirectory,
                                                  location: location, refreshMusic: refreshMusic)
         let quiet = quiet && hadRows && state.isLoaded
-        if !quiet { screen.apply(.phase(.loading(String(ui: "rekordbox DB 스냅샷을 뜨는 중…")))) }
+        if !quiet { screen.apply(.phase(.loading(String(ui: "rekordbox 라이브러리를 복사하는 중…")))) }
         do {
-            let url = try await LoadLibrary.background { try copy(force) }
-            guard reads.isCurrentRequest(readRequest), !Task.isCancelled else { return nil }
+            guard let url = try await copyRetryingWhileChanging(force: force, quiet: quiet, readRequest: readRequest, copy: copy) else { return nil }
             loader.invalidateMusic([url])
             let fallback = latestMusicFallback(previousMusic)
             let expectedGeneration = reads.generation + 1
@@ -193,8 +220,64 @@ public final class LibraryReadFlow {
                 return nil
             }
             // 이미 라이브러리가 있으면 그대로 두고 오류만 알린다.
-            screen.apply(.readFailed(LibraryReadFailure(stage: .snapshotCreation, keepsPreviousLibrary: hadRows), error))
+            screen.apply(.readFailed(failure(stage: .snapshotCreation, keepsPreviousLibrary: hadRows, error: error), error))
             return nil
+        }
+    }
+
+    /// 사본을 뜬다. 복사하는 사이 rekordbox가 라이브러리를 바꿨으면(`.changedWhileCopying`) 이유를 알리고 잠시 뒤 다시 뜬다(최대 `copyRetryLimit`번).
+    /// 그사이 더 나중 요청이 시작됐거나 취소됐으면 nil. 다 실패하면 마지막 오류를 던진다.
+    private func copyRetryingWhileChanging(force: Bool, quiet: Bool, readRequest: Int,
+                                           copy: @escaping @Sendable (Bool) throws -> URL) async throws -> URL? {
+        var retries = 0
+        while true {
+            do {
+                let url = try await LoadLibrary.background { try copy(force) }
+                guard reads.isCurrentRequest(readRequest), !Task.isCancelled else { return nil }
+                return url
+            } catch where LibraryReadFailure.cause(of: error) == .changedWhileCopying && retries < Self.copyRetryLimit {
+                retries += 1
+                guard reads.isCurrentRequest(readRequest), !Task.isCancelled else { return nil }
+                if !quiet { screen.apply(.phase(.loading(LibraryReadFailure.retryingMessage))) }
+                await retryPause()
+                guard reads.isCurrentRequest(readRequest), !Task.isCancelled else { return nil }
+            }
+        }
+    }
+
+    /// 던진 오류에서 실패를 만든다. 복사 중 바뀜이 횟수를 넘겨 남았으면 원인을 가를 수 없는 것으로 본다(잠시 뒤 다시 읽는다는 약속을 이미 지켰다).
+    func failure(stage: LibraryReadFailure.Stage, keepsPreviousLibrary: Bool, error: any Error) -> LibraryReadFailure {
+        let failure = LibraryReadFailure(stage: stage, keepsPreviousLibrary: keepsPreviousLibrary, error: error, home: location.userHome)
+        guard failure.cause == .changedWhileCopying else { return failure }
+        return LibraryReadFailure(stage: stage, keepsPreviousLibrary: keepsPreviousLibrary, cause: .other, detail: failure.detail)
+    }
+
+    /// 설치된 rekordbox가 쓰기를 확인한 버전이 아니면 앱을 켜고 한 번만 알린다. 읽기는 이미 됐다(목록 + 알림).
+    /// 사본 rekordbox 폴더·명시한 사본으로 띄운 개발 실행은 설치된 rekordbox와 상관없으니 알리지 않는다.
+    private func reportUnsupportedVersionOnce() async {
+        guard !checkedRekordboxVersion, !location.opensExplicitCopy, !location.rekordboxDirectoryOverridden else { return }
+        checkedRekordboxVersion = true
+        let loader = loader
+        guard let version = try? await LoadLibrary.background({ loader.unsupportedRekordboxVersion() }) else { return }
+        screen.apply(.unsupportedRekordbox(version))
+    }
+
+    /// 읽은 사본으로 rekordbox에 쓸 수 없는 이유를 미리 본다(#327). 읽을 때마다 다시 본다.
+    /// 사본 DB를 한 번 더 여는 일이라 메인 밖에서 하고, 읽기(와 뒤따르는 Music 최신화)를 기다리게 하지 않는다.
+    /// 그사이 다른 사본을 채택해 새 판정이 시작됐으면 결과를 버린다(새 판정이 대신 알린다). 새 사본 뜨기가 시작만 되고 채택되지 않으면
+    /// (복사 실패·더 나중 요청에 밀림) 화면에는 이 사본의 목록이 남으므로 이 판정을 알린다. 화면은 보이기만 한다: 쓰기 관문은 따로 막는다
+    private func checkWriteBlock(snapshot: URL) {
+        guard loader.checksWriteBlock else { return }
+        let loader = loader, backupDirectory = location.backupDirectory
+        writeBlockSerial &+= 1
+        let serial = writeBlockSerial
+        writeBlockCheck?.cancel()
+        writeBlockCheck = Task { [weak self] in
+            // 막힘 없음(nil)도 알려야 지난 막힘이 풀린다(`try?`로 받으면 nil이 실패와 섞인다)
+            let block: LibraryWriteBlock?
+            do { block = try await LoadLibrary.background { loader.writeBlock(snapshot: snapshot, backupDirectory: backupDirectory) } } catch { return }
+            guard let self, !Task.isCancelled, writeBlockSerial == serial else { return }
+            screen.apply(.writeBlock(block))
         }
     }
 
@@ -266,6 +349,8 @@ public final class LibraryReadFlow {
                 return
             }
             start.adopt(LibraryReadResult(opened: opened, snapshot: snapshot, generation: generation, synchronizingDrafts: synchronizingDrafts))
+            checkWriteBlock(snapshot: snapshot)
+            await reportUnsupportedVersionOnce()
         } catch {
             guard reads.isCurrent(generation) else { return }
             let state = screen.state()
@@ -277,7 +362,7 @@ public final class LibraryReadFlow {
             if case DJCError.databaseOpenFailed = error { stage = .opening }
             else if case DJCError.keyDerivationFailed = error { stage = .opening }
             else { stage = .contents }
-            screen.apply(.readFailed(LibraryReadFailure(stage: stage, keepsPreviousLibrary: state.hasRows), error))
+            screen.apply(.readFailed(failure(stage: stage, keepsPreviousLibrary: state.hasRows, error: error), error))
         }
     }
 }

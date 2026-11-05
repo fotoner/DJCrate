@@ -82,6 +82,12 @@ public enum SettingKeys {
     /// rekordbox가 꺼져 있고 라이브러리가 바뀌었으면 하루 한 번 자동 시점 스냅샷을 남긴다(#228). 기본은 켬
     public static let pointSnapshotAuto = SettingKey("storage.pointSnapshotAuto", true)
 
+    // MARK: 알림
+
+    /// 활동 기록에서 읽음으로 본 마지막 시각(기준 날짜 2001-01-01부터의 초, #298). 이보다 늦게 뜬 경고·실패와 띄우지 못한 알림을
+    /// 상태 줄이 읽지 않은 수로 센다. 0은 아직 읽은 적 없음이다
+    public static let activitySeenThrough = SettingKey<Double>("activity.seenThrough", 0, in: nil)
+
     // MARK: AI 에이전트
 
     /// 옛 설치본 알림(#262)을 마지막으로 보인 앱 판(`AgentPayloadVersion.key`). 앱 판마다 한 번만 알린다
@@ -105,7 +111,7 @@ public enum SettingKeys {
     /// 모든 이름(겹치지 않는지 확인용)
     public static var all: [String] {
         [zoomSeconds.name, volume.name, metronomeVolume.name, idleSeconds.name, gainTarget.name, gainTrim.name,
-         waveformHeight.name, textScale.name, playQuantizeBeats.name, pointSnapshotAutoDays.name]
+         waveformHeight.name, textScale.name, playQuantizeBeats.name, pointSnapshotAutoDays.name, activitySeenThrough.name]
             + [quantize, playQuantize, carryCues, showSuggestions, showKeyBand, keyLock, autoGain, peakProtection, useRekordboxGain,
                sheetMode, showTagEditor, sidebarPlaylistsExpanded, sidebarSummaryExpanded, sidebarHistoriesExpanded, sidebarShowsStatus,
                sidebarVisible, commentClassColumnHidden, hideStreaming, labSmartPlaylists, pointSnapshotAuto].map(\.name)

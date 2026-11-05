@@ -55,7 +55,7 @@ final class TagEditStore {
     }
 
     /// 쓰는 동안(덱 제안 줄의 단추를 막는다)
-    var isWritingRekordbox: Bool { library.isWritingRekordbox }
+    var editsFrozen: Bool { library.editsFrozen }
 
     /// 목록에 있는 같은 곡의 행(동기화로 rekordbox 값이 바뀌었으면 새 값)
     func listedRow(uuid: String) -> TrackRow? { library.rowsByUUID[uuid] }
@@ -84,19 +84,19 @@ final class TagEditStore {
     }
 
     func revertTags(rows: [TrackRow]) {
-        guard !library.isWritingRekordbox else { return }
+        guard !library.editsFrozen else { return }
         commit(edit.revert(rows, drafts: library.tagDrafts, colors: library.trackColors))
     }
 
     /// 현재 값과 충돌한 칸 하나만 사용자가 선택한다. 다른 칸의 충돌은 writer가 계속 막는다.
     func resolveTagConflict(_ key: TagFields.Key, keepingDraft: Bool, rows: [TrackRow]) {
-        guard !library.isWritingRekordbox else { return }
+        guard !library.editsFrozen else { return }
         commit(edit.resolveConflict(key, keepingDraft: keepingDraft, rows: rows, drafts: library.tagDrafts, current: library.rowsByUUID))
     }
 
     /// 여러 셀을 한 번에 바꾼다(태그 시트 붙여넣기·채우기). 되돌리기 한 단위가 된다.
     func applyTagEdits(_ changes: [(row: TrackRow, key: TagFields.Key, value: String)]) {
-        guard !library.isWritingRekordbox else { return }
+        guard !library.editsFrozen else { return }
         commit(edit.edit(changes, drafts: library.tagDrafts, colors: library.trackColors))
     }
 
@@ -116,7 +116,7 @@ final class TagEditStore {
             undoManager.beginUndoGrouping()
         }
         undoManager.registerUndo(withTarget: library) { target in
-            guard !target.isWritingRekordbox else { return }
+            guard !target.editsFrozen else { return }
             target.tags.show(change.before)
             target.tags.registerUndo(change.reversed)
         }

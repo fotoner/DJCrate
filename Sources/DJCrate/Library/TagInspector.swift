@@ -60,8 +60,8 @@ struct TagInspector: View {
                             .disabled(model.isRecoveringDraft)
                     }
                     Button(.ui("태그 초안 버리기")) { model.revert(rows: rows) }
-                    // 반영(⌘⇧E)하면 rekordbox 곡 정보에 쓴다. 음원 파일은 읽기만 한다(#1 결정).
-                    Text(.ui("rekordbox에 쓸 때 라이브러리에만 저장합니다. 음원 파일의 태그는 바뀌지 않습니다."))
+                    // 태그·앨범아트 모두 rekordbox 라이브러리에만 쓰고 음원 파일은 읽기만 한다(#1·#66 결정). 인스펙터에서 한 번만 말한다(#328).
+                    Text(.ui("태그·앨범아트는 라이브러리에만 쓰고 음원 파일은 바꾸지 않습니다."))
                         .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
                 }
             }

@@ -200,11 +200,12 @@ public enum OneLibraryWriter {
     }
 
     /// 받아들인 모델에서는 쓰이던 행 중 이 편집 뒤 아무도 가리키지 않는 행만 뺀다(원래 쓰이지 않던 행은 둔다)
+    /// 두 형식 값이 다른 곡은 Device Library 투영에서 다른 행을 가리킬 수 있어(#238) 그 투영이 가리키는 행도 쓰이는 행으로 본다
     static func pruneNewOrphans(_ next: inout UsbLibrary, accepted: UsbLibrary) {
-        let old = References(accepted)
-        var now = References(next)
+        let old = References.inEitherFormat(accepted)
+        var now = References.inEitherFormat(next)
         next.albums.removeAll { old.albums.contains($0.id) && !now.albums.contains($0.id) }
-        now = References(next)
+        now = References.inEitherFormat(next)
         next.artists.removeAll { old.artists.contains($0.id) && !now.artists.contains($0.id) }
         next.genres.removeAll { old.genres.contains($0.id) && !now.genres.contains($0.id) }
         next.keys.removeAll { old.keys.contains($0.id) && !now.keys.contains($0.id) }
@@ -232,6 +233,20 @@ public enum OneLibraryWriter {
                 if let image = album.imageID { images.insert(image) }
             }
             images.formUnion(library.playlists.compactMap(\.imageID))
+        }
+
+        /// 합친 모델과 그 Device Library 투영이 가리키는 행 ID. 투영은 두 형식 값이 다른 곡의 참조를 그 형식 값으로 되돌린다(#238)
+        static func inEitherFormat(_ library: UsbLibrary) -> References {
+            var result = References(library)
+            guard library.hasDeviceLibraryValues else { return result }
+            let device = References(library.projected(to: .deviceLibrary))
+            result.artists.formUnion(device.artists)
+            result.albums.formUnion(device.albums)
+            result.genres.formUnion(device.genres)
+            result.keys.formUnion(device.keys)
+            result.labels.formUnion(device.labels)
+            result.images.formUnion(device.images)
+            return result
         }
     }
 

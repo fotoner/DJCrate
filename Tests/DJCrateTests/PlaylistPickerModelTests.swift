@@ -55,7 +55,7 @@ struct PlaylistPickerModelTests {
     }
 
     @Test func 저장소에서_열면_고른_곡과_최근_목록을_쓴다() {
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }))
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }))
         store.playlists.openPlaylistPicker(tracks: Self.tracks)
         let picker = store.playlists.playlistPicker
         #expect(picker?.trackCount == 2)

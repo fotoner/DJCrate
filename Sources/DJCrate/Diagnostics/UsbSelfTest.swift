@@ -34,6 +34,9 @@ enum UsbSelfTest {
     /// 앱 시작 때(라이브러리를 읽기 전) 볼 거부. 자가 테스트 인자가 없으면 nil —
     /// 거부를 시험 Task 안에서만 보면 그 사이 `loadInitial`이 사용자 스냅샷 폴더를 먼저 연다
     nonisolated static func startupRefusal(arguments: [String], environment: [String: String]) -> String? {
+        if arguments.contains(where: { $0.hasPrefix("--usb-snapshot-capture=") }) {
+            return UsbSnapshotCapture.startupRefusal(arguments: arguments, environment: environment)
+        }
         guard arguments.contains("--usb-selftest") else { return nil }
         return launchRefusal(arguments: arguments, environment: environment)
     }

@@ -28,8 +28,19 @@ final class ReflectionHarness {
     /// (잠금, 덱도) 차례
     var locks: [String] = []
     var stages: [WriteStage?] = []
+    /// 단계를 알릴 때마다 부른다(그 순간 화면 상태를 본다)
+    var onStage: (@MainActor (WriteStage?) -> Void)?
+    /// 확인 창을 띄울 때마다 부른다(그 순간 잠금·단계를 본다)
+    var onPrompt: (@MainActor () -> Void)?
+    /// 결과를 알릴 때마다 부른다(그 순간 잠금을 본다)
+    var onPublish: (@MainActor (ReflectionOutcome) -> Void)?
     var reloads: [(written: Set<String>, playlistEdits: [PlaylistEdit])] = []
     var reloadSucceeds = true
+    /// 종료를 기다리는 중이다(#305): 다시 읽기 포트가 읽지 않고 미룬다
+    var postponesReload = false
+    /// 포트가 미루라고 물은 횟수와 미룬 읽기(미룬 것만 쌓는다)
+    var postponeAsks = 0
+    var postponed: [(written: Set<String>, playlistEdits: [PlaylistEdit])] = []
     /// 다시 읽기가 실패했을 때 목록 위에 남는 이유
     var reloadError: String?
     var running = false
@@ -86,23 +97,36 @@ final class ReflectionHarness {
                                                        self.recordedHistories.append(outcomes)
                                                        return self.historyMarkWarning
                                                    }),
-                        reload: LibraryReloader { written, edits in
+                        reload: LibraryReloader(reload: { written, edits in
                             self.log.record("reload")
                             self.reloads.append((written, edits))
                             return self.reloadSucceeds
-                        },
+                        }, postpone: { written, edits in
+                            self.postponeAsks += 1
+                            guard self.postponesReload else { return false }
+                            self.log.record("postpone")
+                            self.postponed.append((written, edits))
+                            return true
+                        }),
                         lock: WriteLock(isLocked: { self.locked }, set: { locked, deck in
                             self.locked = locked
                             self.locks.append("\(locked)\(deck ? "" : " (덱 빼고)")")
-                        }, stage: { self.stages.append($0) }),
+                        }, stage: {
+                            self.stages.append($0)
+                            self.onStage?($0)
+                        }),
                         confirmation: UserConfirmation(confirm: { prompt in
                             self.prompts.append(prompt)
+                            self.onPrompt?()
                             return self.answers.isEmpty ? self.answer : self.answers.removeFirst()
                         }, choose: { prompt in
                             self.prompts.append(prompt)
                             return self.choice
                         }),
-                        results: ReflectionResults { self.published.append($0) },
+                        results: ReflectionResults {
+                            self.published.append($0)
+                            self.onPublish?($0)
+                        },
                         runningApps: RunningApps { [running] in running },
                         playlistImports: PlaylistImportsStore(load: { PlaylistImports() }, save: { imports in
                             MainActor.assumeIsolated { self.importsSaved.append(imports) }

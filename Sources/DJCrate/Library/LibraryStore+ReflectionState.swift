@@ -5,7 +5,7 @@ import Foundation
 /// rekordbox 쓰기(반영 세션, DJCApplication `ReflectionSession`)가 보는 이 화면의 초안 상태와, 세션이 쓰거나 되돌린 결과를 화면에 맞추는 곳.
 /// 무엇을 지우고 되살리고 옮길지는 세션이 정한다. 이 확장은 메모리 초안·표시·선택만 맞춘다(조립 지점 `AppComposition.reflection`이 세션의 포트에 잇는다).
 extension LibraryStore {
-    /// 고른 곡 가운데 rekordbox에 쓸 곡(메뉴·툴바가 보일지·곡 수를 정한다). 반영 세션과 같은 규칙(`ReflectionTargets`, 저장 대기 입력 포함)
+    /// 고른 곡 가운데 rekordbox에 쓸 곡(곡 오른쪽 클릭 메뉴가 보일지·곡 수를 정한다). 반영 세션과 같은 규칙(`ReflectionTargets`, 저장 대기 입력 포함)
     func writeTargets(_ rows: [TrackRow]) -> [TrackRow] {
         ReflectionTargets.write(rows, pending: ReflectionTargets.pending(marked: pendingUUIDs, unsaved: useCases.watch.unsavedUUIDs()))
     }
@@ -42,16 +42,21 @@ extension LibraryStore {
         case let .deckTrackMoved(id): moveDeckTrack(to: id)
         case let .playlistImportsReset(reset): playlists.applyPlaylistImportsReset(reset)
         case .unlinkedDraftsChanged: refreshUnlinkedDrafts()
-        case let .libraryError(text): reportLibraryError(text)
+        case let .libraryError(text):
+            // 뒤따른 경고 바로 뒤의 같은 줄은 쓰기 결과 알림이 담는다. 오류 상태만 남기고 또 띄우지 않는다(#307)
+            if followUpAwaitingError { setLibraryErrorQuietly(text) } else { reportLibraryError(text) }
+            followUpAwaitingError = false
         case let .showAdded(id):
             sidebar = .filter(.all)
             search = ""
             selection = [id]
         case let .deselected(ids): selection.subtract(ids)
         case let .lastWriteBackup(url): lastWriteBackup = url
-        case let .followUp(notes): writeFollowUp = notes
+        case let .followUp(notes):
+            writeFollowUp = notes
+            followUpAwaitingError = !notes.isEmpty
         case .writeBackupsChanged: refreshWriteBackups()
-        case let .historyMarkFailed(warning): toast = .notice(ArchiveUsbHistories.queueSaveFailureTitle, warning)
+        case let .historyMarkFailed(warning): showToast(.notice(ArchiveUsbHistories.queueSaveFailureTitle, warning))
         }
     }
 
@@ -69,14 +74,16 @@ extension LibraryStore {
         }
         isWritingRekordbox = locked
         if deck { onWriteLock?(locked) }
+        // 종료를 기다리느라 미룬 다시 읽기는 종료를 취소했는데 쓰기 잠금이 아직 걸려 있었을 때 여기서 이어 한다(#305)
+        if !locked { resumePostponedReload() }
     }
 
     /// CLI가 초안 파일 잠금을 잠깐 들고 있었으면 풀린 뒤 잡는다. 한 번 못 잡았다고 쓰기 내내 잠금 없이 두지 않는다(그동안 고친 CLI 편집은 쓴 뒤 정리가 덮을 수 있다)
     private func retryPlaylistDraftLock() {
         Task { @MainActor [weak self] in
-            while let self, self.isWritingRekordbox, self.playlistDraftUnlock == nil {
+            while let self, self.libraryBusy, self.playlistDraftUnlock == nil {
                 try? await Task.sleep(for: .milliseconds(20))
-                guard self.isWritingRekordbox, self.playlistDraftUnlock == nil else { return }
+                guard self.libraryBusy, self.playlistDraftUnlock == nil else { return }
                 self.playlistDraftUnlock = self.useCases.playlists.lockDraftFile()
             }
         }

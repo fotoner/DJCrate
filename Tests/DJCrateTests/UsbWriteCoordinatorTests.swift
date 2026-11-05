@@ -278,7 +278,9 @@ extension FakeUsbWriteService.State {
 /// 토스트를 받는 가짜 앱
 @MainActor
 final class FakeUsbWriteHost: UsbWriteHost {
-    var toast: AppToast?
+    private(set) var toast: AppToast?
+    func showToast(_ toast: AppToast) { self.toast = toast }
+    func dismissToast(_ id: AppToast.ID?) { if id == nil || toast?.id == id { toast = nil } }
 }
 
 extension UsbTestData {
@@ -451,8 +453,9 @@ struct UsbWriteCoordinatorTests {
         #expect(UsbVolumePolicy.warnings(physical).allSatisfy { details.contains($0.message) })
         #expect(!details.contains(UsbWriteFlow.volumeLines(physical, isTestVolume: true)[0]))
         #expect(service.current.previewed && !service.current.wrote)
+        // FAT32·MBR는 경고가 없어 동의 줄 하나뿐이다(백업·확인 절차 줄은 없다, #310)
         let fat32 = UsbWriteFlow.volumeLines(FakeUsbVolume.physicalFAT32(), isTestVolume: false)
-        #expect(fat32.count == 2 && fat32[0].hasSuffix("FAT32 · MBR"))
+        #expect(fat32.count == 1 && fat32[0].hasSuffix("FAT32 · MBR"))
     }
 
     @Test("앱의 쓰기 창구는 확인 창을 거친 쓰기라 실물 동의로 보고, 시험 실행(디스크 이미지만)은 동의하지 않는다")
@@ -467,11 +470,11 @@ struct UsbWriteCoordinatorTests {
         await coordinator(usb, running: true).export(job())
         #expect(await coordinator(usb, running: true).preview(job()) == nil)
         #expect(service.current.calls.isEmpty)
-        // 창을 띄우지 않고 닫을 때까지 남는 경고 토스트로 알린다(#230)
+        // 창을 띄우지 않고 경고 토스트로 알린다(#230). 경고는 읽을 시간이 지나면 닫힌다(#296)
         #expect(prompter.shown.isEmpty)
         #expect(host.toast?.title == UsbWriteFlow.Text.rekordboxRunningTitle && host.toast?.kind == .warning)
         #expect(host.toast?.detail == UsbWriteFlow.Text.rekordboxRunningDetail)
-        #expect(host.toast?.isUsb == true && host.toast?.showsResult == false && host.toast?.duration == .infinity)
+        #expect(host.toast?.isUsb == true && host.toast?.showsResult == false && host.toast?.duration.isFinite == true)
         #expect(usb.busyVolumes.isEmpty)
     }
 
@@ -520,7 +523,7 @@ struct UsbWriteCoordinatorTests {
 
         // 나중에: 아무것도 하지 않는다
         service.update { $0.calls = [] }
-        host.toast = nil
+        host.dismissToast(nil)
         prompter.choices = [.cancel]
         await coordinator(usb).offerRecovery(image)
         #expect(service.current.calls.isEmpty)
@@ -863,6 +866,21 @@ struct UsbWriteCoordinatorTests {
         #expect(usb.activeWrite?.progress?.phase == .commit)
         usb.endWrite(image.usbKey)
         #expect(usb.activeWrite == nil)
+    }
+
+    @Test("쓰는 동안 덮개는 뽑지 말라는 안내를 상수 한 곳의 문장으로, 계획 단계부터 DB 교체까지 한 번만 보인다(#310)")
+    func progressShowsOneUnplugNotice() {
+        let (usb, _) = store()
+        _ = usb.beginWrite(image, title: "시험")
+        func notices() -> [String] {
+            ReflectionLayoutTests.strings(in: UsbWritingOverlay(model: UsbWriteProgressModel(usb.activeWrite!), onCancel: {}).body)
+                .filter { $0.contains("뽑지 마세요") }
+        }
+        #expect(UsbWriteProgressModel(usb.activeWrite!).notice == UsbWriteFlow.Text.progressNotice)
+        #expect(notices() == ["끝날 때까지 USB를 뽑지 마세요"])
+        usb.report(UsbProgress(phase: .commit, completedItems: 1, totalItems: 3, cancellable: false), for: image.usbKey)
+        #expect(notices() == ["끝날 때까지 USB를 뽑지 마세요"])
+        usb.endWrite(image.usbKey)
     }
 
     // MARK: - 자가 테스트

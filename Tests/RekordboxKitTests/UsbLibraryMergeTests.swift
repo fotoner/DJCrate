@@ -281,6 +281,45 @@ struct UsbLibraryMergeTests {
         #expect(merged.menuItems.map(\.id) == [1, 2])
     }
 
+    @Test("같은 id에 값이 다른 행·곡 칸은 Device Library 투영이 그 형식 값을 지키고, 편집이 바꾼 칸만 새 값을 쓴다(#238)")
+    func differingValuesKeptPerFormat() {
+        let (ol, original) = Samples.pair()
+        var dl = original
+        dl.tracks[0].title = "다른 제목"
+        // 참조 칸도 형식 값을 지켜야 그 형식에만 있는 행이 투영에 남는다
+        dl.tracks[0].keyID = 2
+        dl.keys.append(UsbNamedRow(id: 2, name: "2A", nameForSearch: nil))
+        dl.artists[0].name = "다른 아티스트"
+        dl.albums[0].name = "다른 앨범"
+        dl.menuItems[0].name = "다른 메뉴"
+        dl.property.myTagMasterDBID = 4_000_000_001
+        let (merged, mismatches) = UsbLibrary.merge(oneLibrary: ol, deviceLibrary: dl)
+        #expect(Set(mismatches) == [.trackFieldDiffers(id: 1, field: "title"), .trackFieldDiffers(id: 1, field: "keyID"),
+                                    .sharedRowDiffers(table: "key", id: 2), .sharedRowDiffers(table: "artist", id: 1),
+                                    .sharedRowDiffers(table: "album", id: 1), .sharedRowDiffers(table: "menuItem", id: 1),
+                                    .propertyDiffers(field: "myTagMasterDBID")])
+        // 대표 값은 OneLibrary 값이고, 투영은 형식마다 읽은 값 그대로다
+        #expect(merged.tracks[0].title == ol.tracks[0].title && merged.artists[0].name == ol.artists[0].name)
+        #expect(merged.projected(to: .oneLibrary) == ol)
+        #expect(merged.projected(to: .deviceLibrary) == dl)
+        #expect(UsbLibrary.merge(oneLibrary: merged, deviceLibrary: merged).0 == merged)
+
+        // 편집이 바꾼 칸은 두 형식 모두 새 값, 같은 행이라도 바꾸지 않은 칸은 형식 값 그대로
+        var edited = merged
+        edited.tracks[0].title = "새 제목"
+        edited.tracks[0].bpmx100 = 13_000
+        edited.albums[0].name = "새 앨범"
+        let device = edited.projected(to: .deviceLibrary), one = edited.projected(to: .oneLibrary)
+        #expect(device.tracks[0].title == "새 제목" && one.tracks[0].title == "새 제목")
+        #expect(device.tracks[0].keyID == 2 && device.keys.map(\.id) == [1, 2])
+        #expect(device.albums[0].name == "새 앨범" && one.albums[0].name == "새 앨범")
+        #expect(device.artists[0].name == "다른 아티스트" && one.artists[0].name == ol.artists[0].name)
+        #expect(device.menuItems[0].name == "다른 메뉴" && device.property.myTagMasterDBID == 4_000_000_001)
+        // Device Library 곡이 OneLibrary 값으로 바뀐 참조를 가리키면 그 행이 Device Library에 없어도 투영에 넣는다(#234)
+        edited.tracks[0].keyID = 1
+        #expect(edited.projected(to: .deviceLibrary).tracks[0].keyID == 1)
+    }
+
     @Test func projectedKeepsOnlyFormatEntities() {
         var (ol, dl) = Samples.pair(olTracks: [1, 2], dlTracks: [1, 3])
         ol.playlists.append(Samples.playlist(11, .oneLibrary, entries: [2]))

@@ -8,7 +8,6 @@ final class LibraryLayoutMetrics {
     @ObservationIgnored private var detailHeight = 650.0
     @ObservationIgnored private var deckChromeHeight = 240.0
     @ObservationIgnored private var fittedChromeHeight = 240.0
-    @ObservationIgnored private var noticeHeight = 0.0
     @ObservationIgnored private var listHeaderHeight = 40.0
 
     private(set) var waveformHeight = DeckLayout.defaultWaveformHeight
@@ -33,7 +32,6 @@ final class LibraryLayoutMetrics {
         minimumWaveformHeight = DeckLayout.minimumZoomWaveformHeight(scale: scale)
         update()
     }
-    func measureNotice(_ height: Double) { noticeHeight = height; update() }
     func measureListHeader(_ height: Double) { listHeaderHeight = height; update() }
 
     func measureDetail(height: Double, deckHeight: Double, waveformHeight: Double, hasTrack: Bool) {
@@ -46,7 +44,7 @@ final class LibraryLayoutMetrics {
     }
 
     private func update() {
-        let other = noticeHeight + listHeaderHeight + DeckLayout.splitHandleHeight
+        let other = listHeaderHeight + DeckLayout.splitHandleHeight
         let waveform = DeckLayout.waveformHeight(requested: requested, detailHeight: detailHeight,
                                                  deckChromeHeight: fittedChromeHeight, otherHeight: other, minimum: minimumWaveformHeight)
         let maximum = DeckLayout.waveformHeight(requested: DeckLayout.maximumWaveformHeight, detailHeight: detailHeight,

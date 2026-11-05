@@ -185,7 +185,7 @@ struct RatingColorEditingTests {
         try fixture.execute("UPDATE djmdContent SET Rating = 5 WHERE ID = '103'")
         try fixture.add(PlaylistSpec(id: "201", name: "목록", seq: 1, contentIDs: ["102"]))
         // 초안은 이 시험의 폴더에서만 읽는다(함께 도는 시험의 초안이 섞이지 않게, `LibraryDraftFolderTests`)
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in },
+        let store = LibraryStore.test(activityLog: ActivityLog(url: fixture.root.appending(path: "result.json")), saveTagDrafts: { _ in },
                                  draftHome: fixture.root.appending(path: "drafts"))
         await store.load(snapshot: fixture.database)
         #expect(store.trackColors.first { $0.id == "2" }?.name == "Opener")

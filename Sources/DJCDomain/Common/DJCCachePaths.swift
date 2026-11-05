@@ -6,10 +6,13 @@ public struct DJCCachePaths: Sendable, Equatable {
     public var root: URL
     /// 라이브 DB 읽기 스냅샷 폴더. `DJC_HOME`을 따르지 않는다(`DJCIdentity.snapshotsDirectory`)
     public var snapshots: URL
+    /// LINK로 실을 때 FLAC·ALAC을 바꾼 WAV(#277·#287). 앱은 음악 폴더에 둔다(`DJCIdentity.linkAudioDirectory`)
+    public var linkAudio: URL
 
-    public init(root: URL, snapshots: URL? = nil) {
+    public init(root: URL, snapshots: URL? = nil, linkAudio: URL? = nil) {
         self.root = root
         self.snapshots = snapshots ?? root.appending(path: "snapshots")
+        self.linkAudio = linkAudio ?? root.appending(path: "link-audio")
     }
 
     public var waveforms: URL { root.appending(path: "waveforms") }
@@ -29,6 +32,7 @@ public struct DJCCachePaths: Sendable, Equatable {
         case .previewWaveforms: previewWaveforms
         case .usbSnapshots: usbSnapshots
         case .snapshots: snapshots
+        case .linkAudio: linkAudio
         }
     }
 }
@@ -41,6 +45,7 @@ public enum DJCCacheKind: String, CaseIterable, Sendable, Codable {
     case previewWaveforms = "preview-waveforms"
     case usbSnapshots = "usb-snapshots"
     case snapshots
+    case linkAudio = "link-audio"
 
     public var title: String {
         switch self {
@@ -50,18 +55,16 @@ public enum DJCCacheKind: String, CaseIterable, Sendable, Codable {
         case .previewWaveforms: String(ui: "목록 미리 보기 파형")
         case .usbSnapshots: String(ui: "USB 읽기 사본")
         case .snapshots: String(ui: "라이브러리 읽기 사본")
+        case .linkAudio: String(ui: "LINK WAV 변환본")
         }
     }
 
-    /// 비운 뒤 언제 다시 만들어지는지
-    public var detail: String {
+    /// 비운 뒤에도 일부러 남기는 것. 없으면 nil이다: 나머지는 모두 "필요할 때 다시 만들어진다"뿐이라 설정 화면의 머리 문장이 말한다(#309)
+    public var detail: String? {
         switch self {
-        case .waveforms: String(ui: "곡을 덱에 불러올 때 다시 만듭니다")
-        case .analysis: String(ui: "곡을 덱에 불러오거나 분석할 때 다시 만듭니다")
-        case .loudness: String(ui: "곡을 덱에 불러올 때 다시 잽니다")
-        case .previewWaveforms: String(ui: "곡 목록을 그릴 때 다시 만듭니다")
-        case .usbSnapshots: String(ui: "USB를 열 때 다시 뜹니다. 볼륨마다 가장 새 사본은 남깁니다")
-        case .snapshots: String(ui: "rekordbox와 동기화할 때 다시 뜹니다. 가장 새 사본과 지금 연 사본은 남깁니다")
+        case .usbSnapshots: String(ui: "볼륨마다 가장 새 사본은 남깁니다")
+        case .snapshots: String(ui: "가장 새 사본과 지금 연 사본은 남깁니다")
+        default: nil
         }
     }
 }
@@ -101,7 +104,7 @@ public struct DJCCacheOutcome: Sendable, Equatable {
 
 /// 비우기 대상이 아닌 백업(`DJCCache.BackupUsage`, 용량만 보인다). 개수는 백업 폴더 수다(#227)
 public struct DJCBackupUsage: Sendable, Equatable {
-    public enum Kind: Sendable, Equatable { case rekordboxBackups, pointSnapshots, usbBackups }
+    public enum Kind: Sendable, Equatable { case rekordboxBackups, pointSnapshots, usbBackups, usbPointSnapshots }
     public var kind: Kind
     public var count: Int
     public var bytes: Int64

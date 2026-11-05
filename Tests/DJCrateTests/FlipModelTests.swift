@@ -88,7 +88,7 @@ struct FlipModelTests {
 struct ShowStagedEditTests {
     func store(home: URL) -> LibraryStore {
         let stagedURL = home.appending(path: StagedTrackFile.fileName)
-        let store = LibraryStore.test(resultHistory: WriteResultHistory(url: nil), feedback: AppFeedback(announce: { _ in }),
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                  saveTagDrafts: { _ in }, backupDirectory: home.appending(path: "backups"), playlistDraftSaver: { _ in },
                                  mergeDraftSaver: { _ in }, playlistImportURL: nil,
                                  stagingSaver: { try StagedTrackFile.save($0, url: stagedURL) }, draftHome: home)

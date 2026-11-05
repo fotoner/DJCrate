@@ -117,7 +117,7 @@ enum SidebarMultiCapture {
         let deleting = 2
         try check(prompter.shown?.title == String(ui: "재생 목록 \(deleting)개를 지울까요?"), "확인 창 제목이 다릅니다: \(prompter.shown?.title ?? "-")")
         try check(layout().item("1003") == nil && layout().item(second) == nil && layout().item(smart.id) != nil, "고른 목록을 지우지 못했습니다")
-        try check(playlists.playlistMessage?.kind == .warning, "건너뛴 인텔리전트 목록을 알리지 않았습니다")
+        try check(store.activityLog.latest?.kind == .warning, "건너뛴 인텔리전트 목록을 알리지 않았습니다")
         try capture(window, directory.appending(path: "3-deleted.jpg"))
 
         // 3. ⌘Z 한 번에 모두 돌아온다
@@ -125,7 +125,7 @@ enum SidebarMultiCapture {
         undo.undo()
         try await settle()
         try check(layout().item("1003") != nil && layout().item(second) != nil && playlists.playlistDraft == beforeDelete,
-                  "⌘Z 한 번에 되돌리지 못했습니다(되돌린 동작 \(undoName), 1003 \(layout().item("1003") != nil), 둘째 \(layout().item(second) != nil), 초안 단계 \(playlists.playlistDraft.steps.count)/\(beforeDelete.steps.count), 안내 \(playlists.playlistMessage?.text ?? "-"))")
+                  "⌘Z 한 번에 되돌리지 못했습니다(되돌린 동작 \(undoName), 1003 \(layout().item("1003") != nil), 둘째 \(layout().item(second) != nil), 초안 단계 \(playlists.playlistDraft.steps.count)/\(beforeDelete.steps.count), 안내 \(store.activityLog.latest?.text ?? "-"))")
         try capture(window, directory.appending(path: "4-delete-undone.jpg"))
 
         // 4. 끌어 옮기기: 합성 폴더·맨 위 목록·셋째 목록을 합성 안 폴더로. 폴더는 제 안이라 건너뛰고 나머지는 사이드바 순서로 옮긴다
@@ -142,7 +142,7 @@ enum SidebarMultiCapture {
         try await settle()
         try check(layout().childIDs(of: inner) == expected && expected.count == 2, "사이드바 순서로 옮기지 못했습니다: \(layout().childIDs(of: inner))")
         try check(layout().item("1001")?.parentID == PlaylistLayout.root, "제 안으로 옮기는 폴더를 건너뛰지 않았습니다")
-        try check(playlists.playlistMessage?.kind == .warning, "건너뛴 폴더를 알리지 않았습니다")
+        try check(store.activityLog.latest?.kind == .warning, "건너뛴 폴더를 알리지 않았습니다")
         try capture(window, directory.appending(path: "5-moved.jpg"))
         undo.undo()
         try await settle()

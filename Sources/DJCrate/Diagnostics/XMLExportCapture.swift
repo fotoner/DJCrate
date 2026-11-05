@@ -57,7 +57,7 @@ extension DevSelfTests {
             store.usb = nil
             await wait(1.5)
             capture("after")
-            check(store.staging.stagingMessage?.kind == .success, "완료 안내(\(store.staging.stagingMessage?.text ?? "없음"))")
+            check(store.activityLog.latest?.kind == .success, "완료 안내(\(store.activityLog.latest?.text ?? "없음"))")
             check(!store.staging.hasXMLExportJob, "끝나면 진행 줄이 빠져야 합니다")
             let xml = (try? String(contentsOf: out, encoding: .utf8)) ?? ""
             let tracks = xml.components(separatedBy: "\n").filter { $0.contains("<TRACK TrackID=") }.count
@@ -67,7 +67,7 @@ extension DevSelfTests {
             check(!xml.contains("apple-music"), "스트리밍 곡은 넣지 않습니다")
             check(XMLParser(data: Data(xml.utf8)).parse(), "올바른 XML이어야 합니다")
             check((try? Data(contentsOf: snapshot)) == before, "사본 DB가 그대로여야 합니다")
-            log("곡 \(tracks) · 재생 목록 \(lists) · 안내: \(store.staging.stagingMessage?.text.components(separatedBy: "\n").first ?? "")")
+            log("곡 \(tracks) · 재생 목록 \(lists) · 안내: \(store.activityLog.latest?.title ?? "")")
             log(failures == 0 ? "라이브러리 XML 시험 통과" : "라이브러리 XML 시험 실패 \(failures)건")
             exit(failures == 0 ? 0 : 1)
         }

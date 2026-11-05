@@ -31,7 +31,9 @@ final class FakeUsbLiveVolumeReader: @unchecked Sendable {
 
 @MainActor @Observable
 private final class PendingSyncSourceHost: UsbWriteHost {
-    var toast: AppToast?
+    private(set) var toast: AppToast?
+    func showToast(_ toast: AppToast) { self.toast = toast }
+    func dismissToast(_ id: AppToast.ID?) { if id == nil || toast?.id == id { toast = nil } }
     var epoch = 1
     var revision = 1
     var source = UsbSyncSource.make(rekordbox: PlaylistLayout([(.init(id: "10", name: "합성 목록"), 0)]),

@@ -46,6 +46,9 @@ public struct UsbLibrary: Sendable, Hashable {
     /// 합친 모델에서 한 형식에서만 읽은 공유 표 행: 표 이름(`sharedRowDiffers`와 같은 이름) → id → 그 형식(#234).
     /// 투영은 이 행을 그 형식에 두고, 다른 형식에는 그 형식의 곡·앨범 등이 가리킬 때만 둔다. 한 형식 모델은 비어 있다
     public var oneFormatRows: [String: [Int: UsbFormat]] = [:]
+    /// 합칠 때 두 형식 값이 달랐던 곡·공유 표 행·property의 Device Library 값(#238). 대표 값은 OneLibrary 값이고,
+    /// Device Library 투영은 편집이 바꾸지 않은 칸을 이 값으로 둔다. 한 형식 모델은 비어 있다
+    var deviceLibraryValues = UsbDeviceLibraryValues()
 
     public init(formats: Set<UsbFormat>, property: UsbProperty, tracks: [UsbTrack] = [], artists: [UsbNamedRow] = [],
                 albums: [UsbAlbum] = [], genres: [UsbNamedRow] = [], keys: [UsbNamedRow] = [], labels: [UsbNamedRow] = [],
@@ -128,6 +131,8 @@ public struct UsbLibrary: Sendable, Hashable {
         result.histories = histories.filter { $0.format == format }
         result.historyMetadataByFormat = [:]
         result.unknownRows = unknownRows.filter { $0.format == format }
+        if format == .deviceLibrary, !deviceLibraryValues.isEmpty { result.restoreDeviceLibraryValues(deviceLibraryValues) }
+        result.deviceLibraryValues = UsbDeviceLibraryValues()
         if !oneFormatRows.isEmpty { result.dropOtherFormatRows(oneFormatRows, keeping: format) }
         result.oneFormatRows = [:]
         return result
@@ -165,7 +170,8 @@ public struct UsbLibrary: Sendable, Hashable {
 
     /// 두 형식을 한 모델로 합친다. 각 입력은 그 형식으로 투영해서 쓴다.
     /// - 한 형식에만 있는 칸은 그 형식 값을 그대로 가진다(비교하지 않는다).
-    /// - 두 형식 모두의 칸은 OneLibrary 값이 앞서고, 다르면 불일치로 보고한다.
+    /// - 두 형식 모두의 칸은 OneLibrary 값이 앞서고, 다르면 불일치로 보고한다. 다른 행의 Device Library 값은 `deviceLibraryValues`에 남겨
+    ///   Device Library 투영이 그 형식 값을 지키게 한다(#238).
     /// - 같은 id가 다른 파일을 가리키는 곡은 합치지 않고 OneLibrary 쪽만 남긴다(편집 금지 불일치).
     /// - 목록은 번호가 아니라 자리(부모 짝 아래 같은 이름·종류)로 짝짓고 형식 번호를 `formatIDs`에 둔다(`UsbPlaylistPairing`).
     ///   짝이 없는 목록은 한 형식 목록으로 그대로 둔다. 맨 위에서 닿지 않는 목록만 편집 금지 불일치다.
@@ -175,6 +181,7 @@ public struct UsbLibrary: Sendable, Hashable {
         guard let deviceLibrary else { return (oneLibrary, []) }
         let a = oneLibrary.projected(to: .oneLibrary), b = deviceLibrary.projected(to: .deviceLibrary)
         var mismatches: [UsbFormatMismatch] = []
+        var deviceValues = UsbDeviceLibraryValues()
         var result = UsbLibrary(formats: a.formats.union(b.formats), property: a.property)
         // 투영 전에 원본을 확보한다. 이미 합친 모델을 다시 합쳐도 소실된 곡 정보를 되살려 남긴다
         result.historyMetadataByFormat = [.oneLibrary: oneLibrary.historyMetadata(in: .oneLibrary),
@@ -195,6 +202,7 @@ public struct UsbLibrary: Sendable, Hashable {
             mismatches += merged.differing.map { .trackFieldDiffers(id: left.id, field: $0) }
             track.presentIn = left.presentIn.union(right.presentIn)
             track.deviceFields = left.deviceFields.merging(right.deviceFields) { first, _ in first }
+            if !merged.differing.isEmpty { deviceValues.tracks[left.id] = UsbDifferingRow(merged: track, deviceLibrary: right) }
             return track
         }
 
@@ -205,7 +213,9 @@ public struct UsbLibrary: Sendable, Hashable {
         // 공유 표 행에는 형식별 소속 칸이 없다. 한 형식에만 있는 행은 합집합에 두고 읽은 형식을 `oneFormatRows`에 적어
         // 투영이 그 형식에만 두게 한다(#234: 편집이 건드리지 않은 행을 다른 형식에 넣거나 다시 읽기 차이로 세지 않게). 불일치로도 보고한다
         var oneFormatRows: [String: [Int: UsbFormat]] = [:]
-        func shared<Row>(_ table: String, _ left: [Row], _ right: [Row], id: KeyPath<Row, Int>, rules: [UsbFieldRule<Row>]) -> [Row] {
+        func shared<Row: Hashable & Sendable>(_ table: String, _ left: [Row], _ right: [Row], id: KeyPath<Row, Int>,
+                                              rules: [UsbFieldRule<Row>],
+                                              _ values: WritableKeyPath<UsbDeviceLibraryValues, [Int: UsbDifferingRow<Row>]>) -> [Row] {
             union(left, right, id: id).map { left, right in
                 guard let left, let right else {
                     let only = (left ?? right)!
@@ -214,21 +224,24 @@ public struct UsbLibrary: Sendable, Hashable {
                     return only
                 }
                 let (row, differing) = rules.merging(oneLibrary: left, deviceLibrary: right)
-                if !differing.isEmpty { mismatches.append(.sharedRowDiffers(table: table, id: left[keyPath: id])) }
+                if !differing.isEmpty {
+                    mismatches.append(.sharedRowDiffers(table: table, id: left[keyPath: id]))
+                    deviceValues[keyPath: values][left[keyPath: id]] = UsbDifferingRow(merged: row, deviceLibrary: right)
+                }
                 return row
             }
         }
-        result.artists = shared("artist", a.artists, b.artists, id: \.id, rules: UsbFieldFormats.namedRow)
-        result.albums = shared("album", a.albums, b.albums, id: \.id, rules: UsbFieldFormats.album)
-        result.genres = shared("genre", a.genres, b.genres, id: \.id, rules: UsbFieldFormats.namedRow)
-        result.keys = shared("key", a.keys, b.keys, id: \.id, rules: UsbFieldFormats.namedRow)
-        result.labels = shared("label", a.labels, b.labels, id: \.id, rules: UsbFieldFormats.namedRow)
-        result.colors = shared("color", a.colors, b.colors, id: \.id, rules: UsbFieldFormats.namedRow)
-        result.images = shared("image", a.images, b.images, id: \.id, rules: UsbFieldFormats.image)
-        result.myTags = shared("myTag", a.myTags, b.myTags, id: \.intID, rules: UsbFieldFormats.myTag)
-        result.menuItems = shared("menuItem", a.menuItems, b.menuItems, id: \.id, rules: UsbFieldFormats.menuItem)
-        result.categories = shared("category", a.categories, b.categories, id: \.id, rules: UsbFieldFormats.category)
-        result.sorts = shared("sort", a.sorts, b.sorts, id: \.id, rules: UsbFieldFormats.sort)
+        result.artists = shared("artist", a.artists, b.artists, id: \.id, rules: UsbFieldFormats.namedRow, \.artists)
+        result.albums = shared("album", a.albums, b.albums, id: \.id, rules: UsbFieldFormats.album, \.albums)
+        result.genres = shared("genre", a.genres, b.genres, id: \.id, rules: UsbFieldFormats.namedRow, \.genres)
+        result.keys = shared("key", a.keys, b.keys, id: \.id, rules: UsbFieldFormats.namedRow, \.keys)
+        result.labels = shared("label", a.labels, b.labels, id: \.id, rules: UsbFieldFormats.namedRow, \.labels)
+        result.colors = shared("color", a.colors, b.colors, id: \.id, rules: UsbFieldFormats.namedRow, \.colors)
+        result.images = shared("image", a.images, b.images, id: \.id, rules: UsbFieldFormats.image, \.images)
+        result.myTags = shared("myTag", a.myTags, b.myTags, id: \.intID, rules: UsbFieldFormats.myTag, \.myTags)
+        result.menuItems = shared("menuItem", a.menuItems, b.menuItems, id: \.id, rules: UsbFieldFormats.menuItem, \.menuItems)
+        result.categories = shared("category", a.categories, b.categories, id: \.id, rules: UsbFieldFormats.category, \.categories)
+        result.sorts = shared("sort", a.sorts, b.sorts, id: \.id, rules: UsbFieldFormats.sort, \.sorts)
         result.oneFormatRows = oneFormatRows
 
         var links: [UsbMyTagLink] = []
@@ -250,6 +263,8 @@ public struct UsbLibrary: Sendable, Hashable {
         let (property, differing) = UsbFieldFormats.property.merging(oneLibrary: a.property, deviceLibrary: b.property)
         result.property = property
         mismatches += differing.map { .propertyDiffers(field: $0) }
+        if !differing.isEmpty { deviceValues.property = UsbDifferingRow(merged: property, deviceLibrary: b.property) }
+        result.deviceLibraryValues = deviceValues
         return (result.canonicalized(), mismatches)
     }
 

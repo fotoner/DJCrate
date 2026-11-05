@@ -98,6 +98,20 @@ struct UsbWriteGuardTests {
         expectUntouched(fixture, before: before)
     }
 
+    /// rekordbox 실행을 확인하지 못하면(띄우지 못함·종료 코드 2·시간 초과) 켜진 것으로 보고 막는다(#323)
+    @Test func rekordbox_실행을_확인하지_못하면_막는다() {
+        let fixture = UsbChangeSetFixture()
+        defer { fixture.remove() }
+        let before = fixture.tree()
+        for failure in [RekordboxProcessCheck.Probe.launchFailed, .exited(2), .timedOut] {
+            var writeGuard = fixture.writeGuard()
+            writeGuard.isRekordboxRunning = RekordboxProcessCheck { _ in failure }.isRunning
+            #expect(codes { _ = try UsbWriter.write(fixture.exportChanges(), root: fixture.root, paths: fixture.paths, guard: writeGuard,
+                                                    fileSystem: fixture.fileSystem()) } == ["rekordboxRunning"], "\(failure)")
+        }
+        expectUntouched(fixture, before: before)
+    }
+
     /// 쓰기 입구가 볼륨 정책을 지나는지 대표 하나씩(막힘 하나·허용 하나). 모양마다의 판정(막힘 여덟·허용 넷)은 `UsbVolumePolicyTests`가
     /// 모두 본다(#167: 같은 판정을 쓰기 전 과정으로 되풀이하지 않는다).
     @Test("볼륨 모양 막힘", arguments: ["apfs"])

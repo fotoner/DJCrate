@@ -53,6 +53,17 @@ suite djcTests.CLIWriteTargetTests
 suite djcTests.RestorePathTests
 suite djcTests.LabCredentialTests
 
+# rekordbox 실행 확인(#323): 쓰기 관문·복원·시점 스냅샷·USB·LINK가 함께 쓰는 감지. 확인하지 못하면 켜짐으로 보는지(fail-closed) 본다.
+# CLI 시험은 pgrep 실행을 막은 샌드박스로 djc를 띄워 기호 grep에 걸리지 않는다(HAR-9).
+group rekordbox-detection
+when Sources/RekordboxKit/RekordboxProcesses*
+when Sources/RekordboxKit/Database/LibrarySnapshot*
+when Sources/DJCDomain/Rekordbox/RekordboxRunState*
+suite RekordboxKitTests.RekordboxProcessCheckTests
+suite RekordboxKitTests.WriteGuardTests
+suite RekordboxKitTests.UsbWriteGuardTests
+suite djcTests.RekordboxDetectionCLITests
+
 # USB 쓰기 관문·실물 동의(UsbPhysicalWriteGate)·라이브 DB 판정(UsbLiveDatabase)·회복·되돌리기·임시 폴더 제한(UsbScratchPath).
 # 모든 모듈의 Usb/ 폴더와 CLI·앱의 USB 입구. 실물 거부는 CLI(--allow-physical --confirm)·앱(쓰기 확인 창)에서도 본다.
 # UsbRollbackIntent 시험은 UsbSyncSelectionPipelineTests의 확장에 있다.
@@ -159,11 +170,39 @@ target DJCAdaptersTests
 # 화면 관찰 범위(#129·#137·#138). LayoutRecomputeTests는 환경 변수가 있어야 돈다.
 group observation
 when Sources/DJCrate/App/ContentView.swift
+when Sources/DJCrate/App/ListHeaderBar.swift
+when Sources/DJCrate/App/ListHeaderControls.swift
+when Sources/DJCrate/App/ListHeaderActionsView.swift
+when Sources/DJCrate/App/ListHeaderLayout.swift
+when Sources/DJCrate/App/ListActionBarModel.swift
+when Sources/DJCrate/Library/AttributeFilterMenu.swift
 when Sources/DJCrate/App/Sidebar*.swift
+when Sources/DJCrate/App/StatusBar*.swift
+when Sources/DJCrate/App/ReflectionStatusModel.swift
 when Sources/DJCrate/Library/TrackList/TrackTable*.swift
 suite DJCrateTests.SidebarObservationTests
 suite DJCrateTests.LayoutRecomputeTests
 require 관찰 범위를 바꿨으면 DJC_LAYOUT_RECOMPUTE_TESTS=1 scripts/check.sh --quick --filter LayoutRecomputeTests
+
+# Pro DJ Link(DJLinkKit을 감싼다, #268·#272). 시험이 작아 DJCLinkTests 전체와 층마다의 LINK 시험을 함께 돈다
+# (내부 도우미 타입은 기호 grep에 걸리지 않는다).
+group link
+when Sources/DJCLink/**
+when Sources/DJCDomain/Link/**
+when Sources/DJCApplication/Link/**
+when Sources/DJCAdapters/Link/**
+when Sources/DJCrate/Link/**
+when Sources/DJCDomain/History/LinkHistory.swift
+target DJCLinkTests
+suite DJCDomainTests.LinkRosterTests
+suite DJCDomainTests.LinkLibraryTests
+suite DJCDomainTests.LinkHistoryTests
+suite DJCAdaptersTests.LinkAudioConverterLiveTests
+suite DJCrateTests.DeckLinkLockTests
+suite DJCApplicationTests.LinkSessionTests
+suite DJCApplicationTests.LinkFileHoldTests
+suite DJCApplicationTests.LinkDiscoveryTests
+suite DJCrateTests.LinkBarModelTests
 
 # 번역 카탈로그·화면 문구 검사 도구
 group localization

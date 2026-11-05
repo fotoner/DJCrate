@@ -65,6 +65,17 @@ struct UpdateSettingsModelTests {
         #expect(updater.writes == before + 1)
     }
 
+    /// #309: 막힌 컨트롤은 늘 보이는 줄 대신 이유 툴팁으로 사정을 알린다.
+    @Test func 자동_설치가_막힌_이유를_알린다() {
+        let updater = FakeUpdater()
+        let model = UpdateSettingsModel(updater: updater, version: AppVersion(short: "0.1.1", build: "512"))
+        #expect(model.automaticDownloadsDisabledReason == nil)
+        model.automaticallyChecks = false
+        #expect(model.automaticDownloadsDisabledReason == String(ui: "새 버전 자동 확인을 켜면 쓸 수 있습니다"))
+        let none = UpdateSettingsModel(updater: nil, version: AppVersion(short: "0.1", build: "1"))
+        #expect(none.automaticDownloadsDisabledReason == none.unavailableReason)
+    }
+
     @Test func 업데이트_도구가_없으면_막고_이유를_보인다() {
         let model = UpdateSettingsModel(updater: nil, version: AppVersion(short: "0.1", build: "1"))
         #expect(!model.isAvailable)

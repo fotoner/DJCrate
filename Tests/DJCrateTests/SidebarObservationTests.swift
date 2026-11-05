@@ -13,7 +13,7 @@ struct SidebarObservationTests {
     private final class Flag: @unchecked Sendable { var fired = false }
 
     private func store() -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
     }
 
     /// `body`를 한 번 계산하는 동안 읽은 값 중 `change`가 바꾸는 것이 있는지.
@@ -63,7 +63,7 @@ struct SidebarObservationTests {
     @Test(.tags(.perfContract)) func 추가_목록_조각의_안내와_XML_내보내기_진행은_본문이_읽지_않는다() {
         // 추가 목록·그리드 추정·XML 내보내기는 핵심에서 추가 목록 조각(`TrackStagingStore`)으로 옮겼다(#252).
         // 본문은 진행 줄을 넣고 빼는 값(시작·끝)만 읽고, 안내는 목록 위 알림 줄이 읽는다
-        #expect(!sidebarReads { $0.staging.stagingMessage = AppMessage(text: "합성 안내") })
+        #expect(!sidebarReads { $0.showToast(.notice(text: "합성 안내", kind: .success)) })
         #expect(!sidebarReads(before: { $0.staging.xmlExportJob = LibraryXMLExportJob() }) {
             $0.staging.xmlExportJob?.apply(LibraryXMLProgress(phase: .writing, done: 1, total: 2))
         })
@@ -100,7 +100,7 @@ struct SidebarObservationTests {
         #expect(reads({ SidebarGridJobRow(staging: $0.staging) }, before: { $0.staging.gridJob = GridJob(done: 1, total: 5) }) {
             $0.staging.gridJob = GridJob(done: 2, total: 5)
         })
-        #expect(reads({ SidebarLastWriteResultRow(store: $0) }) { $0.isWritingRekordbox = true })
+        #expect(reads({ SidebarActivityLogRow(store: $0) }) { $0.isWritingRekordbox = true })
     }
 
     @Test func 그리드_추정_중_표시는_시작과_끝에만_바뀐다() {
@@ -128,7 +128,7 @@ struct SidebarObservationTests {
         // 재생 목록 구역·줄만 읽는다(`PlaylistEditStoreObservationTests`). 구역은 읽은 뒤에만 그리므로 읽은 상태에서 본다
         let layout = PlaylistLayout([(PlaylistLayout.Item(id: "A", name: "합성 목록"), 1)])
         let loaded: (LibraryStore) -> Void = { $0.phase = .loaded }
-        #expect(!sidebarReads(before: loaded) { $0.playlists.playlistMessage = AppMessage(text: "합성 안내") })
+        #expect(!sidebarReads(before: loaded) { $0.showToast(.notice(text: "합성 안내", kind: .success)) })
         #expect(!sidebarReads(before: loaded) { $0.playlists.rekordboxPlaylists = layout })
         #expect(!sidebarReads(before: loaded) { $0.playlists.recentPlaylistIDs = ["A"] })
         #expect(!sidebarReads(before: loaded) { $0.playlists.playlistCounts = ["A": 1] })

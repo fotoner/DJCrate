@@ -13,9 +13,9 @@ struct LibraryDetail: View {
     var windowFrameRestored: Bool
     /// 폭이 모자라면 탐색 열을 접는다. 값은 읽지 않고 쓰기만 한다(읽으면 이 뷰가 사이드바를 여닫을 때마다 다시 계산된다).
     let sidebarVisible: ObservedSetting<Bool>
-    /// 목록 아래 작업 막대의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 막대에 넘긴다
+    /// 머리 줄 오른쪽 구성(주 단추·`…` 메뉴·상태 표시)의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 머리 줄에 넘긴다
     let listActionBar: ListActionBarModel
-    /// 주 창 화면 모델(연결되지 않은 초안 시트·파일 끌어 놓기). 본문은 읽지 않고 넘긴다
+    /// 주 창 화면 모델(머리 줄 검색칸 포커스 요청·연결되지 않은 초안 시트·파일 끌어 놓기). 본문은 읽지 않고 넘긴다
     let window: LibraryWindowModel
     @AppStorage(SettingKeys.waveformHeight.name) private var waveformHeight = SettingKeys.waveformHeight.defaultValue
     @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
@@ -25,50 +25,21 @@ struct LibraryDetail: View {
     @State private var fileDropHighlight = DropHighlight()
 
     /// 태그 시트는 편집 화면이라 중복 후보·USB(읽기 전용) 목록에서는 곡 목록으로 보인다.
-    private var showsSheet: Bool { sheetMode && store.sidebar != .duplicates && !store.isUsbSelection }
+    private var showsSheet: Bool { store.showsTagSheet(sheetMode: sheetMode) }
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
         // VSplitView(NSSplitView)는 자식 최소 크기가 내용에 따라 바뀌면 레이아웃을 끝없이
         // 다시 잡다가 예외로 죽는다. SwiftUI만으로 나누고, 덱 높이는 핸들로 조절한다.
+        // 덱 위에는 아무 줄도 두지 않는다. 오류·결과 안내는 창 알림과 활동 기록이 맡아 덱 자리가 움직이지 않는다(#307).
         VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                if let error = store.visibleLastError {
-                    HStack(alignment: .top) {
-                        Label(error, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(UIColors.warning.color)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button(.ui("닫기")) { store.dismissLastError() }.controlSize(.small)
-                    }
-                    .font(.callout)
-                    .padding(.horizontal, Spacing.edge).padding(.vertical, 6)
-                }
-                if let message = store.draftFileMessage {
-                    AppMessageView(message: message, onClose: { store.draftFileMessage = nil })
-                }
-                if store.sidebar == .pending, !store.unlinkedDraftUUIDs.isEmpty {
-                    UnlinkedDraftsBar(store: store, window: window)
-                }
-                if let message = store.reflectionMessage {
-                    AppMessageView(message: message, onClose: { store.reflectionMessage = nil })
-                }
-                if let message = store.staging.stagingMessage {
-                    AppMessageView(message: message, onClose: { store.staging.stagingMessage = nil })
-                }
-                if let message = store.playlists.playlistMessage {
-                    AppMessageView(message: message, onClose: { store.playlists.playlistMessage = nil })
-                }
-            }
-            .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureNotice($0) }
             // 파형은 본문 높이가 바뀔 때만 맞추고, 덱 내용이 늘면 덱만 스크롤한다(PR #151).
             LibraryDeckViewport(library: store, tags: store.tags, deck: deck, layout: layout, widthClass: widthClass)
             LibrarySplitHandle(layout: layout, height: $waveformHeight)
-            VStack(spacing: 0) {
-                ListActionBar(model: listActionBar)
-                if showsSheet { SheetHeader() }
-            }
-            .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureListHeader($0) }
+            // 목록 바로 위의 늘 한 줄인 머리 줄(검색칸·필터·목록 상태와 주 단추·보기 전환, #338~#340). 목록마다 다른 두 번째 줄은 없다.
+            // 높이를 재어 덱 높이 계산에 넣는다
+            ListHeaderBar(store: store, window: window, actions: listActionBar)
+                .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureListHeader($0) }
             Group {
                 if store.sidebar == .duplicates {
                     DuplicateTracksView(store: store)
@@ -170,6 +141,7 @@ private struct LibraryDeckViewport: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
         .frame(height: layout.viewportHeight)
+        .selfTestFrame("library.deck.\(ObjectIdentifier(deck))")
         .modifier(DeckDropTarget(library: library))
     }
 }

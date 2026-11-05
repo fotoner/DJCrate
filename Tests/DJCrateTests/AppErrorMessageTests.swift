@@ -32,7 +32,7 @@ struct AppErrorMessageTests {
     @Test func 라이브러리_로드_실패도_앱_문구로_표시한다() async throws {
         let fixture = try RekordboxFixture()
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("error"), persist: false),
-                                 resultHistory: WriteResultHistory(url: nil), backupDirectory: fixture.backups,
+                                 activityLog: ActivityLog(url: nil), backupDirectory: fixture.backups,
                                  draftHome: fixture.root.appending(path: "drafts"), rekordboxDatabase: fixture.database,
                                  rekordboxShareRoot: fixture.shareRoot)
         let missing = fixture.root.appending(path: "missing.db")
@@ -42,6 +42,7 @@ struct AppErrorMessageTests {
             return
         }
         #expect(store.lastReadFailure == LibraryReadFailure(stage: .opening, keepsPreviousLibrary: false))
-        #expect(message == "라이브러리 사본을 열지 못했으니 사본과 파일 접근 권한을 확인한 뒤 다시 불러오세요")
+        // 사본(DJCrate가 만든 파일)을 못 연 것은 rekordbox 문제로 가르지 않는다
+        #expect(message == "라이브러리를 읽지 못했습니다")
     }
 }

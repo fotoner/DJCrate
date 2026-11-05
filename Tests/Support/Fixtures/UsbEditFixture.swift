@@ -118,14 +118,16 @@ public final class UsbEditFixture: @unchecked Sendable {
         try UsbEditEngine.load(root: usb.root, into: usb.folder.appending(path: "snapshot-\(UUID().uuidString)"))
     }
 
-    /// 편집을 계획한다(준비 폴더는 임시 폴더). withLocal이 거짓이면 로컬 사본 없이
+    /// 편집을 계획한다(준비 폴더는 임시 폴더). withLocal이 거짓이면 로컬 사본 없이.
+    /// `source`를 주면 USB를 읽은 것 대신 그것으로 계획한다(읽은 것을 일부러 어긋나게 한 시험). `fileSystem`은 호출을 기록하려고 바꿔 줄 때만 준다
     public func plan(_ edits: [UsbLibraryEdit], withLocal: Bool = true, highWater: [String: Int] = [:],
-                     volume: UsbVolumeInfo? = nil) throws -> UsbEditResult {
-        let source = try source()
+                     volume: UsbVolumeInfo? = nil, source given: UsbEditSource? = nil,
+                     fileSystem: FaultyUsbFileSystem? = nil) throws -> UsbEditResult {
+        let source = try given ?? source()
         let db = withLocal ? try local.open() : nil
         defer { db?.close() }
         return try UsbEditEngine.plan(source: source, edits: edits, localDatabase: db, share: withLocal ? local.share : nil,
-                                      volume: volume ?? usb.volume, existingFiles: usb.root, fileSystem: usb.fileSystem(),
+                                      volume: volume ?? usb.volume, existingFiles: usb.root, fileSystem: fileSystem ?? usb.fileSystem(),
                                       staging: usb.folder.appending(path: "staging-\(UUID().uuidString)"), session: UsbLayout.newSessionID(),
                                       highWater: highWater, snapshotTakenAt: snapshotTakenAt, localAppVersion: appVersion)
     }

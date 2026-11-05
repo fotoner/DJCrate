@@ -39,6 +39,23 @@ struct DeckSuggestionsTests {
         #expect(items[0].detail == "rekordbox 오토게인이 이 파일의 실제 음량과 5.7dB 다릅니다")
     }
 
+    /// 초안이라 rekordbox에는 쓰기 전까지 안 들어간다는 약속은 초안 표식이 맡는다. 컨트롤 툴팁이 되풀이하지 않는다.
+    @Test func 적용_도움말은_짧고_안심_약속을_되풀이하지_않는다() {
+        let items = [
+            DeckSuggestion.gain(1.7, rekordbox: -4.0, mismatch: 5.7),
+            .grid(bpm: 128, phaseMilliseconds: 12, isConfident: true),
+            .grid(bpm: 128, phaseMilliseconds: 12, isConfident: false),
+            .grid(bpm: 128, phaseMilliseconds: nil, hasRekordboxGrid: false, isConfident: true),
+            .key("8B", fromFileTag: false), .key("8B", fromFileTag: true),
+        ]
+        for item in items {
+            #expect(!item.applyHelp.contains("쓰기 전까지"), "\(item.kind): \(item.applyHelp)")
+            #expect(!item.applyHelp.contains("rekordbox에는"), "\(item.kind): \(item.applyHelp)")
+            #expect(!item.applyHelp.contains("음원 파일은 바꾸지"), "\(item.kind): \(item.applyHelp)")
+            #expect(item.applyHelp.count <= 40, "\(item.kind): \(item.applyHelp)")
+        }
+    }
+
     @Test func 신뢰도가_낮은_그리드는_확인_필요를_짧게_붙인다() {
         let sure = DeckSuggestion.grid(bpm: 128, phaseMilliseconds: 12, isConfident: true)
         let unsure = DeckSuggestion.grid(bpm: 128, phaseMilliseconds: 12, isConfident: false)

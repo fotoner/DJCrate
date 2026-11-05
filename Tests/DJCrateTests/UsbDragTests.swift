@@ -86,7 +86,7 @@ struct UsbDragTests {
     /// USB 목록을 보는 곡 목록(앱처럼 store.usb를 붙인다)
     func store(_ usb: UsbStore, showing target: UsbSidebarTarget) -> LibraryStore {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbdrag"), persist: false),
-                                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+                                      activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                                       mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in })
         store.phase = .loaded
         store.usb = usb

@@ -117,7 +117,6 @@ private struct RecoveryLineView: View {
             .labelsHidden()
             .fixedSize()
             .disabled(model.isSaving)
-            .help(line.consequence ?? "")
             .accessibilityLabel(Text(.ui("복구 방법")))
             .accessibilityValue(Text(verbatim: line.consequence ?? ""))
         }

@@ -11,7 +11,7 @@ struct CacheKindTests {
         "cue-drafts", "grid-drafts", "tag-drafts", "artwork-drafts", "gain-drafts.json", "playlist-drafts.json",
         "staged.json", "playlist-imports.json", "damaged-drafts", "usb-drafts", "usb-sessions", "usb-staging",
         "usb-physical-allow.json", "usb-physical-deny.json", "rekordbox-backups", "usb-backups", "edits",
-        "merge-drafts.json", "reflection.json", "last-write-result.json",
+        "merge-drafts.json", "reflection.json", "last-write-result.json", "activity-log.json",
     ]
 
     let root = URL(filePath: "/private/tmp/djc-cache-kind-\(UUID())")
@@ -21,6 +21,7 @@ struct CacheKindTests {
         let expected: [DJCCacheKind: String] = [
             .waveforms: "waveforms", .analysis: "analysis", .loudness: "loudness.json",
             .previewWaveforms: "preview-waveforms.plist", .usbSnapshots: "usb-snapshots", .snapshots: "snapshots",
+            .linkAudio: "link-audio",
         ]
         #expect(Set(DJCCacheKind.allCases) == Set(expected.keys))
         for kind in DJCCacheKind.allCases {
@@ -40,9 +41,19 @@ struct CacheKindTests {
     }
 
     @Test func 종류_이름은_CLI_인자로_쓰는_글자_그대로다() {
-        #expect(DJCCacheKind.allCases.map(\.rawValue) == ["waveforms", "analysis", "loudness", "preview-waveforms", "usb-snapshots", "snapshots"])
+        #expect(DJCCacheKind.allCases.map(\.rawValue) == ["waveforms", "analysis", "loudness", "preview-waveforms", "usb-snapshots", "snapshots",
+                                                     "link-audio"])
         for kind in DJCCacheKind.allCases {
-            #expect(!kind.title.isEmpty && !kind.detail.isEmpty)
+            #expect(!kind.title.isEmpty)
+        }
+    }
+
+    /// #309: 행 부제는 "비우면 남는 것"이 있는 종류에만 둔다. 나머지는 "다시 만들어진다"뿐이라 화면 머리 문장이 말한다.
+    @Test func 부제는_일부러_남기는_사본이_있는_종류에만_있다() {
+        let withDetail = DJCCacheKind.allCases.filter { $0.detail != nil }
+        #expect(Set(withDetail) == [.snapshots, .usbSnapshots])
+        for kind in withDetail {
+            #expect(kind.detail?.contains("남깁니다") == true, "\(kind): \(kind.detail ?? "")")
         }
     }
 

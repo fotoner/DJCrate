@@ -141,6 +141,17 @@ struct PointSnapshotsTests {
         #expect(prompt.text.contains(RekordboxPointSnapshotDiff.cloudSyncNote) && prompt.text.contains("다른 곳이 없습니다"))
     }
 
+    /// "끝날 때까지 rekordbox를 켜지 마세요"는 쓰는 동안의 진행 카드가 말한다. 확인 창은 되돌려 잃는 것만 말한다(#310).
+    @Test func 시점_복원_확인_창에는_진행_안내가_없고_잃는_것은_남는다() {
+        let entry = RekordboxPointSnapshotEntry(url: URL(filePath: "/tmp/x"),
+                                                metadata: .init(name: "전", kind: .manual, createdAt: now, cloudUpdateCount: 100))
+        var diff = RekordboxPointSnapshotDiff()
+        diff.currentCloudUpdateCount = 120
+        let prompt = PointSnapshots.restoreConfirmation(entry, diff: diff)
+        #expect(!prompt.text.contains("켜지 마세요") && !prompt.text.contains(ReflectionPrompts.progressNotice))
+        #expect(prompt.text.contains("그 뒤 rekordbox와 DJCrate에서 바꾼 것은 사라집니다") && prompt.destructive)
+    }
+
     // MARK: - 자동 시점 스냅샷(#228)
 
     final class AutoProbe {

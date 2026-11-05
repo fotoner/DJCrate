@@ -290,8 +290,7 @@ extension RekordboxWriter {
                                               "ParentID": .text(checked.monthID), "DateCreated": .text(checked.dateCreated),
                                               "UUID": .text(environment.uuid())])
         expectation.historyID = historyID
-        // 항목은 TrackNo 순서대로 하나씩 번호를 받는다(실험은 한 곡이었다).
-        for (offset, track) in checked.tracks.enumerated() {
+        func entry(_ offset: Int, _ track: CheckedHistory.Track) throws {
             let entryID = try newHistoryEntryID(db, environment: environment)
             usn += 1
             try insert("djmdSongHistory", entryID, ["ID": .text(entryID), "HistoryID": .text(historyID), "ContentID": .text(track.contentID),
@@ -300,7 +299,7 @@ extension RekordboxWriter {
         }
         // 곡 행: 재생 횟수·곡 정보 변경 횟수 +1. 상태 0 곡만 오므로 상태 칸은 그대로다.
         var written: [String: HistoryPlay] = [:]
-        for track in checked.tracks {
+        func play(_ track: CheckedHistory.Track) throws {
             usn += 1
             let play = HistoryPlay(playCount: (track.playCount ?? 0) + 1,
                                    trackInfoUpdated: String((Int(track.trackInfoUpdated ?? "0") ?? 0) + 1), usn: usn, updatedAt: stamp.db)
@@ -311,6 +310,17 @@ extension RekordboxWriter {
                 throw DJCError.writeVerificationFailed(String(ui: "재생 기록 곡의 재생 횟수를 고치지 못했습니다 (ContentID \(track.contentID))"))
             }
             written[track.contentID] = play
+        }
+        if checked.name.hasPrefix(HistoryNaming.linkPrefix + " ") {
+            // LINK 기록: rekordbox는 곡을 틀 때마다 붙여 곡마다 항목 → 곡 행 차례로 번호를 받는다(2026-10-16 실험, 곡 세 개)
+            for (offset, track) in checked.tracks.enumerated() {
+                try entry(offset, track)
+                try play(track)
+            }
+        } else {
+            // USB 기록: 항목을 TrackNo 순서대로 모두 쓴 뒤 곡 행을 쓴다(2026-10-09 실험은 한 곡이었다)
+            for (offset, track) in checked.tracks.enumerated() { try entry(offset, track) }
+            for track in checked.tracks { try play(track) }
         }
         try verifyHistory(db: db, expectation)
         try verifyHistoryPlays(db: db, written)

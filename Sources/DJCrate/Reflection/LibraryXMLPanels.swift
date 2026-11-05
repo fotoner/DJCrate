@@ -14,7 +14,7 @@ enum LibraryXMLPanels {
         panel.directoryURL = URL.documentsDirectory
         panel.canCreateDirectories = true
         panel.title = String(ui: "라이브러리 XML 내보내기")
-        panel.message = String(ui: "라이브러리 전체(곡·큐·그리드·재생 목록)를 rekordbox XML 파일로 내보냅니다. rekordbox 라이브러리는 바뀌지 않으며, 쓰지 않은 초안은 넣지 않습니다.")
+        panel.message = String(ui: "라이브러리 전체(곡·큐·그리드·재생 목록)를 rekordbox XML 파일로 내보냅니다. 쓰지 않은 초안은 넣지 않습니다.")
         panel.prompt = String(ui: "내보내기")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         store.staging.exportLibraryXML(to: url)
@@ -28,7 +28,7 @@ enum LibraryXMLPanels {
         panel.canChooseDirectories = false
         panel.directoryURL = URL.documentsDirectory
         panel.title = String(ui: "rekordbox XML 가져오기")
-        panel.message = String(ui: "다른 도구나 rekordbox가 만든 rekordbox XML을 골라 지금 라이브러리와의 차이를 봅니다. 고른 차이만 초안으로 만들고 rekordbox에는 쓰지 않습니다.")
+        panel.message = String(ui: "다른 도구나 rekordbox가 만든 rekordbox XML을 골라 지금 라이브러리와의 차이를 봅니다.")
         panel.prompt = String(ui: "열기")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.start(from: url)

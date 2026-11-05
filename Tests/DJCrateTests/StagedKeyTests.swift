@@ -19,7 +19,7 @@ struct StagedKeyTests {
     }
 
     func store(saved: @escaping ([StagedTrack]) -> Void = { _ in }) -> LibraryStore {
-        LibraryStore.test(resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
+        LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, playlistDraftSaver: { _ in },
                      mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { saved($0) })
     }
 

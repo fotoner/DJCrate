@@ -82,7 +82,7 @@ final class AgentToolsSettingsModel {
               AgentUpdateNotice.shouldShow(skills: report.skills.map(\.state), command: report.command.state, app: version,
                                            lastShown: settings?.value(SettingKeys.agentToolsNotifiedVersion)) else { return nil }
         var toast = AppToast.notice(String(ui: "AI 에이전트 스킬이 옛 버전입니다"),
-                                    String(ui: "Claude Code·Codex에 설치한 DJCrate 스킬·djc를 이 앱(\(version.version))에 맞춰 갱신하세요. 설정 › AI 에이전트에서도 할 수 있습니다."))
+                                    String(ui: "이 앱 버전에 맞춰 갱신하세요."))
         toast.action = .updateAgentTools
         guard present(toast) else { return nil }
         settings?.set(SettingKeys.agentToolsNotifiedVersion, version.key)
@@ -165,17 +165,17 @@ final class AgentToolsSettingsModel {
 
     var commandRow: CommandRow? { report.map { Self.row($0.command, home: tools.home) } }
 
-    /// PATH 안내 한 줄과 더할 줄(PATH에 있으면 줄이 없다)
-    var pathText: (text: String, line: String?)? {
+    /// PATH 안내 한 줄과 더할 줄. PATH에 있으면(`isInPath`) 'PATH에 있음' 한 칸뿐이고 줄이 없다
+    var pathText: (text: String, line: String?, isInPath: Bool)? {
         guard let pathStatus else { return nil }
         let folder = Self.display(tools.commandLink.deletingLastPathComponent(), home: tools.home)
         switch pathStatus.inPath {
-        case true?: return (String(ui: "\(folder)가 셸 PATH에 있어 터미널과 에이전트가 djc를 바로 부릅니다."), nil)
+        case true?: return (String(ui: "PATH에 있음"), nil, true)
         case false?:
-            return (String(ui: "\(folder)가 셸 PATH에 없습니다. \(pathStatus.guide.file)에 아래 줄을 더한 뒤 새 터미널을 여세요."), pathStatus.guide.line)
+            return (String(ui: "\(folder)가 셸 PATH에 없습니다. \(pathStatus.guide.file)에 아래 줄을 더한 뒤 새 터미널을 여세요."), pathStatus.guide.line, false)
         case nil:
             return (String(ui: "셸 PATH를 읽지 못했습니다. 터미널에서 which djc로 확인하고, 없으면 \(pathStatus.guide.file)에 아래 줄을 더하세요."),
-                    pathStatus.guide.line)
+                    pathStatus.guide.line, false)
         }
     }
 

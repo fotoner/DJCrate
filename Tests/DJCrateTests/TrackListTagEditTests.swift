@@ -284,7 +284,7 @@ final class ListHarness {
     /// 시험마다 따로 둔 설정(`UserDefaults.standard`에 남겨 다른 시험의 기본 설정을 바꾸지 않게)
     static func store() -> LibraryStore {
         LibraryStore.test(settings: SettingsStore(defaults: SettingsStoreTests.freshDefaults(), persist: false),
-                     resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+                     activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
     }
 
     /// - Parameter extra: 기본 칸 뒤에 더할 칸(평점·곡 색 칸 시험, #65)

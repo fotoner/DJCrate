@@ -109,8 +109,8 @@ private struct LanePlayButton: View {
         }
         .disabled(!model.canPlay(lane))
         .help(lane == .source
-              ? String(ui: "원곡을 재생·일시정지합니다. 스페이스바는 마지막으로 누른 줄을 재생합니다")
-              : String(ui: "편집 결과를 재생·일시정지합니다. 스페이스바는 마지막으로 누른 줄을 재생합니다"))
+              ? String(ui: "원곡 재생·일시정지 (스페이스바: 마지막으로 누른 줄)")
+              : String(ui: "결과 재생·일시정지 (스페이스바: 마지막으로 누른 줄)"))
         .accessibilityLabel(playing ? String(ui: "일시정지") : lane == .source ? String(ui: "원곡 재생") : String(ui: "결과 재생"))
     }
 }
@@ -177,7 +177,7 @@ private struct SourceLaneBar: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(model.selection == nil)
-            .help(model.selection == nil ? String(ui: "넣을 구간이 없으니 원곡 파형을 끌어 마디 구간을 고르세요") : String(ui: "고른 구간을 고른 클립 뒤(없으면 끝)에 넣습니다(⏎). 결과로 끌면 원하는 자리에 넣습니다"))
+            .help(String(ui: "고른 클립 뒤(없으면 끝)에 넣기(⏎) · 끌어 놓으면 그 자리에"))
         }
         .controlSize(.small)
     }
@@ -195,10 +195,10 @@ private struct OutputLaneBar: View {
             HStack(spacing: 4) {
                 Button { model.splitAtPlayhead() } label: { Label(.ui("자르기"), systemImage: "scissors") }
                     .disabled(model.edit == nil)
-                    .help(model.edit == nil ? String(ui: "자를 결과가 없으니 원곡 구간을 먼저 결과에 넣으세요") : String(ui: "결과 재생선에서 가장 가까운 마디 줄로 클립을 둘로 나눕니다(⌘B)"))
+                    .help(model.edit == nil ? String(ui: "자를 결과가 없으니 원곡 구간을 먼저 결과에 넣으세요") : String(ui: "재생선에 가까운 마디 줄에서 자르기(⌘B)"))
                 Button { model.duplicateSelected() } label: { Label(.ui("복제"), systemImage: "plus.square.on.square") }
                     .disabled(model.selectedClip == nil)
-                    .help(model.selectedClip == nil ? String(ui: "복제할 클립을 결과에서 먼저 고르세요") : String(ui: "고른 클립 바로 뒤에 같은 구간을 하나 더 둡니다(⌘D). 인트로를 늘일 때 씁니다"))
+                    .help(model.selectedClip == nil ? String(ui: "복제할 클립을 결과에서 먼저 고르세요") : String(ui: "바로 뒤에 같은 구간 하나 더(⌘D) · 인트로 늘이기"))
                 Button { model.removeSelected() } label: { Label(.ui("지우기"), systemImage: "trash") }
                     .disabled(model.selectedClip == nil)
                     .help(model.selectedClip == nil ? String(ui: "지울 클립을 결과에서 먼저 고르세요") : String(ui: "고른 클립을 결과에서 뺍니다(⌫)"))
@@ -206,11 +206,11 @@ private struct OutputLaneBar: View {
                 Button { model.undo() } label: { Label(.ui("실행 취소"), systemImage: "arrow.uturn.backward") }
                     .labelStyle(.iconOnly)
                     .disabled(!model.canUndo)
-                    .help(model.canUndo ? String(ui: "실행 취소(⌘Z)") : String(ui: "취소할 편집이 없으니 구간을 편집한 뒤 실행 취소하세요"))
+                    .help(String(ui: "실행 취소(⌘Z)"))
                 Button { model.redo() } label: { Label(.ui("실행 복귀"), systemImage: "arrow.uturn.forward") }
                     .labelStyle(.iconOnly)
                     .disabled(!model.canRedo)
-                    .help(model.canRedo ? String(ui: "실행 복귀(⇧⌘Z)") : String(ui: "복귀할 편집이 없으니 실행 취소한 뒤 실행 복귀하세요"))
+                    .help(String(ui: "실행 복귀(⇧⌘Z)"))
             }
         }
         .controlSize(.small)
@@ -251,11 +251,11 @@ private struct ClipInspector: View {
                 HStack(spacing: 2) {
                     Button { model.move(entry.id, by: -1) } label: { Image(systemName: "arrow.left") }
                         .disabled(index == 0)
-                        .help(index == 0 ? String(ui: "첫 클립은 더 앞으로 옮길 수 없으니 뒤로 옮기거나 다른 클립을 고르세요") : String(ui: "앞으로"))
+                        .help(String(ui: "앞으로"))
                         .accessibilityLabel(.ui("클립 \(index + 1) 앞으로"))
                     Button { model.move(entry.id, by: 1) } label: { Image(systemName: "arrow.right") }
                         .disabled(index == model.entries.count - 1)
-                        .help(index == model.entries.count - 1 ? String(ui: "마지막 클립은 더 뒤로 옮길 수 없으니 앞으로 옮기거나 다른 클립을 고르세요") : String(ui: "뒤로"))
+                        .help(String(ui: "뒤로"))
                         .accessibilityLabel(.ui("클립 \(index + 1) 뒤로"))
                 }
                 .buttonStyle(.borderless)
@@ -339,7 +339,7 @@ private struct EditFooter: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!model.canRender)
-                    .help(model.renderUnavailableReason ?? String(ui: "WAV로 렌더해 ‘추가한 곡’에 넣습니다(그리드는 편집으로 옮긴 값, 큐는 옮긴 위치, 곡 정보는 원곡). 원곡과 rekordbox는 그대로이고, rekordbox로는 추가한 곡에서 넘깁니다"))
+                    .help(model.renderUnavailableReason ?? String(ui: "WAV로 렌더해 ‘추가한 곡’에 넣습니다 (원곡은 그대로)"))
                 }
             }
             .controlSize(.regular)

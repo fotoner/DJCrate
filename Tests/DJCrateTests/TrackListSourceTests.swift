@@ -15,7 +15,7 @@ struct TrackListSourceTests {
     /// 표가 읽는 값만 든 가짜 출처. 메뉴·칸 편집을 맡는 조정자는 시험 저장소로 만든다(표 본문은 그 저장소를 읽지 않는다)
     @MainActor @Observable
     final class FakeSource: TrackListSource {
-        var isWritingRekordbox = false
+        var editsFrozen = false
         var isUsbSelection = false
         var commentPreset = CommentPreset.none
         var displayRows: [TrackRow] = []
@@ -29,7 +29,7 @@ struct TrackListSourceTests {
         var draftPreviewCues: [String: [PreviewCueMark]] = [:]
         var deckTrackID: String?
         @ObservationIgnored let library = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("track-list-source"), persist: false),
-                                                            resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+                                                            activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         @ObservationIgnored private(set) var madeCoordinators = 0
 
         func makeTrackListCoordinator(actions: TrackListActions?, reflection: ReflectionCoordinator?) -> TrackListCoordinator {
@@ -83,7 +83,7 @@ struct TrackListSourceTests {
 
     @Test func 라이브러리_저장소는_표가_읽는_값을_그대로_내준다() {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("track-list-source-store"), persist: false),
-                                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+                                      activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         let source: any TrackListSource = store
         store.sidebar = .usb(.collection(volumeKey: "합성"))
         #expect(source.isUsbSelection)
@@ -93,19 +93,19 @@ struct TrackListSourceTests {
 
     @Test func 덱의_이전·다음_단추는_곡을_고르고_덱에_올린다() {
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("deck-library-source"), persist: false),
-                                      resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in })
+                                      activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in })
         let row = TrackListTagEditTests.row("7")
         store.rowsByID[row.id] = row
         var loaded: [String?] = []
         store.onLoadToDeck = { loaded.append($0?.track.id) }
         let library: any DeckLibrarySource = store
-        #expect(library.allowsLibraryInteraction)
+        #expect(!library.editsFrozen)
         library.selectAndLoadToDeck(row)
         #expect(store.selection == [row.id])
         #expect(loaded == ["7"])
         // 쓰는 동안은 단추가 막히고, 눌러도 덱은 바꾸지 않는다
         store.isWritingRekordbox = true
-        #expect(!library.allowsLibraryInteraction)
+        #expect(library.editsFrozen)
         library.selectAndLoadToDeck(row)
         #expect(loaded == ["7"])
     }

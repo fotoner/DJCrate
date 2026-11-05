@@ -76,11 +76,15 @@ enum CacheCommand {
 
     static func usageText(paths: DJCCachePaths, cache: CacheFiles) -> String {
         let usage = cache.usage(paths)
-        var lines = [String(ui: "데이터 폴더: \(paths.root.path)"), String(ui: "스냅샷 폴더: \(paths.snapshots.path)")]
+        var lines = [String(ui: "데이터 폴더: \(paths.root.path)"), String(ui: "스냅샷 폴더: \(paths.snapshots.path)"),
+                     String(ui: "LINK WAV 변환본 폴더: \(paths.linkAudio.path)")]
         for item in usage {
             lines.append("  \(item.kind.rawValue)  \(item.kind.title): \(size(item.bytes)) · " + String(ui: "파일 \(item.files)개"))
         }
         lines.append(String(ui: "합계 \(size(usage.reduce(0) { $0 + $1.bytes }))"))
+        if let snapshots = cache.backupUsage(paths.root).first(where: { $0.kind == .usbPointSnapshots }) {
+            lines.append(String(ui: "USB 시점 스냅샷: \(snapshots.count)개 · 최대 \(size(snapshots.bytes))(비우지 않음)"))
+        }
         lines.append(String(ui: "크기는 파일 크기의 합이라 실제 디스크 사용보다 클 수 있습니다. 비우려면 djc cache --clear <종류…|all>"))
         return lines.joined(separator: "\n")
     }

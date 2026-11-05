@@ -38,6 +38,8 @@ struct UsbTrackUpsert: Sendable, Hashable {
     var labels: [UsbNamedRow] = []
     var images: [UsbImage] = []
     var entries: UsbEntriesChange?
+    /// 두 형식 값이 다른 곡(#238): 같은 갱신을 Device Library 값에 한 곡(곡 id → 곡)
+    var deviceLibraryTracks: [Int: UsbTrack] = [:]
 }
 
 /// 적용 전제가 맞지 않음(그 편집만 건너뛴다). 기술 정보(번역하지 않음)
@@ -175,6 +177,8 @@ enum UsbEditModel {
             // 형식 소속은 지금 모델 것(앞 편집이 한 형식에서 뺐을 수 있다)
             track.presentIn = model.tracks[at].presentIn
             model.tracks[at] = track
+            // 두 형식 값이 다른 곡은 갱신이 쓴 칸만 두 형식에 같게 쓰고 나머지는 Device Library 값을 지킨다(#238)
+            if let device = upsert.deviceLibraryTracks[track.id] { model.setDeviceLibraryTrack(device) }
         }
         for track in upsert.added {
             guard !model.tracks.contains(where: { $0.id == track.id }) else { throw UsbEditConflict(description: "content \(track.id) exists") }

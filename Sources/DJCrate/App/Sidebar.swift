@@ -31,7 +31,7 @@ struct Sidebar: View {
                     .tag(SidebarItem.staged)
                 SidebarPendingRow(store: store)
                     .tag(SidebarItem.pending)
-                SidebarLastWriteResultRow(store: store)
+                SidebarActivityLogRow(store: store)
                 // 진행 줄은 넣고 빼야 해서 본문이 시작·끝만 읽고, 진행(done/total)은 줄이 읽는다.
                 if store.staging.hasGridJob { SidebarGridJobRow(staging: store.staging) }
                 if store.staging.hasXMLExportJob { SidebarXMLExportRow(staging: store.staging) }
@@ -94,17 +94,17 @@ struct SidebarPendingRow: View {
     }
 }
 
-struct SidebarLastWriteResultRow: View {
+struct SidebarActivityLogRow: View {
     let store: LibraryStore
-    /// 쓰기 결과 시트를 든 주 창 모델(사이드바 본문에 클로저를 넣지 않으려고 환경 값으로 받는다)
+    /// 활동 기록 시트를 든 주 창 모델(사이드바 본문에 클로저를 넣지 않으려고 환경 값으로 받는다)
     @Environment(\.libraryWindow) private var window
 
     var body: some View {
-        Button { window?.showWriteResult() } label: {
-            Label(.ui("마지막 쓰기 결과…"), systemImage: "doc.text.magnifyingglass")
+        Button { window?.showActivityLog() } label: {
+            Label(.ui("활동 기록…"), systemImage: "doc.text.magnifyingglass")
         }
         .buttonStyle(.plain)
-        .disabled(store.isWritingRekordbox)
+        .disabled(store.editsFrozen)
     }
 }
 
@@ -224,11 +224,12 @@ struct SidebarHistoryRow: View {
         HStack(spacing: 4) {
             Text(verbatim: item.name)
                 .lineLimit(1)
-            if archived != nil {
-                Image(systemName: "externaldrive")
+            if let archived {
+                // LINK 기록(PRO DJ LINK로 내어 주는 동안 CDJ가 남긴 기록)과 USB 기기 기록을 가른다
+                Image(systemName: archived.source.isLink ? "point.3.connected.trianglepath.dotted" : "externaldrive")
                     .imageScale(.small)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel(.ui("USB에서 가져온 기록"))
+                    .accessibilityLabel(archived.source.isLink ? .ui("LINK로 남긴 기록") : .ui("USB에서 가져온 기록"))
             }
             // 아직 rekordbox에 쓰지 않은 초안과 같은 표식(쓰기 대기)
             if pending {
@@ -244,9 +245,10 @@ struct SidebarHistoryRow: View {
 
     /// 보존 기록의 도움말: 어디서 가져왔는지와 rekordbox 쓰기 상태
     private func archivedHelp(_ archived: ArchivedHistory, pending: Bool) -> String {
+        if archived.source.isLink { return linkHelp(archived, pending: pending) }
         let volume = archived.source.volumeName
         if pending {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에 있어 rekordbox에 쓰기(⇧⌘E) 때 rekordbox 재생 기록에 넣습니다")
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에 있습니다")
         }
         if archived.excludedFromRekordbox {
             return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
@@ -261,6 +263,29 @@ struct SidebarHistoryRow: View {
             return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 컬렉션에 있는 곡이 없어 rekordbox에는 쓰지 않습니다")
         }
         return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에는 없습니다")
+    }
+
+    /// LINK 기록의 도움말: CDJ가 남긴 기록과 rekordbox 쓰기 상태
+    private func linkHelp(_ archived: ArchivedHistory, pending: Bool) -> String {
+        if history.isOpenLinkHistory(archived) {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남기는 기록입니다. 곡이 계속 붙으므로 LINK를 끄면 rekordbox 쓰기 대기에 올립니다")
+        }
+        if pending {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에 있습니다")
+        }
+        if archived.excludedFromRekordbox {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
+        }
+        if let id = archived.rekordboxHistoryID, history.historyIndex[id] != nil {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에 썼습니다")
+        }
+        if HistoryWriteQueue.hasRepeatedTracks(archived) {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 같은 곡이 두 번 이상 들어 rekordbox 재생 횟수 규칙을 확인하지 않아 rekordbox에는 쓰지 않습니다")
+        }
+        if archived.matchedContentIDs.isEmpty {
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 컬렉션 곡을 확인하지 못해 rekordbox에는 쓰지 않습니다")
+        }
+        return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에는 없습니다")
     }
 }
 
@@ -304,230 +329,5 @@ extension View {
         font(.callout.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.top, 10)
-    }
-}
-
-/// 목록 위 작업 줄: 추가한 곡(추가·빼기·XML 내보내기), BPM 없는 곡(일괄 추정).
-/// 단추의 대상·막힘 이유와 단추가 부르는 일은 화면 모델(`ListActionBarModel`)이 맡는다. 반영 입구(`reflection`)만 환경에서 받는다.
-struct ListActionBar: View {
-    let model: ListActionBarModel
-    @Environment(\.reflection) private var reflection
-
-    var body: some View {
-        switch model.sidebar {
-        case .staged:
-            bar {
-                let addTargets = model.stagedAddTargets
-                Button { reflection?.startAddTracks(rows: addTargets) } label: {
-                    Label(model.isWritingRekordbox ? LocalizedStringResource.ui("rekordbox에 쓰는 중…") : .ui("rekordbox에 바로 넣기 (\(addTargets.count)곡)"),
-                          systemImage: "tray.and.arrow.down")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.isAddBlocked(addTargets))
-                .help(model.addHelp)
-                Button { model.chooseFiles() } label: { Label(.ui("곡 추가…"), systemImage: "plus") }
-                Button { model.removeSelectedStaged() } label: { Label(.ui("추가 목록에서 제거"), systemImage: "minus") }
-                    .disabled(!model.canRemoveStaged)
-                    .help(.ui("추가 목록에서만 뺍니다. 파일은 지우지 않습니다."))
-                Button { model.exportStagedXML() } label: { Label(.ui("XML 만들기"), systemImage: "doc.text") }
-                    .disabled(!model.canExportStaged)
-                    .help(.ui("추가한 곡을 rekordbox에서 가져올 XML로 만듭니다."))
-                if model.hasImportedStaged {
-                    Button { model.removeImportedStaged() } label: { Label(.ui("가져온 곡 정리"), systemImage: "checkmark.circle") }
-                        .help(.ui("rekordbox에 들어간 것이 확인된 곡을 추가 목록에서 뺍니다(파일·초안은 그대로)."))
-                }
-            }
-        case .pending:
-            bar {
-                let targets = model.pendingTargets
-                let playlistEdits = model.pendingPlaylistEdits
-                let histories = model.pendingHistories.count
-                Button { reflection?.startWrite(rows: targets) } label: {
-                    Label(Self.pendingWriteTitle(tracks: targets.count, playlistEdits: playlistEdits, histories: histories),
-                          systemImage: "square.and.arrow.up.on.square")
-                }
-                .disabled(model.isWriteBlocked(targets: targets, playlistEdits: playlistEdits, histories: histories))
-                .help(model.writeHelp)
-                if histories > 0 {
-                    // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 이 메뉴에서 보고(고르면 그 기록으로) 뺀다
-                    Menu {
-                        ForEach(model.pendingHistories) { history in
-                            Button(history.name) { model.showHistory(history.id) }
-                        }
-                        Divider()
-                        Button(.ui("모두 rekordbox 쓰기 대기에서 빼기")) { model.excludePendingHistories() }
-                            .disabled(model.isWritingRekordbox)
-                    } label: {
-                        Label(.ui("재생 기록 \(histories)건"), systemImage: "clock.arrow.circlepath")
-                    }
-                    .fixedSize()
-                    .help(.ui("쓰기 대기에 오른 USB 재생 기록입니다. 고르면 그 기록을 보고, 빼면 실행 취소로 되돌립니다."))
-                }
-                if playlistEdits > 0 {
-                    Button { model.discardPlaylistDrafts() } label: {
-                        Label(.ui("재생 목록 초안 버리기"), systemImage: "trash")
-                    }
-                    .disabled(model.isWritingRekordbox)
-                    .help(.ui("rekordbox에 아직 쓰지 않은 재생 목록 편집을 모두 버립니다(⌘Z로 되돌림)."))
-                }
-                Button { model.exportPendingXML(targets) } label: {
-                    Label(.ui("XML 만들기"), systemImage: "doc.text")
-                }
-                .disabled(targets.isEmpty)
-                .help(.ui("큐·그리드 초안을 rekordbox에서 가져올 XML로 만듭니다."))
-                Button { reflection?.startRestoreLatest() } label: {
-                    Label(.ui("쓰기 전으로 복원…"), systemImage: "arrow.uturn.backward")
-                }
-                .disabled(model.isRestoreBlocked)
-                .help(model.restoreHelp)
-                if model.isWritingRekordbox {
-                    ProgressView().controlSize(.small)
-                    Text(.ui("rekordbox 라이브러리 확인·쓰는 중…")).font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text(.ui("rekordbox가 꺼져 있을 때만 씁니다 · 쓰기 전에 전체 백업")).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        case let .itunesPlaylist(id):
-            bar {
-                Label(.ui("목록 구성과 순서는 Music에서 바꿉니다 · 큐·태그는 여기서 편집할 수 있습니다"), systemImage: "lock")
-                    .font(.caption).foregroundStyle(.secondary)
-                let unavailable = model.unavailableMusicTracks(id)
-                if unavailable > 0 {
-                    Text(.ui("연결하지 못한 \(unavailable)곡은 rekordbox 컬렉션 등록과 파일 위치를 확인하세요"))
-                        .font(.caption).foregroundStyle(UIColors.warning.color)
-                }
-            }
-        case let .playlist(id):
-            // 실험실에서 보는 인텔리전트 목록: 읽기 전용이고 곡은 DJCrate가 조건으로 계산한 것(#68)
-            if let result = model.smartPlaylistResult { smartPlaylistNote(result) }
-            // 숨긴 스트리밍 곡 때문에 끌어 옮길 수 없는 목록은 이유를 알린다
-            let hiddenNote = model.showsHiddenStreamingNote(id)
-            if let node = model.playlistNode(id), node.isDraft || node.blockedReason != nil {
-                bar {
-                    if let reason = node.blockedReason {
-                        Label(.ui("이 목록의 초안 일부를 쓸 수 없습니다: \(reason)"), systemImage: WarningMark.symbol)
-                            .foregroundStyle(UIColors.warning.color)
-                            .lineLimit(2)
-                    } else {
-                        Label(.ui("아직 쓰지 않은 목록 초안입니다 · rekordbox에 쓰기(⇧⌘E)로 저장합니다"), systemImage: DraftMark.symbol)
-                            .foregroundStyle(UIColors.draft.color)
-                    }
-                    if node.blockedReason != nil {
-                        Button(.ui("현재 목록 비교…")) { reflection?.startPlaylistRecovery(playlist: id) }
-                            .fixedSize()
-                            .disabled(model.isPlaylistRecoveryBlocked)
-                    } else {
-                        Button(.ui("이 목록의 초안 버리기")) { model.discardPlaylistDraft(id) }
-                            .disabled(model.isWritingRekordbox)
-                    }
-                    if hiddenNote { hiddenStreamingNote }
-                }
-            } else if hiddenNote {
-                bar { hiddenStreamingNote }
-            } else {
-                EmptyView()
-            }
-        case .usb(.pending):
-            // 쓰기 대기 목록은 자기 머리에 단추를 둔다
-            EmptyView()
-        case let .usb(target):
-            bar {
-                if let editing = model.usbEditing(volumeKey: target.volumeKey) {
-                    let key = target.volumeKey
-                    let updatable = editing.updatable
-                    Button { model.startRefreshUsbLocalChanges(volumeKey: key) } label: {
-                        Label(.ui("로컬 변경을 USB에 반영 (\(updatable)곡)"), systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .disabled(updatable == 0 || editing.blockReason != nil)
-                    .help(editing.blockReason ?? String(ui: "로컬에서 더 고친 곡(갱신 가능)을 USB 쓰기 대기에 더합니다. USB는 ‘USB에 쓰기…’를 누를 때 바뀝니다."))
-                    Button { model.showUsbPending(volumeKey: key) } label: {
-                        Label(.ui("USB 쓰기 대기 (\(editing.draftCount)건)"), systemImage: "square.and.arrow.up.on.square")
-                    }
-                    Text(.ui("USB 편집은 초안으로 쌓고 ‘USB에 쓰기…’로 반영합니다")).font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Label(.ui("USB의 곡·재생 목록은 읽기만 합니다"), systemImage: "lock")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if model.hasUsbPlaylistMismatch(volumeKey: target.volumeKey) {
-                    Label(.ui("두 형식의 재생 목록 내용이 다릅니다"), systemImage: WarningMark.symbol)
-                        .font(.caption).foregroundStyle(UIColors.warning.color)
-                }
-            }
-        case .filter(.missingFile):
-            bar {
-                // 빠진 외장 디스크는 곡마다가 아니라 디스크째 알린다(#126).
-                let volumes = model.missingFiles.unmountedVolumes
-                if !volumes.isEmpty {
-                    let names = volumes.map { String(ui: "\($0.name)(\($0.trackCount)곡)") }.joined(separator: ", ")
-                    Label(.ui("연결되지 않은 외장 디스크: \(names) · 연결하면 다시 확인합니다"), systemImage: "externaldrive.badge.xmark")
-                        .foregroundStyle(UIColors.warning.color)
-                        .lineLimit(1)
-                        .help(names)
-                }
-                Button { model.checkMissingFiles() } label: { Label(.ui("다시 확인"), systemImage: "arrow.clockwise") }
-                    .disabled(model.isCheckingFiles)
-                    .help(.ui("음원 파일이 있는지 다시 확인합니다. rekordbox에는 쓰지 않습니다."))
-                RelocateEntryButton(store: model.store, isCheckingFiles: model.isCheckingFiles,
-                                    hasMissingFiles: !model.missingFiles.trackIDs.isEmpty)
-                if model.isCheckingFiles {
-                    ProgressView().controlSize(.small)
-                    Text(.ui("파일을 확인하는 중…")).font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text(.ui("옮긴 음원은 rekordbox의 Relocate로 다시 연결하세요")).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        case .filter(.noBPM):
-            bar {
-                Button { model.estimateGridsForDisplayedRows() } label: {
-                    Label(.ui("이 목록 그리드 추정 (\(model.displayedCount)곡)"), systemImage: "metronome")
-                }
-                .disabled(model.isGridEstimateBlocked)
-                .help(.ui("rekordbox가 분석하지 않은 곡의 BPM·박 위치를 추정해 그리드 초안으로 저장합니다(rekordbox는 바뀌지 않습니다)."))
-                Text(.ui("초안만 만듭니다 · 덱에서 확인·수정")).font(.caption).foregroundStyle(.secondary)
-            }
-        default:
-            EmptyView()
-        }
-    }
-
-    private func smartPlaylistNote(_ result: SmartPlaylistResult) -> some View {
-        bar {
-            if let summary = result.unsupportedSummary {
-                Label(.ui("DJCrate가 이 목록의 조건을 계산하지 못해 곡을 보이지 않습니다 · rekordbox에서 확인하세요"), systemImage: WarningMark.symbol)
-                    .foregroundStyle(UIColors.warning.color)
-                    .lineLimit(1)
-                Text(verbatim: summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            } else {
-                Label(.ui("DJCrate가 조건으로 계산한 읽기 전용 목록입니다 · rekordbox 화면과 곡이 다를 수 있습니다"), systemImage: "lock")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-    }
-
-    /// 쓰기 대기 바의 쓰기 단추 제목: 곡 수와 함께 쓸 재생 목록 편집·재생 기록 수
-    static func pendingWriteTitle(tracks: Int, playlistEdits: Int, histories: Int) -> LocalizedStringResource {
-        switch (playlistEdits > 0, histories > 0) {
-        case (true, true): .ui("rekordbox에 쓰기 (\(tracks)곡 · 재생 목록 \(playlistEdits)건 · 재생 기록 \(histories)건)")
-        case (true, false): .ui("rekordbox에 쓰기 (\(tracks)곡 · 재생 목록 \(playlistEdits)건)")
-        case (false, true): .ui("rekordbox에 쓰기 (\(tracks)곡 · 재생 기록 \(histories)건)")
-        case (false, false): .ui("rekordbox에 쓰기 (\(tracks)곡)")
-        }
-    }
-
-    private var hiddenStreamingNote: some View {
-        Label(.ui("스트리밍 \(model.streamingHiddenInView)곡을 숨기는 중 · 순서를 바꾸려면 설정에서 숨기기를 끄세요"), systemImage: "eye.slash")
-            .font(.caption).foregroundStyle(.secondary)
-            .lineLimit(1)
-    }
-
-    private func bar<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        HStack(spacing: 10) {
-            content()
-            Spacer(minLength: 0)
-        }
-        .controlSize(.small)
-        .padding(.horizontal, Spacing.edge)
-        .padding(.vertical, 6)
     }
 }

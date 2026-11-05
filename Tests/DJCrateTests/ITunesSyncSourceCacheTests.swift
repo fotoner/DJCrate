@@ -14,7 +14,7 @@ struct ITunesSyncSourceCacheTests {
     /// 이 묶음은 사본 옆 iTunes 파일(목록 사본·`playlists3.sync`)만 본다. 라이브러리 읽기는 DB를 열지 않는 원본(`withoutDatabase`)으로 한다.
     private func store(_ folder: TemporaryFolder, arguments: [String] = ["test"]) -> LibraryStore {
         LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("itunes-sync-source"), persist: false),
-                          resultHistory: WriteResultHistory(url: nil), saveTagDrafts: { _ in },
+                          activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in },
                           backupDirectory: folder.backups, playlistDraftSaver: { _ in },
                           mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in },
                           arguments: arguments, environment: [:],
