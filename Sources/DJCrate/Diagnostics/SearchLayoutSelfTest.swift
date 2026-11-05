@@ -336,10 +336,23 @@ extension DevSelfTests {
                 store.colorFilter = actions == nil ? nil : "2"
                 UserDefaults.standard.set(inspector, forKey: SettingKeys.showTagEditor.name)
                 window.makeFirstResponder(nil)
-                window.setContentSize(NSSize(width: 1155, height: 700))
-                await wait()
-                window.contentView?.layoutSubtreeIfNeeded()
-                await wait()
+                // 사이드바·인스펙터를 바꾸면 창이 본문 폭을 지키려고 넓어지고, 사이드바는 늦게 열린다.
+                // 창이 1155이고 (인스펙터 장면이 아니면) 검색칸이 사이드바 오른쪽으로 밀려날 때까지 다시 맞춘다
+                func settled() -> Bool {
+                    Int(window.contentView?.frame.width ?? 0) == 1155
+                        && (inspector || (SelfTestFrames.frames["listHeader.search"]?.minX ?? 0) > 100)
+                }
+                for _ in 0..<5 {
+                    // 앞 장면(인스펙터+글자 키움)이 접은 사이드바를 연다. 인스펙터가 닫히는 중에 열면 폭이 모자라 다시 접히므로 매번 다시 연다.
+                    // 사이드바는 호출한 쪽이 끝에서 되돌린다(`runHeaderScenes`)
+                    if !inspector { UserDefaults.standard.set(true, forKey: SettingKeys.sidebarVisible.name) }
+                    window.setContentSize(NSSize(width: 1155, height: 700))
+                    await wait()
+                    window.contentView?.layoutSubtreeIfNeeded()
+                    await wait()
+                    if settled() { break }
+                }
+                let atWidth = settled()
                 let frames = SelfTestFrames.frames
                 let content = window.contentView?.frame.size ?? .zero
                 // 칩 자리는 ViewThatFits가 고른 한 모양만 보인다(전부, 「필터 2」 하나, 숨김). 앞 장면에서 사라진 칩의 늦은 배치 알림이 남긴 자리는 뺀다
@@ -363,8 +376,9 @@ extension DevSelfTests {
                 let visibleIDs = Set((toolbar.visibleItems ?? []).map { $0.itemIdentifier.rawValue })
                 let hidden = toolbarItemIDs.filter { !visibleIDs.contains($0) }
                 let line = parts.map { "\($0.0) \(Int($0.1.minX))–\(Int($0.1.maxX))" }.joined(separator: " · ")
-                report("머리 줄 오른쪽 \(name) 창 1155\(inspector ? " 인스펙터" : "")", ordered && inside && present && hidden.isEmpty,
-                       "실제 \(Int(content.width)) · 순서·겹침 \(ordered ? "맞음" : "어긋남") · 창 안 \(inside ? "맞음" : "어긋남") · 단추·메뉴 \(present ? "맞음" : "어긋남") · 툴바 \(hidden.isEmpty ? "모두 보임" : "접힘 \(hidden.joined(separator: ","))") · \(line)")
+                // 다른 폭이나 사이드바가 닫힌 채 잰 통과는 그 장면의 증거가 아니다
+                report("머리 줄 오른쪽 \(name) 창 1155\(inspector ? " 인스펙터" : "")", atWidth && ordered && inside && present && hidden.isEmpty,
+                       "실제 \(Int(content.width)) · 폭·사이드바 \(atWidth ? "맞음" : "어긋남") · 순서·겹침 \(ordered ? "맞음" : "어긋남") · 창 안 \(inside ? "맞음" : "어긋남") · 단추·메뉴 \(present ? "맞음" : "어긋남") · 툴바 \(hidden.isEmpty ? "모두 보임" : "접힘 \(hidden.joined(separator: ","))") · \(line)")
                 if !capture(window, "actions-1155\(inspector ? "-inspector" : "")-\(name)") { failures += 1 }
             }
         }
