@@ -171,6 +171,8 @@ target DJCAdaptersTests
 group observation
 when Sources/DJCrate/App/ContentView.swift
 when Sources/DJCrate/App/ListHeaderBar.swift
+when Sources/DJCrate/App/ListHeaderControls.swift
+when Sources/DJCrate/Library/AttributeFilterMenu.swift
 when Sources/DJCrate/App/Sidebar*.swift
 when Sources/DJCrate/App/StatusBar*.swift
 when Sources/DJCrate/App/ReflectionStatusModel.swift

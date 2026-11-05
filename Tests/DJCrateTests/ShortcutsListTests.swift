@@ -30,6 +30,24 @@ struct ShortcutsListTests {
         }
     }
 
+    /// 태그 시트 위 안내 줄을 없앤 뒤(#339) 그 키는 이 창이 안내한다. 편집 시작(더블클릭·Return·타이핑)도 빠지면 안 된다:
+    /// 태그 시트에서 더블클릭은 덱에 불러오기가 아니라 칸 편집이다.
+    @Test func 태그_시트_키를_창이_안내한다() {
+        let sheet = ShortcutsList.tagSheetEntries
+        #expect(sheet.map(\.keys) == [["더블클릭", "/", "Return", "/", "타이핑"], ["⌘", "D"], ["⌃", "Tab"], ["⌘", "C", "/", "⌘", "V"], ["⌫"]])
+        #expect(sheet.allSatisfy { $0.text.hasPrefix("태그 시트: ") })
+        // 덱 동작 줄과 달리 덱 동작에 묶이지 않는다(덱 단축키 표 시험이 이 줄을 덱 동작으로 세지 않는다)
+        #expect(sheet.allSatisfy { $0.actions.isEmpty && $0.shiftActions.isEmpty })
+        // 태그 시트 줄끼리 같은 키 조합을 두 번 안내하지 않는다
+        let keys = sheet.map(\.keys)
+        #expect(Set(keys).count == keys.count)
+    }
+
+    /// 덱에 불러오기(⌘→)는 곡 목록·태그 시트 공통이라 이미 있는 줄이 안내한다. 태그 시트 줄이 그것을 되풀이하지 않는다
+    @Test func 덱에_불러오기_키는_태그_시트_줄이_되풀이하지_않는다() {
+        #expect(!ShortcutsList.tagSheetEntries.contains { $0.keys.contains("→") || $0.text.contains("덱에 불러오기") })
+    }
+
     /// 옛 덱 메뉴는 키 글자를 `DeckShortcuts.standard`에서 만들어 보였다. 창의 글자는 손으로 적은 것이라 기본 표와 어긋나지 않게 묶는다.
     @Test func 줄에_적은_키가_기본_표의_키와_맞다() {
         // 확대·축소 줄은 = 와 - 키를 ⌘+·⌘−와 같은 글자(+, −)로 적는다.

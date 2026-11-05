@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import DJCDomain
 
 extension DevSelfTests {
     /// 메뉴 막대 안에서 키 등가물이 `key`+⌘인 항목과 그 항목이 든 메뉴. 편집 › 찾기가 하나뿐인지(시스템 찾기와 겹치지 않는지) 본다.
@@ -15,6 +16,15 @@ extension DevSelfTests {
         return found
     }
 
+    /// 메뉴 항목의 켜짐을 지금 상태로 다시 매긴다. `NSMenu.update()`는 그 메뉴의 항목만 매기므로 하위 메뉴까지 내려간다.
+    /// SwiftUI 명령 메뉴는 열리기 직전(`menuNeedsUpdate`)에 항목을 채우므로 그것도 부른다
+    static func updateMenus(_ menu: NSMenu? = NSApp.mainMenu) {
+        guard let menu else { return }
+        menu.delegate?.menuNeedsUpdate?(menu)
+        menu.update()
+        for item in menu.items { updateMenus(item.submenu) }
+    }
+
     static func findSubview<T: NSView>(_ type: T.Type, in root: NSView?) -> T? {
         guard let root else { return nil }
         if let found = root as? T { return found }
@@ -23,6 +33,11 @@ extension DevSelfTests {
         }
         return nil
     }
+
+    /// 툴바에 남아야 하는 앱 단위 항목(#339). 창 폭마다 접히지 않고 보여야 한다
+    static let toolbarItemIDs = ["volume", "addFiles", "tagEditor", "snapshot"]
+    /// 머리 줄로 옮기며 툴바에서 지운 항목. 툴바 구성에 남아 있으면 안 된다
+    static let retiredToolbarItemIDs = ["viewMode", "attributeFilter"]
 
     /// 머리 줄 검색칸(#338)이 툴바 폭과 이웃 단추를 흔들지 않는지 실제 창에서 확인한다.
     /// 툴바에 검색 항목이 없고, 창 폭마다 툴바 단추가 접히지 않고, 머리 줄 검색칸이 포커스 전후 같은 자리·폭인지 본다.
@@ -33,6 +48,11 @@ extension DevSelfTests {
     static func runSearchLayoutIfRequested(store: LibraryStore, libraryWindow: LibraryWindowModel) {
         guard ProcessInfo.processInfo.arguments.contains("--search-layout-selftest"),
               ProcessInfo.processInfo.environment["DJC_HOME"] != nil else { return }
+        // 모든 작업 폴더가 같은 UserDefaults 영역을 쓴다. 이 시험이 바꾸는 창 프레임·분할 뷰·보기 모드·인스펙터·사이드바·글자 배율은
+        // 끝나면 처음 저장돼 있던 값으로 되돌린다(`UIPerfSelfTest`와 같다). 실행 인자로 준 값이 아니라 저장된 값을 읽는다
+        let storedDefaults = UserDefaults.standard.persistentDomain(forName: ProcessInfo.processInfo.processName) ?? [:]
+        let restoredKeys = UIPerfSelfTest.restoredKeys + [SettingKeys.textScale.name]
+        let savedDefaults = restoredKeys.map { ($0, storedDefaults[$0]) }
         Task {
             func wait() async { try? await Task.sleep(for: .milliseconds(500)) }
             @MainActor func capture(_ window: NSWindow, name: String) -> Bool {
@@ -81,15 +101,21 @@ extension DevSelfTests {
             report("시작 직후 검색칸이 포커스를 가져가지 않음", !startGrabbed, startState)
             // 검색칸은 툴바가 아니라 머리 줄에 있다
             report("툴바에 검색 항목 없음", !toolbar.items.contains { $0 is NSSearchToolbarItem })
+            // 옛 항목(보기 전환·필터)을 지웠다. 사용자화로 저장된 구성이 옛 식별자를 들고 있어도 남은 항목만 보이고 빈 칸이 없어야 한다
+            let retired = Self.retiredToolbarItemIDs.filter { id in toolbar.items.contains { $0.itemIdentifier.rawValue == id } }
+            report("툴바에 옛 항목(viewMode·attributeFilter) 없음", retired.isEmpty, retired.joined(separator: ","))
             // 편집 › 찾기가 메뉴 막대의 ⌘F 전부다
-            NSApp.mainMenu?.update()
+            updateMenus()
             let finds = commandKeyMenuItems("f")
             let findLine = finds.map { "\($0.menu.title) › \($0.item.title)(\($0.item.isEnabled ? "켜짐" : "꺼짐"))" }.joined(separator: ", ")
             report("메뉴 막대의 ⌘F 항목 하나", finds.count == 1 && finds[0].item.title == "찾기", findLine)
-            if NSApp.isActive {
-                report("편집 › 찾기 메뉴 켜짐", finds.first?.item.isEnabled == true)
+            // SwiftUI 메뉴 상태(focusedSceneValue)는 앱이 활성이고 주 창이 키 창일 때만 온다. 그때는 켜짐을 판정한다.
+            // 다른 메뉴 항목이 켜졌는지로 대신 보면 메뉴 배선이 끊긴 회귀(모두 꺼짐)를 미검증으로 놓친다
+            if NSApp.isActive, window.isKeyWindow {
+                let addFiles = commandKeyMenuItems("o").first?.item.isEnabled == true
+                report("편집 › 찾기 메뉴 켜짐", finds.first?.item.isEnabled == true, "곡 추가(⌘O) \(addFiles ? "켜짐" : "꺼짐")")
             } else {
-                FileHandle.standardError.write(Data("[검색 배치 시험] 편집 › 찾기 메뉴 켜짐: 미검증(앱이 비활성이라 SwiftUI 메뉴 상태가 없음 · 다른 메뉴 항목도 같음)\n".utf8))
+                FileHandle.standardError.write(Data("[검색 배치 시험] 편집 › 찾기 메뉴 켜짐: 미검증(SwiftUI 메뉴 상태가 없음 · 앱 활성 \(NSApp.isActive ? "예" : "아니오") · 키 창 \(window.isKeyWindow ? "예" : "아니오"))\n".utf8))
             }
             report("찾기 켜짐 판정(주 창 모델)", LibraryMenuAction.find.isEnabled(in: libraryWindow))
             for width: CGFloat in [1155, 1200, 1440, 1800] {
@@ -118,7 +144,8 @@ extension DevSelfTests {
                 }.max() ?? 0
                 let focused = (window.firstResponder as? NSTextView)?.delegate === field
                 let visibleIDs = Set((toolbar.visibleItems ?? []).map { $0.itemIdentifier.rawValue })
-                let hiddenControls = ["viewMode", "addFiles", "tagEditor", "snapshot"].filter { !visibleIDs.contains($0) }
+                // 툴바에는 앱 단위 항목만 남는다(음량·곡 추가·태그 편집·rekordbox와 동기화). 보기 전환·필터는 머리 줄로 옮겼다(#339)
+                let hiddenControls = Self.toolbarItemIDs.filter { !visibleIDs.contains($0) }
                 let controlsVisible = hiddenControls.isEmpty
                 // 머리 줄 검색칸은 도구 막대 아래 본문 영역 안에 완전히 들어와야 한다
                 let content = window.contentView?.frame.size ?? .zero
@@ -143,10 +170,114 @@ extension DevSelfTests {
                 FileHandle.standardError.write(Data(line.utf8))
                 window.makeFirstResponder(nil)
             }
+            failures += await runHeaderScenes(window: window, toolbar: toolbar, store: store, capture: { capture($0, name: $1) }, report: { report($0, $1, $2) }, wait: wait)
             window.setContentSize(originalSize)
+            for (key, value) in savedDefaults {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
             FileHandle.standardError.write(Data("[검색 배치 시험] 끝: \(failures == 0 ? "통과" : "실패 \(failures)건")\n".utf8))
             exit(failures == 0 ? 0 : 1)
         }
+    }
+
+    /// 머리 줄(#339)의 필터 단추·칩·보기 전환이 창 폭과 글자 배율마다 겹치거나 잘리지 않는지 실제 창에서 본다.
+    /// 장면: 칩 0·1·2개, 태그 시트(ⓘ가 보인다), 인스펙터를 열고 글자를 키워 본문 폭이 모자랄 때(칩이 「필터 N」 하나로 줄어든다).
+    /// 바꾸는 설정(보기 모드·인스펙터·사이드바·글자 배율)은 처음 값으로 되돌린다. 모든 작업 폴더가 같은 UserDefaults 영역을 쓰기 때문이다.
+    /// 장면의 통과·실패는 `report`가 세고, 반환값은 캡처를 못 남긴 횟수다.
+    @MainActor
+    static func runHeaderScenes(window: NSWindow, toolbar: NSToolbar, store: LibraryStore,
+                                capture: (NSWindow, String) -> Bool, report: (String, Bool, String) -> Void,
+                                wait: () async -> Void) async -> Int {
+        struct Scene {
+            var name: String
+            var width: CGFloat
+            var rating = 0
+            var color: String?
+            var sheet = false
+            var inspector = false
+            var scale = 1.0
+            /// 곡 색 2의 이름을 긴 이름으로 바꿔 칩 폭을 키운다(rekordbox에서 이름을 바꿔 쓰는 경우). 본문이 모자라 칩이 하나로 줄어야 한다
+            var longColorName = false
+        }
+        let longColorName = "Deep house opener set"
+        var scenes: [Scene] = []
+        for width: CGFloat in [1155, 1200, 1440, 1800] {
+            scenes += [Scene(name: "none", width: width), Scene(name: "chip1", width: width, rating: 3),
+                       Scene(name: "chip2", width: width, rating: 3, color: "2"),
+                       Scene(name: "sheet-chip2", width: width, rating: 3, color: "2", sheet: true)]
+        }
+        scenes += [Scene(name: "inspector-big-chip2", width: 1155, rating: 3, color: "2", inspector: true, scale: 1.5),
+                   Scene(name: "inspector-big-sheet-chip2", width: 1155, rating: 3, color: "2", sheet: true, inspector: true, scale: 1.5),
+                   Scene(name: "inspector-longname-collapsed", width: 1155, rating: 3, color: "2", inspector: true, scale: 1.5, longColorName: true),
+                   Scene(name: "inspector-longname-sheet-collapsed", width: 1155, rating: 3, color: "2", sheet: true, inspector: true,
+                         scale: 1.5, longColorName: true)]
+        let keys = [SettingKeys.sheetMode.name, SettingKeys.showTagEditor.name, SettingKeys.sidebarVisible.name, SettingKeys.textScale.name]
+        let saved = keys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
+        let selection = store.sidebar
+        let colors = store.trackColors
+        store.sidebar = .filter(.all)
+        var failures = 0
+        for scene in scenes {
+            store.trackColors = scene.longColorName ? colors.map { $0.id == "2" ? TrackColor(id: "2", name: longColorName) : $0 } : colors
+            store.minimumRating = scene.rating
+            store.colorFilter = scene.color
+            UserDefaults.standard.set(scene.sheet, forKey: SettingKeys.sheetMode.name)
+            UserDefaults.standard.set(scene.inspector, forKey: SettingKeys.showTagEditor.name)
+            UserDefaults.standard.set(scene.scale, forKey: SettingKeys.textScale.name)
+            window.makeFirstResponder(nil)
+            window.setContentSize(NSSize(width: scene.width, height: 700))
+            await wait()
+            window.contentView?.layoutSubtreeIfNeeded()
+            await wait()
+            let frames = SelfTestFrames.frames
+            let content = window.contentView?.frame.size ?? .zero
+            // 칩 자리는 `ViewThatFits`가 고른 한 모양만 보인다. 줄어든 칩이 있으면 그것이 보이는 칩이고, 다 들어간 모양에서 줄어든 모양으로
+            // 바뀔 때 사라진 칩의 늦은 배치 알림이 남긴 자리는 버린다
+            let allChips = frames.filter { $0.key.hasPrefix("listHeader.chip.") }.sorted { $0.value.minX < $1.value.minX }
+            let expected = (scene.rating > 0 ? 1 : 0) + (scene.color != nil ? 1 : 0)
+            let collapsedKey = "listHeader.chip.\(String(ui: "필터 \(expected)"))"
+            let chips = allChips.contains { $0.key == collapsedKey } ? allChips.filter { $0.key == collapsedKey } : allChips
+            let isCollapsed = chips.count == 1 && chips[0].key == collapsedKey
+            let isFull = chips.count == expected && !chips.contains { $0.key == collapsedKey }
+            // 긴 곡 색 이름 장면은 칩이 하나로 줄어든 모양이어야 한다(줄어듦이 실제 창에서 일어나는지 본다)
+            let chipsOK = expected == 0 ? chips.isEmpty : scene.longColorName ? isCollapsed : (isCollapsed || isFull)
+            var parts: [(String, CGRect)] = []
+            for name in ["listHeader.search", "listHeader.filter"] { if let frame = frames[name] { parts.append((name, frame)) } }
+            parts += chips.map { ($0.key, $0.value) }
+            if let frame = frames["listHeader.info"] { parts.append(("listHeader.info", frame)) }
+            if let frame = frames["listHeader.viewMode"] { parts.append(("listHeader.viewMode", frame)) }
+            let required = frames["listHeader.search"] != nil && frames["listHeader.filter"] != nil && frames["listHeader.viewMode"] != nil
+            // 왼쪽에서 오른쪽으로 검색칸·필터·칩·ⓘ·전환 순서로 겹침 없이 놓이고 창 안에 들어온다
+            var ordered = required
+            for (previous, next) in zip(parts, parts.dropFirst()) where previous.1.maxX > next.1.minX + 0.5 { ordered = false }
+            let inside = parts.allSatisfy { $0.1.width > 0 && $0.1.minX >= -0.5 && $0.1.maxX <= content.width + 0.5 && $0.1.height <= ListHeaderBar.height + 0.5 }
+            let infoOK = (frames["listHeader.info"] != nil) == scene.sheet
+            let visibleIDs = Set((toolbar.visibleItems ?? []).map { $0.itemIdentifier.rawValue })
+            let hidden = toolbarItemIDs.filter { !visibleIDs.contains($0) }
+            let passed = required && ordered && inside && chipsOK && infoOK && hidden.isEmpty
+            let mode = expected == 0 ? "칩 없음" : isCollapsed ? "하나로 줄임(\(chips[0].key.dropFirst("listHeader.chip.".count)))" : isFull ? "칩 \(chips.count)개" : "알 수 없음(\(chips.count)개)"
+            let line = parts.map { "\($0.0.dropFirst("listHeader.".count)) \(Int($0.1.minX))–\(Int($0.1.maxX))" }.joined(separator: " · ")
+            report("머리 줄 \(scene.name) 창 \(Int(scene.width))", passed,
+                   "실제 \(Int(content.width)) · \(mode) · 순서·겹침 \(ordered ? "맞음" : "어긋남") · 창 안 \(inside ? "맞음" : "어긋남") · ⓘ \(infoOK ? "맞음" : "어긋남") · 툴바 \(hidden.isEmpty ? "모두 보임" : "접힘 \(hidden.joined(separator: ","))") · \(line)")
+            if !capture(window, "header-\(Int(scene.width))-\(scene.name)") { failures += 1 }
+        }
+        // 필터 칩 하나를 눌러 끄는 길: 칩 값이 같은 입구로 그 조건만 끈다(눌러 보기는 사람이 한다)
+        store.minimumRating = 0
+        store.colorFilter = nil
+        store.trackColors = colors
+        store.sidebar = selection
+        // 인스펙터를 먼저 닫고 가라앉힌 뒤 사이드바를 되돌린다. 인스펙터가 열린 채 사이드바를 열면 폭이 모자라 다시 접히면서 접힌 값이 남는다
+        func restore(_ names: [String]) {
+            for (key, value) in saved where names.contains(key) {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
+        }
+        restore([SettingKeys.sheetMode.name, SettingKeys.showTagEditor.name, SettingKeys.textScale.name])
+        await wait()
+        await wait()
+        restore([SettingKeys.sidebarVisible.name])
+        await wait()
+        return failures
     }
 }
 #endif

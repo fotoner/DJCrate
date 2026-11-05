@@ -17,7 +17,6 @@ struct ContentView: View {
     /// 저장된 창 프레임을 적용했는지. 그 전의 기본 크기 폭으로는 사이드바를 접지 않는다(#119).
     var windowFrameRestored = true
     @AppStorage(SettingKeys.showTagEditor.name) private var showTagEditor = SettingKeys.showTagEditor.defaultValue
-    @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
     /// 이름에 점이 들어 `@AppStorage`로 두면 창 프레임 자동 저장 같은 다른 설정이 바뀔 때마다 본문을 다시 계산한다(#138).
     @State private var sidebarVisible = ObservedSetting(SettingKeys.sidebarVisible)
     /// 인스펙터 내용을 그릴지. 닫혀 있어도 SwiftUI가 내용을 계속 계산해, 곡을 고를 때마다 입력 칸을 새로 만들고
@@ -181,23 +180,6 @@ struct ContentView: View {
                 VolumeControl(deck: deck)
                     .disabled(store.editsFrozen)
             }
-            ToolbarItem(id: "viewMode", placement: .principal) {
-                Picker(.ui("보기"), selection: $sheetMode) {
-                    Label(.ui("목록"), systemImage: "list.bullet").tag(false)
-                        .help(.ui("곡 목록을 봅니다(⌘1)."))
-                    Label(.ui("태그 시트"), systemImage: "tablecells").tag(true)
-                        .help(.ui("태그를 표에서 편집합니다(⌘2)."))
-                }
-                .pickerStyle(.segmented)
-                .disabled(store.editsFrozen || store.sidebar == .duplicates || store.isUsbSelection)
-                .help(store.editsFrozen ? String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요")
-                      : store.isUsbSelection ? String(ui: "USB 곡은 읽기 전용이니 로컬 라이브러리에서 태그를 편집하세요")
-                      : store.sidebar == .duplicates ? String(ui: "중복 후보에서는 태그 시트를 열 수 없으니 전체 목록에서 곡을 고르세요")
-                      : String(ui: "태그 시트에서 태그 칸을 고르고 입력하세요"))
-            }
-            ToolbarItem(id: "attributeFilter") {
-                AttributeFilterMenu(store: store)
-            }
             ToolbarItem(id: "addFiles") {
                 Button {
                     StagingPanels.chooseFiles(store: store)
@@ -205,7 +187,7 @@ struct ContentView: View {
                     Label(.ui("곡 추가"), systemImage: "plus")
                 }
                 .disabled(!LibraryMenuAction.addFiles.isEnabled(in: window))
-                .help(.ui("음원 파일·폴더를 추가합니다. 창에 끌어다 놓아도 됩니다."))
+                .help(LibraryMenuAction.addFiles.disabledReason(in: window) ?? String(ui: "곡 추가 (⌘O)"))
             }
             ToolbarItem(id: "tagEditor") {
                 Button {
@@ -213,7 +195,7 @@ struct ContentView: View {
                 } label: {
                     Label(.ui("태그 편집"), systemImage: "tag")
                 }
-                .help(.ui("선택한 곡의 태그를 편집합니다 (⌘I). 여러 곡을 한꺼번에 편집할 수 있습니다."))
+                .help(store.editsFrozen ? String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") : String(ui: "태그 편집 (⌘I)"))
                 .disabled(store.editsFrozen)
             }
             ToolbarItem(id: "snapshot") {
@@ -226,14 +208,16 @@ struct ContentView: View {
                 // 아이콘만 보이면 USB·iTunes 다시 확인의 ⟳와 구분되지 않는다
                 .labelStyle(.titleAndIcon)
                 .disabled(!LibraryMenuAction.snapshot.isEnabled(in: window))
-                .help(LibraryMenuAction.snapshot.disabledReason(in: window) ?? String(ui: "rekordbox 내용을 새로 읽고 편집 중인 초안을 보존합니다(⌘R)."))
+                // 라벨이 보이는 단추라 막힐 때의 이유만 알린다(STR-19)
+                .help(LibraryMenuAction.snapshot.disabledReason(in: window) ?? "")
             }
     }
 
     private func setUp() {
         app.connect()
         if ProcessInfo.processInfo.arguments.contains("--inspector") { showTagEditor = true }
-        if ProcessInfo.processInfo.arguments.contains("--sheet") { sheetMode = true }
+        // 보기 모드는 머리 줄·본문 잎이 읽는다. 여기서 읽으면 보기를 바꿀 때마다 이 본문이 다시 계산되므로 값만 쓴다
+        if ProcessInfo.processInfo.arguments.contains("--sheet") { UserDefaults.standard.set(true, forKey: SettingKeys.sheetMode.name) }
     }
 }
 
@@ -262,7 +246,7 @@ struct EmptyLibraryOverlay: View {
     }
 
     private func noResults(_ guide: NoResultsGuide) -> some View {
-        NoResultsView(guide: guide, clearSearch: { store.search = "" }, clearFilter: { store.minimumRating = 0; store.colorFilter = nil })
+        NoResultsView(guide: guide, clearSearch: { store.search = "" }, clearFilter: { store.clearAttributeFilters() })
     }
 
     @ViewBuilder private var message: some View {
@@ -325,29 +309,6 @@ struct EmptyLibraryOverlay: View {
                 Text(.ui("다른 목록을 선택하거나 rekordbox와 동기화로 라이브러리를 다시 읽어 보세요."))
             }
         }
-    }
-}
-
-/// 태그 시트 위 안내 줄.
-struct SheetHeader: View {
-    @Environment(\.textScale) private var textScale
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Text(.ui("더블클릭·Return·타이핑: 편집  ·  ⌘→: 덱에 불러오기  ·  ⌃Tab: 표 밖으로  ·  ⌘C/⌘V: 엑셀·시트와 복사·붙여넣기  ·  ⌘D: 아래로 채우기  ·  Delete: 지우기  ·  ⌘Z/⇧⌘Z: 실행 취소·실행 복귀"))
-                .font(.scaled(.caption, textScale)).foregroundStyle(.secondary).lineLimit(1)
-            Spacer()
-            // 색이 아니라 칸의 모양(왼쪽 위 모서리 삼각형)으로 알린다.
-            Label { Text(.ui("= 초안(파일·rekordbox에 쓰기 전)")) } icon: { DraftCornerSwatch() }
-                .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
-                .help(.ui("왼쪽 위 삼각형은 초안입니다. 아직 음원 파일과 rekordbox에 쓰지 않았습니다."))
-                .accessibilityElement(children: .ignore)
-                .accessibilityAddTraits(.isStaticText)
-                .accessibilityLabel(.ui("왼쪽 위 모서리 삼각형이 붙은 칸은 초안(파일·rekordbox에 쓰기 전)"))
-        }
-        .controlSize(.small)
-        .padding(.horizontal, Spacing.edge)
-        .padding(.vertical, 6)
     }
 }
 

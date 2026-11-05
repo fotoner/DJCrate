@@ -24,7 +24,8 @@ struct ShortcutsList: View {
             Text(.ui("단축키")).font(.scaled(.title2, scale).bold())
             Grid(alignment: .leading, horizontalSpacing: 18 * scale, verticalSpacing: 9 * scale) {
                 if shortcuts.isStandard { standardRows } else { customRows }
-                row([String(ui: "더블클릭"), "/", "⌘", "→"], String(ui: "곡 목록·태그 시트: 고른 곡 덱에 불러오기 (덱으로 끌어다 놓아도 됨)"))
+                row([String(ui: "더블클릭")], String(ui: "곡 목록: 고른 곡 덱에 불러오기 (덱으로 끌어다 놓아도 됨)"))
+                row(["⌘", "→"], String(ui: "곡 목록·태그 시트: 고른 곡 덱에 불러오기"))
                 row(["Return"], String(ui: "곡 목록: 고른 곡의 태그 칸 고치기 (고른 줄의 칸을 한 번 더 눌러도 됨, 키 칸은 누른 뒤 Return·더블클릭으로 메뉴)"))
                 row(["⇧", "⌘", "E"], String(ui: "rekordbox에 쓰기"))
                 row(["⌘", "I"], String(ui: "태그 편집"))
@@ -36,6 +37,7 @@ struct ShortcutsList: View {
                 row(["⌥", "⌘", "P"], String(ui: "재생 목록에 넣기…"))
                 row(["⌫"], String(ui: "재생 목록을 볼 때: 이 목록에서 빼기"))
                 row(["⌘", "1", "/", "2"], String(ui: "목록 · 태그 시트"))
+                ForEach(Array(Self.tagSheetEntries.enumerated()), id: \.offset) { _, entry in row(entry.keys, entry.text) }
                 // '+'는 구분 기호로 쓰여서 이 줄은 키캡을 직접 놓는다.
                 GridRow {
                     HStack(spacing: 4 * scale) { keycap("⌘"); keycap("+"); separator("/"); keycap("⌘"); keycap("−") }
@@ -56,6 +58,18 @@ struct ShortcutsList: View {
         var text: String
         var actions: [DeckAction] = []
         var shiftActions: [DeckAction] = []
+    }
+
+    /// 태그 시트 줄(#339). 태그 시트 위 안내 줄에 늘어놓았던 키다. 태그 시트에서 더블클릭·Return·타이핑은 칸 편집이다
+    /// (덱에 불러오기는 ⌘→이고 위 줄이 안내한다). 실행 취소·실행 복귀는 편집 메뉴가 안내한다
+    static var tagSheetEntries: [Entry] {
+        [
+            Entry(keys: [String(ui: "더블클릭"), "/", "Return", "/", String(ui: "타이핑")], text: String(ui: "태그 시트: 고른 칸 편집 시작 (키·평점·곡 색 칸은 고르기 메뉴)")),
+            Entry(keys: ["⌘", "D"], text: String(ui: "태그 시트: 고른 칸을 맨 윗줄 값으로 아래까지 채우기")),
+            Entry(keys: ["⌃", "Tab"], text: String(ui: "태그 시트: 표 밖으로 포커스 옮기기")),
+            Entry(keys: ["⌘", "C", "/", "⌘", "V"], text: String(ui: "태그 시트: 엑셀·시트와 복사·붙여넣기")),
+            Entry(keys: ["⌫"], text: String(ui: "태그 시트: 고른 칸 지우기")),
+        ]
     }
 
     static var standardEntries: [Entry] {
