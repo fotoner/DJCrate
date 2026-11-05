@@ -114,6 +114,28 @@ struct ListHeaderActionsTests {
         withExtendedLifetime(fixture) {}
     }
 
+    @Test func 쓰기_대기에_보이지_않는_곡의_선택만_남았으면_고른_곡이_없는_것으로_본다() async throws {
+        // 다른 목록에서 고른 곡이나 방금 쓴 곡의 선택이 남아도 「고른 0곡 쓰기」로 막히지 않는다(#340 QA F340-1)
+        let fixture = try HideStreamingTests.fixture()
+        let store = await HideStreamingTests.makeStore(fixture)
+        let model = ListActionBarModel(store: store)
+        let drafted = try #require(store.rows.first(where: { $0.track.id == "1" }))
+        let other = try #require(store.rows.first(where: { $0.track.id == "3" }))
+        let elsewhere = try #require(store.rows.first(where: { $0.id != drafted.id && $0.id != other.id }))
+        for row in [drafted, other] {
+            var draft = TagDraft(track: row.track)
+            draft.fields.comment = "시험 편집"
+            store.tagDrafts[row.track.uuid] = draft
+        }
+        store.selection = [elsewhere.id]
+        store.sidebar = .pending
+        #expect(!store.displayRows.contains { $0.id == elsewhere.id })
+        #expect(model.actions.primary?.title == "전체 2곡 쓰기")
+        #expect(model.actions.primary?.isEnabled == true)
+        #expect(Set(model.pendingTargets.map(\.id)) == [drafted.id, other.id])
+        withExtendedLifetime(fixture) {}
+    }
+
     @Test func 검색이나_필터로_좁힌_쓰기_대기는_고른_곡이_없으면_보이는_N곡이다() {
         // 고른 곡이 없으면 단추는 보이는 곡만 쓴다(메뉴·상태 줄의 쓰기는 쓰기 대기 전체). 좁혔을 때 「전체」라고 하지 않는다
         #expect(Actions.writeTitle(selected: false, narrowed: true, tracks: 4, playlistEdits: 0, histories: 0) == "보이는 4곡 쓰기")

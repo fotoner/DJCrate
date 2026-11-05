@@ -58,8 +58,11 @@ final class ListActionBarModel {
 
     // MARK: - rekordbox 쓰기 대기
 
-    /// 쓸 곡: 고른 곡(없으면 목록 전체)
-    var pendingTargets: [TrackRow] { store.selection.isEmpty ? store.displayRows : store.selectedRows }
+    /// 쓸 곡: 고른 곡(없으면 목록 전체). 보이지 않는 곡의 선택(다른 목록에서 고른 곡, 방금 쓴 곡)은 고른 것으로 치지 않는다
+    var pendingTargets: [TrackRow] {
+        let selected = store.selectedRows
+        return selected.isEmpty ? store.displayRows : selected
+    }
     var pendingPlaylistEdits: Int { store.playlists.playlistDraft.steps.count }
     /// 쓰기 대기에 오른 재생 기록(USB 기기 기록 #43, LINK 기록)
     var pendingHistories: [ArchivedHistory] { store.history.pendingHistories }
@@ -145,7 +148,7 @@ final class ListActionBarModel {
                            canExportXML: canExportStaged, importedCount: importedStagedCount, locks: locks)
         case .pending:
             // 검색·필터로 목록을 좁혔는지(보이는 곡이 그 목록의 곡보다 적다)
-            return .pending(selected: !store.selection.isEmpty, narrowed: store.displayRows.count < store.sortedBase.count,
+            return .pending(selected: !store.selectedRows.isEmpty, narrowed: store.displayRows.count < store.sortedBase.count,
                             tracks: pendingTargets.count, playlistEdits: pendingPlaylistEdits,
                             histories: pendingHistories.map { .init(id: $0.id, name: displayName($0)) },
                             unlinkedDrafts: store.unlinkedDraftUUIDs.count,
