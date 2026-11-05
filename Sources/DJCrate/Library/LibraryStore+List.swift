@@ -136,6 +136,48 @@ extension LibraryStore {
     /// USB 쓰기 대기는 곡 줄이 아니라 그 볼륨의 쓰기 대기 표라 검색이 걸리지 않는다
     var listIsSearchable: Bool { if case .usb(.pending) = sidebar { false } else { true } }
 
+    /// 평점·곡 색 필터가 거를 곡 줄이 있는 화면인지(#339). 머리 줄 필터 단추·칩과 같은 판정을 쓴다.
+    /// 중복 후보는 묶음째 보여 주고(`refreshFiltered`), USB 쓰기 대기는 곡 줄이 아니라 볼륨의 쓰기 대기 표라 필터가 걸리지 않는다
+    var listIsFilterable: Bool {
+        switch sidebar {
+        case .duplicates, .usb(.pending): false
+        default: true
+        }
+    }
+
+    /// 켜진 조건의 칩(머리 줄)
+    var attributeFilterChips: AttributeFilterChips {
+        AttributeFilterChips(minimumRating: minimumRating, colorFilter: colorFilter, colors: trackColors)
+    }
+
+    /// 칩 하나를 끈다: 그 조건만 꺼지고 다른 조건과 검색은 그대로다.
+    /// 칩을 누른 사이 다른 곳에서 값이 바뀌었으면(지금 켜진 조건이 칩의 조건과 다르면) 건드리지 않는다
+    func clearAttributeFilter(_ condition: AttributeFilterChip.Condition) {
+        switch condition {
+        case let .rating(count): if min(minimumRating, 5) == count { minimumRating = 0 }
+        case let .color(id): if colorFilter == id { colorFilter = nil }
+        }
+    }
+
+    /// 켜진 조건을 모두 끈다(검색은 그대로). 필터 메뉴의 「끄기」·결과 없음 안내의 [필터 끄기]·줄인 칩이 함께 쓴다
+    func clearAttributeFilters() {
+        minimumRating = 0
+        colorFilter = nil
+    }
+
+    /// 태그 시트로 보이는 화면인지(#339). 태그 시트는 편집 화면이라 중복 후보·USB(읽기 전용) 목록에서는 곡 목록으로 보인다.
+    /// 목록 본문(`LibraryDetail`)과 머리 줄의 ⓘ(초안 범례)가 같은 판정을 쓴다
+    func showsTagSheet(sheetMode: Bool) -> Bool { sheetMode && sidebar != .duplicates && !isUsbSelection }
+
+    /// 목록 | 태그 시트 전환을 막는 이유(막히지 않았으면 nil). 조건과 문구는 툴바에 있던 보기 전환 그대로다(#339).
+    /// 메뉴 보기 › 목록·태그 시트(⌘1·⌘2)는 이 판정이 아니라 쓰는 동안 잠금(`editsFrozen`)만 본다
+    var viewModeBlockReason: String? {
+        if editsFrozen { return String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") }
+        if isUsbSelection { return String(ui: "USB 곡은 읽기 전용이니 로컬 라이브러리에서 태그를 편집하세요") }
+        if sidebar == .duplicates { return String(ui: "중복 후보에서는 태그 시트를 열 수 없으니 전체 목록에서 곡을 고르세요") }
+        return nil
+    }
+
     var sidebarTitle: String {
         switch sidebar {
         case let .filter(filter): filter.title

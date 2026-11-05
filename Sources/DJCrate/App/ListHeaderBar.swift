@@ -2,10 +2,12 @@ import AppKit
 import DJCDomain
 import SwiftUI
 
-/// 곡 목록·태그 시트·중복 후보 바로 위 머리 줄(#338). 늘 한 줄이다.
-/// 왼쪽 끝은 검색칸, 오른쪽은 다음 이슈(필터·보기 전환·작업)가 채울 자리다.
-/// 지금의 작업 줄·연결되지 않은 초안 줄·태그 시트 안내 줄은 이 줄 아래에 그대로 둔다.
-/// 검색어와 포커스 요청은 안쪽 잎(`ListSearchField`)만 읽는다: 글자를 칠 때 `ContentView`·`LibraryDetail` 본문을 다시 계산하지 않는다.
+/// 곡 목록·태그 시트·중복 후보 바로 위 머리 줄(#338·#339). 늘 한 줄이다.
+/// 왼쪽은 검색칸 · 필터 단추 · 켜진 필터 칩, 오른쪽 끝은 목록 | 태그 시트 전환(태그 시트일 때는 ⓘ 초안 범례)이다. 작업 줄은 다음 이슈(#340)가 채운다.
+/// 지금의 작업 줄·연결되지 않은 초안 줄은 이 줄 아래에 그대로 둔다.
+/// 검색어·필터·보기 모드는 안쪽 잎(`ListSearchField`·`AttributeFilterMenu`·`ListFilterChips`·`ListViewModeControls`)만 읽는다:
+/// 글자를 치거나 필터를 바꿀 때 `ContentView`·`LibraryDetail`·이 줄 본문을 다시 계산하지 않는다.
+/// 이 본문이 읽는 것은 사이드바 대상뿐이다(검색칸·필터 단추가 걸리는 화면인지).
 struct ListHeaderBar: View {
     /// 줄 높이. 덱·파형 높이 계산이 이 줄을 목록 위 높이로 센다(`LibraryLayoutMetrics`)
     static let height: CGFloat = 34
@@ -16,9 +18,16 @@ struct ListHeaderBar: View {
     var body: some View {
         let _ = PerfProbe.body(Self.self)
         HStack(spacing: 10) {
-            // 검색이 걸리지 않는 화면(USB 쓰기 대기)에는 칸을 두지 않는다. 줄 높이는 그대로다
-            if store.listIsSearchable { ListSearchField(store: store, window: window) }
-            Spacer(minLength: 0)
+            // 검색·필터가 걸리지 않는 화면(USB 쓰기 대기·중복 후보)에는 칸·단추를 두지 않는다. 줄 높이는 그대로다
+            // 검색칸이 먼저 폭을 받고(폭이 모자라면 칩이 하나로 줄어든다), 칩 자리가 남는 폭을 받아 전환을 오른쪽 끝으로 민다
+            if store.listIsSearchable { ListSearchField(store: store, window: window).layoutPriority(1) }
+            if store.listIsFilterable {
+                AttributeFilterMenu(store: store)
+                ListFilterChips(store: store)
+            } else {
+                Spacer(minLength: 0)
+            }
+            ListViewModeControls(store: store)
         }
         .padding(.horizontal, Spacing.edge)
         .frame(height: Self.height)
@@ -40,6 +49,7 @@ struct ListSearchField: View {
         SearchFieldRepresentable(text: store.search, focusRequest: window.searchFocusRequest,
                                  prompt: String(ui: "제목·아티스트·코멘트"), isEnabled: isEnabled) { store.search = $0 }
             .frame(minWidth: 160, idealWidth: Self.width, maxWidth: Self.width)
+            .selfTestFrame("listHeader.search")
     }
 }
 

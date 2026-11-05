@@ -25,7 +25,7 @@ struct LibraryDetail: View {
     @State private var fileDropHighlight = DropHighlight()
 
     /// 태그 시트는 편집 화면이라 중복 후보·USB(읽기 전용) 목록에서는 곡 목록으로 보인다.
-    private var showsSheet: Bool { sheetMode && store.sidebar != .duplicates && !store.isUsbSelection }
+    private var showsSheet: Bool { store.showsTagSheet(sheetMode: sheetMode) }
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
@@ -37,14 +37,13 @@ struct LibraryDetail: View {
             LibraryDeckViewport(library: store, tags: store.tags, deck: deck, layout: layout, widthClass: widthClass)
             LibrarySplitHandle(layout: layout, height: $waveformHeight)
             VStack(spacing: 0) {
-                // 목록 바로 위의 늘 한 줄인 머리 줄(검색칸, #338). 높이는 아래 작업 줄 등과 함께 재어 덱 높이 계산에 넣는다
+                // 목록 바로 위의 늘 한 줄인 머리 줄(검색칸·필터·보기 전환, #338·#339). 높이는 아래 작업 줄 등과 함께 재어 덱 높이 계산에 넣는다
                 ListHeaderBar(store: store, window: window)
                 ListActionBar(model: listActionBar)
                 // 연결되지 않은 초안은 사건이 아니라 쓰기 대기 목록의 상태라 알림 대신 그 목록 머리에 둔다
                 if store.sidebar == .pending, !store.unlinkedDraftUUIDs.isEmpty {
                     UnlinkedDraftsBar(store: store, window: window)
                 }
-                if showsSheet { SheetHeader() }
             }
             .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureListHeader($0) }
             Group {

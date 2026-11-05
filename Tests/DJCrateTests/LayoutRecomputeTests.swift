@@ -317,6 +317,51 @@ struct LayoutRecomputeTests {
         #expect(field.stringValue.isEmpty)
     }
 
+    /// 머리 줄 필터(#339): 필터를 바꿔도 주 창 본문(`ContentView`·`LibraryDetail`)과 머리 줄은 다시 계산하지 않는다.
+    /// 필터 값을 읽는 곳은 필터 단추(`AttributeFilterMenu`)와 칩(`ListFilterChips`) 잎뿐이다. 칩을 눌러 끄는 길도 같다.
+    @Test func 필터를_바꿔도_주_창_본문은_다시_계산하지_않고_필터_잎만_다시_계산한다() async throws {
+        PerfProbe.countsBodies = true
+        defer { PerfProbe.countsBodies = false }
+        var capturedStore: LibraryStore?
+        let (window, _, close) = try await mainWindow(prepareStore: { capturedStore = $0 })
+        defer { close() }
+        let store = try #require(capturedStore)
+        for _ in 0..<20 {
+            PerfProbe.resetBodyCounts()
+            try await settle(window)
+            if PerfProbe.bodySnapshot().isEmpty { break }
+        }
+        PerfProbe.resetBodyCounts()
+        // 평점만 → 곡 색도 → 평점 끔 → 평점 다시 → 모두 끔. 아무 곡도 걸리지 않는 조합도 거친다(결과 없음 안내가 뜬다)
+        let steps: [(rating: Int, color: String?)] = [(3, nil), (3, "2"), (0, "2"), (5, "2"), (0, nil)]
+        for step in steps {
+            store.minimumRating = step.rating
+            store.colorFilter = step.color
+            try await settle(window)
+        }
+        print("TRACE 필터 \(steps.count)번:", PerfProbe.bodySummary() ?? "-")
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderBar") == 0)
+        #expect(PerfProbe.bodyCount("ListFilterChips") >= steps.count)
+
+        // 칩을 눌러 끄는 길(그 조건만, 모두)도 같은 잎만 다시 계산한다
+        store.minimumRating = 4
+        store.colorFilter = "6"
+        try await settle(window)
+        PerfProbe.resetBodyCounts()
+        store.clearAttributeFilter(.rating(4))
+        try await settle(window)
+        #expect(store.minimumRating == 0 && store.colorFilter == "6")
+        store.clearAttributeFilters()
+        try await settle(window)
+        #expect(!store.isAttributeFiltered)
+        #expect(PerfProbe.bodyCount("ContentView") == 0)
+        #expect(PerfProbe.bodyCount("LibraryDetail") == 0)
+        #expect(PerfProbe.bodyCount("ListHeaderBar") == 0)
+        #expect(PerfProbe.bodyCount("ListFilterChips") >= 2)
+    }
+
     @Test func 창_폭을_조금씩_바꿔도_주_창_본문은_거의_다시_계산되지_않는다() async throws {
         let (window, _, close) = try await mainWindow()
         defer { close() }
