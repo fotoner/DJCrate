@@ -3,10 +3,10 @@ import DJCDomain
 import SwiftUI
 
 /// 곡 목록·태그 시트·중복 후보 바로 위 머리 줄(#338·#339). 늘 한 줄이다.
-/// 왼쪽은 검색칸 · 필터 단추 · 켜진 필터 칩, 오른쪽 끝은 목록 | 태그 시트 전환(태그 시트일 때는 ⓘ 초안 범례)이다. 작업 줄은 다음 이슈(#340)가 채운다.
-/// 지금의 작업 줄·연결되지 않은 초안 줄은 이 줄 아래에 그대로 둔다.
-/// 검색어·필터·보기 모드는 안쪽 잎(`ListSearchField`·`AttributeFilterMenu`·`ListFilterChips`·`ListViewModeControls`)만 읽는다:
-/// 글자를 치거나 필터를 바꿀 때 `ContentView`·`LibraryDetail`·이 줄 본문을 다시 계산하지 않는다.
+/// 왼쪽은 검색칸 · 필터 단추 · 켜진 필터 칩, 오른쪽은 그 목록의 상태 표시 · 주 단추 · `…` 메뉴(#340)와
+/// 맨 끝 목록 | 태그 시트 전환(태그 시트일 때는 ⓘ 초안 범례)이다. 목록 위에 두 번째 줄은 없다.
+/// 검색어·필터·보기 모드·오른쪽 구성은 안쪽 잎(`ListSearchField`·`AttributeFilterMenu`·`ListFilterChips`·`ListHeaderActionsView`·
+/// `ListViewModeControls`)만 읽는다: 글자를 치거나 필터를 바꾸거나 곡을 고를 때 `ContentView`·`LibraryDetail`·이 줄 본문을 다시 계산하지 않는다.
 /// 이 본문이 읽는 것은 사이드바 대상뿐이다(검색칸·필터 단추가 걸리는 화면인지).
 struct ListHeaderBar: View {
     /// 줄 높이. 덱·파형 높이 계산이 이 줄을 목록 위 높이로 센다(`LibraryLayoutMetrics`)
@@ -14,20 +14,21 @@ struct ListHeaderBar: View {
 
     let store: LibraryStore
     let window: LibraryWindowModel
+    /// 오른쪽 구성의 화면 모델(조립 지점이 한 번 만든다). 이 본문은 읽지 않고 잎에 넘긴다
+    let actions: ListActionBarModel
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
-        HStack(spacing: 10) {
+        // 자리 배치와 폭이 모자랄 때 줄이는 차례는 `ListHeaderLayout`이 정한다
+        ListHeaderLayout {
             // 검색·필터가 걸리지 않는 화면(USB 쓰기 대기·중복 후보)에는 칸·단추를 두지 않는다. 줄 높이는 그대로다
-            // 검색칸이 먼저 폭을 받고(폭이 모자라면 칩이 하나로 줄어든다), 칩 자리가 남는 폭을 받아 전환을 오른쪽 끝으로 민다
-            if store.listIsSearchable { ListSearchField(store: store, window: window).layoutPriority(1) }
+            if store.listIsSearchable { ListSearchField(store: store, window: window).modifier(ListHeaderLayout.role(.search)) }
             if store.listIsFilterable {
-                AttributeFilterMenu(store: store)
-                ListFilterChips(store: store)
-            } else {
-                Spacer(minLength: 0)
+                AttributeFilterMenu(store: store).modifier(ListHeaderLayout.role(.filter))
+                ListFilterChips(store: store).modifier(ListHeaderLayout.role(.chips))
             }
-            ListViewModeControls(store: store)
+            ListHeaderActionsView(model: actions, window: window)
+            ListViewModeControls(store: store).modifier(ListHeaderLayout.role(.mode))
         }
         .padding(.horizontal, Spacing.edge)
         .frame(height: Self.height)
@@ -38,7 +39,10 @@ struct ListHeaderBar: View {
 /// 검색어·표시 줄 변화에 걸려 다시 계산됐다(변경 추적으로 확인). 그래서 부모는 저장소와 화면 모델만 넘기고 읽지 않는다.
 /// 검색 범위(제목·아티스트·코멘트)와 키 동작(Esc는 지우고 목록으로, Return은 목록으로, 한글 조합)은 툴바 검색칸 때와 같다.
 struct ListSearchField: View {
+    /// 넉넉할 때의 폭, 폭이 모자랄 때 줄이는 폭, 마지막 수단의 폭(`ListHeaderLayout`이 이 차례로 줄인다)
     static let width: CGFloat = 240
+    static let narrowWidth: CGFloat = 160
+    static let minimumWidth: CGFloat = 120
 
     @Environment(\.isEnabled) private var isEnabled
     let store: LibraryStore
@@ -48,7 +52,7 @@ struct ListSearchField: View {
         let _ = PerfProbe.body(Self.self)
         SearchFieldRepresentable(text: store.search, focusRequest: window.searchFocusRequest,
                                  prompt: String(ui: "제목·아티스트·코멘트"), isEnabled: isEnabled) { store.search = $0 }
-            .frame(minWidth: 160, idealWidth: Self.width, maxWidth: Self.width)
+            .frame(minWidth: Self.minimumWidth, idealWidth: Self.width, maxWidth: Self.width)
             .selfTestFrame("listHeader.search")
     }
 }

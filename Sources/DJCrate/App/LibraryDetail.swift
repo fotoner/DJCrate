@@ -13,7 +13,7 @@ struct LibraryDetail: View {
     var windowFrameRestored: Bool
     /// 폭이 모자라면 탐색 열을 접는다. 값은 읽지 않고 쓰기만 한다(읽으면 이 뷰가 사이드바를 여닫을 때마다 다시 계산된다).
     let sidebarVisible: ObservedSetting<Bool>
-    /// 목록 위 작업 막대의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 막대에 넘긴다
+    /// 머리 줄 오른쪽 구성(주 단추·`…` 메뉴·상태 표시)의 화면 모델(조립 지점이 한 번 만든다). 본문은 읽지 않고 머리 줄에 넘긴다
     let listActionBar: ListActionBarModel
     /// 주 창 화면 모델(머리 줄 검색칸 포커스 요청·연결되지 않은 초안 시트·파일 끌어 놓기). 본문은 읽지 않고 넘긴다
     let window: LibraryWindowModel
@@ -36,16 +36,10 @@ struct LibraryDetail: View {
             // 파형은 본문 높이가 바뀔 때만 맞추고, 덱 내용이 늘면 덱만 스크롤한다(PR #151).
             LibraryDeckViewport(library: store, tags: store.tags, deck: deck, layout: layout, widthClass: widthClass)
             LibrarySplitHandle(layout: layout, height: $waveformHeight)
-            VStack(spacing: 0) {
-                // 목록 바로 위의 늘 한 줄인 머리 줄(검색칸·필터·보기 전환, #338·#339). 높이는 아래 작업 줄 등과 함께 재어 덱 높이 계산에 넣는다
-                ListHeaderBar(store: store, window: window)
-                ListActionBar(model: listActionBar)
-                // 연결되지 않은 초안은 사건이 아니라 쓰기 대기 목록의 상태라 알림 대신 그 목록 머리에 둔다
-                if store.sidebar == .pending, !store.unlinkedDraftUUIDs.isEmpty {
-                    UnlinkedDraftsBar(store: store, window: window)
-                }
-            }
-            .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureListHeader($0) }
+            // 목록 바로 위의 늘 한 줄인 머리 줄(검색칸·필터·목록 상태와 주 단추·보기 전환, #338~#340). 목록마다 다른 두 번째 줄은 없다.
+            // 높이를 재어 덱 높이 계산에 넣는다
+            ListHeaderBar(store: store, window: window, actions: listActionBar)
+                .onGeometryChange(for: Double.self) { $0.size.height } action: { layout.measureListHeader($0) }
             Group {
                 if store.sidebar == .duplicates {
                     DuplicateTracksView(store: store)

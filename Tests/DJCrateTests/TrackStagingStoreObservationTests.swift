@@ -6,8 +6,8 @@ import SwiftUI
 import Synchronization
 import Testing
 
-/// 추가 목록 조각(`TrackStagingStore`, #252)과 목록 아래 막대의 관찰 범위. 핵심(`LibraryStore`)은 조각을 관찰하지 않는다.
-/// 사이드바 줄은 각자 읽는 값에만 다시 계산하고(#141), 막대는 그 사이드바 항목일 때만 추가 목록·파일 확인 값을 읽는다.
+/// 추가 목록 조각(`TrackStagingStore`, #252)과 머리 줄 오른쪽 구성(`ListHeaderActionsView`, #340)의 관찰 범위. 핵심(`LibraryStore`)은 조각을 관찰하지 않는다.
+/// 사이드바 줄은 각자 읽는 값에만 다시 계산하고(#141), 오른쪽 구성은 그 사이드바 항목일 때만 추가 목록·파일 확인 값을 읽는다.
 /// 진행 줄을 넣고 빼는 값(`hasGridJob`·`hasXMLExportJob`)은 시작·끝에만 바뀌고, 같은 BPM은 다시 저장하지 않는다(R4). DB는 열지 않는다.
 @MainActor
 @Suite("추가 목록 조각 — 관찰 범위")
@@ -120,14 +120,14 @@ struct TrackStagingStoreObservationTests {
         await adding?.value
     }
 
-    // MARK: - 목록 아래 막대
+    // MARK: - 머리 줄 오른쪽 구성(#340)
 
     private func bar(_ store: LibraryStore) -> () -> Void {
         let model = ListActionBarModel(store: store)
-        return { _ = ListActionBar(model: model).body }
+        return { _ = ListHeaderActionsView(model: model, window: LibraryWindowModel(store: store)).body }
     }
 
-    @Test(.tags(.perfContract)) func 막대는_추가한_곡을_볼_때만_추가_목록_조각을_읽는다() {
+    @Test(.tags(.perfContract)) func 머리_줄_오른쪽_구성은_추가한_곡을_볼_때만_추가_목록_조각을_읽는다() {
         let store = store()
         let body = bar(store)
         #expect(!observes(body) { store.staging.staged = [staged("a")] })
@@ -139,10 +139,10 @@ struct TrackStagingStoreObservationTests {
         #expect(!observes(body) { store.staging.gridJob = nil })
     }
 
-    @Test(.tags(.perfContract)) func 막대는_파일_없음_필터에서만_파일_확인_진행을_읽는다() async {
+    @Test(.tags(.perfContract)) func 머리_줄_오른쪽_구성은_파일_없음_필터에서만_파일_확인_진행을_읽는다() async {
         let store = store()
         let model = ListActionBarModel(store: store)
-        let body = { _ = ListActionBar(model: model).body }
+        let body = { _ = ListHeaderActionsView(model: model, window: LibraryWindowModel(store: store)).body }
         #expect(!observes(body) { model.checkMissingFiles() })
         await store.missingFileTask?.value
         store.sidebar = .filter(.missingFile)

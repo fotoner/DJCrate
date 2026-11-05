@@ -185,13 +185,13 @@ extension ReflectionSession {
 
     /// 넣기 끝에 추가한 곡의 초안 사본을 백업 폴더에 남기지 못한 곡이 있을 때(#202). 그 초안은 되돌릴 때 이어질 유일한 사본이라 지우지 않는다.
     public static func stagedDraftsBackupFailureText(_ count: Int) -> String {
-        String(ui: "추가한 곡 \(count)곡의 초안을 백업에 저장하지 못해 연결되지 않은 초안으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 ‘연결되지 않은 초안 보기…’에서 버리지 마세요.")
+        String(ui: "추가한 곡 \(count)곡의 초안을 백업에 저장하지 못해 연결되지 않은 초안으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리지 마세요.")
     }
 
     /// 되돌린 새 곡에 남아 있던 초안을 지우지 않고 남긴 곡이 있을 때(#197·#202)
     public static func keptNewTrackDraftsText(_ count: Int, kinds: [AddedTrackDrafts.Kind]) -> String? {
         guard count > 0 else { return nil }
         let labels = kinds.map(\.label).joined(separator: "·")
-        return String(ui: "넣은 곡에 남아 있던 \(labels) 초안 \(count)곡은 지우지 않고 연결되지 않은 초안으로 남겼습니다. 필요 없으면 ‘연결되지 않은 초안 보기…’에서 버리세요.")
+        return String(ui: "넣은 곡에 남아 있던 \(labels) 초안 \(count)곡은 지우지 않고 연결되지 않은 초안으로 남겼습니다. 필요 없으면 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리세요.")
     }
 }

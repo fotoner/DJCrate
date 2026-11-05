@@ -250,63 +250,16 @@ struct EmptyLibraryOverlay: View {
     }
 
     @ViewBuilder private var message: some View {
-        // 검색어가 있으면 먼저, 필터만 켜졌으면 스마트 목록 계산 실패 다음에 안내한다(#299: 시스템 검색 화면 대신 앱 문구)
-        let guide = NoResultsGuide(search: store.search, isFiltered: store.isAttributeFiltered,
-                                   hasUnwrittenEdits: store.isAttributeFiltered && store.pendingWriteCount > 0)
-        if let guide, guide.offersClearSearch {
+        switch EmptyListNotice.resolve(store: store) {
+        case let .noResults(guide):
             noResults(guide)
-        } else if let summary = store.playlists.selectedSmartPlaylistResult?.unsupportedSummary {
+        case let .message(notice):
             ContentUnavailableView {
-                Label(.ui("조건을 계산하지 못했습니다"), systemImage: WarningMark.symbol)
+                Label(notice.title, systemImage: notice.systemImage)
             } description: {
-                Text(.ui("\(summary). rekordbox에서 이 목록을 확인하세요."))
-            }
-        } else if let guide {
-            noResults(guide)
-        } else if store.playlists.selectedSmartPlaylistResult != nil, store.streamingHiddenInView == 0 {
-            ContentUnavailableView {
-                Label(.ui("조건에 맞는 곡이 없습니다"), systemImage: "music.note.list")
-            } description: {
-                Text(.ui("DJCrate가 계산한 결과입니다. rekordbox 화면과 다를 수 있습니다."))
-            }
-        } else if store.sidebar == .pending, !store.history.pendingHistories.isEmpty {
-            // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 위 쓰기 대기 바에서 함께 쓴다
-            ContentUnavailableView {
-                Label(.ui("쓸 곡 초안이 없습니다"), systemImage: "clock.arrow.circlepath")
-            } description: {
-                Text(.ui("재생 기록 \(store.history.pendingHistories.count)건이 쓰기 대기에 있습니다. 위 ‘rekordbox에 쓰기’로 rekordbox 재생 기록에 넣습니다."))
-            }
-        } else if store.sidebar == .pending {
-            ContentUnavailableView {
-                Label(.ui("쓸 초안이 없습니다"), systemImage: "checkmark.circle")
-            } description: {
-                Text(.ui("곡의 큐·그리드·게인을 고치면 여기에 모입니다."))
-            }
-        } else if store.isUsbSelection {
-            ContentUnavailableView {
-                Label(.ui("표시할 USB 곡이 없습니다"), systemImage: "externaldrive")
-            } description: {
-                Text(.ui("USB를 다시 읽거나 다른 재생 목록을 고르세요."))
-            }
-        } else if store.sidebar == .staged {
-            ContentUnavailableView {
-                Label(.ui("추가한 곡이 없습니다"), systemImage: "music.note")
-            } description: {
-                Text(.ui("음원 파일을 끌어다 놓거나 ‘곡 추가’를 눌러 시작하세요."))
+                if let description = notice.description { Text(description) }
             } actions: {
-                Button(.ui("곡 추가…")) { StagingPanels.chooseFiles(store: store) }
-            }
-        } else if store.streamingHiddenInView > 0 {
-            ContentUnavailableView {
-                Label(.ui("스트리밍 곡을 숨기고 있습니다"), systemImage: "eye.slash")
-            } description: {
-                Text(.ui("이 목록의 곡은 모두 스트리밍 곡입니다. 설정 › 일반에서 ‘스트리밍 곡 숨기기’를 끄면 보입니다."))
-            }
-        } else {
-            ContentUnavailableView {
-                Label(.ui("표시할 곡이 없습니다"), systemImage: "music.note.list")
-            } description: {
-                Text(.ui("다른 목록을 선택하거나 rekordbox와 동기화로 라이브러리를 다시 읽어 보세요."))
+                if let action = notice.action { Button(action.title) { action.perform(store: store) } }
             }
         }
     }
