@@ -639,13 +639,20 @@ djc xml-export --db /tmp/djc-fixture/master.db --out /tmp/djc-fixture/library.xm
 | XML | 출처 |
 |---|---|
 | `TRACK` `TrackID` | `ContentID`(정수 표기가 아니면 겹치지 않는 번호) |
-| `Name`·`Artist`·`Composer`·`Album`·`Genre`·`Comments`·`Tonality`(키 이름)·`Remixer`·`Label` | 곡 행과 연결 표 |
+| `Name`·`Artist`·`Composer`·`Album`·`Genre`·`Comments`·`Tonality`(키 이름)·`Remixer`·`Label` | 곡 행과 연결 표. 표시 모양은 아래 "rekordbox와 맞춘 표시 칸" |
 | `Kind`·`Location` | 파일 확장자·`FolderPath`(`file://localhost` + 퍼센트 인코딩) |
 | `Size`·`TotalTime`·`DiscNumber`·`TrackNumber`·`Year`·`AverageBpm`·`BitRate`·`SampleRate`·`PlayCount` | `FileSize`·`Length`·`DiscNo`·`TrackNo`·`ReleaseYear`·`BPM`·`BitRate`·`SampleRate`·`DJPlayCount`(없으면 0, `Size`·`AverageBpm`·`BitRate`·`SampleRate`는 값이 없으면 칸을 뺀다) |
+| `Rating` | `Rating`(별 0~5)을 0·51·102·153·204·255로. 모든 곡에 쓴다(0도) |
 | `DateAdded` | `StockDate`(없으면 곡 행을 만든 날) |
 | `TEMPO` | 분석 파일의 박 격자(`PQTZ`). 구간마다 첫 박 시각·rekordbox가 적은 BPM·박 번호. 분석 파일이 없으면 뺀다 |
 | `POSITION_MARK` | 메모리 큐(`Num` -1)·핫큐 A~H(`Num` 0~7)·루프(`Type` 4, `End`). 자동 큐도 그대로 |
 | `PLAYLISTS` `NODE` | 폴더(`Type` 0, `Count`)·재생 목록(`Type` 1, `KeyType` 0, `Entries`), Seq 순서, 같은 곡 중복·곡 순서 그대로 |
+
+rekordbox와 맞춘 표시 칸(#258). rekordbox 7.2.18이 내보낸 XML과 견준 결과다. 근거는 [`docs/rekordbox-internals.md`](rekordbox-internals.md#라이브러리-xml-내보내기의-표시-칸-258-2026-11-06-rekordbox-72180311)에 있다.
+
+- `Tonality`: DB에 `G`나 `Em` 같은 옛 표기로 남은 키는 Camelot 화면 표기로 쓴다. `G`는 `9B`, `Em`은 `9A`가 된다. 바꿀 수 없는 값은 그대로 쓴다.
+- 글자 칸은 앞뒤 탭을 뺀다. 스페이스와 가운데 글자는 그대로다. 글자 칸은 `Name`, `Artist`, `Composer`, `Album`, `Genre`, `Comments`, `Remixer`, `Label`이다.
+- `Rating`: 모든 곡에 쓴다.
 
 넣지 않는 것은 요약의 "뺀 것"에 센다.
 
@@ -659,13 +666,15 @@ djc xml-export --db /tmp/djc-fixture/master.db --out /tmp/djc-fixture/library.xm
 - 삭제한 곡
 - 스트리밍 곡이나 삭제한 곡을 가리키던 재생 목록 항목
 
-`Rating`·`Colour`는 곡 행에 칸이 생기면(#65) 같은 모양으로 더한다.
+`Colour`는 rekordbox 색 번호와 XML 색의 대응을 확인하면 더한다.
 
 앱에서는 파일 메뉴의 "라이브러리 XML 내보내기…"가 같은 일을 한다.
 
 ### rekordbox가 직접 내보낸 XML과 견주기
 
-칸 이름과 값의 출처는 rekordbox가 공개한 XML 형식 문서와 기존 XML 경로로 정했다. rekordbox가 만든 XML과의 칸 비교는 아직 하지 않았다(사용자 실험 몫). 비교하려면 다음 순서로 한다.
+칸 이름과 값의 출처는 rekordbox가 공개한 XML 형식 문서와 기존 XML 경로로 정했다. rekordbox 7.2.18이 만든 XML과는 한 번 견줬다(#258). 그때 `Tonality`, 글자 칸 앞뒤 탭, `Rating`을 맞췄다. 남은 차이는 `Kind` 언어, `Location` 퍼센트 인코딩 대소문자, `TEMPO` 구간 나눔, 메모리 루프, 클라우드 곡 경로다. rekordbox만 적는 칸도 있다. 값이 0인 `BitRate` 같은 칸과 핫큐 색 `Red`·`Green`·`Blue`다.
+
+다시 견주려면 다음 순서로 한다.
 
 1. rekordbox 7.2.x에서 파일 › 라이브러리 › **Export Collection in xml format**으로 XML을 rekordbox 폴더 밖에 저장한다.
 2. rekordbox를 완전히 종료한다. `djc snapshot`으로 사본을 뜨고 같은 시점의 XML을 만든다: `djc xml-export --db <그 사본.db> --out <파일.xml> --share ~/Library/Pioneer/rekordbox/share`
@@ -683,7 +692,7 @@ rekordbox가 만든 XML에는 곡 정보가 들어 있으니 저장소·이슈�
 - `TrackID` = `ContentID`
 - `DateAdded` = `StockDate`
 - `PlayCount` = `DJPlayCount`
-- `Tonality` = 키 이름. rekordbox의 키 표시 설정과 같은지 본다.
+- `Tonality` = 화면 키 표기. DB에 옛 표기가 남은 곡은 화면 표기로 바뀌는지 본다. 키 표시 설정이 Camelot이 아닌 라이브러리는 견주지 못했다.
 - `Kind`와 `Location`의 퍼센트 인코딩. 특수 문자는 `&`, `#`, 괄호 등이다.
 - 값이 0일 때 칸을 빼는 칸들: `BitRate`, `SampleRate`, `Size`, `AverageBpm`
 - TEMPO의 BPM 반올림과 변속 곡 구간 수
@@ -720,7 +729,7 @@ djc xml-diff --db <스냅샷 사본.db> --xml ~/Desktop/other.xml --share ~/Libr
   - 두 쪽 구간으로 곡 길이까지 박을 만든다. 박 시각과 박 번호를 비교한다. 박 시각은 1ms 반올림 오차 안이면 같다.
   - 같은 박을 구간을 달리 나눠 적어도 같다.
   - 4/4가 아닌 `TEMPO`가 있는 곡은 그리드를 읽지 않는다. 읽지 못한 값이 있는 곡도 같다. 1~4 밖 `Battito`도 읽지 못한 값이다.
-- **태그**: XML에 있는 칸만 비교한다. 글자는 NFC로 비교한다. 칸은 다음과 같다: `Name`, `Artist`, `Album`, `Genre`, `Composer`, `Comments`, `Year`, `TrackNumber`, `Tonality`, `Rating`.
+- **태그**: XML에 있는 칸만 비교한다. 글자는 NFC로 비교하고 앞뒤 탭은 차이로 세지 않는다(스페이스는 센다). 바뀐 칸의 값은 XML 글자를 탭까지 그대로 쓴다. 칸은 다음과 같다: `Name`, `Artist`, `Album`, `Genre`, `Composer`, `Comments`, `Year`, `TrackNumber`, `Tonality`, `Rating`.
   - 연도와 트랙 번호 0은 빈칸이다.
   - 키는 표기가 달라도(`Am`·`8A`) 같은 키면 같다.
   - `Rating` 값 0, 51, …, 255는 별 0~5개다.

@@ -7,7 +7,7 @@ import Foundation
 ///   고친 것으로, 나머지를 더할 것·뺄 것으로 낸다. XML에 큐가 하나도 없거나 읽지 못한 큐가 있는 곡은 비교하지 않고 세며,
 ///   XML에 없는 rekordbox 자동 큐는 뺄 것으로 치지 않는다.
 /// - 그리드: XML에 TEMPO가 있을 때만. 두 쪽 구간으로 박을 만들어 비교한다(같은 박을 구간을 달리 나눠 적어도 같다).
-/// - 태그: XML에 있는 칸만(NFC로 비교). 연도·트랙 번호 0은 빈칸, 키는 표기가 달라도 같은 키면 같다.
+/// - 태그: XML에 있는 칸만(NFC로 비교, 앞뒤 탭은 차이로 세지 않는다). 연도·트랙 번호 0은 빈칸, 키는 표기가 달라도 같은 키면 같다.
 /// - 재생 목록: 폴더 이름 경로로 맞춘다. 라이브러리에 없는 목록, 곡(맞춘 곡만)·순서가 다른 목록을 낸다.
 ///   라이브러리에만 있는 목록은 차이로 치지 않는다(가져오기는 지우지 않는다).
 public enum XMLLibraryDiff {
@@ -266,7 +266,7 @@ public enum XMLLibraryDiff {
 
     // MARK: 태그
 
-    /// 비교할 모양. 연도·트랙 번호·평점 0은 빈칸, 키는 Camelot으로 읽을 수 있으면 Camelot.
+    /// 초안에 넘기는 모양. 연도·트랙 번호·평점 0은 빈칸, 키는 Camelot으로 읽을 수 있으면 Camelot, 글자는 NFC.
     public static func normalizedTag(_ key: TagFields.Key, _ value: String) -> String {
         switch key {
         case .year, .trackNumber, .rating:
@@ -282,12 +282,21 @@ public enum XMLLibraryDiff {
         }
     }
 
+    /// 같은지 볼 모양. 글자 칸은 앞뒤 탭도 뺀다(rekordbox는 앞뒤 탭을 빼고 내보낸다, #258). 바뀐 칸의 값은 탭을 남긴 `normalizedTag`로 넘긴다.
+    static func comparableTag(_ key: TagFields.Key, _ value: String) -> String {
+        let normalized = normalizedTag(key, value)
+        switch key {
+        case .year, .trackNumber, .rating, .musicalKey: return normalized
+        default: return LibraryXMLDisplay.text(normalized)
+        }
+    }
+
     static func tagChanges(xml: [TagFields.Key: String], library: [TagFields.Key: String]) -> [TagChange] {
         TagFields.Key.allCases.compactMap { key in
             guard let value = xml[key] else { return nil }
             let current = library[key] ?? ""
-            let incoming = normalizedTag(key, value)
-            return normalizedTag(key, current) == incoming ? nil : TagChange(key: key, library: current, xml: incoming)
+            guard comparableTag(key, current) != comparableTag(key, value) else { return nil }
+            return TagChange(key: key, library: current, xml: normalizedTag(key, value))
         }
     }
 

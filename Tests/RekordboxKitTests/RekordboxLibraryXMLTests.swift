@@ -40,7 +40,7 @@ struct RekordboxLibraryXMLTests {
         try fixture.execute("""
             UPDATE djmdContent SET ArtistID = 'ar1', ComposerID = 'ar2', AlbumID = 'al1', GenreID = 'g1', KeyID = 'k1',
                 RemixerID = 'ar3', LabelID = 'lb1', Commnt = '코멘트 & <1>', ReleaseYear = 2024, TrackNo = 3, DiscNo = 2,
-                FileSize = 12345678, SampleRate = 44100, DJPlayCount = 7, StockDate = '2025-03-04' WHERE ID = '101'
+                FileSize = 12345678, SampleRate = 44100, DJPlayCount = 7, StockDate = '2025-03-04', Rating = 3 WHERE ID = '101'
             """)
 
         var variable = TrackSpec(id: "104", uuid: "uuid-104")
@@ -169,7 +169,7 @@ struct RekordboxLibraryXMLTests {
             ("TrackID", "101"), ("Name", #"제목 "따옴표" <꺾쇠>"#), ("Artist", "아티스트"), ("Composer", "작곡가"), ("Album", "앨범"),
             ("Genre", "Anime"), ("Kind", "MP3 File"), ("Size", "12345678"), ("TotalTime", "200"), ("DiscNumber", "2"),
             ("TrackNumber", "3"), ("Year", "2024"), ("AverageBpm", "174.50"), ("DateAdded", "2025-03-04"), ("BitRate", "320"),
-            ("SampleRate", "44100"), ("Comments", "코멘트 & <1>"), ("PlayCount", "7"),
+            ("SampleRate", "44100"), ("Comments", "코멘트 & <1>"), ("PlayCount", "7"), ("Rating", "153"),
             ("Location", "file://localhost/Music/%EA%B3%A1%20&%20%EC%9D%B4%EB%A6%84%20(TV).mp3"),
             ("Remixer", "리믹서"), ("Tonality", "8B"), ("Label", "레이블"),
         ]
@@ -183,12 +183,106 @@ struct RekordboxLibraryXMLTests {
         let track = try #require(try tracks(try parse(RekordboxLibraryXML.document(try collection(fixture))))["105"])
         #expect(track.attributes["Name"] == "분석 없는 곡")
         for name in ["Artist", "Composer", "Album", "Genre", "Comments"] { #expect(track.attributes[name] == "", "\(name)") }
-        for name in ["DiscNumber", "TrackNumber", "Year", "PlayCount"] { #expect(track.attributes[name] == "0", "\(name)") }
+        for name in ["DiscNumber", "TrackNumber", "Year", "PlayCount", "Rating"] { #expect(track.attributes[name] == "0", "\(name)") }
         #expect(track.attributes["Kind"] == "WAV File")
         for name in ["AverageBpm", "BitRate", "Tonality", "Remixer", "Label", "Size"] { #expect(track.attributes[name] == nil, "\(name)") }
         // StockDate가 비면 행을 만든 날로 대신한다
         #expect(track.attributes["DateAdded"] == "2026-01-01")
         #expect(track.first("TEMPO") == nil, "분석 파일이 없으면 TEMPO를 쓰지 않는다")
+    }
+
+    // MARK: 표시 칸(#258)
+
+    // rekordbox 7.2.18 내보내기와 견줘 확인한 규칙(2026-11-06, 이슈 #258 조사 1):
+    // - Tonality: DB에 옛 표기(G·Em)가 남은 곡을 rekordbox는 화면 표기(Camelot, 9B·9A)로 내보냈다.
+    // - Name·Genre: 앞뒤에 탭이 든 곡을 rekordbox는 탭을 빼고 내보냈다.
+    // - Rating: 모든 곡에 적는다. 별 0~5 → 0·51·102·153·204·255.
+    // 곡 이름·경로는 합성 값이다.
+
+    /// 빈 합성 라이브러리를 만들어 `configure`로 곡·연결 행을 채운다.
+    func makeDisplayFixture(_ configure: (RekordboxFixture) throws -> Void) throws -> RekordboxFixture {
+        let fixture = try RekordboxFixture()
+        try configure(fixture)
+        return fixture
+    }
+
+    func exportedTracks(_ fixture: RekordboxFixture) throws -> [String: Element] {
+        try tracks(try parse(RekordboxLibraryXML.document(try collection(fixture))))
+    }
+
+    @Test func 평점은_별_수를_rekordbox_척도로_모든_곡에_쓴다() throws {
+        let fixture = try makeDisplayFixture { fixture in
+            for stars in 0...5 {
+                try fixture.add(TrackSpec(id: "\(200 + stars)", uuid: "uuid-\(200 + stars)"))
+                try fixture.execute("UPDATE djmdContent SET Rating = \(stars) WHERE ID = '\(200 + stars)'")
+            }
+        }
+        let exported = try exportedTracks(fixture)
+        let values = (0...5).map { exported["\(200 + $0)"]?.attributes["Rating"] }
+        #expect(values == ["0", "51", "102", "153", "204", "255"])
+        // 가져오기 읽기가 같은 값을 별 수로 되읽는다
+        #expect(values.compactMap { $0.flatMap(RekordboxXMLReader.stars(fromRating:)) } == ["", "1", "2", "3", "4", "5"])
+    }
+
+    @Test func 평점_칸은_PlayCount_뒤_Location_앞에_온다() throws {
+        let fixture = try makeLibrary()
+        let xml = RekordboxLibraryXML.document(try collection(fixture))
+        for id in ["101", "104", "105"] {
+            let order = attributeOrder(of: id, in: xml)
+            let rating = try #require(order.firstIndex(of: "Rating"), "\(id)")
+            #expect(order[rating - 1] == "PlayCount" && order[rating + 1] == "Location", "\(id)")
+        }
+    }
+
+    @Test func 키는_옛_표기도_rekordbox_화면_표기_Camelot으로_쓴다() throws {
+        let fixture = try makeDisplayFixture { fixture in
+            for (id, name) in [("kg", "G"), ("ke", "Em"), ("kc", "8B"), ("kx", "알 수 없는 표기")] {
+                try fixture.insert("djmdKey", ["ID": .text(id), "ScaleName": .text(name)])
+            }
+            for (content, key) in [("301", "kg"), ("302", "ke"), ("303", "kc"), ("304", "kx"), ("305", "")] {
+                try fixture.add(TrackSpec(id: content, uuid: "uuid-\(content)"))
+                if !key.isEmpty { try fixture.execute("UPDATE djmdContent SET KeyID = '\(key)' WHERE ID = '\(content)'") }
+            }
+        }
+        let exported = try exportedTracks(fixture)
+        // G장조 = 9B, E단조 = 9A는 rekordbox 7.2.18 내보내기와 같음을 확인했다. Camelot은 그대로, 바꿀 수 없는 값도 그대로, 키가 없으면 칸이 없다.
+        #expect(["301", "302", "303", "304"].map { exported[$0]?.attributes["Tonality"] } == ["9B", "9A", "8B", "알 수 없는 표기"])
+        #expect(exported["305"]?.attributes["Tonality"] == nil)
+    }
+
+    @Test func 글자_칸은_앞뒤_탭을_빼고_스페이스와_가운데는_그대로_둔다() throws {
+        let fixture = try makeDisplayFixture { fixture in
+            for (table, id, name) in [("djmdArtist", "ar1", "\t아티스트\t"), ("djmdArtist", "ar2", "\t작곡가"), ("djmdArtist", "ar3", "리믹서\t"),
+                                      ("djmdGenre", "g1", "\tAnime\t"), ("djmdLabel", "lb1", "\t레이블")] {
+                try fixture.insert(table, ["ID": .text(id), "Name": .text(name)])
+            }
+            try fixture.insert("djmdAlbum", ["ID": .text("al1"), "Name": .text("\t앨범 이름\t")])
+            var spec = TrackSpec(id: "401", uuid: "uuid-401")
+            spec.title = "\t제목  가운데 \t공백\t"
+            try fixture.add(spec)
+            try fixture.execute("""
+                UPDATE djmdContent SET ArtistID = 'ar1', ComposerID = 'ar2', RemixerID = 'ar3', GenreID = 'g1', AlbumID = 'al1',
+                    LabelID = 'lb1', Commnt = '\t코멘트 \n둘째 줄\t' WHERE ID = '401'
+                """)
+            // 앞뒤 스페이스는 rekordbox가 그대로 둔다
+            var spaced = TrackSpec(id: "402", uuid: "uuid-402")
+            spaced.title = " 스페이스 제목 "
+            try fixture.add(spaced)
+            try fixture.execute("UPDATE djmdContent SET Commnt = ' 코멘트 ' WHERE ID = '402'")
+        }
+        let exported = try exportedTracks(fixture)
+        let track = try #require(exported["401"])
+        // Name·Genre의 앞뒤 탭은 rekordbox 7.2.18 내보내기에서 확인했다(2026-11-06). 나머지 글자 칸에 같은 규칙을 쓰는 것은 추정이다.
+        #expect(track.attributes["Name"] == "제목  가운데 \t공백", "가운데 스페이스와 탭은 그대로")
+        #expect(track.attributes["Genre"] == "Anime")
+        #expect(track.attributes["Artist"] == "아티스트")
+        #expect(track.attributes["Composer"] == "작곡가")
+        #expect(track.attributes["Remixer"] == "리믹서")
+        #expect(track.attributes["Album"] == "앨범 이름")
+        #expect(track.attributes["Label"] == "레이블")
+        #expect(track.attributes["Comments"] == "코멘트 \n둘째 줄", "가운데 줄바꿈은 그대로")
+        let spaced = try #require(exported["402"])
+        #expect(spaced.attributes["Name"] == " 스페이스 제목 " && spaced.attributes["Comments"] == " 코멘트 ")
     }
 
     // MARK: 큐
@@ -360,14 +454,15 @@ struct RekordboxLibraryXMLTests {
 
     // MARK: 속성 연결 자리(#65)
 
-    @Test func 별점_곡_색_같은_추가_속성은_Location_뒤에_붙는다() throws {
+    // Rating은 #258에서 곡 행의 별 수로 쓰게 되어 이 자리를 쓰지 않는다. 아직 모르는 칸(Colour 등)이 붙는 자리를 본다.
+    @Test func 곡_색_같은_추가_속성은_Location_뒤에_붙는다() throws {
         let fixture = try makeLibrary()
         var source = try collection(fixture)
-        source.entries[0].extraAttributes = [.init(name: "Rating", value: "204"), .init(name: "Colour", value: "0xFF007F")]
+        source.entries[0].extraAttributes = [.init(name: "Colour", value: "0xFF007F"), .init(name: "Grouping", value: "그룹")]
         let xml = RekordboxLibraryXML.document(source)
         let track = try #require(try tracks(try parse(xml))["101"])
-        #expect(track.attributes["Rating"] == "204" && track.attributes["Colour"] == "0xFF007F")
-        #expect(Array(attributeOrder(of: "101", in: xml).suffix(2)) == ["Rating", "Colour"])
+        #expect(track.attributes["Colour"] == "0xFF007F" && track.attributes["Grouping"] == "그룹")
+        #expect(Array(attributeOrder(of: "101", in: xml).suffix(2)) == ["Colour", "Grouping"])
     }
 
     // MARK: 값 이스케이프

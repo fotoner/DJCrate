@@ -50,3 +50,28 @@ public struct XMLReadError: Error, LocalizedError, CustomStringConvertible, Equa
     public var errorDescription: String? { reason }
     public var description: String { reason }
 }
+
+/// rekordbox가 XML에 적는 표시 모양(#258). 라이브러리 XML 내보내기와 가져오기 비교가 같은 규칙을 쓴다.
+/// rekordbox 7.2.18이 내보낸 XML과 견준 결과(2026-11-06)다.
+public enum LibraryXMLDisplay {
+    private static let tabs = CharacterSet(charactersIn: "\t")
+
+    /// 글자 칸(`Name`·`Artist`·`Composer`·`Album`·`Genre`·`Comments`·`Remixer`·`Label`)의 앞뒤 **탭**을 뺀다. 스페이스와 가운데 글자는 그대로 둔다.
+    /// - 확인: `Name`·`Genre`의 앞뒤 탭을 rekordbox는 빼고 내보냈다. 앞뒤 스페이스는 이름·장르·아티스트·앨범·코멘트 모두 그대로 내보냈다.
+    /// - 추정: `Name`·`Genre` 밖의 글자 칸도 탭을 뺀다. 그런 값이 없어 견주지 못했다. 탭 아닌 다른 공백류(줄바꿈 등)도 견주지 못했다.
+    public static func text(_ value: String) -> String {
+        value.trimmingCharacters(in: tabs)
+    }
+
+    /// `Tonality`: DB에 옛 표기(`G`·`Em`)로 남은 키를 rekordbox 화면 표기(Camelot, `9B`·`9A`)로 바꾼다. 바꿀 수 없는 값은 그대로 둔다.
+    /// - 확인: `G` → `9B`, `Em` → `9A`. 이 라이브러리의 화면 표기는 Camelot이다(`KeyNotation`).
+    /// - 추정: 다른 옛 표기도 같은 규칙(Camelot 5도권)을 쓴다.
+    public static func tonality(_ key: String) -> String {
+        KeyNotation.camelot(from: key) ?? key
+    }
+
+    /// `Rating`: 별 수(0~5, DB 값) → XML 척도(0·51·102·153·204·255). 확인: rekordbox는 모든 곡에 적고 값이 DB 평점과 모두 맞았다.
+    public static func rating(stars: Int) -> Int {
+        min(max(stars, 0), 5) * 51
+    }
+}
