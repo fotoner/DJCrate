@@ -39,6 +39,7 @@
 - [중복 곡 합치기](#중복-곡-합치기-63)
 - [곡 삭제·합치기·되돌리기의 파일 경계](#곡-삭제합치기되돌리기의-파일-경계)
 - [시점 스냅샷](#시점-스냅샷-rekordboxpointsnapshot-220223224)
+- [라이브러리 XML 내보내기의 표시 칸](#라이브러리-xml-내보내기의-표시-칸-258-2026-11-06-rekordbox-72180311)
 - [새 쓰기 경로를 여는 방법](#새-쓰기-경로를-여는-방법)
 
 ## 파일과 열기
@@ -3279,6 +3280,24 @@ rekordbox 폴더의 그 밖 파일과 음원은 담지 않는다. 예: `*.edb`, 
   - 복원 직전 3개 보존
   - 실제 라이브러리 거부
   - 차이 요약·클라우드 흔적
+
+## 라이브러리 XML 내보내기의 표시 칸 (#258, 2026-11-06, rekordbox 7.2.18.0311)
+
+`djc xml-export`가 쓰는 세 칸을 rekordbox가 내보낸 XML과 맞춘 기록이다. 앱에서는 파일 메뉴의 "라이브러리 XML 내보내기…"가 같은 일을 한다. DB에는 쓰지 않는다. 읽기만 하는 내보내기 규칙이다.
+
+방법: rekordbox에서 Export Collection in xml format → rekordbox 종료 → `djc snapshot` → 같은 사본으로 `djc xml-export` → `scripts/xml-compare.py`와 `djc xml-diff --json`. 짝지은 곡만 견줬다. 키 표시가 Camelot인 라이브러리 하나로 견줬다.
+
+| 칸 | rekordbox 7.2.18 | DJCrate | 근거 |
+|---|---|---|---|
+| `Tonality` | DB에 옛 표기(`G`·`Em`)로 남은 키를 화면 표기(Camelot, `9B`·`9A`)로 쓴다 | 옛 표기를 Camelot으로 바꿔 쓴다. 바꿀 수 없는 값은 그대로 | `G`→`9B`, `Em`→`9A` [확인]. 다른 옛 표기도 같은 규칙(Camelot 5도권) [추정]. 키 표시가 Camelot이 아닌 라이브러리 [미확인] |
+| 글자 칸 앞뒤 | 탭을 빼고 쓴다. 앞뒤 스페이스는 그대로 쓴다 | 앞뒤 탭만 뺀다 | `Name`·`Genre`의 앞뒤 탭 [확인]. 앞뒤 스페이스 유지 [확인]. 다른 글자 칸의 탭 [추정]. 줄바꿈 같은 공백류 [미확인] |
+| `Rating` | 모든 곡에 쓴다(0도). 별 0~5 → 0·51·102·153·204·255 | 같게 쓴다. `PlayCount` 다음, `Location` 앞이다 | 값이 DB 평점과 모두 맞았다 [확인] |
+
+- 앞뒤 스페이스는 빼지 않는다. 스페이스까지 빼면 rekordbox 출력과 달라지는 글자 칸이 생긴다.
+- 세 칸을 맞춘 뒤 `xml-compare`에서 `Tonality`·`Name`·`Genre`의 다름이 0이 됐다. `Rating`은 짝지은 곡 모두 같았다. `djc xml-diff`의 태그 차이 곡 수도 0이 됐다. 다른 칸의 수치는 그대로였다.
+- 같은 견주기에서 다른 차이도 나왔다. 고치지 않았다. 이슈로 옮겼다. 대상은 `Location` 인코딩, 그리드 `TEMPO` 구간, 메모리 루프, 클라우드 곡 경로다. `Kind`는 rekordbox 화면 언어로 적혀 달라진다. 그대로 둔다.
+- rekordbox만 적는 칸도 있다. 값이 0인 `BitRate` 같은 칸과 핫큐 색 `Red`·`Green`·`Blue`다.
+- 코드: 규칙은 `LibraryXMLDisplay`(`Sources/DJCDomain/XMLImport/LibraryXMLValues.swift`) 한 곳에 있다. 내보내기(`RekordboxLibraryXML+Writer`)와 `xml-diff` 태그 비교(`XMLLibraryDiff.comparableTag`)가 함께 쓴다. `xml-diff`는 비교에서만 앞뒤 탭을 빼고, 바뀐 칸의 값(초안·가져오기 시트)은 XML 글자를 그대로 넘긴다.
 
 ## 새 쓰기 경로를 여는 방법
 
