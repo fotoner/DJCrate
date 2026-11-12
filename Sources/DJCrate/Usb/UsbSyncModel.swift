@@ -136,15 +136,17 @@ final class UsbSyncModel {
     // MARK: - 줄 옆 표시와 툴팁
 
     /// 줄 옆에 붙일 글: 자기 표시(새로 만듦·옮김·지움)와, 폴더 줄이면 안쪽의 바뀌는 목록 수(접힌 폴더 안은 보이지 않아서 펼침과 상관없이 붙는다).
-    /// 새로 만든 폴더와 지울 폴더는 안쪽이 모두 같은 표시라 건수를 더하지 않는다. 연결 없는 목록은 바뀌지 않으므로 세지 않는다.
+    /// 지울 폴더는 안쪽이 모두 지움이라 건수를 더하지 않는다. 새로 만든 폴더는 안쪽의 새 목록은 세지 않고, 옮겨 들어온 목록처럼 다른 변경만 센다.
+    /// 연결 없는 목록은 바뀌지 않으므로 세지 않는다.
     nonisolated static func note(of node: PlaylistOutlineNode, marks: [String: UsbSyncPreviewMark]) -> String? {
+        let own = marks[node.id]
+        func counts(_ mark: UsbSyncPreviewMark) -> Bool { mark != .unlinked && !(own == .created && mark == .created) }
         func changes(_ node: PlaylistOutlineNode) -> Int {
             (node.children ?? []).reduce(0) { total, child in
-                total + (marks[child.id].map { $0 == .unlinked ? 0 : 1 } ?? 0) + changes(child)
+                total + (marks[child.id].map { counts($0) ? 1 : 0 } ?? 0) + changes(child)
             }
         }
-        let own = marks[node.id]
-        let inner = node.isFolder && own != .created && own != .deleted ? changes(node) : 0
+        let inner = node.isFolder && own != .deleted ? changes(node) : 0
         let rollup = inner > 0 ? String(ui: "하위 \(inner)건 변경") : nil
         let parts = [own?.note, rollup].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

@@ -77,6 +77,9 @@ struct UsbSyncModelTests {
         #expect(UsbSyncModel.note(of: gray, marks: marks) == nil)
         #expect(UsbSyncModel.note(of: plain, marks: marks) == nil)
         #expect(UsbSyncModel.note(of: outer, marks: ["outer": .deleted, "a": .deleted]) == "지움")
+        // 새로 만든 폴더 안의 새 목록은 폴더 표시와 같아 세지 않지만, 기존 목록이 옮겨 들어오면 접힌 폴더에서도 보이게 센다
+        #expect(UsbSyncModel.note(of: outer, marks: ["outer": .created, "a": .created]) == "새로 만듦")
+        #expect(UsbSyncModel.note(of: outer, marks: ["outer": .created, "a": .created, "b": .moved]) == "새로 만듦 · 하위 1건 변경")
         #expect(UsbSyncModel.note(of: outer, marks: ["outer": .created, "a": .created]) == "새로 만듦")
         #expect(UsbSyncModel.note(of: outer, marks: ["outer": .moved, "c": .deleted]) == "옮김 · 하위 1건 변경")
         #expect(UsbSyncModel.note(of: outer, marks: ["outer": .moved]) == "옮김")
