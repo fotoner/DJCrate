@@ -193,6 +193,8 @@ final class UsbExportSheetModel {
             selection.restore(job, summary: request.summary, layout: job.playlistLayout ?? ports.playlists())
         }
         self.selection = selection
+        // 되살린 요약은 연 때의 작업으로 계산한 것으로 본다. 그 뒤 볼륨 정보가 바뀌면 `summaryIsCurrent`가 거짓이 된다
+        if selection.summary != nil { summaryJob = job() }
     }
 
     convenience init(store: LibraryStore, usb: UsbStore, request: UsbExportSheetRequest) {

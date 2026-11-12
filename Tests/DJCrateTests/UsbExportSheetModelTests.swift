@@ -403,6 +403,8 @@ struct UsbExportSheetModelTests {
         with.appeared()
         await with.previewTask?.value
         #expect(with.selection.summary == UsbTestData.summary() && other.current.calls.isEmpty)
+        // 되살린 요약은 연 때의 작업으로 계산한 것으로 본다([다시 시도]가 아니라 요약을 보이고 쓸 수 있다)
+        #expect(with.summaryIsCurrent && !with.needsRetry)
     }
 
     @Test("USB에 쓰기는 시트를 먼저 닫고, 미리 본 요약으로 확인 창 없이 쓴다(시트의 쓰기 단추가 쓰기 동의, #212)")
