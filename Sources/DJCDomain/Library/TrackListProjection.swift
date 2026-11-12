@@ -63,19 +63,14 @@ public enum TrackListProjection {
                        hiddenCount: hidden.count)
     }
 
-    /// 검색어를 비교할 모양(앞뒤 공백을 떼고 소문자)
-    public static func needle(_ search: String) -> String {
-        search.trimmingCharacters(in: .whitespaces).lowercased()
-    }
-
     /// 검색·평점·곡 색 거르기. 정렬한 순서를 그대로 둔다. 거를 것이 없으면 받은 배열을 그대로 돌려준다.
+    /// 검색 규칙(칸·낱말 AND·NFC)은 `TrackSearch`가 하나로 정한다.
     public static func filtered(_ sorted: [TrackRow], search: String, minimumRating: Int, color: String?) -> [TrackRow] {
-        let needle = needle(search)
+        let query = TrackSearch.Query(search)
         let attributes = minimumRating > 0 || color != nil
-        guard !needle.isEmpty || attributes else { return sorted }
+        guard !query.isEmpty || attributes else { return sorted }
         return sorted.filter { row in
-            (needle.isEmpty || row.searchKey.contains(needle))
-                && (!attributes || matchesAttributes(row, minimumRating: minimumRating, color: color))
+            query.matches(key: row.searchKey) && (!attributes || matchesAttributes(row, minimumRating: minimumRating, color: color))
         }
     }
 
@@ -87,9 +82,9 @@ public enum TrackListProjection {
     /// 중복 후보 검색: 검색한 곡이 든 묶음을 통째로 남긴다(비교 상대가 잘리지 않게).
     public static func duplicateGroups<Group>(_ groups: [Group], members: (Group) -> [String], search: String,
                                               rowsByID: [TrackRow.ID: TrackRow]) -> [Group] {
-        let needle = needle(search)
-        guard !needle.isEmpty else { return groups }
-        return groups.filter { group in members(group).contains { rowsByID[$0]?.searchKey.contains(needle) == true } }
+        let query = TrackSearch.Query(search)
+        guard !query.isEmpty else { return groups }
+        return groups.filter { group in members(group).contains { rowsByID[$0].map { query.matches(key: $0.searchKey) } == true } }
     }
 }
 

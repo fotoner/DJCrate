@@ -47,6 +47,27 @@ struct LibraryReadTests {
         #expect(try read.search(query: "", filter: .emptyComment).tracks.map(\.id) == ["102"])
     }
 
+    /// 규칙은 `TrackSearchTests`가 촘촘히 본다. 여기서는 CLI 검색이 DB에서 읽은 칸으로 그 규칙을 쓰는지만 본다(TEST-8).
+    @Test func 검색은_앨범_앨범_아티스트_작곡가_파일_이름까지_찾고_낱말을_모두_맞춘다() throws {
+        let fixture = try fixture()
+        // 한글 파일 이름은 NFD로 저장된 채 들어온다(macOS 파일 시스템)
+        let nfd = "밤의 드라이브.flac".decomposedStringWithCanonicalMapping
+        try fixture.insert("djmdArtist", ["ID": .text("a2"), "Name": .text("합성 작곡가")])
+        try fixture.insert("djmdArtist", ["ID": .text("a3"), "Name": .text("합성 앨범 아티스트")])
+        try fixture.insert("djmdAlbum", ["ID": .text("al1"), "Name": .text("Blue Hour"), "AlbumArtistID": .text("a3")])
+        try fixture.execute("UPDATE djmdContent SET AlbumID = 'al1', ComposerID = 'a2' WHERE ID = '101'")
+        try fixture.execute("UPDATE djmdContent SET FolderPath = '/synthetic/\(nfd)' WHERE ID = '102'")
+        let read = try reader(fixture)
+        func ids(_ query: String, bpm: ClosedRange<Double>? = nil) throws -> [String] { try read.search(query: query, bpm: bpm).tracks.map(\.id) }
+        #expect(try ids("blue hour") == ["101"])
+        #expect(try ids("합성 앨범 아티스트") == ["101"])
+        #expect(try ids("합성 작곡가") == ["101"])
+        #expect(try ids("드라이브") == ["102"] && ids("밤의 드라이브.flac") == ["102"])
+        // 낱말은 칸을 가로질러 모두 맞아야 한다
+        #expect(try ids("시험 합성") == ["101"] && ids("alpha beta").isEmpty)
+        #expect(try ids("alpha blue", bpm: 120...130) == ["101"] && ids("alpha blue", bpm: 129...130).isEmpty)
+    }
+
     @Test func 빈_코멘트_필터는_프리셋_없이_쓰고_규칙_밖_필터는_프리셋을_요구한다() throws {
         let read = try reader(try fixture())
         #expect(try read.search(query: "", filter: .emptyComment).tracks.map(\.id) == ["102"])

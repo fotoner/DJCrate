@@ -52,15 +52,12 @@ public struct LibraryRead {
             throw ReadFailure("invalid_arguments", String(ui: "코멘트 규칙 필터는 --comment-preset anisong을 지정한 뒤 쓰세요"))
         }
         let allowed = try playlistID.map { Set(try playlistTracks(id: $0).map(\.id)) }
-        let needle = query.lowercased()
+        let query = TrackSearch.Query(query)
         // 파일 확인은 이 필터를 고를 때만 한다(곡마다 파일 시스템에 묻는다).
         let missing = filter == .missingFile
             ? MissingFiles.scan(tracks, exists: { FileManager.default.fileExists(atPath: $0) }).trackIDs : []
         let result = tracks.filter { track in
-            let encrypted = track.title.hasPrefix("$A7:")
-            let haystack = [encrypted ? "" : track.title, encrypted ? "" : (track.artist ?? ""), track.comment, track.genre ?? ""]
-                .joined(separator: "\u{1F}").lowercased()
-            guard needle.isEmpty || haystack.contains(needle),
+            guard query.matches(track),
                   bpm.map({ range in track.bpm.map(range.contains) ?? false }) ?? true,
                   key.map({ track.key?.caseInsensitiveCompare($0) == .orderedSame }) ?? true,
                   allowed?.contains(track.id) ?? true else { return false }

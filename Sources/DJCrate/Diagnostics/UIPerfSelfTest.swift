@@ -441,6 +441,12 @@ final class UIPerfRunner {
         let text = "합성 곡 12"
         let prefixes = (1...text.count).map { String(text.prefix($0)) }
         await measure("검색 한 글자씩 입력", repeats: prefixes.count, window: 0.3, rest: 0.05) { index in self.store.search = prefixes[index] }
+        // 검색 규칙이 바뀐 전후를 견줄 때 시간 옆에 둔다(#350): 접두어마다 맞는 곡 수. 거르기는 검색어를 넣는 순간 끝난다.
+        let counts = prefixes.map { prefix -> String in
+            store.search = prefix
+            return "「\(prefix)」 \(store.displayRows.count)"
+        }
+        log("검색 접두어마다 맞는 곡 수(전체 \(store.rows.count)곡 중): " + counts.joined(separator: " · "))
         await measure("검색 지우기", repeats: 1, window: 0.8) { _ in self.store.search = "" }
     }
 
