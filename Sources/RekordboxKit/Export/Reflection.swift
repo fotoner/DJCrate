@@ -5,7 +5,7 @@ import Foundation
 ///
 /// rekordbox DB는 직접 고치지 않는다. rekordbox XML로 만들어 사용자가 "Import To Collection"하면
 /// rekordbox가 그 곡의 큐 목록을 **통째로** XML 내용으로 바꾼다. 그래서 XML에는 초안에서 다루지 않은
-/// 큐(자동 큐·루프)까지 원본 그대로 모두 넣는다. XML로 옮길 수 없는 정보(ActiveLoop·핫큐 색·Kind 4)가
+/// 큐(자동 큐·루프)까지 원본 그대로 모두 넣는다. XML로 옮길 수 없는 정보(ActiveLoop·핫큐 색·활성 메모리 루프 Kind 4)가
 /// 있는 곡은 잃지 않도록 계획 단계에서 막는다. 가져온 뒤에는 새 스냅샷과 비교해 검증한다.
 /// 시각은 모두 rekordbox 시간축(초)이다.
 public enum Reflection {
@@ -15,7 +15,7 @@ public enum Reflection {
     public typealias Metadata = ReflectionXMLMetadata
     public typealias Check = ReflectionXMLCheck
 
-    /// rekordbox Kind → XML Num(-1 = 메모리, 0…7 = A…H). 모르는 종류면 nil.
+    /// rekordbox Kind → XML Num(-1 = 메모리, 0…7 = A…H). 모르는 종류면 nil. 루프인 Kind 4는 큐 전체가 필요해 `xmlNum(forCue:)`가 본다.
     public static func xmlNum(forKind kind: Int) -> Int? {
         switch kind {
         case 0: -1
@@ -23,6 +23,11 @@ public enum Reflection {
         case 5...9: kind - 2
         default: nil
         }
+    }
+
+    /// 큐 행 → XML Num. 활성 메모리 루프(루프인 Kind 4, #355)는 메모리 루프(-1)로 본다. 루프가 아닌 Kind 4는 모르는 종류(nil)다.
+    public static func xmlNum(forCue cue: Cue) -> Int? {
+        cue.isActiveMemoryLoop ? -1 : xmlNum(forKind: cue.kind)
     }
 
     // MARK: - 계획
@@ -38,7 +43,11 @@ public enum Reflection {
         if rawCues.contains(where: { !$0.isMemoryCue && ($0.colorTableIndex ?? 0) > 0 }) {
             blockers.append(String(ui: "색을 지정한 핫큐가 있습니다. rekordbox 색 번호와 XML 색의 대응을 확인하기 전이라 막아 둡니다"))
         }
-        if rawCues.contains(where: { xmlNum(forKind: $0.kind) == nil }) {
+        // 활성 메모리 루프는 XML 표시로 읽을 수는 있어도(`marks(from:)`) 활성 표시를 XML로 옮길 수 없어 계속 막는다.
+        if rawCues.contains(where: \.isActiveMemoryLoop) {
+            blockers.append(String(ui: "활성 메모리 루프는 아직 rekordbox에 저장할 수 없습니다"))
+        }
+        if rawCues.contains(where: { xmlNum(forCue: $0) == nil }) {
             blockers.append(String(ui: "종류를 모르는 큐(Kind 4)가 있습니다"))
         }
 
@@ -49,7 +58,7 @@ public enum Reflection {
         let beforeMarks = marks(from: rawCues)
         var marks: [Mark] = []
         for raw in rawCues.sorted(by: { $0.inMsec < $1.inMsec }) {
-            guard let rawNum = xmlNum(forKind: raw.kind) else { continue }
+            guard let rawNum = xmlNum(forCue: raw) else { continue }
             let start = Double(raw.inMsec) / 1000
             let end = raw.isLoop ? Double(raw.outMsec) / 1000 : nil
             var mark = Mark(name: raw.name, type: raw.isLoop ? 4 : 0, start: start, end: end, num: rawNum)
@@ -85,10 +94,10 @@ public enum Reflection {
                     before: Metadata(track), beforeMarks: beforeMarks)
     }
 
-    /// rekordbox 큐 행 → XML 표시(알 수 없는 종류는 뺀다).
+    /// rekordbox 큐 행 → XML 표시(알 수 없는 종류는 뺀다. 활성 메모리 루프는 메모리 루프로 낸다).
     public static func marks(from cues: [Cue]) -> [Mark] {
         cues.compactMap { cue -> Mark? in
-            guard let num = xmlNum(forKind: cue.kind) else { return nil }
+            guard let num = xmlNum(forCue: cue) else { return nil }
             return Mark(name: cue.name, type: cue.isLoop ? 4 : 0, start: Double(cue.inMsec) / 1000,
                         end: cue.isLoop ? Double(cue.outMsec) / 1000 : nil, num: num)
         }.sorted { ($0.start, $0.num) < ($1.start, $1.num) }

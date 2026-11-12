@@ -6,7 +6,7 @@ public struct LibraryXMLSummary: Sendable, Equatable {
     public struct Omitted: Sendable, Equatable {
         public var streamingTracks = 0
         public var intelligentPlaylists = 0
-        /// XML로 옮길 수 없는 큐 종류(Kind 4 등)의 큐 수
+        /// XML로 옮길 수 없는 큐 종류(루프가 아닌 Kind 4 등)의 큐 수
         public var unknownCues = 0
         /// 컬렉션에 넣지 않은 곡(삭제·스트리밍)을 가리키던 재생 목록 항목 수
         public var playlistEntries = 0

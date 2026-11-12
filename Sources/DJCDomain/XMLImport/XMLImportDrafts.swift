@@ -175,6 +175,11 @@ public enum XMLImportDrafts {
         let duration = Double(source.track.lengthSeconds)
         func outside(_ mark: XMLLibrary.Mark) -> Bool { mark.start < 0 || mark.start > duration || (mark.end ?? 0) > duration }
         let outsideReason = String(ui: "곡 길이를 벗어난 큐는 넣지 않았습니다")
+        // 활성 메모리 루프(Kind 4)는 편집 대상이 아니라 base에 없다. 그래도 라이브러리 쪽 비교에는 메모리 루프로 들어 있으므로(`Reflection.marks`)
+        // 같은 자리의 XML 메모리 루프는 새 큐가 아니다. 더하면 rekordbox에 저장할 때 같은 자리에 루프가 하나 더 생긴다.
+        var activeLoops = source.cues.filter(\.isActiveMemoryLoop).map {
+            XMLLibrary.Mark(kind: .memory, start: Double($0.inMsec) / 1000, end: Double($0.outMsec) / 1000, name: $0.name)
+        }
         var cues = pairs.same.map { base[$0.library] } + pairs.keptAuto.map { base[$0] }
         for (x, l) in pairs.modified {
             let mark = change.xml[x]
@@ -199,6 +204,12 @@ public enum XMLImportDrafts {
             cues.append(cue)
         }
         for mark in XMLLibraryDiff.sorted(pairs.added.map { change.xml[$0] }) {
+            if mark.kind == .memory, mark.end != nil,
+               let i = activeLoops.firstIndex(where: { abs($0.start - mark.start) < XMLLibraryDiff.timeTolerance }) {
+                // 같은 루프면 이미 있는 큐다. 끝·이름이 다르면 그 활성 메모리 루프는 편집할 수 없어 바뀐 값을 넣지 못한다.
+                if !XMLLibraryDiff.sameMark(activeLoops.remove(at: i), mark) { loss(String(ui: "활성 메모리 루프는 아직 편집할 수 없어 넣지 않았습니다")) }
+                continue
+            }
             if outside(mark) {
                 loss(outsideReason)
                 continue

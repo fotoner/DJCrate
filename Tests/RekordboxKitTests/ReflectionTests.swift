@@ -73,6 +73,26 @@ struct ReflectionTests {
         #expect(!plan.isEligible)
     }
 
+    /// #355: 루프인 Kind 4 행(활성 메모리 루프)은 XML 표시로는 메모리 루프(Type 4, Num -1)다. 그래도 활성 표시를 XML로 옮길 수 없어
+    /// 반영 계획은 계속 막는다(막힘 이유만 "모르는 종류"가 아니라 활성 메모리 루프로 바뀐다).
+    @Test func 활성_메모리_루프는_XML_표시로_보되_반영은_막는다() {
+        let loop = Cue(id: "k4", contentID: "1", kind: 4, inMsec: 50_000, name: "", colorTableIndex: nil, outMsec: 52_000)
+        let point = Cue(id: "k4p", contentID: "1", kind: 4, inMsec: 60_000, name: "", colorTableIndex: nil)
+        #expect(Reflection.xmlNum(forCue: loop) == -1 && Reflection.xmlNum(forCue: point) == nil)
+        let marks = Reflection.marks(from: [loop, point])
+        #expect(marks.count == 1 && marks[0].type == 4 && marks[0].num == -1 && abs(marks[0].start - 50) < 1e-9 && abs((marks[0].end ?? 0) - 52) < 1e-9)
+
+        let cues = rawCues() + [loop]
+        let plan = Reflection.plan(track: track(), rawCues: cues, cueDraft: CueDraft(trackUUID: "u1", rekordboxCues: cues), gridDraft: nil)
+        #expect(plan.blockers == [String(ui: "활성 메모리 루프는 아직 rekordbox에 저장할 수 없습니다")])
+        #expect(!plan.isEligible)
+
+        // 루프가 아닌 Kind 4는 지금처럼 "모르는 종류"로 막는다
+        let unknown = rawCues() + [point]
+        let unknownPlan = Reflection.plan(track: track(), rawCues: unknown, cueDraft: CueDraft(trackUUID: "u1", rekordboxCues: unknown), gridDraft: nil)
+        #expect(unknownPlan.blockers == [String(ui: "종류를 모르는 큐(Kind 4)가 있습니다")])
+    }
+
     @Test func 변경이_없으면_대상이_아니다() {
         let plan = Reflection.plan(track: track(), rawCues: rawCues(), cueDraft: CueDraft(trackUUID: "u1", rekordboxCues: rawCues()), gridDraft: nil)
         #expect(!plan.isEligible)

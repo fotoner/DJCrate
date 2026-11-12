@@ -167,6 +167,66 @@ struct RekordboxXMLReaderTests {
         #expect(library.lists.first?.id == "p3")
     }
 
+    /// #355: 루프인 Kind 4 행(활성 메모리 루프)은 XML의 메모리 루프(Type 4, Num -1)와 같은 큐다. 큐 차이로 뜨지 않는다.
+    /// XML의 큐는 rekordbox가 내보내는 모양을 흉내 내 직접 적는다(DJCrate가 내보낸 큐에 기대지 않는다).
+    @Test func 활성_메모리_루프는_XML의_메모리_루프와_같은_큐다() throws {
+        let fixture = try RekordboxFixture()
+        var spec = TrackSpec(id: "201", uuid: "uuid-201")
+        spec.folderPath = "/Music/활성 루프.mp3"
+        var active = CueSpec(id: "a1", kind: 4, inMsec: 70_000)
+        active.outMsec = 73_500
+        spec.cues = [CueSpec(id: "m1", kind: 0, inMsec: 10_000), active]
+        try fixture.add(spec)
+        let collection = try RekordboxLibraryXML.load(snapshot: fixture.database, shareRoot: fixture.shareRoot)
+        var xml = RekordboxLibraryXML.document(collection)
+        xml = xml.replacingOccurrences(of: #" *<POSITION_MARK [^>]*/>\n"#, with: "", options: .regularExpression)
+        xml = xml.replacingOccurrences(of: "    </TRACK>", with: """
+              <POSITION_MARK Name="" Type="0" Start="10.000" Num="-1"/>
+              <POSITION_MARK Name="" Type="4" Start="70.000" End="73.500" Num="-1"/>
+            </TRACK>
+        """)
+        let diff = XMLLibraryDiff.compute(xml: try read(xml), library: RekordboxXMLImport.library(from: collection, hasGrids: false))
+        #expect(diff.counts.cueTracks == 0 && diff.isEmpty, "\(diff.tracks)")
+    }
+
+    /// #355 한 번에: 활성 메모리 루프(루프인 Kind 4 행)가 든 합성 DB → 라이브러리 XML 내보내기(루프가 `Type 4`·`Num -1`로 나감)
+    /// → 그 XML을 다시 읽어 `xml-diff` 비교(큐 차이 0) → 가져오기 초안(0개). 같은 곡의 다른 큐를 바꾼 XML이면 바뀐 큐만 초안에 들고 루프는 새로 더하지 않는다.
+    @Test func 활성_메모리_루프가_든_라이브러리는_내보내기_비교_초안_모두에서_루프를_새로_만들지_않는다() throws {
+        let fixture = try RekordboxFixture()
+        var spec = TrackSpec(id: "201", uuid: "uuid-201")
+        spec.folderPath = "/Music/활성 루프.mp3"
+        var active = CueSpec(id: "a1", kind: 4, inMsec: 70_000)
+        active.outMsec = 73_500
+        spec.cues = [CueSpec(id: "m1", kind: 0, inMsec: 10_000), CueSpec(id: "h1", kind: 1, inMsec: 20_000), active]
+        try fixture.add(spec)
+        let collection = try RekordboxLibraryXML.load(snapshot: fixture.database, shareRoot: fixture.shareRoot)
+        let library = RekordboxXMLImport.library(from: collection, hasGrids: false)
+        let loaded = try RekordboxLibrary.load(snapshot: fixture.database)
+        let track = try #require(loaded.tracks.first { $0.id == "201" })
+        let sources = ["201": XMLImportDrafts.TrackSource(track: track, cues: loaded.cues(for: track), grid: nil, inPlaylist: false, existing: [])]
+        func plan(_ diff: XMLLibraryDiff.Result) -> XMLImportDrafts.Plan {
+            XMLImportDrafts.plan(diff: diff, selection: .all, sources: sources, layout: PlaylistLayout(), playlistDraft: PlaylistDraft(),
+                                 newKey: { UUID().uuidString }, newID: { UUID() })
+        }
+
+        // 내보내기: 루프가 메모리 루프로 나간다
+        let xml = RekordboxLibraryXML.document(collection)
+        #expect(xml.contains(#"Type="4" Start="70.000" End="73.500" Num="-1""#))
+        // 비교: 큐 차이 0, 가져오기 초안 0
+        let same = XMLLibraryDiff.compute(xml: try read(xml), library: library)
+        #expect(same.counts.cueTracks == 0 && same.isEmpty, "\(same.tracks)")
+        #expect(plan(same).isEmpty)
+
+        // 같은 곡의 다른 큐(핫큐 A)만 옮긴 XML: 초안은 그 큐만 바꾸고 루프를 더하지 않는다
+        let moved = xml.replacingOccurrences(of: #"Start="20.000" Num="0""#, with: #"Start="21.000" Num="0""#)
+        let diff = XMLLibraryDiff.compute(xml: try read(moved), library: library)
+        #expect(diff.counts.cueTracks == 1)
+        let result = plan(diff)
+        let draft = try #require(result.cueDrafts.first)
+        #expect(draft.cues.filter { $0.loop != nil }.isEmpty && draft.cues.contains { $0.kind == .hot(0) && $0.time == 21 })
+        #expect(draft.cues.count == 2 && result.losses.isEmpty && result.skipped.isEmpty)
+    }
+
     @Test func 분석_파일은_XML에_TEMPO가_있는_곡만_읽는다() throws {
         let fixture = try RekordboxLibraryXMLTests().makeLibrary()
         let collection = try RekordboxLibraryXML.load(snapshot: fixture.database, shareRoot: fixture.shareRoot)

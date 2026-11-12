@@ -50821,6 +50821,38 @@
         }
       }
     },
+    "활성 메모리 루프는 아직 rekordbox에 저장할 수 없습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Active memory loops can't be saved to rekordbox yet"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティブメモリーループは、まだrekordboxに保存できません"
+          }
+        }
+      }
+    },
+    "활성 메모리 루프는 아직 편집할 수 없어 넣지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Active memory loops can't be edited yet, so this loop was not added."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アクティブメモリーループはまだ編集できないため、入れませんでした"
+          }
+        }
+      }
+    },
     "회복" : {
       "localizations" : {
         "en" : {
