@@ -213,7 +213,7 @@ struct TrackWritePathTests {
         let prompter = ScriptedPrompter()
         await store.prepareMerge(keeping: "100", removing: ["200"], prompter: prompter)
         let prompt = try #require(prompter.shown.first)
-        #expect(prompt.title == "합치기 초안을 만들지 않았습니다" && prompt.confirm == nil)
+        #expect(prompt.title == "합치기 편집을 만들지 않았습니다" && prompt.confirm == nil)
         #expect(prompt.text == RekordboxWriter.mergeSourceReason(RekordboxTrackWriter.syncedTrackReason, title: "뺄 곡"))
         #expect(prompt.text.contains("‘뺄 곡’") && !prompt.text.contains("남길 곡"))
         #expect(store.mergeDrafts.isEmpty)
@@ -287,7 +287,7 @@ struct TrackWritePathTests {
         #expect(moved.changedKeys == [.musicalKey] && moved.fields.musicalKey == "12B")
         #expect(TagDraftStore.load(trackUUID: uuid, directory: store.tagDraftDirectory)?.fields.musicalKey == "12B", "디스크에도 저장했다")
         let result = WriteResult.tracks(report, preview: preview.report, adding: true, withoutAnalysis: preview.withoutAnalysis)
-        #expect(result.text.contains("키는 쓰기 대기"), "\(result.text)")
+        #expect(result.text.contains("키는 저장 대기"), "\(result.text)")
 
         // 나중에 읽으면 새 곡이 보이고, 초안의 기준은 그 곡의 값이라 쓰기에서 기준 어긋남으로 막히지 않는다
         snapshotFails.set(false)
@@ -354,7 +354,7 @@ struct TrackWritePathTests {
         writer.flush()
         #expect(store.tagDrafts[uuid] == nil && TagDraftStore.load(trackUUID: uuid, directory: store.tagDraftDirectory) == nil)
         #expect(store.tags.confirmedStagedKey(uuid: staged.uuid) == "12B", "고른 키는 추가 목록 곡에 돌아온다")
-        #expect(!store.unlinkedDraftUUIDs.contains(uuid) && !store.writeFollowUp.contains { $0.contains("연결되지 않은 초안") })
+        #expect(!store.unlinkedDraftUUIDs.contains(uuid) && !store.writeFollowUp.contains { $0.contains("연결되지 않은 편집") })
     }
 
     @Test func 곡_넣기를_되돌려도_넣은_뒤_새_곡에_만든_태그_초안은_지우지_않고_알린다() async throws {
@@ -377,7 +377,7 @@ struct TrackWritePathTests {
         #expect(store.tagDrafts[uuid]?.fields.comment == "넣은 뒤 고친 코멘트", "사용자가 만든 초안은 지우지 않는다")
         #expect(TagDraftStore.load(trackUUID: uuid, directory: store.tagDraftDirectory)?.fields.comment == "넣은 뒤 고친 코멘트", "디스크에도 남아 있다")
         #expect(store.unlinkedDraftUUIDs.contains(uuid), "연결 안 된 초안으로 남아 쓰기 대기 목록에서 버릴 수 있다")
-        #expect(store.writeFollowUp.contains { $0.contains("연결되지 않은 초안") }, "\(store.writeFollowUp)")
+        #expect(store.writeFollowUp.contains { $0.contains("연결되지 않은 편집") }, "\(store.writeFollowUp)")
     }
 
     // MARK: - 복원 확인 창의 곡 이름
@@ -471,7 +471,7 @@ struct TrackWritePathTests {
         store.reflectionBatch = ReflectionXMLBatch(createdAt: "2026-10-01 00:00:00", xmlPath: "", plans: [plan], checks: [:])
         store.verifyReflection()
         #expect(store.activityLog.latest?.kind == .warning)
-        #expect(store.activityLog.latest?.text.contains("초안을 정리하지 못했습니다") == true)
+        #expect(store.activityLog.latest?.text.contains("편집을 정리하지 못했습니다") == true)
         #expect(writer.failures(in: store.draftLocations).contains { $0.trackUUID == spec.uuid && $0.kind == .cue })
     }
 
@@ -523,7 +523,7 @@ struct TrackWritePathTests {
         #expect(CueDraftStore.load(trackUUID: added.uuid, directory: store.draftLocations.cue) == editedCue, "큐 초안을 지우지 않는다")
         #expect(GridDraftStore.load(trackUUID: added.uuid, directory: store.draftLocations.grid) == editedGrid, "그리드 초안을 지우지 않는다")
         #expect(store.unlinkedDraftUUIDs.contains(added.uuid), "연결 안 된 초안으로 남아 쓰기 대기 목록에서 버릴 수 있다")
-        let notice = try #require(store.writeFollowUp.first { $0.contains("연결되지 않은 초안") })
+        let notice = try #require(store.writeFollowUp.first { $0.contains("연결되지 않은 편집") })
         #expect(notice == ReflectionSession.keptNewTrackDraftsText(1, kinds: [.cue, .grid]), "\(notice)")
         #expect(notice.contains("큐·그리드") && !notice.contains("새 곡에 만든"), "\(notice)")
     }
@@ -571,7 +571,7 @@ struct TrackWritePathTests {
         #expect(result.keptDrafts == 1 && result.keptKinds == [.cue])
         #expect(writer.pendingCue(trackUUID: added.uuid, directory: store.draftLocations.cue) == edited, "저장 못 한 새 입력을 지우지 않는다")
         #expect(writer.failures(in: store.draftLocations).contains { $0.trackUUID == added.uuid && $0.kind == .cue })
-        #expect(store.lastError?.contains("초안을 저장하지 못했습니다") == true, "\(store.lastError ?? "")")
+        #expect(store.lastError?.contains("편집을 보관하지 못했습니다") == true, "\(store.lastError ?? "")")
     }
 
     @Test func 곡_넣기를_되돌리면_옮긴_큐_초안의_저장_실패_기록도_정리한다() async throws {
@@ -608,7 +608,7 @@ struct TrackWritePathTests {
             clearDrafts(added.staged.uuid, in: store)
         }
         _ = store.session.restoreStaged(from: added.backup)
-        #expect(store.lastError?.contains("초안을 저장하지 못했습니다") == true)
+        #expect(store.lastError?.contains("편집을 보관하지 못했습니다") == true)
         #expect(writer.failures(in: store.draftLocations).contains { $0.trackUUID == added.uuid && $0.kind == .cue })
     }
 

@@ -7,7 +7,7 @@ extension UsbEditPlanner {
     func requireLocal() throws -> (database: CipherDatabase, share: URL, snapshot: Date) {
         guard let share, let snapshotTakenAt else {
             throw UsbEditBlocked(block: UsbBlock(code: "localLibraryMissing", scope: .volume,
-                                                 message: String(ui: "로컬 라이브러리 사본이 없어 곡을 더하거나 갱신할 수 없습니다. --db로 스냅샷 사본을 주세요")))
+                                                 message: String(ui: "로컬 라이브러리 사본이 없어 곡을 더하거나 갱신할 수 없습니다. --db로 읽은 사본을 주세요")))
         }
         return (try requireLocalDatabase(), share, snapshotTakenAt)
     }
@@ -16,7 +16,7 @@ extension UsbEditPlanner {
     func requireLocalDatabase() throws -> CipherDatabase {
         guard let localDatabase else {
             throw UsbEditBlocked(block: UsbBlock(code: "localLibraryMissing", scope: .volume,
-                                                 message: String(ui: "로컬 라이브러리 사본이 없어 USB 편집을 계획하지 못했습니다. --db로 스냅샷 사본을 주세요")))
+                                                 message: String(ui: "로컬 라이브러리 사본이 없어 USB 편집을 계획하지 못했습니다. --db로 읽은 사본을 주세요")))
         }
         guard let version = localAppVersion, (try? RekordboxCompatibility.checkApp(version: version)) != nil else {
             let shown = localAppVersion ?? String(ui: "찾지 못함")
@@ -101,7 +101,7 @@ extension UsbEditPlanner {
         if rewritesAnalysis, let modified = UsbExportCandidates.analysisFiles(share: share, path: row.analysisDataPath).modified,
            modified > snapshot {
             throw UsbEditBlocked(block: UsbBlock(code: "analysisNewerThanSnapshot", scope: .track("usb:\(id)"),
-                                                 message: String(ui: "rekordbox 분석이 스냅샷 뒤에 바뀌었습니다. 새 스냅샷을 뜬 뒤 다시 시도하세요")))
+                                                 message: String(ui: "rekordbox 분석이 동기화 뒤에 바뀌었습니다. ‘rekordbox와 동기화’를 한 뒤 다시 시도하세요")))
         }
         try checkAudio(track, row: row)
         var updated = track
@@ -362,7 +362,7 @@ extension UsbEditPlanner {
         let found = Set(candidates.map(\.localContentID))
         for id in wanted where !found.contains(id) {
             planned.trackBlocks.append(UsbBlock(code: "localTrackMissing", scope: .track(id),
-                                                message: String(ui: "스냅샷에서 이 곡을 찾지 못했습니다. 새 스냅샷을 뜬 뒤 다시 내보내세요")))
+                                                message: String(ui: "읽은 사본에서 이 곡을 찾지 못했습니다. ‘rekordbox와 동기화’를 한 뒤 다시 내보내세요")))
         }
         // 파일 이름 정제·번호 꼬리도 같은 짝으로 본다(동기화마다 곡이 중복해 늘지 않게)
         let pairs = try localPairs(for: wanted, database: database)

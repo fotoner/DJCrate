@@ -4,7 +4,7 @@ import Foundation
 import Observation
 
 /// 재생 목록 초안(#39·#40, 기능 조각 #251): 곡 넣기·빼기·순서, 목록·폴더 만들기·이름·지우기·옮기기.
-/// rekordbox에는 바로 쓰지 않고 초안(`PlaylistDraft`)으로 쌓아, 반영(⇧⌘E) 때 큐·그리드 초안과 같은 확인 창·백업·되돌리기로 쓴다.
+/// rekordbox에는 바로 쓰지 않고 초안(`PlaylistDraft`)으로 쌓아, 저장(⌘S) 때 큐·그리드 초안과 같은 확인 창·백업·되돌리기로 쓴다.
 /// 사이드바·곡 목록은 rekordbox 상태에 초안을 얹은 모양을 보여 준다. 사이드바 트리·재생 목록 명령·고르기 시트·반영·복구 시트·USB 시트가 쓴다.
 /// 최근 목록·넣기 전 나누기·기록 원본 고르기의 규칙은 유스케이스 `EditPlaylists`가 맡는다. 사이드바 펼침·이름 바꾸기는 `PlaylistSidebarModel`이 든다.
 /// 핵심 `LibraryStore`의 `playlists` 속성이다. 곡·사이드바·설정·쓰기 잠금·되돌리기는 핵심 것을 읽는다(`library`).
@@ -203,7 +203,7 @@ final class PlaylistEditStore {
     func setPlaylistDraft(_ draft: PlaylistDraft, actionName: String) {
         guard draft != playlistDraft else { return }
         if syncExternalPlaylistDraft() {
-            library.showToast(.notice(text: String(ui: "바깥에서 바뀐 재생 목록 초안을 다시 읽어 방금 변경은 하지 않았습니다. 다시 해 주세요."), kind: .warning))
+            library.showToast(.notice(text: String(ui: "바깥에서 바뀐 재생 목록 편집을 다시 읽어 방금 변경은 하지 않았습니다. 다시 해 주세요."), kind: .warning))
             return
         }
         commitPlaylistDraft(draft, actionName: actionName)
@@ -253,7 +253,7 @@ final class PlaylistEditStore {
         if applyPlaylistRequests([.removeTracks(.ref(PlaylistRef(id)), contentIDs: Self.unique(entries.map(\.contentID)))],
                                  actionName: String(ui: "재생 목록에서 빼기")) != nil {
             let count = Set(entries.map(\.contentID)).count
-            let removed = String(ui: "‘\(item.name)’에서 \(count)곡을 뺐습니다(쓰기 대기).")
+            let removed = String(ui: "‘\(item.name)’에서 \(count)곡을 뺐습니다(저장 대기).")
             library.showToast(playlistDraftUnsaved ? .notice(text: removed + " " + Self.playlistSaveFailureText, kind: .warning)
                 : .notice(text: removed, kind: .success))
             if playlistDraftUnsaved { saveFailureToast = library.toast?.id }
@@ -347,14 +347,14 @@ final class PlaylistEditStore {
     func discardPlaylistDraft(_ id: String? = nil) {
         var draft = playlistDraft
         if let id { draft.discard(playlist: id, rekordbox: rekordboxPlaylists) } else { draft = PlaylistDraft() }
-        setPlaylistDraft(draft, actionName: String(ui: "재생 목록 초안 버리기"))
+        setPlaylistDraft(draft, actionName: String(ui: "재생 목록 편집 버리기"))
     }
 
     /// rekordbox에서 바뀌어 쓸 수 없는 편집만 버린다.
     func discardBlockedPlaylistEdits() {
         var draft = playlistDraft
         draft.discardBlocked(rekordbox: rekordboxPlaylists, contentIDs: Set(library.rowsByID.keys))
-        setPlaylistDraft(draft, actionName: String(ui: "재생 목록 초안 버리기"))
+        setPlaylistDraft(draft, actionName: String(ui: "재생 목록 편집 버리기"))
     }
 
     // MARK: - 바깥 변경(#260)
@@ -454,7 +454,7 @@ final class PlaylistEditStore {
         playlistEditsAwaitingReload = []
         let unrestored = restorePlaylistEdits(edits)
         if unrestored > 0 {
-            library.notify(.notice(text: String(ui: "재생 목록 편집 \(unrestored)건은 초안으로 되살리지 못했습니다."), kind: .warning))
+            library.notify(.notice(text: String(ui: "재생 목록 편집 \(unrestored)건은 편집으로 되살리지 못했습니다."), kind: .warning))
         }
     }
 }

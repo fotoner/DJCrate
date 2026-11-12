@@ -125,8 +125,8 @@ final class ReflectionPresenter {
             // 창 대신 결과에 제외한 초안까지 남긴다(#230).
             var result = WriteResult.written(preview.report, preview: preview.report)
             if !preview.exclusions.isEmpty {
-                result.text = ([result.text, String(ui: "쓰지 않는 것:")].filter { !$0.isEmpty } + preview.exclusions).joined(separator: "\n")
-                result.shortfall = result.shortfall ?? ReflectionPrompts.summaryLine(preview.exclusions, prefix: String(ui: "쓰지 않는 것"))
+                result.text = ([result.text, String(ui: "저장하지 않는 것:")].filter { !$0.isEmpty } + preview.exclusions).joined(separator: "\n")
+                result.shortfall = result.shortfall ?? ReflectionPrompts.summaryLine(preview.exclusions, prefix: String(ui: "저장하지 않는 것"))
             }
             publish(result)
         case let .added(report, preview, followUp):
@@ -161,7 +161,7 @@ final class ReflectionPresenter {
 
     /// 작업을 취소했을 때의 결과. 미리 보기 단계에서만 취소할 수 있어 아무것도 쓰지 않았다.
     private func publishCancelled() {
-        let text = String(ui: "rekordbox에 아무것도 쓰지 않았습니다.")
+        let text = String(ui: "rekordbox에 아무것도 저장하지 않았습니다.")
         publish(WriteResult(kind: .success, title: String(ui: "작업을 취소했습니다"), text: text), detail: text)
     }
 
@@ -183,8 +183,8 @@ final class ReflectionPresenter {
     /// 쓰기 실패 알림. 자동 복원까지 실패했으면 사라지는 토스트가 아니라 닫아야 하는 경고 창으로 알린다.
     /// - Parameter exclusions: 미리 보기에서 제외한 초안. 따로 창을 띄우지 않고 이 알림과 결과 기록에 합친다(#230).
     private func fail(_ title: String, _ error: any Error, exclusions: [String] = []) {
-        let excluded = ReflectionPrompts.summaryLine(exclusions, prefix: String(ui: "미리 보기에서 제외한 초안"))
-        let excludedText = exclusions.isEmpty ? [] : [String(ui: "미리 보기에서 제외한 초안:")] + exclusions
+        let excluded = ReflectionPrompts.summaryLine(exclusions, prefix: String(ui: "미리 보기에서 제외한 편집"))
+        let excludedText = exclusions.isEmpty ? [] : [String(ui: "미리 보기에서 제외한 편집:")] + exclusions
         if var alert = ReflectionPrompts.restoreFailureAlert(error) {
             AppErrorMessage.log(error)
             store?.dismissToast()
@@ -261,7 +261,7 @@ final class ReflectionCoordinator {
         store.refreshWriteBackups()
         guard let backup = session.writeBackups().first(where: \.isWrite) else {
             // 메뉴는 백업이 있을 때만 열린다. 그 사이 백업이 정리됐으면 창 대신 토스트로 알린다(#230).
-            store.showToast(.notice(String(ui: "복원할 쓰기 기록이 없습니다"), String(ui: "DJCrate가 rekordbox에 쓴 적이 없거나 백업이 정리됐습니다.")))
+            store.showToast(.notice(String(ui: "복원할 저장 기록이 없습니다"), String(ui: "DJCrate가 rekordbox에 저장한 적이 없거나 백업이 정리됐습니다.")))
             return
         }
         guard canStart() else { return }

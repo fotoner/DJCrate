@@ -21,12 +21,12 @@ enum LibraryMenuAction: CaseIterable {
         case .exportLibraryXML: String(ui: "라이브러리 XML 내보내기…")
         // 다른 도구가 만든 rekordbox XML과의 차이를 보고 고른 것만 초안으로 만든다(#72, 열기 창을 여므로 …).
         case .importRekordboxXML: String(ui: "rekordbox XML 가져오기…")
-        case .reflect: String(ui: "rekordbox에 쓰기")
-        case .pending: String(ui: "쓰기 대기 목록 보기")
+        case .reflect: String(ui: "rekordbox에 저장")
+        case .pending: String(ui: "저장 대기 목록 보기")
         case .activityLog: String(ui: "활동 기록…")
-        case .restore: String(ui: "쓰기 전으로 복원…")
+        case .restore: String(ui: "저장 전으로 복원…")
         // 라이브러리 읽기 사본(스냅샷)과 달리 DB·분석 파일·앨범아트를 한 시점으로 남기고 되돌린다(#224).
-        case .pointSnapshots: String(ui: "시점 스냅샷…")
+        case .pointSnapshots: String(ui: "복원 시점…")
         case .removeTracks: String(ui: "rekordbox에서 빼기…")
         case .find: String(ui: "찾기")
         }
@@ -36,7 +36,7 @@ enum LibraryMenuAction: CaseIterable {
         switch self {
         case .addFiles: KeyboardShortcut("o", modifiers: .command)
         case .snapshot: KeyboardShortcut("r", modifiers: .command)
-        case .reflect: KeyboardShortcut("e", modifiers: [.command, .shift])
+        case .reflect: KeyboardShortcut("s", modifiers: .command)
         case .find: KeyboardShortcut("f", modifiers: .command)
         default: nil
         }
@@ -115,7 +115,7 @@ enum LibraryMenuAction: CaseIterable {
     @MainActor func disabledReason(in window: LibraryWindowModel) -> String? {
         guard !isEnabled(in: window) else { return nil }
         let store = window.store
-        if isLocked(by: store) { return String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") }
+        if isLocked(by: store) { return String(ui: "rekordbox 저장이 끝난 뒤 다시 시도하세요") }
         if writesLibrary, store.writesBlockedBySheet { return LibraryStore.writesBlockedBySheetReason }
         switch self {
         case .snapshot:
@@ -124,14 +124,14 @@ enum LibraryMenuAction: CaseIterable {
         case .removeTracks:
             if store.isITunesSelection { return String(ui: "iTunes 동기화 목록에서는 곡을 뺄 수 없으니 rekordbox 컬렉션에서 곡을 고르세요") }
             return String(ui: "rekordbox 컬렉션에서 뺄 로컬 곡을 목록에서 고르세요")
-        case .reflect: return String(ui: "쓸 초안이 없으니 곡을 편집하거나 재생 목록 초안을 먼저 만드세요")
-        case .exportXML: return String(ui: "XML로 넘길 추가한 곡이나 큐·그리드 초안을 먼저 만드세요")
+        case .reflect: return String(ui: "저장할 편집이 없으니 곡을 편집하거나 재생 목록 편집을 먼저 만드세요")
+        case .exportXML: return String(ui: "XML로 넘길 추가한 곡이나 큐·그리드 편집을 먼저 만드세요")
         case .exportLibraryXML:
             return store.staging.hasXMLExportJob ? String(ui: "라이브러리 XML 내보내기가 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 내보내세요")
         case .importRekordboxXML:
             return window.xmlImport.isBusy
                 ? String(ui: "지금 가져오는 XML이 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 가져오세요")
-        case .restore: return String(ui: "쓰기 전 백업이 없으니 활동 기록을 확인하세요")
+        case .restore: return String(ui: "저장 전 백업이 없으니 활동 기록을 확인하세요")
         case .addFiles, .importAppleMusic: return String(ui: "라이브러리를 먼저 불러온 뒤 곡을 추가하세요")
         case .find:
             guard case .loaded = store.phase else { return String(ui: "라이브러리를 먼저 불러온 뒤 검색하세요") }

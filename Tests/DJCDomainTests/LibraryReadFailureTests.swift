@@ -95,7 +95,7 @@ struct LibraryReadFailureTests {
     @Test func 지원하지_않는_버전_안내는_앞_두_자리만_보인다() {
         #expect(UnsupportedRekordboxNotice.title(version: "7.3.1") == "이 rekordbox 버전(7.3)은 아직 지원하지 않습니다")
         #expect(UnsupportedRekordboxNotice.title(version: "6") == "이 rekordbox 버전(6)은 아직 지원하지 않습니다")
-        #expect(UnsupportedRekordboxNotice.guidance == "읽기만 하고 rekordbox에 쓰기는 막혀 있습니다")
+        #expect(UnsupportedRekordboxNotice.guidance == "읽기만 하고 rekordbox에 저장은 막혀 있습니다")
     }
 
     // MARK: - 자세히 보기

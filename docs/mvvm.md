@@ -91,7 +91,7 @@ struct UnlinkedDraftsView: View {
     @State private var drafts: [UnlinkedDraft] = []   // ✗ 화면 상태가 뷰에 있다
     @State private var failure: String?               // ✗
     // …
-    Button(.ui("초안 버리기"), role: .destructive) {
+    Button(.ui("편집 버리기"), role: .destructive) {
         failure = store.discardUnlinkedDrafts(selected)  // ✗ 흐름이 뷰에 있다
         reload()
     }
@@ -108,7 +108,7 @@ func openUnlinkedDrafts() { unlinkedDrafts = UnlinkedDraftsModel(store: store) }
 .sheet(item: Binding(get: { window.unlinkedDrafts }, set: { window.unlinkedDrafts = $0 })) { UnlinkedDraftsView(model: $0) }
 
 // Sources/DJCrate/Library/UnlinkedDraftsView.swift
-Button(.ui("초안 버리기"), role: .destructive) { model.discard() }
+Button(.ui("편집 버리기"), role: .destructive) { model.discard() }
 ```
 
 - 시트 모델을 `body`나 시트 내용 클로저에서 만들지 않는다. 본문을 다시 계산할 때마다 새 모델이 생겨 입력과 선택을 잃는다.
@@ -292,7 +292,7 @@ try await h.loaded()
 아래 둘은 이 패턴의 예외다.
 
 - **덱 재생 경로**: `DeckModel`은 오디오 엔진 포트 `DeckAudioEngine`을 직접 부른다. 매 프레임 재생 위치와 샘플 단위 예약을 유스케이스 한 겹 뒤로 미루지 않으려는 것이다. 이유는 [구조 문서의 경계 규칙](architecture.md#경계-규칙)에 있다.
-- **공유 핵심 `LibraryStore`**: 화면 여럿이 같은 값을 봐야 하는 상태만 든다(#248). 읽은 곡과 목록 줄, 사이드바·선택·덱 곡, 초안 표시, 쓰기 잠금, 알림, 파일 없음 확인이 그 상태다. 라이브러리 상태는 세 겹으로 나눈다.
+- **공유 핵심 `LibraryStore`**: 화면 여럿이 같은 값을 봐야 하는 상태만 든다(#248). 읽은 곡과 목록 줄, 사이드바·선택·덱 곡, 저장 대기 표시, 쓰기 잠금, 알림, 파일 없음 확인이 그 상태다. 라이브러리 상태는 세 겹으로 나눈다.
   - 공유 핵심: 위 상태를 든다. 화면 모델과 기능 조각은 핵심의 값을 읽는다. 핵심의 메서드도 부른다. 묶음 뷰와 성능 때문에 잎으로 내려 둔 읽기는 핵심을 직접 읽는다. 예: 사이드바 줄, 창 제목, 빈 목록 안내.
   - 기능 조각(`…Store`): 기능 하나의 상태와 흐름을 든다. 조각은 핵심의 속성이다. 핵심은 조각을 관찰하지 않는다. 화면은 조각의 값을 읽는다.
   - 화면 모델(`…Model`): 화면 하나의 상태와 단추 입구를 든다. 패널 모델은 조립 지점이 한 번 만든다(`AppComposition`). 시트 모델은 띄울 때 한 번 만든다.

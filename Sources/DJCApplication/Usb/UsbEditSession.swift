@@ -164,7 +164,7 @@ public final class UsbEditSession {
         case let .edits(given): list = given
         case .draft:
             guard let draft = try drafts.load(volumeKey) else {
-                return Prepared(result: UsbEditResult(blocks: [UsbBlock(code: "noDraft", scope: .volume, message: String(ui: "이 USB에 쌓인 초안이 없습니다. 편집을 먼저 더하세요"))]))
+                return Prepared(result: UsbEditResult(blocks: [UsbBlock(code: "noDraft", scope: .volume, message: String(ui: "이 USB에 쌓인 편집이 없습니다. 편집을 먼저 더하세요"))]))
             }
             list = draft.edits
             draftKey = volumeKey

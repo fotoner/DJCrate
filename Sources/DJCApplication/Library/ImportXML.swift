@@ -206,7 +206,7 @@ public struct ImportXML: Sendable {
 
     private static var playlistBusy: XMLImportDrafts.Note {
         XMLImportDrafts.Note(kind: .playlist, libraryKey: nil, subject: "",
-                             reason: String(ui: "DJCrate가 rekordbox에 쓰는 중이거나 다른 djc가 재생 목록 초안을 고치는 중이라 재생 목록 초안은 만들지 않았습니다. 그 일이 끝난 뒤 다시 가져오세요"))
+                             reason: String(ui: "DJCrate가 rekordbox에 저장하는 중이거나 다른 djc가 재생 목록 편집을 고치는 중이라 재생 목록 편집은 만들지 않았습니다. 그 일이 끝난 뒤 다시 가져오세요"))
     }
 
     /// 사본·분석 파일·기존 초안을 읽어 계획을 세운다(쓰지 않는다, 메인 밖에서 부른다)

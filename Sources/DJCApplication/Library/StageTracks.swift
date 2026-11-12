@@ -98,7 +98,7 @@ public struct StageTracks: Sendable {
             if !stagedIDs.isEmpty { parts.append(String(ui: "이미 추가한 \(stagedIDs.count)곡을 골랐습니다")) }
             if failed > 0 { parts.append(String(ui: "\(failed)곡은 읽지 못함")) }
             if linksPlaylists {
-                parts.append(String(ui: "컬렉션에 들어간 곡은 재생 목록 초안에 연결합니다. 목록은 ‘rekordbox에 쓰기’로 만듭니다."))
+                parts.append(String(ui: "컬렉션에 들어간 곡은 재생 목록 편집에 연결합니다. 목록은 ‘rekordbox에 저장’으로 만듭니다."))
             }
             return (parts.joined(separator: " · "), failed > 0)
         }

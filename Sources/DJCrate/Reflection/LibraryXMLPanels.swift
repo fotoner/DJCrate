@@ -14,7 +14,7 @@ enum LibraryXMLPanels {
         panel.directoryURL = URL.documentsDirectory
         panel.canCreateDirectories = true
         panel.title = String(ui: "라이브러리 XML 내보내기")
-        panel.message = String(ui: "라이브러리 전체(곡·큐·그리드·재생 목록)를 rekordbox XML 파일로 내보냅니다. 쓰지 않은 초안은 넣지 않습니다.")
+        panel.message = String(ui: "라이브러리 전체(곡·큐·그리드·재생 목록)를 rekordbox XML 파일로 내보냅니다. 저장하지 않은 편집은 넣지 않습니다.")
         panel.prompt = String(ui: "내보내기")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         store.staging.exportLibraryXML(to: url)

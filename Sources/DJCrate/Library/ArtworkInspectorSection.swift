@@ -27,11 +27,11 @@ struct ArtworkInspectorSection: View {
                 VStack(alignment: .leading, spacing: 6) {
                     status
                     Button(.ui("앨범아트 고르기")) { choose() }
-                        .help(String(ui: "JPEG·PNG 앨범아트 파일을 골라 앨범아트 초안을 만듭니다"))
+                        .help(String(ui: "JPEG·PNG 앨범아트 파일을 골라 앨범아트 편집을 만듭니다"))
                     Button(.ui("앨범아트 지우기")) { model.deleteArtwork(rows: editable) }
                         .disabled(!editable.contains(where: model.hasArtwork))
-                        .help(String(ui: "앨범아트를 지우는 초안을 만듭니다"))
-                    Button(.ui("앨범아트 초안 버리기")) { model.discardDrafts(rows: editable) }
+                        .help(String(ui: "앨범아트를 지우는 편집을 만듭니다"))
+                    Button(.ui("앨범아트 편집 버리기")) { model.discardDrafts(rows: editable) }
                         .disabled(drafts.isEmpty)
                 }
                 .disabled(editable.isEmpty || model.isLocked)
@@ -55,7 +55,7 @@ struct ArtworkInspectorSection: View {
                 Text(.ui("앨범아트 없음")).foregroundStyle(.secondary)
             }
         } else if !drafts.isEmpty {
-            Label(String(ui: "앨범아트 초안 \(drafts.count)곡"), systemImage: DraftMark.symbol).foregroundStyle(UIColors.draft.color)
+            Label(String(ui: "앨범아트 편집 \(drafts.count)곡"), systemImage: DraftMark.symbol).foregroundStyle(UIColors.draft.color)
         }
     }
 
@@ -90,7 +90,7 @@ private struct ArtworkWell: View {
         .frame(width: 96, height: 96)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(targeted ? Color.accentColor : (draft != nil ? UIColors.draft.color : .clear), lineWidth: 2))
-        .help(String(ui: "앨범아트 파일(JPEG·PNG)을 끌어다 놓으면 앨범아트 초안을 만듭니다"))
+        .help(String(ui: "앨범아트 파일(JPEG·PNG)을 끌어다 놓으면 앨범아트 편집을 만듭니다"))
         .accessibilityElement()
         .accessibilityLabel(model.image == nil ? Text(.ui("앨범아트 없음")) : Text(.ui("앨범아트")))
         // 초안(그림 사본의 해시)과 rekordbox 그림이 바뀔 때만 다시 읽는다.

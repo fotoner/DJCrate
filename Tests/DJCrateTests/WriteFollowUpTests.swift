@@ -96,13 +96,13 @@ struct WriteFollowUpTests {
     }
 
     @Test func 뒤따른_경고가_있으면_성공_결과도_경고로_바꾸고_줄을_더한다() {
-        let result = WriteResult(kind: .success, title: "rekordbox에 썼습니다 · 큐 1곡", text: "• 곡 — 큐 쓰기 완료")
+        let result = WriteResult(kind: .success, title: "rekordbox에 저장했습니다 · 큐 1곡", text: "• 곡 — 큐 저장 완료")
         #expect(result.followedUp([]) == result)
         let note = ReflectionSession.reloadFailureText(restoring: false)
         let followed = result.followedUp([note])
         #expect(followed.kind == .warning && followed.title == result.title)
         #expect(followed.shortfall == note)
-        #expect(followed.text == "• 곡 — 큐 쓰기 완료\n• \(note)")
+        #expect(followed.text == "• 곡 — 큐 저장 완료\n• \(note)")
     }
 
     // MARK: - 복원(B49)

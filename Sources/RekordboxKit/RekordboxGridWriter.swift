@@ -100,7 +100,7 @@ public enum RekordboxGridWriter {
             $0.start.isFinite && abs($0.start) < Double(UInt32.max) / 1000
                 && (20...655.35).contains($0.bpm) && (1...4).contains($0.firstBeatNumber)
         }), zip(draft.segments, draft.segments.dropFirst()).allSatisfy({ $0.start < $1.start }) else {
-            throw block(String(ui: "그리드를 쓸 수 없습니다. BPM을 20~655.35로 맞추고 변속 지점의 위치와 순서를 확인하세요"))
+            throw block(String(ui: "그리드를 저장할 수 없습니다. BPM을 20~655.35로 맞추고 변속 지점의 위치와 순서를 확인하세요"))
         }
         let datURL = analysisDataPath.flatMap { $0.isEmpty ? nil : shareRoot.appending(path: String($0.drop(while: { $0 == "/" }))) }
         guard let datURL, FileManager.default.fileExists(atPath: datURL.path) else {
@@ -130,7 +130,7 @@ public enum RekordboxGridWriter {
         // 그리드만 쓰면 rekordbox는 분석된 곡으로 보고 파형이 없는 채로 남는다(2026-09-26 サラマンダー). 기존 .DAT·파일 행을
         // rekordbox가 다시 분석할 때 어떻게 바꾸는지 몰라 분석 붙이기(`RekordboxWriter+Analysis`)도 하지 않는다.
         guard FileManager.default.fileExists(atPath: extURL.path) else {
-            throw block(String(ui: "rekordbox 분석이 끝나지 않은 곡입니다(파형 파일 없음). rekordbox에서 트랙 분석을 다시 한 뒤 쓰세요"))
+            throw block(String(ui: "rekordbox 분석이 끝나지 않은 곡입니다(파형 파일 없음). rekordbox에서 트랙 분석을 다시 한 뒤 저장하세요"))
         }
         let originalExt = try? Data(contentsOf: extURL)
         let extFile = originalExt.flatMap { try? AnlzFile(data: $0) }
@@ -144,7 +144,7 @@ public enum RekordboxGridWriter {
         let currentSegments = GridDraft.segments(from: currentGrid)
         guard currentSegments.count == draft.base.count,
               zip(currentSegments, draft.base).allSatisfy({ abs($0.start - $1.start) < 0.002 && abs($0.bpm - $1.bpm) < 0.01 && $0.firstBeatNumber == $1.firstBeatNumber })
-        else { throw block(String(ui: "초안을 만든 뒤 rekordbox에서 그리드가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요")) }
+        else { throw block(String(ui: "편집을 만든 뒤 rekordbox에서 그리드가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요")) }
 
         // 초안은 PQTZ의 ms(내림)로 만든 것이다. 실제 박은 그 ms 안 어딘가에 있어서, rekordbox는 소수(PQT2)를 알면 그 값을,
         // 모르면 ms 한가운데(+0.5ms)를 기준으로 다시 계산한다(BPM 244→245 실험에서 바이트까지 확인).
@@ -163,7 +163,7 @@ public enum RekordboxGridWriter {
         let duration = Double(audio.length) / audio.processingFormat.sampleRate + RekordboxTimeline.predictedOffset(url: url)
         // 대체 승인은 구간화에서 사라지는 내부 박의 변경도 쓰기 직전에 확인한다.
         if draft.replacementSource != nil, !draft.isVerifiedReplacement(of: currentGrid, duration: duration) {
-            throw block(String(ui: "초안을 만든 뒤 rekordbox에서 그리드가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
+            throw block(String(ui: "편집을 만든 뒤 rekordbox에서 그리드가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
         }
         // 그대로인 구간은 실측 BPM으로 다시 만들면 1ms씩 흔들릴 수 있다. 원래 PQTZ 칸을 보존한다.
         var preserved: [Int: [BeatGridTags.Beat]] = [:]
@@ -220,7 +220,7 @@ public enum RekordboxGridWriter {
         let decoded = BeatGridTags.decode(pqtz: now.tag("PQTZ")!.bytes, pqt2: nil).beats
         guard decoded.count == plan.beats.count,
               zip(decoded, plan.beats).allSatisfy({ $0.number == $1.number && $0.bpm100 == $1.bpm100 && Int($0.time) == Int((max(0, $1.time) + 1e-6).rounded(.down)) })
-        else { throw fail(String(ui: "쓴 그리드가 의도와 다릅니다")) }
+        else { throw fail(String(ui: "저장한 그리드가 의도와 다릅니다")) }
         if let originalExt = plan.originalExt {
             guard let ext else { throw fail(String(ui: ".EXT가 사라졌습니다")) }
             let a = try AnlzFile(data: originalExt), b = try AnlzFile(data: ext)
@@ -248,7 +248,7 @@ extension RekordboxGridWriter {
             if let extURL = plan.extURL, let newExt = plan.newExt { try replace(extURL, with: newExt) }
             let dat = try Data(contentsOf: plan.datURL)
             let ext = try plan.extURL.map { try Data(contentsOf: $0) }
-            guard dat == plan.newDat, ext == plan.newExt else { throw DJCError.writeVerificationFailed(String(ui: "분석 파일이 쓴 내용과 다릅니다(\(plan.title))")) }
+            guard dat == plan.newDat, ext == plan.newExt else { throw DJCError.writeVerificationFailed(String(ui: "분석 파일이 저장한 내용과 다릅니다(\(plan.title))")) }
             try verify(plan, written: dat, ext: ext)
         } catch {
             try? restore(plan)

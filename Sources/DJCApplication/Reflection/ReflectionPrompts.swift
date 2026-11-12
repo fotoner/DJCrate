@@ -90,15 +90,15 @@ public enum RestoreNotice: Equatable, Sendable {
             if deleted > 0 { sentences.append(String(ui: "뺐던 \(deleted)곡은 큐·재생 목록·분석 파일·앨범아트와 함께 복원됩니다.")) }
             return sentences.map { $0 + " " }.joined()
         case .drafts:
-            return String(ui: "라이브러리 전체를 이 백업으로 복원합니다. 그때 쓴 초안(큐·그리드·게인·태그·앨범아트)도 DJCrate에 복원됩니다.")
+            return String(ui: "라이브러리 전체를 이 백업으로 복원합니다. 그때 저장한 편집(큐·그리드·게인·태그·앨범아트)도 DJCrate에 복원됩니다.")
         case let .laterBackups(later):
-            return String(ui: "이 백업 뒤에 DJCrate가 쓰거나 복원한 \(later)번도 분석 파일까지 함께 되돌립니다. 그 쓰기의 초안은 되살리지 않습니다.")
+            return String(ui: "이 백업 뒤에 DJCrate가 저장하거나 복원한 \(later)번도 분석 파일까지 함께 되돌립니다. 그 저장의 편집은 되살리지 않습니다.")
         case .changed:
             return String(ui: "⚠︎ 이 백업 뒤에 rekordbox에서도 라이브러리가 바뀌었습니다(큐·재생 목록·곡 추가 등). 복원하면 그 변경도 함께 사라집니다.")
         case .unknownChanges:
             return String(ui: "백업 뒤 rekordbox에서 바뀐 것이 있는지 확인하지 못했습니다. 그 뒤 rekordbox에서 한 변경은 함께 사라집니다.")
         case let .conflicts(count):
-            return String(ui: "\(count)곡은 쓴 뒤 새로 만든 초안이 백업의 초안과 다릅니다. 지금 초안을 남기면 그 곡의 백업 초안은 되살리지 않고, 백업 초안으로 바꾸면 지금 초안이 사라집니다.")
+            return String(ui: "\(count)곡은 저장한 뒤 새로 만든 편집이 백업의 편집과 다릅니다. 지금 편집을 남기면 그 곡의 백업 편집은 되살리지 않고, 백업 편집으로 바꾸면 지금 편집이 사라집니다.")
         }
     }
 }
@@ -106,7 +106,7 @@ public enum RestoreNotice: Equatable, Sendable {
 /// 반영(쓰기·넣기·빼기·복원) 확인 창과 알림의 문구. 무엇을 보일지는 코드(`WriteCount`·`TrackAddNote`·`RestoreNotice`)로 먼저 정하고 문장으로 옮긴다.
 public enum ReflectionPrompts {
     public static var quitRekordboxText: String {
-        String(ui: "rekordbox를 완전히 종료한 뒤 다시 누르세요. DJCrate는 rekordbox가 켜져 있는 동안에는 rekordbox 라이브러리에 절대 쓰지 않습니다.")
+        String(ui: "rekordbox를 완전히 종료한 뒤 다시 누르세요. DJCrate는 rekordbox가 켜져 있는 동안에는 rekordbox 라이브러리에 절대 저장하지 않습니다.")
     }
 
     /// 쓰는 동안 진행 카드(`WriteStage.notice`)에만 한 번 보이는 안내. 쓰기·넣기·빼기·복원·시점 복원 모두 같은 카드를 거친다.
@@ -118,17 +118,17 @@ public enum ReflectionPrompts {
 
     /// 아직 쓰기 전인 취소할 수 있는 단계의 진행 카드 안내
     public static var beforeWriteNotice: String {
-        String(ui: "아직 rekordbox에 쓰지 않았습니다")
+        String(ui: "아직 rekordbox에 저장하지 않았습니다")
     }
 
     /// 쓰기 전 백업 폴더에 쓸 수 없을 때의 줄
     public static var noBackupText: String {
-        String(ui: "쓰기 전 백업을 만들 폴더에 쓸 수 없어 쓰기가 막힐 수 있으니 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요.")
+        String(ui: "저장 전 백업을 만들 폴더에 쓸 수 없어 저장이 막힐 수 있으니 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요.")
     }
 
     /// 분석 없이 넣으며 키도 쓰는 곡의 안내
     public static var bareKeyNote: String {
-        String(ui: "분석 없이 넣으며 키를 함께 쓴 곡은 DJCrate가 나중에 분석을 붙이지 않으니 rekordbox에서 분석하세요.")
+        String(ui: "분석 없이 넣으며 키를 함께 저장한 곡은 DJCrate가 나중에 분석을 붙이지 않으니 rekordbox에서 분석하세요.")
     }
 
     /// 아트워크 쓰기가 닫혀 있을 때(`RekordboxTrackWriter.writesArtwork`) 음원에 아트워크가 든 곡을 넣으면 보이는 안내
@@ -136,7 +136,7 @@ public enum ReflectionPrompts {
         String(ui: "음원의 앨범아트는 아직 넣지 않으니, 필요하면 rekordbox 곡 정보 창에서 이미지를 끌어다 붙이세요.")
     }
 
-    public static func skippedHeader(_ count: Int) -> String { String(ui: "쓰지 않는 것 \(count):") }
+    public static func skippedHeader(_ count: Int) -> String { String(ui: "저장하지 않는 것 \(count):") }
     public static func notAddedHeader(_ count: Int) -> String { String(ui: "넣지 않는 곡 \(count):") }
     public static func notDeletedHeader(_ count: Int) -> String { String(ui: "빼지 않는 곡 \(count):") }
 
@@ -154,10 +154,10 @@ public enum ReflectionPrompts {
         guard case let DJCError.restoreFailed(_, _, backup, database) = error else { return nil }
         let command = DJCError.restoreCommand(backup: backup, database: database)
         let text = [
-            String(ui: "rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다. rekordbox를 켜지 말고, 메뉴 막대 rekordbox › 쓰기 전으로 복원…으로 백업을 복원하세요."),
+            String(ui: "rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다. rekordbox를 켜지 말고, 메뉴 막대 rekordbox › 저장 전으로 복원…으로 백업을 복원하세요."),
             String(ui: "터미널에서는: \(command)"),
         ]
-        return ReflectionPrompt(title: String(ui: "쓰기 확인에 실패했고 자동 복원도 하지 못했습니다"), text: text.joined(separator: "\n\n"), critical: true)
+        return ReflectionPrompt(title: String(ui: "저장 확인에 실패했고 자동 복원도 하지 못했습니다"), text: text.joined(separator: "\n\n"), critical: true)
     }
 
     // MARK: - 쓰기
@@ -192,9 +192,9 @@ public enum ReflectionPrompts {
         let reasons = reasons(report) + exclusions
         if !reasons.isEmpty { sections.append([skippedHeader(reasons.count)] + reasons) }
         if !canBackUp { sections.append([noBackupText]) }
-        return ReflectionPrompt(title: String(ui: "\(writeCounts(report).map(\.summary).joined(separator: " · "))을 rekordbox에 쓸까요?"),
+        return ReflectionPrompt(title: String(ui: "\(writeCounts(report).map(\.summary).joined(separator: " · "))을 rekordbox에 저장할까요?"),
                                 text: "",
-                                confirm: String(ui: "rekordbox에 쓰기"), destructive: !report.mergeWritten.isEmpty,
+                                confirm: String(ui: "rekordbox에 저장"), destructive: !report.mergeWritten.isEmpty,
                                 details: Array(sections.joined(separator: [""])))
     }
 
@@ -283,14 +283,14 @@ public enum ReflectionPrompts {
     /// - Parameter later: 이 백업 뒤에 뜬 백업 수. 그 쓰기·복원이 바꾼 분석 파일도 함께 되돌리므로 알린다(#222).
     public static func restoreConfirmation(_ backup: RekordboxWriteBackup, changedSince changed: Bool?, conflicts: [String] = [],
                                            later: Int = 0) -> ReflectionPrompt {
-        var details = backup.titles.isEmpty ? [] : [String(ui: "그때 쓴 곡:")] + backup.titles.map { "• \($0)" }
-        if !conflicts.isEmpty { details += [String(ui: "쓴 뒤 새로 만든 초안:")] + conflicts }
+        var details = backup.titles.isEmpty ? [] : [String(ui: "그때 저장한 곡:")] + backup.titles.map { "• \($0)" }
+        if !conflicts.isEmpty { details += [String(ui: "저장한 뒤 새로 만든 편집:")] + conflicts }
         let lines = [String(ui: "백업: \(backup.createdAt.formatted(date: .abbreviated, time: .shortened))")]
             + restoreNotices(backup, changedSince: changed, conflicts: conflicts.count, later: later).map(\.text)
-        return ReflectionPrompt(title: String(ui: "rekordbox를 쓰기 전으로 복원할까요?"),
+        return ReflectionPrompt(title: String(ui: "rekordbox를 저장 전으로 복원할까요?"),
                                 text: lines.joined(separator: "\n\n"),
-                                confirm: conflicts.isEmpty ? String(ui: "쓰기 전으로 복원") : String(ui: "복원하고 지금 초안 남기기"),
+                                confirm: conflicts.isEmpty ? String(ui: "저장 전으로 복원") : String(ui: "복원하고 지금 편집 남기기"),
                                 critical: changed != false, destructive: changed != false, details: details,
-                                alternate: conflicts.isEmpty ? nil : String(ui: "복원하고 백업 초안으로 바꾸기"))
+                                alternate: conflicts.isEmpty ? nil : String(ui: "복원하고 백업 편집으로 바꾸기"))
     }
 }

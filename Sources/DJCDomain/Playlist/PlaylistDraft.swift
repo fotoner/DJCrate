@@ -1,6 +1,6 @@
 import Foundation
 
-/// 재생 목록 초안(#39·#40): 반영(⇧⌘E) 때 rekordbox에 쓸 편집을 적힌 순서대로 쌓는다.
+/// 재생 목록 초안(#39·#40): 저장(⌘S) 때 rekordbox에 쓸 편집을 적힌 순서대로 쌓는다.
 ///
 /// 큐·그리드 초안처럼 편집이 기대는 rekordbox 목록의 처음 상태(`base`)를 들고 있어, 그 뒤 rekordbox에서 바뀐 목록의 편집은 쓰지 않는다.
 /// - 곡 넣기·빼기·옮기기·이름 바꾸기·옮기기: 그 목록의 이름·부모·곡 항목
@@ -56,7 +56,7 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
     public var edits: [PlaylistEdit] { steps.map(\.edit) }
     public var isEmpty: Bool { steps.isEmpty }
 
-    static var changedReason: String { String(ui: "초안을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 초안을 버리세요.") }
+    static var changedReason: String { String(ui: "편집을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 편집을 버리세요.") }
 
     // MARK: - 쌓기
 

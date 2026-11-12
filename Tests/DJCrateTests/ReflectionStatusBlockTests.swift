@@ -20,7 +20,7 @@ struct ReflectionStatusBlockTests {
 
         #expect(h.store.writeBlock == .schema)
         #expect(h.model.chip == .blocked(.schema, items: 0, playlistEdits: 0))
-        #expect(h.model.chip.title == "rekordbox에 쓸 수 없음")
+        #expect(h.model.chip.title == "rekordbox에 저장할 수 없음")
         // 이유 한 문장은 칩 툴팁과 팝오버 맨 위에 보인다
         #expect(h.model.chip.blockReason == LibraryWriteBlock.schema.reason)
         #expect(h.model.popoverLines.first == LibraryWriteBlock.schema.reason)
@@ -37,7 +37,7 @@ struct ReflectionStatusBlockTests {
         h.model.refresh()
 
         #expect(h.model.chip == .blocked(.unsupportedVersion("7.3.1"), items: 1, playlistEdits: 1))
-        #expect(h.model.chip.title == "rekordbox에 쓸 수 없음 · 쓰기 대기 1건")
+        #expect(h.model.chip.title == "rekordbox에 저장할 수 없음 · 저장 대기 1건")
         #expect(h.model.popoverLines == [LibraryWriteBlock.unsupportedVersion("7.3.1").reason, "재생 목록 편집 1건"])
         #expect(h.dock.labels == ["1"])
         #expect(!h.model.showsWriteButton && !h.model.emphasizesWrite)
@@ -45,7 +45,7 @@ struct ReflectionStatusBlockTests {
         // 재생 목록 편집만 있어도 수를 함께 보인다
         h.store.setDraftMarks(cue: [], grid: [], gain: [])
         h.model.refresh()
-        #expect(h.model.chip.title == "rekordbox에 쓸 수 없음 · 재생 목록 편집 1건")
+        #expect(h.model.chip.title == "rekordbox에 저장할 수 없음 · 재생 목록 편집 1건")
     }
 
     @Test func 팝오버와_메뉴의_쓰기_항목은_막힘으로_바뀌지_않는다() {

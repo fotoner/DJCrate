@@ -100,7 +100,7 @@ struct ListActionBarModelTests {
         let model = ListActionBarModel(store: store)
         #expect(model.pendingTargets.isEmpty && model.pendingPlaylistEdits == 0 && model.pendingHistories.isEmpty)
         #expect(model.actions.primary?.isEnabled == false)
-        #expect(model.actions.primary?.title == "전체 0곡 쓰기")
+        #expect(model.actions.primary?.title == "전체 0곡 저장")
         #expect(model.actions.primary?.help == nil)
         // 쓸 것(재생 목록 초안)이 있을 때 쓰는 중·비교 창이 따로 막는지 본다
         var draft = PlaylistDraft()
@@ -126,7 +126,7 @@ struct ListActionBarModelTests {
         }
         #expect(!store.hasWriteBackup)
         #expect(restore()?.isEnabled == false)
-        #expect(restore()?.help == String(ui: "복원할 백업이 없습니다. rekordbox에 쓰면 쓰기 전 백업이 생깁니다."))
+        #expect(restore()?.help == String(ui: "복원할 백업이 없습니다. rekordbox에 저장하면 저장 전 백업이 생깁니다."))
         openRecoverySheet(store)
         #expect(restore()?.help == LibraryStore.writesBlockedBySheetReason)
     }

@@ -69,7 +69,7 @@ enum XMLExportCommand {
         lines.append(String(ui: "재생 목록 \(summary.playlists) · 폴더 \(summary.folders) · 목록 항목 \(summary.playlistEntries)"))
         let omitted = summary.omitted
         lines.append(String(ui: "뺀 것: 스트리밍 곡 \(omitted.streamingTracks) · 인텔리전트 목록 \(omitted.intelligentPlaylists) · XML로 옮길 수 없는 큐 \(omitted.unknownCues) · 뺀 곡을 가리킨 목록 항목 \(omitted.playlistEntries) · 상위 폴더가 없는 목록 \(omitted.orphanedPlaylists)"))
-        lines.append(String(ui: "쓰지 않은 초안은 넣지 않았습니다(rekordbox에 있는 그대로입니다)"))
+        lines.append(String(ui: "저장하지 않은 편집은 넣지 않았습니다(rekordbox에 있는 그대로입니다)"))
         return lines
     }
 }

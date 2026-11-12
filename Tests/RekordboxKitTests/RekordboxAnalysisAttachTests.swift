@@ -164,7 +164,7 @@ struct RekordboxAnalysisAttachTests {
         let count = try fixture.localUpdateCount()
         let report = try attach(fixture, [GridDraft(trackUUID: uuid, base: [], segments: segments)],
                                 inputs: [uuid: .init(duration: p.duration, loudness: -9, peak: 1)], enabled: false)
-        #expect(report.analysisWritten.isEmpty && report.analysisBlocked.first?.reason?.contains("rekordbox에서 트랙 분석을 먼저 한 뒤 쓰세요") == true)
+        #expect(report.analysisWritten.isEmpty && report.analysisBlocked.first?.reason?.contains("rekordbox에서 트랙 분석을 먼저 한 뒤 저장하세요") == true)
         #expect(try quoted(fixture, "djmdContent", "ID = ?", [.text(id)]) == before && fixture.localUpdateCount() == count)
         #expect(!FileManager.default.fileExists(atPath: fixture.shareRoot.appending(path: "PIONEER").path))
         #expect(RekordboxWriter.attachesAnalysis, "2026-09-26 실험으로 칸을 확인해 앱에서도 연다")
@@ -199,7 +199,7 @@ struct RekordboxAnalysisAttachTests {
         let report = try attach(fixture, [GridDraft(trackUUID: track.uuid, base: [], segments: segments)],
                                 inputs: [track.uuid: .init(duration: 20, loudness: nil, peak: 1)])
         #expect(report.analysisWritten.isEmpty && report.gridWritten.isEmpty)
-        #expect(report.gridBlocked.first?.reason?.contains("rekordbox에서 트랙 분석을 다시 한 뒤 쓰세요") == true)
+        #expect(report.gridBlocked.first?.reason?.contains("rekordbox에서 트랙 분석을 다시 한 뒤 저장하세요") == true)
         #expect(try Data(contentsOf: fixture.analysisURL(for: track)) == dat)
         #expect(!FileManager.default.fileExists(atPath: fixture.analysisURL(for: track, ext: "EXT").path))
     }
@@ -230,7 +230,7 @@ struct RekordboxAnalysisAttachTests {
         #expect(reasons[alac.uuid]?.contains("ALAC") == true, "\(reasons[alac.uuid] ?? "")")
         #expect(reasons[mixer.uuid]?.contains("오토게인") == true, "\(reasons[mixer.uuid] ?? "")")
         #expect(reasons[unmeasured.uuid]?.contains("길이") == true, "\(reasons[unmeasured.uuid] ?? "")")
-        #expect(reasons[based.uuid]?.contains("초안을 만든 뒤") == true, "\(reasons[based.uuid] ?? "")")
+        #expect(reasons[based.uuid]?.contains("편집을 만든 뒤") == true, "\(reasons[based.uuid] ?? "")")
         #expect(reasons[gone.uuid]?.contains("음원 파일") == true, "\(reasons[gone.uuid] ?? "")")
         #expect(try fixture.rows("SELECT * FROM contentFile").isEmpty)
         #expect(!FileManager.default.fileExists(atPath: fixture.shareRoot.appending(path: "PIONEER").path))

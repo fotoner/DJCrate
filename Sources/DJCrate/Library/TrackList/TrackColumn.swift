@@ -17,7 +17,7 @@ struct TrackColumn {
     static let all: [TrackColumn] = [
         TrackColumn(id: "index", title: "#", width: 48, minWidth: 48, help: String(ui: "지금 목록에서 몇 번째 곡인지")),
         TrackColumn(id: "thumb", title: String(ui: "앨범아트"), width: 26, minWidth: 26, help: String(ui: "앨범아트")),
-        TrackColumn(id: "edited", title: String(ui: "초안"), width: 18, minWidth: 18, help: String(ui: "DJCrate 초안이 있는 곡 (rekordbox·파일에 쓰기 전)")),
+        TrackColumn(id: "edited", title: String(ui: "저장 대기"), width: 18, minWidth: 18),
         TrackColumn(id: "title", title: String(ui: "제목"), width: 220, minWidth: 140, flexible: true, sortKey: "title"),
         TrackColumn(id: "preview", title: String(ui: "미리 보기"), width: 160, minWidth: 80,
                     help: String(ui: "곡 전체 파형과 핫큐·메모리 큐·루프 위치")),
@@ -105,7 +105,7 @@ struct TrackColumn {
     /// 초안 칸 머리글: 글자 '✎' 대신 pencil 심볼을 머리글 글자색·크기로 넣는다(칸이 좁아 '초안'이 들어가지 않는다).
     /// 제목 '초안'은 칸 메뉴와 VoiceOver에 쓴다.
     @MainActor static var draftHeader: NSAttributedString {
-        symbolHeader("pencil", label: String(ui: "초안"))
+        symbolHeader("pencil", label: String(ui: "저장 대기"))
     }
 
     // NSTableHeaderCell은 image를 직접 그리지 않아 초안 머리글처럼 글자 안에 심볼을 넣는다.

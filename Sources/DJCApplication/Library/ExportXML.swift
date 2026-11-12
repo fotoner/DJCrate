@@ -52,7 +52,7 @@ public struct ExportXML: Sendable {
     /// 키 초안이 있는 추가한 곡을 XML에서 뺄 때 알리는 이유. rekordbox XML의 키(`Tonality`)를 가져오는 규칙은 확인하지 않아 키 초안을
     /// 담지 않는다. 고른 키가 조용히 사라지지 않게 그 곡만 빼고 이유를 알린다. ‘rekordbox에 넣기’는 키를 함께 쓴다(#5).
     public static func stagedKeyDraftBlock(title: String) -> String {
-        String(ui: "\(title): XML로 키를 넘기는 방법은 확인하지 않았으니 ‘rekordbox에 넣기’로 키까지 넣거나 태그 초안(키)을 버린 뒤 내보내세요")
+        String(ui: "\(title): XML로 키를 넘기는 방법은 확인하지 않았으니 ‘rekordbox에 넣기’로 키까지 넣거나 태그 편집(키)을 버린 뒤 내보내세요")
     }
 
     /// 추가한 곡 XML 결과: 내보낸 곡 수, 그리드가 없는 곡 수, 뺀 곡의 이유
@@ -113,7 +113,7 @@ public struct ExportXML: Sendable {
             let reasons = exclusions(row)
             if !plan.isEligible {
                 plan.blockers += reasons.map { String($0.dropFirst("• \(row.title): ".count)) }
-                if plan.blockers.isEmpty { plan.blockers.append(String(ui: "큐·그리드 초안에 변경이 없으니 변경할 초안을 확인하세요")) }
+                if plan.blockers.isEmpty { plan.blockers.append(String(ui: "큐·그리드 편집에 변경이 없으니 변경할 편집을 확인하세요")) }
             } else if cueMarks.contains(uuid) && cue?.trackUUID != uuid || gridMarks.contains(uuid) && grid?.trackUUID != uuid {
                 plan.blockers += reasons.map { String($0.dropFirst("• \(row.title): ".count)) }
             }
@@ -188,7 +188,7 @@ public struct ExportXML: Sendable {
             }
             if let cleanupWarning { parts.append(cleanupWarning) }
             if storeFailed {
-                parts.append(String(ui: "반영 확인 기록을 저장하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 rekordbox와 동기화하세요."))
+                parts.append(String(ui: "저장 확인 기록을 보관하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 rekordbox와 동기화하세요."))
             }
             return parts.joined(separator: " · ")
         }

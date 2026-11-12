@@ -76,11 +76,11 @@ struct ReflectionPromptsTests {
     @Test func 문장_모양() {
         let report = Self.report(cues: [Self.outcome("a", .written)], grids: [Self.outcome("b", .blocked, reason: "분석 전")])
         let prompt = ReflectionPrompts.confirmation(report)
-        #expect(prompt.title == "큐 1곡을 rekordbox에 쓸까요?")
+        #expect(prompt.title == "큐 1곡을 rekordbox에 저장할까요?")
         // 대상은 제목이, 막힘·손실은 목록이 말한다. 절차 문장은 본문에 없다(#310)
         #expect(prompt.text.isEmpty)
-        #expect(prompt.details == ["쓰지 않는 것 1:", "• 곡 b: 분석 전"])
-        #expect(ReflectionPrompts.summaryLine(["• 가", "• 나", "• 다"], prefix: "쓰지 않는 것") == "쓰지 않는 것 3: 가, 나 외 1건")
+        #expect(prompt.details == ["저장하지 않는 것 1:", "• 곡 b: 분석 전"])
+        #expect(ReflectionPrompts.summaryLine(["• 가", "• 나", "• 다"], prefix: "저장하지 않는 것") == "저장하지 않는 것 3: 가, 나 외 1건")
         var deleted = RekordboxTrackWriteReport(dryRun: true)
         deleted.deleted = [Self.track("a")]
         #expect(ReflectionPrompts.addConfirmation(Self.addPreview([Self.track("a")]), writesArtwork: true).text.isEmpty)
@@ -137,9 +137,9 @@ struct ReflectionPromptsTests {
 
     @Test func 진행_카드_안내는_상수_한_곳에서_오고_쓰는_동안만_켜지_말라고_한다() {
         #expect(ReflectionPrompts.progressNotice == "끝날 때까지 rekordbox를 켜지 마세요")
-        #expect(ReflectionPrompts.beforeWriteNotice == "아직 rekordbox에 쓰지 않았습니다")
+        #expect(ReflectionPrompts.beforeWriteNotice == "아직 rekordbox에 저장하지 않았습니다")
         // 쓰기·복원·다시 읽기 단계는 취소할 수 없고 모두 같은 안내를 보인다
-        for stage in [WriteStage("rekordbox에 쓰는 중…"), WriteStage("rekordbox를 복원하는 중…"), .reloadingLibrary,
+        for stage in [WriteStage("rekordbox에 저장하는 중…"), WriteStage("rekordbox를 복원하는 중…"), .reloadingLibrary,
                       WriteStage("넣은 곡을 읽는 중…", readsBack: true)] {
             #expect(stage.notice == ReflectionPrompts.progressNotice, "\(stage.text)")
         }
@@ -255,7 +255,7 @@ struct ReflectionPromptsTests {
         #expect(prompt.text.contains(DJCError.restoreCommand(backup: "/tmp/b", database: nil)))
         #expect(!prompt.text.contains("검증 실패") && !prompt.text.contains("복원 실패"))
         // 툴바 쓰기 메뉴가 없어진 뒤(#325) 읽기 상태와 상관없이 늘 있는 메뉴 막대 경로를 안내한다(`DJCError.restoreFailed`와 같은 경로)
-        #expect(prompt.text.contains("메뉴 막대 rekordbox › 쓰기 전으로 복원…"))
+        #expect(prompt.text.contains("메뉴 막대 rekordbox › 저장 전으로 복원…"))
         #expect(!prompt.text.contains("사이드바") && !prompt.text.contains("목록 위"))
         #expect(ReflectionPrompts.restoreFailureAlert(DJCError.writeRolledBack("x")) == nil)
     }

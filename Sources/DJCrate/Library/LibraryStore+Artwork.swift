@@ -29,7 +29,7 @@ extension LibraryStore {
         for uuid in written { showArtworkDraft(nil, for: uuid) }
         ArtworkRevisions.bump(written.compactMap { rowsByUUID[$0]?.track.id })
         if failed > 0 {
-            writeFollowUp.append(String(ui: "rekordbox에는 썼지만 앨범아트 초안 \(failed)곡을 정리하지 못했으니 쓰기 대기 목록에서 앨범아트 초안 버리기로 버리세요."))
+            writeFollowUp.append(String(ui: "rekordbox에는 저장했지만 앨범아트 편집 \(failed)곡을 정리하지 못했으니 저장 대기 목록에서 앨범아트 편집 버리기로 버리세요."))
         }
     }
 

@@ -13,7 +13,7 @@ enum ReadCommands {
         Command("playlist", "<ID> [--db PATH] [--json]", String(ui: "재생 목록의 곡을 순서대로 보기"), run),
         Command("histories", "[--db PATH] [--json]", String(ui: "재생 기록을 날짜순으로 보기"), run),
         Command("history", "<ID> [--db PATH] [--json]", String(ui: "기록의 곡을 재생 순서대로 보기"), run),
-        Command("drafts", "[--db PATH] [--json]", String(ui: "반영 대기 초안 보기"), run),
+        Command("drafts", "[--db PATH] [--json]", String(ui: "저장 대기 초안 보기"), run),
         Command("duplicates", "[--db PATH] [--json]", String(ui: "중복 후보 묶음과 큐·재생 목록·음질 비교"), run),
     ]
 
@@ -78,7 +78,7 @@ enum ReadCommands {
             }
         case "drafts":
             try output(read.drafts(), name: name, json: json) { result in
-                result.drafts.isEmpty ? String(ui: "반영 대기 초안이 없습니다") : result.drafts.map {
+                result.drafts.isEmpty ? String(ui: "저장 대기 초안이 없습니다") : result.drafts.map {
                     "\($0.contentID ?? String(ui: "컬렉션에 없음")) · \($0.title ?? $0.trackUUID) · \(draftNames($0.kinds))"
                 }.joined(separator: "\n")
             }
@@ -127,7 +127,7 @@ enum ReadCommands {
         lines += result.grid.segments.map { String(ui: "  \($0.start, specifier: "%.3f")초 · \($0.bpm, specifier: "%.2f") BPM · \($0.firstBeatNumber)박") }
         lines.append(String(ui: "게인: \(result.gain.map { String(format: "%.2f dB", $0.decibels) } ?? String(ui: "없음"))"))
         lines.append(String(ui: "재생 목록: \(result.playlists.map { "\($0.name) (\($0.id))" }.joined(separator: ", "))"))
-        lines.append(String(ui: "초안: \(result.drafts.kinds.isEmpty ? String(ui: "없음") : draftNames(result.drafts.kinds))"))
+        lines.append(String(ui: "편집: \(result.drafts.kinds.isEmpty ? String(ui: "없음") : draftNames(result.drafts.kinds))"))
         return lines.joined(separator: "\n")
     }
 

@@ -328,7 +328,7 @@ struct MusicalKeyEditingTests {
         let prompt = ReflectionPrompts.addConfirmation(preview, writesArtwork: true)
         #expect(prompt.details.contains { $0.contains("합성 추가 곡") && $0.contains("키 8A") }, "\(prompt.details)")
         // 분석 없이 넣는 곡에 키를 쓰면 DJCrate가 나중에 분석을 붙이지 못한다고 알린다
-        #expect(prompt.details.contains { $0.contains("키를 함께 쓴") && $0.contains("rekordbox에서 분석") }, "\(prompt.details)")
+        #expect(prompt.details.contains { $0.contains("키를 함께 저장한") && $0.contains("rekordbox에서 분석") }, "\(prompt.details)")
         // 키 줄이 없는 키: 곡은 넣고 키만 막힌다고 미리 알린다
         store.tags.setTag(.musicalKey, "12B", rows: [row])
         let blocked = try await store.session.previewAdd(rows: [row])
@@ -353,8 +353,8 @@ struct MusicalKeyEditingTests {
         let report = try JSONDecoder().decode(RekordboxWriter.Report.self, from: Data(json.utf8))
         // 쓰는 곡의 줄은 쓰기 결과에 남기고, 확인 창에는 막힌 곡과 이유만 보인다(#210)
         let prompt = ReflectionPrompts.confirmation(report)
-        #expect(prompt.title == "태그 2곡을 rekordbox에 쓸까요?")
-        #expect(prompt.details == ["쓰지 않는 것 1:", "• 곡 x: rekordbox 키 목록에 '12B' 줄이 없습니다. rekordbox에서 이 곡의 키를 직접 고르세요"])
+        #expect(prompt.title == "태그 2곡을 rekordbox에 저장할까요?")
+        #expect(prompt.details == ["저장하지 않는 것 1:", "• 곡 x: rekordbox 키 목록에 '12B' 줄이 없습니다. rekordbox에서 이 곡의 키를 직접 고르세요"])
     }
 
     @Test func XML로_내보낼_때는_키_초안이_있는_추가한_곡을_빼고_이유를_알린다() throws {

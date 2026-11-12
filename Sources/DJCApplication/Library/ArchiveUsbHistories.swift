@@ -181,8 +181,8 @@ public final class ArchiveUsbHistories {
             // 보존본을 넣으면서 화면이 쓰기 대기를 다시 골랐다. 대기에 오른 기록은 그 사실을 함께 알린다
             let queued = shown.filter { after.pending.contains($0.id) }.count
             let detail = queued == 0 ? volumeName
-                : queued == shown.count ? String(ui: "\(volumeName) · rekordbox 쓰기 대기에 올렸습니다")
-                : String(ui: "\(volumeName) · \(queued)개를 rekordbox 쓰기 대기에 올렸습니다")
+                : queued == shown.count ? String(ui: "\(volumeName) · rekordbox 저장 대기에 올렸습니다")
+                : String(ui: "\(volumeName) · \(queued)개를 rekordbox 저장 대기에 올렸습니다")
             notice = UsbHistoryNotice(kind: .success, title: String(ui: "USB에서 재생 기록 \(shown.count)개를 가져왔습니다"), detail: detail)
         }
         apply(.imported(shown: shown.map(\.id), saved: savedIDs, notice: notice))
@@ -231,10 +231,10 @@ public final class ArchiveUsbHistories {
     }
 
     public static func markFailureText(_ count: Int) -> String {
-        String(ui: "rekordbox에는 썼지만 보존한 재생 기록 \(count)건에 쓴 표시를 저장하지 못했으니, 다시 켠 뒤 그 기록이 쓰기 대기에 오르면 사이드바에서 쓰기 대기에서 빼세요.")
+        String(ui: "rekordbox에는 저장했지만 보존한 재생 기록 \(count)건에 저장한 표시를 보관하지 못했으니, 다시 켠 뒤 그 기록이 저장 대기에 오르면 사이드바에서 저장 대기에서 빼세요.")
     }
 
-    public static var queueSaveFailureTitle: String { String(ui: "재생 기록의 쓰기 대기 상태를 저장하지 못했습니다") }
+    public static var queueSaveFailureTitle: String { String(ui: "재생 기록의 저장 대기 상태를 보관하지 못했습니다") }
 
     // MARK: - 파일(메인 밖)
     // 아래는 메인 액터에 묶지 않는다: 곡이 많은 USB의 후보·계획·짝 다시 검증이 메인을 멈추지 않게 한다

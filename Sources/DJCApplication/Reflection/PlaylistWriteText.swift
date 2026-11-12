@@ -30,8 +30,8 @@ public enum PlaylistWriteText {
     public static func result(_ outcome: PlaylistOutcome) -> String {
         let change = change(outcome.edit)
         let text = switch outcome.status {
-        case .written: String(ui: "재생 목록 쓰기 완료: \(change)")
-        case .blocked: String(ui: "재생 목록 쓰지 않음(\(change)): \(outcome.reason ?? String(ui: "이유 없음"))")
+        case .written: String(ui: "재생 목록 저장 완료: \(change)")
+        case .blocked: String(ui: "재생 목록 저장하지 않음(\(change)): \(outcome.reason ?? String(ui: "이유 없음"))")
         case .unchanged: String(ui: "재생 목록 변경 없음(\(change))")
         }
         return "• \(outcome.name) — " + text

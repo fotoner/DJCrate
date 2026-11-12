@@ -25,7 +25,7 @@ final class PointSnapshotWindow: NSObject, NSWindowDelegate {
         }
         let model = PointSnapshotModel(store: store, reflection: reflection, points: points(store))
         let window = NSWindow(contentViewController: NSHostingController(rootView: PointSnapshotView(model: model)))
-        window.title = String(ui: "시점 스냅샷")
+        window.title = String(ui: "복원 시점")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -50,7 +50,7 @@ struct PointSnapshotView: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { model.startCreate() }
                     .frame(maxWidth: 320)
-                Button(.ui("지금 스냅샷 남기기")) { model.startCreate() }
+                Button(.ui("지금 복원 시점 남기기")) { model.startCreate() }
                     .disabled(model.isWorking || model.blockReason != nil)
                     .help(model.blockReason ?? "")
                 if model.isWorking { ProgressView().controlSize(.small) }
@@ -60,7 +60,7 @@ struct PointSnapshotView: View {
                 }
                 Spacer()
             }
-            Text(.ui("rekordbox가 꺼져 있을 때만 남깁니다. 수동·고정 스냅샷은 지우지 않고, 쓰기 전 백업은 따로 정리됩니다."))
+            Text(.ui("rekordbox가 꺼져 있을 때만 남깁니다. 수동·고정 복원 시점은 지우지 않고, 저장 전 백업은 따로 정리됩니다."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

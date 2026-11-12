@@ -7,7 +7,7 @@ import SwiftUI
 /// 목록은 메뉴를 그리고 대상 곡을 고를 뿐 그 흐름을 직접 부르지 않는다. 실제 묶음은 `live(store:reflection:)`이고 조립 지점(`AppComposition`)이 만든다.
 @MainActor
 struct TrackListActions {
-    /// 고른 곡의 초안만 rekordbox에 쓴다(재생 목록 초안은 ⇧⌘E·쓰기 대기 목록에서)
+    /// 고른 곡의 초안만 rekordbox에 쓴다(재생 목록 초안은 ⌘S·쓰기 대기 목록에서)
     var writeDrafts: @MainActor ([TrackRow]) -> Void
     /// 고른 곡의 초안으로 XML을 만든다
     var exportDraftsXML: @MainActor ([TrackRow]) -> Void

@@ -6,7 +6,7 @@ import Observation
 /// 재생 기록(#43, 기능 조각): rekordbox Histories처럼 연 › 월 › 기록 트리에 rekordbox 기록과 USB에서 보존한 기기 기록을 섞는다.
 /// 사이드바 기록 칸·머리 줄 오른쪽 구성·사이드바 메뉴·반영(`pendingHistoryImports`·`recordWrittenHistories`)이 쓴다.
 /// USB 기록은 USB를 읽을 때(`UsbStore.onLibraryEvaluated`) 유스케이스 `ArchiveUsbHistories`가 DJCrate 데이터 폴더(`usb-histories/`)에 보존하고
-/// (USB에는 쓰지 않는다), 다른 초안처럼 "rekordbox 쓰기 대기"에 올려(`pendingHistories`) rekordbox에 쓰기(⇧⌘E) 때 반영 세션이
+/// (USB에는 쓰지 않는다), 다른 초안처럼 "rekordbox 쓰기 대기"에 올려(`pendingHistories`) rekordbox에 저장(⌘S) 때 반영 세션이
 /// rekordbox Histories에 넣는다. 보존의 줄 세우기·채택·실패 알림은 그 유스케이스가 정하고, 이 조각은 결과를 화면 상태에 넣는다(#251).
 /// 핵심 `LibraryStore`의 `history` 속성이다. 곡·사이드바·알림·쓰기 잠금·되돌리기는 핵심 것을 읽는다(`library`).
 @MainActor
@@ -58,7 +58,7 @@ final class HistoryStore {
     @ObservationIgnored var historyFoldersSeeded = false
     /// rekordbox 쓰기 대기에 오른 보존 기록(#43, `HistoryWriteQueue.pending`, 가져온 차례). 라이브러리를 읽은 뒤에만 고르고
     /// (rekordbox에 이미 쓴 기록인지 모르는 동안 올리지 않게), 기록·보존본이 바뀔 때만 다시 계산한다(#141).
-    /// 사이드바 배지·기록 줄 표시·쓰기 대기 바·rekordbox에 쓰기(⇧⌘E)가 이것을 쓴다
+    /// 사이드바 배지·기록 줄 표시·쓰기 대기 바·rekordbox에 저장(⌘S)가 이것을 쓴다
     private(set) var pendingHistories: [ArchivedHistory] = []
     /// 쓰기 대기 기록 ID(사이드바 기록 줄이 대기 표시를 고른다)
     private(set) var pendingHistoryIDs: Set<String> = []
@@ -290,7 +290,7 @@ final class HistoryStore {
             guard !target.editsFrozen else { return }
             target.history.setHistoriesExcluded(changedIDs, excluded: !excluded)
         }
-        undoManager.setActionName(excluded ? String(ui: "rekordbox 쓰기 대기에서 빼기") : String(ui: "rekordbox 쓰기 대기에 넣기"))
+        undoManager.setActionName(excluded ? String(ui: "rekordbox 저장 대기에서 빼기") : String(ui: "rekordbox 저장 대기에 넣기"))
         if grouping {
             undoManager.endUndoGrouping()
             undoManager.groupsByEvent = groupsByEvent

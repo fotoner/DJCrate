@@ -131,9 +131,9 @@ struct NoticeChannelTests {
     /// 반영 세션은 뒤따른 경고를 쓰기 결과에 담고, 같은 줄을 오류 상태로도 남긴다. 그 줄을 알림으로 또 띄우지 않는다
     @Test func 쓰기_뒤따른_경고는_쓰기_결과_알림만_알린다() {
         let store = Self.store()
-        store.applyReflection(.followUp(["rekordbox에는 썼지만 초안을 정리하지 못했습니다."]))
-        store.applyReflection(.libraryError("rekordbox에는 썼지만 초안을 정리하지 못했습니다."))
-        #expect(store.lastError == "rekordbox에는 썼지만 초안을 정리하지 못했습니다.")
+        store.applyReflection(.followUp(["rekordbox에는 저장했지만 편집을 정리하지 못했습니다."]))
+        store.applyReflection(.libraryError("rekordbox에는 저장했지만 편집을 정리하지 못했습니다."))
+        #expect(store.lastError == "rekordbox에는 저장했지만 편집을 정리하지 못했습니다.")
         #expect(store.toast == nil && store.activityLog.entries.isEmpty)
         // 뒤따른 경고 없이 온 오류는 알린다
         store.applyReflection(.libraryError("복원한 곡의 초안을 저장하지 못했습니다."))
@@ -158,7 +158,7 @@ struct NoticeChannelTests {
         ReflectionPanels.export(store: store, rows: [])
         let toast = try #require(store.toast)
         #expect(toast.title == "XML로 만들 곡이 없습니다")
-        #expect(toast.detail == "고른 곡에 rekordbox와 다른 큐·그리드 초안이 없습니다.")
+        #expect(toast.detail == "고른 곡에 rekordbox와 다른 큐·그리드 편집이 없습니다.")
         #expect(store.activityLog.latest?.title == "XML로 만들 곡이 없습니다")
     }
 

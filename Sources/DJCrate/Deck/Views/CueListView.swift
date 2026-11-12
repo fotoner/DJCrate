@@ -77,7 +77,7 @@ struct CueListView: View {
             }
             HStack {
                 Spacer()
-                Button(.ui("큐 초안 버리기")) { deck.revertDraft() }
+                Button(.ui("큐 편집 버리기")) { deck.revertDraft() }
                     .buttonStyle(.plain)
                     .font(.scaled(.caption, textScale))
                     .padding(.horizontal, 8).padding(.vertical, 5)
@@ -92,7 +92,7 @@ struct CueListView: View {
                     .font(.scaled(.caption, textScale)).foregroundStyle(UIColors.warning.color)
             }
             if deck.editsFrozen {
-                Text(.ui("rekordbox에 쓰는 중이라 큐 편집을 잠시 막았습니다.")).font(.scaled(.caption2, textScale)).foregroundStyle(.secondary)
+                Text(.ui("rekordbox에 저장하는 중이라 큐 편집을 잠시 막았습니다.")).font(.scaled(.caption2, textScale)).foregroundStyle(.secondary)
             }
         }
     }

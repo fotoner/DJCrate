@@ -88,7 +88,7 @@ extension DeckModel {
         persistGain(nil, uuid: uuid)
         onDraftChange?(uuid, .gain, false)
         applyGain()
-        registerDraftUndo(from: before, name: String(ui: "게인 초안 버리기"))
+        registerDraftUndo(from: before, name: String(ui: "게인 편집 버리기"))
     }
 
     var hasGainOverride: Bool { gainDraft != nil }

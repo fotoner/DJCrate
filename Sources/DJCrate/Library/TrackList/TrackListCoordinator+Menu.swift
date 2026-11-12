@@ -35,7 +35,7 @@ extension TrackListCoordinator {
         let pending = store.writeTargets(targets)
         if !pending.isEmpty {
             menu.addItem(.separator())
-            let reflect = NSMenuItem(title: String(ui: "선택한 곡 rekordbox에 쓰기 (\(pending.count)곡)"),
+            let reflect = NSMenuItem(title: String(ui: "선택한 곡 rekordbox에 저장 (\(pending.count)곡)"),
                                      action: #selector(reflectSelected), keyEquivalent: "")
             reflect.target = self
             menu.addItem(reflect)
@@ -56,7 +56,7 @@ extension TrackListCoordinator {
             menu.addItem(export)
         }
         menu.addItem(.separator())
-        let pendingList = NSMenuItem(title: String(ui: "rekordbox 쓰기 대기 목록 보기"), action: #selector(showPending), keyEquivalent: "")
+        let pendingList = NSMenuItem(title: String(ui: "rekordbox 저장 대기 목록 보기"), action: #selector(showPending), keyEquivalent: "")
         pendingList.target = self
         menu.addItem(pendingList)
         let removable = store.deleteTargets(targets)
@@ -106,7 +106,7 @@ extension TrackListCoordinator {
     }
 
     @objc func reflectSelected() {
-        // 고른 곡의 초안만 쓴다(재생 목록 초안은 ⇧⌘E·반영 대기 목록에서).
+        // 고른 곡의 초안만 쓴다(재생 목록 초안은 ⌘S·반영 대기 목록에서).
         actions.writeDrafts(menuTargets())
     }
 
@@ -143,7 +143,7 @@ extension TrackListCoordinator {
             // 갱신 상태 칸은 USB 목록이 정한다. 다른 칸은 USB 목록에서도 같은 배치라 여기서 고른다(#256)
             if spec.id == TrackColumn.usbSyncID { continue }
             guard let column = table.tableColumns.first(where: { $0.identifier.rawValue == spec.id }) else { continue }
-            let title = spec.title.isEmpty ? String(ui: "앨범아트") : spec.id == "edited" ? String(ui: "초안 표시") : spec.title == "#" ? String(ui: "# 번호") : spec.title
+            let title = spec.title.isEmpty ? String(ui: "앨범아트") : spec.id == "edited" ? String(ui: "저장 대기 표시") : spec.title == "#" ? String(ui: "# 번호") : spec.title
             let item = NSMenuItem(title: title, action: #selector(toggleColumn(_:)), keyEquivalent: "")
             item.target = self
             item.state = column.isHidden ? .off : .on

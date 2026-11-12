@@ -166,7 +166,7 @@ struct ReflectionSessionConfirmTests {
             h.choice = choice
             _ = await h.session.restore(backup, confirmed: true)
             let prompt = try #require(h.prompts.first)
-            #expect(prompt.alternate == "복원하고 백업 초안으로 바꾸기" && prompt.confirm == "복원하고 지금 초안 남기기")
+            #expect(prompt.alternate == "복원하고 백업 편집으로 바꾸기" && prompt.confirm == "복원하고 지금 편집 남기기")
             #expect(prompt.details.contains("• a — 큐"))
             // 지금 초안을 남기면(확인) 그 곡의 백업 초안은 되살리지 않는다
             switch kept {

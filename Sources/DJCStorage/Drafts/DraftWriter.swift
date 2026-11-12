@@ -114,11 +114,11 @@ public final class DraftWriter: Sendable {
         // 오류 설명에 개인 경로가 들어갈 수 있어 원인과 조치만 화면에 넘긴다.
         switch (error as NSError).code {
         case NSFileWriteNoPermissionError, NSFileReadNoPermissionError:
-            String(ui: "초안 폴더의 접근 권한을 확인한 뒤 다시 저장하세요.")
+            String(ui: "편집 폴더의 접근 권한을 확인한 뒤 다시 보관하세요.")
         case NSFileWriteOutOfSpaceError:
             String(ui: "저장 장치의 빈 공간을 확보한 뒤 다시 저장하세요.")
         default:
-            String(ui: "초안 폴더와 저장할 파일을 확인한 뒤 다시 저장하세요.")
+            String(ui: "편집 폴더와 보관할 파일을 확인한 뒤 다시 보관하세요.")
         }
     }
 

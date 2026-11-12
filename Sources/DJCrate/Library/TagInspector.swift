@@ -24,7 +24,7 @@ struct TagInspector: View {
                             Spacer()
                             let changed = model.draftCount(rows)
                             if changed > 0 {
-                                Text(.ui("초안 \(changed)곡")).font(.scaled(.caption, textScale).bold()).foregroundStyle(UIColors.draft.color)
+                                Text(.ui("편집 \(changed)곡")).font(.scaled(.caption, textScale).bold()).foregroundStyle(UIColors.draft.color)
                             }
                         }
                     }
@@ -59,9 +59,9 @@ struct TagInspector: View {
                         Button(.ui("태그 현재값 가져오기…")) { reflection?.startRecovery(row: row, kind: .tags) }
                             .disabled(model.isRecoveringDraft)
                     }
-                    Button(.ui("태그 초안 버리기")) { model.revert(rows: rows) }
+                    Button(.ui("태그 편집 버리기")) { model.revert(rows: rows) }
                     // 태그·앨범아트 모두 rekordbox 라이브러리에만 쓰고 음원 파일은 읽기만 한다(#1·#66 결정). 인스펙터에서 한 번만 말한다(#328).
-                    Text(.ui("태그·앨범아트는 라이브러리에만 쓰고 음원 파일은 바꾸지 않습니다."))
+                    Text(.ui("태그·앨범아트는 라이브러리에만 저장하고 음원 파일은 바꾸지 않습니다."))
                         .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
                 }
             }

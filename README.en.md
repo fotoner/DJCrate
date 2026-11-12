@@ -7,7 +7,7 @@
 > [!WARNING]
 > DJCrate is still in **beta** (0.x), so you may run into unexpected problems.
 >
-> DJCrate automatically backs up your entire library before it writes to rekordbox. If something goes wrong after a write, roll it back with [Restore Before Write…] in the menu bar under rekordbox, or the same item in the Help menu. If the problem remains, please contact us through [Issues](https://github.com/fotoner/DJCrate/issues).
+> DJCrate automatically backs up your entire library before it saves to rekordbox. If something goes wrong after a save, roll it back with [Restore Before Save…] in the menu bar under rekordbox, or the same item in the Help menu. If the problem remains, please contact us through [Issues](https://github.com/fotoner/DJCrate/issues).
 >
 > DJCrate is provided "as is" under the [GPL-2.0-or-later license](LICENSE). The developer is not responsible for any data loss or damage that occurs while using it.
 
@@ -20,14 +20,14 @@ DJCrate is a macOS app for editing a rekordbox 7 library without launching rekor
 
 ## Safety principles
 
-- Every edit is kept as a draft. DJCrate writes to rekordbox only when you click [Write to rekordbox]. The shortcut is ⇧⌘E.
-- It never writes while rekordbox or rekordboxAgent is running.
-- It writes only to a verified version (7.2.x) with a verified database layout.
-- It backs up the entire library before writing, writes in a single transaction, and reads the result back to verify it.
-- You can roll back with [Restore Before Write…].
-- It performs only writes that have been verified, field by field, against the result of the same edit made in rekordbox itself. Everything else is blocked, and the app shows why.
+- Every edit is kept as Pending Save. DJCrate saves to rekordbox only when you click [Save to rekordbox]. The shortcut is ⌘S.
+- It never saves while rekordbox or rekordboxAgent is running.
+- It saves only to a verified version (7.2.x) with a verified database layout.
+- It backs up the entire library before saving, saves in a single transaction, and reads the result back to verify it.
+- You can roll back with [Restore Before Save…].
+- It performs only saves that have been verified, field by field, against the result of the same edit made in rekordbox itself. Everything else is blocked, and the app shows why.
 
-![Pending rekordbox Writes list and the tag inspector. Orange marks show fields not yet written (synthetic test data)](docs/images/readme/en/write-pending.png)
+![Pending rekordbox Saves list and the tag inspector. Orange marks show fields not yet saved (synthetic test data)](docs/images/readme/en/write-pending.png)
 
 ## Install and run
 
@@ -47,13 +47,13 @@ scripts/build-app.sh --install        # /Applications/DJCrate.app
 swift build -c release --product djc  # .build/release/djc
 ```
 
-1. Click ⟳ [Sync with rekordbox] in the toolbar (⌘R) to take a copy (snapshot) of the library. rekordbox can stay open for this step.
-2. Edit in the deck and the track list. Edited tracks get a pending-write mark and are collected under [Pending rekordbox Writes] in the sidebar.
+1. Click ⟳ [Sync with rekordbox] in the toolbar (⌘R) to take a copy of the library. rekordbox can stay open for this step.
+2. Edit in the deck and the track list. Edited tracks get a pending-save mark and are collected under [Pending rekordbox Saves] in the sidebar.
 3. Quit rekordbox and rekordboxAgent completely.
-4. Click [Write to rekordbox]. DJCrate first does a trial write to a copy. If anything is blocked or left out, a confirmation dialog lists those items first. Otherwise, it writes right away.
-5. To roll back, click [Restore Before Write] in the result notification.
+4. Click [Save to rekordbox]. DJCrate first does a trial save to a copy. If anything is blocked or left out, a confirmation dialog lists those items first. Otherwise, it saves right away.
+5. To roll back, click [Restore Before Save] in the result notification.
 
-Copies, drafts, and backups are stored in `~/Library/Application Support/DJCrate/`. They contain a cloud token, so do not share them.
+Copies, edits, and backups are stored in `~/Library/Application Support/DJCrate/`. They contain a cloud token, so do not share them.
 
 ## Features
 
@@ -65,12 +65,12 @@ Copies, drafts, and backups are stored in `~/Library/Application Support/DJCrate
 | Track edit and Flip (experimental) | Render bar-based cut edits, or edits that capture hot cue jumps and loop playing, to WAV and add them to the library |
 | Playlists | Create playlists and folders, rename, move, delete, add and remove tracks, reorder. ⌘-click or ⇧-click in the sidebar to delete or move several at once |
 | History | Browse play history and turn a history into a playlist. Keeps the history that CDJs and XDJs leave on a USB drive, then adds it to rekordbox's history |
-| XML | Linked XML for importing into rekordbox, full-library XML export (read-only), rekordbox XML import (preview the differences, then make drafts), Apple Music XML import |
+| XML | Linked XML for importing into rekordbox, full-library XML export (read-only), rekordbox XML import (preview the differences, then add them as edits), Apple Music XML import |
 | USB (experimental) | Read, export, edit, and sync OneLibrary and Device Library; add OneLibrary to older USB drives. A physical USB drive is written only after you confirm the write in the [Export to USB] sheet or a write confirmation dialog (backed up before writing, verified after) |
-| Rollback | Restore Before Write, restore points (automatic once a day, compare with now, restore to that point), fixing blocked drafts |
+| Rollback | Restore Before Save, restore points (automatic once a day, compare with now, restore to that point), fixing blocked edits |
 | Updates | Finds new versions on GitHub Releases, verifies the signature, then installs. Settings › [Updates] |
 | Labs | Show intelligent playlists (read-only). Turn it on in Settings › [Labs] |
-| CLI and agents | Use `djc` to browse the library and make cue, tag, and playlist drafts. It also has XML, USB, and restore point commands. Install and update the [skill](skills/djcrate/SKILL.md) for Claude Code and Codex, along with `djc`, in Settings › [AI Agents] |
+| CLI and agents | Use `djc` to browse the library and make cue, tag, and playlist edits. It also has XML, USB, and restore point commands. Install and update the [skill](skills/djcrate/SKILL.md) for Claude Code and Codex, along with `djc`, in Settings › [AI Agents] |
 
 ![Tag Sheet and playlist tree (synthetic test data)](docs/images/readme/en/tag-sheet.png)
 

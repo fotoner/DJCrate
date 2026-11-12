@@ -10,7 +10,7 @@ extension DeckModel {
         if let expectedTrackUUID, expectedTrackUUID != row?.track.uuid { return nil }
         guard !editsFrozen else { return nil }
         guard let draft, draft.trackUUID == row?.track.uuid else {
-            showToast(String(ui: "편집할 곡의 초안이 준비되지 않았으니 곡을 덱에 다시 불러온 뒤 편집하세요"), kind: .warning)
+            showToast(String(ui: "편집할 곡의 편집이 준비되지 않았으니 곡을 덱에 다시 불러온 뒤 편집하세요"), kind: .warning)
             return nil
         }
         return draft
@@ -238,7 +238,7 @@ extension DeckModel {
     }
 
     func revertDraft() {
-        mutate(name: String(ui: "큐 초안 버리기")) { $0.revert() }
+        mutate(name: String(ui: "큐 편집 버리기")) { $0.revert() }
         selectedCueID = nil
     }
 

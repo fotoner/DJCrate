@@ -139,8 +139,8 @@ extension PlaylistSidebarModel {
         let folders = deleting.contains { $0.playlistID.flatMap(layout.item)?.isFolder == true }
         guard prompter.show(deletePrompt(deleting, skipped: skipped, folders: folders)) else { return }
         guard let batch = playlists.applyPlaylistRequests(requests, actionName: String(ui: "재생 목록 지우기"), allOrNothing: false) else { return }
-        report(batch, done: folders ? String(ui: "재생 목록·폴더 \(batch.stackedCount)개를 지웠습니다(쓰기 대기).")
-            : String(ui: "재생 목록 \(batch.stackedCount)개를 지웠습니다(쓰기 대기)."), none: String(ui: "재생 목록을 지우지 않았습니다"))
+        report(batch, done: folders ? String(ui: "재생 목록·폴더 \(batch.stackedCount)개를 지웠습니다(저장 대기).")
+            : String(ui: "재생 목록 \(batch.stackedCount)개를 지웠습니다(저장 대기)."), none: String(ui: "재생 목록을 지우지 않았습니다"))
     }
 
     /// 여러 목록·폴더를 끌어 놓은 자리로 옮긴다(묻지 않고 ⌘Z로 되돌린다). 막힌 항목만 건너뛰고 이유를 알린다
@@ -150,7 +150,7 @@ extension PlaylistSidebarModel {
         let requests = moveRequests(ids, to: target)
         guard !requests.isEmpty,
               let batch = playlists.applyPlaylistRequests(requests, actionName: String(ui: "재생 목록 옮기기"), allOrNothing: false) else { return }
-        report(batch, done: String(ui: "재생 목록 \(batch.stackedCount)개를 옮겼습니다(쓰기 대기)."), none: String(ui: "재생 목록을 옮기지 않았습니다"))
+        report(batch, done: String(ui: "재생 목록 \(batch.stackedCount)개를 옮겼습니다(저장 대기)."), none: String(ui: "재생 목록을 옮기지 않았습니다"))
     }
 
     // MARK: - 끌기
@@ -176,7 +176,7 @@ extension PlaylistSidebarModel {
         let title = folders ? String(ui: "재생 목록·폴더 \(deleting.count)개를 지울까요?") : String(ui: "재생 목록 \(deleting.count)개를 지울까요?")
         var lines = [Self.names(deleting.map(Self.name))]
         if folders { lines.append(String(ui: "폴더 안의 목록도 함께 지웁니다.")) }
-        lines.append(String(ui: "rekordbox에 쓰기 전까지는 초안이라 실행 취소(⌘Z)로 되돌릴 수 있습니다."))
+        lines.append(String(ui: "rekordbox에 저장하기 전까지는 실행 취소(⌘Z)로 되돌릴 수 있습니다."))
         if !skipped.isEmpty { lines.append(String(ui: "건너뛸 항목: \(Self.reasons(skipped))")) }
         return ReflectionPrompt(title: title, text: lines.joined(separator: "\n"), confirm: String(ui: "지우기"), destructive: true)
     }

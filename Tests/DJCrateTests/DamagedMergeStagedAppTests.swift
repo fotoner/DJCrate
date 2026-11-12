@@ -75,7 +75,7 @@ struct DamagedMergeStagedAppTests {
         let store = store(home: home, fixture: fixture)
         await store.load(snapshot: fixture.database)
         #expect(store.activityLog.latest?.text == LibraryStore.damagedDraftText(0, stagedList: true))
-        #expect(store.activityLog.latest?.text.contains("초안 파일") == false)
+        #expect(store.activityLog.latest?.text.contains("편집 파일") == false)
     }
 
     @Test @MainActor func 편집본을_넣다가_옮긴_추가_목록은_새_목록이_차_있어도_알린다() async throws {

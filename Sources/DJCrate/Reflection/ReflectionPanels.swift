@@ -40,14 +40,14 @@ enum ReflectionPanels {
         let omitted = exclusions.filter { !blockedLines.contains($0) }
         if !omitted.isEmpty {
             let lines = omitted.prefix(2).map { $0.hasPrefix("• ") ? String($0.dropFirst(2)) : $0 }.joined(separator: ", ")
-            text += " · " + String(ui: "XML에 넣지 않은 초안 \(omitted.count): \(lines)")
+            text += " · " + String(ui: "XML에 넣지 않은 편집 \(omitted.count): \(lines)")
         }
         return .notice(String(ui: "\(written)곡을 연동 XML에 썼습니다"), text, kind: blocked.isEmpty && omitted.isEmpty ? .success : .warning)
     }
 
     /// XML로 만들 곡이 없을 때의 알림: 막힌 곡은 결과처럼 앞 둘과 수
     static func blockedMessage(_ blocked: [ReflectionXMLPlan]) -> AppToast {
-        let reason = blocked.isEmpty ? String(ui: "고른 곡에 rekordbox와 다른 큐·그리드 초안이 없습니다.")
+        let reason = blocked.isEmpty ? String(ui: "고른 곡에 rekordbox와 다른 큐·그리드 편집이 없습니다.")
             : String(ui: "막혀서 뺀 곡 \(blocked.count): \(blocked.prefix(2).map { "\($0.title)(\($0.blockers.first ?? ""))" }.joined(separator: ", "))")
         return .notice(String(ui: "XML로 만들 곡이 없습니다"), reason, kind: .warning)
     }

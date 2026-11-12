@@ -60,7 +60,7 @@ struct PendingCountCacheTests {
 
         store.tags.applyTagEdits([(Self.track("d"), .title, "새 제목")])
         store.rowsByUUID["d"] = Self.track("d")
-        expectSame(store, "태그 초안")
+        expectSame(store, "태그 편집")
         #expect(store.pendingLibraryCount == 4)
 
         store.artworkDrafts["e"] = ArtworkDraft(trackUUID: "e", change: .delete, base: ArtworkBase(imagePath: "/x"))

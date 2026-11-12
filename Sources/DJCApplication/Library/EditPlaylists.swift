@@ -262,7 +262,7 @@ public struct EditPlaylists: Sendable {
                                   saveFailureText: String) -> (text: String, warning: Bool)? {
         var lines: [String] = []
         var warning = false
-        if added > 0 { lines.append(String(ui: "‘\(name)’에 \(added)곡을 넣었습니다(쓰기 대기).")) }
+        if added > 0 { lines.append(String(ui: "‘\(name)’에 \(added)곡을 넣었습니다(저장 대기).")) }
         if duplicates > 0 {
             warning = true
             lines.append(String(ui: "이미 들어 있는 \(duplicates)곡은 넣지 않았습니다."))

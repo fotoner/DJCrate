@@ -8,18 +8,18 @@ struct UsbPointSnapshotsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(.ui("USB 시점 스냅샷")).font(.title2.bold())
+            Text(.ui("USB 복원 시점")).font(.title2.bold())
             Text(verbatim: model.volume.name).foregroundStyle(.secondary)
             HStack {
-                TextField(.ui("스냅샷 이름(선택)"), text: $model.name)
+                TextField(.ui("이름(선택)"), text: $model.name)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { model.startCreate() }
-                Button(.ui("스냅샷 만들기")) { model.startCreate() }
+                Button(.ui("복원 시점 만들기")) { model.startCreate() }
                     .disabled(model.isBusy || !model.canUseVolume)
             }
             List {
                 if model.entries.isEmpty {
-                    Text(.ui("이 USB의 시점 스냅샷이 없습니다. 만들기를 눌러 지금 상태를 남기세요."))
+                    Text(.ui("이 USB의 복원 시점이 없습니다. 만들기를 눌러 지금 상태를 남기세요."))
                         .foregroundStyle(.secondary)
                 }
                 ForEach(model.entries) { entry in
@@ -29,7 +29,7 @@ struct UsbPointSnapshotsView: View {
                 }
             }
             .listStyle(.bordered)
-            Text(.ui("DB·분석 파일·앨범아트·기기 설정을 Mac에 남깁니다. 음원과 동기화 선택은 담지 않습니다. 최근 5개와 고정한 스냅샷을 남깁니다."))
+            Text(.ui("DB·분석 파일·앨범아트·기기 설정을 Mac에 남깁니다. 음원과 동기화 선택은 담지 않습니다. 최근 5개와 고정한 복원 시점을 남깁니다."))
                 .font(.callout).foregroundStyle(.secondary)
             if !model.canUseVolume {
                 Text(.ui("USB 연결이 바뀌었습니다. 창을 닫고 같은 USB에서 다시 여세요."))

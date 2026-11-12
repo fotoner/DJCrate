@@ -63,7 +63,7 @@ struct ListSearchTests {
         store.isWritingRekordbox = true
         // 상세 열이 통째로 잠기므로 검색칸에도 갈 수 없다
         #expect(!LibraryMenuAction.find.isEnabled(in: window))
-        #expect(LibraryMenuAction.find.disabledReason(in: window) == "rekordbox 쓰기가 끝난 뒤 다시 시도하세요")
+        #expect(LibraryMenuAction.find.disabledReason(in: window) == "rekordbox 저장이 끝난 뒤 다시 시도하세요")
     }
 
     @Test func 찾기를_누르면_검색칸_포커스_요청이_올라가고_꺼진_뒤에는_올라가지_않는다() {

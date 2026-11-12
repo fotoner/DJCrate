@@ -147,7 +147,7 @@ djc compat --db /tmp/djc-fixture/master.db --json
 
 앱의 `파일 없음` 필터에서 **폴더에서 찾기…**를 누르면 고른 폴더 아래 음원을 훑는다. 파일이 없는 곡마다 새 위치 후보를 찾아 확실·애매·없음으로 미리 보여 준다(#62). 읽기만 한다. rekordbox·음원에는 쓰지 않는다. 고른 결과도 저장하지 않는다.
 
-경로를 rekordbox에 쓰는 단추는 막아 두었다. 경로 바꾸기 쓰기 규칙을 rekordbox 실험으로 확인하기 전까지 열지 않는다.
+경로를 rekordbox에 저장하는 단추는 막아 두었다. 경로 바꾸기 저장 규칙을 rekordbox 실험으로 확인하기 전까지 열지 않는다.
 
 `djc lab relocate-candidates --db <사본.db> --folder <폴더>`는 같은 판정으로 분류별 개수만 찍는다. 곡 제목·경로는 찍지 않는다.
 
@@ -269,7 +269,7 @@ JSON 키는 영문이고 ID·UUID는 문자열이다. 선택 값이 없으면 �
   - 큐·그리드·태그는 읽을 수 있고 실제 변경이 있는 초안만 센다.
   - 게인은 저장된 값이 있는 초안만 센다.
   - 앨범아트는 초안과 앨범아트 사본을 읽을 수 있는 초안만 센다. 앨범아트 초안은 앱에서만 만든다.
-  - 손상된 초안의 진단과 반영 가능 여부 판정은 하지 않는다.
+  - 손상된 초안의 진단과 저장 가능 여부 판정은 하지 않는다.
 - `report`: 아래 필드를 가진다.
   - 정수 `totalRows`, `deletedRows`, `liveTracks`, `streamingTracks`, `tracksWithCues`, `tracksWithManualCues`, `tracksWithOnlyAutoCues`, `tracksWithoutCues`, `playedTracks`, `emptyCommentPlayed`.
   - 문자열→정수 사전 `extensions`, `emptyByImportYear`, `hotCueSlots`.
@@ -291,7 +291,7 @@ JSON 키는 영문이고 ID·UUID는 문자열이다. 선택 값이 없으면 �
 - 앱과 같은 JSON을 `DJC_HOME`의 `cue-drafts/`·`tag-drafts/`에 저장한다.
 - 처음 만들 때 스냅샷의 rekordbox 값을 `base`에 담는다.
 - 기존 초안을 이어 고칠 때는 그 `base`와 다른 편집을 보존한다.
-- rekordbox 반영은 앱에서 사람이 별도로 실행한다.
+- rekordbox 저장은 앱에서 사람이 별도로 실행한다.
 
 ```sh
 # 시험할 때는 반드시 임시 DJC_HOME을 쓴다.
@@ -326,7 +326,7 @@ djc draft rm tag 101 --db /tmp/djc-fixture/master.db
   - `8a`·` 08B `는 `8A`·`8B`로 다듬는다.
   - `''`는 키를 지운다.
   - `Am` 같은 다른 표기는 `invalid_arguments`로 거절한다.
-  - 초안을 쓰는 rekordbox에 그 이름의 살아 있는 키 줄이 하나가 아니면, 미리 보기와 쓰기가 그 곡만 막고 이유를 알린다.
+  - 초안을 저장하는 rekordbox에 그 이름의 살아 있는 키 줄이 하나가 아니면, 미리 보기와 저장이 그 곡만 막고 이유를 알린다.
   - 추가한 곡(ContentID 없음)의 키는 앱에서 고르면 곡을 넣을 때 함께 쓴다.
   - `djc track-add`에는 키 옵션이 없다. 곡을 넣은 뒤 `draft tag`로 고친다.
 - `--rating`은 평점 별 수 `1`~`5`다. `★★★`도 받는다. `0`·`''`는 평점을 지운다.
@@ -346,7 +346,7 @@ djc draft rm tag 101 --db /tmp/djc-fixture/master.db
 
 앱은 실행 중 약 1초마다 큐·태그 초안 파일 변경을 확인한다. 변경이 있으면 목록의 편집 표시·큐 개수·태그 편집기와 현재 덱의 큐를 갱신하고 재생 위치를 유지한다. 큐·그리드를 드래그하는 동안에는 저장 후에 다시 읽는다. 태그가 외부에서 바뀌면 오래된 되돌리기 기록은 비운다. 태그 초안은 태그 편집기와 쓰기를 기다리는 초안 목록에 표시된다.
 
-앱에서 사람이 초안을 미리 보고 rekordbox에 쓸 수 있다. 초안 종류는 큐, 그리드, 게인, 태그, 재생 목록이다. 태그는 rekordbox 곡 정보에만 쓴다. 음원 파일의 태그는 바꾸지 않는다. 같은 곡을 앱과 CLI에서 동시에 편집하면 마지막 저장이 앞선 저장을 덮을 수 있다. 그러므로 편집을 마친 뒤 다음 명령을 실행한다.
+앱에서 사람이 초안을 미리 보고 rekordbox에 저장할 수 있다. 초안 종류는 큐, 그리드, 게인, 태그, 재생 목록이다. 태그는 rekordbox 곡 정보에만 저장한다. 음원 파일의 태그는 바꾸지 않는다. 같은 곡을 앱과 CLI에서 동시에 편집하면 마지막 보관이 앞선 보관을 덮을 수 있다. 그러므로 편집을 마친 뒤 다음 명령을 실행한다.
 
 `--json`은 위 JSON v1 성공/오류 출력 규칙을 따른다. `command`는 `draft`다. `data`는 `{kind: "cue"|"tag", action: "save"|"remove", contentID, trackUUID, dryRun, hasChanges, cue?, tag?}`다.
 
@@ -386,7 +386,7 @@ djc draft playlist order 901 103 101 --before 102 --db /tmp/djc-fixture/master.d
 
 - `root`: 맨 위다. 부모로만 쓴다.
 - rekordbox ID: `djc playlists --tree --json`의 `id`다.
-- `new:키`: 초안으로 만든 목록이다. 아직 rekordbox에 쓰지 않았다. 앞선 `djc draft playlist` 결과의 `playlistID`이고, 앱에서 만든 목록도 같다.
+- `new:키`: 초안으로 만든 목록이다. 아직 rekordbox에 저장하지 않았다. 앞선 `djc draft playlist` 결과의 `playlistID`이고, 앱에서 만든 목록도 같다.
 - `@이름`: 같은 편집 파일 안에서 앞서 `"as": "@이름"`으로 만든 목록이다.
 - `name:이름`: 이름이 정확히 같은 목록이다. 그 편집 차례의 모양에서 찾는다. 이 모양은 rekordbox에 초안과 앞 편집을 얹은 것이다. 그 이름의 목록이 하나가 아니면 그 편집을 막는다. 이때는 ID로 가리킨다.
 
@@ -430,7 +430,7 @@ djc draft playlist order 901 103 101 --before 102 --db /tmp/djc-fixture/master.d
 
 **막힘**: 앱 사이드바와 같은 유스케이스(`EditPlaylists.planning`)가 판정한다.
 
-- 편집마다 지금 rekordbox 목록 상태를 `base`로 적는다. 그 뒤 rekordbox에서 바뀐 목록의 편집은 쓰기 미리 보기에서 막힌다.
+- 편집마다 지금 rekordbox 목록 상태를 `base`로 적는다. 그 뒤 rekordbox에서 바뀐 목록의 편집은 저장 미리 보기에서 막힌다.
 - 아래 편집은 건너뛴다. 결과에 이유를 보인다. 나머지는 쌓는다.
   - 인텔리전트 목록과 쓰기 규칙을 확인하지 않은 목록. `Attribute`가 0·1이 아닌 목록이다.
   - 폴더가 아닌 부모, 폴더를 제 안으로 옮기기, 폴더에 곡 넣기
@@ -447,15 +447,15 @@ djc draft playlist order 901 103 101 --before 102 --db /tmp/djc-fixture/master.d
   - 앱이 저장하지 못한 초안이 있으면(디스크보다 최신) 다시 읽지 않는다.
 - 앱에서 편집하기 전에도 파일을 확인한다. 바깥에서 바뀌었으면 그 초안을 받은 뒤 그 위에 쌓는다. ⌘Z·초안 버리기처럼 옛 초안으로 되돌리는 변경은 하지 않는다. 대신 이유를 알린다.
   - 곡 추가의 목록 연결과 rekordbox XML 가져오기도 초안을 저장하기 전에 파일을 확인한다.
-- 앱은 rekordbox에 쓰는 동안 초안 파일 잠금(`playlist-drafts.lock`)을 든다. 쓰기 미리 보기와 확인 창도 이 시간에 든다.
-  - 그동안 CLI는 쌓지 않고 `draft_busy`로 끝난다. 쓰기가 끝난 뒤 같은 명령을 다시 실행한다. `--dry-run`은 그대로 된다.
-  - CLI도 초안 파일을 읽고 저장하는 동안만 이 잠금을 든다. `xml-diff --draft`는 마지막 비교와 저장 동안만 든다. 다른 `djc`가 들고 있으면 2초까지 기다린다. 그래도 못 잡으면 `draft_busy`다.
-  - 앱은 쓰기를 시작할 때 잠금을 0.3초까지 기다려 잡고, 바깥에서 바뀐 초안을 받는다. 그사이 CLI가 저장한 초안도 받는다.
-  - 0.3초 안에 못 잡으면 쓰는 동안 다시 잡는다. 그 전에 CLI가 저장한 편집은 이번 쓰기에 들지 않는다. 쓴 뒤 정리는 초안 뒤에 더한 편집만 남긴다. 앞 편집을 고친 편집은 사라질 수 있다. 예를 들어 같은 목록의 이름을 다시 바꾼 편집이다. 드문 경우다.
-  - 앱의 재생 목록 초안이 비어 있을 때 1초 확인 전에 쓰기를 시작하면, CLI 초안은 그 쓰기에 들지 않는다. 초안은 남고 다음 쓰기에 든다.
+- 앱은 rekordbox에 저장하는 동안 초안 파일 잠금(`playlist-drafts.lock`)을 든다. 저장 미리 보기와 확인 창도 이 시간에 든다.
+  - 그동안 CLI는 쌓지 않고 `draft_busy`로 끝난다. 저장이 끝난 뒤 같은 명령을 다시 실행한다. `--dry-run`은 그대로 된다.
+  - CLI도 초안 파일을 읽고 보관하는 동안만 이 잠금을 든다. `xml-diff --draft`는 마지막 비교와 보관 동안만 든다. 다른 `djc`가 들고 있으면 2초까지 기다린다. 그래도 못 잡으면 `draft_busy`다.
+  - 앱은 저장을 시작할 때 잠금을 0.3초까지 기다려 잡고, 바깥에서 바뀐 초안을 받는다. 그사이 CLI가 보관한 초안도 받는다.
+  - 0.3초 안에 못 잡으면 저장하는 동안 다시 잡는다. 그 전에 CLI가 보관한 편집은 이번 저장에 들지 않는다. 저장한 뒤 정리는 초안 뒤에 더한 편집만 남긴다. 앞 편집을 고친 편집은 사라질 수 있다. 예를 들어 같은 목록의 이름을 다시 바꾼 편집이다. 드문 경우다.
+  - 앱의 재생 목록 초안이 비어 있을 때 1초 확인 전에 저장을 시작하면, CLI 초안은 그 저장에 들지 않는다. 초안은 남고 다음 저장에 든다.
 - 계획하는 동안 초안 파일이 바뀌었으면 CLI는 `draft_changed`로 끝난다. 파일은 덮지 않는다. 같은 명령을 다시 실행한다.
 - 초안 파일을 읽지 못하면 `invalid_draft`로 끝난다. 그 파일은 덮지 않는다.
-- 쓰기 미리 보기는 CLI로 만든 초안을 앱 초안과 똑같이 보인다. 반영도 같다.
+- 저장 미리 보기는 CLI로 만든 초안을 앱 편집과 똑같이 보인다. 저장도 같다.
 
 `--json`의 `data`는 아래와 같다. `command`는 `draft`다.
 
@@ -477,12 +477,12 @@ djc draft playlist order 901 103 101 --before 102 --db /tmp/djc-fixture/master.d
 - `aliases`: 만든 `@이름` → `new:키`.
 - `playlist`: 쌓은 뒤 초안 전체(앱 파일과 같다). 미리 보기면 저장하지 않은 값이다.
 
-추가 오류 코드는 세 가지다. `playlist_edit_blocked`는 쌓은 편집 없이 막혔다는 뜻이다. `draft_changed`는 계획하는 동안 초안 파일이 바뀌었다는 뜻이다. `draft_busy`는 앱이 rekordbox에 쓰는 중이거나 다른 `djc`가 초안을 고치는 중이라 쌓지 않았다는 뜻이다. `invalid_arguments`, `invalid_draft`, `draft_io_failed`, `not_found`, `live_database`, `read_failed`도 쓴다.
+추가 오류 코드는 세 가지다. `playlist_edit_blocked`는 쌓은 편집 없이 막혔다는 뜻이다. `draft_changed`는 계획하는 동안 초안 파일이 바뀌었다는 뜻이다. `draft_busy`는 앱이 rekordbox에 저장하는 중이거나 다른 `djc`가 초안을 고치는 중이라 쌓지 않았다는 뜻이다. `invalid_arguments`, `invalid_draft`, `draft_io_failed`, `not_found`, `live_database`, `read_failed`도 쓴다.
 ## 쓰기 명령(사본에만)
 
 rekordbox 라이브러리에 쓰는 명령이다. 앱과 같은 반영 세션과 쓰기 관문을 지난다. 순서는 사전 확인, 전체 백업, 한 트랜잭션, 검증이다. 실패하면 복원한다.
 
-CLI는 쓴 뒤 초안 정리와 되살리기를 하지 않는다. `cue-write`는 쓴 초안을 지우지 않는다. `rekordbox-restore`는 백업의 초안을 되살리지 않는다. 이것은 사용자 결정이다(2026-10-10). CLI는 대개 사본(`--db`)에 쓴다. 앱처럼 쓴 뒤 초안을 지우면 라이브에 반영하지 않은 초안이 사라진다.
+CLI는 쓴 뒤 초안 정리와 되살리기를 하지 않는다. `cue-write`는 쓴 초안을 지우지 않는다. `rekordbox-restore`는 백업의 초안을 되살리지 않는다. 이것은 사용자 결정이다(2026-10-10). CLI는 대개 사본(`--db`)에 쓴다. 앱처럼 쓴 뒤 초안을 지우면 라이브에 저장하지 않은 초안이 사라진다.
 
 대상은 늘 명시한다.
 
@@ -498,7 +498,7 @@ djc cue-write --db <사본.db> [--dry-run]                                 # 초
 djc track-add --db <사본.db> --share <폴더> --analyze <음원…>            # 곡 넣기(분석까지)
 djc track-delete --db <사본.db> --share <폴더> <ContentID…>              # 곡 빼기
 djc playlist-write --db <사본.db> [--dry-run] <편집.json>                # 재생 목록 편집(JSON)
-djc rekordbox-restore --backup <폴더> --db <사본.db>                     # 쓰기 전 백업으로 되돌리기
+djc rekordbox-restore --backup <폴더> --db <사본.db>                     # 저장 전 백업으로 되돌리기
 ```
 
 함께 쓰는 읽기 명령은 라이브러리에 쓰지 않는다.
@@ -577,7 +577,7 @@ USB 시점 스냅샷(`usb-point-snapshots/`)의 개수와 사용량도 보인다
 
 ```sh
 djc snapshot-point create --name "큰 정리 전" --live   # rekordbox를 끈 뒤. DJCrate 데이터 폴더의 point-snapshots/에
-djc snapshot-point list --live                       # 시점 스냅샷과 쓰기 전 백업을 함께(최근 것부터)
+djc snapshot-point list --live                       # 시점 스냅샷과 저장 전 백업을 함께(최근 것부터)
 djc snapshot-point pin 2026-10-07T120000Z-manual --live   # 고정(자동 정리에서 뺀다). unpin으로 푼다
 djc snapshot-point delete "큰 정리 전" --live         # 고정하지 않은 것만. ID 대신 겹치지 않는 이름도 받는다
 djc snapshot-point diff "큰 정리 전" --live           # 그 시점으로 복원하면 바뀌는 것(곡·큐·그리드·곡 정보·재생 목록·파일 수, 읽기만)
@@ -591,7 +591,7 @@ djc snapshot-point create --db <사본 폴더>/master.db [--share <사본 폴더
 - `restore`는 묻지 않는다. 플래그가 곧 동의다.
   - 다른 라이브러리나 망가진 스냅샷은 거부한다.
   - 끝나면 복원 전으로 돌리는 명령(`restore <복원 직전 ID>`)을 알린다.
-  - 시점 복원 뒤에는 그보다 옛 쓰기 전 백업을 `rekordbox-restore`로 되돌리지 않는다.
+  - 시점 복원 뒤에는 그보다 옛 저장 전 백업을 `rekordbox-restore`로 되돌리지 않는다.
 - 자동 정리는 다음만 남긴다.
   - 수동·고정 스냅샷은 지우지 않는다.
   - 자동 스냅샷은 최근 7일과, 그보다 오래된 것 중 가장 최근 하나를 남긴다. 앱 설정 › 저장 공간에서 일수를 바꾼다.
@@ -627,7 +627,7 @@ djc xml-export --db /tmp/djc-fixture/master.db --out /tmp/djc-fixture/library.xm
 - 출력은 `.xml` 파일만 받는다. 실수로 `master.db`를 덮지 않게 하기 위해서다. 다음 위치는 DB를 열기 전에 거부한다.
   - rekordbox 폴더 안: `~/Library/Pioneer`와, 개발 때의 `DJC_REKORDBOX_DIR`
   - USB의 `PIONEER/` 아래(`/Volumes/<볼륨>/PIONEER/…`, 대소문자 무시)
-  - DJCrate 데이터 폴더(`~/Library/Application Support/DJCrate`·`DJC_HOME`). 특히 `rekordbox-backups`와 `usb-backups`를 조심한다. 백업의 `masterPlaylists6.xml`을 덮으면 "쓰기 전으로 복원"이 그것을 라이브로 옮긴다.
+  - DJCrate 데이터 폴더(`~/Library/Application Support/DJCrate`·`DJC_HOME`). 특히 `rekordbox-backups`와 `usb-backups`를 조심한다. 백업의 `masterPlaylists6.xml`을 덮으면 "저장 전으로 복원"이 그것을 라이브로 옮긴다.
   - 위 위치들을 가리키는 링크
   - DJCrate 연동 XML 자리(`~/Documents/DJCrate/djcrate-rekordbox.xml`)
 - 이미 있는 파일은 `--overwrite`를 줘야 바꾼다. `--dry-run`은 개수만 알린다.
@@ -764,14 +764,14 @@ djc xml-diff --db <스냅샷 사본.db> --xml ~/Desktop/other.xml --share ~/Libr
 
 `--draft`를 주면 차이를 DJCrate 초안으로 만든다. 초안은 `DJC_HOME` 아래 초안 폴더에만 쓴다. `DJC_HOME`이 없으면 `~/Library/Application Support/DJCrate`를 쓴다. 초안 폴더는 `cue-drafts/`, `grid-drafts/`, `tag-drafts/`, `playlist-drafts.json`이다.
 
-rekordbox에는 쓰지 않는다. 쓰기는 앱의 "rekordbox에 쓰기"(미리 보기 → 쓰기)가 다른 초안과 똑같이 한다. `--only`로 종류를 고른다(쉼표로 여럿). `--json`과는 함께 줄 수 없다.
+rekordbox에는 저장하지 않는다. 저장은 앱의 "rekordbox에 저장"(미리 보기 → 저장)이 다른 초안과 똑같이 한다. `--only`로 종류를 고른다(쉼표로 여럿). `--json`과는 함께 줄 수 없다.
 
 - **base는 지금 라이브러리 상태**다.
   - 큐는 지금 큐(자동 큐 포함)다.
   - 그리드는 분석 파일의 박이다.
   - 태그는 지금 곡 정보다.
   - 재생 목록은 지금 목록이다.
-  - 그 뒤 rekordbox에서 바뀐 곡과 목록은 기존 규칙대로 쓰기 미리 보기에서 막힌다.
+  - 그 뒤 rekordbox에서 바뀐 곡과 목록은 기존 규칙대로 저장 미리 보기에서 막힌다.
 - **기존 초안은 덮지 않는다.** 그 곡에 같은 종류의 초안 파일이 있으면 건너뛴다. 이유는 적는다. 읽지 못하는 파일도 같다.
   - 재생 목록은 기존 재생 목록 초안에 편집을 덧붙인다.
   - 이미 초안이 손댄 목록은 건너뛴다. 초안에 같은 이름으로 만든 목록도 건너뛴다.
@@ -793,7 +793,7 @@ rekordbox에는 쓰지 않는다. 쓰기는 앱의 "rekordbox에 쓰기"(미리 
   - 라이브러리 목록 뒤에 곡만 더한 목록은 더한 곡만 넣는다.
   - 같은 자리에 인텔리전트 목록이 있으면 건너뛴다.
   - DJCrate 앱이 켜져 있어도 재생 목록 초안을 만든다. 앱이 그 파일을 다시 읽는다(#260). 자세한 규칙은 [재생 목록 초안 만들기](#재생-목록-초안-만들기draft-playlist)에 있다.
-  - 앱이 rekordbox에 쓰는 중이거나 다른 `djc`가 재생 목록 초안을 고치는 중이면 재생 목록 초안만 만들지 않고 알린다. 다른 초안은 만든다.
+  - 앱이 rekordbox에 저장하는 중이거나 다른 `djc`가 재생 목록 초안을 고치는 중이면 재생 목록 초안만 만들지 않고 알린다. 다른 초안은 만든다.
   - 그리드 초안을 만들면 덱에 올린 곡의 그리드를 덱 편집이 덮을 수 있다고 알린다.
 - **손실**: 초안이 담지 못하는 차이는 초안에서 뺀다. "초안에 담지 못한 차이"로 센다. 해당하는 경우는 다음과 같다.
   - 곡 길이 밖 큐

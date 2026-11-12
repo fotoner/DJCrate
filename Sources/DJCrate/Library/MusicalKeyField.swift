@@ -58,9 +58,9 @@ struct TagConflictView: View {
         if let conflict {
             Text(String(ui: "현재 rekordbox: \(conflict.current)"))
                 .textSelection(.enabled)
-            Text(String(ui: "내 초안: \(conflict.draft)")).textSelection(.enabled)
+            Text(String(ui: "내 편집: \(conflict.draft)")).textSelection(.enabled)
             HStack {
-                Button(.ui("내 초안 유지")) { resolve(true) }
+                Button(.ui("내 편집 유지")) { resolve(true) }
                 Button(.ui("rekordbox 값 사용")) { resolve(false) }
             }
         }

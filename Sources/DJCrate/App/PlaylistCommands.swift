@@ -1,7 +1,7 @@
 import DJCDomain
 import SwiftUI
 
-/// 메뉴 '재생 목록'(#39·#40). 바꾼 것은 모두 초안이고 반영(⇧⌘E) 때 rekordbox에 쓴다.
+/// 메뉴 '재생 목록'(#39·#40). 바꾼 것은 모두 초안이고 저장(⌘S) 때 rekordbox에 쓴다.
 struct PlaylistCommands: View {
     let store: LibraryStore?
     /// 막힌 재생 목록 비교 시트를 여는 rekordbox 쓰기 화면 쪽
@@ -40,7 +40,7 @@ struct PlaylistCommands: View {
         Button(.ui("이 목록에서 빼기")) { store?.playlists.removeSelectedFromPlaylist() }
             .disabled(!enabled || store?.playlists.editablePlaylistID == nil || tracks.isEmpty)
         Divider()
-        Button(.ui("재생 목록 초안 버리기")) { if let store { PlaylistPanels.discardAll(store: store) } }
+        Button(.ui("재생 목록 편집 버리기")) { if let store { PlaylistPanels.discardAll(store: store) } }
             .disabled(!enabled || store?.playlists.hasPlaylistDrafts != true)
         if let store, store.playlists.blockedPlaylistEditCount > 0 {
             Button(.ui("재생 목록 현재값 가져오기…")) { reflection?.startPlaylistRecovery() }

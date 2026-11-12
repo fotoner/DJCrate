@@ -102,22 +102,22 @@ struct QuitConfirmationTests {
 
     @Test func 본문은_켜진_것과_쓰기_대기_수를_담는다() throws {
         let rekordbox = try #require(Self.confirmation())
-        #expect(rekordbox.message == "rekordbox가 켜져 있어 쓰기 대기 3건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 쓰세요")
+        #expect(rekordbox.message == "rekordbox가 켜져 있어 저장 대기 3건을 아직 rekordbox에 저장하지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 저장하세요")
         let agent = try #require(Self.confirmation(run: .agentOnly))
-        #expect(agent.message == "rekordboxAgent가 켜져 있어 쓰기 대기 3건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordboxAgent를 종료한 뒤 DJCrate에서 쓰세요")
+        #expect(agent.message == "rekordboxAgent가 켜져 있어 저장 대기 3건을 아직 rekordbox에 저장하지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordboxAgent를 종료한 뒤 DJCrate에서 저장하세요")
     }
 
     /// 칩과 같은 수·같은 단위: 곡이 있으면 「쓰기 대기 N건」, 재생 목록 편집만이면 「재생 목록 편집 N건」
     @Test func 재생_목록_편집만_있으면_편집_건수로_쓴다() throws {
         let sheet = try #require(Self.confirmation(pending: PendingWriteCount(items: 0, playlistEdits: 2)))
-        #expect(sheet.message == "rekordbox가 켜져 있어 재생 목록 편집 2건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 쓰세요")
+        #expect(sheet.message == "rekordbox가 켜져 있어 재생 목록 편집 2건을 아직 rekordbox에 저장하지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 저장하세요")
         let agent = try #require(Self.confirmation(run: .agentOnly, pending: PendingWriteCount(items: 0, playlistEdits: 2)))
         #expect(agent.message.hasPrefix("rekordboxAgent가 켜져 있어 재생 목록 편집 2건을"))
     }
 
     @Test func 곡과_재생_목록_편집이_함께_있으면_곡_수가_먼저다() {
         let both = PendingWriteCount(items: 4, playlistEdits: 2)
-        #expect(both.text == "쓰기 대기 4건")
+        #expect(both.text == "저장 대기 4건")
         #expect(PendingWriteCount(items: 0, playlistEdits: 2).text == "재생 목록 편집 2건")
         #expect(PendingWriteCount(items: 0, playlistEdits: 0).isEmpty)
         #expect(!both.isEmpty)
@@ -125,7 +125,7 @@ struct QuitConfirmationTests {
 
     @Test func 제목과_단추는_짧고_자유_문구에_약속을_담지_않는다() throws {
         let sheet = try #require(Self.confirmation())
-        #expect(sheet.title == "쓰기 대기가 남아 있습니다")
+        #expect(sheet.title == "저장 대기가 남아 있습니다")
         #expect(QuitConfirmation.quitAnywayTitle == "그냥 종료")
         #expect(QuitConfirmation.cancelTitle == "취소")
         // 1차에는 자동 쓰기가 없어 "다시 열면 저장된다"고 쓰지 않는다

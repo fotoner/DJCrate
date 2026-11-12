@@ -273,7 +273,7 @@ extension ReflectionSession {
                                      to target: RekordboxWriteTarget) async throws -> RekordboxPointRestoreReport {
         lock(true)
         defer { lock(false) }
-        stage(WriteStage(String(ui: "시점 스냅샷으로 복원하는 중…")))
+        stage(WriteStage(String(ui: "복원 시점으로 복원하는 중…")))
         defer { stage(nil) }
         let gate = ports.gate
         let report = try await BlockingWork.run { try gate.restorePointSnapshot(entry, target, snapshots, autoDays, now) }

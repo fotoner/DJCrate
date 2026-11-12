@@ -28,7 +28,7 @@ enum PlaylistDragType {
 }
 
 /// 사이드바 재생 목록(#40): 초안을 얹은 트리, 만들기·이름 바꾸기·지우기·옮기기, 곡을 끌어다 놓기(#39).
-/// 바꾼 것은 모두 초안이고 반영(⇧⌘E) 때 rekordbox에 쓴다.
+/// 바꾼 것은 모두 초안이고 저장(⌘S) 때 rekordbox에 쓴다.
 struct PlaylistSection: View {
     @Bindable var store: LibraryStore
     /// 폴더 펼침·이름 바꾸기(조립 지점이 한 번 만든 화면 모델)
@@ -47,8 +47,8 @@ struct PlaylistSection: View {
                 if store.playlists.hasPlaylistDrafts {
                     Image(systemName: DraftMark.symbol)
                         .foregroundStyle(UIColors.draft.color)
-                        .help(.ui("아직 쓰지 않은 재생 목록 초안 \(store.playlists.playlistDraft.steps.count)건"))
-                        .accessibilityLabel(.ui("재생 목록 초안 \(store.playlists.playlistDraft.steps.count)건"))
+                        .help(.ui("재생 목록 편집 \(store.playlists.playlistDraft.steps.count)건"))
+                        .accessibilityLabel(.ui("재생 목록 편집 \(store.playlists.playlistDraft.steps.count)건"))
                 }
                 Spacer(minLength: 0)
                 Menu {
@@ -140,7 +140,7 @@ struct PlaylistRow: View {
         content
             .badge(store.count(playlist: node))
             .lineLimit(1)
-            .help(node.blockedReason.map { String(ui: "이 목록의 초안 일부를 쓸 수 없습니다: \($0)") } ?? smartHelp ?? title)
+            .help(node.blockedReason.map { String(ui: "이 목록의 편집 일부를 저장할 수 없습니다: \($0)") } ?? smartHelp ?? title)
             .onDrag { PlaylistDragType.provider(for: node, ids: sidebar.dragIDs(for: node.id)) }
             .onDrop(of: PlaylistDrop.rowTypes, delegate: PlaylistRowDrop(node: node, store: store, sidebar: sidebar, isTargeted: $isTargeted))
             .background(isTargeted ? Color.accentColor.opacity(0.25) : .clear, in: RoundedRectangle(cornerRadius: 4))
@@ -173,7 +173,7 @@ struct PlaylistRow: View {
                     if node.blockedReason != nil {
                         Image(systemName: WarningMark.symbol)
                             .foregroundStyle(UIColors.warning.color)
-                            .accessibilityLabel(.ui("쓸 수 없는 초안"))
+                            .accessibilityLabel(.ui("저장할 수 없는 편집"))
                     }
                     if smartUnsupported != nil {
                         Image(systemName: WarningMark.symbol)
@@ -209,10 +209,10 @@ struct PlaylistSidebarMenu: ViewModifier {
                 // USB에서 보존한 기록(#43): rekordbox 쓰기 대기에서 빼거나 다시 넣는다(편집 › 실행 취소로 되돌린다)
                 if let archived = store.history.archivedHistory(id) {
                     if store.history.pendingHistoryIDs.contains(id) {
-                        Button(.ui("rekordbox 쓰기 대기에서 빼기")) { store.history.setHistoriesExcluded([id], excluded: true) }
+                        Button(.ui("rekordbox 저장 대기에서 빼기")) { store.history.setHistoriesExcluded([id], excluded: true) }
                             .disabled(store.editsFrozen)
                     } else if archived.excludedFromRekordbox, store.history.writesHistories {
-                        Button(.ui("rekordbox 쓰기 대기에 넣기")) { store.history.setHistoriesExcluded([id], excluded: false) }
+                        Button(.ui("rekordbox 저장 대기에 넣기")) { store.history.setHistoriesExcluded([id], excluded: false) }
                             .disabled(store.editsFrozen)
                     }
                 }
@@ -273,7 +273,7 @@ struct PlaylistContextMenu: View {
         }
         if node.isDraft || node.blockedReason != nil {
             Divider()
-            Button(.ui("이 목록의 초안 버리기")) { store.playlists.discardPlaylistDraft(node.id) }
+            Button(.ui("이 목록의 편집 버리기")) { store.playlists.discardPlaylistDraft(node.id) }
         }
     }
 

@@ -125,7 +125,7 @@ public struct ArchivedHistory: Codable, Sendable, Hashable, Identifiable {
     public var matchedContentIDs: [String] { entries.compactMap(\.contentID) }
 }
 
-/// rekordbox 쓰기 대기에 올릴 보존 기록(입출력 없음). 앱은 쓰기 대기 목록·미리 보기·rekordbox에 쓰기(⇧⌘E)가 이것을 쓴다.
+/// rekordbox 쓰기 대기에 올릴 보존 기록(입출력 없음). 앱은 쓰기 대기 목록·미리 보기·rekordbox에 저장(⌘S)가 이것을 쓴다.
 public enum HistoryWriteQueue {
     /// - shadowed: rekordbox에 이미 같은 기록이 있어 숨긴 보존 기록(`HistoryDuplicates`). rekordbox가 직접 가져왔거나 DJCrate가 쓴 것
     /// - rekordboxHistoryIDs: 지금 rekordbox 라이브러리(스냅샷)에 있는 기록 ID

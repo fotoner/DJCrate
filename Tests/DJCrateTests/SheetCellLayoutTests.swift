@@ -216,7 +216,7 @@ struct SheetCellLayoutTests {
         let cell = SheetCell()
         cell.configure(text: "새 제목", edited: true, readOnly: false, selected: false, active: false)
         let draftValue = cell.label.cell?.accessibilityValue()
-        #expect((draftValue as? String) == "새 제목, 초안")
+        #expect((draftValue as? String) == "새 제목, 저장 대기")
         // 재사용: 초안이 아닌 칸으로 바뀌면 이전 초안 값이 남지 않는다
         cell.configure(text: "다른 제목", edited: false, readOnly: false, selected: false, active: false)
         #expect((cell.label.cell?.accessibilityValue() as? String) == "다른 제목")

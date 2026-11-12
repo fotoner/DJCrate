@@ -33,7 +33,7 @@ private struct AppleMusicImportView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(.ui("Music의 파일 › 보관함 › 보관함 내보내기에서 XML을 저장하세요. 재생 목록 내보내기에서 XML을 골라도 됩니다."))
-            Text(.ui("로컬 음원만 ‘추가한 곡’에 넣습니다. ‘재생 목록도 만들기’를 켜면 컬렉션에 넣은 뒤 원래 소속과 순서로 목록 초안을 만듭니다."))
+            Text(.ui("로컬 음원만 ‘추가한 곡’에 넣습니다. ‘재생 목록도 만들기’를 켜면 컬렉션에 넣은 뒤 원래 소속과 순서로 목록 편집을 만듭니다."))
                 .font(.callout).foregroundStyle(.secondary)
             Toggle(.ui("재생 목록도 만들기"), isOn: $model.createPlaylists)
                 .toggleStyle(.checkbox)

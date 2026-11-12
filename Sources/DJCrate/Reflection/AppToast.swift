@@ -144,7 +144,7 @@ struct AppToastView: View {
                 Button(action.title, action: onAction).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .action)
             }
             if let onUndo, toast.undoBackup != nil {
-                Button(.ui("쓰기 전으로 복원"), action: onUndo)
+                Button(.ui("저장 전으로 복원"), action: onUndo)
                     .controlSize(ControlSize.small.scaled(textScale))
                     // 무엇을 하는지는 단추 이름이 말한다. 툴팁은 안전 조건만 둔다
                     .help(.ui("rekordbox를 먼저 종료하세요"))

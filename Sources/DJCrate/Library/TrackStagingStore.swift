@@ -97,7 +97,7 @@ final class TrackStagingStore {
     }
 
     private static func stagedSaveFailure(_ error: any Error) -> AppToast {
-        .notice(text: String(ui: "추가한 곡 목록을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .failure)
+        .notice(text: String(ui: "추가한 곡 목록을 보관하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .failure)
     }
 
     /// 파일 선택 창·메뉴가 고른 파일을 추가하기 시작한다(MVVM-4). 기다리지 않는다. 돌려주는 손잡이는 시험이 기다린다.

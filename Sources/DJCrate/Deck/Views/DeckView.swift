@@ -30,7 +30,7 @@ struct DeckView: View {
                                 .foregroundStyle(UIColors.warning.color)
                                 .textSelection(.enabled)
                             Spacer(minLength: 8)
-                            Button(.ui("다시 저장")) { deck.retryDraftSaves() }
+                            Button(.ui("다시 적용")) { deck.retryDraftSaves() }
                                 .disabled(deck.editsFrozen)
                         }
                         .font(.scaled(.caption, textScale))

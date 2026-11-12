@@ -176,7 +176,7 @@ extension LibraryStore {
     /// 목록 | 태그 시트 전환을 막는 이유(막히지 않았으면 nil). 조건과 문구는 툴바에 있던 보기 전환 그대로다(#339).
     /// 메뉴 보기 › 목록·태그 시트(⌘1·⌘2)는 이 판정이 아니라 쓰는 동안 잠금(`editsFrozen`)만 본다
     var viewModeBlockReason: String? {
-        if editsFrozen { return String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") }
+        if editsFrozen { return String(ui: "rekordbox 저장이 끝난 뒤 다시 시도하세요") }
         if isUsbSelection { return String(ui: "USB 곡은 읽기 전용이니 로컬 라이브러리에서 태그를 편집하세요") }
         if sidebar == .duplicates { return String(ui: "중복 후보에서는 태그 시트를 열 수 없으니 전체 목록에서 곡을 고르세요") }
         return nil
@@ -190,7 +190,7 @@ extension LibraryStore {
         case let .history(id): history.historyIndex[id].map(historyTitle) ?? history.archivedHistoryIndex[id].map(history.displayName) ?? String(ui: "재생 기록")
         case .duplicates: String(ui: "중복 후보")
         case .staged: String(ui: "추가한 곡")
-        case .pending: String(ui: "rekordbox 쓰기 대기")
+        case .pending: String(ui: "rekordbox 저장 대기")
         case let .usb(target): usb?.title(for: target) ?? "USB"
         }
     }

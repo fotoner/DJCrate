@@ -47,7 +47,7 @@ public final class MemoryPointSnapshotFiles: Sendable {
 
     static func owned(_ url: URL, in directory: URL, _ state: State) throws -> Int {
         guard url.deletingLastPathComponent().path == directory.path, let index = state.entries.firstIndex(where: { $0.url == url }) else {
-            throw DJCError.writeRefused("스냅샷 폴더 밖")
+            throw DJCError.writeRefused("복원 시점 폴더 밖")
         }
         return index
     }

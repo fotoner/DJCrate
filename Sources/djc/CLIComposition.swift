@@ -91,7 +91,7 @@ struct CLIComposition: Sendable {
         for name in ["cue-drafts", "grid-drafts", "tag-drafts", "playlist-drafts.json"] {
             let url = home.appending(path: name)
             guard url.resolvingSymlinksInPath().standardizedFileURL == url.standardizedFileURL else {
-                throw ReadFailure("invalid_arguments", String(ui: "초안 폴더나 파일의 심볼릭 링크를 해제하세요"))
+                throw ReadFailure("invalid_arguments", String(ui: "편집 폴더나 파일의 심볼릭 링크를 해제하세요"))
             }
         }
         return home

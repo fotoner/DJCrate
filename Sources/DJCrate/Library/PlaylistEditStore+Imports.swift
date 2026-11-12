@@ -6,7 +6,7 @@ import Foundation
 /// 여기서는 돌려받은 초안·연결 기록을 메모리와 안내에 맞춘다. 안내는 읽기·쓰기 뒤에 저절로 하는 일이라 떠 있는 경고를 덮지 않는다(`notify`).
 extension PlaylistEditStore {
     static var importsSaveFailureText: String {
-        String(ui: "재생 목록 연결을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하고 다시 시도하세요.")
+        String(ui: "재생 목록 연결을 보관하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하고 다시 시도하세요.")
     }
     static var importsLoadFailureText: String {
         String(ui: "재생 목록 연결을 읽지 못했습니다. DJCrate 데이터 폴더의 playlist-imports.json을 확인한 뒤 앱을 다시 여세요.")
@@ -15,7 +15,7 @@ extension PlaylistEditStore {
     /// 곡 넣기를 되돌린 뒤: 반영 세션이 그 곡의 연결 기록과 초안 편집을 잊어 저장한 결과를 맞춘다
     func applyPlaylistImportsReset(_ reset: EditPlaylists.ImportsReset) {
         if let error = reset.draftError {
-            library.notify(.notice(text: String(ui: "재생 목록 초안을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .warning))
+            library.notify(.notice(text: String(ui: "재생 목록 편집을 보관하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .warning))
             return
         }
         if let draft = reset.draft {
@@ -64,7 +64,7 @@ extension PlaylistEditStore {
         guard let resolution = library.useCases.playlists.resolveImports(playlistImports, draft: playlistDraft, rekordbox: rekordboxPlaylists,
                                                                  contentIDsByPath: ids, loadFailed: playlistImportsLoadFailed) else { return }
         if let error = resolution.draftError {
-            library.notify(.notice(text: String(ui: "재생 목록 초안을 저장하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .warning))
+            library.notify(.notice(text: String(ui: "재생 목록 편집을 보관하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .warning))
             return
         }
         if let draft = resolution.draft {

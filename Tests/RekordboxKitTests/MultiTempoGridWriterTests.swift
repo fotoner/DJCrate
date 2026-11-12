@@ -132,7 +132,7 @@ struct MultiTempoGridWriterTests {
         let report = try RekordboxWriter.write(drafts: [], grids: [draft], to: fixture.database, dryRun: false,
                                                backups: fixture.backups, shareRoot: fixture.shareRoot)
         #expect(report.gridWritten.isEmpty)
-        #expect(report.gridBlocked.first?.reason?.contains("초안을 만든 뒤") == true)
+        #expect(report.gridBlocked.first?.reason?.contains("편집을 만든 뒤") == true)
         #expect(try Data(contentsOf: dat) == changed)
     }
 

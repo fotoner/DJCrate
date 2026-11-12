@@ -154,14 +154,14 @@ public enum RekordboxWriter {
                 tags.removeAll { xmlTags[$0.trackUUID] != nil }
             }
             if !editsPlaylists, writeGuard.adjacentFileIsLive(playlistXMLURL, database: database) {
-                blockXMLTags(String(ui: "사본 폴더의 masterPlaylists6.xml이 라이브 동기화 파일에 이어져 있어 재생 목록 시각을 고칠 수 없으니 그 파일을 실제 사본으로 복사한 뒤 다시 쓰세요"))
+                blockXMLTags(String(ui: "사본 폴더의 masterPlaylists6.xml이 라이브 동기화 파일에 이어져 있어 재생 목록 시각을 고칠 수 없으니 그 파일을 실제 사본으로 복사한 뒤 다시 저장하세요"))
             } else if FileManager.default.fileExists(atPath: playlistXMLURL.path) {
                 if let xml = try? MasterPlaylistsXML(contentsOf: playlistXMLURL), xml.text.contains("</PLAYLISTS>") {
                     playlistXML = xml
                 } else if editsPlaylists {
                     throw DJCError.writeRefused(String(ui: "masterPlaylists6.xml을 읽지 못했습니다. rekordbox를 한 번 켰다가 종료한 뒤 다시 시도하세요"))
                 } else {
-                    blockXMLTags(String(ui: "masterPlaylists6.xml을 읽지 못해 재생 목록 시각을 고칠 수 없으니 rekordbox를 한 번 켰다가 종료한 뒤 다시 쓰세요"))
+                    blockXMLTags(String(ui: "masterPlaylists6.xml을 읽지 못해 재생 목록 시각을 고칠 수 없으니 rekordbox를 한 번 켰다가 종료한 뒤 다시 저장하세요"))
                 }
             }
         }
@@ -188,7 +188,7 @@ public enum RekordboxWriter {
                 do {
                     let ids = Set(draft.members.map(\.trackUUID))
                     guard ids.isDisjoint(with: edited), ids.isDisjoint(with: reserved), playlistSteps.isEmpty else {
-                        throw DuplicateMerge.Blocked(String(ui: "같은 곡의 다른 초안이나 재생 목록 초안이 있습니다. 먼저 쓰거나 버린 뒤 합치세요"))
+                        throw DuplicateMerge.Blocked(String(ui: "같은 곡의 다른 편집이나 재생 목록 편집이 있습니다. 먼저 저장하거나 버린 뒤 합치세요"))
                     }
                     _ = try checkMerge(draft, db: reader)
                     mergePlans.append(draft); reserved.formUnion(ids)
@@ -221,10 +221,10 @@ public enum RekordboxWriter {
             for (index, history) in histories {
                 do {
                     guard seen.insert(history.id).inserted else {
-                        throw HistoryBlocked(reason: String(ui: "같은 기록이 한 번에 두 번 들어 있어 앞의 것만 쓰니 쓴 뒤 기록을 확인하세요"))
+                        throw HistoryBlocked(reason: String(ui: "같은 기록이 한 번에 두 번 들어 있어 앞의 것만 저장하니 저장한 뒤 기록을 확인하세요"))
                     }
                     guard !live || (history.expectedLibraryID != nil && !history.trackIdentities.isEmpty) else {
-                        throw HistoryBlocked(reason: String(ui: "기록의 원본 곡 식별이 없어 라이브러리에 쓰지 않으니 DJCrate에서 USB 기록을 다시 가져온 뒤 쓰세요"))
+                        throw HistoryBlocked(reason: String(ui: "기록의 원본 곡 식별이 없어 라이브러리에 저장하지 않으니 DJCrate에서 USB 기록을 다시 가져온 뒤 저장하세요"))
                     }
                     let checked = try checkHistory(history, db: reader, conflicts: historyConflicts, environment: historyEnvironment)
                     let ids = Set(checked.tracks.map(\.contentID))
@@ -241,7 +241,7 @@ public enum RekordboxWriter {
             let repeated = Set(historyTrackCounts.filter { $0.value > 1 }.map(\.key))
             historyPlans.removeAll { plan in
                 guard !(historyTrackIDs[plan.index] ?? []).isDisjoint(with: repeated) else { return false }
-                historyResults[plan.index] = .blocked(plan.history, String(ui: "같은 곡이 여러 기록에 든 묶음은 재생 횟수 규칙을 확인하지 않아 쓰지 않으니 기록을 하나씩 쓰거나 rekordbox에서 직접 가져오세요"))
+                historyResults[plan.index] = .blocked(plan.history, String(ui: "같은 곡이 여러 기록에 든 묶음은 재생 횟수 규칙을 확인하지 않아 저장하지 않으니 기록을 하나씩 저장하거나 rekordbox에서 직접 가져오세요"))
                 return true
             }
             // 기록이 모두 막혔고 다른 쓸 것도 없으면 백업을 뜨지 않는다.
@@ -280,7 +280,7 @@ public enum RekordboxWriter {
                 }
                 guard let gridRoot else {
                     gridOutcomes.append(Outcome(trackUUID: draft.trackUUID, title: info.title, status: .blocked,
-                                                reason: String(ui: "사본 DB에는 분석 파일 경로를 따로 주어야 그리드를 씁니다"), removed: 0, added: 0))
+                                                reason: String(ui: "사본 DB에는 분석 파일 경로를 따로 주어야 그리드를 저장합니다"), removed: 0, added: 0))
                     continue
                 }
                 if needsAnalysis(info.anlz) {
@@ -489,7 +489,7 @@ public enum RekordboxWriter {
                 let savedUSN = usn
                 do {
                     guard !attached.contains(where: { $0.trackUUID == plan.uuid }) else {
-                        throw Blocked(title: plan.title, reason: String(ui: "같은 곡에 분석 붙이기와 앨범아트 쓰기를 함께 하지 않으니 그리드를 먼저 쓴 뒤 앨범아트를 쓰세요"))
+                        throw Blocked(title: plan.title, reason: String(ui: "같은 곡에 분석 붙이기와 앨범아트 저장을 함께 하지 않으니 그리드를 먼저 저장한 뒤 앨범아트를 저장하세요"))
                     }
                     let expectation = try applyArtwork(plan, db: db, share: gridRoot, usn: &usn, stamp: stamp)
                     artworkOutcomes.append(Outcome(trackUUID: plan.uuid, title: expectation.plan.title, status: .written, reason: nil,

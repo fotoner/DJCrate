@@ -51,16 +51,16 @@ enum ReflectionChip: Equatable {
     /// 칩 글자. 이유가 있으면 이유를 앞에 두고 「 · 」로 쓰기 대기 수를 잇는다
     var title: String {
         switch self {
-        case .clean: return String(ui: "쓰기 대기 없음")
+        case .clean: return String(ui: "저장 대기 없음")
         case let .pending(items, playlistEdits, reason):
             let count = PendingWriteCount(items: items, playlistEdits: playlistEdits).text
             guard let reason else { return count }
             return String(ui: "\(reason.text) · \(count)")
         case let .blocked(_, items, playlistEdits):
-            let blocked = String(ui: "rekordbox에 쓸 수 없음")
+            let blocked = String(ui: "rekordbox에 저장할 수 없음")
             let count = PendingWriteCount(items: items, playlistEdits: playlistEdits)
             return count.isEmpty ? blocked : String(ui: "\(blocked) · \(count.text)")
-        case .writing: return String(ui: "rekordbox에 쓰는 중…")
+        case .writing: return String(ui: "rekordbox에 저장하는 중…")
         }
     }
 
@@ -96,7 +96,7 @@ struct ReflectionLastWrite: Equatable {
     /// 「마지막 쓰기 14:02 · 백업 있음」. 오늘이 아니면 월·일을 함께 적는다
     func text(now: Date = .now, calendar: Calendar = .current) -> String {
         let when = date.formatted(Self.timeFormat(includesDate: !calendar.isDate(date, inSameDayAs: now)))
-        return hasBackup ? String(ui: "마지막 쓰기 \(when) · 백업 있음") : String(ui: "마지막 쓰기 \(when)")
+        return hasBackup ? String(ui: "마지막 저장 \(when) · 백업 있음") : String(ui: "마지막 저장 \(when)")
     }
 }
 
@@ -136,7 +136,7 @@ final class ReflectionStatusModel {
         let action: LibraryMenuAction
         var id: LibraryMenuAction { action }
         var title: String
-        /// 단축키 안내(⇧⌘E). 단축키는 메뉴 막대가 맡으므로 단추에 달지 않고 글자로만 보인다
+        /// 단축키 안내(⌘S). 단축키는 메뉴 막대가 맡으므로 단추에 달지 않고 글자로만 보인다
         var shortcutHint: String?
         var isEnabled: Bool
         /// 막힌 이유(메뉴 막대 항목의 툴팁과 같은 문장)
@@ -218,13 +218,13 @@ final class ReflectionStatusModel {
     var emphasizesWrite: Bool { chip.reason == .rekordboxStopped }
 
     /// 칩 옆 단추 글자. 강조할 때만 「지금 쓰기」다. 둘 다 같은 명령(`LibraryMenuAction.reflect`)을 같은 조건으로 부른다
-    var writeButtonTitle: String { emphasizesWrite ? String(ui: "지금 쓰기") : String(ui: "쓰기") }
+    var writeButtonTitle: String { emphasizesWrite ? String(ui: "지금 저장") : String(ui: "저장") }
 
     /// 팝오버에 붙이는 할 일 한 줄. 켜진 것을 끈 뒤 쓰라고 알린다(#326). rekordboxAgent는 끄는 방법을 확인하지 않았으므로 끄라고만 쓴다
     var todoLine: String? {
         switch chip.reason {
-        case .rekordboxRunning: String(ui: "rekordbox를 끈 뒤 쓰세요")
-        case .agentRunning: String(ui: "rekordboxAgent를 종료한 뒤 쓰세요")
+        case .rekordboxRunning: String(ui: "rekordbox를 끈 뒤 저장하세요")
+        case .agentRunning: String(ui: "rekordboxAgent를 종료한 뒤 저장하세요")
         case .rekordboxStopping, .rekordboxStopped, nil: nil
         }
     }

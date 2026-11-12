@@ -102,7 +102,7 @@ CLI `djc`를 앱 밖으로 옮길 때나 따로 나눠 줄 때는 `LICENSE`·`TH
 
 - 제목 끝에 "(베타)"를 붙인다.
 - 릴리스 노트 첫머리에 베타 안내를 한국어와 영어로 넣는다. 안내는 세 가지를 알린다.
-  - rekordbox에 쓰기 전에 자동으로 백업한다. 문제가 생기면 [쓰기 전으로 복원…]으로 되돌린다. 화면 이름은 README처럼 대괄호로 쓴다.
+  - rekordbox에 저장하기 전에 자동으로 백업한다. 문제가 생기면 [저장 전으로 복원…]으로 되돌린다. 화면 이름은 README처럼 대괄호로 쓴다.
   - 그래도 문제가 남으면 이슈로 연락한다.
   - 앱은 GPL-2.0-or-later 라이선스에 따라 있는 그대로 제공한다. 데이터 손실과 손해는 개발자가 책임지지 않는다.
 - Pre-release로 표시하지 않는다. GitHub는 저장소 첫 화면 옆 칸에 "Latest" Release만 보여 준다. Pre-release만 있으면 그 칸에 Release가 보이지 않는다.
@@ -149,11 +149,11 @@ SPARKLE_ED_PRIVATE_KEY="$(cat <임시 폴더>/priv.txt)" scripts/sparkle-appcast
 - 확인·받기·설치 창은 Sparkle 표준 창(`SPUStandardUpdaterController`)이다. Sparkle의 한국어·일본어 지역화가 그대로 나온다.
 - 자동 확인·자동 설치·마지막 확인 시각은 Sparkle이 앱 번들 ID의 환경설정(`SU…` 키)에 저장한다.
 - 앱은 `SUFeedURL`과 `SUPublicEDKey`가 모두 있는 번들에서만 업데이트 도구를 만든다. 개발 빌드(`.build/debug/DJCrate`)와 시험 프로세스는 Sparkle 환경설정에 쓰지 않는다.
-- rekordbox·USB에 쓰는 동안에는 설치와 다시 켜기를 미룬다. 복원도 쓰기에 든다. 쓰기가 끝나면 이어서 설치한다. 판정은 `UpdateInstallPolicy`·`UpdateDeferral`에 있다.
+- rekordbox 저장이나 USB 쓰기 중에는 설치와 다시 켜기를 미룬다. 복원도 저장이나 쓰기에 든다. 저장이나 쓰기가 끝나면 이어서 설치한다. 판정은 `UpdateInstallPolicy`·`UpdateDeferral`에 있다.
 - "쓰기가 끝났는가"는 앱 종료 대기와 같은 판단 `RekordboxWritePhase.isFinished` 하나를 쓴다. 쓴 뒤 다시 읽기만 남았으면 끝난 것이다.
 - 자동으로 받은 업데이트는 앱을 끌 때 설치한다. 받아 둔 업데이트를 다시 켜기로 설치할 때 Sparkle은 미룸 판정을 부르지 않는다.
 - 두 경로 모두 앱 끄기를 지난다. 앱은 끄기 입구에서 쓰기 단계를 본다. 판정은 `AppQuitPolicy`가 한다.
-- rekordbox에 쓰는 중이면 끝날 때까지 기다렸다 끈다. USB에 쓰는 중이면 끄지 않는다(`AppDelegate`·`AppQuitController`, #300).
+- rekordbox에 저장하는 중이면 끝날 때까지 기다렸다 끈다. USB에 쓰는 중이면 끄지 않는다(`AppDelegate`·`AppQuitController`, #300).
 - 업데이트 다시 켜기는 켜진 채 종료 시트(#326)를 띄우지 않는다. 업데이트 도구가 다시 켜기 직전에 표시한다(`AppUpdater.consumeRelaunchMark`). 업데이트를 끌 때 설치하는 경로는 사용자가 고른 종료라 시트를 지난다.
 
 ### 신뢰 모델

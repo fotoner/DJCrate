@@ -41,8 +41,8 @@ extension ListHeaderActions {
     }
 
     private static func writeBase(selected: Bool, narrowed: Bool, tracks: Int) -> String {
-        if selected { return String(ui: "고른 \(tracks)곡 쓰기") }
-        return narrowed ? String(ui: "보이는 \(tracks)곡 쓰기") : String(ui: "전체 \(tracks)곡 쓰기")
+        if selected { return String(ui: "고른 \(tracks)곡 저장") }
+        return narrowed ? String(ui: "보이는 \(tracks)곡 저장") : String(ui: "전체 \(tracks)곡 저장")
     }
 
     /// 곡과 함께 쓰는 재생 목록 편집·재생 기록 건수(없으면 nil)
@@ -79,19 +79,19 @@ extension ListHeaderActions {
         var menu: [MenuItem] = []
         if !histories.isEmpty {
             // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 이 메뉴에서 보고(고르면 그 기록으로) 뺀다
-            let excludeAll = Command(title: String(ui: "모두 rekordbox 쓰기 대기에서 빼기"), systemImage: "minus.circle",
+            let excludeAll = Command(title: String(ui: "모두 rekordbox 저장 대기에서 빼기"), systemImage: "minus.circle",
                                      action: .excludePendingHistories, isEnabled: !locks.editsFrozen)
             menu.append(.histories(HistoryMenu(title: String(ui: "재생 기록 \(histories.count)건"), systemImage: "clock.arrow.circlepath",
                                                entries: histories, excludeAll: excludeAll)))
         }
         if playlistEdits > 0 {
-            menu.append(.command(Command(title: String(ui: "재생 목록 초안 버리기"), systemImage: "trash", action: .discardPlaylistDrafts,
+            menu.append(.command(Command(title: String(ui: "재생 목록 편집 버리기"), systemImage: "trash", action: .discardPlaylistDrafts,
                                          isEnabled: !locks.editsFrozen, help: String(ui: "⌘Z로 되돌릴 수 있습니다."))))
         }
         menu.append(.command(Command(title: String(ui: "XML 만들기"), systemImage: "doc.text", action: .exportPendingXML, isEnabled: tracks > 0)))
         menu.append(.divider)
         // 라이브러리 전체를 되돌리는 항목이라 늘 확인 창이 뜬다(STR-11). 입구는 상태 줄 팝오버·메뉴에도 있다
-        menu.append(.command(Command(title: String(ui: "쓰기 전으로 복원…"), systemImage: "arrow.uturn.backward", action: .restoreLatest,
+        menu.append(.command(Command(title: String(ui: "저장 전으로 복원…"), systemImage: "arrow.uturn.backward", action: .restoreLatest,
                                      isEnabled: restore.isEnabled && !locks.busy && !locks.sheetBlocked, help: restore.help)))
 
         let blocked = (tracks == 0 && playlistEdits == 0 && histories.isEmpty) || locks.busy || locks.sheetBlocked
@@ -102,14 +102,14 @@ extension ListHeaderActions {
         // 폭이 모자라면 곡 수만 남기고, 함께 쓰는 건수는 툴팁이 말한다(막힌 이유가 있으면 그 이유가 먼저다)
         if let together = writtenTogether(playlistEdits: playlistEdits, histories: histories.count) {
             write.compactTitle = writeBase(selected: selected, narrowed: narrowed, tracks: tracks)
-            write.compactHelp = write.help ?? String(ui: "\(together)도 함께 씁니다.")
+            write.compactHelp = write.help ?? String(ui: "\(together)도 함께 저장합니다.")
         }
         var status: Status?
         if locks.busy {
             status = .writing
         } else if unlinkedDrafts > 0 {
             // 어떤 초안인지는 시트가 말한다(#175)
-            status = Status(kind: .hint, title: String(ui: "연결되지 않은 초안 \(unlinkedDrafts)곡"), symbol: "questionmark.folder",
+            status = Status(kind: .hint, title: String(ui: "연결되지 않은 편집 \(unlinkedDrafts)곡"), symbol: "questionmark.folder",
                             command: Command(title: String(ui: "보기…"), systemImage: "", action: .openUnlinkedDrafts))
         }
         return Self(primary: write, menu: menu, status: status)
@@ -138,9 +138,9 @@ extension ListHeaderActions {
         if let blockedReason {
             result.primary = Command(title: String(ui: "현재 목록 비교…"), systemImage: "arrow.left.arrow.right", action: .comparePlaylist(id),
                                      isEnabled: canCompare)
-            result.status = Status(kind: .warning, title: String(ui: "이 목록의 초안 일부를 쓸 수 없습니다: \(blockedReason)"))
+            result.status = Status(kind: .warning, title: String(ui: "이 목록의 편집 일부를 저장할 수 없습니다: \(blockedReason)"))
         } else if isDraft {
-            result.primary = Command(title: String(ui: "이 목록의 초안 버리기"), systemImage: "trash", action: .discardPlaylistDraft(id),
+            result.primary = Command(title: String(ui: "이 목록의 편집 버리기"), systemImage: "trash", action: .discardPlaylistDraft(id),
                                      isEnabled: !locks.editsFrozen, help: String(ui: "⌘Z로 되돌릴 수 있습니다."))
         }
         if result.status == nil, let hiddenStreaming, hiddenStreaming > 0 {
@@ -149,7 +149,7 @@ extension ListHeaderActions {
                                    command: Command(title: String(ui: "보이기"), systemImage: "", action: .showStreaming))
         }
         if result.status == nil, isDraft {
-            result.status = Status(kind: .draft, title: String(ui: "쓰기 전 목록 초안"))
+            result.status = Status(kind: .draft, title: String(ui: "저장 전 목록 편집"))
         }
         return result
     }
@@ -161,9 +161,9 @@ extension ListHeaderActions {
         if let editing {
             // 막힐 반영이면(실물 USB 등) 누를 수 없게 하고 이유를 툴팁으로
             let help = editing.blockReason ?? String(ui: "로컬에서 더 고친 곡을 USB 쓰기 대기에 더합니다.")
-            result.primary = Command(title: String(ui: "로컬 변경을 USB에 반영 (\(editing.updatable)곡)"), systemImage: "arrow.triangle.2.circlepath",
+            result.primary = Command(title: String(ui: "로컬 변경을 USB에 쓰기 (\(editing.updatable)곡)"), systemImage: "arrow.triangle.2.circlepath",
                                      action: .refreshUsbLocalChanges(volumeKey), isEnabled: editing.updatable > 0 && editing.blockReason == nil,
-                                     help: help, compactTitle: String(ui: "USB에 반영 (\(editing.updatable)곡)"), compactHelp: help)
+                                     help: help, compactTitle: String(ui: "USB에 쓰기 (\(editing.updatable)곡)"), compactHelp: help)
             result.menu = [.command(Command(title: String(ui: "USB 쓰기 대기 (\(editing.draftCount)건)"), systemImage: "square.and.arrow.up.on.square",
                                             action: .showUsbPending(volumeKey)))]
         }
@@ -203,13 +203,13 @@ extension ListHeaderActions {
     static func gridEstimate(count: Int, blocked: Bool) -> Self {
         Self(primary: Command(title: String(ui: "이 목록 그리드 추정 (\(count)곡)"), systemImage: "metronome", action: .estimateGrids,
                               isEnabled: !blocked,
-                              help: String(ui: "rekordbox가 분석하지 않은 곡의 BPM·박 위치를 추정해 그리드 초안으로 저장합니다.")))
+                              help: String(ui: "rekordbox가 분석하지 않은 곡의 BPM·박 위치를 추정해 그리드 편집으로 보관합니다.")))
     }
 }
 
 extension ListHeaderActions.Status {
     /// rekordbox에 쓰는 동안 진행 표시. 쓰는 동안 끄지 말라는 안내는 창을 덮는 진행 카드 한 곳이 맡는다(STR-24)
     static var writing: Self {
-        Self(kind: .progress, title: String(ui: "rekordbox 라이브러리 확인·쓰는 중…"))
+        Self(kind: .progress, title: String(ui: "rekordbox 라이브러리 확인·저장하는 중…"))
     }
 }

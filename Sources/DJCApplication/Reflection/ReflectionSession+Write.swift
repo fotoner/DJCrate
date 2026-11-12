@@ -9,13 +9,13 @@ extension ReflectionSession {
     public func write(rows: [TrackRow], playlists: Bool = true) async -> ReflectionOutcome {
         guard !ports.lock.isLocked() else { return .busy }
         guard !ports.runningApps.isRekordboxRunning() else {
-            return publish(.notice(title: String(ui: "rekordbox가 켜져 있어 쓰지 않았습니다"), text: ReflectionPrompts.quitRekordboxText, lines: []))
+            return publish(.notice(title: String(ui: "rekordbox가 켜져 있어 저장하지 않았습니다"), text: ReflectionPrompts.quitRekordboxText, lines: []))
         }
         let chosen = writeTargets(rows)
         let withPlaylists = playlists && !ports.library.state().playlistDraft.isEmpty
         let withHistories = playlists && !ports.library.state().pendingHistories.isEmpty
         guard !chosen.isEmpty || withPlaylists || withHistories else {
-            return publish(.notice(title: String(ui: "쓸 초안이 없습니다"), text: String(ui: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 초안이 없습니다."),
+            return publish(.notice(title: String(ui: "저장할 편집이 없습니다"), text: String(ui: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 편집이 없습니다."),
                                    lines: exclusions(for: rows, blockedOnly: false)))
         }
         lock(true)
@@ -44,7 +44,7 @@ extension ReflectionSession {
         } catch {
             stage(nil)
             // 미리 보기에서 제외한 초안은 따로 창을 띄우지 않고 실패 알림에 합친다(#230).
-            return publish(.failed(title: String(ui: "rekordbox에 쓰지 않았습니다"), error: error, exclusions: exclusions(for: rows, blockedOnly: true)))
+            return publish(.failed(title: String(ui: "rekordbox에 저장하지 않았습니다"), error: error, exclusions: exclusions(for: rows, blockedOnly: true)))
         }
     }
 
@@ -96,7 +96,7 @@ extension ReflectionSession {
         let inputs = try await analysisInputs(for: batch.grids, measuringLoudness: true)
         try Task.checkCancellation()
         try requireDraftSaves(for: uuids)
-        stage(WriteStage(String(ui: "rekordbox에 쓰는 중…")))
+        stage(WriteStage(String(ui: "rekordbox에 저장하는 중…")))
         let gate = ports.gate
         let report = try await BlockingWork.run { try gate.write(batch, inputs, target, dryRun) }
         guard options.followsUp else { return (report, []) }
@@ -113,7 +113,7 @@ extension ReflectionSession {
             return entry.name == "gain-drafts.json" || (playlists && entry.name == "playlist-drafts.json")
         }
         guard affected else { return }
-        throw DJCError.writeRefused(String(ui: "읽지 못한 초안 파일을 damaged-drafts에 옮겨 두었으니 남은 초안을 확인한 뒤 쓰기를 다시 시도하세요."))
+        throw DJCError.writeRefused(String(ui: "읽지 못한 편집 파일을 damaged-drafts에 옮겨 두었으니 남은 편집을 확인한 뒤 저장을 다시 시도하세요."))
     }
 
     /// 쓸 곡(차례대로)의 초안 묶음. 변경 없는 초안은 뺀다.
@@ -128,7 +128,7 @@ extension ReflectionSession {
         let allGains: [String: Double]
         do { allGains = try files.gainDrafts() } catch {
             // 읽지 못하면 빈 값으로 넘기지 않고 쓰기를 막는다.
-            throw DJCError.writeRefused(String(ui: "게인 초안 파일을 읽지 못했으니 DJCrate 데이터 폴더의 접근 권한을 확인한 뒤 쓰기를 다시 시도하세요."))
+            throw DJCError.writeRefused(String(ui: "게인 편집 파일을 읽지 못했으니 DJCrate 데이터 폴더의 접근 권한을 확인한 뒤 저장을 다시 시도하세요."))
         }
         let gains = Dictionary(uniqueKeysWithValues: rows.compactMap { row in allGains[row.track.uuid].map { (row.track.uuid, $0) } })
         let tags = rows.compactMap { files.tagDraft($0.track.uuid) }.filter(\.hasChanges)
@@ -136,7 +136,7 @@ extension ReflectionSession {
             guard state.artworkDrafts[row.track.uuid] != nil else { return nil }
             do { return try files.artworkEdit(row.track.uuid) } catch {
                 // 읽지 못한 초안은 옮겨 보관하고 쓰기를 막는다(`requireReadableDrafts`가 먼저 옮긴다).
-                throw DJCError.writeRefused(String(ui: "앨범아트 초안을 읽지 못했으니 그 곡의 앨범아트를 다시 고른 뒤 쓰기를 다시 시도하세요."))
+                throw DJCError.writeRefused(String(ui: "앨범아트 편집을 읽지 못했으니 그 곡의 앨범아트를 다시 고른 뒤 저장을 다시 시도하세요."))
             }
         }
         let playlistDraft = playlists && !state.playlistDraft.isEmpty ? state.playlistDraft : nil
@@ -219,7 +219,7 @@ extension ReflectionSession {
         let saveWarning = draftSaveWarning(for: uuids, restoring: false)
         // 쓴 재생 목록 편집을 초안에서 빼지 못하면 다음에 같은 편집을 또 쓸 수 있으니 따로 알린다(#174·#175).
         let playlistWarning = batch.playlists != nil && ports.library.state().playlistDraftUnsaved
-            ? String(ui: "rekordbox에는 썼지만 재생 목록 초안을 정리하지 못했습니다.") + " " + Self.playlistSaveFailureText : nil
+            ? String(ui: "rekordbox에는 저장했지만 재생 목록 편집을 정리하지 못했습니다.") + " " + Self.playlistSaveFailureText : nil
         // 화면을 처음부터 다시 불러오지 않고 뒤에서 조용히 다시 읽는다.
         // 덱은 새 스냅샷을 읽은 뒤에만 그 곡을 다시 읽는다(그리드만 바뀐 곡도 초안·그리드를 맞춘다). 읽지 못하면 다음 읽기까지 미룬다.
         let written = Set(cues).union(report.gridWritten.map(\.trackUUID)).union(gains).union(report.analysisWritten.map(\.trackUUID))

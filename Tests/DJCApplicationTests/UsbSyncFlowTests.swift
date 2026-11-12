@@ -170,7 +170,7 @@ struct UsbSyncFlowTests {
         let sync = await opened(world)
         world.draftEdits = [.playlist(edit: .rename(playlist: .id("1"), name: "다른 편집"))]
         #expect(await sync.sync(world.ports()) == false)
-        #expect(world.problem == "이 USB에 쓰기 대기 중인 초안이 있습니다. 쓰기 대기 목록에서 쓰거나 버린 뒤 동기화하세요")
+        #expect(world.problem == "이 USB에 쓰기 대기 중인 편집이 있습니다. 쓰기 대기 목록에서 쓰거나 버린 뒤 동기화하세요")
         #expect(world.appended.isEmpty && world.written.isEmpty)
     }
 
@@ -259,7 +259,7 @@ struct UsbSyncFlowTests {
         sync.syncPlaylists = false
         world.draftEdits = [.playlist(edit: .rename(playlist: .id("1"), name: "다른 편집"))]
         #expect(await sync.close(world.ports()) == .stayUntilNextClose)
-        #expect(world.problem == "이 USB에 쓰기 대기 중인 초안이 있어 동기화 켜짐을 저장하지 못했습니다. 쓰기 대기 목록에서 쓰거나 버린 뒤 다시 바꾸세요")
+        #expect(world.problem == "이 USB에 쓰기 대기 중인 편집이 있어 동기화 켜짐을 저장하지 못했습니다. 쓰기 대기 목록에서 쓰거나 버린 뒤 다시 바꾸세요")
         #expect(world.appended.isEmpty && world.written.isEmpty)
         #expect(await sync.close(world.ports()) == .close, "두 번째 닫기는 쓰지 않고 닫는다")
         #expect(world.appended.isEmpty)

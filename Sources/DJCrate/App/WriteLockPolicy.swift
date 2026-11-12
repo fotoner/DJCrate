@@ -45,8 +45,8 @@ extension LibraryStore {
 
     /// 새 rekordbox 쓰기를 시작하지 않을 이유(Mac을 끄는 중·종료를 기다리는 중). 없으면 nil
     var writeRefusal: String? {
-        if isPoweringOff { return String(ui: "Mac을 끄는 중이라 rekordbox에 쓰지 않았습니다. 다시 켠 뒤 쓰세요") }
-        if quitWait.isWaiting { return String(ui: "종료하는 중이라 rekordbox에 쓰지 않았습니다. 종료를 취소한 뒤 다시 쓰세요") }
+        if isPoweringOff { return String(ui: "Mac을 끄는 중이라 rekordbox에 저장하지 않았습니다. 다시 켠 뒤 저장하세요") }
+        if quitWait.isWaiting { return String(ui: "종료하는 중이라 rekordbox에 저장하지 않았습니다. 종료를 취소한 뒤 다시 저장하세요") }
         return nil
     }
 

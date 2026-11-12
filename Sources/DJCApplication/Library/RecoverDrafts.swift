@@ -137,7 +137,7 @@ public struct RecoverDrafts: Sendable {
 
     /// 비교 사이 입력이나 현재값이 바뀌었다
     public static var changedError: DJCError {
-        .writeRefused(String(ui: "비교 중 입력이나 현재값이 바뀌어 초안을 그대로 남겼으니 현재값을 다시 가져오세요."))
+        .writeRefused(String(ui: "비교 중 입력이나 현재값이 바뀌어 편집을 그대로 남겼으니 현재값을 다시 가져오세요."))
     }
 
     /// 곡 초안을 비교할 원본: 명시한 사본으로 열었으면 연 사본, 아니면 라이브 DB와 라이브 share
@@ -183,7 +183,7 @@ public struct RecoverDrafts: Sendable {
                                newID: () -> UUID) throws -> RecoveryRead {
         let tracks = library.tracks.filter { $0.uuid == original.uuid }
         guard tracks.count == 1, let track = tracks.first, !track.isStreaming else {
-            throw DJCError.writeRefused(String(ui: "현재 라이브러리에서 이 곡을 확인하지 못했으니 곡을 다시 선택하세요. 초안은 그대로 남겼습니다."))
+            throw DJCError.writeRefused(String(ui: "현재 라이브러리에서 이 곡을 확인하지 못했으니 곡을 다시 선택하세요. 편집은 그대로 남겼습니다."))
         }
         let row = TrackRow(track: track, cues: library.cues(for: track), playCount: library.playCounts[track.id] ?? 0)
         switch original {
@@ -231,7 +231,7 @@ public struct RecoverDrafts: Sendable {
             } else if let approved = draft.approvingReplacement(of: currentGrid, duration: Double(duration)) {
                 resolved = .grid(approved)
             } else {
-                throw DJCError.writeRefused(String(ui: "현재 원본에 대체 그리드를 재적용할 수 없으니 초안을 남기고 그리드 구간을 다시 지정하세요."))
+                throw DJCError.writeRefused(String(ui: "현재 원본에 대체 그리드를 재적용할 수 없으니 편집을 남기고 그리드 구간을 다시 지정하세요."))
             }
         }
         return resolved

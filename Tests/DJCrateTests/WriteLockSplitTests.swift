@@ -107,7 +107,7 @@ struct WriteLockSplitTests {
         gate.write = { batch, inputs, target, dryRun in
             if !dryRun {
                 write.arrive()
-                if failAt == "쓰기" { throw ProbeFailure() }
+                if failAt == "저장" { throw ProbeFailure() }
             }
             return try liveWrite(batch, inputs, target, dryRun)
         }
@@ -232,7 +232,7 @@ struct WriteLockSplitTests {
         let rig = try await Rig()
         let write = GatePause()
         let coordinator = ReflectionCoordinator.test(store: rig.store, prompter: ProbingPrompter(probe: rig.probe),
-                                                     gate: Self.probing(.live(), probe: rig.probe, write: write, failAt: "쓰기"))
+                                                     gate: Self.probing(.live(), probe: rig.probe, write: write, failAt: "저장"))
         rig.probe.take("시작 전")
         let writing = Task { await coordinator.write(rows: [rig.row]) }
         #expect(await waitForState(until: { write.hasEntered }), "관문 쓰기에 닿지 못함")

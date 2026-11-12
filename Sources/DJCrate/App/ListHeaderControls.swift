@@ -70,8 +70,8 @@ struct ListViewModeControls: View {
         let blocked = store.viewModeBlockReason
         HStack(spacing: 8) {
             if store.showsTagSheet(sheetMode: sheetMode) {
-                InfoPopoverButton(label: String(ui: "초안 표시"),
-                                  lines: [String(ui: "왼쪽 위 모서리 삼각형이 붙은 칸은 초안(파일·rekordbox에 쓰기 전)입니다.")])
+                InfoPopoverButton(label: String(ui: "저장 대기 표시"),
+                                  lines: [String(ui: "왼쪽 위 모서리 삼각형이 붙은 칸은 저장 안 한 값입니다.")])
                     .selfTestFrame("listHeader.info", clearsOnDisappear: true)
             }
             Picker(.ui("보기"), selection: $sheetMode) {

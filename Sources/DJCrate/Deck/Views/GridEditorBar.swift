@@ -161,14 +161,14 @@ struct GridEditorBar: View {
                 if density == .iconDiscard || density == .shortToggle {
                     Image(systemName: "arrow.uturn.backward")
                 } else {
-                    Text(.ui("그리드 초안 버리기"))
+                    Text(.ui("그리드 편집 버리기"))
                 }
             }
                 .disabled(!deck.canDiscardGridDraft)
                 .buttonStyle(GridEditorControlStyle(height: TextScale.length(20, scale: textScale)))
-                .accessibilityLabel(.ui("그리드 초안 버리기"))
+                .accessibilityLabel(.ui("그리드 편집 버리기"))
                 // 글자 라벨이 보일 때는 이름을 되풀이하지 않는다. 아이콘만 보일 때만 이름을 알린다.
-                .help(density == .iconDiscard || density == .shortToggle ? String(ui: "그리드 초안 버리기") : "")
+                .help(density == .iconDiscard || density == .shortToggle ? String(ui: "그리드 편집 버리기") : "")
         }
         .fixedSize()
     }
@@ -206,10 +206,10 @@ private struct GridEditorHeaderInfo: View {
                         Circle()
                             .fill(UIColors.draft.color)
                             .frame(width: 7, height: 7)
-                            .accessibilityLabel(.ui("그리드 초안 변경됨"))
-                            .help(.ui("그리드 초안 변경됨"))
+                            .accessibilityLabel(.ui("그리드 저장 대기"))
+                            .help(.ui("그리드 저장 대기"))
                     } else {
-                        Text(.ui("그리드 초안 변경됨"))
+                        Text(.ui("그리드 저장 대기"))
                             .font(.scaled(.caption, textScale).bold())
                             .foregroundStyle(UIColors.draft.color)
                     }

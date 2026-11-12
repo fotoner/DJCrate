@@ -12,5 +12,5 @@ public enum UnsupportedRekordboxNotice {
         String(ui: "이 rekordbox 버전(\(majorMinor(version)))은 아직 지원하지 않습니다")
     }
 
-    public static var guidance: String { String(ui: "읽기만 하고 rekordbox에 쓰기는 막혀 있습니다") }
+    public static var guidance: String { String(ui: "읽기만 하고 rekordbox에 저장은 막혀 있습니다") }
 }
