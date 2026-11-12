@@ -10,12 +10,15 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
     /// 막힌 초안 복구 시트를 연다(시트 뷰가 환경의 반영 화면 쪽으로 붙인다)
     var recoverDraft: (@MainActor (TrackRow, DraftRecoveryKind) -> Void)?
     weak var table: SheetTableView?
+    /// 복사·붙여넣기가 쓰는 클립보드. 시험은 자기 것을 넣어 사용자 클립보드를 건드리지 않는다
+    var pasteboard: NSPasteboard = .general
     private(set) var rows: [TrackRow] = []
     private var rowIDs: [TrackRow.ID] = []
     private var revision = -1
 
-    var anchor = CellPosition(row: 0, column: 1)
-    var cursor = CellPosition(row: 0, column: 1)
+    // 처음엔 제목 칸에서 시작한다(맨 앞 열을 더해도 제목이 시작 칸이다)
+    var anchor = CellPosition(row: 0, column: SheetColumn.initialCursorColumn)
+    var cursor = CellPosition(row: 0, column: SheetColumn.initialCursorColumn)
     /// 고치는 칸과 고치기 전 글자(편집 확장이 쓴다)
     var editing: CellPosition?
     var editingOriginal = ""
@@ -84,6 +87,20 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
         return SheetColumn.spec(id: table.tableColumns[column].identifier.rawValue)
     }
 
+    /// 커서가 설 수 있는 가장 앞 열. 맨 앞 앨범아트 열은 보기만 하므로 건너뛴다(눌러도 방향키로 가도 그 옆 칸에 선다).
+    var firstSelectableColumn: Int {
+        (0..<columnCount).first { spec(atColumn: $0)?.id != SheetColumn.artworkID } ?? 0
+    }
+
+    /// 표가 저장된 열 배치를 되살린 뒤 커서를 제목 열에 둔다. 아직 줄을 읽기 전이라 줄은 맨 위다.
+    func placeCursorOnTitleColumn() {
+        guard let table else { return }
+        let title = table.column(withIdentifier: NSUserInterfaceItemIdentifier("title"))
+        guard title >= 0 else { return }
+        cursor = CellPosition(row: cursor.row, column: title)
+        anchor = cursor
+    }
+
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard !syncingSort, let descriptor = tableView.sortDescriptors.first,
               let key = descriptor.key, SheetColumn.all.contains(where: { $0.id == key && $0.key != nil }),
@@ -108,6 +125,7 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let tableColumn, let column = tableView.tableColumns.firstIndex(of: tableColumn),
               let spec = SheetColumn.spec(id: tableColumn.identifier.rawValue) else { return nil }
+        if spec.id == SheetColumn.artworkID { return artworkCell(tableView, row: row) }
         let identifier = NSUserInterfaceItemIdentifier("cell")
         let cell = (tableView.makeView(withIdentifier: identifier, owner: nil) as? SheetCell) ?? {
             let cell = SheetCell()
@@ -124,8 +142,22 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
                        selected: isSelected(position),
                        active: position == cursor,
                        compact: rating.map(TrackRating.compact),
-                       spoken: rating.map { TagChoice.spoken(.rating, $0, colors: store.trackColors) })
+                       spoken: rating.map { TagChoice.spoken(.rating, $0, colors: store.trackColors) },
+                       // 경로는 가운데를 줄인다(끝의 파일 이름과 앞의 폴더가 함께 남는다). 나머지는 끝을 줄인다
+                       lineBreak: spec.id == "file" ? .byTruncatingMiddle : .byTruncatingTail)
         cell.label.setAccessibilityLabel(spec.title)
+        return cell
+    }
+
+    /// 앨범아트 칸: 곡 목록과 같은 칸(`ThumbnailCell`)과 캐시(`LibraryStore.thumbnails`)로 같은 그림을 읽는다. 보기만 한다
+    private func artworkCell(_ tableView: NSTableView, row: Int) -> NSView {
+        let identifier = NSUserInterfaceItemIdentifier("artwork")
+        let cell = (tableView.makeView(withIdentifier: identifier, owner: nil) as? ThumbnailCell) ?? {
+            let cell = ThumbnailCell(thumbnails: store.thumbnails, size: SheetColumn.artworkSize)
+            cell.identifier = identifier
+            return cell
+        }()
+        if rows.indices.contains(row) { cell.configure(row: rows[row], shareRoot: store.shareRoot) }
         return cell
     }
 
@@ -144,7 +176,8 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
         if let key = spec.key { return TagChoice.display(key, store.tags.tagCell(rows[row], key), colors: store.trackColors) }
         switch spec.id {
         case "index": return "\(row + 1)"
-        case "file": return (rows[row].track.folderPath as NSString).lastPathComponent
+        // 화면 글자도 복사 값도 줄이지 않은 전체 경로다. 폭에 안 들어가는 만큼은 칸이 가운데를 줄여 보인다
+        case "file": return rows[row].track.folderPath
         default: return ""
         }
     }
@@ -161,11 +194,20 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
         return rect.rows.contains(p.row) && rect.columns.contains(p.column)
     }
 
+    /// 커서가 설 수 있는 열로 맞춘 위치(보기만 하는 앨범아트 열은 옆 칸으로). 줄 범위는 `select`가 맞춘다
+    func clamped(_ position: CellPosition) -> CellPosition {
+        CellPosition(row: position.row, column: min(max(position.column, firstSelectableColumn), columnCount - 1))
+    }
+
+    /// 오른쪽 클릭이 고른 범위 안인가. 앨범아트 칸은 선택에 들지 않지만, 고른 줄 안이면 그 줄의 칸으로 본다(여러 줄 선택이 접히지 않게).
+    func isInSelection(_ position: CellPosition) -> Bool {
+        isSelected(position) || (spec(atColumn: position.column)?.id == SheetColumn.artworkID && selectionRect.rows.contains(position.row))
+    }
+
     func select(_ position: CellPosition, extend: Bool) {
         defer { table?.updateFillDownCommand() }
         guard !rows.isEmpty else { return }
-        let clamped = CellPosition(row: min(max(position.row, 0), rows.count - 1),
-                                   column: min(max(position.column, 0), columnCount - 1))
+        let clamped = clamped(CellPosition(row: min(max(position.row, 0), rows.count - 1), column: position.column))
         cursor = clamped
         if !extend { anchor = clamped }
         table?.scrollRowToVisible(clamped.row)
@@ -212,7 +254,7 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
     func selectAll() {
         defer { table?.updateFillDownCommand() }
         guard !rows.isEmpty else { return }
-        anchor = CellPosition(row: 0, column: 0)
+        anchor = CellPosition(row: 0, column: firstSelectableColumn)
         cursor = CellPosition(row: rows.count - 1, column: columnCount - 1)
         reloadVisible()
         syncAccessibilitySelection()

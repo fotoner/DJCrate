@@ -104,8 +104,8 @@ struct DraftRecoveryMenu205Tests {
         rows.forEach { draft($0, in: store) }
         let sheet = SheetCoordinator(store: store)
         sheet.update(rows: rows, revision: 0)
-        sheet.anchor = CellPosition(row: 0, column: 1)
-        sheet.cursor = CellPosition(row: 1, column: 1)
+        sheet.anchor = CellPosition(row: 0, column: SheetColumn.titleIndex)
+        sheet.cursor = CellPosition(row: 1, column: SheetColumn.titleIndex)
         let multiple = sheet.contextMenu(forRow: 0)
         #expect(multiple.items.first { $0.title == "선택한 곡 현재값 가져오기…" }?.submenu?.items.count == 2)
         let outside = sheet.contextMenu(forRow: 2)

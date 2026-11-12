@@ -10,8 +10,8 @@ struct SheetAccessibilityTests {
         let h = SheetAccessibilityHarness()
         var announcements: [String] = []
         h.coordinator.announce = { announcements.append($0) }
-        h.coordinator.select(.init(row: 0, column: 1), extend: false)
-        h.coordinator.select(.init(row: 2, column: 1), extend: true)
+        h.coordinator.select(.init(row: 0, column: SheetColumn.titleIndex), extend: false)
+        h.coordinator.select(.init(row: 2, column: SheetColumn.titleIndex), extend: true)
         h.coordinator.fillDown()
         #expect(announcements == ["1칸 바뀜"])
         #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == "A")
@@ -28,14 +28,15 @@ struct SheetAccessibilityTests {
 
     @Test func 셀_범위가_AppKit의_선택_줄과_선택_칸에_반영된다() throws {
         let h = SheetAccessibilityHarness()
-        h.coordinator.select(.init(row: 0, column: 1), extend: false)
-        h.coordinator.select(.init(row: 1, column: 2), extend: true)
+        h.coordinator.select(.init(row: 0, column: SheetColumn.titleIndex), extend: false)
+        h.coordinator.select(.init(row: 1, column: SheetColumn.titleIndex + 1), extend: true)
         #expect(h.table.selectedRowIndexes == IndexSet(integersIn: 0...1))
         let cells = try #require(h.table.accessibilitySelectedCells())
         #expect(cells.count == 4)
         h.coordinator.selectAll()
         #expect(h.table.selectedRowIndexes == IndexSet(integersIn: 0...2))
-        #expect(h.table.accessibilitySelectedCells()?.count == 3 * SheetColumn.all.count)
+        // 보기만 하는 앨범아트 열은 선택에 들지 않는다
+        #expect(h.table.accessibilitySelectedCells()?.count == 3 * (SheetColumn.all.count - 1))
         h.coordinator.update(rows: [], revision: 1)
         #expect(h.table.selectedRowIndexes.isEmpty)
         #expect(h.table.accessibilitySelectedCells()?.isEmpty == true)
@@ -46,7 +47,7 @@ struct SheetAccessibilityTests {
         let row = h.coordinator.rows[0]
         h.store.tags.applyTagEdits([(row, .title, "새 제목")])
         h.coordinator.update(rows: h.coordinator.rows, revision: h.store.tagRevision)
-        let cell = try #require(h.coordinator.tableView(h.table, viewFor: h.table.tableColumns[1], row: 0) as? SheetCell)
+        let cell = try #require(h.coordinator.tableView(h.table, viewFor: h.table.tableColumns[SheetColumn.titleIndex], row: 0) as? SheetCell)
         #expect(cell.label.accessibilityLabel() == "제목")
         let value = cell.label.accessibilityValue()
         #expect(value == "새 제목, 저장 대기")

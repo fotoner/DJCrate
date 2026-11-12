@@ -143,7 +143,7 @@ struct SheetCellLayoutTests {
         // AppKit이 툴팁 글자를 물을 때 부르는 메서드가 ObjC에 보여야 한다
         #expect(h.table.responds(to: NSSelectorFromString("view:stringForToolTip:point:userData:")))
         for row in 0..<3 {
-            let rect = h.table.frameOfCell(atColumn: 1, row: row)
+            let rect = h.table.frameOfCell(atColumn: SheetColumn.titleIndex, row: row)
             let point = NSPoint(x: rect.midX, y: rect.midY)
             #expect(h.table.view(h.table, stringForToolTip: 0, point: point, userData: nil) == "합성 곡 \(row + 1)")
         }
@@ -158,7 +158,8 @@ struct SheetCellLayoutTests {
         // 보이는 칸 어디에도 칸별 툴팁이 없다
         for row in 0..<3 {
             for column in 0..<SheetColumn.all.count {
-                let cell = try #require(h.table.view(atColumn: column, row: row, makeIfNecessary: true) as? SheetCell)
+                // 앨범아트 칸(곡 목록과 같은 칸)도 칸별 툴팁이 없다
+                let cell = try #require(h.table.view(atColumn: column, row: row, makeIfNecessary: true))
                 #expect(cell.toolTip == nil)
             }
         }
@@ -184,11 +185,11 @@ struct SheetCellLayoutTests {
         defer { h.window.close() }
         let stream = TrackListTagEditTests.row("stream", streaming: true)
         h.coordinator.update(rows: [stream], revision: 1)
-        let rect = h.table.frameOfCell(atColumn: 1, row: 0)
+        let rect = h.table.frameOfCell(atColumn: SheetColumn.titleIndex, row: 0)
         let reason = try #require(TrackListTagEditing.unavailableReason(stream, key: .title))
         #expect(h.table.view(h.table, stringForToolTip: 0, point: NSPoint(x: rect.midX, y: rect.midY), userData: nil)
-                == h.coordinator.text(row: 0, column: 1) + "\n" + reason)
-        let cell = try #require(h.table.view(atColumn: 1, row: 0, makeIfNecessary: true) as? SheetCell)
+                == h.coordinator.text(row: 0, column: SheetColumn.titleIndex) + "\n" + reason)
+        let cell = try #require(h.table.view(atColumn: SheetColumn.titleIndex, row: 0, makeIfNecessary: true) as? SheetCell)
         #expect(cell.toolTip == nil && cell.label.toolTip == nil)
     }
 

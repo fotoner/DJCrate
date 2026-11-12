@@ -137,7 +137,10 @@ final class SheetCell: NSTableCellView {
 
     /// - Parameter compact: `text`가 칸 자리에 안 들어갈 때 대신 보일 짧은 글자(평점 "3★"). nil이면 안 들어가도 `text`를 그대로 두고 끝을 줄인다.
     /// - Parameter spoken: VoiceOver가 읽을 글자(평점 별 대신 "별 3개"). nil이면 `text`.
-    func configure(text: String, edited: Bool, readOnly: Bool, selected: Bool, active: Bool, compact: String? = nil, spoken: String? = nil) {
+    /// - Parameter lineBreak: 글자가 칸 자리에 안 들어갈 때 줄이는 자리. 칸이 다른 열로 다시 쓰이므로 칸을 채울 때마다 정한다.
+    func configure(text: String, edited: Bool, readOnly: Bool, selected: Bool, active: Bool, compact: String? = nil, spoken: String? = nil,
+                   lineBreak: NSLineBreakMode = .byTruncatingTail) {
+        label.lineBreakMode = lineBreak
         fullText = text
         compactText = compact
         spokenText = spoken

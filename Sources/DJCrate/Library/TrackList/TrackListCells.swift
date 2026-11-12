@@ -6,6 +6,7 @@ import SwiftUI
 final class ThumbnailCell: NSTableCellView {
     private let thumbnails: Thumbnails
     private let thumb = NSImageView()
+    private let size: CGFloat
     private var showingPlaceholder = true
     private var key: String?
     private var task: Task<Void, Never>?
@@ -14,8 +15,10 @@ final class ThumbnailCell: NSTableCellView {
         return image?.withSymbolConfiguration(.init(pointSize: 8, weight: .regular))
     }()
 
-    init(thumbnails: Thumbnails) {
+    /// - Parameter size: 그림을 그리는 한 변(pt). 곡 목록은 22, 태그 시트는 줄이 낮아 조금 작게 쓴다
+    init(thumbnails: Thumbnails, size: CGFloat = 22) {
         self.thumbnails = thumbnails
+        self.size = size
         super.init(frame: .zero)
         thumb.translatesAutoresizingMaskIntoConstraints = false
         thumb.imageScaling = .scaleProportionallyUpOrDown
@@ -26,8 +29,8 @@ final class ThumbnailCell: NSTableCellView {
         thumb.setAccessibilityLabel(String(ui: "앨범아트"))
         addSubview(thumb)
         NSLayoutConstraint.activate([
-            thumb.widthAnchor.constraint(equalToConstant: 22),
-            thumb.heightAnchor.constraint(equalToConstant: 22),
+            thumb.widthAnchor.constraint(equalToConstant: size),
+            thumb.heightAnchor.constraint(equalToConstant: size),
             thumb.centerXAnchor.constraint(equalTo: centerXAnchor),
             thumb.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
@@ -61,7 +64,7 @@ final class ThumbnailCell: NSTableCellView {
     /// 늦게 온 그림(그새 다른 곡으로 다시 쓰인 칸)은 버린다
     private func finish(_ box: Thumbnails.Box?, key id: String) {
         guard !Task.isCancelled, key == id else { return }
-        show(box.map { NSImage(cgImage: $0.image, size: NSSize(width: 22, height: 22)) })
+        show(box.map { NSImage(cgImage: $0.image, size: NSSize(width: size, height: size)) })
     }
 
     private func show(_ image: NSImage?) {

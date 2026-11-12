@@ -239,7 +239,7 @@ struct DraftUndoTests {
         defer { window.close() }
         window.contentView?.addSubview(table)
         #expect(window.makeFirstResponder(table))
-        coordinator.select(.init(row: 1, column: 1), extend: true)
+        coordinator.select(.init(row: 1, column: SheetColumn.titleIndex), extend: true)
         #expect(store.canFillDownTags)
         let delete = NSMenuItem(title: "지우기", action: #selector(SheetTableView.delete(_:)), keyEquivalent: "")
         #expect(table.validateUserInterfaceItem(delete))
