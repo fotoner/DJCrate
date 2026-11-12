@@ -246,7 +246,8 @@ struct EmptyLibraryOverlay: View {
     }
 
     private func noResults(_ guide: NoResultsGuide) -> some View {
-        NoResultsView(guide: guide, clearSearch: { store.search = "" }, clearFilter: { store.clearAttributeFilters() })
+        NoResultsView(guide: guide, clearSearch: { store.search = "" }, clearFilter: { store.clearAttributeFilters() },
+                      showStreaming: { store.showHiddenStreaming() })
     }
 
     @ViewBuilder private var message: some View {

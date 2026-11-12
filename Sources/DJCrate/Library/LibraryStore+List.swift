@@ -120,6 +120,7 @@ extension LibraryStore {
     }
 
     func refreshFiltered() {
+        defer { recountHiddenStreamingMatches() }
         if sidebar == .duplicates {
             // 검색한 곡의 비교 상대도 남겨 묶음이 한 곡으로 잘리지 않게 한다.
             let groups = TrackListProjection.duplicateGroups(duplicateGroups, members: { $0.tracks.map(\.id) },

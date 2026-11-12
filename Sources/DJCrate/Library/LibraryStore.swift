@@ -86,6 +86,11 @@ final class LibraryStore {
     /// 지금 보는 목록에서 '스트리밍 곡 숨기기' 때문에 뺀 줄 수. 0이 아니면 보이는 줄 번호가 목록 순서와 다르니 끌어 옮기지 않는다.
     /// (고치는 곳: `LibraryStore+List`)
     private(set) var streamingHiddenInView = 0
+    /// 목록이 검색·필터 때문에 비었을 때, 숨긴 스트리밍 줄 가운데 같은 검색·필터에 맞는 줄 수(#348). 0이 아니면 빈 목록 안내가 [스트리밍 곡 보이기]를 바로 내놓는다.
+    /// 보이는 줄이 있거나 검색·필터가 없으면 따지지 않고 0이다. (고치는 곳: `LibraryStore+List`)
+    private(set) var streamingHiddenMatching = 0
+    /// 지금 보는 목록에서 숨긴 줄(`streamingHiddenMatching`을 셀 때만 읽는다)
+    @ObservationIgnored private(set) var hiddenStreamingRows: [TrackRow] = []
     /// 지금 보는 목록에서 숨긴 줄의 ID(재생 기록의 반복 행처럼 곡 ID와 다른 줄 ID도 선택에서 뺀다)
     @ObservationIgnored private(set) var hiddenStreamingRowIDs: Set<TrackRow.ID> = []
 
@@ -599,7 +604,17 @@ final class LibraryStore {
     func applyListBase(_ visible: TrackListProjection.Visible) {
         if streamingHiddenInView != visible.hiddenCount { streamingHiddenInView = visible.hiddenCount }
         hiddenStreamingRowIDs = visible.hiddenIDs
+        hiddenStreamingRows = visible.hiddenRows
         sortedBase = sortOrder.isEmpty ? visible.rows : visible.rows.sorted(using: sortOrder)
+    }
+
+    /// 목록이 검색·필터 때문에 비었으면 숨긴 스트리밍 줄 가운데 같은 검색·필터에 맞는 줄을 센다(#348).
+    /// 판정은 곡 목록과 같은 함수(`TrackListProjection.filtered`)다. 보이는 줄이 있거나 검색·필터가 없으면 세지 않는다(입력마다 부르는 곳이라 비었을 때만 센다).
+    func recountHiddenStreamingMatches() {
+        let conditioned = !TrackSearch.Query(search).isEmpty || isAttributeFiltered
+        let matching = displayRows.isEmpty && conditioned && !hiddenStreamingRows.isEmpty
+            ? TrackListProjection.filtered(hiddenStreamingRows, search: search, filter: filter).count : 0
+        if streamingHiddenMatching != matching { streamingHiddenMatching = matching }
     }
 
     /// 표에 보일 줄(검색·거르기 뒤)과 중복 후보 묶음
