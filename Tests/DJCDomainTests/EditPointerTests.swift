@@ -109,6 +109,53 @@ struct EditPointerTests {
         #expect(pointer.endSource(at: 10.4) == [.finishSelection])
     }
 
+    @Test func 결과_줄_위_포인터는_가장자리·클립·눈금_밖을_가른다() throws {
+        // 클립 출력 0~4, 4~8, 8~12초. 한 포인트 = 0.1초라 가장자리는 0.5초 안
+        let context = try context(three)
+        func hover(_ time: Double, inRuler: Bool = false) -> EditHover? {
+            context.outputHover(atOutput: time, inRuler: inRuler, secondsPerPoint: 0.1)
+        }
+        // 클립 가운데는 옮기기(손 커서)
+        #expect(hover(2) == .clip(0) && hover(6) == .clip(1) && hover(10) == .clip(2))
+        // 가장자리는 다듬기(핸들). 맞닿은 줄 위는 뒤 클립의 시작이다.
+        #expect(hover(3.7) == .edge(EditEdgeHit(clip: 0, edge: .end)))
+        #expect(hover(4.2) == .edge(EditEdgeHit(clip: 1, edge: .start)))
+        #expect(hover(0.1) == .edge(EditEdgeHit(clip: 0, edge: .start)))
+        #expect(hover(12.3) == .edge(EditEdgeHit(clip: 2, edge: .end)))
+        // 눈금 위·결과 밖은 아무것도 아니다(눈금은 재생선만 옮긴다)
+        #expect(hover(2, inRuler: true) == nil)
+        #expect(hover(3.7, inRuler: true) == nil)
+        #expect(hover(30) == nil)
+        // 확대해서 한 포인트가 아주 짧으면 가장자리가 좁아진다
+        #expect(context.outputHover(atOutput: 3.7, inRuler: false, secondsPerPoint: 0.01) == .clip(0))
+    }
+
+    @Test func 결과가_비면_포인터는_아무것도_가리키지_않고_규칙에_안_맞는_목록도_가른다() throws {
+        #expect(try context().outputHover(atOutput: 1, inRuler: false, secondsPerPoint: 0.1) == nil)
+        // 규칙에 맞지 않는 목록(곡 머리가 둘째에)도 클립은 그려 누르고 고른다
+        let entries = [BarRange(1, 2), BarRange(0, 2)].map { EditEntry(id: UUID(), range: $0) }
+        let bad = try context(entries)
+        #expect(bad.outputHover(atOutput: 1, inRuler: false, secondsPerPoint: 0.001) == .clip(0))
+    }
+
+    @Test func 원곡_줄_위_포인터는_구간_고르기와_끌어_넣기를_가른다() throws {
+        // 원곡에서 3~4마디(4.5~8.5초)를 고른 상태
+        let picked = try context(selection: BarRange(3, 4))
+        #expect(picked.sourceHover(at: 6, inRuler: false) == .selection)
+        #expect(picked.sourceHover(at: 12, inRuler: false) == .waveform)
+        #expect(picked.sourceHover(at: 6, inRuler: true) == nil)
+        // 고른 구간이 없으면 파형 어디나 새로 고르기
+        #expect(try context().sourceHover(at: 6, inRuler: false) == .waveform)
+    }
+
+    @Test func 마디_수는_곡_머리를_세지_않는다() {
+        #expect(BarRange(3, 6).barCount == 4)
+        #expect(BarRange(5, 5).barCount == 1)
+        // 0마디(곡 머리)는 마디 수에 들지 않는다
+        #expect(BarRange(0, 6).barCount == 6)
+        #expect(BarRange(0, 0).barCount == 0)
+    }
+
     @Test func 다듬은_구간은_곡_머리는_맨_앞에만_곡_끝은_맨_뒤에만() throws {
         let context = try context(three)
         // 첫 클립 시작을 왼쪽으로 끌면 곡 머리(0마디)까지, 가운데 클립은 1마디까지

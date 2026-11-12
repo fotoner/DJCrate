@@ -5,6 +5,7 @@ import SwiftUI
 
 /// 원곡: 눈금·파형·결과에 쓴 구간·끌어 고른 구간·재생선. 확대하면 보이는 자리만 그린다.
 /// 위 눈금을 누르거나 끌면 재생선, 파형을 누르면 재생선, 옆으로 끌면 마디 구간 고르기, 고른 구간을 아래로 끌면 결과에 넣기.
+/// 조작은 커서가 알린다: 파형 위 십자(끌어 고르기), 고른 구간 위 손(끌어 결과에 넣기).
 struct EditSourceStrip: View {
     let model: TrackEditModel
     /// 결과 줄 자리(이 줄 좌표). 고른 구간을 끌어 놓을 자리를 찾는다.
@@ -16,6 +17,29 @@ struct EditSourceStrip: View {
         self.model = model
         self.outputFrame = outputFrame
         _pointer = State(initialValue: pointer)
+    }
+    /// 마우스가 올라 있는 파형·고른 구간(커서 모양)
+    @State private var hover: EditHover?
+    @State private var spot = EditHoverSpot()
+
+    /// 마지막 마우스 자리를 지금 고른 구간·보이는 자리로 다시 읽는다.
+    private func refreshHover() {
+        var next: EditHover?
+        if let point = spot.point, spot.width > 0 {
+            let scale = EditLaneScale(model, .source, width: spot.width)
+            next = model.pointerContext.sourceHover(at: scale.time(point.x), inRuler: point.y < EditMetrics.ruler)
+        }
+        if hover != next { hover = next }
+    }
+
+    private var cursor: PointerStyle? {
+        if pointer.mode == .carry { return .grabActive }
+        if pointer.mode == .select { return .rectSelection }
+        switch hover {
+        case .selection?: return .grabIdle
+        case .waveform?: return .rectSelection
+        default: return nil
+        }
     }
 
     var body: some View {
@@ -31,14 +55,30 @@ struct EditSourceStrip: View {
                 EditPlayhead(model: model, lane: .source)
             }
             .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                if case let .active(point) = phase {
+                    spot.point = point
+                    spot.width = geo.size.width
+                } else {
+                    spot.point = nil
+                }
+                refreshHover()
+            }
+            .pointerStyle(cursor)
             .gesture(DragGesture(minimumDistance: 0).onChanged { value in
                 model.apply(pointer.source(model.pointerContext, from: scale.time(value.startLocation.x), to: scale.time(value.location.x),
                                            inRuler: value.startLocation.y < EditMetrics.ruler, moved: abs(value.translation.width),
                                            rise: abs(value.translation.height), output: output(value.location)))
             }.onEnded { value in
                 model.apply(pointer.endSource(at: scale.time(value.location.x)))
+                // 끄는 동안에는 올림 이벤트가 오지 않는다. 손을 뗀 자리로 다시 정한다(새로 고른 구간 안인지).
+                spot.point = value.location
+                spot.width = geo.size.width
+                refreshHover()
             })
         }
+        .onChange(of: model.selection) { refreshHover() }
+        .onChange(of: model.viewport(.source)) { refreshHover() }
         .modifier(LaneZoomGestures(model: model, lane: .source))
         .modifier(LaneFrame(focused: model.focus == .source))
         .selfTestFrame("editSource")
