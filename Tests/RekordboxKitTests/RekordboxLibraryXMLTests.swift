@@ -303,6 +303,25 @@ struct RekordboxLibraryXMLTests {
         #expect(marks.allSatisfy { $0["Red"] == nil && $0["Green"] == nil && $0["Blue"] == nil })
     }
 
+    /// #355: 루프인 `djmdCue.Kind` 4 행은 활성 메모리 루프다. XML에는 메모리 루프(Type 4, Num -1)로 나간다.
+    /// 루프가 아닌 Kind 4와 그 밖의 모르는 종류는 지금처럼 빠지고 `omitted.unknownCues`로 센다.
+    @Test func 루프인_Kind_4_행은_메모리_루프로_쓰고_루프가_아닌_Kind_4만_뺀다() throws {
+        let fixture = try RekordboxFixture()
+        var spec = TrackSpec(id: "201", uuid: "uuid-201")
+        spec.folderPath = "/Music/활성 루프.mp3"
+        var active = CueSpec(id: "a1", kind: 4, inMsec: 70_000)
+        active.outMsec = 73_500
+        spec.cues = [CueSpec(id: "m1", kind: 0, inMsec: 10_000), active, CueSpec(id: "p1", kind: 4, inMsec: 90_000)]
+        try fixture.add(spec)
+        let source = try collection(fixture)
+        let track = try #require(try tracks(try parse(RekordboxLibraryXML.document(source)))["201"])
+        #expect(track.all("POSITION_MARK").map(\.attributes) == [
+            ["Name": "", "Type": "0", "Start": "10.000", "Num": "-1"],
+            ["Name": "", "Type": "4", "Start": "70.000", "End": "73.500", "Num": "-1"],
+        ])
+        #expect(source.summary.marks == 2 && source.summary.omitted.unknownCues == 1, "루프가 아닌 Kind 4만 못 옮긴 큐로 센다")
+    }
+
     @Test func 큐가_모두_모르는_종류면_POSITION_MARK가_없다() throws {
         let fixture = try makeLibrary()
         let track = try #require(try tracks(try parse(RekordboxLibraryXML.document(try collection(fixture))))["104"])

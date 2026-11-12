@@ -660,7 +660,7 @@ rekordbox와 맞춘 표시 칸(#258). rekordbox 7.2.18이 내보낸 XML과 견�
 - 없는 폴더를 가리켜 ROOT에서 닿지 않는 재생 목록과 폴더. rekordbox 트리에 없으므로 루트에 지어 붙이지 않는다. 요약에서는 "상위 폴더가 없는 목록"이라 부른다.
 - My Tag
 - 핫큐 색(`Red`·`Green`·`Blue`). rekordbox 색 번호와 XML 색의 대응을 확인하기 전이다.
-- 알 수 없는 큐 종류(Kind 4)
+- 알 수 없는 큐 종류. 루프가 아닌 Kind 4 등이다. 루프인 Kind 4는 활성 메모리 루프라 메모리 루프로 넣는다.
 - 앨범 아티스트, Grouping, Mix, DateModified, LastPlayed. XML에 칸이 없거나 값의 출처를 확인하지 못했다.
 - 스트리밍 곡. 파일 경로가 없다.
 - 삭제한 곡
