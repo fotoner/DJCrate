@@ -97,13 +97,13 @@ struct CueListScrollerGutterTests {
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.isReleasedWhenClosed = false
         window.orderBack(nil)
-        let found = await waitForState(safetyNet: .seconds(30)) { findTable(in: window.contentView).map { $0.numberOfRows == count } ?? false }
+        let found = await waitForState { findTable(in: window.contentView).map { $0.numberOfRows == count } ?? false }
         let table = try #require(found ? findTable(in: window.contentView) : nil, "큐 목록의 표를 찾지 못했다")
         let scroll = try #require(table.enclosingScrollView)
         scroll.scrollerStyle = .legacy
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        let settled = await waitForState(safetyNet: .seconds(30)) {
+        let settled = await waitForState {
             let taken = scroll.frame.width - scroll.contentSize.width
             return (shown ? taken > Self.legacyWidth : taken < 4) && table.view(atColumn: 0, row: 1, makeIfNecessary: false) != nil
         }
@@ -120,7 +120,7 @@ struct CueListScrollerGutterTests {
         defer { window.close(); withExtendedLifetime(h) {} }
         var ink: CGFloat = 0
         // 이름 글자가 그려질 때까지 기다린다(전혀 안 그려지면 0으로 판정한다).
-        _ = await waitForState(safetyNet: .seconds(15)) { ink = nameInkWidth(table) ?? 0; return ink > 0 }
+        _ = await waitForState { ink = nameInkWidth(table) ?? 0; return ink > 0 }
         #expect(ink >= Self.breakWidth - 4, "막대 \(scrollerShown ? "보임" : "숨김"): 이름 글자 폭 \(ink)pt < Break \(Self.breakWidth)pt — 잘렸다")
     }
 }
