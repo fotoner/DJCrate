@@ -5229,22 +5229,6 @@
         }
       }
     },
-    "DJCrate는 XML을 늘 이 파일에 만듭니다(경로를 클립보드에 복사했습니다):\n%@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrate always creates XML in this file (path copied to clipboard):\n%@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "DJCrateは常にこのファイルにXMLを作成します（パスをクリップボードにコピーしました）：\n%@"
-          }
-        }
-      }
-    },
     "DJCrate를 응용 프로그램 폴더로 옮긴 뒤 다시 열고 하세요." : {
       "localizations" : {
         "en" : {
@@ -12905,38 +12889,6 @@
         }
       }
     },
-    "rekordbox: rekordbox xml 새로고침 › \"DJCrate 반영\" › 곡 모두 선택 › Import To Collection → DJCrate rekordbox와 동기화(⟳)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In rekordbox: refresh rekordbox xml › \"DJCrate 반영\" › select all tracks › Import To Collection → Sync with rekordbox (⟳) in DJCrate"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordbox: rekordbox xmlを更新 › 「DJCrate 반영」 › 全曲選択 › Import To Collection → DJCrateでrekordboxと同期（⟳）"
-          }
-        }
-      }
-    },
-    "rekordbox: rekordbox xml 새로고침 › \"DJCrate 추가\" › Import To Collection" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In rekordbox: refresh rekordbox xml › \"DJCrate 추가\" › Import To Collection"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordbox：rekordbox xmlを更新 › 「DJCrate 추가」 › コレクションにインポート"
-          }
-        }
-      }
-    },
     "rekordboxAgent가 켜져 있습니다" : {
       "localizations" : {
         "en" : {
@@ -13977,22 +13929,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxにありません"
-          }
-        }
-      }
-    },
-    "rekordbox에 연동 파일을 한 번만 지정해 주세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Set the link file in rekordbox (one time only)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "rekordboxに連携ファイルを一度だけ指定してください"
           }
         }
       }
@@ -15943,6 +15879,22 @@
         }
       }
     },
+    "가져오는 방법" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How to Import"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取り込み方法"
+          }
+        }
+      }
+    },
     "가져온 곡 정리 (%lld곡)" : {
       "localizations" : {
         "en" : {
@@ -17349,6 +17301,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "パスの書き換えルールをrekordboxでの実験でまだ確認していないためブロックしています。今はrekordboxのRelocateで直接つなぎ直してください。"
+          }
+        }
+      }
+    },
+    "경로 복사" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy Path"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスをコピー"
           }
         }
       }
@@ -35191,6 +35159,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "年を数字に直してからrekordboxに保存してください"
+          }
+        }
+      }
+    },
+    "연동 안내" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integration Guide"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連携ガイド"
           }
         }
       }

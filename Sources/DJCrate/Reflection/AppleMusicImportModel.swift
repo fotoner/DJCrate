@@ -22,10 +22,17 @@ final class AppleMusicImportModel {
     /// 단추가 마지막으로 시작한 일(XML 열기·곡 추가). 창을 닫아도 끝까지 간다. 시험은 이것을 기다린다
     @ObservationIgnored private(set) var task: Task<Void, Never>?
 
-    init(staging: TrackStagingStore, appleMusic: ImportAppleMusic) {
+    /// [가져오는 방법]이 여는 연동 안내 창(조립 지점이 잇는다)
+    @ObservationIgnored private let openGuide: (IntegrationGuide.Topic) -> Void
+
+    init(staging: TrackStagingStore, appleMusic: ImportAppleMusic, openGuide: @escaping (IntegrationGuide.Topic) -> Void = { _ in }) {
         self.staging = staging
         self.appleMusic = appleMusic
+        self.openGuide = openGuide
     }
+
+    /// 내보내는 법은 창에 글로 두지 않고 연동 안내 창의 Apple Music 쪽에서 본다(#315)
+    func showGuide() { openGuide(.appleMusic) }
 
     var visibleTracks: [AppleMusicLibrary.Track] {
         guard let library else { return [] }

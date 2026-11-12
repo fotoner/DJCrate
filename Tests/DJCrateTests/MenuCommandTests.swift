@@ -37,13 +37,15 @@ struct MenuCommandTests {
         #expect(LibraryMenuAction.rekordboxActions == [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks])
         // 편집 메뉴의 찾기(⌘F, #338)
         #expect(LibraryMenuAction.editActions == [.find])
-        #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions + LibraryMenuAction.editActions == LibraryMenuAction.allCases)
+        // 도움말 메뉴에만 있는 연동 안내(#315)
+        #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions + LibraryMenuAction.editActions + [.integrationGuide] == LibraryMenuAction.allCases)
     }
 
     @Test func 도움말_메뉴의_쓰기_전으로_복원은_rekordbox_메뉴와_같은_명령이다() throws {
         // 도움말 메뉴는 rekordbox 메뉴의 항목을 그대로 다시 보인다(새 경로 없음). 이름·켜짐 조건·꺼진 이유가 같다.
-        #expect(LibraryMenuAction.helpActions == [.restore])
+        #expect(LibraryMenuAction.helpActions == [.integrationGuide, .restore])
         #expect(LibraryMenuAction.rekordboxActions.contains(.restore))
+        let restoreActions = LibraryMenuAction.helpActions.filter { $0 != .integrationGuide }
         let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let commands = try String(contentsOf: root.appending(path: "Sources/DJCrate/App/AppCommands.swift"), encoding: .utf8)
         // 등록 줄이 도움말 그룹(`CommandGroup(replacing: .help)`) 안에 있어야 한다. 다른 메뉴로 옮기면 실패한다
@@ -55,13 +57,18 @@ struct MenuCommandTests {
             if commands[index] == "}" { depth -= 1; if depth == 0 { helpEnd = index; break } }
         }
         let helpGroup = commands[helpStart.lowerBound..<helpEnd]
-        #expect(helpGroup.contains("ForEach(LibraryMenuAction.helpActions, id: \\.self) { libraryButton($0) }"), "도움말 메뉴도 rekordbox 메뉴와 같은 libraryButton으로 항목을 만든다")
+        #expect(helpGroup.contains("ForEach(LibraryMenuAction.helpActions, id: \\.self) { helpButton($0) }"), "도움말 메뉴 항목은 helpButton으로 만든다")
+        // 복원은 rekordbox 메뉴와 같은 libraryButton(같은 이름·켜짐 조건)이고, 연동 안내만 주 창 포커스와 상관없이 조립 지점이 준 동작으로 연다(#315)
+        let helpButtonStart = try #require(commands.range(of: "private func helpButton("))
+        let helpButton = commands[helpButtonStart.lowerBound...].prefix(400)
+        #expect(helpButton.contains("case .integrationGuide") && helpButton.contains("openIntegrationGuide()"))
+        #expect(helpButton.contains("libraryButton(action)"))
 
         let backups = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: backups) }
         let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, backupDirectory: backups)
         let window = LibraryWindowModel(store: store)
-        for action in LibraryMenuAction.helpActions {
+        for action in restoreActions {
             #expect(action.menuTitle(in: window) == "저장 전으로 복원…")
             // 백업이 없으면 막히고 이유는 활동 기록을 보라고 알린다
             #expect(!action.isEnabled(in: window))
@@ -71,13 +78,13 @@ struct MenuCommandTests {
         try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
         try Data().write(to: backup.appending(path: "master.db"))
         store.refreshWriteBackups()
-        for action in LibraryMenuAction.helpActions {
+        for action in restoreActions {
             #expect(action.isEnabled(in: window))
             #expect(action.disabledReason(in: window) == nil)
         }
         // 쓰는 동안은 막힌다(rekordbox 메뉴와 같은 잠금)
         store.isWritingRekordbox = true
-        for action in LibraryMenuAction.helpActions {
+        for action in restoreActions {
             #expect(!action.isEnabled(in: window))
             #expect(action.disabledReason(in: window) == "rekordbox 저장이 끝난 뒤 다시 시도하세요")
         }
@@ -131,6 +138,8 @@ struct MenuCommandTests {
         #expect(!LibraryMenuAction.snapshot.isEnabled(in: window))
         store.phase = .loaded
         store.isWritingRekordbox = true
-        for action in LibraryMenuAction.allCases { #expect(!action.isEnabled(in: window)) }
+        // 읽기만 하는 연동 안내(#315)만 쓰는 동안에도 열린다
+        for action in LibraryMenuAction.allCases where action != .integrationGuide { #expect(!action.isEnabled(in: window)) }
+        #expect(LibraryMenuAction.integrationGuide.isEnabled(in: window))
     }
 }

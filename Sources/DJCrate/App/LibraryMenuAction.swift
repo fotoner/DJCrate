@@ -2,14 +2,15 @@ import DJCDomain
 import SwiftUI
 
 enum LibraryMenuAction: CaseIterable {
-    case addFiles, importAppleMusic, snapshot, exportXML, exportLibraryXML, importRekordboxXML, reflect, pending, activityLog, restore, pointSnapshots, removeTracks, find
+    case addFiles, importAppleMusic, snapshot, exportXML, exportLibraryXML, importRekordboxXML, reflect, pending, activityLog, restore, pointSnapshots, removeTracks, find, integrationGuide
 
     static let fileActions: [Self] = [.addFiles, .importAppleMusic, .snapshot, .exportXML, .exportLibraryXML, .importRekordboxXML]
     static let rekordboxActions: [Self] = [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks]
     static let editActions: [Self] = [.find]
-    /// 도움말 메뉴에도 보이는 rekordbox 메뉴 항목. 툴바 쓰기 메뉴가 없어진 뒤(#325) 문제가 생긴 사용자가 복원 입구를 한 곳 더 찾을 수 있게 한다.
+    /// 도움말 메뉴의 항목. 연동 안내(#315)는 이 메뉴에만 있다. 저장 전으로 복원은 rekordbox 메뉴 항목을 다시 보인다:
+    /// 툴바 쓰기 메뉴가 없어진 뒤(#325) 문제가 생긴 사용자가 복원 입구를 한 곳 더 찾을 수 있게 한다.
     /// 같은 항목을 그대로 부르므로 이름·켜짐 조건·꺼진 이유가 rekordbox 메뉴와 같다.
-    static let helpActions: [Self] = [.restore]
+    static let helpActions: [Self] = [.integrationGuide, .restore]
 
     var title: String {
         switch self {
@@ -29,6 +30,8 @@ enum LibraryMenuAction: CaseIterable {
         case .pointSnapshots: String(ui: "복원 시점…")
         case .removeTracks: String(ui: "rekordbox에서 빼기…")
         case .find: String(ui: "찾기")
+        // rekordbox·Apple Music과 이어 쓰는 절차를 한 창에 모았다. 처음 한 번만 뜨던 안내를 언제든 다시 연다(#315)
+        case .integrationGuide: String(ui: "연동 안내")
         }
     }
 
@@ -51,6 +54,8 @@ enum LibraryMenuAction: CaseIterable {
     @MainActor private func isLocked(by store: LibraryStore) -> Bool {
         switch self {
         case .pending, .activityLog: store.editsFrozen
+        // 읽기만 하는 안내 창이라 읽는 동안·쓰는 동안에도 연다
+        case .integrationGuide: false
         default: store.libraryBusy
         }
     }
@@ -72,7 +77,7 @@ enum LibraryMenuAction: CaseIterable {
             guard case .loaded = store.phase else { return false }
             return store.snapshotURL != nil && !store.isLoading && !window.xmlImport.isBusy
         case .reflect: return store.pendingLibraryCount > 0 || store.playlists.hasPlaylistDrafts || store.history.hasHistoryDrafts
-        case .pending, .activityLog: return true
+        case .pending, .activityLog, .integrationGuide: return true
         case .restore: return store.hasWriteBackup
         case .pointSnapshots: return true
         case .removeTracks: return !store.deleteTargets(store.selectedRows).isEmpty
@@ -109,6 +114,7 @@ enum LibraryMenuAction: CaseIterable {
         case .pointSnapshots: if let reflection { windows?.pointSnapshots.open(store: store, reflection: reflection) }
         case .removeTracks: reflection?.startDeleteTracks(rows: store.selectedRows)
         case .find: window.focusSearch()
+        case .integrationGuide: store.showIntegrationGuide?(.rekordbox)
         }
     }
 
@@ -136,7 +142,7 @@ enum LibraryMenuAction: CaseIterable {
         case .find:
             guard case .loaded = store.phase else { return String(ui: "라이브러리를 먼저 불러온 뒤 검색하세요") }
             return String(ui: "USB 쓰기 대기에는 검색할 곡이 없으니 곡 목록을 고르세요")
-        case .pending, .activityLog, .pointSnapshots: return nil
+        case .pending, .activityLog, .pointSnapshots, .integrationGuide: return nil
         }
     }
 }

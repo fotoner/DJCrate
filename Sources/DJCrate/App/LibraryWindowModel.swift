@@ -73,6 +73,8 @@ final class LibraryWindowModel {
             }
         case .ejectUsb:
             Task { [store] in await store.usbCoordinator?.perform(action) }
+        case let .openIntegrationGuide(topic):
+            Task { [store] in store.showIntegrationGuide?(topic) }
         }
     }
 
