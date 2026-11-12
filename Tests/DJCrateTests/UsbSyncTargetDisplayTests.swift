@@ -40,13 +40,50 @@ struct UsbSyncTargetDisplayTests {
         #expect(model.targetTree.map(\.id) == ["7", "9"])
         #expect(model.dimmedTargetIDs == ["7", "8", "9"])
         #expect(model.targetMarks.values.allSatisfy { $0 == .unlinked })
-        #expect(model.deletedTargetSummary == nil)
+        #expect(!model.targetMarks.values.contains(.deleted))
         #expect(model.targetPlaylistCount == 0)
         #expect(model.targetEmptyMessage == "동기화할 목록을 선택하세요")
 
         model.targetDisplay = .currentUsb
         #expect(!model.targetTree.isEmpty)
         #expect(model.targetPlaylistCount == 2)
+    }
+
+    /// #313: 동기화가 꺼져 있으면 선택 목록이 비활성이 되고 이유는 툴팁으로 말한다. 켜져 있으면 말하지 않는다
+    @Test("동기화를 끄면 선택 목록을 잠근 이유를 알리고 켜면 알리지 않는다")
+    func lockedReasonOnlyWhileSyncIsOff() {
+        let model = UsbSyncModel(volumeKey: "synthetic", library: library())
+        #expect(model.syncPlaylists && model.selectionLockedReason == nil)
+        model.syncPlaylists = false
+        #expect(model.selectionLockedReason == UsbSyncModel.selectionLockedHint)
+        #expect(UsbSyncModel.selectionLockedHint == "동기화가 꺼져 있어 ‘장치와 플레이리스트 동기화’를 켜야 쓸 수 있습니다")
+        model.syncPlaylists = true
+        #expect(model.selectionLockedReason == nil)
+    }
+
+    /// 현재 USB 보기에서 흐린 줄(이은 적 없거나 선택에서 뺀 목록)은 툴팁으로 뜻을 말하고, 흐리지 않은 줄은 말하지 않는다
+    @Test("현재 USB 보기의 흐린 줄에만 뜻을 말하는 툴팁이 있다")
+    func currentUsbDimmedRowsHaveAHint() {
+        let model = UsbSyncModel(volumeKey: "synthetic", library: library())
+        let style = model.targetRowStyle
+        let dimmed = model.targetTree.first(where: style.isDimmed)
+        #expect(dimmed != nil && dimmed.flatMap(style.hint(of:)) == UsbSyncModel.currentUsbDimmedHint)
+        // 흐리지 않은 줄과, 표시가 없는 동기화 후 줄은 말하지 않는다
+        #expect(UsbSyncModel.hint(display: .currentUsb, isDimmed: false, mark: nil) == nil)
+        #expect(UsbSyncModel.hint(display: .currentUsb, isDimmed: true, mark: nil) == UsbSyncModel.currentUsbDimmedHint)
+        #expect(UsbSyncModel.hint(display: .afterSync, isDimmed: false, mark: nil) == nil)
+        #expect(UsbSyncModel.hint(display: .afterSync, isDimmed: true, mark: .deleted) == UsbSyncPreviewMark.deleted.hint)
+        #expect(UsbSyncModel.hint(display: .afterSync, isDimmed: false, mark: .created) == nil)
+    }
+
+    @Test("동기화 후 보기의 연결 없는 목록은 그대로 남는다는 뜻을 툴팁으로 말한다")
+    func afterSyncUnlinkedRowsHaveAHint() {
+        let model = UsbSyncModel(volumeKey: "synthetic", library: library())
+        model.targetDisplay = .afterSync
+        let style = model.targetRowStyle
+        let rows = model.targetTree.filter(style.isDimmed)
+        #expect(!rows.isEmpty && rows.allSatisfy { style.hint(of: $0) == UsbSyncPreviewMark.unlinked.hint })
+        #expect(rows.allSatisfy { style.note(of: $0) == nil })
     }
 
     @Test("동기화를 끄면 현재 USB 목록으로 돌아간다")

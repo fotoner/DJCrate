@@ -30,12 +30,10 @@ struct UsbSyncView: View {
             Toggle(.ui("장치와 플레이리스트 동기화"), isOn: Binding(get: { model.syncPlaylists }, set: { model.syncPlaylists = $0 }))
                 .disabled(controlsDisabled)
                 .accessibilityIdentifier("usb-sync-playlists")
-            Text(.ui("폴더를 선택하면 하위 목록도 포함됩니다. 동기화가 꺼져 있으면 선택을 바꿀 수 없습니다. 선택에서 뺀 목록은 USB에서도 지우고, 동기화로 이은 적 없는 USB 목록은 흐리게 남깁니다. 어느 목록에도 없는 곡은 확인한 뒤 USB에서 뺍니다."))
-                .foregroundStyle(.secondary)
             HStack(spacing: 16) {
                 PlaylistSyncPane(tree: model.iTunesTree, isLoading: model.isLoading,
                                  emptyMessage: String(ui: "읽을 수 있는 iTunes 목록이 없습니다"),
-                                 selection: sourceSelection) {
+                                 selection: sourceSelection, lockedReason: model.selectionLockedReason) {
                     HStack {
                         Text(.ui("iTunes 동기화 목록")).font(.headline)
                         Spacer()
@@ -46,11 +44,12 @@ struct UsbSyncView: View {
                         Button(.ui("전체 선택")) { model.selectAllITunes() }
                         Button(.ui("선택 해제")) { model.clearITunesSelection() }
                     }
+                    .help(model.selectionLockedReason ?? "")
                 }
                 .disabled(controlsDisabled || !model.canEditSelection)
                 PlaylistSyncPane(tree: model.rekordboxTree, isLoading: model.isLoading,
                                  emptyMessage: String(ui: "읽을 수 있는 rekordbox 목록이 없습니다"),
-                                 selection: sourceSelection) {
+                                 selection: sourceSelection, lockedReason: model.selectionLockedReason) {
                     HStack {
                         Text(verbatim: "rekordbox").font(.headline)
                         Spacer()
@@ -61,33 +60,11 @@ struct UsbSyncView: View {
                         Button(.ui("전체 선택")) { model.selectAllRekordbox() }
                         Button(.ui("선택 해제")) { model.clearRekordboxSelection() }
                     }
+                    .help(model.selectionLockedReason ?? "")
                 }
                 .disabled(controlsDisabled || !model.canEditSelection)
                 transferButtons
-                PlaylistSyncPane(tree: model.targetTree, isLoading: model.isLoading,
-                                 emptyMessage: model.targetEmptyMessage,
-                                 dimmed: { [dimmed = model.dimmedTargetIDs] node in dimmed.contains(node.id) },
-                                 note: { [marks = model.targetMarks] node in marks[node.id]?.note }) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(.ui("USB 동기화 목록")).font(.headline)
-                            Spacer()
-                            Text(.ui("목록 \(model.targetPlaylistCount)개")).foregroundStyle(.secondary)
-                        }
-                        Picker(.ui("USB 목록 표시"), selection: Binding(get: { model.targetDisplay }, set: { model.targetDisplay = $0 })) {
-                            ForEach(UsbSyncTargetDisplay.allCases, id: \.self) { display in
-                                Text(verbatim: display.title).tag(display)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .disabled(controlsDisabled || !model.syncPlaylists)
-                        .accessibilityIdentifier("usb-sync-target-display")
-                        if let summary = model.deletedTargetSummary {
-                            Text(verbatim: summary).font(.caption).foregroundStyle(.orange).lineLimit(2).help(summary)
-                        }
-                    }
-                }
-                .disabled(controlsDisabled)
+                targetPane
             }
             HStack {
                 Text(.ui("선택한 곡 \(model.trackCount)개")).font(.caption).foregroundStyle(.secondary)
@@ -134,6 +111,32 @@ struct UsbSyncView: View {
         .frame(width: 1160, height: 600)
         .interactiveDismissDisabled(isOperating || usb.activeWrite != nil)
         .task { await model.load(store: store, usb: usb) }
+    }
+
+    /// USB 동기화 목록. 줄마다 붙는 표시는 본문에서 한 번 계산해 둔다
+    private var targetPane: some View {
+        let style = model.targetRowStyle
+        return PlaylistSyncPane(tree: model.targetTree, isLoading: model.isLoading,
+                                emptyMessage: model.targetEmptyMessage,
+                                dimmed: style.isDimmed, note: style.note(of:), hint: style.hint(of:)) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(.ui("USB 동기화 목록")).font(.headline)
+                    Spacer()
+                    Text(.ui("목록 \(model.targetPlaylistCount)개")).foregroundStyle(.secondary)
+                }
+                Picker(.ui("USB 목록 표시"), selection: Binding(get: { model.targetDisplay }, set: { model.targetDisplay = $0 })) {
+                    ForEach(UsbSyncTargetDisplay.allCases, id: \.self) { display in
+                        Text(verbatim: display.title).tag(display)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(controlsDisabled || !model.syncPlaylists)
+                .help(model.selectionLockedReason ?? "")
+                .accessibilityIdentifier("usb-sync-target-display")
+            }
+        }
+        .disabled(controlsDisabled)
     }
 
     private var sourceSelection: PlaylistSyncSelectionControls<PlaylistOutlineNode> {
