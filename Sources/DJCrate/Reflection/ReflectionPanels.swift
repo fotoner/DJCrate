@@ -24,25 +24,28 @@ enum ReflectionPanels {
             return
         }
         store.showToast(resultMessage(written: eligible.count, blocked: blocked.filter { pending.contains($0.uuid) }, exclusions: exclusions))
-        RekordboxLink.showSetupIfNeeded(store.linkedXMLFile)
+        RekordboxLink.showSetupIfNeeded(store: store)
     }
 
-    /// XML을 만든 뒤의 알림: 제목은 쓴 곡 수, 설명은 가져오는 순서와 막혀서 뺀 곡·XML에 넣지 않은 초안(앞 둘과 수)
+    /// XML을 만든 뒤의 알림: 제목은 쓴 곡 수, 설명은 막혀서 뺀 곡·XML에 넣지 않은 초안(앞 둘과 수)이 있을 때만이다.
+    /// 가져오는 순서는 글로 다시 쓰지 않고 [가져오는 방법]이 연동 안내 창을 연다(#315)
     static func resultMessage(written: Int, blocked: [ReflectionXMLPlan], exclusions: [String]) -> AppToast {
-        // 재생 목록 이름 "DJCrate 반영"은 XML에 쓰는 이름 그대로다(번역하지 않음).
-        var text = String(ui: "rekordbox: rekordbox xml 새로고침 › \"DJCrate 반영\" › 곡 모두 선택 › Import To Collection → DJCrate rekordbox와 동기화(⟳)")
+        var parts: [String] = []
         if !blocked.isEmpty {
             let names = blocked.prefix(2).map { "\($0.title)(\($0.blockers.first ?? ""))" }.joined(separator: ", ")
-            text += " · " + String(ui: "막혀서 뺀 곡 \(blocked.count): \(names)")
+            parts.append(String(ui: "막혀서 뺀 곡 \(blocked.count): \(names)"))
         }
         // 막힌 곡의 이유와 겹치는 줄은 한 번만 센다.
         let blockedLines = Set(blocked.flatMap { plan in plan.blockers.map { "• \(plan.title): \($0)" } })
         let omitted = exclusions.filter { !blockedLines.contains($0) }
         if !omitted.isEmpty {
             let lines = omitted.prefix(2).map { $0.hasPrefix("• ") ? String($0.dropFirst(2)) : $0 }.joined(separator: ", ")
-            text += " · " + String(ui: "XML에 넣지 않은 편집 \(omitted.count): \(lines)")
+            parts.append(String(ui: "XML에 넣지 않은 편집 \(omitted.count): \(lines)"))
         }
-        return .notice(String(ui: "\(written)곡을 연동 XML에 썼습니다"), text, kind: blocked.isEmpty && omitted.isEmpty ? .success : .warning)
+        var toast = AppToast.notice(String(ui: "\(written)곡을 연동 XML에 썼습니다"), parts.joined(separator: " · "),
+                                    kind: blocked.isEmpty && omitted.isEmpty ? .success : .warning)
+        toast.action = .openIntegrationGuide(.rekordbox)
+        return toast
     }
 
     /// XML로 만들 곡이 없을 때의 알림: 막힌 곡은 결과처럼 앞 둘과 수

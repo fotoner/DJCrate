@@ -85,6 +85,10 @@ final class AppComposition {
         statusBar.write = writeStatus
         writeStatus.start()
         libraryWindow.agentTools = agentTools
+        store.showIntegrationGuide = { [weak store, windows] topic in
+            guard let store else { return }
+            windows.integrationGuide.open(file: store.linkedXMLFile, topic: topic)
+        }
         statusBar.showLog = { [weak window = libraryWindow] in window?.showActivityLog(selecting: $0) }
         libraryWindow.activityLogSeen = { [weak bar = statusBar] in bar?.markSeen() }
     }
@@ -458,6 +462,7 @@ final class AppWindows {
     let flip = FlipWindow()
     let pointSnapshots = PointSnapshotWindow(points: AppComposition.pointSnapshots(store:))
     let appleMusicImport = AppleMusicImportWindow()
+    let integrationGuide = IntegrationGuideWindow()
 }
 
 extension EnvironmentValues {

@@ -31,11 +31,14 @@ struct AppToast: Identifiable, Equatable {
         case ejectUsb(volumeKey: String)
         /// 옛 AI 에이전트 스킬·djc 링크를 이 앱에 맞추기(#262)
         case updateAgentTools
+        /// 연동 안내 창의 해당 쪽 열기. XML 만들기 결과 줄이 가져오는 순서를 글로 다시 쓰지 않고 이 링크만 둔다(#315)
+        case openIntegrationGuide(IntegrationGuide.Topic)
 
         var title: String {
             switch self {
             case .ejectUsb: String(ui: "꺼내기")
             case .updateAgentTools: String(ui: "모두 갱신")
+            case .openIntegrationGuide: String(ui: "가져오는 방법")
             }
         }
     }

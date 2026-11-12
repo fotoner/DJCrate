@@ -223,6 +223,8 @@ final class LibraryStore {
     @ObservationIgnored var unloadsDeckAfterWrite = false
     /// 스냅샷을 새로 읽었을 때(USB 갱신 상태의 로컬 짝짓기 키를 다시 읽는다)
     @ObservationIgnored var onSnapshotLoaded: ((URL) -> Void)?
+    /// 연동 안내 창(#315)을 연다. 메뉴·결과 줄 링크·Apple Music 가져오기 창이 같은 입구를 쓴다(조립 지점이 실제 창을 잇는다. 없으면 열지 않는다)
+    @ObservationIgnored var showIntegrationGuide: ((IntegrationGuide.Topic) -> Void)?
     var allowsLibrarySync: (() -> Bool)?
     private(set) var isSynchronizingLibrary = false
     var canSynchronizeLibrary: Bool { !isLoading && !isSynchronizingLibrary && !libraryBusy && (allowsLibrarySync?() ?? true) }

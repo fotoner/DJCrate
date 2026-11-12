@@ -88,6 +88,9 @@ public enum SettingKeys {
     /// 상태 줄이 읽지 않은 수로 센다. 0은 아직 읽은 적 없음이다
     public static let activitySeenThrough = SettingKey<Double>("activity.seenThrough", 0, in: nil)
 
+    /// rekordbox 연동 안내(#315)를 처음 XML을 만들 때 저절로 연 적이 있는지. 옛 UserDefaults 키 그대로다(UI-11). 이후에는 도움말 메뉴 「연동 안내」로만 연다
+    public static let rekordboxLinkSetupShown = SettingKey("rekordboxLinkSetupShown", false)
+
     // MARK: AI 에이전트
 
     /// 옛 설치본 알림(#262)을 마지막으로 보인 앱 판(`AgentPayloadVersion.key`). 앱 판마다 한 번만 알린다
@@ -116,6 +119,6 @@ public enum SettingKeys {
                sheetMode, showTagEditor, sidebarPlaylistsExpanded, sidebarSummaryExpanded, sidebarHistoriesExpanded, sidebarShowsStatus,
                sidebarVisible, commentClassColumnHidden, hideStreaming, labSmartPlaylists, pointSnapshotAuto].map(\.name)
             + [dismissedGainSuggestions, dismissedGridSuggestions, dismissedKeySuggestions, deckShortcuts, waveformColorMode.name, commentPreset.name, cueListFilter.name, deckControlTab.name,
-               agentToolsNotifiedVersion.name, agentToolsClaudeFolders]
+               agentToolsNotifiedVersion.name, agentToolsClaudeFolders, rekordboxLinkSetupShown.name]
     }
 }
