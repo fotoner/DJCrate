@@ -124,6 +124,22 @@ struct XMLImportDraftsTests {
         #expect(plan.losses.count == 1 && plan.losses[0].reason == String(ui: "활성 메모리 루프는 아직 편집할 수 없어 넣지 않았습니다"))
     }
 
+    /// 같은 자리에 기존 활성 메모리 루프와 새 루프가 함께 있으면, XML 순서와 관계없이 기존 루프와 같은 것만 짝짓고 새 루프는 새 큐로 넣는다
+    /// (시작 시각만으로 먼저 짝지으면 새 루프가 기존 루프 자리를 가로채, 기존 루프가 새 메모리 루프로 한 번 더 들어간다).
+    @Test(arguments: [false, true])
+    func 같은_자리의_새_루프가_기존_활성_메모리_루프를_가로채지_않는다(newFirst: Bool) throws {
+        let cues = [Cue(id: "k4", contentID: "101", kind: 4, inMsec: 70_000, name: "", colorTableIndex: nil, outMsec: 73_500)]
+        let existing = Mark(kind: .memory, start: 70, end: 73.5, name: "")
+        let added = Mark(kind: .memory, start: 70, end: 75, name: "")
+        let change = cueChange(library: [existing], xml: newFirst ? [added, existing] : [existing, added])
+        let plan = XMLImportDrafts.plan(diff: diff(cues: change), selection: .all, sources: ["101": source(track(), cues: cues)],
+                                        layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
+        let draft = try #require(plan.cueDrafts.first)
+        let loops = draft.cues.filter { $0.loop != nil }
+        #expect(loops.count == 1 && loops[0].time == 70 && loops[0].loop?.end == 75, "기존 루프는 다시 넣지 않고 새 루프만 넣는다")
+        #expect(plan.losses.isEmpty)
+    }
+
     @Test func 담지_못하는_큐는_손실로_센다() throws {
         let xml = (0..<12).map { Mark(kind: .memory, start: Double($0 + 1), name: "") }
             + [Mark(kind: .hot(0), start: 50, name: ""), Mark(kind: .hot(0), start: 60, name: ""), Mark(kind: .hot(2), start: 900, name: "")]

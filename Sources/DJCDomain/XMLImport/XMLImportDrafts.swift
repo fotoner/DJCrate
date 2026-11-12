@@ -203,11 +203,21 @@ public enum XMLImportDrafts {
             }
             cues.append(cue)
         }
-        for mark in XMLLibraryDiff.sorted(pairs.added.map { change.xml[$0] }) {
+        var added = XMLLibraryDiff.sorted(pairs.added.map { change.xml[$0] })
+        // 끝·이름까지 같은 루프는 이미 있는 큐다. 이것부터 일대일로 짝짓는다. 시작 시각만으로 먼저 짝지으면 같은 자리의 새 루프가
+        // 활성 메모리 루프를 가로채, 그 루프가 새 메모리 루프로 한 번 더 들어간다.
+        for i in activeLoops.indices.reversed() {
+            if let j = added.firstIndex(where: { XMLLibraryDiff.sameMark(activeLoops[i], $0) }) {
+                added.remove(at: j)
+                activeLoops.remove(at: i)
+            }
+        }
+        for mark in added {
             if mark.kind == .memory, mark.end != nil,
                let i = activeLoops.firstIndex(where: { abs($0.start - mark.start) < XMLLibraryDiff.timeTolerance }) {
-                // 같은 루프면 이미 있는 큐다. 끝·이름이 다르면 그 활성 메모리 루프는 편집할 수 없어 바뀐 값을 넣지 못한다.
-                if !XMLLibraryDiff.sameMark(activeLoops.remove(at: i), mark) { loss(String(ui: "활성 메모리 루프는 아직 편집할 수 없어 넣지 않았습니다")) }
+                // 같은 자리인데 끝·이름이 다르다. 그 활성 메모리 루프는 편집할 수 없어 바뀐 값을 넣지 못한다.
+                activeLoops.remove(at: i)
+                loss(String(ui: "활성 메모리 루프는 아직 편집할 수 없어 넣지 않았습니다"))
                 continue
             }
             if outside(mark) {
