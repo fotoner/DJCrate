@@ -70,7 +70,7 @@ description: DJCrate의 명령줄 도구 djc로 rekordbox 라이브러리(스냅
 
 | 명령 | 하는 것 | `data` |
 |---|---|---|
-| `djc search <검색어> [--bpm 최소-최대] [--key 키] [--playlist ID] [--filter 필터] [--comment-preset none\|anisong] --json` | 곡 찾기. 검색어는 제목·아티스트·코멘트·장르 부분 일치, `''`는 전체. 조건은 모두 함께 적용 | `{tracks}` |
+| `djc search <검색어> [--bpm 최소-최대] [--key 키] [--playlist ID] [--filter 필터] [--comment-preset none\|anisong] --json` | 곡 찾기. 검색 칸은 제목·아티스트·앨범·앨범 아티스트·작곡가·코멘트·장르·파일 이름이다. 낱말은 부분 일치이고, 띄어 쓴 낱말은 모두 맞아야 한다. `''`는 전체. 조건은 모두 함께 적용 | `{tracks}` |
 | `djc track <ContentID> --json` | 곡 하나의 태그·큐·그리드·게인·소속 재생 목록·초안 여부 | `{track, cues, grid, gain?, playlists, drafts}` |
 | `djc playlists [--tree] --json` | 재생 목록·폴더 | `{playlists}` |
 | `djc playlist <ID> --json` | 재생 목록 곡을 순서대로(폴더면 하위 목록을 합침) | `{playlist, tracks}` |

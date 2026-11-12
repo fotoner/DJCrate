@@ -42589,22 +42589,6 @@
         }
       }
     },
-    "제목·아티스트·코멘트" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Title, Artist, Comments"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "タイトル・アーティスト・コメント"
-          }
-        }
-      }
-    },
     "제목·아티스트가 같고 길이 차이가 2초 이내인 후보 묶음" : {
       "localizations" : {
         "en" : {

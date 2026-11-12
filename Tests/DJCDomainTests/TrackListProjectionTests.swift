@@ -1,13 +1,15 @@
 import DJCDomain
+import Foundation
 import Testing
 
 /// 곡 목록 투영(사이드바 대상 → 보이는 줄)과 선택 규칙. `LibraryStore`가 메인 스레드에서 그대로 부른다.
 @Suite("곡 목록 투영")
 struct TrackListProjectionTests {
     static func row(_ id: String, title: String = "곡", rating: Int = 0, color: String? = nil, path: String? = nil,
-                    comment: String = "", cues: [Cue] = []) -> TrackRow {
-        TrackRow(track: Track(id: id, uuid: "uuid-\(id)", title: "\(title) \(id)", artist: "가수", album: nil, albumArtist: nil,
-                              genre: nil, composer: nil, releaseYear: nil, trackNumber: nil, key: nil, bpm: 120, lengthSeconds: 30,
+                    comment: String = "", cues: [Cue] = [], artist: String? = "가수", album: String? = nil,
+                    albumArtist: String? = nil, composer: String? = nil) -> TrackRow {
+        TrackRow(track: Track(id: id, uuid: "uuid-\(id)", title: "\(title) \(id)", artist: artist, album: album, albumArtist: albumArtist,
+                              genre: nil, composer: composer, releaseYear: nil, trackNumber: nil, key: nil, bpm: 120, lengthSeconds: 30,
                               folderPath: path ?? "/x/\(id).mp3", comment: comment, importedOn: nil, analysisDataPath: nil,
                               imagePath: nil, isDeleted: false, rating: rating, colorID: color),
                  cues: cues, playCount: 0)
@@ -68,12 +70,41 @@ struct TrackListProjectionTests {
         #expect(TrackListProjection.filtered(rows, search: "", minimumRating: 0, color: nil) == rows)
     }
 
+    /// 규칙은 `TrackSearchTests`가 촘촘히 본다. 여기서는 곡 목록 거르기가 그 규칙을 쓰는지만 본다(TEST-8).
+    @Test func 곡_목록_검색은_검색_규칙을_쓴다() {
+        let nfd = "밤의 드라이브.mp3".decomposedStringWithCanonicalMapping
+        let rows = [Self.row("1", title: "Alpha", artist: "Kim", album: "Blue Hour"), Self.row("2", title: "Alpha", artist: "Lee"),
+                    Self.row("3", path: "/음악/\(nfd)"), Self.row("4", composer: "Satie")]
+        func ids(_ search: String) -> [String] {
+            TrackListProjection.filtered(rows, search: search, minimumRating: 0, color: nil).map(\.track.id)
+        }
+        #expect(ids("blue hour") == ["1"] && ids("satie") == ["4"])
+        #expect(ids("밤의 드라이브") == ["3"])
+        #expect(ids("alpha kim") == ["1"] && ids("alpha lee kim").isEmpty)
+        // 낱말 검색에 평점·곡 색 조건이 함께 걸린다
+        #expect(TrackListProjection.filtered([Self.row("5", title: "Alpha", rating: 5, album: "Blue Hour")], search: "alpha blue",
+                                             minimumRating: 4, color: nil).map(\.track.id) == ["5"])
+    }
+
     @Test func 중복_후보_검색은_비교_상대도_남긴다() {
         let rows = [Self.row("1", title: "Alpha"), Self.row("2", title: "Beta"), Self.row("3", title: "Gamma")]
         let groups = [["1", "2"], ["3"]]
         let byID = Self.index(rows)
         #expect(TrackListProjection.duplicateGroups(groups, members: { $0 }, search: "beta", rowsByID: byID) == [["1", "2"]])
         #expect(TrackListProjection.duplicateGroups(groups, members: { $0 }, search: " ", rowsByID: byID) == groups)
+    }
+
+    @Test func 중복_후보_검색도_같은_검색_규칙을_쓴다() {
+        let nfd = "밤의 드라이브.mp3".decomposedStringWithCanonicalMapping
+        let rows = [Self.row("1", title: "Alpha", artist: "Kim", album: "Blue Hour"), Self.row("2", title: "Alpha", artist: "Lee"),
+                    Self.row("3", path: "/음악/\(nfd)")]
+        let groups = [["1", "2"], ["3"]]
+        let byID = Self.index(rows)
+        func found(_ search: String) -> [[String]] {
+            TrackListProjection.duplicateGroups(groups, members: { $0 }, search: search, rowsByID: byID)
+        }
+        // 앨범 칸, 낱말 AND(한 곡이 낱말을 모두 가져야 한다: 묶음 안 다른 곡과 나눠 가질 수 없다), NFD 파일 이름
+        #expect(found("blue hour") == [["1", "2"]] && found("kim lee").isEmpty && found("밤의 드라이브") == [["3"]])
     }
 
     @Test func 덱에_올릴_곡은_표_순서로_첫_곡이다() {
