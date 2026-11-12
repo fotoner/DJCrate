@@ -195,13 +195,16 @@ struct RatingColorEditingTests {
         #expect(Set(store.displayRows.map(\.track.id)) == ["101", "102", "103", "104"] && !store.isAttributeFiltered)
         store.minimumRating = 4
         #expect(Set(store.displayRows.map(\.track.id)) == ["102", "103"] && store.isAttributeFiltered)
-        store.colorFilter = "7"
+        store.colorFilters = ["7"]
         #expect(store.displayRows.map(\.track.id) == ["102"])
         store.minimumRating = 0
-        store.colorFilter = "2"
+        store.colorFilters = ["2"]
         #expect(store.displayRows.map(\.track.id) == ["101"])
+        // 곡 색은 여러 개를 고를 수 있다: 고른 색 가운데 하나이면 맞는다
+        store.colorFilters = ["2", "7"]
+        #expect(Set(store.displayRows.map(\.track.id)) == ["101", "102"])
         // 초안 값이 아니라 rekordbox 값으로 거른다(정렬과 같다)
-        store.colorFilter = nil
+        store.colorFilters = []
         store.minimumRating = 2
         let first = try #require(store.rowsByID["101"])
         store.tags.setTag(.rating, "1", rows: [first])

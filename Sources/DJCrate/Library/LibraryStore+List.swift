@@ -128,19 +128,14 @@ extension LibraryStore {
             showRows(sortedBase.filter { visible.contains($0.id) }, duplicateGroups: groups)
             return
         }
-        showRows(TrackListProjection.filtered(sortedBase, search: search, minimumRating: minimumRating, color: colorFilter))
-    }
-
-    /// 평점·곡 색 거르기(#65). USB 곡도 같은 칸(평점·색)으로 거른다.
-    nonisolated static func matchesAttributes(_ row: TrackRow, minimumRating: Int, color: String?) -> Bool {
-        TrackListProjection.matchesAttributes(row, minimumRating: minimumRating, color: color)
+        showRows(TrackListProjection.filtered(sortedBase, search: search, filter: filter))
     }
 
     /// 검색이 거를 곡 줄이 있는 화면인지(#338). 머리 줄 검색칸과 편집 › 찾기(⌘F)가 같은 판정을 쓴다.
     /// USB 쓰기 대기는 곡 줄이 아니라 그 볼륨의 쓰기 대기 표라 검색이 걸리지 않는다
     var listIsSearchable: Bool { if case .usb(.pending) = sidebar { false } else { true } }
 
-    /// 평점·곡 색 필터가 거를 곡 줄이 있는 화면인지(#339). 머리 줄 필터 단추·칩과 같은 판정을 쓴다.
+    /// 필터가 거를 곡 줄이 있는 화면인지(#339). 머리 줄 필터 단추·칩과 같은 판정을 쓴다.
     /// 중복 후보는 묶음째 보여 주고(`refreshFiltered`), USB 쓰기 대기는 곡 줄이 아니라 볼륨의 쓰기 대기 표라 필터가 걸리지 않는다
     var listIsFilterable: Bool {
         switch sidebar {
@@ -151,23 +146,28 @@ extension LibraryStore {
 
     /// 켜진 조건의 칩(머리 줄)
     var attributeFilterChips: AttributeFilterChips {
-        AttributeFilterChips(minimumRating: minimumRating, colorFilter: colorFilter, colors: trackColors)
+        AttributeFilterChips(filter: filter, colors: trackColors)
     }
 
     /// 칩 하나를 끈다: 그 조건만 꺼지고 다른 조건과 검색은 그대로다.
     /// 칩을 누른 사이 다른 곳에서 값이 바뀌었으면(지금 켜진 조건이 칩의 조건과 다르면) 건드리지 않는다
     func clearAttributeFilter(_ condition: AttributeFilterChip.Condition) {
         switch condition {
-        case let .rating(count): if min(minimumRating, 5) == count { minimumRating = 0 }
-        case let .color(id): if colorFilter == id { colorFilter = nil }
+        case let .bpm(range): if filter.bpm == range { filter.bpm = nil }
+        case let .key(key): if filter.key == key { filter.key = nil }
+        case let .genre(genre): if filter.genre == genre { filter.genre = nil }
+        case let .rating(count): if min(filter.minimumRating, 5) == count { filter.minimumRating = 0 }
+        case let .color(id): filter.colorIDs.remove(id)
         }
     }
 
-    /// 켜진 조건을 모두 끈다(검색은 그대로). 필터 메뉴의 「끄기」·결과 없음 안내의 [필터 끄기]·줄인 칩이 함께 쓴다
+    /// 켜진 조건을 모두 끈다(검색은 그대로). 필터 창의 「모든 필터 끄기」·결과 없음 안내의 [필터 끄기]가 함께 쓴다
     func clearAttributeFilters() {
-        minimumRating = 0
-        colorFilter = nil
+        filter = TrackFilter()
     }
+
+    /// 필터 창의 장르 고르기에 보일 이름: 지금 목록(검색·필터 전)의 곡이 가진 장르
+    var genreChoices: [String] { TrackFilter.genreChoices(in: sortedBase) }
 
     /// 태그 시트로 보이는 화면인지(#339). 태그 시트는 편집 화면이라 중복 후보·USB(읽기 전용) 목록에서는 곡 목록으로 보인다.
     /// 목록 본문(`LibraryDetail`)과 머리 줄의 ⓘ(초안 범례)가 같은 판정을 쓴다

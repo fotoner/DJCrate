@@ -1,6 +1,6 @@
 import Foundation
 
-/// 곡 목록 투영: 사이드바 대상이 보여 줄 줄 → 스트리밍 숨기기 → (정렬은 화면 모델) → 검색·평점·곡 색 거르기.
+/// 곡 목록 투영: 사이드바 대상이 보여 줄 줄 → 스트리밍 숨기기 → (정렬은 화면 모델) → 검색·필터 거르기.
 /// 입출력 없이 읽어 둔 곡 행만으로 계산한다. 화면 모델은 필터·검색·정렬이 바뀔 때만 부른다.
 public enum TrackListProjection {
     /// 사이드바 대상이 보여 줄 줄(숨기기·정렬 전)
@@ -63,20 +63,12 @@ public enum TrackListProjection {
                        hiddenCount: hidden.count)
     }
 
-    /// 검색·평점·곡 색 거르기. 정렬한 순서를 그대로 둔다. 거를 것이 없으면 받은 배열을 그대로 돌려준다.
-    /// 검색 규칙(칸·낱말 AND·NFC)은 `TrackSearch`가 하나로 정한다.
-    public static func filtered(_ sorted: [TrackRow], search: String, minimumRating: Int, color: String?) -> [TrackRow] {
+    /// 검색·필터 거르기. 정렬한 순서를 그대로 둔다. 거를 것이 없으면 받은 배열을 그대로 돌려준다.
+    /// 검색 규칙(칸·낱말 AND·NFC)은 `TrackSearch`가, 필터 조건(평점·곡 색·BPM·키·장르)은 `TrackFilter`가 하나로 정한다.
+    public static func filtered(_ sorted: [TrackRow], search: String, filter: TrackFilter) -> [TrackRow] {
         let query = TrackSearch.Query(search)
-        let attributes = minimumRating > 0 || color != nil
-        guard !query.isEmpty || attributes else { return sorted }
-        return sorted.filter { row in
-            query.matches(key: row.searchKey) && (!attributes || matchesAttributes(row, minimumRating: minimumRating, color: color))
-        }
-    }
-
-    /// 평점·곡 색 거르기(#65). rekordbox 값(초안 전)으로 거른다. USB 곡도 같은 칸으로 거른다.
-    public static func matchesAttributes(_ row: TrackRow, minimumRating: Int, color: String?) -> Bool {
-        row.track.rating >= minimumRating && (color.map { row.track.colorID == $0 } ?? true)
+        guard !query.isEmpty || !filter.isEmpty else { return sorted }
+        return sorted.filter { row in query.matches(key: row.searchKey) && filter.matches(row) }
     }
 
     /// 중복 후보 검색: 검색한 곡이 든 묶음을 통째로 남긴다(비교 상대가 잘리지 않게).

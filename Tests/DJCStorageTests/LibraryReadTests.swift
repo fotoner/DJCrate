@@ -68,6 +68,21 @@ struct LibraryReadTests {
         #expect(try ids("alpha blue", bpm: 120...130) == ["101"] && ids("alpha blue", bpm: 129...130).isEmpty)
     }
 
+    /// 판정표는 `TrackFilterTests`가 본다. 여기서는 CLI 검색이 DB의 키·BPM 칸으로 그 판정을 쓰는지만 본다(TEST-8).
+    @Test func 키는_Camelot으로_바꿔_비교해_음이름으로_저장된_곡도_찾는다() throws {
+        let fixture = try fixture()
+        try fixture.insert("djmdKey", ["ID": .text("k2"), "ScaleName": .text("Am")])
+        try fixture.execute("UPDATE djmdContent SET KeyID = 'k2' WHERE ID = '102'")
+        let read = try reader(fixture)
+        func ids(key: String?, bpm: ClosedRange<Double>? = nil) throws -> [String] { try read.search(query: "", bpm: bpm, key: key).tracks.map(\.id) }
+        // 101은 8A로, 102는 Am으로 저장돼 있다: 어느 표기로 물어도 둘 다 같은 키다
+        #expect(try ids(key: "8A") == ["101", "102"] && ids(key: "8a") == ["101", "102"] && ids(key: "Am") == ["101", "102"])
+        #expect(try ids(key: "9A").isEmpty && ids(key: "Atonal").isEmpty)
+        #expect(try ids(key: nil) == ["101", "102"])
+        // BPM이 없는 곡(102)은 BPM 범위에 맞지 않는다
+        #expect(try ids(key: "8A", bpm: 120...130) == ["101"])
+    }
+
     @Test func 빈_코멘트_필터는_프리셋_없이_쓰고_규칙_밖_필터는_프리셋을_요구한다() throws {
         let read = try reader(try fixture())
         #expect(try read.search(query: "", filter: .emptyComment).tracks.map(\.id) == ["102"])

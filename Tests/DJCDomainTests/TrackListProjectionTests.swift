@@ -7,9 +7,9 @@ import Testing
 struct TrackListProjectionTests {
     static func row(_ id: String, title: String = "곡", rating: Int = 0, color: String? = nil, path: String? = nil,
                     comment: String = "", cues: [Cue] = [], artist: String? = "가수", album: String? = nil,
-                    albumArtist: String? = nil, composer: String? = nil) -> TrackRow {
+                    albumArtist: String? = nil, composer: String? = nil, genre: String? = nil, key: String? = nil, bpm: Double? = 120) -> TrackRow {
         TrackRow(track: Track(id: id, uuid: "uuid-\(id)", title: "\(title) \(id)", artist: artist, album: album, albumArtist: albumArtist,
-                              genre: nil, composer: composer, releaseYear: nil, trackNumber: nil, key: nil, bpm: 120, lengthSeconds: 30,
+                              genre: genre, composer: composer, releaseYear: nil, trackNumber: nil, key: key, bpm: bpm, lengthSeconds: 30,
                               folderPath: path ?? "/x/\(id).mp3", comment: comment, importedOn: nil, analysisDataPath: nil,
                               imagePath: nil, isDeleted: false, rating: rating, colorID: color),
                  cues: cues, playCount: 0)
@@ -63,11 +63,23 @@ struct TrackListProjectionTests {
     @Test func 검색과_평점과_곡_색으로_거른다() {
         let rows = [Self.row("1", title: "Alpha", rating: 2, color: "1"), Self.row("2", title: "Beta", rating: 4, color: "7"),
                     Self.row("3", title: "alphabet", rating: 5)]
-        #expect(TrackListProjection.filtered(rows, search: "  ALPHA ", minimumRating: 0, color: nil).map(\.track.id) == ["1", "3"])
-        #expect(TrackListProjection.filtered(rows, search: "", minimumRating: 4, color: nil).map(\.track.id) == ["2", "3"])
-        #expect(TrackListProjection.filtered(rows, search: "alpha", minimumRating: 3, color: nil).map(\.track.id) == ["3"])
-        #expect(TrackListProjection.filtered(rows, search: "", minimumRating: 0, color: "7").map(\.track.id) == ["2"])
-        #expect(TrackListProjection.filtered(rows, search: "", minimumRating: 0, color: nil) == rows)
+        #expect(TrackListProjection.filtered(rows, search: "  ALPHA ", filter: TrackFilter()).map(\.track.id) == ["1", "3"])
+        #expect(TrackListProjection.filtered(rows, search: "", filter: TrackFilter(minimumRating: 4)).map(\.track.id) == ["2", "3"])
+        #expect(TrackListProjection.filtered(rows, search: "alpha", filter: TrackFilter(minimumRating: 3)).map(\.track.id) == ["3"])
+        #expect(TrackListProjection.filtered(rows, search: "", filter: TrackFilter(colorIDs: ["7"])).map(\.track.id) == ["2"])
+        #expect(TrackListProjection.filtered(rows, search: "", filter: TrackFilter()) == rows)
+    }
+
+    /// 판정표는 `TrackFilterTests`가 촘촘히 본다. 여기서는 곡 목록이 그 판정을 검색과 함께 쓰는지만 본다(TEST-8).
+    @Test func 곡_목록_거르기는_필터_판정과_검색을_함께_쓴다() {
+        let rows = [Self.row("1", title: "Alpha", genre: "House", key: "Am", bpm: 126), Self.row("2", title: "Alpha", genre: "Techno", key: "8A", bpm: 126),
+                    Self.row("3", title: "Beta", genre: "house", key: "9A", bpm: 126), Self.row("4", title: "Alpha", genre: "House", key: "3B", bpm: 126),
+                    Self.row("5", title: "Alpha", genre: "House", key: "8A", bpm: nil)]
+        func ids(_ search: String, _ filter: TrackFilter) -> [String] { TrackListProjection.filtered(rows, search: search, filter: filter).map(\.track.id) }
+        let filter = TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("8A", mode: .compatible), genre: "house")
+        #expect(ids("", filter) == ["1", "3"])
+        #expect(ids("alpha", filter) == ["1"])
+        #expect(ids("alpha", TrackFilter(key: KeyCondition("8A"))) == ["1", "2", "5"])
     }
 
     /// 규칙은 `TrackSearchTests`가 촘촘히 본다. 여기서는 곡 목록 거르기가 그 규칙을 쓰는지만 본다(TEST-8).
@@ -76,14 +88,14 @@ struct TrackListProjectionTests {
         let rows = [Self.row("1", title: "Alpha", artist: "Kim", album: "Blue Hour"), Self.row("2", title: "Alpha", artist: "Lee"),
                     Self.row("3", path: "/음악/\(nfd)"), Self.row("4", composer: "Satie")]
         func ids(_ search: String) -> [String] {
-            TrackListProjection.filtered(rows, search: search, minimumRating: 0, color: nil).map(\.track.id)
+            TrackListProjection.filtered(rows, search: search, filter: TrackFilter()).map(\.track.id)
         }
         #expect(ids("blue hour") == ["1"] && ids("satie") == ["4"])
         #expect(ids("밤의 드라이브") == ["3"])
         #expect(ids("alpha kim") == ["1"] && ids("alpha lee kim").isEmpty)
         // 낱말 검색에 평점·곡 색 조건이 함께 걸린다
         #expect(TrackListProjection.filtered([Self.row("5", title: "Alpha", rating: 5, album: "Blue Hour")], search: "alpha blue",
-                                             minimumRating: 4, color: nil).map(\.track.id) == ["5"])
+                                             filter: TrackFilter(minimumRating: 4)).map(\.track.id) == ["5"])
     }
 
     @Test func 중복_후보_검색은_비교_상대도_남긴다() {
