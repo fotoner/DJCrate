@@ -5975,118 +5975,6 @@
         }
       }
     },
-    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남기는 기록입니다. 곡이 계속 붙으므로 LINK를 끄면 rekordbox 저장 대기에 올립니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Being recorded by a CDJ while DJCrate shares its library over LINK. Tracks keep being added, so it goes to Pending rekordbox Saves when you turn LINK off"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "LINKでライブラリを共有している間にCDJが残している履歴です。曲が追加され続けるため、LINKをオフにするとrekordbox保存待ちに入れます"
-          }
-        }
-      }
-    },
-    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 저장 대기에 있습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Left by a CDJ while DJCrate shared its library over LINK. It's in Pending rekordbox Saves"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。rekordbox保存待ちにあります"
-          }
-        }
-      }
-    },
-    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 저장 대기에서 뺐습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Left by a CDJ while DJCrate shared its library over LINK. Removed from Pending rekordbox Saves"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。rekordbox保存待ちから外しました"
-          }
-        }
-      }
-    },
-    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에 저장했습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Left by a CDJ while DJCrate shared its library over LINK. Saved to rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。rekordboxに保存しました"
-          }
-        }
-      }
-    },
-    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에는 없습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Left by a CDJ while DJCrate shared its library over LINK. It's not in rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。rekordboxにはありません"
-          }
-        }
-      }
-    },
-    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 같은 곡이 두 번 이상 들어 rekordbox 재생 횟수 규칙을 확인하지 않아 rekordbox에는 저장하지 않습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Left by a CDJ while DJCrate shared its library over LINK. It has the same track more than once, and the rekordbox play count rule for that isn't confirmed, so it isn't saved to rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。同じ曲が2回以上あり、rekordboxの再生回数の規則を確認していないため、rekordboxには保存しません"
-          }
-        }
-      }
-    },
-    "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 컬렉션 곡을 확인하지 못해 rekordbox에는 저장하지 않습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Left by a CDJ while DJCrate shared its library over LINK. Its collection tracks couldn't be confirmed, so it isn't saved to rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "LINKでライブラリを共有している間にCDJが残した履歴です。コレクションの曲を確認できないため、rekordboxには保存しません"
-          }
-        }
-      }
-    },
     "LINK를 누른 뒤 곡을 놓으세요" : {
       "localizations" : {
         "en" : {
@@ -6793,102 +6681,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TrackIDが重複した曲"
-          }
-        }
-      }
-    },
-    "USB ‘%@’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 저장 대기에 있습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imported from the USB ‘%@’ and kept in DJCrate. It's in Pending rekordbox Saves"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USB「%@」から取り込んでDJCrateに保存した履歴です。rekordbox保存待ちにあります"
-          }
-        }
-      }
-    },
-    "USB ‘%@’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 저장 대기에서 뺐습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imported from the USB ‘%@’ and kept in DJCrate. Removed from Pending rekordbox Saves"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USB「%@」から取り込んでDJCrateに保存した履歴です。rekordbox保存待ちから外しました"
-          }
-        }
-      }
-    },
-    "USB ‘%@’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에 저장했습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imported from the USB ‘%@’ and kept in DJCrate. Saved to rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USB「%@」から取り込んでDJCrateに保存した履歴です。rekordboxに保存しました"
-          }
-        }
-      }
-    },
-    "USB ‘%@’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에는 없습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imported from the USB ‘%@’ and kept in DJCrate. It isn't in rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USB「%@」から取り込んでDJCrateに保存した履歴です。rekordboxにはありません"
-          }
-        }
-      }
-    },
-    "USB ‘%@’에서 가져와 DJCrate에 보존한 기록입니다. 같은 곡이 두 번 이상 들어 DJCrate는 rekordbox에 저장하지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imported from the USB ‘%@’ and kept in DJCrate. It has the same track more than once, so DJCrate does not save it to rekordbox. Connect the USB to rekordbox and import it there"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USB「%@」から取り込んでDJCrateに保存した履歴です。同じ曲が2回以上入っているためDJCrateはrekordboxに保存しません。rekordboxにUSBを接続して直接取り込んでください"
-          }
-        }
-      }
-    },
-    "USB ‘%@’에서 가져와 DJCrate에 보존한 기록입니다. 컬렉션에 있는 곡이 없어 rekordbox에는 저장하지 않습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imported from the USB ‘%@’ and kept in DJCrate. None of its tracks are in the Collection, so it isn't saved to rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "USB「%@」から取り込んでDJCrateに保存した履歴です。コレクションにある曲がないため、rekordboxには保存しません"
           }
         }
       }
@@ -14097,6 +13889,22 @@
         }
       }
     },
+    "rekordbox에 없음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not in rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxにありません"
+          }
+        }
+      }
+    },
     "rekordbox에 연동 파일을 한 번만 지정해 주세요" : {
       "localizations" : {
         "en" : {
@@ -20769,6 +20577,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "記録中"
+          }
+        }
+      }
+    },
+    "기록 중 · LINK를 끄면 저장 대기에 오릅니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recording · Goes to Pending Save when you turn LINK off"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録中 · LINKをオフにすると保存待ちに入ります"
           }
         }
       }
@@ -41669,6 +41493,38 @@
         }
       }
     },
+    "저장 안 함" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not saved"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存しない"
+          }
+        }
+      }
+    },
+    "저장 안 함 · rekordbox에서 USB를 연결해 직접 가져오세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not saved · Connect the USB to rekordbox and import it there"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存しない · rekordboxにUSBを接続して直接取り込んでください"
+          }
+        }
+      }
+    },
     "저장 장치의 빈 공간을 확보한 뒤 다시 저장하세요." : {
       "localizations" : {
         "en" : {
@@ -42143,6 +41999,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存先のフォルダがありません。既存のフォルダを選んでください。"
+          }
+        }
+      }
+    },
+    "저장함" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済み"
           }
         }
       }
