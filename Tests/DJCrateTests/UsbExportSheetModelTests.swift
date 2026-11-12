@@ -299,6 +299,70 @@ struct UsbExportSheetModelTests {
         #expect(prompter.shown.count == 1 && service.current.calls == ["preview"])
     }
 
+    @Test("계산 중 시트를 닫으면 그 계산이 끝나도 회복 창을 띄우지 않는다")
+    @MainActor
+    func sheetClosedDuringPreviewShowsNoPrompt() async throws {
+        let (model, _, service, _, prompter) = await sheet()
+        let gate = TestGate(), counter = PreviewCounter()
+        service.update {
+            $0.journal = .state(.committing)
+            $0.onJournal = { _ in if counter.next() == 1 { gate.pass() } }
+        }
+        model.selection.setPlaylist("2", selected: true)
+        #expect(await waitForState { gate.arrivals == 1 })
+        model.disappeared()
+        gate.open()
+        await model.previewTask?.value
+        #expect(!gate.timedOut && !model.isPreviewing)
+        #expect(prompter.shown.isEmpty)
+    }
+
+    @Test("계산 중 볼륨 정보가 바뀌어도 막힌 계산(회복 창에서 [나중에])은 다시 계산하지 않고 멈춘다")
+    @MainActor
+    func sheetBlockedPreviewStopsEvenIfVolumeChanged() async throws {
+        let usbHost = FakeUsbHost([image])
+        let (model, usb, service, _, prompter) = await sheet(usbHost: usbHost)
+        let gate = TestGate(), counter = PreviewCounter()
+        prompter.answer = false
+        service.update {
+            $0.journal = .state(.committing)
+            $0.onJournal = { _ in if counter.next() == 1 { gate.pass() } }
+        }
+        model.selection.setPlaylist("2", selected: true)
+        #expect(await waitForState { gate.arrivals == 1 })
+        var changed = image
+        changed.available -= 4096
+        usbHost.mounted = [changed]
+        await usb.refresh()
+        gate.open()
+        #expect(await waitForState { !model.isPreviewing })
+        await model.previewTask?.value
+        #expect(!gate.timedOut && model.previewStopped && model.needsRetry)
+        #expect(prompter.shown.count == 1 && service.current.calls.isEmpty)
+    }
+
+    @Test("계산이 끝난 뒤 볼륨 정보가 바뀌면 그 요약으로 쓰지 않고 [다시 시도]를 보인다")
+    @MainActor
+    func staleSummaryAfterVolumeChangeBlocksWrite() async throws {
+        let usbHost = FakeUsbHost([image])
+        let (model, usb, service, _, _) = await sheet(usbHost: usbHost)
+        model.selection.setPlaylist("2", selected: true)
+        await model.previewTask?.value
+        #expect(model.canExport && model.summaryIsCurrent && !model.needsRetry)
+
+        var changed = image
+        changed.available -= 4096
+        usbHost.mounted = [changed]
+        await usb.refresh()
+        #expect(!model.canExport && !model.summaryIsCurrent && model.needsRetry)
+        #expect(model.writeTapped(dismiss: {}) == nil)
+
+        model.retryPreview()
+        await model.previewTask?.value
+        #expect(model.canExport && model.summaryIsCurrent && !model.needsRetry)
+        #expect(service.current.calls == ["preview", "preview"])
+    }
+
     @Test("고른 원본을 모두 빼면 계산 중인 미리 보기를 버리고 진행 표시를 끈다. 시트를 닫아도 결과를 남기지 않는다")
     @MainActor
     func sheetModelCancelsPreview() async throws {

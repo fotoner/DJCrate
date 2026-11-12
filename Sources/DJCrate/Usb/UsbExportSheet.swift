@@ -129,7 +129,7 @@ struct UsbExportSheet: View {
             Text(.ui("미리 보기")).font(.headline)
             if model.isPreviewing {
                 ProgressView().controlSize(.small)
-            } else if let summary = selection.summary {
+            } else if model.summaryIsCurrent, let summary = selection.summary {
                 Text(.ui("곡 \(summary.trackCount)개 · 재생 목록 \(summary.playlistCount)개 · 빼고 쓰는 곡 \(summary.blockedTrackCount)개"))
                 Text(verbatim: summary.spaceText)
                     .foregroundStyle(summary.isShortOfSpace ? UIColors.warning.color : Color.secondary)
@@ -143,8 +143,8 @@ struct UsbExportSheet: View {
             } else if !selection.canPreview(layout: model.layout) {
                 // 고른 원본이 없을 때만 빈 상태다
                 Text(.ui("재생 목록이나 곡을 고르세요")).foregroundStyle(.secondary)
-            } else if model.previewStopped {
-                // 계산이 막혔다(이유는 안내나 확인 창이 말한다). 원인을 푼 뒤 선택을 바꾸지 않고 다시 계산한다
+            } else if model.needsRetry {
+                // 계산이 막혔거나(이유는 안내나 확인 창이 말한다) 계산 뒤 볼륨 정보가 바뀌었다. 선택을 바꾸지 않고 다시 계산한다
                 Button(.ui("다시 시도")) { model.retryPreview() }
             }
         }

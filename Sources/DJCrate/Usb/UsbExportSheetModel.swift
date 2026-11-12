@@ -175,6 +175,8 @@ final class UsbExportSheetModel {
     @ObservationIgnored private(set) var previewTask: Task<Void, Never>?
     /// 계산마다 올린다. 끝난 계산이 지금 것인지 가린다
     @ObservationIgnored private var previewGeneration = 0
+    /// 지금 요약을 계산한 작업(볼륨·읽은 사본 정보 포함). `summaryIsCurrent`가 지금 작업과 견준다
+    @ObservationIgnored private var summaryJob: UsbExportJob?
     @ObservationIgnored private let usb: UsbStore
     @ObservationIgnored private let ports: Ports
 
@@ -215,9 +217,14 @@ final class UsbExportSheetModel {
             && usb.volume(request.volumeKey)?.matchesSyncWriteVolume(retry.volume) == true
     }
 
+    /// 보이는 요약이 지금 볼륨·원본으로 계산한 것인지. 계산 뒤 볼륨 정보(여유 공간 등)가 바뀌면 그 요약으로 쓰지 않는다
+    var summaryIsCurrent: Bool { selection.summary != nil && summaryJob == job() }
+    /// [다시 시도]를 보일 때: 계산이 막혔거나, 계산 뒤 볼륨 정보가 바뀌어 요약이 지금 USB와 맞지 않는다
+    var needsRetry: Bool { previewStopped || (selection.summary != nil && !summaryIsCurrent) }
+
     /// 미리 보기를 계산할 수 있는지(원본이 그대로이고 고른 것이 있다)
     var canPreview: Bool { sourceIsCurrent && selection.canPreview(layout: layout) }
-    var canExport: Bool { !isPreviewing && sourceIsCurrent && selection.canWrite }
+    var canExport: Bool { !isPreviewing && sourceIsCurrent && selection.canWrite && summaryIsCurrent }
     /// ‘USB 동기화…’를 누를 수 있는지(쓰는 중에는 동기화 창을 열지 않는다)
     var canOpenSync: Bool { !isPreviewing && usb.activeWrite == nil }
 
@@ -246,7 +253,7 @@ final class UsbExportSheetModel {
     /// [USB에 쓰기]: 시트를 먼저 닫고 미리 본 요약으로 쓴다(시트의 동의). 쓸 것이 없으면(미리 보기 전) nil
     @discardableResult
     func writeTapped(dismiss: () -> Void) -> Task<Void, Never>? {
-        guard let job = job(), let summary = selection.summary, let coordinator = ports.coordinator() else { return nil }
+        guard summaryIsCurrent, let job = job(), let summary = selection.summary, let coordinator = ports.coordinator() else { return nil }
         dismiss()
         return Task { await coordinator.export(job, reusing: summary, consented: true) }
     }
@@ -305,10 +312,18 @@ final class UsbExportSheetModel {
         let summary = await coordinator.preview(job)
         // 기다리는 동안 고른 것이 바뀌었거나 시트가 닫혔으면 버린다
         guard generation == previewGeneration else { return }
+        // 막혔으면(회복 창 [나중에]·rekordbox 켜짐·오류) 그 자리에서 멈춘다. 다시 계산하면 같은 창이 또 뜬다
+        guard let summary else {
+            selection.summary = nil
+            previewStopped = true
+            isPreviewing = false
+            return
+        }
         // 선택은 그대로인데 볼륨·읽은 사본 정보가 바뀌어 같은 계산이 아니다: 그 요약은 쓰지 않고 새 정보로 다시 계산한다
         guard self.job() == job else { return restartPreview() }
         selection.summary = summary
-        previewStopped = summary == nil
+        summaryJob = job
+        previewStopped = false
         isPreviewing = false
     }
 }

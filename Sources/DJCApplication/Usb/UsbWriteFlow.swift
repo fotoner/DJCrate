@@ -146,7 +146,8 @@ public struct UsbWriteFlow {
         let service = service
         let result = await BlockingWork.run { Result { try service.preview(job.input) } }
         session.end(job.volumeKey)
-        guard await exportInputsAreCurrent(job) else { return nil }
+        // 부른 쪽이 계산을 버렸으면(시트를 닫음·선택을 바꿈) 결과도 오류 창도 내지 않는다
+        guard !Task.isCancelled, await exportInputsAreCurrent(job) else { return nil }
         switch result {
         case let .success(summary):
             return flag.isSet ? nil : summary
@@ -679,7 +680,8 @@ public struct UsbWriteFlow {
         let service = service
         let running = isRekordboxRunning ?? { service.isRekordboxRunning() }
         let isRunning = await BlockingWork.run { running() }
-        guard await sourceIsCurrent() else { return false }
+        // 부른 쪽이 기다리는 동안 버렸으면(시트를 닫음 등) 알림·확인 창을 띄우지 않는다
+        guard !Task.isCancelled, await sourceIsCurrent() else { return false }
         if isRunning {
             notify(Text.rekordboxRunningTitle, Text.rekordboxRunningDetail)
             return false
@@ -687,7 +689,7 @@ public struct UsbWriteFlow {
         guard !isBusy(volume) else { return false }
         let key = volume.usbKey
         let journal = await BlockingWork.run { service.journal(volumeKey: key) }
-        guard await sourceIsCurrent() else { return false }
+        guard !Task.isCancelled, await sourceIsCurrent() else { return false }
         switch UsbWriteDecision.journalCheck(journal) {
         case .proceed: return true
         case .recoveryNeeded:
@@ -723,7 +725,7 @@ public struct UsbWriteFlow {
     public func offerRecovery(_ volume: UsbVolumeInfo) async {
         guard !session.busyVolumes.contains(volume.usbKey), session.activeWrite == nil else { return }
         let service = service, key = volume.usbKey
-        guard await BlockingWork.run({ service.journal(volumeKey: key) }).isPending else { return }
+        guard await BlockingWork.run({ service.journal(volumeKey: key) }).isPending, !Task.isCancelled else { return }
         switch confirmation.choose(Self.pendingPrompt(volume)) {
         case .confirm: await recover(volume)
         case .alternate: await revert(volume)
