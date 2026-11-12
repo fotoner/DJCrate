@@ -6,6 +6,7 @@ struct NoResultsView: View {
     let guide: NoResultsGuide
     let clearSearch: () -> Void
     let clearFilter: () -> Void
+    let showStreaming: () -> Void
 
     var body: some View {
         ContentUnavailableView {
@@ -17,6 +18,7 @@ struct NoResultsView: View {
                 Text(footnote).font(.caption).foregroundStyle(.secondary)
             }
         } actions: {
+            if guide.offersShowStreaming { Button(.ui("스트리밍 곡 보이기"), action: showStreaming) }
             if guide.offersClearSearch { Button(.ui("검색 지우기"), action: clearSearch) }
             if guide.offersClearFilter { Button(.ui("필터 끄기"), action: clearFilter) }
         }

@@ -49,8 +49,9 @@ struct TrackListProjectionTests {
         let base = [Self.row("1"), Self.row("2", path: "spotify:track:2"), Self.row("3")]
         let hidden = TrackListProjection.hidingStreaming(base, hide: true)
         #expect(hidden.rows.map(\.track.id) == ["1", "3"] && hidden.hiddenIDs == ["2"])
+        #expect(hidden.hiddenRows.map(\.track.id) == ["2"], "숨긴 줄도 돌려준다(검색·필터가 맞는지 같은 판정으로 보려고, #348)")
         let shown = TrackListProjection.hidingStreaming(base, hide: false)
-        #expect(shown.rows.count == 3 && shown.hiddenIDs.isEmpty && shown.hiddenCount == 0)
+        #expect(shown.rows.count == 3 && shown.hiddenIDs.isEmpty && shown.hiddenCount == 0 && shown.hiddenRows.isEmpty)
     }
 
     @Test func 숨긴_수는_같은_곡이_두_번_든_재생_목록에서_줄마다_센다() {

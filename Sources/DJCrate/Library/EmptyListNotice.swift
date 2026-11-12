@@ -43,7 +43,8 @@ enum EmptyListNotice: Equatable {
     @MainActor static func resolve(store: LibraryStore) -> EmptyListNotice {
         // 스마트 목록 계산 실패가 먼저, 다음은 검색어, 필터만 켜졌으면 그 뒤에 안내한다(#299: 시스템 검색 화면 대신 앱 문구)
         let guide = NoResultsGuide(search: store.search, isFiltered: store.isAttributeFiltered,
-                                   hasUnwrittenEdits: store.isAttributeFiltered && store.pendingWriteCount > 0)
+                                   hasUnwrittenEdits: store.isAttributeFiltered && store.pendingWriteCount > 0,
+                                   hiddenStreamingMatches: store.streamingHiddenMatching)
         let smart = store.playlists.selectedSmartPlaylistResult
         return resolve(guide: guide, smartSummary: smart?.unsupportedSummary, hasSmartResult: smart != nil,
                        streamingHidden: store.streamingHiddenInView, sidebar: store.sidebar,

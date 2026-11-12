@@ -53,6 +53,8 @@ public enum TrackListProjection {
         public var hiddenIDs: Set<TrackRow.ID>
         /// 숨긴 줄 수(안내 문구). 같은 곡이 두 번 든 재생 목록은 ID가 하나라도 두 줄로 센다
         public var hiddenCount = 0
+        /// 숨긴 줄 그 자체. 검색·필터가 비운 목록에서 숨긴 곡이 맞는지 같은 판정(`filtered`)으로 볼 때 쓴다(#348)
+        public var hiddenRows: [TrackRow] = []
     }
 
     public static func hidingStreaming(_ base: [TrackRow], hide: Bool) -> Visible {
@@ -60,7 +62,7 @@ public enum TrackListProjection {
         let hidden = base.filter { $0.track.isStreaming }
         guard !hidden.isEmpty else { return Visible(rows: base, hiddenIDs: []) }
         return Visible(rows: StreamingVisibility.visible(base, hidingStreaming: true) { $0.track }, hiddenIDs: Set(hidden.map(\.id)),
-                       hiddenCount: hidden.count)
+                       hiddenCount: hidden.count, hiddenRows: hidden)
     }
 
     /// 검색·필터 거르기. 정렬한 순서를 그대로 둔다. 거를 것이 없으면 받은 배열을 그대로 돌려준다.
