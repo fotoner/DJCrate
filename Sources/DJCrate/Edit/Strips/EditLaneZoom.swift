@@ -105,7 +105,7 @@ extension View {
     }
 }
 
-/// 줄 아래: 보이는 자리 막대(끌어 옮기기)와 확대·축소·전체 단추. 줄 전체를 보는 동안에는 확대하는 법을 적는다.
+/// 줄 아래: 보이는 자리 막대(끌어 옮기기)와 확대·축소·전체 단추. 확대하는 법은 머리의 [?]에 있다.
 struct EditZoomBar: View {
     let model: TrackEditModel
     let lane: TrackEditModel.Lane
@@ -132,11 +132,6 @@ struct EditZoomBar: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             } else {
-                Text(.ui("세로 휠·핀치·= 키로 확대합니다"))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .opacity(length > 0 ? 1 : 0)
                 Spacer(minLength: 0)
             }
             HStack(spacing: 2) {

@@ -17785,6 +17785,22 @@
         }
       }
     },
+    "고른 구간을 여기로 끌어 놓으세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag the selection here"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選んだ区間をここへドラッグしてください"
+          }
+        }
+      }
+    },
     "고른 백업 뒤에 뜬 백업(%@)까지 차례로 되돌려야 분석 파일이 DB와 맞는데 그 백업을 되돌릴 수 없어 복원하지 않았습니다: %@" : {
       "localizations" : {
         "en" : {
@@ -25635,6 +25651,50 @@
         }
       }
     },
+    "마디 %@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bars %1$@ · %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小節%1$@ · %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "마디 %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "마디 %@ · %@ + 곡 머리" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bars %1$@ · %2$@ + lead-in"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "小節%1$@ · %2$@ + 曲頭"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "마디 %1$@ · %2$@ + 곡 머리"
+          }
+        }
+      }
+    },
     "마디 %lld · 섹션 %lld · 세그먼트 %lld · 프레이즈 %lld\n" : {
       "localizations" : {
         "en" : {
@@ -30125,6 +30185,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "比較しなかった曲（ストリーミング・削除した曲）を含むリストのため変更しませんでした。rekordboxで直接直してください"
+          }
+        }
+      }
+    },
+    "비어 있습니다. 원곡에서 구간을 고른 뒤 결과에 넣기를 누르세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empty. Select bars in the original, then press Add to Result."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空です。原曲で区間を選び、「結果に追加」を押してください。"
           }
         }
       }
@@ -35733,22 +35809,6 @@
         }
       }
     },
-    "원곡 파형을 끌어 구간을 고른 뒤 ‘결과에 넣기’를 누르거나 여기로 끌어 오면 이어집니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Drag on the original waveform to select bars, then click ‘Add to Result’ or drag them here to line them up."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "原曲の波形をドラッグして区間を選び、「結果に追加」を押すかここへドラッグするとつながります。"
-          }
-        }
-      }
-    },
     "원곡에 그리드가 없어 그리드 없이 넣습니다. 추가한 곡에서 그리드를 추정하세요" : {
       "localizations" : {
         "en" : {
@@ -35901,6 +35961,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "元の音源でフルスケールに張り付いている箇所"
+          }
+        }
+      }
+    },
+    "위 눈금을 누르거나 끌면 재생선을 옮깁니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Click or drag the ruler above to move the playhead"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上の目盛りをクリックまたはドラッグすると再生ヘッドを移動します"
           }
         }
       }
@@ -42817,6 +42893,22 @@
         }
       }
     },
+    "조작법" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controls"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作方法"
+          }
+        }
+      }
+    },
     "종료 취소" : {
       "localizations" : {
         "en" : {
@@ -46265,18 +46357,18 @@
         }
       }
     },
-    "클립을 누르면 고르고, 끌면 순서를 바꾸고, 가장자리를 끌면 마디 단위로 다듬습니다. 위 눈금을 누르거나 끌면 재생선을 옮깁니다" : {
+    "클립을 고른 뒤 아래 클립 칸의 앞으로·뒤로 단추로 순서를 바꾸고 마디 칸으로 다듬습니다" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Click a clip to select it, drag it to reorder, or drag its edge to trim by bars. Click or drag the ruler above to move the playhead."
+            "value" : "Select a clip, then change its order with the Move Earlier and Move Later buttons below and trim it with the bar fields."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "クリップをクリックで選択、ドラッグで並べ替え、端をドラッグで小節単位にトリムします。上の目盛りをクリックまたはドラッグすると再生ヘッドを移動します。"
+            "value" : "クリップを選び、下の「前へ」「後ろへ」ボタンで順序を変え、小節の欄で調整します。"
           }
         }
       }

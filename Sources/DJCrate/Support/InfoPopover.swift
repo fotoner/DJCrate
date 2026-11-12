@@ -2,13 +2,15 @@ import SwiftUI
 
 /// ⓘ 단추: 처음 한 번만 필요한 개념(보관 규칙, 스킬이란?)을 팝오버로 연다. 늘 보이는 설명 줄 대신 쓴다.
 /// `label`은 화면 낭독 이름이자 툴팁이고 팝오버 제목이다. 본문은 줄(문단)마다 `lines`에 준다.
+/// 조작법처럼 개념이 아니라 방법을 접을 때는 `symbol`을 물음표로 바꾼다.
 struct InfoPopoverButton: View {
     let label: String
     let lines: [String]
+    var symbol = "info.circle"
     @State private var isPresented = false
 
     var body: some View {
-        Button { isPresented.toggle() } label: { Image(systemName: "info.circle") }
+        Button { isPresented.toggle() } label: { Image(systemName: symbol) }
             .buttonStyle(.borderless)
             .help(label)
             .accessibilityLabel(label)

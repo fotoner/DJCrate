@@ -110,6 +110,8 @@ public struct EditPointer: Sendable {
     public static let slop: Double = 4
     /// 클립 가장자리를 잡는 폭(포인트, 가장자리 양쪽)
     public static let edgeReach: Double = 5
+    /// 마우스를 올린 클립의 가장자리 핸들 폭(포인트). 눌렀을 때 다듬기가 되는 자리(`edgeReach`, 좁은 클립은 길이의 ¼) 안에만 그린다.
+    public static func handleWidth(clipPoints: Double) -> Double { Swift.min(edgeReach, clipPoints / 4) }
 
     public private(set) var mode: Mode?
     /// 끄는 클립을 놓을 자리(옮기기 전 기준 앞 클립 수)
