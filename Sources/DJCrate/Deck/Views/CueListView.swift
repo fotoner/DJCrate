@@ -5,6 +5,8 @@ import SwiftUI
 struct CueListView: View {
     @Environment(\.textScale) private var textScale
     @Bindable var deck: DeckModel
+    /// 늘 보이는 스크롤 막대가 가져가는 폭(#347). 시험이 값을 넣는다.
+    var gutter: ScrollerGutter = .system
     @State private var storedFilter = ObservedSetting(SettingKeys.cueListFilter)
 
     private var filter: CueListFilter {
@@ -55,7 +57,7 @@ struct CueListView: View {
             .accessibilityLabel(.ui("큐 목록 보기"))
             List(selection: $deck.selectedCueID) {
                 ForEach(visibleCues) { cue in
-                    CueRow(deck: deck, cue: cue, expectedTrackUUID: deck.row?.track.uuid)
+                    CueRow(deck: deck, cue: cue, expectedTrackUUID: deck.row?.track.uuid, scrollerWidth: gutter.width)
                         .tag(cue.id)
                         // 선택색은 List가 그리도록 두고, 선택하지 않은 초안 행만 물들인다.
                         .listRowBackground(changedIDs.contains(cue.id) && deck.selectedCueID != cue.id
@@ -176,11 +178,25 @@ private final class CueListRowHeightProbe: NSView {
     }
 }
 
+/// 큐 행의 폭 계산
+enum CueRowLayout {
+    /// 시각 칸이 자동 큐 표시 자리로 잡아 두는 기준 폭(글자 배율 1). 시각 글자(약 39pt)보다 넓어 남는 자리가 있다.
+    static let timeColumnReserve = 56.0
+
+    /// 시각 칸의 최소 폭. 세로 스크롤 막대가 행 폭을 가져간 만큼 예비 자리를 줄여, 가장 낮은 우선순위인 이름 칸이
+    /// 막대 없을 때와 같은 폭을 남기게 한다(#347). 글자 배율 1 이상에서는 예비 자리(17×배율 이상)가 막대 폭보다 커 다 돌려받는다.
+    static func timeColumnMinWidth(scale: Double, scrollerWidth: Double) -> Double {
+        max(0, TextScale.length(timeColumnReserve, scale: scale) - scrollerWidth)
+    }
+}
+
 struct CueRow: View {
     @Environment(\.textScale) private var textScale
     let deck: DeckModel
     let cue: EditableCue
     var expectedTrackUUID: String? = nil
+    /// 목록의 세로 스크롤 막대가 행 폭에서 가져간 폭(#347)
+    var scrollerWidth: CGFloat = 0
     @State private var showDetails = false
 
     var body: some View {
@@ -232,7 +248,7 @@ struct CueRow: View {
                 .buttonStyle(.plain).help(.ui("이 위치로 이동"))
                 autoBadge
             }
-            .frame(minWidth: TextScale.length(56, scale: textScale), alignment: .leading)
+            .frame(minWidth: CueRowLayout.timeColumnMinWidth(scale: textScale, scrollerWidth: scrollerWidth), alignment: .leading)
             .layoutPriority(1)
             Text(cue.name).font(.scaled(.caption, textScale)).lineLimit(1).layoutPriority(-1)
                 .allowsHitTesting(false)
