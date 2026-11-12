@@ -16,13 +16,36 @@ enum UsbSyncTargetDisplay: CaseIterable, Hashable, Sendable {
 }
 
 extension UsbSyncPreviewMark {
-    /// 동기화 후 미리 보기의 칸 표시
+    /// 동기화 후 미리 보기의 칸 표시. 연결 없는 목록(흐린 줄)은 글 대신 툴팁(`hint`)으로 뜻을 말한다
     var note: String? {
         switch self {
         case .created: String(ui: "새로 만듦")
         case .moved: String(ui: "옮김")
+        case .deleted: String(ui: "지움")
         case .unlinked: nil
         }
+    }
+
+    /// 흐린 줄·지울 줄에 마우스를 올리면 나오는 뜻. 새로 만듦·옮김은 줄 옆 글이 뜻이라 없다
+    var hint: String? {
+        switch self {
+        case .unlinked: String(ui: "동기화에 이어지지 않아 USB에 그대로 남습니다")
+        case .deleted: String(ui: "동기화하면 USB에서 지웁니다")
+        case .created, .moved: nil
+        }
+    }
+}
+
+/// USB 동기화 목록 줄마다 붙는 표시: 흐림, 줄 옆 글(새로 만듦·옮김·지움·하위 N건 변경), 흐린 줄의 뜻(툴팁)
+struct UsbSyncTargetRowStyle {
+    let display: UsbSyncTargetDisplay
+    let dimmed: Set<String>
+    let marks: [String: UsbSyncPreviewMark]
+
+    func isDimmed(_ node: PlaylistOutlineNode) -> Bool { dimmed.contains(node.id) }
+    func note(of node: PlaylistOutlineNode) -> String? { UsbSyncModel.note(of: node, marks: marks) }
+    func hint(of node: PlaylistOutlineNode) -> String? {
+        UsbSyncModel.hint(display: display, isDimmed: isDimmed(node), mark: marks[node.id])
     }
 }
 
@@ -94,26 +117,61 @@ final class UsbSyncModel {
     var tree: [PlaylistOutlineNode] { PlaylistOutlineNode.tree(state.source, blocked: state.sourceBlockReasons) }
     var rekordboxTree: [PlaylistOutlineNode] { PlaylistOutlineNode.tree(state.rekordboxSource) }
     var iTunesTree: [PlaylistOutlineNode] { PlaylistOutlineNode.tree(state.iTunesSource, blocked: state.sourceBlockReasons) }
+    /// 동기화 후 트리: 새로 만들 목록과 옮길 목록, 지울 목록(원래 자리에 `지움` 표시)이 한 트리에 있다
     var previewTree: [PlaylistOutlineNode] {
-        state.afterSyncPlan.map { PlaylistOutlineNode.tree($0.result) } ?? PlaylistOutlineNode.tree(state.selectedLayout)
+        state.afterSyncPlan.map { PlaylistOutlineNode.tree($0.previewLayout) } ?? PlaylistOutlineNode.tree(state.selectedLayout)
     }
-    /// 흐리게 보일 USB 목록: 현재 USB는 선택에 잇지 않은 목록, 동기화 후는 연결 없이 남는 목록
+    /// 흐리게 보일 USB 목록: 현재 USB는 선택에 잇지 않은 목록, 동기화 후는 연결 없이 남는 목록과 지울 목록
     var dimmedTargetIDs: Set<String> {
         switch targetDisplay {
         case .currentUsb: state.unlinkedUsbIDs
-        case .afterSync: Set((state.afterSyncPlan?.marks ?? [:]).filter { $0.value == .unlinked }.keys)
+        case .afterSync: Set((state.afterSyncPlan?.marks ?? [:]).filter { $0.value == .unlinked || $0.value == .deleted }.keys)
         }
     }
-    /// 동기화 후 미리 보기의 칸 표시(새로 만듦·옮김·연결 없음). 현재 USB 보기에서는 비어 있다
+    /// 동기화 후 미리 보기의 칸 표시(새로 만듦·옮김·지움·연결 없음). 현재 USB 보기에서는 비어 있다
     var targetMarks: [String: UsbSyncPreviewMark] {
         targetDisplay == .afterSync ? state.afterSyncPlan?.marks ?? [:] : [:]
     }
-    /// 동기화하면 지울 USB 목록(폴더면 안에 든 것까지)
-    var deletedTargetSummary: String? {
-        guard targetDisplay == .afterSync, state.syncPlaylists, let deleted = state.afterSyncPlan?.deleted, !deleted.isEmpty else { return nil }
-        let names = deleted.map(\.name).joined(separator: ", ")
-        return String(ui: "동기화하면 USB에서 지울 목록 \(deleted.count)개: \(names)")
+
+    // MARK: - 줄 옆 표시와 툴팁
+
+    /// 줄 옆에 붙일 글: 자기 표시(새로 만듦·옮김·지움)와, 폴더 줄이면 안쪽의 바뀌는 목록 수(접힌 폴더 안은 보이지 않아서 펼침과 상관없이 붙는다).
+    /// 지울 폴더는 안쪽이 모두 지움이라 건수를 더하지 않는다. 새로 만든 폴더는 안쪽의 새 목록은 세지 않고, 옮겨 들어온 목록처럼 다른 변경만 센다.
+    /// 연결 없는 목록은 바뀌지 않으므로 세지 않는다.
+    nonisolated static func note(of node: PlaylistOutlineNode, marks: [String: UsbSyncPreviewMark]) -> String? {
+        let own = marks[node.id]
+        func counts(_ mark: UsbSyncPreviewMark) -> Bool { mark != .unlinked && !(own == .created && mark == .created) }
+        func changes(_ node: PlaylistOutlineNode) -> Int {
+            (node.children ?? []).reduce(0) { total, child in
+                total + (marks[child.id].map { counts($0) ? 1 : 0 } ?? 0) + changes(child)
+            }
+        }
+        let inner = node.isFolder && own != .deleted ? changes(node) : 0
+        let rollup = inner > 0 ? String(ui: "하위 \(inner)건 변경") : nil
+        let parts = [own?.note, rollup].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
+
+    /// 현재 USB 보기에서 흐린 줄의 뜻
+    nonisolated static var currentUsbDimmedHint: String { String(ui: "선택한 원본에 이어지지 않은 목록입니다") }
+    /// 흐린 줄에 마우스를 올리면 나오는 뜻. 현재 USB 보기는 흐린 줄 모두 같은 뜻이고, 동기화 후 보기는 표시가 뜻을 정한다
+    nonisolated static func hint(display: UsbSyncTargetDisplay, isDimmed: Bool, mark: UsbSyncPreviewMark?) -> String? {
+        switch display {
+        case .currentUsb: isDimmed ? currentUsbDimmedHint : nil
+        case .afterSync: mark?.hint
+        }
+    }
+    /// USB 동기화 목록의 줄마다 붙는 표시를 한 번에 계산해 둔다(줄마다 동기화 계획을 다시 만들지 않게 본문이 한 번 부른다)
+    var targetRowStyle: UsbSyncTargetRowStyle {
+        UsbSyncTargetRowStyle(display: targetDisplay, dimmed: dimmedTargetIDs, marks: targetMarks)
+    }
+
+    /// 동기화가 꺼져 선택 목록·표시 고르기를 쓸 수 없을 때 마우스를 올리면 나오는 이유(원인과 할 일)
+    nonisolated static var selectionLockedHint: String {
+        String(ui: "동기화가 꺼져 있어 ‘장치와 플레이리스트 동기화’를 켜야 쓸 수 있습니다")
+    }
+    /// 선택 목록이 잠긴 이유. 로딩·쓰기 중처럼 잠깐 막힌 때는 없다
+    var selectionLockedReason: String? { state.canEditSelection ? nil : Self.selectionLockedHint }
     var usbTree: [PlaylistOutlineNode] { PlaylistOutlineNode.tree(state.usbLayout) }
     var usbPlaylistCount: Int { state.usbLayout.outline.filter { !$0.isFolder }.count }
     var targetTree: [PlaylistOutlineNode] { targetDisplay == .currentUsb ? usbTree : previewTree }

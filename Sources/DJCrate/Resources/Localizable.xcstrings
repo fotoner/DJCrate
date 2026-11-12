@@ -23251,6 +23251,22 @@
         }
       }
     },
+    "동기화가 꺼져 있어 ‘장치와 플레이리스트 동기화’를 켜야 쓸 수 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync is off, so turn on “Sync Playlists with Device” to use this"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同期がオフのため、「機器とプレイリストを同期」をオンにすると使えます"
+          }
+        }
+      }
+    },
     "동기화된 곡의 %@은 rekordbox에 저장하는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치거나 이 칸 편집을 버리세요" : {
       "localizations" : {
         "en" : {
@@ -23299,24 +23315,34 @@
         }
       }
     },
-    "동기화하면 USB에서 지울 목록 %lld개: %@" : {
+    "동기화에 이어지지 않아 USB에 그대로 남습니다" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lists to delete from the USB on sync (%1$lld): %2$@"
+            "value" : "Not linked to sync, so it stays on the USB as is"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "同期でUSBから削除するリスト（%1$lld件）: %2$@"
+            "value" : "同期につながっていないため、USBにそのまま残ります"
+          }
+        }
+      }
+    },
+    "동기화하면 USB에서 지웁니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncing deletes it from the USB"
           }
         },
-        "ko" : {
+        "ja" : {
           "stringUnit" : {
-            "state" : "new",
-            "value" : "동기화하면 USB에서 지울 목록 %1$lld개: %2$@"
+            "state" : "translated",
+            "value" : "同期するとUSBから削除します"
           }
         }
       }
@@ -31599,6 +31625,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選択したプレイリストをrekordboxとDJCrateに同じように保存します。先にrekordboxを終了してください。"
+          }
+        }
+      }
+    },
+    "선택한 원본에 이어지지 않은 목록입니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not linked to the selected sources"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択した元のプレイリストにつながっていないプレイリストです"
           }
         }
       }
@@ -43683,6 +43725,22 @@
         }
       }
     },
+    "지움" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deleted"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除"
+          }
+        }
+      }
+    },
     "지워도 되는 파일이 아니라 지우지 않았습니다: %@" : {
       "localizations" : {
         "en" : {
@@ -48931,22 +48989,6 @@
         }
       }
     },
-    "폴더를 선택하면 하위 목록도 포함됩니다. 동기화가 꺼져 있으면 선택을 바꿀 수 없습니다. 선택에서 뺀 목록은 USB에서도 지우고, 동기화로 이은 적 없는 USB 목록은 흐리게 남깁니다. 어느 목록에도 없는 곡은 확인한 뒤 USB에서 뺍니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Selecting a folder includes its subfolders and playlists. The selection cannot be changed while sync is off. Playlists removed from the selection are also deleted from the USB, and USB playlists never linked by sync stay dimmed. Tracks left in no playlist are removed from the USB after confirmation."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "フォルダを選択するとその中のリストも含まれます。同期がオフの間は選択を変更できません。選択から外したリストはUSBからも削除し、同期でつないだことのないUSBのリストは薄く表示して残します。どのリストにもないトラックは確認のうえUSBから削除します。"
-          }
-        }
-      }
-    },
     "폴더를 열지 못했습니다. 다른 폴더를 고르세요" : {
       "localizations" : {
         "en" : {
@@ -49395,6 +49437,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1日1回の自動復元ポイント"
+          }
+        }
+      }
+    },
+    "하위 %lld건 변경" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changes inside: %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内部の変更: %lld件"
           }
         }
       }

@@ -9,6 +9,8 @@ public enum UsbSyncPreviewMark: Hashable, Sendable {
     case moved
     /// 어느 원본에도 잇지 않고 그대로 남는다(rekordbox 장치 트리에서 회색)
     case unlinked
+    /// 동기화하면 USB에서 지운다(선택에서 뺀 원본에 이었던 목록. 지우는 폴더는 안에 든 것까지)
+    case deleted
 }
 
 /// 재생 목록 편집만 계획한 결과(곡 편집 없이 미리 보기에도 쓴다)
@@ -16,11 +18,14 @@ public struct UsbSyncPlaylistPlan: Sendable {
     public var edits: [PlaylistEdit]
     /// 원본 목록 ID → 기존 USB 목록 또는 같은 묶음에서 만든 목록
     public var refs: [String: PlaylistRef]
-    /// 편집을 얹은 USB 목록 트리
+    /// 편집을 얹은 USB 목록 트리(지우는 목록은 없다)
     public var result: PlaylistLayout
     /// 지우는 USB 목록(폴더면 안에 든 것까지 함께 지운다). 편집 전 트리의 항목
     public var deleted: [PlaylistLayout.Item]
     public var marks: [String: UsbSyncPreviewMark]
+    /// 동기화 후 미리 보기에 보일 트리: `result`에 지우는 목록(폴더면 안에 든 것까지)을 원래 자리에 `deleted` 표시로 되돌려 놓는다.
+    /// 쓰기 계획과 `result`는 바꾸지 않는다. 지울 목록이 없으면 `result`와 같다.
+    public var previewLayout: PlaylistLayout
 }
 
 /// 선택한 로컬 트리를 USB 편집으로 만든다. rekordbox처럼(2026-10-08 정상 USB 실험) 지난 선택 파일 행으로 이어졌던 USB 목록은
@@ -259,6 +264,8 @@ public struct UsbSyncPlan: Sendable {
         for item in working.outline where isRemovable(item.id) && !working.ancestors(of: item.id).contains(where: { isRemovable($0.id) }) {
             deleted.append(item)
         }
+        // 미리 보기에 지울 목록을 남기려고 지우기 전 트리를 기억한다(쓰기 편집에는 쓰지 않는다)
+        let beforeDeleting = working
         for item in deleted { try append(.delete(playlist: .id(item.id))) }
         // 이은 목록끼리만 원본 순서로 맞추고, 남은 목록은 그 자리에 둔다.
         let parents = [PlaylistLayout.root] + desired.outline.filter(\.isFolder).map(\.id)
@@ -281,7 +288,37 @@ public struct UsbSyncPlan: Sendable {
             else if item.id.hasPrefix(PlaylistRef.new("").description) { marks[item.id] = .created }
             else if let old = before.item(item.id), old.parentID != item.parentID { marks[item.id] = .moved }
         }
-        return UsbSyncPlaylistPlan(edits: edits, refs: refs, result: working, deleted: deleted, marks: marks)
+        let preview = previewLayout(result: working, beforeDeleting: beforeDeleting, deleted: deleted)
+        for id in preview.removed { marks[id] = .deleted }
+        return UsbSyncPlaylistPlan(edits: edits, refs: refs, result: working, deleted: deleted, marks: marks, previewLayout: preview.layout)
+    }
+
+    /// 결과 트리에 지울 목록(폴더면 안에 든 것까지)을 원래 부모 아래 원래 자리에 되돌려 놓는다. 되돌린 목록 ID도 돌려준다.
+    /// 지울 목록의 부모는 지우지 않는 폴더라 결과 트리에 있다(부모도 지우면 이 목록은 최상위 지울 목록이 아니다).
+    /// 형제 순서는 결과 트리 순서를 지키고, 지울 목록은 지우기 전 순서에서 자기 뒤에 있던 첫 형제 앞에 둔다.
+    static func previewLayout(result: PlaylistLayout, beforeDeleting: PlaylistLayout,
+                              deleted: [PlaylistLayout.Item]) -> (layout: PlaylistLayout, removed: [String]) {
+        guard !deleted.isEmpty else { return (result, []) }
+        let removed = Set(deleted.flatMap { beforeDeleting.subtree(of: $0.id) })
+        let removedItems = beforeDeleting.outline.filter { removed.contains($0.id) }
+        var entries: [(item: PlaylistLayout.Item, seq: Int)] = []
+        func place(parent: String) {
+            let kept = result.childIDs(of: parent)
+            let before = beforeDeleting.childIDs(of: parent)
+            var ordered = kept
+            for id in before where removed.contains(id) {
+                // 지우기 전 순서에서 이 목록 뒤에 있는 첫 남은 형제 앞. 없으면 맨 끝
+                let after = before.drop { $0 != id }.dropFirst().first { !removed.contains($0) && kept.contains($0) }
+                ordered.insert(id, at: after.flatMap { ordered.firstIndex(of: $0) } ?? ordered.count)
+            }
+            for (index, id) in ordered.enumerated() {
+                guard let item = result.item(id) ?? beforeDeleting.item(id) else { continue }
+                entries.append((item: item, seq: index))
+                if item.isFolder { place(parent: id) }
+            }
+        }
+        place(parent: PlaylistLayout.root)
+        return (PlaylistLayout(entries), removedItems.map(\.id))
     }
 
     public static func tracks(desired: PlaylistLayout, library: UsbLibrary, matches: [Int: String], badges: [Int: UsbSyncStatus],
