@@ -19,7 +19,7 @@ struct WriteLockPolicyTests {
         delegate.store = store
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
         #expect(store.quitWait.isWaiting && messages.isEmpty && replies.isEmpty && terminations == 0)
         store.setWriteLock(false)

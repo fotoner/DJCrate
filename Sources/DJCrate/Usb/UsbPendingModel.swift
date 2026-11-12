@@ -93,7 +93,7 @@ struct UsbPendingList: Equatable {
         } else if nothingToWrite {
             String(ui: "바꿀 것이 없거나 모든 편집이 막혔습니다. 목록의 막힌 이유를 확인하세요")
         } else {
-            String(ui: "초안을 미리 본 뒤 USB에 씁니다. 쓰기 전에 Mac에 백업합니다.")
+            String(ui: "편집을 미리 본 뒤 USB에 씁니다. 쓰기 전에 Mac에 백업합니다.")
         }
     }
 }

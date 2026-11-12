@@ -55,7 +55,7 @@ public struct QuitWait: Equatable, Sendable {
         max(0, Int(now.timeIntervalSince(startedAt)))
     }
 
-    public static var title: String { String(ui: "rekordbox에 쓰는 중… 끝나면 종료합니다") }
+    public static var title: String { String(ui: "rekordbox에 저장하는 중… 끝나면 종료합니다") }
 
     public static func elapsedText(seconds: Int) -> String { String(ui: "\(seconds)초 지났습니다") }
 }

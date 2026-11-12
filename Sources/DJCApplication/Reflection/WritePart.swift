@@ -20,24 +20,24 @@ public enum WritePart: Hashable, Sendable {
 
     public var written: String {
         switch self {
-        case .cue: String(ui: "큐 쓰기 완료")
-        case .grid: String(ui: "그리드 쓰기 완료")
-        case .analysis: String(ui: "분석 쓰기 완료")
-        case .gain: String(ui: "게인 쓰기 완료")
-        case .tag: String(ui: "태그 쓰기 완료")
-        case .artwork: String(ui: "앨범아트 쓰기 완료")
-        case .merge: String(ui: "합치기 쓰기 완료")
+        case .cue: String(ui: "큐 저장 완료")
+        case .grid: String(ui: "그리드 저장 완료")
+        case .analysis: String(ui: "분석 저장 완료")
+        case .gain: String(ui: "게인 저장 완료")
+        case .tag: String(ui: "태그 저장 완료")
+        case .artwork: String(ui: "앨범아트 저장 완료")
+        case .merge: String(ui: "합치기 저장 완료")
         }
     }
 
     public func blocked(_ reason: String) -> String {
         switch self {
-        case .cue: String(ui: "큐 쓰지 않음: \(reason)")
-        case .grid: String(ui: "그리드 쓰지 않음: \(reason)")
-        case .analysis: String(ui: "분석 쓰지 않음: \(reason)")
-        case .gain: String(ui: "게인 쓰지 않음: \(reason)")
-        case .tag: String(ui: "태그 쓰지 않음: \(reason)")
-        case .artwork: String(ui: "앨범아트 쓰지 않음: \(reason)")
+        case .cue: String(ui: "큐 저장하지 않음: \(reason)")
+        case .grid: String(ui: "그리드 저장하지 않음: \(reason)")
+        case .analysis: String(ui: "분석 저장하지 않음: \(reason)")
+        case .gain: String(ui: "게인 저장하지 않음: \(reason)")
+        case .tag: String(ui: "태그 저장하지 않음: \(reason)")
+        case .artwork: String(ui: "앨범아트 저장하지 않음: \(reason)")
         case .merge: String(ui: "합치지 않음: \(reason)")
         }
     }

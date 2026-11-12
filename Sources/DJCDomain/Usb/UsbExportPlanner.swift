@@ -436,7 +436,7 @@ private struct PlanState {
         }
         if let modified = candidate.analysisModifiedAt, modified > request.snapshotTakenAt {
             result.append(trackBlock("analysisNewerThanSnapshot", candidate,
-                                     String(ui: "rekordbox 분석이 스냅샷 뒤에 바뀌었습니다. 새 스냅샷을 뜬 뒤 다시 시도하세요")))
+                                     String(ui: "rekordbox 분석이 동기화 뒤에 바뀌었습니다. ‘rekordbox와 동기화’를 한 뒤 다시 시도하세요")))
         }
         return result
     }

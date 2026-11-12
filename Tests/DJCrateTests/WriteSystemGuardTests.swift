@@ -70,7 +70,7 @@ struct WriteSystemGuardTests {
         #expect(counts.disabled == 0 && counts.began == 0)
         store.isAwaitingConfirmation = false
         // 끊지 않는 쓰기에 들어서면 건다
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(await waitForState { counts.disabled == 1 && counts.began == 1 })
         // 쓴 뒤 다시 읽기에는 쓰기가 끝났으니 푼다
         store.writeStage = .reloadingLibrary

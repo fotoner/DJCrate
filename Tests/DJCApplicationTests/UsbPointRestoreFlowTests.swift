@@ -17,7 +17,7 @@ struct UsbPointRestoreFlowTests {
     /// 스냅샷 뒤 DJCrate 쓰기만 있었고(동의 없이 쓴다) 바꿀 것이 있는 USB. 쓰면 백업 `restoreBackup`을 남긴다
     static func ports(plan: UsbPointRestoreResult = UsbPointSnapshotsFlowTests.planned()) -> FakeUsbPorts {
         FakeUsbPorts {
-            $0.fingerprints = [UsbPointSnapshotsFlowTests.fingerprint("쓴 결과")]
+            $0.fingerprints = [UsbPointSnapshotsFlowTests.fingerprint("저장한 결과")]
             $0.volumeEvents = [UsbPointSnapshotsFlowTests.ourWrite]
             $0.pointPlan = plan
             $0.writeResult = .success(UsbWriteReport(outcome: .written, session: "p1", backup: restoreBackup))
@@ -66,7 +66,7 @@ struct UsbPointRestoreFlowTests {
         #expect(ports.calls.filter { $0 == "pointPlan" }.count == plansBefore + 2, "미리 보기와 쓰기 준비가 각각 계획한다")
         #expect(world.prompts.filter { $0.title == Self.restoreTitle }.count == 2)
         #expect(ports.current.writes.map(\.verification) == ["pointRestore", "pointRestore"])
-        #expect(world.toasts.last == .success(title: "USB를 시점 스냅샷으로 되돌렸습니다", detail: entry.displayName, ejectVolumeKey: key))
+        #expect(world.toasts.last == .success(title: "USB를 복원 시점으로 되돌렸습니다", detail: entry.displayName, ejectVolumeKey: key))
         #expect(world.session.busyVolumes.isEmpty)
     }
 
@@ -142,7 +142,7 @@ struct UsbPointRestoreFlowTests {
         let ports = Self.ports(plan: UsbPointRestoreResult())
         let snapshots = ports.pointSnapshots(directory: Self.directory)
         #expect(await world.flow.restorePointSnapshot(world.volume, entry: UsbPointSnapshotsFlowTests.entry(), snapshots: snapshots) == false)
-        #expect(world.toasts == [.notice(title: UsbWriteFlow.Text.nothingToWriteTitle, text: "USB가 이미 시점 스냅샷과 같습니다")])
+        #expect(world.toasts == [.notice(title: UsbWriteFlow.Text.nothingToWriteTitle, text: "USB가 이미 복원 시점과 같습니다")])
         #expect(world.prompts.isEmpty && ports.current.writes.isEmpty, "묻지도 쓰지도 않는다")
         #expect(world.session.busyVolumes.isEmpty && world.session.pointRestoreBackups.isEmpty)
     }

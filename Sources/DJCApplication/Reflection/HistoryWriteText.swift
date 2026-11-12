@@ -26,12 +26,12 @@ public enum HistoryWriteText {
         let text: String
         if outcome.status == .written {
             text = outcome.skipped > 0
-                ? String(ui: "재생 기록 쓰기 완료: \(outcome.entries)곡 · 컬렉션에 없는 \(outcome.skipped)곡은 뺐습니다")
-                : String(ui: "재생 기록 쓰기 완료: \(outcome.entries)곡")
+                ? String(ui: "재생 기록 저장 완료: \(outcome.entries)곡 · 컬렉션에 없는 \(outcome.skipped)곡은 뺐습니다")
+                : String(ui: "재생 기록 저장 완료: \(outcome.entries)곡")
         } else if outcome.status == .unchanged {
             text = String(ui: "rekordbox에 이미 있는 재생 기록입니다")
         } else {
-            text = String(ui: "재생 기록 쓰지 않음: \(outcome.reason ?? String(ui: "이유 없음"))")
+            text = String(ui: "재생 기록 저장하지 않음: \(outcome.reason ?? String(ui: "이유 없음"))")
         }
         return "• \(outcome.name) — " + text
     }

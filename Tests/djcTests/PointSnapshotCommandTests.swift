@@ -31,7 +31,7 @@ struct PointSnapshotCommandTests {
 
         let list = try await run(fixture, "list")
         #expect(list.contains("시점 스냅샷 1개") && list.contains("‘정리 전’") && list.contains("수동"), "\(list)")
-        #expect(list.contains("쓰기 전 백업 0개"))
+        #expect(list.contains("저장 전 백업 0개"))
 
         await #expect(try await run(fixture, "pin", "정리 전").contains("고정했습니다"))
         await #expect(try await run(fixture, "list").contains("고정"))

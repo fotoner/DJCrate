@@ -28,9 +28,9 @@ struct ReflectionSessionRestoreTests {
     }
 
     @Test func 시점_복원_뒤의_옛_백업은_묻지_않고_이유만_알린다() async {
-        h.pointRefusal = "시점 스냅샷으로 복원해서"
+        h.pointRefusal = "복원 시점으로 복원해서"
         let outcome = await h.session.restore(backup(), confirmed: true)
-        #expect(outcome.notice?.title == "복원하지 않았습니다" && outcome.notice?.text == "시점 스냅샷으로 복원해서")
+        #expect(outcome.notice?.title == "복원하지 않았습니다" && outcome.notice?.text == "복원 시점으로 복원해서")
         #expect(h.prompts.isEmpty && h.locks.isEmpty && h.gateCalls.value.restores.isEmpty)
     }
 

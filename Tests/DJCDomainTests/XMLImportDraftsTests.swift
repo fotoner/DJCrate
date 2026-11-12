@@ -225,7 +225,7 @@ struct XMLImportDraftsTests {
                                         sources: ["101": source(track(),
                                                                 existing: [.cue])], layout: PlaylistLayout(), playlistDraft: PlaylistDraft(), newKey: { UUID().uuidString })
         #expect(plan.cueDrafts.isEmpty && plan.tagDrafts.count == 1)
-        #expect(plan.skipped.count == 1 && plan.skipped[0].kind == .cue && plan.skipped[0].reason.contains("초안"))
+        #expect(plan.skipped.count == 1 && plan.skipped[0].kind == .cue && plan.skipped[0].reason.contains("편집"))
     }
 
     @Test func 고른_종류와_곡만_초안으로() {

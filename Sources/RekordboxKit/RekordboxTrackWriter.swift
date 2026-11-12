@@ -610,7 +610,7 @@ public enum RekordboxTrackWriter {
             var read: (trackNo: Int?, status: Int?)?
             try db.query("SELECT TrackNo, rb_data_status FROM \(key.table) WHERE ID = ?", [.text(key.id)]) { read = ($0.int(0), $0.int(1)) }
             guard let read, read.trackNo == expected.trackNo, read.status == expected.status else {
-                throw DJCError.writeVerificationFailed(String(ui: "곡을 뺀 뒤 당긴 재생 목록·이력 항목의 순번이나 상태가 쓴 값과 다릅니다"))
+                throw DJCError.writeVerificationFailed(String(ui: "곡을 뺀 뒤 당긴 재생 목록·이력 항목의 순번이나 상태가 저장한 값과 다릅니다"))
             }
         }
     }

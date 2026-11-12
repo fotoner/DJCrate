@@ -9,7 +9,7 @@ import Foundation
 @testable import RekordboxKit
 import Testing
 
-/// USB에서 보존한 재생 기록(#43)을 "rekordbox 쓰기 대기"에 올려 rekordbox에 쓰기(⇧⌘E) 때 rekordbox Histories에 넣는다.
+/// USB에서 보존한 재생 기록(#43)을 "rekordbox 쓰기 대기"에 올려 rekordbox에 저장(⌘S) 때 rekordbox Histories에 넣는다.
 /// 대기 고르기·빼기와 다시 넣기, 합성 사본에 쓰는 흐름(미리 보기 → 쓰기 → 다시 읽기 → 결과)·쓰기 전으로 복원 뒤 다시 대기를 본다.
 /// 가짜 관문으로 보는 반영 흐름(막힘이 있을 때만 확인 등)은 `DJCApplicationTests/ReflectionSessionHistoryTests`에 있다.
 /// 보존 파일·rekordbox 사본은 임시 폴더다(사용자 폴더를 쓰지 않는다). 실제로 쓰는 시험은 `DJC_HOME`이 있을 때만 돈다.
@@ -240,7 +240,7 @@ struct UsbHistoryWriteTests {
         store.history.setHistoriesExcluded([target.id], excluded: true)
         #expect(store.history.pendingHistories.isEmpty && !store.history.hasHistoryDrafts)
         #expect(store.history.archivedHistory(target.id)?.excludedFromRekordbox == true)
-        #expect(undo.undoActionName == "rekordbox 쓰기 대기에서 빼기")
+        #expect(undo.undoActionName == "rekordbox 저장 대기에서 빼기")
         await store.history.waitForHistoryImports()
         #expect(Self.savedHistory(saved, target.id)?.excludedFromRekordbox == true)
         // 보존본은 그대로 트리에 남는다
@@ -257,7 +257,7 @@ struct UsbHistoryWriteTests {
 
         // 뺀 기록의 "rekordbox 쓰기 대기에 넣기"
         store.history.setHistoriesExcluded([target.id], excluded: false)
-        #expect(undo.undoActionName == "rekordbox 쓰기 대기에 넣기")
+        #expect(undo.undoActionName == "rekordbox 저장 대기에 넣기")
         #expect(store.history.pendingHistoryIDs == [target.id])
         await store.history.waitForHistoryImports()
         #expect(Self.savedHistory(saved, target.id)?.excludedFromRekordbox == false)
@@ -324,7 +324,7 @@ struct UsbHistoryWriteTests {
         #expect(current.excludedFromRekordbox && store.history.pendingHistories.isEmpty)
         #expect(saved.containsExact(current))
         #expect(saved.load().histories.map(\.id) == [target.id])
-        #expect(store.toast?.title == "재생 기록의 쓰기 대기 상태를 저장하지 못했습니다")
+        #expect(store.toast?.title == "재생 기록의 저장 대기 상태를 보관하지 못했습니다")
     }
 
     // MARK: - 결과 문장
@@ -343,29 +343,29 @@ struct UsbHistoryWriteTests {
         var report = RekordboxWriter.Report(outcomes: [], backup: "/tmp/b", dryRun: false, createdAt: "", finalUpdateCount: 1)
         report.historyOutcomes = [Self.historyOutcome("a", .written, entries: 2, skipped: 1)]
         let result = WriteResult.written(report, preview: preview)
-        #expect(result.kind == .warning && result.title == "rekordbox에 썼습니다 · 재생 기록 1건")
+        #expect(result.kind == .warning && result.title == "rekordbox에 저장했습니다 · 재생 기록 1건")
         #expect(result.text.components(separatedBy: "\n") == [
-            "• HISTORY a — 재생 기록 쓰기 완료: 2곡 · 컬렉션에 없는 1곡은 뺐습니다",
-            "• HISTORY b — 재생 기록 쓰지 않음: 이유",
+            "• HISTORY a — 재생 기록 저장 완료: 2곡 · 컬렉션에 없는 1곡은 뺐습니다",
+            "• HISTORY b — 재생 기록 저장하지 않음: 이유",
         ])
-        #expect(result.shortfall == "재생 기록 1건은 쓰지 않았습니다 — 이유")
+        #expect(result.shortfall == "재생 기록 1건은 저장하지 않았습니다 — 이유")
 
         // 재생 기록만 썼으면 성공으로 알리고 기록마다 한 줄을 남긴다
         var only = RekordboxWriter.Report(outcomes: [], backup: "/tmp/b", dryRun: false, createdAt: "", finalUpdateCount: 1)
         only.historyOutcomes = [Self.historyOutcome("a", .written)]
         let written = WriteResult.written(only, preview: only)
-        #expect(written.kind == .success && written.title == "rekordbox에 썼습니다 · 재생 기록 1건")
-        #expect(written.text == "• HISTORY a — 재생 기록 쓰기 완료: 2곡")
+        #expect(written.kind == .success && written.title == "rekordbox에 저장했습니다 · 재생 기록 1건")
+        #expect(written.text == "• HISTORY a — 재생 기록 저장 완료: 2곡")
         // 모두 막히면 쓴 것이 없다고 경고하고 이유를 남긴다
         var blocked = RekordboxWriter.Report(outcomes: [], backup: nil, dryRun: true, createdAt: "", finalUpdateCount: nil)
         blocked.historyOutcomes = [Self.historyOutcome("b", .blocked, reason: "닫힘")]
         let nothing = WriteResult.written(blocked, preview: blocked)
-        #expect(nothing.kind == .warning && nothing.title == "rekordbox에 쓴 것이 없습니다")
-        #expect(nothing.text == "• HISTORY b — 재생 기록 쓰지 않음: 닫힘")
+        #expect(nothing.kind == .warning && nothing.title == "rekordbox에 저장한 것이 없습니다")
+        #expect(nothing.text == "• HISTORY b — 재생 기록 저장하지 않음: 닫힘")
         // 막힌 곡 초안과 함께면 확인 창 뒤 결과의 부족분에 재생 기록 이유를 적는다
         var mixedPreview = RekordboxWriter.Report(outcomes: [], backup: nil, dryRun: true, createdAt: "", finalUpdateCount: nil)
         mixedPreview.historyOutcomes = [Self.historyOutcome("b", .blocked, reason: "재생 기록 쓰기를 아직 열지 않았습니다")]
-        #expect(WriteResult.written(only, preview: mixedPreview).shortfall == "재생 기록 1건은 쓰지 않았습니다 — 재생 기록 쓰기를 아직 열지 않았습니다")
+        #expect(WriteResult.written(only, preview: mixedPreview).shortfall == "재생 기록 1건은 저장하지 않았습니다 — 재생 기록 쓰기를 아직 열지 않았습니다")
     }
 
     // MARK: - 합성 사본에 쓰기
@@ -417,8 +417,8 @@ struct UsbHistoryWriteTests {
         // 막힘·제외·손실이 없으니 묻지 않고 쓴다(#210)
         #expect(prompter.shown.isEmpty)
         let result = try #require(store.activityLog.latest?.result)
-        #expect(result.title == "rekordbox에 썼습니다 · 재생 기록 1건")
-        #expect(result.text.hasPrefix("• \(target.name) — 재생 기록 쓰기 완료: "))
+        #expect(result.title == "rekordbox에 저장했습니다 · 재생 기록 1건")
+        #expect(result.text.hasPrefix("• \(target.name) — 재생 기록 저장 완료: "))
         #expect(result.text.contains("컬렉션에 없는 1곡은 뺐습니다"))
         #expect(store.toast?.undoBackup != nil)
 

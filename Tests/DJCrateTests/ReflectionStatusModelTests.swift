@@ -90,15 +90,15 @@ struct ReflectionStatusModelTests {
     @Test func 쓰기_대기가_없으면_없음을_보이고_곡_초안이_쌓이면_곡_수를_보인다() {
         let h = Harness()
         h.model.refresh()
-        #expect(h.model.chip == .clean && h.model.chip.title == "쓰기 대기 없음")
+        #expect(h.model.chip == .clean && h.model.chip.title == "저장 대기 없음")
 
         h.addRows("a", "b")
         h.store.setDraftMark(.cue, trackUUID: "a", exists: true)
         h.model.refresh()
-        #expect(h.model.chip == .pending(items: 1, playlistEdits: 0) && h.model.chip.title == "쓰기 대기 1건")
+        #expect(h.model.chip == .pending(items: 1, playlistEdits: 0) && h.model.chip.title == "저장 대기 1건")
         h.store.setDraftMark(.gain, trackUUID: "b", exists: true)
         h.model.refresh()
-        #expect(h.model.chip.title == "쓰기 대기 2건")
+        #expect(h.model.chip.title == "저장 대기 2건")
 
         h.store.setDraftMarks(cue: [], grid: [], gain: [])
         h.model.refresh()
@@ -117,7 +117,7 @@ struct ReflectionStatusModelTests {
         h.addRows("a")
         h.store.setDraftMark(.cue, trackUUID: "a", exists: true)
         h.model.refresh()
-        #expect(h.model.chip == .pending(items: 1, playlistEdits: 2) && h.model.chip.title == "쓰기 대기 1건")
+        #expect(h.model.chip == .pending(items: 1, playlistEdits: 2) && h.model.chip.title == "저장 대기 1건")
         #expect(h.model.extraLine == "재생 목록 편집 2건", "곡과 함께 있으면 팝오버가 편집 건수를 덧붙인다")
     }
 
@@ -148,7 +148,7 @@ struct ReflectionStatusModelTests {
         h.model.refresh()
         h.gate.release()
         #expect(await waitForState { h.model.chip == .writing })
-        #expect(h.model.chip.title == "rekordbox에 쓰는 중…")
+        #expect(h.model.chip.title == "rekordbox에 저장하는 중…")
         #expect(h.gate.requested == [.seconds(1)], "기다림은 한 번만 건다")
 
         h.store.isWritingRekordbox = false
@@ -186,7 +186,7 @@ struct ReflectionStatusModelTests {
         await drainMainActor()
         #expect(h.gate.requested.isEmpty && h.model.chip == .pending(items: 1, playlistEdits: 0))
         // 실제 쓰기 단계가 되면 그때부터 1초를 센다
-        h.store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        h.store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         h.model.refresh()
         h.gate.release()
         #expect(await waitForState { h.model.chip == .writing })
@@ -212,16 +212,16 @@ struct ReflectionStatusModelTests {
 
         let backup = URL(filePath: "/tmp/djc-backup-a")
         log.record(AppToast.notice("알림은 쓰기가 아니다", nil))
-        log.record(WriteResult(kind: .failure, title: "rekordbox에 쓰지 않았습니다", text: "실패", backups: [backup]))
+        log.record(WriteResult(kind: .failure, title: "rekordbox에 저장하지 않았습니다", text: "실패", backups: [backup]))
         log.record(WriteResult(kind: .success, title: "작업을 취소했습니다", text: "취소"))
         h.model.refresh()
         #expect(h.model.lastWrite == nil, "실패·취소·알림은 마지막 쓰기가 아니다")
 
         clock += 60
-        log.record(WriteResult(kind: .success, title: "rekordbox에 썼습니다", text: "곡 1", backups: [backup]))
+        log.record(WriteResult(kind: .success, title: "rekordbox에 저장했습니다", text: "곡 1", backups: [backup]))
         let wroteAt = clock
         clock += 60
-        log.record(WriteResult(kind: .failure, title: "rekordbox에 쓰지 않았습니다", text: "실패", backups: [backup]))
+        log.record(WriteResult(kind: .failure, title: "rekordbox에 저장하지 않았습니다", text: "실패", backups: [backup]))
         h.model.refresh()
         #expect(h.model.lastWrite?.date == wroteAt)
     }
@@ -231,18 +231,18 @@ struct ReflectionStatusModelTests {
         let time = date.formatted(ReflectionLastWrite.timeFormat(includesDate: false))
         #expect(!time.contains("2026"), "오늘의 쓰기는 시각만 적는다")
         let withBackup = ReflectionLastWrite(date: date, hasBackup: true).text(now: date + 30)
-        #expect(withBackup == "마지막 쓰기 \(time) · 백업 있음")
-        #expect(ReflectionLastWrite(date: date, hasBackup: false).text(now: date + 30) == "마지막 쓰기 \(time)")
+        #expect(withBackup == "마지막 저장 \(time) · 백업 있음")
+        #expect(ReflectionLastWrite(date: date, hasBackup: false).text(now: date + 30) == "마지막 저장 \(time)")
         // 다른 날의 쓰기는 날짜를 함께 적는다
         let older = ReflectionLastWrite(date: date, hasBackup: false).text(now: date + 3 * 86_400)
-        #expect(older == "마지막 쓰기 \(date.formatted(ReflectionLastWrite.timeFormat(includesDate: true)))")
-        #expect(older.contains(time) && older != "마지막 쓰기 \(time)")
+        #expect(older == "마지막 저장 \(date.formatted(ReflectionLastWrite.timeFormat(includesDate: true)))")
+        #expect(older.contains(time) && older != "마지막 저장 \(time)")
     }
 
     @Test func 백업이_있는지는_저장소의_쓰기_백업_확인을_따른다() throws {
         let log = ActivityLog()
         let h = Harness(log: log)
-        log.record(WriteResult(kind: .success, title: "rekordbox에 썼습니다", text: "곡 1", backups: [URL(filePath: "/tmp/djc-backup-b")]))
+        log.record(WriteResult(kind: .success, title: "rekordbox에 저장했습니다", text: "곡 1", backups: [URL(filePath: "/tmp/djc-backup-b")]))
         h.model.refresh()
         #expect(h.store.hasWriteBackup == false && h.model.lastWrite?.hasBackup == false)
 
@@ -262,8 +262,8 @@ struct ReflectionStatusModelTests {
     @Test func 팝오버_단추는_메뉴_막대와_같은_명령을_같은_조건으로_보인다() {
         let h = Harness()
         #expect(h.model.items.map(\.action) == [.reflect, .pending, .activityLog, .restore])
-        #expect(h.model.items.map(\.title) == ["rekordbox에 쓰기", "쓰기 대기 목록 보기", "활동 기록…", "쓰기 전으로 복원…"])
-        #expect(h.model.items.first?.shortcutHint == "⇧⌘E" && h.model.items.dropFirst().allSatisfy { $0.shortcutHint == nil })
+        #expect(h.model.items.map(\.title) == ["rekordbox에 저장", "저장 대기 목록 보기", "활동 기록…", "저장 전으로 복원…"])
+        #expect(h.model.items.first?.shortcutHint == "⌘S" && h.model.items.dropFirst().allSatisfy { $0.shortcutHint == nil })
 
         func expectSameAsMenu(_ note: String, sourceLocation: SourceLocation = #_sourceLocation) {
             for item in h.model.items {
@@ -277,11 +277,11 @@ struct ReflectionStatusModelTests {
 
         h.addRows("a")
         h.store.setDraftMark(.cue, trackUUID: "a", exists: true)
-        expectSameAsMenu("초안 있음")
+        expectSameAsMenu("저장 대기")
         #expect(h.model.items.first?.isEnabled == true && h.model.canWrite)
 
         h.store.isWritingRekordbox = true
-        expectSameAsMenu("쓰는 중")
+        expectSameAsMenu("저장하는 중")
         #expect(h.model.items.first?.isEnabled == false && !h.model.canWrite, "쓰는 동안은 메뉴처럼 막는다")
         h.store.isWritingRekordbox = false
         expectSameAsMenu("쓰기 끝")
@@ -355,7 +355,7 @@ struct ReflectionStatusModelTests {
         #expect(h.dock.labels == ["1"])
 
         h.store.setDraftMark(.grid, trackUUID: "b", exists: true)
-        #expect(await waitForState { h.model.chip.title == "쓰기 대기 2건" })
+        #expect(await waitForState { h.model.chip.title == "저장 대기 2건" })
         #expect(h.dock.labels == ["1", "2"])
 
         h.store.setDraftMarks(cue: [], grid: [])

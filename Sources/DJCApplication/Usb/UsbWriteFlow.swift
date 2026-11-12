@@ -413,7 +413,7 @@ public struct UsbWriteFlow {
     }
 
     private static var syncDraftUnavailableText: String {
-        String(ui: "동기화 초안의 원본을 다시 준비해야 하므로 쓰기 대기 목록에서 초안을 버린 뒤 USB 동기화 창을 새로고침하세요")
+        String(ui: "동기화 편집의 원본을 다시 준비해야 하므로 쓰기 대기 목록에서 편집을 버린 뒤 USB 동기화 창을 새로고침하세요")
     }
 
     private static var syncSourceChangedBlock: UsbBlock {
@@ -571,7 +571,7 @@ public struct UsbWriteFlow {
             session.pointRestoreBackups[volumeKey] = nil
             let blocked = summary.blockedCount, skipped = summary.skippedTrackCount
             // rekordbox의 내보내기 기록처럼 넣지 못한 곡 수를 결과에 남긴다(이유는 확인 창에 이유별로 보였다)
-            let detail = (blocked > 0 ? String(ui: "\(job.volume.name) · 막힌 편집 \(blocked)건은 초안에 남겼습니다") : job.volume.name)
+            let detail = (blocked > 0 ? String(ui: "\(job.volume.name) · 막힌 편집 \(blocked)건은 쓰기 대기에 남겼습니다") : job.volume.name)
                 + (skipped > 0 ? " · " + String(ui: "USB에 넣지 못한 곡 \(skipped)개") : "")
             results.show(.success(title: Text.editWrittenTitle(count: summary.writtenCount), detail: detail, ejectVolumeKey: volumeKey))
             await screen.refresh()

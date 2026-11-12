@@ -176,7 +176,7 @@ struct ArchiveUsbHistoriesTests {
     @Test func 새로_보존한_기록은_저장된_것만_넣고_숨긴_기록을_뺀_수와_쓰기_대기에_올린_수를_알린다() async throws {
         // (쓰기 대기에 올릴 기록, 알림 둘째 줄)
         let cases: [(Set<String>, String)] = [
-            (["HISTORY 001"], "합성 USB · rekordbox 쓰기 대기에 올렸습니다"),
+            (["HISTORY 001"], "합성 USB · rekordbox 저장 대기에 올렸습니다"),
             ([], "합성 USB"),
         ]
         for (queued, detail) in cases {
@@ -212,7 +212,7 @@ struct ArchiveUsbHistoriesTests {
         await archive.waitUntilIdle()
         #expect(screen.imported?.shown.count == 2)
         #expect(screen.notices == [UsbHistoryNotice(kind: .success, title: "USB에서 재생 기록 2개를 가져왔습니다",
-                                                    detail: "합성 USB · 1개를 rekordbox 쓰기 대기에 올렸습니다")])
+                                                    detail: "합성 USB · 1개를 rekordbox 저장 대기에 올렸습니다")])
     }
 
     @Test func 보존하지_못하면_경고하고_저장된_기록만_넣되_가져왔다고_알리지_않는다() async {
@@ -308,7 +308,7 @@ struct ArchiveUsbHistoriesTests {
         try await waitUntil { !screen.notices.isEmpty }
         #expect(screen.notices == [Self.warning(ArchiveUsbHistories.queueSaveFailureTitle,
                                                 "DJCrate 데이터 폴더의 usb-histories 쓰기 권한을 확인한 뒤 다시 바꾸세요")])
-        #expect(ArchiveUsbHistories.queueSaveFailureTitle == "재생 기록의 쓰기 대기 상태를 저장하지 못했습니다")
+        #expect(ArchiveUsbHistories.queueSaveFailureTitle == "재생 기록의 저장 대기 상태를 보관하지 못했습니다")
         #expect(screen.state.archived[1].excludedFromRekordbox)
     }
 

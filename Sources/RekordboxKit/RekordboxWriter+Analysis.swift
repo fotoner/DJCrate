@@ -50,10 +50,10 @@ extension RekordboxWriter {
     static func attachPlan(draft: GridDraft, content: (id: String, title: String, path: String, fileName: String), input: AnalysisInput?,
                            share: URL, reader: CipherDatabase, enabled: Bool, writesArtwork: Bool) throws -> AttachPlan {
         func block(_ reason: String) -> Blocked { Blocked(title: content.title, reason: reason) }
-        guard enabled else { throw block(String(ui: "rekordbox 분석 전 곡입니다. rekordbox에서 트랙 분석을 먼저 한 뒤 쓰세요")) }
-        guard draft.base.isEmpty else { throw block(String(ui: "초안을 만든 뒤 rekordbox에서 그리드가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요")) }
+        guard enabled else { throw block(String(ui: "rekordbox 분석 전 곡입니다. rekordbox에서 트랙 분석을 먼저 한 뒤 저장하세요")) }
+        guard draft.base.isEmpty else { throw block(String(ui: "편집을 만든 뒤 rekordbox에서 그리드가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요")) }
         guard FileManager.default.fileExists(atPath: content.path) else { throw block(String(ui: "음원 파일이 없습니다. rekordbox에서 파일 위치를 확인하세요")) }
-        guard let input else { throw block(String(ui: "음원 길이를 재지 못해 분석을 붙이지 않습니다. 음원 파일을 확인한 뒤 다시 쓰세요")) }
+        guard let input else { throw block(String(ui: "음원 길이를 재지 못해 분석을 붙이지 않습니다. 음원 파일을 확인한 뒤 다시 저장하세요")) }
         // 분석 파일·오토게인 기록이 이미 있으면 rekordbox가 무엇을 기대하는지 모른다(곡 넣기와 달리 새 행을 넣는다).
         guard try scalar(reader, "SELECT count(*) FROM djmdMixerParam WHERE ContentID = ? AND rb_local_deleted = 0", [.text(content.id)]) == 0 else {
             throw block(String(ui: "오토게인 행이 이미 있는 곡이라 분석을 붙이지 않습니다. rekordbox에서 트랙 분석을 하세요"))
@@ -114,7 +114,7 @@ extension RekordboxWriter {
             SELECT rb_data_status FROM djmdContent WHERE ID = ? AND rb_local_deleted = 0 AND ifnull(AnalysisDataPath, '') = ''
                 AND AnalysisUpdated IS NULL AND TrackInfoUpdated IS NULL AND (? = 0 OR ifnull(ImagePath, '') = '')
             """, [.text(plan.contentID), .int(plan.artwork == nil ? 0 : 1)]) { status = $0.int(0) ?? 0 }
-        guard let status else { throw Blocked(title: plan.title, reason: String(ui: "초안을 만든 뒤 rekordbox에서 곡이 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요")) }
+        guard let status else { throw Blocked(title: plan.title, reason: String(ui: "편집을 만든 뒤 rekordbox에서 곡이 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요")) }
         func insert(_ row: RekordboxTrackWriter.InsertedRow) throws {
             try RekordboxTrackWriter.insert(db, table: row.table, row.values)
             try RekordboxTrackWriter.verify(db, table: row.table, id: row.id, row.values)
@@ -136,7 +136,7 @@ extension RekordboxWriter {
         let keys = columns.keys.sorted()
         let changed = try db.run("UPDATE djmdContent SET \(keys.map { "\"\($0)\" = ?" }.joined(separator: ", ")) WHERE ID = ?",
                                  keys.map { columns[$0]! } + [.text(plan.contentID)])
-        guard changed == 1 else { throw DJCError.writeVerificationFailed(String(ui: "곡 행에 분석 칸을 쓰지 못했습니다 (\(plan.title))")) }
+        guard changed == 1 else { throw DJCError.writeVerificationFailed(String(ui: "곡 행에 분석 칸을 저장하지 못했습니다 (\(plan.title))")) }
         try RekordboxTrackWriter.verify(db, table: "djmdContent", id: plan.contentID, columns)
         for ext in ["2EX", "DAT", "EXT"] {
             guard let file = plan.ready.files.first(where: { $0.0.pathExtension == ext }) else {

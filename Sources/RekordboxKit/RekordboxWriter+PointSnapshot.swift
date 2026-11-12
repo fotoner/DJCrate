@@ -75,11 +75,11 @@ extension RekordboxWriter {
     /// 정보·DB·담은 항목이 멀쩡하고 링크가 없는 스냅샷만 받는다.
     static func validPointSnapshot(_ folder: URL) throws -> RekordboxPointSnapshot.Entry {
         func refuse(_ reason: String) -> DJCError {
-            .writeRefused(String(ui: "시점 스냅샷을 복원할 수 없습니다: \(reason). 목록에서 다른 스냅샷을 고르세요"))
+            .writeRefused(String(ui: "복원 시점으로 복원할 수 없습니다: \(reason). 목록에서 다른 복원 시점을 고르세요"))
         }
         guard (try? FileManager.default.attributesOfItem(atPath: folder.path))?[.type] as? FileAttributeType == .typeDirectory,
               let metadata = RekordboxPointSnapshot.metadata(in: folder) else {
-            throw refuse(String(ui: "스냅샷 정보(snapshot.json)가 없거나 손상됨"))
+            throw refuse(String(ui: "복원 시점 정보(snapshot.json)가 없거나 손상됨"))
         }
         try validateBackupFile(folder.appending(path: "master.db"), under: folder, required: true)
         for name in RekordboxPointSnapshot.adjacentFiles {
@@ -165,13 +165,13 @@ extension RekordboxWriter {
     static func verifyPointRestore(_ entry: RekordboxPointSnapshot.Entry, database: URL, share: URL) throws {
         try checkIntegrity(of: database)
         if let expected = entry.metadata.libraryID, libraryID(of: database) != expected {
-            throw DJCError.writeVerificationFailed(String(ui: "복원한 라이브러리 ID가 스냅샷과 다릅니다"))
+            throw DJCError.writeVerificationFailed(String(ui: "복원한 라이브러리 ID가 복원 시점과 다릅니다"))
         }
         for folder in RekordboxPointSnapshot.shareFolders {
             let restored = RekordboxPointSnapshot.fileStamps(share.appending(path: folder))
             let expected = RekordboxPointSnapshot.fileStamps(entry.url.appending(path: "share").appending(path: folder))
             guard restored == expected else {
-                throw DJCError.writeVerificationFailed(String(ui: "복원한 \(folder) 폴더의 파일이 스냅샷과 다릅니다"))
+                throw DJCError.writeVerificationFailed(String(ui: "복원한 \(folder) 폴더의 파일이 복원 시점과 다릅니다"))
             }
         }
     }
@@ -231,6 +231,6 @@ extension RekordboxWriter {
         let markers = ((try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.creationDateKey])) ?? [])
             .filter { isPointRestoreMarker($0) && isNewer($0, than: selected) }
         guard !markers.isEmpty else { return nil }
-        return String(ui: "이 백업 뒤에 시점 스냅샷으로 복원해서 쓰기 전 백업으로는 분석 파일까지 맞출 수 없습니다. rekordbox › 시점 스냅샷…에서 ‘복원 직전’ 스냅샷이나 그 전 시점을 고르세요")
+        return String(ui: "이 백업 뒤에 복원 시점으로 복원해서 저장 전 백업으로는 분석 파일까지 맞출 수 없습니다. rekordbox › 복원 시점…에서 ‘복원 직전’ 복원 시점이나 그 전 시점을 고르세요")
     }
 }

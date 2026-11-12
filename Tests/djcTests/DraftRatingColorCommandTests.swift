@@ -42,6 +42,6 @@ extension DraftCommandTests {
         #expect(output.status != 0)
         let error = try #require(output.document(error: true)["error"] as? [String: Any])
         let message = error["message"] as? String
-        #expect(error["code"] as? String == "unverified_field" && message?.contains("평점") == true && message?.contains("초안") == false)
+        #expect(error["code"] as? String == "unverified_field" && message?.contains("평점") == true && message?.contains("편집을 버리세요") == false)
     }
 }

@@ -211,7 +211,7 @@ struct UsbSyncSourceWriteGuardTests {
     @Test func 기억한_native_편집과_다른_summary를_새_원본으로_간주하지_않는다() async throws {
         let (usb, host, service, job) = try await setup()
         var edits = rememberDraft(usb, job: job)
-        edits.append(.playlist(edit: .rename(playlist: .id("10"), name: "다른 초안")))
+        edits.append(.playlist(edit: .rename(playlist: .id("10"), name: "다른 편집")))
         var summary = UsbTestData.editSummary()
         summary.edits = edits
         let coordinator = UsbWriteCoordinator(usb: usb, host: host, service: service, prompter: ScriptedPrompter(), isRekordboxRunning: { false })

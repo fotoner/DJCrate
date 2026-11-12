@@ -157,9 +157,9 @@ final class XMLImportModel {
             if result.cues + result.grids + result.tags > 0 { await ports.draftsChanged() }
         } catch let partial as ImportXML.PartialFailure {
             result = partial.result
-            result.failure = String(ui: "초안을 만들지 못했습니다: \(AppErrorMessage.message(for: partial.error))")
+            result.failure = String(ui: "편집을 만들지 못했습니다: \(AppErrorMessage.message(for: partial.error))")
         } catch {
-            result = XMLImportDraftResult(failure: String(ui: "초안을 만들지 못했습니다: \(AppErrorMessage.message(for: error))"))
+            result = XMLImportDraftResult(failure: String(ui: "편집을 만들지 못했습니다: \(AppErrorMessage.message(for: error))"))
         }
         if self.preview?.id == preview.id { self.result = result }
         return result

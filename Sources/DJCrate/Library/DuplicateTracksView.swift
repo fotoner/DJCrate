@@ -15,13 +15,13 @@ struct DuplicateTracksView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(.ui("제목·아티스트 같음 · 길이 차이 2초 이내 · 버전 표기 구분"))
                 .font(.callout).padding(.horizontal, 12).padding(.top, 8)
-            Text(.ui("스냅샷 기준 · 후보가 같은 음원인지는 직접 확인하세요 · 한 곡이 여러 묶음에 나올 수 있습니다"))
+            Text(.ui("읽은 사본 기준 · 후보가 같은 음원인지는 직접 확인하세요 · 한 곡이 여러 묶음에 나올 수 있습니다"))
                 .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.bottom, 8)
             ForEach(store.mergeDrafts) { draft in
                 HStack {
-                    Text(.ui("합치기 쓰기 대기 · \(draft.keeping.title) 유지 · \(draft.removing.count)곡 빼기"))
+                    Text(.ui("합치기 저장 대기 · \(draft.keeping.title) 유지 · \(draft.removing.count)곡 빼기"))
                     Spacer()
-                    Button(.ui("초안 버리기")) {
+                    Button(.ui("편집 버리기")) {
                         do { try store.setMergeDrafts(store.mergeDrafts.filter { $0.id != draft.id }) }
                         catch { store.showToast(.notice(text: error.localizedDescription, kind: .warning)) }
                     }
@@ -30,7 +30,7 @@ struct DuplicateTracksView: View {
             }
             if store.displayDuplicateGroups.isEmpty {
                 ContentUnavailableView(.ui("중복 후보가 없습니다"), systemImage: "square.on.square",
-                                       description: store.search.isEmpty ? Text(.ui("현재 스냅샷에서 조건이 맞는 곡이 없습니다")) : Text(.ui("검색어를 지우고 다시 확인하세요")))
+                                       description: store.search.isEmpty ? Text(.ui("읽은 사본에 조건이 맞는 곡이 없습니다")) : Text(.ui("검색어를 지우고 다시 확인하세요")))
             } else {
                 GeometryReader { geometry in
                     ScrollView(.horizontal) {

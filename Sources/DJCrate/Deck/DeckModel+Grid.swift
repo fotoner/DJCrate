@@ -57,7 +57,7 @@ extension DeckModel {
 
     func revertGrid() {
         guard canDiscardGridDraft || canEditGrid else { return }
-        mutateGrid(name: String(ui: "그리드 초안 버리기"), allowingBlocked: true) { $0.revert() }
+        mutateGrid(name: String(ui: "그리드 편집 버리기"), allowingBlocked: true) { $0.revert() }
     }
 
     /// 그리드 편집 막대의 ‹ › 버튼을 누르고 있는 동안 그리드 전체를 옮긴다(한 번의 편집으로 저장).
@@ -126,7 +126,7 @@ extension DeckModel {
     func mutateGrid(name: String = String(ui: "그리드 편집"), allowingBlocked: Bool = false, _ change: (inout GridDraft) -> Void) {
         guard !editsFrozen else { return }
         guard var gridDraft, gridDraft.trackUUID == row?.track.uuid else {
-            showToast(String(ui: "편집할 그리드 초안이 준비되지 않았으니 곡을 덱에 다시 불러온 뒤 편집하세요"), kind: .warning)
+            showToast(String(ui: "편집할 그리드 편집이 준비되지 않았으니 곡을 덱에 다시 불러온 뒤 편집하세요"), kind: .warning)
             return
         }
         guard canEditGrid || allowingBlocked else {
@@ -139,7 +139,7 @@ extension DeckModel {
         guard self.gridDraft != gridDraft else { return }
         // 복잡한 원본을 대체한 초안은 승인한 모양(템포 구간 하나)을 벗어나는 편집을 받지 않는다(받으면 편집 전체가 막힌다).
         if gridDraft.replacementSource != nil, let originalGrid, !gridDraft.isVerifiedReplacement(of: originalGrid, duration: duration) {
-            showToast(String(ui: "복잡한 rekordbox 그리드를 대체한 초안은 템포 구간을 하나로만 둘 수 있으니 변속 지점은 rekordbox에서 편집하세요"), kind: .failure)
+            showToast(String(ui: "복잡한 rekordbox 그리드를 대체한 편집은 템포 구간을 하나로만 둘 수 있으니 변속 지점은 rekordbox에서 편집하세요"), kind: .failure)
             return
         }
         self.gridDraft = gridDraft
@@ -260,7 +260,7 @@ extension DeckModel {
         if let originalGrid, !originalGrid.beats.isEmpty {
             // 초안을 만든 뒤 rekordbox 그리드가 바뀌었으면 어느 쪽도 덮지 않는다.
             guard base == GridDraft.segments(from: originalGrid) else {
-                showToast(String(ui: "초안을 만든 뒤 rekordbox에서 그리드가 바뀌었으니 그리드 현재값 가져오기로 비교하세요"), kind: .failure)
+                showToast(String(ui: "편집을 만든 뒤 rekordbox에서 그리드가 바뀌었으니 그리드 현재값 가져오기로 비교하세요"), kind: .failure)
                 return
             }
             // 템포 구간으로 다시 만들 수 없는 원본만 명시 대체로 승인한다(단순한 원본은 보통 초안이다).

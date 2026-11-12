@@ -37,7 +37,7 @@ public enum LibraryWriteBlock: Equatable, Sendable {
             String(ui: "rekordbox 변경 카운터가 클라우드 동기화 카운터보다 작으니 rekordbox를 켜서 동기화를 끝낸 뒤 종료하세요")
         case .backupFolder:
             // 쓰기 확인 창 문장(「쓰기가 막힐 수 있으니」)은 칩의 「쓸 수 없음」과 어긋나 칩은 단정한다
-            String(ui: "쓰기 전 백업을 만들 폴더에 쓸 수 없으니 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요")
+            String(ui: "저장 전 백업을 만들 폴더에 쓸 수 없으니 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요")
         }
     }
 }

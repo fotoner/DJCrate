@@ -79,10 +79,10 @@ struct WriteResult: Codable, Equatable {
         reasons += historyBlocked.map { $0.reason ?? String(ui: "이유 없음") }
         lines += histories.map(HistoryWriteText.result)
         return Self(kind: !skipped.isEmpty || count == 0 ? .warning : .success,
-                    title: count == 0 ? String(ui: "rekordbox에 쓴 것이 없습니다")
-                        : String(ui: "rekordbox에 썼습니다 · \(summaries.joined(separator: " · "))"),
+                    title: count == 0 ? String(ui: "rekordbox에 저장한 것이 없습니다")
+                        : String(ui: "rekordbox에 저장했습니다 · \(summaries.joined(separator: " · "))"),
                     text: lines.joined(separator: "\n"),
-                    shortfall: skipped.isEmpty ? nil : shortfallLine([String(ui: "\(skipped.joined(separator: " · "))은 쓰지 않았습니다")], reasons: reasons),
+                    shortfall: skipped.isEmpty ? nil : shortfallLine([String(ui: "\(skipped.joined(separator: " · "))은 저장하지 않았습니다")], reasons: reasons),
                     backups: report.backup.map { [URL(filePath: $0)] } ?? [])
     }
 
@@ -117,12 +117,12 @@ struct WriteResult: Codable, Equatable {
                 if let count = outcome.cuesWritten { parts.append(String(ui: "큐 \(count)개")) }
                 if let reason = outcome.cueReason {
                     cueReasons.append(reason)
-                    parts.append(String(ui: "큐는 쓰기 대기: \(reason)"))
+                    parts.append(String(ui: "큐는 저장 대기: \(reason)"))
                 }
                 if let key = outcome.keyWritten { parts.append(String(ui: "키 \(key)")) }
                 if let reason = outcome.keyReason {
                     keyReasons.append(reason)
-                    parts.append(String(ui: "키는 쓰기 대기: \(reason)"))
+                    parts.append(String(ui: "키는 저장 대기: \(reason)"))
                 }
             } else {
                 let reason = outcome.reason ?? String(ui: "이유 없음")
@@ -140,8 +140,8 @@ struct WriteResult: Codable, Equatable {
             what.append(String(ui: "\(unanalyzed)곡은 분석 없이 넣었습니다"))
             reasons.append(String(ui: "rekordbox에서 분석하세요"))
         }
-        if !cueReasons.isEmpty { what.append(String(ui: "\(cueReasons.count)곡의 큐는 쓰지 않았습니다")) }
-        if !keyReasons.isEmpty { what.append(String(ui: "\(keyReasons.count)곡의 키는 쓰지 않았습니다")) }
+        if !cueReasons.isEmpty { what.append(String(ui: "\(cueReasons.count)곡의 큐는 저장하지 않았습니다")) }
+        if !keyReasons.isEmpty { what.append(String(ui: "\(keyReasons.count)곡의 키는 저장하지 않았습니다")) }
         let count = actual.filter(\.written).count
         return Self(kind: !what.isEmpty || count == 0 ? .warning : .success,
                     title: count == 0 ? (adding ? String(ui: "rekordbox에 넣은 곡이 없습니다") : String(ui: "rekordbox에서 뺀 곡이 없습니다"))
@@ -159,11 +159,11 @@ struct WriteResult: Codable, Equatable {
         let names: [String] = (report?.playlistWritten ?? []).map(\.name) + (report?.historyWritten ?? []).map(\.name)
             + (backup.trackReport?.titles ?? [])
         let titles = Set(outcomes.map(\.title) + names)
-        var lines = [String(ui: "rekordbox 라이브러리 전체를 선택한 백업의 쓰기 전 상태로 복원했습니다."),
-                     String(ui: "그때 쓴 초안과 추가 목록도 복원했습니다. 복원 직전 상태는 아래 두 번째 백업에 남아 있습니다.")]
+        var lines = [String(ui: "rekordbox 라이브러리 전체를 선택한 백업의 저장 전 상태로 복원했습니다."),
+                     String(ui: "그때 저장한 편집과 추가 목록도 복원했습니다. 복원 직전 상태는 아래 두 번째 백업에 남아 있습니다.")]
         lines += titles.sorted().map { "• \($0)" }
         // 경로가 예상과 달라 남긴 분석 파일은 참고로 적는다(복원은 끝났다).
         if let fileWarning { lines.append(fileWarning) }
-        return Self(kind: .success, title: String(ui: "rekordbox를 쓰기 전으로 복원했습니다"), text: lines.joined(separator: "\n"), backups: [backup.url, saved])
+        return Self(kind: .success, title: String(ui: "rekordbox를 저장 전으로 복원했습니다"), text: lines.joined(separator: "\n"), backups: [backup.url, saved])
     }
 }

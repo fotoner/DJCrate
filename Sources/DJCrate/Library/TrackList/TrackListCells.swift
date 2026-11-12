@@ -85,7 +85,7 @@ final class ThumbnailCell: NSTableCellView {
 
 final class EditedMarkCell: NSTableCellView {
     private let mark = NSImageView()
-    private static let image = NSImage(systemSymbolName: DraftMark.symbol, accessibilityDescription: String(ui: "초안 있음"))
+    private static let image = NSImage(systemSymbolName: DraftMark.symbol, accessibilityDescription: String(ui: "저장 대기"))
 
     init() {
         super.init(frame: .zero)
@@ -108,7 +108,6 @@ final class EditedMarkCell: NSTableCellView {
 
     func configure(edited: Bool) {
         mark.image = edited ? Self.image : nil
-        toolTip = edited ? String(ui: "DJCrate 초안이 있습니다 (rekordbox·파일에 쓰기 전)") : nil
     }
 }
 

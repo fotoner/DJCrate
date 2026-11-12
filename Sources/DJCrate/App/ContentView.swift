@@ -195,7 +195,7 @@ struct ContentView: View {
                 } label: {
                     Label(.ui("태그 편집"), systemImage: "tag")
                 }
-                .help(store.editsFrozen ? String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") : String(ui: "태그 편집 (⌘I)"))
+                .help(store.editsFrozen ? String(ui: "rekordbox 저장이 끝난 뒤 다시 시도하세요") : String(ui: "태그 편집 (⌘I)"))
                 .disabled(store.editsFrozen)
             }
             ToolbarItem(id: "snapshot") {

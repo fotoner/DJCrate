@@ -72,7 +72,7 @@ public enum SmartPlaylistSource: Hashable, Sendable {
     }
 
     /// 인텔리전트 목록을 편집(이름·지우기·옮기기·곡 넣기·순서)하려 할 때 알리는 이유. 쓰기 경로가 막는 문구와 같다.
-    public static var readOnlyReason: String { String(ui: "인텔리전트 재생 목록은 아직 쓰지 않습니다(rekordbox에서 고치세요)") }
+    public static var readOnlyReason: String { String(ui: "인텔리전트 재생 목록은 아직 저장하지 않습니다(rekordbox에서 고치세요)") }
 
     /// 조건 칸을 읽었는지(읽었어도 계산할 수 있는지는 계산기가 따로 본다)
     public var definition: SmartPlaylistDefinition? {

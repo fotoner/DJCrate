@@ -26,9 +26,9 @@ struct AgentToolsSettingsView: View {
                 }
             } footer: {
                 HStack(spacing: 4) {
-                    Text(.ui("에이전트가 djc로 초안을 만듭니다."))
+                    Text(.ui("에이전트가 djc로 편집을 만듭니다."))
                     InfoPopoverButton(label: String(ui: "스킬이란?"), lines: [
-                        String(ui: "DJCrate 스킬을 설치하면 Claude Code·Codex가 djc로 라이브러리를 조회하고 큐·태그 초안을 만듭니다. rekordbox에 쓰는 일은 앱에서 사람이 합니다.")])
+                        String(ui: "DJCrate 스킬을 설치하면 Claude Code·Codex가 djc로 라이브러리를 조회하고 큐·태그 편집을 만듭니다. rekordbox에 저장하는 일은 앱에서 사람이 합니다.")])
                 }
                 .foregroundStyle(.secondary)
             }

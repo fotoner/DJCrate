@@ -513,7 +513,7 @@ public final class UsbSync {
             return false
         }
         if UsbSyncSource.lacksMasterNode(UsbSyncSource.nativeNodes(state.source, master: masterNodes), selection: selection) {
-            notify(.problem(String(ui: "masterPlaylists6.xml에서 동기화할 목록을 찾지 못했습니다. rekordbox를 한 번 켰다가 종료하고 새 스냅샷을 읽은 뒤 동기화하세요")))
+            notify(.problem(String(ui: "masterPlaylists6.xml에서 동기화할 목록을 찾지 못했습니다. rekordbox를 한 번 켰다가 종료하고 ‘rekordbox와 동기화’를 한 뒤 동기화하세요")))
             return false
         }
         guard await savePreferences(ports), ports.volume().volume == volume else { return false }
@@ -572,7 +572,7 @@ public final class UsbSync {
         let draft = ports.volume().draftEdits
         if !draft.isEmpty {
             guard queuedPlan?.canReuse(edits: draft, inputs: inputs) == true else {
-                notify(.problem(String(ui: "이 USB에 쓰기 대기 중인 초안이 있습니다. 쓰기 대기 목록에서 쓰거나 버린 뒤 동기화하세요")))
+                notify(.problem(String(ui: "이 USB에 쓰기 대기 중인 편집이 있습니다. 쓰기 대기 목록에서 쓰거나 버린 뒤 동기화하세요")))
                 return false
             }
         } else {
@@ -611,7 +611,7 @@ public final class UsbSync {
                     return false
                 }
                 guard await drafts.append(edits, String(ui: "재생 목록 동기화")) else {
-                    notify(.problem(String(ui: "USB 동기화 초안을 저장하지 못했습니다. 데이터 폴더를 확인한 뒤 다시 시도하세요")))
+                    notify(.problem(String(ui: "USB 동기화 편집을 저장하지 못했습니다. 데이터 폴더를 확인한 뒤 다시 시도하세요")))
                     return false
                 }
                 queuedPlan = UsbSyncQueuedPlan(edits: edits, inputs: inputs)
@@ -650,7 +650,7 @@ public final class UsbSync {
             return false
         }
         guard ports.volume().draftEdits.isEmpty, let written = ports.volume().library else {
-            notify(.info(String(ui: "동기화 초안은 USB 쓰기 대기에 남았습니다. 쓰기 대기 목록에서 결과와 막힌 이유를 확인하세요")))
+            notify(.info(String(ui: "동기화 편집은 USB 쓰기 대기에 남았습니다. 쓰기 대기 목록에서 결과와 막힌 이유를 확인하세요")))
             return false
         }
         queuedPlan = nil
@@ -767,7 +767,7 @@ public final class UsbSync {
             return decline(block.message)
         }
         guard usb.draftEdits.isEmpty else {
-            return decline(String(ui: "이 USB에 쓰기 대기 중인 초안이 있어 동기화 켜짐을 저장하지 못했습니다. 쓰기 대기 목록에서 쓰거나 버린 뒤 다시 바꾸세요"))
+            return decline(String(ui: "이 USB에 쓰기 대기 중인 편집이 있어 동기화 켜짐을 저장하지 못했습니다. 쓰기 대기 목록에서 쓰거나 버린 뒤 다시 바꾸세요"))
         }
         state.isSyncing = true
         defer { state.isSyncing = false; snapshotLease = nil }
@@ -784,7 +784,7 @@ public final class UsbSync {
                                                                           baseFiles: state.nativeBaseFiles))]
         if let reason = drafts.blockReason(edits) { return decline(reason) }
         guard await drafts.append(edits, String(ui: "USB 동기화 켜짐 저장")) else {
-            return decline(String(ui: "USB 동기화 초안을 저장하지 못했습니다. 데이터 폴더를 확인한 뒤 다시 시도하세요"))
+            return decline(String(ui: "USB 동기화 편집을 저장하지 못했습니다. 데이터 폴더를 확인한 뒤 다시 시도하세요"))
         }
         queuedPlan = UsbSyncQueuedPlan(edits: edits, inputs: inputs)
         guard inputsAreCurrent(inputs, ports) else {
@@ -798,7 +798,7 @@ public final class UsbSync {
         guard await writer.writeSyncDraft(job, ports.volume().draftEdits),
               ports.volume().draftEdits.isEmpty else {
             closeDeclined = true
-            notify(.info(String(ui: "동기화 켜짐 초안은 USB 쓰기 대기에 남았습니다. 쓰기 대기 목록에서 결과와 막힌 이유를 확인하세요")))
+            notify(.info(String(ui: "동기화 켜짐 편집은 USB 쓰기 대기에 남았습니다. 쓰기 대기 목록에서 결과와 막힌 이유를 확인하세요")))
             return .stay
         }
         queuedPlan = nil
@@ -876,8 +876,8 @@ public final class UsbSync {
     /// rekordbox의 "← CUE GRID INFO" 확인(2026-10-08 실험 G5b)을 DJCrate에 맞게 고친 문구. rekordbox는 바로 바꾸지만
     /// DJCrate는 초안만 만든다. rekordbox 창은 곡 정보(색상·레이팅·코멘트)도 적지만 실제로는 바꾸지 않아(실험 X1) 적지 않는다.
     public nonisolated static var cueGridImportPrompt: ReflectionPrompt {
-        ReflectionPrompt(title: String(ui: "USB에 있는 모든 곡의 다음 정보로 로컬 곡 정보를 바꾸는 초안을 만듭니다."),
-                         text: String(ui: "- 큐 포인트와 루프 포인트\n- 핫 큐\n- 비트 그리드\n\nrekordbox의 곡이 더 최근에 바뀌었어도 USB 값으로 바꿉니다. 레이팅·색상·코멘트는 rekordbox처럼 가져오지 않습니다. 초안이 이미 있는 곡은 건너뜁니다. 가져온 초안을 확인한 뒤 rekordbox에 쓰기로 반영하세요.\n\n계속하시겠습니까?"),
+        ReflectionPrompt(title: String(ui: "USB에 있는 모든 곡의 다음 정보로 로컬 곡 정보를 바꾸는 편집을 만듭니다."),
+                         text: String(ui: "- 큐 포인트와 루프 포인트\n- 핫 큐\n- 비트 그리드\n\nrekordbox의 곡이 더 최근에 바뀌었어도 USB 값으로 바꿉니다. 레이팅·색상·코멘트는 rekordbox처럼 가져오지 않습니다. 편집이 이미 있는 곡은 건너뜁니다. 가져온 편집을 확인한 뒤 rekordbox에 저장하세요.\n\n계속하시겠습니까?"),
                          confirm: String(ui: "가져오기"))
     }
 

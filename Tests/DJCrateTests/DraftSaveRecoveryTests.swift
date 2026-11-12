@@ -286,7 +286,7 @@ struct DraftSaveRecoveryTests {
         #expect(try RekordboxLibrary.load(snapshot: fixture.database).cues.contains { $0.inMsec == 4000 })
         // 사본 쓰기의 백업은 저장소에 준 백업 폴더에 남는다(사용자 백업 폴더를 밀어내지 않는다).
         #expect(RekordboxWriter.backups(in: fixture.backups).contains { $0.isWrite })
-        #expect(store.lastError?.contains("썼지만") == true)
+        #expect(store.lastError?.contains("저장했지만") == true)
         #expect(writer.pendingCue(trackUUID: spec.uuid, directory: cues)?.hasChanges == false)
         #expect(CueDraftStore.load(trackUUID: spec.uuid, directory: cues) == draft)
     }

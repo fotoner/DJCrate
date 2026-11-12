@@ -60,7 +60,7 @@ struct AlbumArtTermTests {
     }
 
     @Test func 폴더_경로는_일괄_치환에_바뀌지_않는다() throws {
-        let key = "앨범아트 폴더(share/PIONEER/Artwork) 아래에 링크가 있어 share 밖에 쓸 수 있으니 링크를 실제 폴더로 바꾼 뒤 다시 쓰세요"
+        let key = "앨범아트 폴더(share/PIONEER/Artwork) 아래에 링크가 있어 share 밖에 저장할 수 있으니 링크를 실제 폴더로 바꾼 뒤 다시 저장하세요"
         let english = try #require(Self.english(key))
         #expect(english.contains("(share/PIONEER/Artwork)") && !english.contains("Album art)"))
         #expect(Self.texts("ja").first { $0.key == key }?.text.contains("share/PIONEER/Artwork") == true)
@@ -68,7 +68,7 @@ struct AlbumArtTermTests {
 
     @Test func 영어_album_art는_셀_수_없는_말이다() {
         // 뒤에 셀 수 있는 이름이 붙지 않은 "an album art"와 복수형 "album arts"는 틀린 문장이다.
-        let pattern = #/\b(?:an?|another|these|those) album art\b(?! (?:draft|drafts|record|file|files|path|folder|copy))|album arts/#
+        let pattern = #/\b(?:an?|another|these|those) album art\b(?! (?:draft|drafts|edit|edits|record|file|files|path|folder|copy))|album arts/#
             .ignoresCase()
         let wrong = Self.texts("en").filter { $0.text.firstMatch(of: pattern) != nil }
         #expect(wrong.isEmpty, "\(wrong.map(\.text))")
@@ -79,15 +79,15 @@ struct AlbumArtTermTests {
         ("앨범아트 넣기", "Add Album Art"),
         ("앨범아트 바꾸기", "Replace Album Art"),
         ("앨범아트 지우기", "Remove Album Art"),
-        ("앨범아트 초안 버리기", "Discard Album Art Draft"),
+        ("앨범아트 편집 버리기", "Discard Album Art Edits"),
     ])
     func 버튼과_메뉴_영어는_Title_Case다(key: String, expected: String) {
         #expect(Self.english(key) == expected)
     }
 
     @Test func 안내_문장_속_메뉴_이름도_같은_Title_Case다() {
-        let messages = Self.texts("en").filter { $0.text.localizedCaseInsensitiveContains("Discard Album Art Draft") }
+        let messages = Self.texts("en").filter { $0.text.localizedCaseInsensitiveContains("Discard Album Art Edits") }
         #expect(messages.count >= 3)
-        #expect(messages.allSatisfy { $0.text.contains("Discard Album Art Draft") || $0.key == "앨범아트 초안 버리기" })
+        #expect(messages.allSatisfy { $0.text.contains("Discard Album Art Edits") || $0.key == "앨범아트 편집 버리기" })
     }
 }

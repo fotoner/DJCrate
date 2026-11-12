@@ -34,7 +34,7 @@ extension LibraryStore {
     static func damagedDraftText(_ count: Int, stagedList: Bool = false) -> String {
         var sentences: [String] = []
         if count > 0 {
-            sentences.append(String(ui: "초안 파일 \(count)개를 읽지 못해 DJCrate 데이터 폴더의 damaged-drafts에 옮겨 두었으니 필요한 곡의 초안을 다시 만드세요."))
+            sentences.append(String(ui: "편집 파일 \(count)개를 읽지 못해 DJCrate 데이터 폴더의 damaged-drafts에 옮겨 두었으니 필요한 곡의 편집을 다시 만드세요."))
         }
         if stagedList {
             sentences.append(String(ui: "추가한 곡 목록 파일을 읽지 못해 DJCrate 데이터 폴더의 damaged-drafts에 옮겨 두었으니 추가했던 곡 파일을 다시 추가하세요."))

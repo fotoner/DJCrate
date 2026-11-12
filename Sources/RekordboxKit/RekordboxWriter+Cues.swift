@@ -93,7 +93,7 @@ extension RekordboxWriter {
             } else {
                 // 분석 전 곡(Analysed 0)은 rekordbox도 BitRate 0으로 넣는다(VBR 표시가 아님)
                 guard content.bitRate > 0 || content.analysed == 0, !rows.contains(where: { $0.inMpegFrame != 0 }) else {
-                    throw block(String(ui: "파일은 CBR MP3인데 rekordbox에는 VBR처럼(비트레이트 0·MPEG 위치) 적혀 있어 직접 쓰지 않습니다"))
+                    throw block(String(ui: "파일은 CBR MP3인데 rekordbox에는 VBR처럼(비트레이트 0·MPEG 위치) 적혀 있어 직접 저장하지 않습니다"))
                 }
             }
         case 4, 11:
@@ -104,9 +104,9 @@ extension RekordboxWriter {
             }
             flac = table
         default:
-            throw block(String(ui: "이 파일 형식(FileType \(content.fileType))은 아직 직접 쓰지 않습니다"))
+            throw block(String(ui: "이 파일 형식(FileType \(content.fileType))은 아직 직접 저장하지 않습니다"))
         }
-        guard flac != nil || !rows.contains(where: \.hasSeekInfo) else { throw block(String(ui: "탐색 위치가 적힌 큐가 있어 아직 직접 쓰지 않습니다")) }
+        guard flac != nil || !rows.contains(where: \.hasSeekInfo) else { throw block(String(ui: "탐색 위치가 적힌 큐가 있어 아직 직접 저장하지 않습니다")) }
 
         // contentCue(JSON)
         var cueRecords: [(id: String, cues: String?, deleted: Bool)] = []
@@ -138,7 +138,7 @@ extension RekordboxWriter {
         // 초안을 시작할 때와 rekordbox 큐가 같아야 한다.
         let current = rows.map(\.cue).compactMap(EditableCue.init)
         guard key(current, withSource: true) == key(draft.base, withSource: true) else {
-            throw block(String(ui: "초안을 만든 뒤 rekordbox에서 이 곡의 큐가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
+            throw block(String(ui: "편집을 만든 뒤 rekordbox에서 이 곡의 큐가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
         }
 
         // 바꿀 것

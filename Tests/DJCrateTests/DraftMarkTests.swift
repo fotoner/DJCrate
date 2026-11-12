@@ -12,7 +12,7 @@ struct DraftMarkTests {
         let draft = SheetCellAppearance(edited: true, readOnly: false, selected: false, editing: false)
         #expect(draft.tone == .draft)
         #expect(draft.showsDraftMark)
-        #expect(draft.accessibilityValue(for: "새 제목") == "새 제목, 초안")
+        #expect(draft.accessibilityValue(for: "새 제목") == "새 제목, 저장 대기")
     }
 
     /// 선택하면 글자색이 기본색으로 바뀌어 색으로는 알 수 없다. 모양과 VoiceOver 값은 남긴다.
@@ -20,7 +20,7 @@ struct DraftMarkTests {
         let selected = SheetCellAppearance(edited: true, readOnly: false, selected: true, editing: false)
         #expect(selected.tone == .primary)
         #expect(selected.showsDraftMark)
-        #expect(selected.accessibilityValue(for: "새 제목") == "새 제목, 초안")
+        #expect(selected.accessibilityValue(for: "새 제목") == "새 제목, 저장 대기")
     }
 
     /// 입력 중에는 칸 값을 VoiceOver가 그대로 읽어야 한다(값을 덮으면 입력한 글자를 못 듣는다).
@@ -47,7 +47,7 @@ struct DraftMarkTests {
         let cell = SheetCell()
         cell.configure(text: "새 제목", edited: true, readOnly: false, selected: true, active: true)
         #expect(cell.showsDraftMark)
-        #expect(spoken(cell) == "새 제목, 초안")
+        #expect(spoken(cell) == "새 제목, 저장 대기")
         cell.configure(text: "제목", edited: false, readOnly: false, selected: false, active: false)
         #expect(!cell.showsDraftMark)
         #expect(spoken(cell) == "제목")
@@ -88,6 +88,6 @@ struct DraftMarkTests {
     @Test func 초안과_경고는_다른_모양을_쓴다() {
         #expect(DraftMark.symbol.hasPrefix("pencil"))
         #expect(WarningMark.symbol.hasPrefix("exclamationmark.triangle"))
-        #expect(DraftMark.spoken == "초안")
+        #expect(DraftMark.spoken == "저장 대기")
     }
 }

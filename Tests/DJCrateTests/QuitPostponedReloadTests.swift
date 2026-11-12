@@ -178,7 +178,7 @@ struct QuitPostponedReloadTests {
         delegate.store = store
         store.isPoweringOff = false
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
         #expect(store.quitWait.isWaiting)
         let before = store.completedLoadCount
@@ -206,7 +206,7 @@ struct QuitPostponedReloadTests {
         delegate.terminateApp = { terminations += 1 }
         delegate.store = store
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
         let before = store.completedLoadCount
         try await write(store, fixture, uuid: spec.uuid)
@@ -231,7 +231,7 @@ struct QuitPostponedReloadTests {
         delegate.terminateApp = { terminations += 1 }
         delegate.store = store
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
         let before = store.completedLoadCount
         try await write(store, fixture, uuid: spec.uuid)

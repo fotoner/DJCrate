@@ -158,40 +158,40 @@ public struct ReflectionSession {
 
 extension ReflectionSession {
     public static var playlistSaveFailureText: String {
-        String(ui: "재생 목록 초안을 저장하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 쓰기를 다시 시도하세요.")
+        String(ui: "재생 목록 편집을 보관하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 저장을 다시 시도하세요.")
     }
 
     public static var snapshotRefusedMessage: String {
-        String(ui: "명시한 사본(--db)으로 연 창에서는 스냅샷을 뜨지 않습니다. --db 없이 다시 여세요")
+        String(ui: "명시한 사본(--db)으로 연 창에서는 rekordbox와 동기화하지 않습니다. --db 없이 다시 여세요")
     }
 
     public static func reloadFailureText(restoring: Bool) -> String {
         restoring ? String(ui: "rekordbox는 복원했지만 라이브러리를 다시 읽지 못했으니 ‘rekordbox와 동기화’(⌘R)로 다시 읽은 뒤 편집을 이어 가세요.")
-            : String(ui: "rekordbox에는 썼지만 라이브러리를 다시 읽지 못했으니 ‘rekordbox와 동기화’(⌘R)로 다시 읽은 뒤 편집을 이어 가세요.")
+            : String(ui: "rekordbox에는 저장했지만 라이브러리를 다시 읽지 못했으니 ‘rekordbox와 동기화’(⌘R)로 다시 읽은 뒤 편집을 이어 가세요.")
     }
 
     public static func keptDraftsText(_ count: Int) -> String {
-        String(ui: "쓴 뒤 새로 만든 초안이 있는 \(count)곡은 지금 초안을 남겼고, 백업의 초안은 ‘활동 기록…’의 백업 폴더에 남아 있습니다.")
+        String(ui: "저장한 뒤 새로 만든 편집이 있는 \(count)곡은 지금 편집을 남겼고, 백업의 편집은 ‘활동 기록…’의 백업 폴더에 남아 있습니다.")
     }
 
     public static func artworkRestoreFailureText(_ count: Int) -> String {
-        String(ui: "rekordbox는 복원했지만 앨범아트 초안 \(count)곡을 되살리지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 그 곡의 앨범아트를 다시 고르세요.")
+        String(ui: "rekordbox는 복원했지만 앨범아트 편집 \(count)곡을 되살리지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 그 곡의 앨범아트를 다시 고르세요.")
     }
 
     /// 넣기 끝에 백업 폴더에 추가 목록을 남기지 못했을 때(#202). 넣기 자체는 끝났다.
     public static var stagedBackupFailureText: String {
-        String(ui: "rekordbox에는 넣었지만 추가 목록을 백업에 저장하지 못해 ‘쓰기 전으로 복원…’으로 되돌려도 곡이 추가 목록으로 돌아오지 않으니, 되돌렸다면 음원을 다시 추가하세요.")
+        String(ui: "rekordbox에는 넣었지만 추가 목록을 백업에 보관하지 못해 ‘저장 전으로 복원…’으로 되돌려도 곡이 추가 목록으로 돌아오지 않으니, 되돌렸다면 음원을 다시 추가하세요.")
     }
 
     /// 넣기 끝에 추가한 곡의 초안 사본을 백업 폴더에 남기지 못한 곡이 있을 때(#202). 그 초안은 되돌릴 때 이어질 유일한 사본이라 지우지 않는다.
     public static func stagedDraftsBackupFailureText(_ count: Int) -> String {
-        String(ui: "추가한 곡 \(count)곡의 초안을 백업에 저장하지 못해 연결되지 않은 초안으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리지 마세요.")
+        String(ui: "추가한 곡 \(count)곡의 편집을 백업에 보관하지 못해 연결되지 않은 편집으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 저장 대기 목록의 ‘연결되지 않은 편집’ 옆 ‘보기…’에서 버리지 마세요.")
     }
 
     /// 되돌린 새 곡에 남아 있던 초안을 지우지 않고 남긴 곡이 있을 때(#197·#202)
     public static func keptNewTrackDraftsText(_ count: Int, kinds: [AddedTrackDrafts.Kind]) -> String? {
         guard count > 0 else { return nil }
         let labels = kinds.map(\.label).joined(separator: "·")
-        return String(ui: "넣은 곡에 남아 있던 \(labels) 초안 \(count)곡은 지우지 않고 연결되지 않은 초안으로 남겼습니다. 필요 없으면 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리세요.")
+        return String(ui: "넣은 곡에 남아 있던 \(labels) 편집 \(count)곡은 지우지 않고 연결되지 않은 편집으로 남겼습니다. 필요 없으면 저장 대기 목록의 ‘연결되지 않은 편집’ 옆 ‘보기…’에서 버리세요.")
     }
 }

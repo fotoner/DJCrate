@@ -448,7 +448,7 @@ struct RekordboxArtworkWriterTests {
         let edit = try edit(fixture, track, image: smallWide)
         try fixture.execute("UPDATE contentFile SET Hash = 'rekordbox-changed', rb_data_status = 257 WHERE ID = ?", [.text(fileID(track))])
         let report = try write(fixture, [edit])
-        #expect(report.artworkWritten.isEmpty && report.artworkBlocked.first?.reason?.contains("초안을 만든 뒤") == true)
+        #expect(report.artworkWritten.isEmpty && report.artworkBlocked.first?.reason?.contains("편집을 만든 뒤") == true)
     }
 
     @Test func 그림_사본이_없거나_초안과_다르면_막는다() throws {

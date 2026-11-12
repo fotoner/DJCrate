@@ -37,8 +37,8 @@ struct SettingsDevicesTests {
     }
 
     @Test func 막히면_평소_툴팁_대신_이유를_보인다() {
-        let reason = DisabledReason("쓰는 중에는 비울 수 없습니다", enabledHelp: "평소 툴팁")
-        #expect(reason.help == "쓰는 중에는 비울 수 없습니다")
+        let reason = DisabledReason("저장하는 중에는 비울 수 없습니다", enabledHelp: "평소 툴팁")
+        #expect(reason.help == "저장하는 중에는 비울 수 없습니다")
     }
 
     @Test func 비었거나_공백뿐인_이유는_이유가_아니다() {
@@ -73,7 +73,7 @@ struct SettingsDevicesTests {
     }
 
     @Test func 이유를_주면_안쪽_컨트롤이_비활성이다() {
-        #expect(enabled { EnabledProbe(seen: $0).disabled(because: "쓰는 중에는 비울 수 없습니다") } == false)
+        #expect(enabled { EnabledProbe(seen: $0).disabled(because: "저장하는 중에는 비울 수 없습니다") } == false)
     }
 
     @Test func 이유가_없으면_안쪽_컨트롤은_켜져_있다() {

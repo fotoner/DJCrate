@@ -21,7 +21,7 @@ extension RekordboxWriter {
             throw fail(String(ui: "큐 행 구성이 다릅니다"))
         }
         let editable = rows.map(\.cue).compactMap(EditableCue.init)
-        guard key(editable, withSource: false) == expected.editable else { throw fail(String(ui: "큐 위치·종류가 초안과 다릅니다")) }
+        guard key(editable, withSource: false) == expected.editable else { throw fail(String(ui: "큐 위치·종류가 편집과 다릅니다")) }
         // 새 큐의 탐색 칸(VBR MP3 MPEG 위치·FLAC SeekInfo)이 계산한 값 그대로인지
         for (id, seek) in expected.insertedSeek {
             var stored: [String] = []

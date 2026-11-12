@@ -25,7 +25,7 @@ public struct UsbLocalSource {
         guard values.count == 1, let dbid = Int64(values[0]) else {
             // USB가 아니라 로컬 스냅샷 문제다(USB를 다시 연결해도 풀리지 않는다)
             throw UsbError.writeRefused([UsbBlock(code: "localDBID", scope: .volume,
-                                                  message: String(ui: "로컬 라이브러리 정보를 읽지 못했습니다. 새 스냅샷을 뜬 뒤 다시 내보내세요"))])
+                                                  message: String(ui: "로컬 라이브러리 정보를 읽지 못했습니다. ‘rekordbox와 동기화’를 한 뒤 다시 내보내세요"))])
         }
         return dbid
     }
@@ -128,7 +128,7 @@ public struct UsbLocalSource {
         }
         guard let found else {
             throw UsbError.writeRefused([UsbBlock(code: "localTrackMissing", scope: .track(contentID),
-                                                  message: String(ui: "스냅샷에서 이 곡을 찾지 못했습니다. 새 스냅샷을 뜬 뒤 다시 내보내세요"))])
+                                                  message: String(ui: "읽은 사본에서 이 곡을 찾지 못했습니다. ‘rekordbox와 동기화’를 한 뒤 다시 내보내세요"))])
         }
         return found
     }

@@ -23,15 +23,15 @@ public struct DraftSaveFailure: Equatable, Sendable {
 
     public var message: String {
         let title = switch kind {
-        case .cue: String(ui: "큐 초안을 저장하지 못했습니다.")
-        case .grid: String(ui: "그리드 초안을 저장하지 못했습니다.")
-        case .gain: String(ui: "게인 초안을 저장하지 못했습니다.")
+        case .cue: String(ui: "큐 편집을 보관하지 못했습니다.")
+        case .grid: String(ui: "그리드 편집을 보관하지 못했습니다.")
+        case .gain: String(ui: "게인 편집을 보관하지 못했습니다.")
         }
         return title + " " + reason
     }
 
     /// 태그 초안 저장 실패 안내(태그는 곡마다 실패한 곡만 기록한다)
     public static var tagSaveMessage: String {
-        String(ui: "태그 초안을 저장하지 못했으니 초안 폴더의 접근 권한을 확인한 뒤 동기화하거나 쓰기를 다시 시도하세요.")
+        String(ui: "태그 편집을 보관하지 못했으니 편집 폴더의 접근 권한을 확인한 뒤 동기화하거나 저장을 다시 시도하세요.")
     }
 }

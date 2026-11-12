@@ -23,33 +23,33 @@ struct ActivityLogTests {
         let log = ActivityLog()
         log.record(AppToast.notice("첫 안내", "설명"))
         log.record(AppToast(title: "현재 rekordbox 내용을 불러왔습니다"))
-        log.record(WriteResult(kind: .warning, title: "rekordbox에 썼습니다 · 큐 1곡", text: "• 곡 a — 큐 쓰기 완료"))
-        #expect(log.entries.map(\.title) == ["rekordbox에 썼습니다 · 큐 1곡", "현재 rekordbox 내용을 불러왔습니다", "첫 안내"])
+        log.record(WriteResult(kind: .warning, title: "rekordbox에 저장했습니다 · 큐 1곡", text: "• 곡 a — 큐 저장 완료"))
+        #expect(log.entries.map(\.title) == ["rekordbox에 저장했습니다 · 큐 1곡", "현재 rekordbox 내용을 불러왔습니다", "첫 안내"])
         #expect(log.entries.map(\.kind) == [.warning, .success, .warning])
         #expect(log.entries.last?.detail == "설명" && log.entries.last?.result == nil)
         // 쓰기 결과는 전체 내용을 자세한 내용으로 둔다
-        #expect(log.latest?.detail == "• 곡 a — 큐 쓰기 완료" && log.latest?.result?.title == log.latest?.title)
+        #expect(log.latest?.detail == "• 곡 a — 큐 저장 완료" && log.latest?.result?.title == log.latest?.title)
     }
 
     @Test func 바로_앞과_같은_알림은_새_항목_대신_시각과_횟수를_고친다() {
         var clock = Date(timeIntervalSince1970: 1_000)
         let log = ActivityLog(now: { clock })
-        let first = log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", "rekordbox를 종료하세요"))
+        let first = log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", "rekordbox를 종료하세요"))
         clock = Date(timeIntervalSince1970: 2_000)
-        let again = log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", "rekordbox를 종료하세요"))
+        let again = log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", "rekordbox를 종료하세요"))
         #expect(again == first && log.entries.count == 1)
         #expect(log.latest?.count == 2 && log.latest?.date == clock)
         // 종류나 내용이 다르면 따로 남긴다
-        log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", "rekordbox를 종료하세요", kind: .success))
-        log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", "다른 설명"))
+        log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", "rekordbox를 종료하세요", kind: .success))
+        log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", "다른 설명"))
         // 바로 앞 항목만 본다: 사이에 다른 알림이 있었으면 같은 알림도 새 항목이다
-        log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", "rekordbox를 종료하세요"))
+        log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", "rekordbox를 종료하세요"))
         #expect(log.entries.count == 4 && log.entries.map(\.count) == [1, 1, 1, 2])
     }
 
     @Test func 백업이_다른_쓰기_결과는_합치지_않는다() {
         let log = ActivityLog()
-        let result = WriteResult(kind: .success, title: "rekordbox에 썼습니다 · 큐 1곡", text: "• 곡 a — 큐 쓰기 완료",
+        let result = WriteResult(kind: .success, title: "rekordbox에 저장했습니다 · 큐 1곡", text: "• 곡 a — 큐 저장 완료",
                                  backups: [URL(filePath: "/tmp/djc-synthetic-backup-1")])
         log.record(result)
         var next = result
@@ -57,7 +57,7 @@ struct ActivityLogTests {
         log.record(next)
         #expect(log.entries.count == 2)
         // 백업까지 같으면(쓴 것이 없는 결과 등) 합친다
-        let nothing = WriteResult(kind: .warning, title: "rekordbox에 쓴 것이 없습니다", text: "• 곡 b — 바꿀 것 없음")
+        let nothing = WriteResult(kind: .warning, title: "rekordbox에 저장한 것이 없습니다", text: "• 곡 b — 바꿀 것 없음")
         log.record(nothing)
         log.record(nothing)
         #expect(log.entries.count == 3 && log.latest?.count == 2)
@@ -73,9 +73,9 @@ struct ActivityLogTests {
     /// 알림마다 파일 전체를 다시 쓰므로, 곡마다의 긴 결과가 200건 쌓여 파일이 한없이 커지지 않게 한다.
     @Test func 최근_20개보다_오래된_쓰기_결과는_문구의_앞부분만_남긴다() throws {
         let log = ActivityLog()
-        let long = String(repeating: "• 곡 — 큐 쓰기 완료\n", count: 500)
+        let long = String(repeating: "• 곡 — 큐 저장 완료\n", count: 500)
         for index in 0..<(ActivityLog.fullResults + 3) {
-            log.record(WriteResult(kind: .success, title: "rekordbox에 썼습니다 · \(index)", text: long,
+            log.record(WriteResult(kind: .success, title: "rekordbox에 저장했습니다 · \(index)", text: long,
                                    backups: [URL(filePath: "/tmp/djc-activity-backup-\(index)")]))
             log.record(AppToast(title: "현재 rekordbox 내용을 불러왔습니다 · \(index)"))
         }
@@ -98,7 +98,7 @@ struct ActivityLogTests {
         let log = ActivityLog(url: url)
         log.record(AppToast.notice("USB에 쓰지 않았습니다", "USB를 다시 꽂으세요", isUsb: true))
         log.record(AppToast.notice("USB에 쓰지 않았습니다", "USB를 다시 꽂으세요", isUsb: true))
-        log.record(WriteResult(kind: .success, title: "rekordbox를 쓰기 전으로 복원했습니다", text: "전체 내용",
+        log.record(WriteResult(kind: .success, title: "rekordbox를 저장 전으로 복원했습니다", text: "전체 내용",
                                backups: [URL(filePath: "/tmp/djc-synthetic-backup")]))
         #expect(log.storageError == nil)
         #expect(try Self.permissions(url) == 0o600)
@@ -114,8 +114,8 @@ struct ActivityLogTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let legacy = folder.appending(path: "last-write-result.json"), url = folder.appending(path: "activity-log.json")
-        let old = WriteResult(kind: .warning, title: "rekordbox에 썼습니다 · 그리드 1곡", text: "• 곡 a — 그리드 쓰기 완료",
-                              shortfall: "큐 1곡은 쓰지 않았습니다", backups: [URL(filePath: "/tmp/djc-synthetic-backup")],
+        let old = WriteResult(kind: .warning, title: "rekordbox에 저장했습니다 · 그리드 1곡", text: "• 곡 a — 그리드 저장 완료",
+                              shortfall: "큐 1곡은 저장하지 않았습니다", backups: [URL(filePath: "/tmp/djc-synthetic-backup")],
                               createdAt: Date(timeIntervalSince1970: 1_000))
         try JSONEncoder().encode(old).write(to: legacy)
 
@@ -138,7 +138,7 @@ struct ActivityLogTests {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let legacy = folder.appending(path: "last-write-result.json"), blocker = folder.appending(path: "home")
         let url = blocker.appending(path: "activity-log.json")
-        let old = WriteResult(kind: .success, title: "rekordbox를 쓰기 전으로 복원했습니다", text: "전체 내용")
+        let old = WriteResult(kind: .success, title: "rekordbox를 저장 전으로 복원했습니다", text: "전체 내용")
         try JSONEncoder().encode(old).write(to: legacy)
         // 기록 폴더 자리에 파일이 있어 처음에는 보관하지 못한다
         try Data().write(to: blocker)
@@ -201,13 +201,13 @@ struct ActivityLogTests {
 
     @Test func 창_알림을_띄우면_활동_기록에_남고_알림이_그_항목을_가리킨다() throws {
         let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { _ in }))
-        store.showToast(.notice("복원할 쓰기 기록이 없습니다", "백업이 정리됐습니다"))
+        store.showToast(.notice("복원할 저장 기록이 없습니다", "백업이 정리됐습니다"))
         let entry = try #require(store.activityLog.latest)
-        #expect(entry.title == "복원할 쓰기 기록이 없습니다" && entry.detail == "백업이 정리됐습니다" && entry.kind == .warning)
+        #expect(entry.title == "복원할 저장 기록이 없습니다" && entry.detail == "백업이 정리됐습니다" && entry.kind == .warning)
         #expect(store.toast?.activityID == entry.id)
         // 같은 안내가 다시 떠도 항목은 하나이고, 알림은 그 항목을 가리킨다
         store.dismissToast()
-        store.showToast(.notice("복원할 쓰기 기록이 없습니다", "백업이 정리됐습니다"))
+        store.showToast(.notice("복원할 저장 기록이 없습니다", "백업이 정리됐습니다"))
         #expect(store.activityLog.entries.count == 1 && store.toast?.activityID == entry.id)
         // 다른 알림 id로는 지금 알림을 닫지 않는다
         store.dismissToast(UUID())
@@ -244,7 +244,7 @@ struct ActivityLogTests {
     @Test func 활동_기록_창은_고른_항목을_열고_주지_않으면_맨_위를_고른다() throws {
         let log = ActivityLog()
         let old = log.record(AppToast.notice("이전 안내", nil))
-        let latest = log.record(WriteResult(kind: .success, title: "rekordbox에 썼습니다 · 큐 1곡", text: "전체 내용"))
+        let latest = log.record(WriteResult(kind: .success, title: "rekordbox에 저장했습니다 · 큐 1곡", text: "전체 내용"))
         let picked = ActivityLogModel(log: log, selection: old)
         #expect(picked.selection == old && picked.selected?.title == "이전 안내")
         let top = ActivityLogModel(log: log)

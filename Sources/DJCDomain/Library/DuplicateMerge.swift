@@ -44,7 +44,7 @@ public enum DuplicateMerge {
         let members = [keeping] + removing
         guard !removing.isEmpty, Set(members.map(\.contentID)).count == members.count,
               Set(members.map(\.trackUUID)).count == members.count else {
-            throw Blocked(String(ui: "서로 다른 곡을 골라 합치기 초안을 다시 만드세요"))
+            throw Blocked(String(ui: "서로 다른 곡을 골라 합치기 편집을 다시 만드세요"))
         }
         guard members.allSatisfy({ $0.duration.isFinite && $0.duration > 0 && $0.offset.isFinite && $0.offset >= 0
             && abs($0.duration - keeping.duration) <= 0.020000001 }) else {

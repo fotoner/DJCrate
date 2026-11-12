@@ -46,7 +46,7 @@ struct EditPlaylistsBatchTests {
             .delete(PlaylistTarget("P3")),
         ])
         #expect(batch.outcomes.map(\.status) == [.stacked, .skipped, .skipped, .stacked])
-        #expect(batch.outcomes[1].reason == "인텔리전트 재생 목록은 아직 쓰지 않습니다(rekordbox에서 고치세요)")
+        #expect(batch.outcomes[1].reason == "인텔리전트 재생 목록은 아직 저장하지 않습니다(rekordbox에서 고치세요)")
         #expect(batch.outcomes[2].reason == "rekordbox에서 재생 목록을 찾지 못했습니다")
         #expect(batch.draft.edits == [.rename(playlist: .id("P1"), name: "새 이름"), .delete(playlist: .id("P3"))])
         #expect(!batch.refused && batch.hasChanges)
@@ -61,7 +61,7 @@ struct EditPlaylistsBatchTests {
         #expect(batch.refused && !batch.hasChanges)
         #expect(batch.draft == before)
         #expect(batch.outcomes.map(\.status) == [.stacked, .skipped])
-        #expect(batch.firstSkipReason == "인텔리전트 재생 목록은 아직 쓰지 않습니다(rekordbox에서 고치세요)")
+        #expect(batch.firstSkipReason == "인텔리전트 재생 목록은 아직 저장하지 않습니다(rekordbox에서 고치세요)")
     }
 
     @Test func 같은_묶음에서_만든_목록은_임시_이름으로_가리킨다() throws {

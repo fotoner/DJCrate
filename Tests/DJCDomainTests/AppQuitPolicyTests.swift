@@ -77,7 +77,7 @@ struct AppQuitPolicyTests {
     }
 
     @Test func 기다림_문구는_쓰는_대상과_지난_시간을_담는다() {
-        #expect(QuitWait.title == "rekordbox에 쓰는 중… 끝나면 종료합니다")
+        #expect(QuitWait.title == "rekordbox에 저장하는 중… 끝나면 종료합니다")
         #expect(QuitWait.elapsedText(seconds: 12) == "12초 지났습니다")
     }
 }

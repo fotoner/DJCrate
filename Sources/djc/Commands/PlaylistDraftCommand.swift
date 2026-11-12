@@ -72,7 +72,7 @@ enum PlaylistDraftCommand {
             lines.append(String(ui: "  읽지 못한 기존 초안 파일은 지우지 않고 damaged-drafts에 옮겨 두었습니다: \(preserved.joined(separator: ", "))"))
         }
         if result.hasChanges, !result.dryRun {
-            lines.append(String(ui: "rekordbox에는 아직 쓰지 않았습니다. DJCrate의 rekordbox에 쓰기에서 미리 보고 쓰세요"))
+            lines.append(String(ui: "rekordbox에는 아직 저장하지 않았습니다. DJCrate에서 미리 보고 rekordbox에 저장하세요"))
         }
         return lines
     }

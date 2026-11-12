@@ -292,7 +292,7 @@ extension RekordboxWriter {
             id = value
         }
         guard let node = work.tree.nodes[id] else { throw PlaylistBlocked(name: id, reason: String(ui: "rekordbox에서 재생 목록을 찾지 못했습니다")) }
-        guard node.attribute <= 1, !node.smartList else { throw PlaylistBlocked(name: node.name, reason: String(ui: "인텔리전트 재생 목록은 아직 쓰지 않습니다(rekordbox에서 고치세요)")) }
+        guard node.attribute <= 1, !node.smartList else { throw PlaylistBlocked(name: node.name, reason: String(ui: "인텔리전트 재생 목록은 아직 저장하지 않습니다(rekordbox에서 고치세요)")) }
         return node
     }
 

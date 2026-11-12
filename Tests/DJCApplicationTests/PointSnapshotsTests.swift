@@ -39,7 +39,7 @@ struct PointSnapshotsTests {
         let loaded = await points(files, backups: backups).load()
         let rows = loaded.rows
         #expect(loaded.canClone)
-        #expect(rows.map(\.kind) == ["복원 직전", "쓰기 전 백업", "수동", "복원 직전 백업"])
+        #expect(rows.map(\.kind) == ["복원 직전", "저장 전 백업", "수동", "복원 직전 백업"])
         #expect(rows[0].name == "‘정리 전’ 복원 전")
         #expect(rows[1].name == "그리드 곡" && rows[1].entry == nil && !rows[1].pinned)
         #expect(rows[2].id == PointSnapshotRow.pointID(rows[2].entry!))
@@ -47,8 +47,8 @@ struct PointSnapshotsTests {
 
     @Test func 쓰는_중이면_파일을_보지_않고_거부한다() async {
         let files = MemoryPointSnapshotFiles()
-        await #expect(throws: PointSnapshotRefusal.busy("쓰는 중")) {
-            try await points(files).create(name: "전", autoDays: 7, now: now, blockReason: "쓰는 중")
+        await #expect(throws: PointSnapshotRefusal.busy("저장하는 중")) {
+            try await points(files).create(name: "전", autoDays: 7, now: now, blockReason: "저장하는 중")
         }
         #expect(files.calls.isEmpty)
         let entry = try? await points(files).create(name: "전", autoDays: 7, now: now)
@@ -92,8 +92,8 @@ struct PointSnapshotsTests {
             return RekordboxPointRestoreReport(restored: entry, beforeRestore: entry)
         }
 
-        guard case .refused(.busy("쓰는 중")) = await use.restore(entry, blockReason: "쓰는 중", confirmation: prompts.port, perform: perform) else {
-            Issue.record("쓰는 중"); return
+        guard case .refused(.busy("저장하는 중")) = await use.restore(entry, blockReason: "저장하는 중", confirmation: prompts.port, perform: perform) else {
+            Issue.record("저장하는 중"); return
         }
         files.state.withLock { $0.liveAndRunning = true }
         guard case .refused(.rekordboxRunning) = await use.restore(entry, confirmation: prompts.port, perform: perform) else {
@@ -135,7 +135,7 @@ struct PointSnapshotsTests {
         diff.currentCloudUpdateCount = 100
         let quiet = PointSnapshots.restoreConfirmation(entry, diff: diff)
         #expect(!quiet.text.contains(RekordboxPointSnapshotDiff.cloudSyncNote))
-        #expect(quiet.text.contains("초안은 그대로") && quiet.destructive && quiet.confirm == "이 시점으로 복원")
+        #expect(quiet.text.contains("편집은 그대로") && quiet.destructive && quiet.confirm == "이 시점으로 복원")
         diff.currentCloudUpdateCount = 120
         let prompt = PointSnapshots.restoreConfirmation(entry, diff: diff)
         #expect(prompt.text.contains(RekordboxPointSnapshotDiff.cloudSyncNote) && prompt.text.contains("다른 곳이 없습니다"))
@@ -196,7 +196,7 @@ struct PointSnapshotsTests {
         let runner = autoRunner(files, probe: probe, writeCount: { 0 })
         #expect(await runner.runIfDue() == nil)
         #expect(await runner.runIfDue() == nil)
-        #expect(probe.failures == ["자동 시점 스냅샷을 남기지 못했습니다"] && probe.logs.count == 2)
+        #expect(probe.failures == ["자동 복원 시점을 남기지 못했습니다"] && probe.logs.count == 2)
         files.isRekordboxRunning = { true }
         let quiet = AutoProbe()
         #expect(await autoRunner(files, probe: quiet, writeCount: { 0 }).runIfDue() == nil)

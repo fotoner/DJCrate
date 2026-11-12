@@ -89,7 +89,7 @@ struct AutoPointSnapshotRunnerTests {
         let runner = runner(fixture, probe: probe)
         #expect(await runner.runIfDue() == nil)
         #expect(await runner.runIfDue() == nil)
-        #expect(probe.toasts == ["자동 시점 스냅샷을 남기지 못했습니다"])
+        #expect(probe.toasts == ["자동 복원 시점을 남기지 못했습니다"])
         #expect(snapshots(fixture).isEmpty)
     }
 

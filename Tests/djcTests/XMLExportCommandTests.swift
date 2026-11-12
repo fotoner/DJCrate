@@ -54,7 +54,7 @@ struct XMLExportCommandTests {
         let text = lines.joined(separator: "\n")
         #expect(text.contains(out.path))
         #expect(text.contains("곡 1") && text.contains("큐·루프 1") && text.contains("그리드 있는 곡 1") && text.contains("스트리밍 곡 1"))
-        #expect(text.contains("쓰지 않은 초안은 넣지 않았습니다") && text.contains("상위 폴더가 없는 목록 0"))
+        #expect(text.contains("저장하지 않은 편집은 넣지 않았습니다") && text.contains("상위 폴더가 없는 목록 0"))
     }
 
     @Test func share를_안_주면_사본_DB_옆_share에서_분석_파일을_읽는다() throws {

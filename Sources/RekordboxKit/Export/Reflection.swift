@@ -88,7 +88,7 @@ public enum Reflection {
         let cueChanged = !(cueDraft?.changes.isEmpty ?? true)
         let gridChanged = gridDraft?.hasChanges ?? false
         let tempos = gridChanged ? RekordboxXML.normalized(gridDraft?.segments ?? []) : nil
-        if gridChanged, tempos?.isEmpty ?? true { blockers.append(String(ui: "그리드 초안이 비어 있습니다")) }
+        if gridChanged, tempos?.isEmpty ?? true { blockers.append(String(ui: "그리드 편집이 비어 있습니다")) }
         return Plan(trackID: track.id, uuid: track.uuid, path: track.folderPath, title: track.title, marks: marks,
                     tempos: tempos, blockers: blockers, cueChanged: cueChanged, gridChanged: gridChanged,
                     before: Metadata(track), beforeMarks: beforeMarks)

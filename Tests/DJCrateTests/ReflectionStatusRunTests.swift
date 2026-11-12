@@ -27,15 +27,15 @@ struct ReflectionStatusRunTests {
     @Test func rekordbox가_켜져_있으면_쓰기_대기에_이유를_붙인다() {
         let h = Self.pendingHarness(.running)
         #expect(h.model.chip == .pending(items: 1, playlistEdits: 0, reason: .rekordboxRunning))
-        #expect(h.model.chip.title == "rekordbox가 켜져 있습니다 · 쓰기 대기 1건")
+        #expect(h.model.chip.title == "rekordbox가 켜져 있습니다 · 저장 대기 1건")
         // [쓰기] 단추는 지금처럼 두되 강조하지 않는다. 막힘은 기존 판단·관문이 한다
-        #expect(h.model.showsWriteButton && !h.model.emphasizesWrite && h.model.writeButtonTitle == "쓰기")
+        #expect(h.model.showsWriteButton && !h.model.emphasizesWrite && h.model.writeButtonTitle == "저장")
     }
 
     @Test func rekordboxAgent만_켜져_있으면_Agent로_말한다() {
         let h = Self.pendingHarness(.agentOnly)
         #expect(h.model.chip == .pending(items: 1, playlistEdits: 0, reason: .agentRunning))
-        #expect(h.model.chip.title == "rekordboxAgent가 켜져 있습니다 · 쓰기 대기 1건")
+        #expect(h.model.chip.title == "rekordboxAgent가 켜져 있습니다 · 저장 대기 1건")
         #expect(!h.model.emphasizesWrite)
     }
 
@@ -52,14 +52,14 @@ struct ReflectionStatusRunTests {
             let h = Harness()
             h.run.state = run
             h.model.refresh()
-            #expect(h.model.chip == .clean && h.model.chip.title == "쓰기 대기 없음", "감지 \(run)")
+            #expect(h.model.chip == .clean && h.model.chip.title == "저장 대기 없음", "감지 \(run)")
             #expect(!h.model.showsWriteButton)
         }
     }
 
     @Test func 팝오버는_켜진_것마다_할_일을_한_줄로_알린다() {
-        #expect(Self.pendingHarness(.running).model.todoLine == "rekordbox를 끈 뒤 쓰세요")
-        #expect(Self.pendingHarness(.agentOnly).model.todoLine == "rekordboxAgent를 종료한 뒤 쓰세요")
+        #expect(Self.pendingHarness(.running).model.todoLine == "rekordbox를 끈 뒤 저장하세요")
+        #expect(Self.pendingHarness(.agentOnly).model.todoLine == "rekordboxAgent를 종료한 뒤 저장하세요")
         #expect(Self.pendingHarness(.stopped).model.todoLine == nil)
         #expect(Self.pendingHarness(nil).model.todoLine == nil)
     }
@@ -70,7 +70,7 @@ struct ReflectionStatusRunTests {
         for run in [RekordboxRunState?.none, .some(.unknown)] {
             let h = Self.pendingHarness(run)
             #expect(h.model.chip == .pending(items: 1, playlistEdits: 0), "감지 \(String(describing: run))")
-            #expect(h.model.chip.title == "쓰기 대기 1건" && !h.model.emphasizesWrite)
+            #expect(h.model.chip.title == "저장 대기 1건" && !h.model.emphasizesWrite)
             #expect(h.model.todoLine == nil)
         }
     }
@@ -96,8 +96,8 @@ struct ReflectionStatusRunTests {
         h.run.state = .stopped
         h.model.refresh()
         #expect(h.model.chip == .pending(items: 1, playlistEdits: 0, reason: .rekordboxStopping))
-        #expect(h.model.chip.title == "rekordbox가 끝나는 중… · 쓰기 대기 1건")
-        #expect(!h.model.emphasizesWrite && h.model.writeButtonTitle == "쓰기", "[지금 쓰기] 강조를 미룬다")
+        #expect(h.model.chip.title == "rekordbox가 끝나는 중… · 저장 대기 1건")
+        #expect(!h.model.emphasizesWrite && h.model.writeButtonTitle == "저장", "[지금 쓰기] 강조를 미룬다")
         #expect(ReflectionStatusModel.settleDelay == .seconds(3))
         h.model.refresh()
         h.model.refresh()
@@ -110,8 +110,8 @@ struct ReflectionStatusRunTests {
         h.model.refresh()
         h.settle.release()
         #expect(await waitForState { h.model.chip == .pending(items: 1, playlistEdits: 0, reason: .rekordboxStopped) })
-        #expect(h.model.chip.title == "rekordbox가 꺼졌습니다 · 쓰기 대기 1건")
-        #expect(h.model.emphasizesWrite && h.model.writeButtonTitle == "지금 쓰기" && h.model.showsWriteButton)
+        #expect(h.model.chip.title == "rekordbox가 꺼졌습니다 · 저장 대기 1건")
+        #expect(h.model.emphasizesWrite && h.model.writeButtonTitle == "지금 저장" && h.model.showsWriteButton)
         #expect(h.model.todoLine == nil)
     }
 
@@ -125,7 +125,7 @@ struct ReflectionStatusRunTests {
         #expect(await waitForState { h.settle.cancelled == 1 }, "기다리던 확인을 거둔다")
         h.settle.release()
         await drainMainActor()
-        #expect(h.model.chip.title == "rekordbox가 켜져 있습니다 · 쓰기 대기 1건" && !h.model.emphasizesWrite)
+        #expect(h.model.chip.title == "rekordbox가 켜져 있습니다 · 저장 대기 1건" && !h.model.emphasizesWrite)
     }
 
     @Test func 확인_시간이_끝나는_때_다시_켜져_있으면_켜짐이다() async {
@@ -156,14 +156,14 @@ struct ReflectionStatusRunTests {
         #expect(h.model.chip == .pending(items: 1, playlistEdits: 0), "모르는 동안은 이유가 없다")
         h.run.state = .stopped
         h.model.refresh()
-        #expect(h.model.chip.title == "rekordbox가 끝나는 중… · 쓰기 대기 1건")
+        #expect(h.model.chip.title == "rekordbox가 끝나는 중… · 저장 대기 1건")
     }
 
     @Test func Agent만_남으면_끝나는_중이_아니라_Agent가_켜져_있다고_말한다() async {
         let h = Self.pendingHarness(.running)
         h.run.state = .agentOnly
         h.model.refresh()
-        #expect(h.model.chip.title == "rekordboxAgent가 켜져 있습니다 · 쓰기 대기 1건")
+        #expect(h.model.chip.title == "rekordboxAgent가 켜져 있습니다 · 저장 대기 1건")
         await drainMainActor()
         #expect(h.settle.requested.isEmpty)
     }
@@ -176,10 +176,10 @@ struct ReflectionStatusRunTests {
         #expect(await waitForState { h.model.emphasizesWrite })
         h.run.state = .running
         h.model.refresh()
-        #expect(!h.model.emphasizesWrite && h.model.chip.title == "rekordbox가 켜져 있습니다 · 쓰기 대기 1건")
+        #expect(!h.model.emphasizesWrite && h.model.chip.title == "rekordbox가 켜져 있습니다 · 저장 대기 1건")
         h.run.state = .stopped
         h.model.refresh()
-        #expect(h.model.chip.title == "rekordbox가 끝나는 중… · 쓰기 대기 1건")
+        #expect(h.model.chip.title == "rekordbox가 끝나는 중… · 저장 대기 1건")
         #expect(await waitForState { h.settle.requested == [.seconds(3), .seconds(3)] })
     }
 
@@ -237,11 +237,11 @@ struct ReflectionStatusRunTests {
     @Test func 쓰는_중이_켜짐_끝나는_중_꺼짐_강조보다_앞선다() async {
         let h = Self.pendingHarness(.running)
         h.store.isWritingRekordbox = true
-        h.store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        h.store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         h.model.refresh()
         h.gate.release()
         #expect(await waitForState { h.model.chip == .writing })
-        #expect(h.model.chip.title == "rekordbox에 쓰는 중…" && !h.model.emphasizesWrite)
+        #expect(h.model.chip.title == "rekordbox에 저장하는 중…" && !h.model.emphasizesWrite)
     }
 
     @Test func 꺼짐_전이_중_쓰기가_시작되면_쓰는_중이다() async {
@@ -249,7 +249,7 @@ struct ReflectionStatusRunTests {
         h.run.state = .stopped
         h.model.refresh()
         h.store.isWritingRekordbox = true
-        h.store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        h.store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         h.model.refresh()
         h.gate.release()
         #expect(await waitForState { h.model.chip == .writing })
@@ -276,7 +276,7 @@ struct ReflectionStatusRunTests {
 
         // 막힌 초안 비교 창이 열려 있는 동안은 메뉴처럼 막는다
         h.store.recoverySheet = RecoverySheetModel(host: h.store, requests: [])
-        expectSameAsMenu("막힌 초안 비교 창")
+        expectSameAsMenu("막힌 편집 비교 창")
         #expect(!h.model.canWrite && h.model.emphasizesWrite, "강조는 막힘을 풀지 않는다")
         LibraryMenuAction.reflect.perform(in: h.window)
         let menuToast = h.store.toast?.title
@@ -295,9 +295,9 @@ struct ReflectionStatusRunTests {
         h.model.start()
         #expect(h.model.chip == .pending(items: 1, playlistEdits: 0))
         h.run.state = .running
-        #expect(await waitForState { h.model.chip.title == "rekordbox가 켜져 있습니다 · 쓰기 대기 1건" })
+        #expect(await waitForState { h.model.chip.title == "rekordbox가 켜져 있습니다 · 저장 대기 1건" })
         h.run.state = .stopped
-        #expect(await waitForState { h.model.chip.title == "rekordbox가 끝나는 중… · 쓰기 대기 1건" })
+        #expect(await waitForState { h.model.chip.title == "rekordbox가 끝나는 중… · 저장 대기 1건" })
         h.settle.release()
         #expect(await waitForState { h.model.emphasizesWrite })
     }

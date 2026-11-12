@@ -99,7 +99,7 @@ final class RecoveryLine: Identifiable {
     func label(for choice: RecoveryChoice) -> String {
         switch choice {
         case .keep: isPlaylist ? String(ui: "다시 적용") : String(ui: "내 편집 유지·다시 적용")
-        case .useCurrent: isPlaylist ? String(ui: "초안 버리기") : String(ui: "현재값 사용")
+        case .useCurrent: isPlaylist ? String(ui: "편집 버리기") : String(ui: "현재값 사용")
         case .later: String(ui: "나중에")
         }
     }
@@ -109,10 +109,10 @@ final class RecoveryLine: Identifiable {
         guard phase == .ready else { return nil }
         switch (choice, isPlaylist) {
         case (.keep, false): return String(ui: "내 편집을 현재값 위에 다시 쌓습니다.")
-        case (.keep, true): return String(ui: "다시 적용할 수 있는 편집을 현재 목록 위에 초안으로 쌓습니다.")
-        case (.useCurrent, false): return String(ui: "이 곡의 \(kindLabel) 편집을 버리고 현재값을 씁니다. 다른 곡과 다른 종류의 초안은 그대로입니다.")
+        case (.keep, true): return String(ui: "다시 적용할 수 있는 편집을 현재 목록 위에 쌓습니다.")
+        case (.useCurrent, false): return String(ui: "이 곡의 \(kindLabel) 편집을 버리고 현재값을 씁니다. 다른 곡과 다른 종류의 편집은 그대로입니다.")
         case (.useCurrent, true): return String(ui: "이 목록의 막힌 편집을 되돌릴 수 없게 버립니다.")
-        case (.later, _): return String(ui: "초안을 그대로 둡니다.")
+        case (.later, _): return String(ui: "편집을 그대로 둡니다.")
         }
     }
 
@@ -160,7 +160,10 @@ final class RecoverySheetModel: Identifiable {
         !isClosed && !isSaving && !isLoading && lines.contains { $0.phase == .ready && $0.choice != .later }
     }
 
-    /// "현재값 사용"·"초안 버리기"를 고른 줄 수(저장하면 내 편집을 버린다)
+    /// [N줄 적용] 단추의 N: 비교를 마쳤고 "나중에"가 아닌 줄(`canSave`가 이 수가 0보다 큰지 본다)
+    var applyCount: Int { lines.filter { $0.phase == .ready && $0.choice != .later }.count }
+
+    /// "현재값 사용"·"편집 버리기"를 고른 줄 수(저장하면 내 편집을 버린다)
     var discardCount: Int { lines.filter(\.discardsEdits).count }
 
     // MARK: - 읽기
@@ -219,7 +222,7 @@ final class RecoverySheetModel: Identifiable {
             line.canKeep = keepable
             if !line.isStale {
                 // rekordbox가 바뀐 것이 아니면 다시 적용할 것이 없다. 쓰지 못한 이유는 쓰기 결과에 있다.
-                line.keepBlockedReason = String(ui: "이 초안은 rekordbox가 바뀌어서 막힌 것이 아니니 ‘활동 기록…’에서 쓰지 못한 이유를 확인하세요.")
+                line.keepBlockedReason = String(ui: "이 편집은 rekordbox가 바뀌어서 막힌 것이 아니니 ‘활동 기록…’에서 저장하지 못한 이유를 확인하세요.")
             } else if !keepable {
                 if missing.isEmpty {
                     line.keepBlockedReason = review.keepRefusal
@@ -244,7 +247,7 @@ final class RecoverySheetModel: Identifiable {
             line.playlistReview = review
             line.canKeep = !review.recovery.reapplied.isEmpty
             if !line.canKeep {
-                line.keepBlockedReason = String(ui: "다시 적용할 수 있는 편집이 없으니 초안을 버리거나 ‘나중에’로 두고 목록을 다시 편집하세요.")
+                line.keepBlockedReason = String(ui: "다시 적용할 수 있는 편집이 없으니 편집을 버리거나 ‘나중에’로 두고 목록을 다시 편집하세요.")
             }
             line.summary = RecoverySummary.playlistSummary(review)
             line.notes = RecoverySummary.playlistNotes(review)
@@ -341,10 +344,10 @@ final class RecoverySheetModel: Identifiable {
         if saved > 0 {
             hasSaved = true
             host.showToast(failed == 0
-                ? AppToast(kind: .success, title: String(ui: "초안을 저장했습니다"),
-                           detail: String(ui: "쓰기 미리 보기에서 지원 제한과 최신 상태를 다시 확인하세요."))
-                : AppToast(kind: .warning, title: String(ui: "초안 일부만 저장했습니다"),
-                           detail: String(ui: "저장하지 못한 줄은 비교 창에서 이유를 확인하세요.")))
+                ? AppToast(kind: .success, title: String(ui: "편집을 보관했습니다"),
+                           detail: String(ui: "저장 미리 보기에서 지원 제한과 최신 상태를 다시 확인하세요."))
+                : AppToast(kind: .warning, title: String(ui: "편집 일부만 적용했습니다"),
+                           detail: String(ui: "적용하지 못한 줄은 비교 창에서 이유를 확인하세요.")))
         }
         // 앞서 저장에 실패한 줄이 남아 있으면 이유를 볼 수 있게 시트를 열어 둔다.
         if !lines.contains(where: { if case .failed = $0.phase { true } else { false } }) { close() }
@@ -374,7 +377,7 @@ final class RecoverySheetModel: Identifiable {
     }
 
     private func saveDraft(_ line: RecoveryLine, latest: Result<RecoveryPrefetch, any Error>?) async throws {
-        guard let review = line.draftReview else { throw DJCError.writeRefused(String(ui: "복구할 초안을 확인하지 못했으니 편집을 저장하고 곡을 다시 선택하세요.")) }
+        guard let review = line.draftReview else { throw DJCError.writeRefused(String(ui: "복구할 편집을 확인하지 못했으니 편집을 보관하고 곡을 다시 선택하세요.")) }
         try await host.applyDraftRecovery(review, choice: line.choice == .keep ? .keepEditing : .useCurrent,
                                            readCurrent: dependencies.readCurrent, save: dependencies.save, latest: try latest?.get())
     }
@@ -382,17 +385,17 @@ final class RecoverySheetModel: Identifiable {
     /// 재생 목록은 앞 목록을 저장하면 초안 전체가 바뀌므로, 비교한 뒤 초안이 바뀌었으면(같은 저장의 앞 줄이든 이전 저장이든) 같은 기준으로
     /// 다시 비교해 고를 때 본 것과 같을 때만 적용한다.
     private func savePlaylist(_ line: RecoveryLine, id: String, current: Result<PlaylistRecoveryCurrent, any Error>?) async throws {
-        guard var review = line.playlistReview else { throw DJCError.writeRefused(String(ui: "복구할 초안을 확인하지 못했으니 편집을 저장하고 곡을 다시 선택하세요.")) }
+        guard var review = line.playlistReview else { throw DJCError.writeRefused(String(ui: "복구할 편집을 확인하지 못했으니 편집을 보관하고 곡을 다시 선택하세요.")) }
         let latest = try current?.get()
         if host.playlists.playlistDraft != review.original {
             guard host.playlists.blockedPlaylistRecoveryIDs.contains(id) else {
                 // 이미 해결됐으니 줄은 저장한 것으로 보고 안내만 남긴다.
-                line.resultNote = String(ui: "앞에서 저장하면서 이미 해결됐습니다.")
+                line.resultNote = String(ui: "앞에서 적용하면서 이미 해결됐습니다.")
                 return
             }
             let fresh = try await host.playlists.preparePlaylistRecovery(playlist: id, prefetched: latest)
             guard Self.sameComparison(fresh, review, shownDetails: line.details) else {
-                throw DJCError.writeRefused(String(ui: "앞에서 저장하면서 이 목록의 비교 내용이 바뀌어 초안을 그대로 남겼으니 다시 열어 확인하세요."))
+                throw DJCError.writeRefused(String(ui: "앞에서 적용하면서 이 목록의 비교 내용이 바뀌어 편집을 그대로 남겼으니 다시 열어 확인하세요."))
             }
             review = fresh
         }

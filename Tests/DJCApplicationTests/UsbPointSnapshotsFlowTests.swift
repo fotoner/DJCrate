@@ -94,12 +94,12 @@ struct UsbPointSnapshotsFlowTests {
 
     /// 스냅샷 상태(DB 없음)에서 시작한 DJCrate 쓰기
     static let ourWrite = UsbVolumeEvent.write(id: "w1", date: FakeUsbPorts.snapshotDate.addingTimeInterval(60), before: [:], beforeSidecars: false,
-                                               after: [UsbLayout.exportPdb: "쓴 결과"], kind: .carry, outcome: .written)
+                                               after: [UsbLayout.exportPdb: "저장한 결과"], kind: .carry, outcome: .written)
 
     @Test("스냅샷 뒤 DJCrate 쓰기만 있었으면 동의 없이 쓰고, 바꿀 것이 없으면 쓰지 않는다")
     func knownStateWritesWithoutConsent() throws {
         let ports = FakeUsbPorts {
-            $0.fingerprints = [Self.fingerprint("쓴 결과")]
+            $0.fingerprints = [Self.fingerprint("저장한 결과")]
             $0.volumeEvents = [Self.ourWrite]
             $0.pointPlan = Self.planned()
         }
@@ -108,7 +108,7 @@ struct UsbPointSnapshotsFlowTests {
         #expect(!written.summary.deviceChanged && written.report != nil && ports.current.writes.count == 1)
 
         let same = FakeUsbPorts {
-            $0.fingerprints = [Self.fingerprint("쓴 결과")]
+            $0.fingerprints = [Self.fingerprint("저장한 결과")]
             $0.volumeEvents = [Self.ourWrite]
         }
         let nothing = try same.pointSnapshots(directory: Self.directory).restore(

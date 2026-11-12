@@ -71,7 +71,7 @@ struct RatingColorEditingTests {
         h.store.tags.setTag(.rating, "5", rows: [row])
         h.store.tags.setTag(.color, "7", rows: [row])
         h.coordinator.updateTagRevision(h.store.tagRevision)
-        #expect(rating.text == "★★★★★" && rating.showsDraftMark && rating.label.accessibilityValue() == "별 5개, 초안")
+        #expect(rating.text == "★★★★★" && rating.showsDraftMark && rating.label.accessibilityValue() == "별 5개, 저장 대기")
         #expect(color.text == "Blue" && color.showsDraftMark)
         h.store.tags.setTag(.color, "", rows: [row])
         h.coordinator.updateTagRevision(h.store.tagRevision)

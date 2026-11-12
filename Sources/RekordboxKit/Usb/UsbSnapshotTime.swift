@@ -12,7 +12,7 @@ public enum UsbSnapshotTime {
             guard let date = parse(explicit) else {
                 throw UsbError.writeRefused([UsbBlock(
                     code: "snapshotTimeInvalid", scope: .volume,
-                    message: String(ui: "스냅샷 시각(\(explicit))을 읽지 못했습니다. 시간대를 넣은 ISO 8601 시각(예: 2026-09-27T11:41:08Z)으로 주세요"))])
+                    message: String(ui: "읽은 시점(\(explicit))을 해석하지 못했습니다. 시간대를 넣은 ISO 8601 시각(예: 2026-09-27T11:41:08Z)으로 주세요"))])
             }
             return (date, .explicit)
         }
@@ -22,7 +22,7 @@ public enum UsbSnapshotTime {
         }
         throw UsbError.writeRefused([UsbBlock(
             code: "snapshotTimeUnknown", scope: .volume,
-            message: String(ui: "로컬 라이브러리 사본을 뜬 시각을 알 수 없습니다. 스냅샷을 다시 뜨거나 --snapshot-time에 시각을 주세요"))])
+            message: String(ui: "로컬 라이브러리 사본을 읽은 시각을 알 수 없습니다. ‘rekordbox와 동기화’를 다시 하거나 --snapshot-time에 시각을 주세요"))])
     }
 
     /// 시간대가 있어야 한다(없으면 어느 시각인지 추측하게 된다). 소수 초도 받는다.

@@ -5,7 +5,7 @@ import Foundation
 /// `djc compat`(글): 라이브 쓰기 전 확인(읽기 전용). 순서·판정은 유스케이스 `CompatibilityCheck`, 실제 구현은 조립 지점이 고른다.
 /// `--json`은 읽기 명령(`ReadCommands`)이 맡는다.
 enum CompatCommand {
-    static let command = Command("compat", "[--db PATH] [--json]", String(ui: "쓰기 전 확인: rekordbox 버전·DB 구조가 확인한 모양인지")) { try run($0) }
+    static let command = Command("compat", "[--db PATH] [--json]", String(ui: "저장 전 확인: rekordbox 버전·DB 구조가 확인한 모양인지")) { try run($0) }
 
     static func run(_ args: [String]) throws {
         try CLIComposition.compatibilityCheck.run(database: value(after: "--db", in: args).map { URL(filePath: $0) }) { print(line($0)) }

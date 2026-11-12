@@ -60,7 +60,7 @@ struct PlaylistDraftTests {
         #expect(blockedReason { try layout.apply(.rename(playlist: .id("없음"), name: "x")) } == "rekordbox에서 재생 목록을 찾지 못했습니다")
         #expect(blockedReason { try layout.apply(.rename(playlist: .new("없음"), name: "x")) } == "앞에서 만들지 못한 목록입니다")
         #expect(blockedReason { try layout.apply(.addTracks(playlist: .id("S"), contentIDs: ["1"])) }
-            == "인텔리전트 재생 목록은 아직 쓰지 않습니다(rekordbox에서 고치세요)")
+            == "인텔리전트 재생 목록은 아직 저장하지 않습니다(rekordbox에서 고치세요)")
         #expect(blockedReason { try layout.apply(.addTracks(playlist: .id("F"), contentIDs: ["1"])) } == "폴더에는 곡을 넣거나 뺄 수 없습니다")
         // 같은 폴더로 옮기기는 그대로 둔다
         #expect(blockedReason { try layout.apply(.move(playlist: .id("A"), into: .id("F"))) } == nil && layout.childIDs(of: "F") == ["A", "B"])
@@ -162,7 +162,7 @@ struct PlaylistDraftTests {
         var changed = Self.library()
         try changed.apply(.addTracks(playlist: .id("A"), contentIDs: ["7"]))
         let projection = draft.project(onto: changed)
-        #expect(projection.blocked == ["초안을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 초안을 버리세요.", nil])
+        #expect(projection.blocked == ["편집을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 편집을 버리세요.", nil])
         #expect(projection.ready == [.rename(playlist: .id("C"), name: "새 이름")])
         #expect(projection.layout.item("A")?.trackIDs == ["1", "2", "3", "7"] && projection.layout.item("C")?.name == "새 이름")
         #expect(projection.blockedTargets["A"] != nil && projection.changed == ["C"])
@@ -178,7 +178,7 @@ struct PlaylistDraftTests {
         #expect(Set(draft.base.keys) == ["F", "A", "B"])
         // rekordbox에서 폴더 안에 목록을 새로 만들었다(지우면 함께 사라진다)
         let added = Self.library(extra: [(Self.item("N", "rekordbox에서 만든 목록", parent: "F"), 3)])
-        #expect((draft.project(onto: added).blocked.first ?? nil) == "초안을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 초안을 버리세요.")
+        #expect((draft.project(onto: added).blocked.first ?? nil) == "편집을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 편집을 버리세요.")
         // 안의 목록에 곡이 늘어도
         var grown = Self.library()
         try grown.apply(.addTracks(playlist: .id("B"), contentIDs: ["1"]))

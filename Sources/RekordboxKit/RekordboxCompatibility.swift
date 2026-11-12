@@ -137,7 +137,7 @@ public enum RekordboxCompatibility {
         let majorMinor = parts.prefix(2).joined(separator: ".")
         guard parts.count >= 2, verifiedAppVersions.contains(majorMinor) else {
             let verified = verifiedAppVersions.sorted().map { "\($0).x" }.joined(separator: ", ")
-            throw DJCError.writeRefused(String(ui: "rekordbox \(version)는 DJCrate가 쓰기를 확인하지 않은 버전입니다(확인: \(verified))"))
+            throw DJCError.writeRefused(String(ui: "rekordbox \(version)는 DJCrate가 저장을 확인하지 않은 버전입니다(확인: \(verified))"))
         }
     }
 
@@ -227,7 +227,7 @@ public struct RekordboxWriteGuard: Sendable {
     func refuseProtectedInTests(_ targets: [URL?], isTest: Bool = TestProcess.isRunning) throws {
         guard isTest else { return }
         for target in targets.compactMap({ $0 }) where protectedInTests.contains(where: { Self.contains(target, in: $0) }) {
-            throw DJCError.writeRefused(String(ui: "시험 중에는 실제 rekordbox 라이브러리에 쓰지 않습니다. DJC_REKORDBOX_DIR로 사본 폴더를 주세요"))
+            throw DJCError.writeRefused(String(ui: "시험 중에는 실제 rekordbox 라이브러리에 저장하지 않습니다. DJC_REKORDBOX_DIR로 사본 폴더를 주세요"))
         }
     }
 
@@ -260,7 +260,7 @@ public struct RekordboxWriteGuard: Sendable {
 
     /// 라이브 DB면 rekordbox가 꺼져 있고 WAL이 비었고 확인한 버전이어야 한다.
     func checkLive(_ database: URL, dryRun: Bool) throws {
-        guard !dryRun else { throw DJCError.writeRefused(String(ui: "미리 보기는 스냅샷 사본으로만 합니다")) }
+        guard !dryRun else { throw DJCError.writeRefused(String(ui: "미리 보기는 읽은 사본으로만 합니다")) }
         guard !isRekordboxRunning() else {
             throw DJCError.writeRefused(String(ui: "rekordbox가 켜져 있습니다. rekordbox를 완전히 종료한 뒤 다시 시도하세요"))
         }

@@ -9,7 +9,7 @@ extension DraftStore {
             throw DJCError.writeRefused(failure.message)
         }
         guard unsavedUUIDs().isDisjoint(with: uuids) else {
-            throw DJCError.writeRefused(String(ui: "초안 저장이 끝나지 않았으니 저장을 마친 뒤 쓰기를 다시 시도하세요."))
+            throw DJCError.writeRefused(String(ui: "편집 보관이 끝나지 않았으니 보관을 마친 뒤 저장을 다시 시도하세요."))
         }
     }
 
@@ -17,8 +17,8 @@ extension DraftStore {
     public func saveWarning(for uuids: Set<String>, restoring: Bool) -> String? {
         flush()
         guard let failure = failures().first(where: { uuids.contains($0.trackUUID) }) else { return nil }
-        let result = restoring ? String(ui: "rekordbox는 복원했지만 초안을 저장하지 못했습니다.")
-            : String(ui: "rekordbox에는 썼지만 초안을 정리하지 못했습니다.")
+        let result = restoring ? String(ui: "rekordbox는 복원했지만 편집을 보관하지 못했습니다.")
+            : String(ui: "rekordbox에는 저장했지만 편집을 정리하지 못했습니다.")
         return result + " " + failure.message
     }
 }

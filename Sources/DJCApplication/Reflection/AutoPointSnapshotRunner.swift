@@ -102,7 +102,7 @@ public final class AutoPointSnapshotRunner {
             // 뜨는 도중 rekordbox가 켜지거나 쓰기가 끼어든 것은 다음에 다시 본다(알리지 않는다)
             if files.isRekordboxRunning() || env.busy() || warned { return nil }
             warned = true
-            onFailure(String(ui: "자동 시점 스냅샷을 남기지 못했습니다"), errorText(error))
+            onFailure(String(ui: "자동 복원 시점을 남기지 못했습니다"), errorText(error))
             return nil
         }
     }

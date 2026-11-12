@@ -132,18 +132,18 @@ public enum UsbPointRestore {
         // 5. 음원은 담지 않는다: 스냅샷 DB가 가리키는 음원이 지금 USB에 있는지 센다
         result.missingAudio = missingAudio(copy, root: root, fileSystem: fileSystem)
         switch result.missingAudio {
-        case nil: result.notes.append(String(ui: "스냅샷 DB의 곡 음원이 USB에 있는지 확인하지 못했습니다"))
+        case nil: result.notes.append(String(ui: "복원 시점 DB의 곡 음원이 USB에 있는지 확인하지 못했습니다"))
         case let count? where count > 0:
-            result.notes.append(String(ui: "스냅샷 DB의 곡 \(count)개는 지금 USB에 음원이 없습니다. 음원은 스냅샷에 담지 않아 되돌려도 생기지 않습니다"))
+            result.notes.append(String(ui: "복원 시점 DB의 곡 \(count)개는 지금 USB에 음원이 없습니다. 음원은 복원 시점에 담지 않아 되돌려도 생기지 않습니다"))
         default: break
         }
         // 기기 설정 파일은 CDJ가 USB에 저장한 것일 수 있다(DB 지문으로는 모른다)
         let settings = writes.filter { UsbPointSnapshotRules.settingFiles.contains($0.destination) }.count
         if settings > 0 {
-            result.notes.append(String(ui: "기기 설정 파일 \(settings)개를 스냅샷 때 것으로 되돌립니다. 기기에서 저장한 설정이었다면 그 설정은 쓰기 전 백업에만 남습니다"))
+            result.notes.append(String(ui: "기기 설정 파일 \(settings)개를 복원 시점의 것으로 되돌립니다. 기기에서 저장한 설정이었다면 그 설정은 쓰기 전 백업에만 남습니다"))
         }
         if result.kept > 0 {
-            result.notes.append(String(ui: "되돌리기가 지우지 않는 파일 \(result.kept)개는 그대로 둡니다(스냅샷 뒤에 생긴 설정 파일 등)"))
+            result.notes.append(String(ui: "되돌리기가 지우지 않는 파일 \(result.kept)개는 그대로 둡니다(복원 시점 뒤에 생긴 설정 파일 등)"))
         }
         // 바꿀 것이 없으면 계획 없이 돌려준다(`isUnchanged`, 부르는 쪽이 알린다)
         guard !databases.isEmpty || !writes.isEmpty || !removals.isEmpty else { return result }
@@ -190,12 +190,12 @@ public enum UsbPointRestore {
     enum Blocks {
         static var damaged: UsbBlock {
             UsbBlock(code: "pointSnapshotDamaged", scope: .volume,
-                     message: String(ui: "USB 스냅샷 파일이 없거나 바뀌어 되돌리지 않았습니다. 다른 스냅샷을 고르세요"))
+                     message: String(ui: "USB 복원 시점 파일이 없거나 바뀌어 되돌리지 않았습니다. 다른 복원 시점을 고르세요"))
         }
 
         static var noDatabase: UsbBlock {
             UsbBlock(code: "pointSnapshotNoDatabase", scope: .volume,
-                     message: String(ui: "이 스냅샷에는 라이브러리 DB가 없어 되돌리지 않습니다. 라이브러리가 있을 때 뜬 스냅샷을 고르세요"))
+                     message: String(ui: "이 복원 시점에는 라이브러리 DB가 없어 되돌리지 않습니다. 라이브러리가 있을 때 뜬 복원 시점을 고르세요"))
         }
 
         static var changed: UsbBlock {
@@ -205,7 +205,7 @@ public enum UsbPointRestore {
         static func newDatabase(_ paths: [String]) -> UsbBlock {
             let names = paths.map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
             return UsbBlock(code: "pointSnapshotNewDatabase", scope: .volume,
-                            message: String(ui: "스냅샷 뒤에 생긴 DB(\(names))는 되돌리기가 지우지 않습니다. 그 DB를 만든 쓰기를 `djc usb-restore`로 먼저 되돌리세요"))
+                            message: String(ui: "복원 시점 뒤에 생긴 DB(\(names))는 되돌리기가 지우지 않습니다. 그 DB를 만든 쓰기를 `djc usb-restore`로 먼저 되돌리세요"))
         }
     }
 }

@@ -29,7 +29,7 @@ extension RekordboxWriter {
             .filter { $0.standardizedFileURL.comparablePath != selected.comparablePath }
         let inside = selected.deletingLastPathComponent().comparablePath == directory.standardizedFileURL.comparablePath
         if !inside, backupStamp(selected) == nil, !folders.isEmpty {
-            throw invalidBackup(String(ui: "백업 폴더 밖에 있고 이름에 뜬 시각이 없어 그 뒤 쓰기를 알 수 없음"))
+            throw invalidBackup(String(ui: "백업 폴더 밖에 있고 이름에 뜬 시각이 없어 그 뒤 저장을 알 수 없음"))
         }
         return folders.filter { isNewer($0, than: selected) && !isITunesSyncOnly($0) }
             .sorted { isNewer($0, than: $1) }

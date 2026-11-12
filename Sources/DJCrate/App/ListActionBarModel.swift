@@ -78,8 +78,8 @@ final class ListActionBarModel {
     var restoreHelp: String {
         store.writesBlockedBySheet ? LibraryStore.writesBlockedBySheetReason
             : store.hasWriteBackup
-            ? String(ui: "라이브러리 전체를 마지막 쓰기 전 백업으로 복원합니다.")
-            : String(ui: "복원할 백업이 없습니다. rekordbox에 쓰면 쓰기 전 백업이 생깁니다.")
+            ? String(ui: "라이브러리 전체를 마지막 저장 전 백업으로 복원합니다.")
+            : String(ui: "복원할 백업이 없습니다. rekordbox에 저장하면 저장 전 백업이 생깁니다.")
     }
 
     // MARK: - Music·재생 목록

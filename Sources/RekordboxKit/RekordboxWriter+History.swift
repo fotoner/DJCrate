@@ -104,7 +104,7 @@ extension RekordboxWriter {
     }
 
     static var closedHistoryReason: String {
-        String(ui: "재생 기록 쓰기는 rekordbox 실험을 사본에서 다시 확인하기 전이라 아직 쓰지 않습니다. DJCrate에는 보존돼 있습니다")
+        String(ui: "재생 기록 저장은 rekordbox 실험을 사본에서 다시 확인하기 전이라 아직 저장하지 않습니다. DJCrate에는 보존돼 있습니다")
     }
 
     // MARK: - 확인
@@ -114,22 +114,22 @@ extension RekordboxWriter {
     static func checkHistory(_ history: HistoryImport, db: CipherDatabase, conflicts: HistoryConflicts,
                              environment: HistoryEnvironment) throws -> CheckedHistory {
         guard !history.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw HistoryBlocked(reason: String(ui: "기록 이름이 비어 있어 쓰지 않으니 DJCrate에서 기록을 다시 가져온 뒤 쓰세요"))
+            throw HistoryBlocked(reason: String(ui: "기록 이름이 비어 있어 저장하지 않으니 DJCrate에서 기록을 다시 가져온 뒤 저장하세요"))
         }
         guard let date = historyDate(history.dateCreated, timeZone: environment.timeZone) else {
-            throw HistoryBlocked(reason: String(ui: "기록 날짜를 읽지 못해 쓰지 않으니 DJCrate에서 기록을 다시 가져온 뒤 쓰세요"))
+            throw HistoryBlocked(reason: String(ui: "기록 날짜를 읽지 못해 저장하지 않으니 DJCrate에서 기록을 다시 가져온 뒤 저장하세요"))
         }
         if let expected = history.expectedLibraryID {
             var actual: String?
             try db.query("SELECT DBID FROM djmdProperty LIMIT 1") { actual = $0.string(0) }
             guard actual.flatMap({ Int64($0) }).map({ String($0) }) == expected else {
-                throw HistoryBlocked(reason: String(ui: "기록의 짝을 확인한 라이브러리와 쓰기 대상이 다르니 새 스냅샷을 읽은 뒤 다시 쓰세요"))
+                throw HistoryBlocked(reason: String(ui: "기록의 짝을 확인한 라이브러리와 저장 대상이 다르니 ‘rekordbox와 동기화’를 한 뒤 다시 저장하세요"))
             }
         }
         var identities: [String: HistoryImport.TrackIdentity] = [:]
         for identity in history.trackIdentities {
             if let previous = identities[identity.contentID], previous != identity {
-                throw HistoryBlocked(reason: String(ui: "보존 기록의 곡 원본 식별이 서로 다르니 USB를 다시 연결해 기록을 확인한 뒤 쓰세요"))
+                throw HistoryBlocked(reason: String(ui: "보존 기록의 곡 원본 식별이 서로 다르니 USB를 다시 연결해 기록을 확인한 뒤 저장하세요"))
             }
             identities[identity.contentID] = identity
         }
@@ -150,12 +150,12 @@ extension RekordboxWriter {
             if !identities.isEmpty {
                 guard let identity = identities[contentID], !identity.fileName.isEmpty,
                       let masterDb = UsbLibraryBuilder.sqliteInteger(row.masterDb) else {
-                    throw HistoryBlocked(reason: String(ui: "보존 기록의 곡 원본 식별을 확인하지 못해 쓰지 않으니 USB를 다시 연결한 뒤 새 스냅샷을 읽으세요"))
+                    throw HistoryBlocked(reason: String(ui: "보존 기록의 곡 원본 식별을 확인하지 못해 저장하지 않으니 USB를 다시 연결해 읽은 뒤 다시 시도하세요"))
                 }
                 let key = UsbTrackKey(masterDbId: identity.masterDbId, masterContentId: identity.masterContentId, fileName: identity.fileName)
                 let local = UsbLocalTrackKey(contentID: contentID, masterSongID: row.masterSong ?? "", fileNameL: row.fileName ?? "", folderPath: row.path)
                 guard UsbTrackMatch.match(key, localDBID: masterDb, local: [local]) == contentID else {
-                    throw HistoryBlocked(reason: String(ui: "쓰기 대상의 곡 원본 식별이 보존 기록과 달라 쓰지 않으니 새 스냅샷을 읽은 뒤 다시 쓰세요"))
+                    throw HistoryBlocked(reason: String(ui: "저장 대상의 곡 원본 식별이 보존 기록과 달라 저장하지 않으니 ‘rekordbox와 동기화’를 한 뒤 다시 저장하세요"))
                 }
             }
             tracks.append(CheckedHistory.Track(contentID: contentID, playCount: row.plays, trackInfoUpdated: row.info))
@@ -163,7 +163,7 @@ extension RekordboxWriter {
             if row.status != 0 { unsynced = false }
         }
         guard !tracks.isEmpty else {
-            throw HistoryBlocked(reason: String(ui: "rekordbox 컬렉션에 있는 곡이 하나도 없는 기록이라 쓰지 않으니 곡을 컬렉션에 넣은 뒤 다시 쓰세요"))
+            throw HistoryBlocked(reason: String(ui: "rekordbox 컬렉션에 있는 곡이 하나도 없는 기록이라 저장하지 않으니 곡을 컬렉션에 넣은 뒤 다시 저장하세요"))
         }
         let ids = tracks.map(\.contentID)
         var existing: [(id: String, name: String)] = []
@@ -188,20 +188,20 @@ extension RekordboxWriter {
         }
         // 같은 곡을 두 번 튼 기록은 rekordbox가 DJPlayCount를 몇 올리는지 보지 못했다.
         guard Set(tracks.map(\.contentID)).count == tracks.count else {
-            throw HistoryBlocked(reason: String(ui: "같은 곡이 두 번 이상 든 기록은 rekordbox 재생 횟수 규칙을 확인하지 않아 쓰지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요"))
+            throw HistoryBlocked(reason: String(ui: "같은 곡이 두 번 이상 든 기록은 rekordbox 재생 횟수 규칙을 확인하지 않아 저장하지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요"))
         }
         guard tracks.allSatisfy({ $0.playCount != nil }) else {
-            throw HistoryBlocked(reason: String(ui: "재생 횟수가 비어 있는 곡의 기록은 쓰는 규칙을 확인하지 않아 쓰지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요"))
+            throw HistoryBlocked(reason: String(ui: "재생 횟수가 비어 있는 곡의 기록은 저장하는 규칙을 확인하지 않아 저장하지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요"))
         }
         // 실험 곡은 상태 0이었다. 동기화(256·257) 곡의 곡 행·상태 칸은 보지 못했다.
         guard unsynced else {
-            throw HistoryBlocked(reason: String(ui: "클라우드 동기화 곡이 든 기록은 쓰는 규칙을 확인하지 않아 쓰지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요"))
+            throw HistoryBlocked(reason: String(ui: "클라우드 동기화 곡이 든 기록은 저장하는 규칙을 확인하지 않아 저장하지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요"))
         }
         guard Set(uuids).isDisjoint(with: conflicts.merged) else {
-            throw HistoryBlocked(reason: String(ui: "같은 곡의 중복 합치기와 함께 쓰지 않으니 합치기를 먼저 쓰거나 버린 뒤 기록을 다시 쓰세요"))
+            throw HistoryBlocked(reason: String(ui: "같은 곡의 중복 합치기와 함께 저장하지 않으니 합치기를 먼저 저장하거나 버린 뒤 기록을 다시 저장하세요"))
         }
         guard Set(uuids).isDisjoint(with: conflicts.edited) else {
-            throw HistoryBlocked(reason: String(ui: "같은 곡의 곡 정보·앨범아트 초안과 함께 쓰면 곡 행을 두 번 고치게 되니 곡 정보·앨범아트를 먼저 쓴 뒤 기록을 다시 쓰세요"))
+            throw HistoryBlocked(reason: String(ui: "같은 곡의 곡 정보·앨범아트 편집과 함께 저장하면 곡 행을 두 번 고치게 되니 곡 정보·앨범아트를 먼저 저장한 뒤 기록을 다시 저장하세요"))
         }
 
         // 연·월 폴더 자리: 없으면 만들고, 있으면 그 자리에 맞는 살아 있는 폴더여야 한다.
@@ -212,7 +212,7 @@ extension RekordboxWriter {
             slots[r.string(0) ?? ""] = (r.int(1), r.string(2), r.int(3))
         }
         func folderReason(_ label: String) -> String {
-            String(ui: "rekordbox Histories의 \(label) 폴더 자리에 다른 행이 있어 쓰지 않으니 rekordbox에서 그 폴더를 확인하세요")
+            String(ui: "rekordbox Histories의 \(label) 폴더 자리에 다른 행이 있어 저장하지 않으니 rekordbox에서 그 폴더를 확인하세요")
         }
         let year = slots[yearID], month = slots[monthID]
         if let year, !(year.attribute == 1 && year.parentID == "root" && year.deleted == 0) { throw HistoryBlocked(reason: folderReason(yearID)) }
@@ -221,10 +221,10 @@ extension RekordboxWriter {
             throw HistoryBlocked(reason: folderReason(monthLabel))
         }
         if month != nil, year == nil {
-            throw HistoryBlocked(reason: String(ui: "rekordbox Histories에 \(yearID) 폴더 없이 \(monthLabel) 폴더만 있어 쓰지 않으니 rekordbox에서 Histories를 확인하세요"))
+            throw HistoryBlocked(reason: String(ui: "rekordbox Histories에 \(yearID) 폴더 없이 \(monthLabel) 폴더만 있어 저장하지 않으니 rekordbox에서 Histories를 확인하세요"))
         }
         guard year != nil else {
-            throw HistoryBlocked(reason: String(ui: "새 연 폴더를 만드는 규칙을 확인하지 않아 쓰지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요"))
+            throw HistoryBlocked(reason: String(ui: "새 연 폴더를 만드는 규칙을 확인하지 않아 저장하지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요"))
         }
 
         // 이름: 같은 이름의 살아 있는 기록이 있으면 " (1)", " (2)" … 가장 작은 빈 번호(rekordbox가 한 번에 가져온 기록 셋의 이름)
@@ -363,7 +363,7 @@ extension RekordboxWriter {
             try db.query("SELECT ID FROM djmdSongHistory WHERE HistoryID = ? ORDER BY TrackNo, ID", [.text(expected.historyID)]) {
                 entries.append($0.string(0) ?? "")
             }
-            guard entries == expected.entryIDs else { throw DJCError.writeVerificationFailed(String(ui: "재생 기록 항목이 쓴 것과 다릅니다")) }
+            guard entries == expected.entryIDs else { throw DJCError.writeVerificationFailed(String(ui: "재생 기록 항목이 저장한 것과 다릅니다")) }
         } catch DJCError.writeVerificationFailed {
             throw DJCError.writeVerificationFailed("\(String(ui: "재생 기록 확인 실패")) (\(expected.name))")
         }
@@ -378,7 +378,7 @@ extension RekordboxWriter {
                     "updated_at": .text(play.updatedAt), "rb_data_status": .int(0), "rb_local_deleted": .int(0),
                 ])
             } catch DJCError.writeVerificationFailed {
-                throw DJCError.writeVerificationFailed("\(String(ui: "재생 기록 곡의 재생 횟수·변경 번호가 쓴 것과 다릅니다")) (ContentID \(contentID))")
+                throw DJCError.writeVerificationFailed("\(String(ui: "재생 기록 곡의 재생 횟수·변경 번호가 저장한 것과 다릅니다")) (ContentID \(contentID))")
             }
         }
     }

@@ -201,7 +201,7 @@ struct ListHeaderLayoutTests {
     @MainActor static var modeActions: [(name: String, sidebar: SidebarItem, actions: ListHeaderActions)] {
         typealias A = ListHeaderActions
         let locks = A.Locks()
-        let restore = A.Restore(isEnabled: true, help: "라이브러리 전체를 마지막 쓰기 전 백업으로 복원합니다.")
+        let restore = A.Restore(isEnabled: true, help: "라이브러리 전체를 마지막 저장 전 백업으로 복원합니다.")
         let histories = [A.HistoryMenu.Entry(id: "h1", name: "HISTORY 2026-10-05"), .init(id: "h2", name: "HISTORY 2026-10-06")]
         return [
             ("추가한 곡", .staged, A.staged(selected: true, count: 123, canRemove: true, canExportXML: true, importedCount: 12, locks: locks)),
@@ -211,7 +211,7 @@ struct ListHeaderLayoutTests {
                                                       unlinkedDrafts: 14, restore: restore, locks: locks)),
             ("Music 목록", .itunesPlaylist("itunes:A"), A.music(unavailable: 12)),
             ("계산 목록", .playlist("S"), A.smartPlaylist(unsupported: false)),
-            ("재생 목록 초안", .playlist("P"), A.playlist(id: "P", isDraft: true, blockedReason: "곡이 rekordbox에서 사라졌습니다", hiddenStreaming: nil,
+            ("재생 목록 편집", .playlist("P"), A.playlist(id: "P", isDraft: true, blockedReason: "곡이 rekordbox에서 사라졌습니다", hiddenStreaming: nil,
                                                     canCompare: true, locks: locks)),
             ("숨긴 스트리밍", .playlist("P"), A.playlist(id: "P", isDraft: false, blockedReason: nil, hiddenStreaming: 123, canCompare: true, locks: locks)),
             ("USB", .usb(.collection(volumeKey: "V")), A.usb(volumeKey: "V", editing: (updatable: 123, blockReason: nil, draftCount: 45), playlistMismatch: true)),
@@ -279,9 +279,9 @@ struct ListHeaderLayoutTests {
         let pending = Actions.pending(selected: true, tracks: 123, playlistEdits: 12,
                                       histories: [.init(id: "h", name: "기록")], unlinkedDrafts: 0,
                                       restore: .init(isEnabled: true, help: ""), locks: .init())
-        #expect(pending.primary?.title == "고른 123곡 쓰기 (재생 목록 12건 · 재생 기록 1건)")
-        #expect(pending.primary?.compactTitle == "고른 123곡 쓰기")
-        #expect(pending.primary?.compactHelp == "재생 목록 12건 · 재생 기록 1건도 함께 씁니다.")
+        #expect(pending.primary?.title == "고른 123곡 저장 (재생 목록 12건 · 재생 기록 1건)")
+        #expect(pending.primary?.compactTitle == "고른 123곡 저장")
+        #expect(pending.primary?.compactHelp == "재생 목록 12건 · 재생 기록 1건도 함께 저장합니다.")
         // 함께 쓰는 것이 없으면 줄일 말도 없다
         let plain = Actions.pending(selected: false, tracks: 5, playlistEdits: 0, histories: [], unlinkedDrafts: 0,
                                     restore: .init(isEnabled: true, help: ""), locks: .init())
@@ -291,6 +291,6 @@ struct ListHeaderLayoutTests {
                                       restore: .init(isEnabled: true, help: ""), locks: .init(sheetBlocked: true))
         #expect(blocked.primary?.compactHelp == LibraryStore.writesBlockedBySheetReason)
         let usb = Actions.usb(volumeKey: "V", editing: (updatable: 8, blockReason: nil, draftCount: 1), playlistMismatch: false)
-        #expect(usb.primary?.compactTitle == "USB에 반영 (8곡)")
+        #expect(usb.primary?.compactTitle == "USB에 쓰기 (8곡)")
     }
 }

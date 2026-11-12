@@ -49,7 +49,7 @@ struct SheetAccessibilityTests {
         let cell = try #require(h.coordinator.tableView(h.table, viewFor: h.table.tableColumns[1], row: 0) as? SheetCell)
         #expect(cell.label.accessibilityLabel() == "제목")
         let value = cell.label.accessibilityValue()
-        #expect(value == "새 제목, 초안")
+        #expect(value == "새 제목, 저장 대기")
     }
 
     @Test func Control_Tab은_셀을_움직이지_않고_표_밖으로_나간다() throws {

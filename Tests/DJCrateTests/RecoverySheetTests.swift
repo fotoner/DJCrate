@@ -207,6 +207,19 @@ struct RecoverySheetTests {
         #expect(model.isClosed, "고른 줄을 모두 저장하면 닫는다")
     }
 
+    @Test func 적용_줄_수는_나중에를_뺀_준비된_줄이고_머리글은_모든_줄을_센다() async throws {
+        let scenario = try await RecoveryScenario.make()
+        let targets: [Target] = [.draft("A", .tags), .draft("B", .grid)]
+        let model = model(scenario, targets)
+        #expect(model.applyCount == 0, "비교를 마치기 전에는 적용할 줄이 없다")
+        await model.load()
+        #expect(model.lines.count == 2)
+        #expect(model.applyCount == 2)
+        model.choose(.later, for: try line(model, scenario, targets[0]))
+        #expect(model.applyCount == 1, "나중에로 둔 줄은 세지 않는다")
+        #expect(model.lines.count == 2, "머리글의 건수는 나중에로 둔 줄도 센다")
+    }
+
     @Test func 나중에만_고르면_저장할_수_없다() async throws {
         let scenario = try await RecoveryScenario.make()
         let model = model(scenario, [.draft("A", .tags)])
@@ -551,8 +564,8 @@ enum LegacyRecoveryFlow {
             prompter.choices = [choice == .keep ? .confirm : choice == .useCurrent ? .alternate : .cancel]
             let review = try await store.playlists.preparePlaylistRecovery(playlist: id)
             let canReapply = !review.recovery.reapplied.isEmpty
-            switch prompter.choose(ReflectionPrompt(title: "비교", text: "", confirm: canReapply ? "다시 적용" : "초안 버리기",
-                                                   destructive: !canReapply, alternate: canReapply ? "초안 버리기" : nil, cancel: "선택하지 않고 남기기")) {
+            switch prompter.choose(ReflectionPrompt(title: "비교", text: "", confirm: canReapply ? "다시 적용" : "편집 버리기",
+                                                   destructive: !canReapply, alternate: canReapply ? "편집 버리기" : nil, cancel: "선택하지 않고 남기기")) {
             case .cancel: continue
             case .confirm: try await store.playlists.applyPlaylistRecovery(review, reapply: canReapply)
             case .alternate: try await store.playlists.applyPlaylistRecovery(review, reapply: false)

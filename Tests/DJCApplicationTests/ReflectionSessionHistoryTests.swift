@@ -57,12 +57,12 @@ struct ReflectionSessionHistoryTests {
                                        cues: [H.outcome("x", .written)])
         #expect(await h.session.write(rows: [H.row("x")]).name == "written")
         let prompt = try #require(h.prompts.first)
-        #expect(prompt.title == "큐 1곡을 rekordbox에 쓸까요?")
-        #expect(prompt.details == ["쓰지 않는 것 1:", "• HISTORY b: 재생 기록 쓰기를 아직 열지 않았습니다"])
+        #expect(prompt.title == "큐 1곡을 rekordbox에 저장할까요?")
+        #expect(prompt.details == ["저장하지 않는 것 1:", "• HISTORY b: 재생 기록 쓰기를 아직 열지 않았습니다"])
         #expect(h.gateCalls.value.writes.first?.drafts.map(\.trackUUID) == ["x"] && h.gateCalls.value.writes.first?.histories == [])
         // 함께 쓸 수 있으면 제목에 함께 센다
         let both = Self.report([Self.outcome("a", .written), Self.outcome("b", .blocked, reason: "이유")], cues: [H.outcome("x", .written)])
-        #expect(ReflectionPrompts.confirmation(both).title == "큐 1곡 · 재생 기록 1건을 rekordbox에 쓸까요?")
+        #expect(ReflectionPrompts.confirmation(both).title == "큐 1곡 · 재생 기록 1건을 rekordbox에 저장할까요?")
     }
 
     @Test func 재생_기록이_모두_막히면_창_없이_쓰지_않는다() async {
@@ -74,7 +74,7 @@ struct ReflectionSessionHistoryTests {
 
     @Test func 곡을_골라_쓰는_메뉴는_재생_기록을_넣지_않는다() async {
         h.state.pendingHistories = [Self.history("a")]
-        #expect(await h.session.write(rows: [H.row("a")], playlists: false).notice?.title == "쓸 초안이 없습니다")
+        #expect(await h.session.write(rows: [H.row("a")], playlists: false).notice?.title == "저장할 편집이 없습니다")
         #expect(h.gateCalls.value.previews.isEmpty)
         pendingCue("x")
         h.script.preview = H.report(cues: [H.outcome("x", .written)])

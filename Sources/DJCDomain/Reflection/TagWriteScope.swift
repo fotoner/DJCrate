@@ -41,15 +41,15 @@ public struct TagWriteScope: Sendable, Equatable {
         if !unsynced.isEmpty {
             let labels = unsynced.map(\.label).joined(separator: "·")
             return hasDraft
-                ? String(ui: "동기화된 곡의 \(labels)은 rekordbox에 쓰는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치거나 이 칸 초안을 버리세요")
-                : String(ui: "동기화된 곡의 \(labels)은 rekordbox에 쓰는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치세요")
+                ? String(ui: "동기화된 곡의 \(labels)은 rekordbox에 저장하는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치거나 이 칸 편집을 버리세요")
+                : String(ui: "동기화된 곡의 \(labels)은 rekordbox에 저장하는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치세요")
         }
         let listed = inPlaylist ? narrowed.filter { !scope(for: $0, in: scopes).playlistXML } : []
         if !listed.isEmpty {
             let labels = listed.map(\.label).joined(separator: "·")
             return hasDraft
-                ? String(ui: "재생 목록에 든 곡의 \(labels)은 rekordbox에 쓰는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치거나 이 칸 초안을 버리세요")
-                : String(ui: "재생 목록에 든 곡의 \(labels)은 rekordbox에 쓰는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치세요")
+                ? String(ui: "재생 목록에 든 곡의 \(labels)은 rekordbox에 저장하는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치거나 이 칸 편집을 버리세요")
+                : String(ui: "재생 목록에 든 곡의 \(labels)은 rekordbox에 저장하는 규칙을 아직 확인하지 않았으니 rekordbox에서 직접 고치세요")
         }
         return nil
     }

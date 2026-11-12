@@ -60,7 +60,7 @@ extension RekordboxWriter {
             var fallback = report
             fallback.createdFiles = nil
             try? save(fallback, in: backup, shareRoot: shareRoot)
-            return String(ui: "쓰기 보고서(report.json)를 백업에 다 저장하지 못해 ‘쓰기 전으로 복원…’이 이번에 만든 파일을 지우지 못할 수 있으니 백업 폴더를 확인하세요: \(DJCError.reason(of: error))")
+            return String(ui: "저장 보고서(report.json)를 백업에 다 보관하지 못해 ‘저장 전으로 복원…’이 이번에 만든 파일을 지우지 못할 수 있으니 백업 폴더를 확인하세요: \(DJCError.reason(of: error))")
         }
     }
 

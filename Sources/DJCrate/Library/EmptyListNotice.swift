@@ -65,11 +65,11 @@ enum EmptyListNotice: Equatable {
         }
         if sidebar == .pending, pendingHistories > 0 {
             // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 위 쓰기 단추에서 함께 쓴다. 건수는 그 단추 이름이 말한다
-            return .message(Message(title: String(ui: "쓸 곡 초안이 없습니다"), description: String(ui: "위 쓰기 단추로 재생 기록을 rekordbox에 넣습니다."),
+            return .message(Message(title: String(ui: "저장할 곡 편집이 없습니다"), description: String(ui: "위 저장 단추로 재생 기록을 rekordbox에 넣습니다."),
                                     systemImage: "clock.arrow.circlepath"))
         }
         if sidebar == .pending {
-            return .message(Message(title: String(ui: "쓸 초안이 없습니다"), description: String(ui: "곡의 큐·그리드·게인을 고치면 여기에 모입니다."),
+            return .message(Message(title: String(ui: "저장할 편집이 없습니다"), description: String(ui: "곡의 큐·그리드·게인을 고치면 여기에 모입니다."),
                                     systemImage: "checkmark.circle"))
         }
         if isUsbSelection {

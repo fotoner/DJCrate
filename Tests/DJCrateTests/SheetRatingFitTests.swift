@@ -161,7 +161,7 @@ struct SheetRatingFitTests {
         h.relayout()
         let edited = try #require(h.cell(row: 2, column: "rating"))
         #expect(edited.label.stringValue == "5★" && edited.showsDraftMark)
-        #expect(edited.label.cell?.accessibilityValue() as? String == "별 5개, 초안")
+        #expect(edited.label.cell?.accessibilityValue() as? String == "별 5개, 저장 대기")
     }
 
     // MARK: 곡 색 열

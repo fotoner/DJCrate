@@ -8,11 +8,11 @@ import Foundation
 extension LibraryStore {
     /// 막힌 초안 복구 시트가 열려 있는 동안은 rekordbox에 쓰는 입구(쓰기·넣기·빼기·복원)를 막는다. 시트를 저장하거나 취소하면 풀린다(#232).
     var writesBlockedBySheet: Bool { recoverySheet != nil }
-    static var writesBlockedBySheetReason: String { String(ui: "막힌 초안 비교 창에서 저장하거나 취소한 뒤 다시 시도하세요") }
+    static var writesBlockedBySheetReason: String { String(ui: "막힌 편집 비교 창에서 적용하거나 취소한 뒤 다시 시도하세요") }
 
     /// 막힌 입구를 눌렀을 때 아무 반응이 없지 않게 알린다.
     func announceWritesBlockedBySheet() {
-        showToast(.notice(String(ui: "막힌 초안 비교가 열려 있어 쓰지 않았습니다"), String(ui: "비교 창에서 저장하거나 취소한 뒤 다시 시도하세요.")))
+        showToast(.notice(String(ui: "막힌 편집 비교가 열려 있어 저장하지 않았습니다"), String(ui: "비교 창에서 적용하거나 취소한 뒤 다시 시도하세요.")))
     }
 
     /// 복구할 입력: 태그는 메모리 초안, 큐·그리드는 덱의 메모리 입력이 있으면 그것, 없으면 저장 대기 입력·초안 파일
@@ -30,7 +30,7 @@ extension LibraryStore {
               !row.isUsb, !row.isStaged, !row.track.isStreaming,
               rowsByUUID[row.track.uuid] != nil,
               let original = recoveryInput(uuid: row.track.uuid, kind: kind), original.hasChanges else {
-            throw DJCError.writeRefused(String(ui: "복구할 초안을 확인하지 못했으니 편집을 저장하고 곡을 다시 선택하세요."))
+            throw DJCError.writeRefused(String(ui: "복구할 편집을 확인하지 못했으니 편집을 보관하고 곡을 다시 선택하세요."))
         }
         isRecoveringDraft = true
         defer { isRecoveringDraft = false }

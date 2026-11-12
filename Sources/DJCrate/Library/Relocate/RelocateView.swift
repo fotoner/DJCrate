@@ -122,7 +122,7 @@ struct RelocateView: View {
                 Spacer()
                 Button(.ui("닫기")) { dismiss() }.keyboardShortcut(.cancelAction)
                 // 경로 바꾸기 쓰기는 만들지 않았다: 곡 행·분석 파일의 어느 칸을 어떻게 바꾸는지 rekordbox 실험으로 확인하기 전이다.
-                Button(.ui("rekordbox에 쓰기…")) {}
+                Button(.ui("rekordbox에 저장")) {}
                     .disabled(true)
                     .help(RelocateModel.writeBlockedReason)
                     .accessibilityIdentifier("relocate-write")

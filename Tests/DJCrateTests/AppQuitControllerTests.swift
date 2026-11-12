@@ -444,11 +444,11 @@ struct AppQuitControllerTests {
         delegate.store = store
         store.isPoweringOff = true
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateLater)
         #expect(store.quitWait.current != nil)
         // 중간 단계 변화로는 답하지 않는다
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…", completed: 1, total: 2)
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…", completed: 1, total: 2)
         await drainMainActor()
         #expect(replies.isEmpty)
         // 쓴 뒤 다시 읽기에 들어서면 종료한다
@@ -480,7 +480,7 @@ struct AppQuitControllerTests {
         delegate.terminateApp = { terminations += 1 }
                 delegate.store = store
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
         #expect(store.quitWait.isWaiting)
         store.setWriteLock(false)
@@ -622,8 +622,8 @@ struct AppQuitControllerTests {
 
     @Test func 시트는_취소가_기본_단추이고_그냥_종료가_두_번째다() {
         let alert = QuitConfirmationAlert.makeAlert(QuitConfirmation(running: .rekordbox, pending: PendingWriteCount(items: 2, playlistEdits: 0)))
-        #expect(alert.messageText == "쓰기 대기가 남아 있습니다")
-        #expect(alert.informativeText.hasPrefix("rekordbox가 켜져 있어 쓰기 대기 2건을"))
+        #expect(alert.messageText == "저장 대기가 남아 있습니다")
+        #expect(alert.informativeText.hasPrefix("rekordbox가 켜져 있어 저장 대기 2건을"))
         #expect(alert.buttons.map(\.title) == ["취소", "그냥 종료"])
         #expect(QuitConfirmationAlert.isQuitAnyway(.alertSecondButtonReturn))
         #expect(!QuitConfirmationAlert.isQuitAnyway(.alertFirstButtonReturn))

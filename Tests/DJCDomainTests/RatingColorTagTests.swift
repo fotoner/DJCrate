@@ -107,11 +107,11 @@ struct RatingColorTagTests {
         draft.fields.comment = "코멘트만"
         #expect(draft.issues.isEmpty)
         draft.fields.rating = "6"
-        #expect(draft.issues.contains { $0.contains("평점") && $0.contains("rekordbox에 쓰세요") })
+        #expect(draft.issues.contains { $0.contains("평점") && $0.contains("rekordbox에 저장하세요") })
         draft.fields.rating = ""
         #expect(draft.issues.isEmpty && draft.changedKeys.contains(.rating))
         draft.fields.color = "9"
-        #expect(draft.issues.contains { $0.contains("곡 색") && $0.contains("rekordbox에 쓰세요") })
+        #expect(draft.issues.contains { $0.contains("곡 색") && $0.contains("rekordbox에 저장하세요") })
         draft.fields.color = "7"
         #expect(draft.issues.isEmpty)
         // 여덟 색 밖(번호 0·이름)과 1~5 밖 평점(음수·별 표기)도 초안 문제다(RekordboxTagRatingColorTests에서 옮김)
@@ -196,13 +196,13 @@ struct RatingColorTagTests {
     @Test func 초안이_있을_때만_그_칸_초안을_버리라고_한다() throws {
         // 초안을 만들기 전(인스펙터·목록·djc draft·XML 가져오기)에는 버릴 초안이 없다. 쓰기 확인(초안이 있음)만 그 할 일을 붙인다.
         let before = try #require(TagWriteScope.blockReason(keys: [.rating], state: 258, inPlaylist: false))
-        #expect(before.contains("rekordbox에서 직접 고치세요") && !before.contains("초안"))
+        #expect(before.contains("rekordbox에서 직접 고치세요") && !before.contains("편집"))
         let drafted = try #require(TagWriteScope.blockReason(keys: [.rating], state: 258, inPlaylist: false, hasDraft: true))
-        #expect(drafted.contains("rekordbox에서 직접 고치거나 이 칸 초안을 버리세요"))
+        #expect(drafted.contains("rekordbox에서 직접 고치거나 이 칸 편집을 버리세요"))
         let narrow = [TagFields.Key.color: TagWriteScope(states: [0, 256, 257], playlistXML: false)]
         let listed = try #require(TagWriteScope.blockReason(keys: [.color], state: 0, inPlaylist: true, scopes: narrow))
-        #expect(listed.contains("재생 목록") && !listed.contains("초안"))
-        #expect(TagWriteScope.blockReason(keys: [.color], state: 0, inPlaylist: true, scopes: narrow, hasDraft: true)?.contains("초안을 버리세요") == true)
+        #expect(listed.contains("재생 목록") && !listed.contains("편집"))
+        #expect(TagWriteScope.blockReason(keys: [.color], state: 0, inPlaylist: true, scopes: narrow, hasDraft: true)?.contains("편집을 버리세요") == true)
     }
 
     @Test func 상태를_모르는_곡도_막는다() {

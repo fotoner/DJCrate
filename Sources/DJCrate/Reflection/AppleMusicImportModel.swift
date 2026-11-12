@@ -94,7 +94,7 @@ final class AppleMusicImportModel {
         }
         // 파일 검사 중 시작된 반영과 곡 추가가 겹치지 않게 다시 확인한다.
         guard !staging.libraryBusy else {
-            message = String(ui: "rekordbox 쓰기가 끝난 뒤 선택한 곡을 다시 추가하세요.")
+            message = String(ui: "rekordbox 저장이 끝난 뒤 선택한 곡을 다시 추가하세요.")
             return
         }
         if !urls.isEmpty {

@@ -88,9 +88,9 @@ struct SidebarPendingRow: View {
     let store: LibraryStore
 
     var body: some View {
-        Label(.ui("rekordbox 쓰기 대기"), systemImage: "square.and.arrow.up.on.square")
+        Label(.ui("rekordbox 저장 대기"), systemImage: "square.and.arrow.up.on.square")
             .badge(store.pendingWriteCount)
-            .help(.ui("rekordbox에 쓸 곡 초안과 USB 재생 기록을 모아 봅니다. 재생 목록 초안도 함께 쓸 수 있습니다."))
+            .help(.ui("rekordbox에 저장할 곡 편집과 USB 재생 기록을 모아 봅니다. 재생 목록 편집도 함께 저장할 수 있습니다."))
     }
 }
 
@@ -236,7 +236,7 @@ struct SidebarHistoryRow: View {
                 Image(systemName: DraftMark.symbol)
                     .imageScale(.small)
                     .foregroundStyle(UIColors.draft.color)
-                    .accessibilityLabel(.ui("rekordbox 쓰기 대기"))
+                    .accessibilityLabel(.ui("rekordbox 저장 대기"))
             }
         }
         .badge(history.historyCount(item.id))
@@ -248,19 +248,19 @@ struct SidebarHistoryRow: View {
         if archived.source.isLink { return linkHelp(archived, pending: pending) }
         let volume = archived.source.volumeName
         if pending {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에 있습니다")
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 저장 대기에 있습니다")
         }
         if archived.excludedFromRekordbox {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 저장 대기에서 뺐습니다")
         }
         if let id = archived.rekordboxHistoryID, history.historyIndex[id] != nil {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에 썼습니다")
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에 저장했습니다")
         }
         if HistoryWriteQueue.hasRepeatedTracks(archived) {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 같은 곡이 두 번 이상 들어 DJCrate는 rekordbox에 쓰지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요")
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 같은 곡이 두 번 이상 들어 DJCrate는 rekordbox에 저장하지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요")
         }
         if archived.matchedContentIDs.isEmpty {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 컬렉션에 있는 곡이 없어 rekordbox에는 쓰지 않습니다")
+            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 컬렉션에 있는 곡이 없어 rekordbox에는 저장하지 않습니다")
         }
         return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에는 없습니다")
     }
@@ -268,22 +268,22 @@ struct SidebarHistoryRow: View {
     /// LINK 기록의 도움말: CDJ가 남긴 기록과 rekordbox 쓰기 상태
     private func linkHelp(_ archived: ArchivedHistory, pending: Bool) -> String {
         if history.isOpenLinkHistory(archived) {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남기는 기록입니다. 곡이 계속 붙으므로 LINK를 끄면 rekordbox 쓰기 대기에 올립니다")
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남기는 기록입니다. 곡이 계속 붙으므로 LINK를 끄면 rekordbox 저장 대기에 올립니다")
         }
         if pending {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에 있습니다")
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 저장 대기에 있습니다")
         }
         if archived.excludedFromRekordbox {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 쓰기 대기에서 뺐습니다")
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 저장 대기에서 뺐습니다")
         }
         if let id = archived.rekordboxHistoryID, history.historyIndex[id] != nil {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에 썼습니다")
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에 저장했습니다")
         }
         if HistoryWriteQueue.hasRepeatedTracks(archived) {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 같은 곡이 두 번 이상 들어 rekordbox 재생 횟수 규칙을 확인하지 않아 rekordbox에는 쓰지 않습니다")
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 같은 곡이 두 번 이상 들어 rekordbox 재생 횟수 규칙을 확인하지 않아 rekordbox에는 저장하지 않습니다")
         }
         if archived.matchedContentIDs.isEmpty {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 컬렉션 곡을 확인하지 못해 rekordbox에는 쓰지 않습니다")
+            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 컬렉션 곡을 확인하지 못해 rekordbox에는 저장하지 않습니다")
         }
         return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에는 없습니다")
     }
@@ -316,7 +316,7 @@ struct SidebarStatusSections: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             } header: {
-                Text(.ui("스냅샷")).sidebarSectionHeader()
+                Text(.ui("읽은 시점")).sidebarSectionHeader()
             }
         }
     }

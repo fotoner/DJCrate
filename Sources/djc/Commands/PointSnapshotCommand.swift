@@ -112,10 +112,10 @@ enum PointSnapshotCommand {
             lines.append("  " + parts.joined(separator: " · "))
         }
         let backups = points.writeBackups()
-        lines.append(String(ui: "쓰기 전 백업 \(backups.count)개 (\(points.backupDirectory.path))"))
+        lines.append(String(ui: "저장 전 백업 \(backups.count)개 (\(points.backupDirectory.path))"))
         for backup in backups {
             let titles = backup.titles.prefix(3).joined(separator: ", ")
-            lines.append("  " + [backup.url.lastPathComponent, backup.isWrite ? String(ui: "쓰기 전 백업") : String(ui: "복원 직전 백업"), titles]
+            lines.append("  " + [backup.url.lastPathComponent, backup.isWrite ? String(ui: "저장 전 백업") : String(ui: "복원 직전 백업"), titles]
                 .filter { !$0.isEmpty }.joined(separator: " · "))
         }
         return lines.joined(separator: "\n")

@@ -101,12 +101,9 @@ struct GeneralSettingsView: View {
                 Text(.ui("화면"))
             }
             Section {
-                Toggle(.ui("현황·스냅샷 보이기"), isOn: $sidebarShowsStatus)
+                Toggle(.ui("현황 보이기"), isOn: $sidebarShowsStatus)
             } header: {
                 Text(.ui("사이드바"))
-            } footer: {
-                Text(.ui("사이드바 맨 아래에 곡 수와 스냅샷 이름을 보입니다."))
-                    .foregroundStyle(.secondary)
             }
             Section {
                 Toggle(.ui("스트리밍 곡 숨기기"), isOn: $store.hideStreaming)

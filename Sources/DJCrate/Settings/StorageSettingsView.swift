@@ -40,7 +40,7 @@ struct StorageSettingsView: View {
             } header: {
                 Text(.ui("캐시"))
             } footer: {
-                Text(.ui("캐시는 다시 만들어집니다. 초안·백업은 지우지 않습니다."))
+                Text(.ui("캐시는 다시 만들어집니다. 편집·백업은 지우지 않습니다."))
                     .foregroundStyle(.secondary)
             }
             Section {
@@ -52,12 +52,12 @@ struct StorageSettingsView: View {
                     }
                 }
                 Toggle(isOn: $model.autoSnapshotEnabled) {
-                    Text(.ui("하루 한 번 자동 시점 스냅샷"))
+                    Text(.ui("하루 한 번 자동 복원 시점"))
                     Text(model.autoSnapshotCaption)
                 }
                 .disabled(because: model.autoSnapshotNote, announcedAs: .hint)
                 Stepper(value: $model.autoSnapshotDays, in: 1...90) {
-                    LabeledContent(.ui("자동 시점 스냅샷 보관")) {
+                    LabeledContent(.ui("자동 복원 시점 보관")) {
                         Text(.ui("\(model.autoSnapshotDays)일"))
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
@@ -69,7 +69,7 @@ struct StorageSettingsView: View {
                     InfoPopoverButton(label: String(ui: "보관 규칙"), lines: Self.retentionLines)
                 }
             } footer: {
-                Text(.ui("오래된 것부터 자동 정리되며 고정한 스냅샷은 남습니다."))
+                Text(.ui("오래된 것부터 자동 정리되며 고정한 복원 시점은 남습니다."))
                     .foregroundStyle(.secondary)
             }
             Section {
@@ -94,9 +94,9 @@ struct StorageSettingsView: View {
 
     /// 백업 구역 ⓘ 팝오버: 처음 한 번만 필요한 보관 규칙과 용량 읽는 법
     private static var retentionLines: [String] {
-        [String(ui: "백업과 자동 시점 스냅샷은 오래된 것부터 저절로 정리됩니다."),
-         String(ui: "rekordbox 수동·고정 시점 스냅샷은 지우지 않습니다."),
-         String(ui: "USB 시점 스냅샷은 볼륨마다 최근 5개와 고정한 것을 남깁니다."),
+        [String(ui: "백업과 자동 복원 시점은 오래된 것부터 저절로 정리됩니다."),
+         String(ui: "rekordbox 수동·고정 복원 시점은 지우지 않습니다."),
+         String(ui: "USB 복원 시점은 볼륨마다 최근 5개와 고정한 것을 남깁니다."),
          String(ui: "같은 디스크의 복사본은 공간을 나눠 써서 실제로 차지하는 공간은 더 작을 수 있습니다.")]
     }
 
@@ -108,10 +108,10 @@ struct StorageSettingsView: View {
 
     private func title(of kind: DJCBackupUsage.Kind) -> String {
         switch kind {
-        case .rekordboxBackups: String(ui: "rekordbox 쓰기 전 백업")
-        case .pointSnapshots: String(ui: "rekordbox 시점 스냅샷")
+        case .rekordboxBackups: String(ui: "rekordbox 저장 전 백업")
+        case .pointSnapshots: String(ui: "rekordbox 복원 시점")
         case .usbBackups: String(ui: "USB 쓰기 전 백업")
-        case .usbPointSnapshots: String(ui: "USB 시점 스냅샷")
+        case .usbPointSnapshots: String(ui: "USB 복원 시점")
         }
     }
 }
