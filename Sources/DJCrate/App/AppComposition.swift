@@ -103,6 +103,9 @@ final class AppComposition {
     /// 업데이트 설치 뒤 다시 켜려고 앱을 끄는 중인지(읽으면 표시를 지운다). 켜진 채 종료 시트(#326)가 이 종료는 묻지 않는다. 업데이트 도구가 없으면 거짓이다
     func consumeUpdateRelaunch() -> Bool { updater?.consumeRelaunchMark() ?? false }
 
+    /// 도움말 › 연동 안내(#315). 주 창 포커스와 상관없이 rekordbox 절차로 연다
+    func openIntegrationGuide() { windows.integrationGuide.open(file: store.linkedXMLFile, topic: .rekordbox) }
+
     /// 옛 이름(anicue) 데이터·설정 옮기기. 앱이 시작할 때 목록·덱이 설정을 읽기 전에 한 번 부른다(`DJCrateApp`의 첫 속성)
     nonisolated static func migrateLegacyData() {
         #if DEBUG

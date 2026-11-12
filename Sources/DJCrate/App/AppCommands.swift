@@ -57,6 +57,8 @@ struct AppCommands: Commands {
     @FocusedValue(\.waveformHeight) private var waveformHeight
     @Environment(\.openWindow) private var openWindow
     @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
+    /// 도움말 › 연동 안내. 어느 창이 앞에 있든 연다(조립 지점이 준다)
+    let openIntegrationGuide: () -> Void
 
     var body: some Commands {
         SidebarCommands()
@@ -97,7 +99,15 @@ struct AppCommands: Commands {
             Button(.ui("DJCrate 단축키")) { openWindow(id: "shortcuts") }
                 .keyboardShortcut("?", modifiers: .command)
             Divider()
-            ForEach(LibraryMenuAction.helpActions, id: \.self) { libraryButton($0) }
+            ForEach(LibraryMenuAction.helpActions, id: \.self) { helpButton($0) }
+        }
+    }
+
+    /// 도움말 메뉴 항목. 연동 안내는 설정·단축키 창이 앞에 있어도 열리게 주 창 포커스 대신 조립 지점이 준 동작으로 연다(#315)
+    @ViewBuilder private func helpButton(_ action: LibraryMenuAction) -> some View {
+        switch action {
+        case .integrationGuide: Button(action.title) { openIntegrationGuide() }
+        default: libraryButton(action)
         }
     }
 

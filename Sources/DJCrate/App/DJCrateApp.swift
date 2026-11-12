@@ -99,7 +99,7 @@ struct DJCrateApp: App {
                 }
         }
         .commands {
-            AppCommands()
+            AppCommands(openIntegrationGuide: { [app] in app.openIntegrationGuide() })
             UpdateCommands(model: app.updates)
             CommandGroup(after: .pasteboard) {
                 // 표준 편집 명령처럼 현재 응답자가 활성 상태와 실행을 결정한다.

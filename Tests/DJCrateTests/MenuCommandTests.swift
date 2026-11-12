@@ -57,7 +57,12 @@ struct MenuCommandTests {
             if commands[index] == "}" { depth -= 1; if depth == 0 { helpEnd = index; break } }
         }
         let helpGroup = commands[helpStart.lowerBound..<helpEnd]
-        #expect(helpGroup.contains("ForEach(LibraryMenuAction.helpActions, id: \\.self) { libraryButton($0) }"), "도움말 메뉴도 rekordbox 메뉴와 같은 libraryButton으로 항목을 만든다")
+        #expect(helpGroup.contains("ForEach(LibraryMenuAction.helpActions, id: \\.self) { helpButton($0) }"), "도움말 메뉴 항목은 helpButton으로 만든다")
+        // 복원은 rekordbox 메뉴와 같은 libraryButton(같은 이름·켜짐 조건)이고, 연동 안내만 주 창 포커스와 상관없이 조립 지점이 준 동작으로 연다(#315)
+        let helpButtonStart = try #require(commands.range(of: "private func helpButton("))
+        let helpButton = commands[helpButtonStart.lowerBound...].prefix(400)
+        #expect(helpButton.contains("case .integrationGuide") && helpButton.contains("openIntegrationGuide()"))
+        #expect(helpButton.contains("libraryButton(action)"))
 
         let backups = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: backups) }
