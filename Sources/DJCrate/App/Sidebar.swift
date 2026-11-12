@@ -213,79 +213,32 @@ struct SidebarHistoryMonthRow: View {
     }
 }
 
-/// 기록 줄. 곡 수와 USB 보존·쓰기 대기 표시는 이 뷰만 읽는다
+/// 기록 줄. 곡 수와 보존 출처·저장 상태 표시는 이 뷰만 읽는다.
+/// 출처는 줄 아이콘(USB·LINK)이, 저장 상태는 상태 아이콘이 보이고 툴팁은 상태 낱말 한 줄이다(#311)
 struct SidebarHistoryRow: View {
     let history: HistoryStore
     let item: HistoryTree.Item
 
     var body: some View {
         let archived = history.archivedHistory(item.id)
-        let pending = archived != nil && history.pendingHistoryIDs.contains(item.id)
+        let mark = archived.map { HistoryStatusMark.of(history.archivedStatus($0), isLink: $0.source.isLink) }
         HStack(spacing: 4) {
             Text(verbatim: item.name)
                 .lineLimit(1)
-            if let archived {
+            if let archived, let mark {
                 // LINK 기록(PRO DJ LINK로 내어 주는 동안 CDJ가 남긴 기록)과 USB 기기 기록을 가른다
                 Image(systemName: archived.source.isLink ? "point.3.connected.trianglepath.dotted" : "externaldrive")
                     .imageScale(.small)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(archived.source.isLink ? .ui("LINK로 남긴 기록") : .ui("USB에서 가져온 기록"))
-            }
-            // 아직 rekordbox에 쓰지 않은 초안과 같은 표식(쓰기 대기)
-            if pending {
-                Image(systemName: DraftMark.symbol)
+                Image(systemName: mark.symbol)
                     .imageScale(.small)
-                    .foregroundStyle(UIColors.draft.color)
-                    .accessibilityLabel(.ui("rekordbox 저장 대기"))
+                    .foregroundStyle(mark.usesDraftColor ? UIColors.draft.color : Color.secondary)
+                    .accessibilityLabel(Text(verbatim: mark.word))
             }
         }
         .badge(history.historyCount(item.id))
-        .help(archived.map { archivedHelp($0, pending: pending) } ?? history.historyIndex[item.id].map(\.title) ?? item.name)
-    }
-
-    /// 보존 기록의 도움말: 어디서 가져왔는지와 rekordbox 쓰기 상태
-    private func archivedHelp(_ archived: ArchivedHistory, pending: Bool) -> String {
-        if archived.source.isLink { return linkHelp(archived, pending: pending) }
-        let volume = archived.source.volumeName
-        if pending {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 저장 대기에 있습니다")
-        }
-        if archived.excludedFromRekordbox {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox 저장 대기에서 뺐습니다")
-        }
-        if let id = archived.rekordboxHistoryID, history.historyIndex[id] != nil {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에 저장했습니다")
-        }
-        if HistoryWriteQueue.hasRepeatedTracks(archived) {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 같은 곡이 두 번 이상 들어 DJCrate는 rekordbox에 저장하지 않으니 rekordbox에서 USB를 연결해 직접 가져오세요")
-        }
-        if archived.matchedContentIDs.isEmpty {
-            return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. 컬렉션에 있는 곡이 없어 rekordbox에는 저장하지 않습니다")
-        }
-        return String(ui: "USB ‘\(volume)’에서 가져와 DJCrate에 보존한 기록입니다. rekordbox에는 없습니다")
-    }
-
-    /// LINK 기록의 도움말: CDJ가 남긴 기록과 rekordbox 쓰기 상태
-    private func linkHelp(_ archived: ArchivedHistory, pending: Bool) -> String {
-        if history.isOpenLinkHistory(archived) {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남기는 기록입니다. 곡이 계속 붙으므로 LINK를 끄면 rekordbox 저장 대기에 올립니다")
-        }
-        if pending {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 저장 대기에 있습니다")
-        }
-        if archived.excludedFromRekordbox {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox 저장 대기에서 뺐습니다")
-        }
-        if let id = archived.rekordboxHistoryID, history.historyIndex[id] != nil {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에 저장했습니다")
-        }
-        if HistoryWriteQueue.hasRepeatedTracks(archived) {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 같은 곡이 두 번 이상 들어 rekordbox 재생 횟수 규칙을 확인하지 않아 rekordbox에는 저장하지 않습니다")
-        }
-        if archived.matchedContentIDs.isEmpty {
-            return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. 컬렉션 곡을 확인하지 못해 rekordbox에는 저장하지 않습니다")
-        }
-        return String(ui: "LINK로 라이브러리를 내어 주는 동안 CDJ가 남긴 기록입니다. rekordbox에는 없습니다")
+        .help(mark?.help ?? history.historyIndex[item.id].map(\.title) ?? item.name)
     }
 }
 

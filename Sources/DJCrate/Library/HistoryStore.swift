@@ -202,8 +202,13 @@ final class HistoryStore {
         openLinkSessions = []
     }
 
-    /// 그 LINK 기록이 연결 중이라 아직 쓰기 대기에 오르지 않았는지(사이드바 도움말)
-    func isOpenLinkHistory(_ history: ArchivedHistory) -> Bool { LinkHistory.isOpen(history, openSessions: openLinkSessions) }
+    /// 그 보존 기록의 rekordbox 저장 상태(사이드바 기록 줄의 표시·툴팁, #311).
+    /// USB 기록 줄이 LINK 세션 변화를 읽지 않게 연결 중 세션은 LINK 기록일 때만 읽는다
+    func archivedStatus(_ history: ArchivedHistory) -> ArchivedHistoryStatus {
+        ArchivedHistoryStatus.of(history, isPending: pendingHistoryIDs.contains(history.id),
+                                 openLinkSessions: history.source.isLink ? openLinkSessions : [],
+                                 rekordboxHasHistory: { historyIndex[$0] != nil })
+    }
 
     /// CDJ가 LINK 재생 기록에 넣거나 뺀 곡을 그 세션 기록에 반영한다(보존만 한다. rekordbox에는 쓰기 대기로 올린다).
     /// 원본 키는 채택한 스냅샷에서 그 곡 자신의 것을 쓴다(`LinkHistory.entry`)
