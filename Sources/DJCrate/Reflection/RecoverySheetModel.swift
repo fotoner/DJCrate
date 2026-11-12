@@ -344,7 +344,7 @@ final class RecoverySheetModel: Identifiable {
         if saved > 0 {
             hasSaved = true
             host.showToast(failed == 0
-                ? AppToast(kind: .success, title: String(ui: "편집을 보관했습니다"),
+                ? AppToast(kind: .success, title: String(ui: "편집을 적용했습니다"),
                            detail: String(ui: "저장 미리 보기에서 지원 제한과 최신 상태를 다시 확인하세요."))
                 : AppToast(kind: .warning, title: String(ui: "편집 일부만 적용했습니다"),
                            detail: String(ui: "적용하지 못한 줄은 비교 창에서 이유를 확인하세요.")))

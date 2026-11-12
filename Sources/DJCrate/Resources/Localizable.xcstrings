@@ -48395,22 +48395,6 @@
         }
       }
     },
-    "편집을 보관했습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edits stored"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "編集を保管しました"
-          }
-        }
-      }
-    },
     "편집을 불러오지 못했으니 편집 파일과 접근 권한을 확인한 뒤 다시 불러오세요" : {
       "localizations" : {
         "en" : {
@@ -48439,6 +48423,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "編集を読み込みまたは保管できませんでした。DJC_HOMEの編集ファイルとアクセス権限を確認してください"
+          }
+        }
+      }
+    },
+    "편집을 적용했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edits applied"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編集を適用しました"
           }
         }
       }
