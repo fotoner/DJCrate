@@ -239,10 +239,20 @@ final class LibraryStore {
     @ObservationIgnored var artworkFileRows: [String: [ArtworkFileRow]] = [:]
     /// rekordbox 곡 색 목록(이름·순서, #65). 라이브러리에서 읽지 못하면 rekordbox 기본 여덟 색이다.
     var trackColors: [TrackColor] = TrackColor.rekordboxDefaults
-    /// 목록 거르기: 평점 이 별 수 이상(0이면 끔)과 곡 색(nil이면 끔). rekordbox 값(초안 전)으로 거른다(정렬과 같다).
-    var minimumRating = 0 { didSet { if minimumRating != oldValue { refreshFiltered() } } }
-    var colorFilter: String? { didSet { if colorFilter != oldValue { refreshFiltered() } } }
-    var isAttributeFiltered: Bool { minimumRating > 0 || colorFilter != nil }
+    /// 목록 필터(#65·#351): 평점·곡 색 여러 개·BPM 범위·키·장르. 조건끼리 AND이고 rekordbox 값(초안 전)으로 거른다(정렬과 같다).
+    /// 판정은 `DJCDomain`의 `TrackFilter` 한 곳이다(CLI `djc search --bpm/--key`와 같다). 뷰는 조건마다 아래 값으로 고친다.
+    var filter = TrackFilter() { didSet { if filter != oldValue { refreshFiltered() } } }
+    /// 평점이 이 별 수 이상(0이면 끔)
+    var minimumRating: Int {
+        get { filter.minimumRating }
+        set { filter.minimumRating = newValue }
+    }
+    /// 고른 곡 색 번호(비면 끔)
+    var colorFilters: Set<String> {
+        get { filter.colorIDs }
+        set { filter.colorIDs = newValue }
+    }
+    var isAttributeFiltered: Bool { !filter.isEmpty }
     /// 그림 초안을 고친 횟수. 백그라운드 읽기 사이에 고쳤으면 읽은 초안 대신 디스크를 다시 읽는다.
     @ObservationIgnored var artworkChangeCount = 0
     @ObservationIgnored var recoveryMemoryInput: ((String, DraftRecoveryKind) -> RecoveryDraft?)?

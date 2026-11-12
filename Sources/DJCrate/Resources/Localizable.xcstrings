@@ -1120,6 +1120,28 @@
         }
       }
     },
+    "%@ 외 %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ +%2$lld more"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ ほか%2$lld件"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ 외 %2$lld"
+          }
+        }
+      }
+    },
     "%@ 외 %lld건" : {
       "localizations" : {
         "en" : {
@@ -4353,6 +4375,60 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "BPM %1$@ → %2$@ · 구간 %3$lld → %4$lld"
+          }
+        }
+      }
+    },
+    "BPM %@ 이상" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BPM %@ or Higher"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BPM %@以上"
+          }
+        }
+      }
+    },
+    "BPM %@ 이하" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BPM %@ or Lower"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BPM %@以下"
+          }
+        }
+      }
+    },
+    "BPM %@–%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BPM %1$@–%2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BPM %1$@～%2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "BPM %1$@–%2$@"
           }
         }
       }
@@ -16403,6 +16479,22 @@
         }
       }
     },
+    "같은 키" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Same Key"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同じキー"
+          }
+        }
+      }
+    },
     "같은 파일을 둘 이상의 곡에 고른 경우가 %lld건 있습니다" : {
       "localizations" : {
         "en" : {
@@ -26653,18 +26745,18 @@
         }
       }
     },
-    "모든 곡 색" : {
+    "모든 장르" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "All Colors"
+            "value" : "All Genres"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "すべてのカラー"
+            "value" : "すべてのジャンル"
           }
         }
       }
@@ -26685,6 +26777,22 @@
         }
       }
     },
+    "모든 키" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All Keys"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてのキー"
+          }
+        }
+      }
+    },
     "모든 평점" : {
       "localizations" : {
         "en" : {
@@ -26697,6 +26805,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "すべての評価"
+          }
+        }
+      }
+    },
+    "모든 필터 끄기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn Off All Filters"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてのフィルターをオフ"
           }
         }
       }
@@ -34501,6 +34625,38 @@
         }
       }
     },
+    "어울리는 키" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compatible Keys"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相性のよいキー"
+          }
+        }
+      }
+    },
+    "어울리는 키 %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compatible Key %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "相性のよいキー %@"
+          }
+        }
+      }
+    },
     "업데이트" : {
       "localizations" : {
         "en" : {
@@ -39583,6 +39739,22 @@
         }
       }
     },
+    "장르 %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Genre %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジャンル %@"
+          }
+        }
+      }
+    },
     "장르: %@ · 작곡가: %@" : {
       "localizations" : {
         "en" : {
@@ -44105,6 +44277,38 @@
         }
       }
     },
+    "최대" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Max"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最大"
+          }
+        }
+      }
+    },
+    "최소" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Min"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最小"
+          }
+        }
+      }
+    },
     "최신" : {
       "localizations" : {
         "en" : {
@@ -46399,6 +46603,22 @@
         }
       }
     },
+    "키 비교" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key Match"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーの比較"
+          }
+        }
+      }
+    },
     "키 없음" : {
       "localizations" : {
         "en" : {
@@ -48653,54 +48873,6 @@
         }
       }
     },
-    "평점·곡 색 필터" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rating and Color Filter"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "評価・カラーのフィルター"
-          }
-        }
-      }
-    },
-    "평점·곡 색 필터 끄기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turn Off Rating and Color Filter"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "評価・カラーのフィルターをオフ"
-          }
-        }
-      }
-    },
-    "평점·곡 색 필터: rekordbox에 들어 있는 값으로 목록을 거릅니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rating and color filter: filters the list by the values stored in rekordbox"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "評価・カラーのフィルター：rekordboxに保存されている値で一覧を絞り込みます"
-          }
-        }
-      }
-    },
     "평점은 별 1~5개 중에서 고르거나 비운 뒤 rekordbox에 저장하세요" : {
       "localizations" : {
         "en" : {
@@ -49145,58 +49317,34 @@
         }
       }
     },
-    "필터 %lld" : {
+    "필터" : {
       "localizations" : {
         "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Filter"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Filters"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "フィルター %lld"
+            "value" : "フィルター"
           }
         }
       }
     },
-    "필터 %lld개 모두 끄기" : {
+    "필터 %lld개, 목록 열기" : {
       "localizations" : {
         "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Turn Off %lld Filter"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Turn Off All %lld Filters"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Filters, Show List"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "フィルター%lld個をすべてオフ"
+            "value" : "フィルター%lld件、一覧を開く"
           }
         }
       }
@@ -49229,6 +49377,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "フィルター適用中：%@"
+          }
+        }
+      }
+    },
+    "필터: rekordbox에 들어 있는 값으로 목록을 거릅니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter: narrows the list by the values stored in rekordbox"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フィルター：rekordboxに保存されている値で一覧を絞り込みます"
           }
         }
       }

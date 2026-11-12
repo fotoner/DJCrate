@@ -180,8 +180,12 @@ extension DevSelfTests {
         }
     }
 
+    /// 켠 조건 셋(BPM 범위·어울리는 키·장르). 줄인 칩 「BPM 120–130 외 2」가 가장 긴 첫 조건 글이다
+    static let threeConditions = TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("8A", mode: .compatible), genre: "House")
+
     /// 머리 줄(#339)의 필터 단추·칩·보기 전환이 창 폭과 글자 배율마다 겹치거나 잘리지 않는지 실제 창에서 본다.
-    /// 장면: 칩 0·1·2개, 태그 시트(ⓘ가 보인다), 인스펙터를 열고 글자를 키워 본문 폭이 모자랄 때(칩이 「필터 N」 하나로 줄어든다).
+    /// 장면: 칩 0·1·2·3·6개, 태그 시트(ⓘ가 보인다), 인스펙터를 열고 글자를 키워 본문 폭이 모자랄 때(칩이 첫 조건 글을 남긴 「BPM 120–130 외 2」 하나로 줄어든다).
+    /// 칩이 줄어도 켠 조건이 하나 이상 글자로 보여야 한다(#351, 툴팁이 아니다).
     /// 바꾸는 설정(보기 모드·인스펙터·사이드바·글자 배율)은 처음 값으로 되돌린다. 모든 작업 폴더가 같은 UserDefaults 영역을 쓰기 때문이다.
     /// 장면의 통과·실패는 `report`가 세고, 반환값은 캡처를 못 남긴 횟수다.
     @MainActor
@@ -191,8 +195,7 @@ extension DevSelfTests {
         struct Scene {
             var name: String
             var width: CGFloat
-            var rating = 0
-            var color: String?
+            var filter = TrackFilter()
             var sheet = false
             var inspector = false
             var scale = 1.0
@@ -200,16 +203,23 @@ extension DevSelfTests {
             var longColorName = false
         }
         let longColorName = "Deep house opener set"
+        // 조건 하나·둘·셋(#351: BPM·어울리는 키·장르)·여섯(평점·곡 색 둘까지 모두)
+        let one = TrackFilter(minimumRating: 3)
+        let two = TrackFilter(minimumRating: 3, colorIDs: ["2"])
+        let three = Self.threeConditions
+        let six = TrackFilter(minimumRating: 3, colorIDs: ["2", "7"], bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("8A", mode: .compatible), genre: "House")
         var scenes: [Scene] = []
         for width: CGFloat in [1155, 1200, 1440, 1800] {
-            scenes += [Scene(name: "none", width: width), Scene(name: "chip1", width: width, rating: 3),
-                       Scene(name: "chip2", width: width, rating: 3, color: "2"),
-                       Scene(name: "sheet-chip2", width: width, rating: 3, color: "2", sheet: true)]
+            scenes += [Scene(name: "none", width: width), Scene(name: "chip1", width: width, filter: one),
+                       Scene(name: "chip2", width: width, filter: two), Scene(name: "chip3", width: width, filter: three),
+                       Scene(name: "chip6", width: width, filter: six),
+                       Scene(name: "sheet-chip3", width: width, filter: three, sheet: true)]
         }
-        scenes += [Scene(name: "inspector-big-chip2", width: 1155, rating: 3, color: "2", inspector: true, scale: 1.5),
-                   Scene(name: "inspector-big-sheet-chip2", width: 1155, rating: 3, color: "2", sheet: true, inspector: true, scale: 1.5),
-                   Scene(name: "inspector-longname-collapsed", width: 1155, rating: 3, color: "2", inspector: true, scale: 1.5, longColorName: true),
-                   Scene(name: "inspector-longname-sheet-collapsed", width: 1155, rating: 3, color: "2", sheet: true, inspector: true,
+        scenes += [Scene(name: "inspector-big-chip2", width: 1155, filter: two, inspector: true, scale: 1.5),
+                   Scene(name: "inspector-big-chip3", width: 1155, filter: three, inspector: true, scale: 1.5),
+                   Scene(name: "inspector-big-sheet-chip3", width: 1155, filter: three, sheet: true, inspector: true, scale: 1.5),
+                   Scene(name: "inspector-longname-collapsed", width: 1155, filter: two, inspector: true, scale: 1.5, longColorName: true),
+                   Scene(name: "inspector-longname-sheet-collapsed", width: 1155, filter: two, sheet: true, inspector: true,
                          scale: 1.5, longColorName: true)]
         let keys = [SettingKeys.sheetMode.name, SettingKeys.showTagEditor.name, SettingKeys.sidebarVisible.name, SettingKeys.textScale.name]
         let saved = keys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
@@ -219,8 +229,7 @@ extension DevSelfTests {
         var failures = 0
         for scene in scenes {
             store.trackColors = scene.longColorName ? colors.map { $0.id == "2" ? TrackColor(id: "2", name: longColorName) : $0 } : colors
-            store.minimumRating = scene.rating
-            store.colorFilter = scene.color
+            store.filter = scene.filter
             UserDefaults.standard.set(scene.sheet, forKey: SettingKeys.sheetMode.name)
             UserDefaults.standard.set(scene.inspector, forKey: SettingKeys.showTagEditor.name)
             UserDefaults.standard.set(scene.scale, forKey: SettingKeys.textScale.name)
@@ -233,14 +242,19 @@ extension DevSelfTests {
             let content = window.contentView?.frame.size ?? .zero
             // 칩 자리는 `ViewThatFits`가 고른 한 모양만 보인다. 줄어든 칩이 있으면 그것이 보이는 칩이고, 다 들어간 모양에서 줄어든 모양으로
             // 바뀔 때 사라진 칩의 늦은 배치 알림이 남긴 자리는 버린다
+            let chipValues = store.attributeFilterChips
             let allChips = frames.filter { $0.key.hasPrefix("listHeader.chip.") }.sorted { $0.value.minX < $1.value.minX }
-            let expected = (scene.rating > 0 ? 1 : 0) + (scene.color != nil ? 1 : 0)
-            let collapsedKey = "listHeader.chip.\(String(ui: "필터 \(expected)"))"
+            let expected = chipValues.chips.count
+            let collapsedKey = "listHeader.chip.\(chipValues.collapsedTitle)"
             let chips = allChips.contains { $0.key == collapsedKey } ? allChips.filter { $0.key == collapsedKey } : allChips
-            let isCollapsed = chips.count == 1 && chips[0].key == collapsedKey
-            let isFull = chips.count == expected && !chips.contains { $0.key == collapsedKey }
+            // 조건이 하나면 줄인 칩도 그 조건 하나라 전부 보인 모양과 같다
+            let isCollapsed = expected > 1 && chips.count == 1 && chips[0].key == collapsedKey
+            let isFull = chips.count == expected && !chips.contains { $0.key == collapsedKey && expected > 1 }
             // 긴 곡 색 이름 장면은 칩이 하나로 줄어든 모양이어야 한다(줄어듦이 실제 창에서 일어나는지 본다)
-            let chipsOK = expected == 0 ? chips.isEmpty : scene.longColorName ? isCollapsed : (isCollapsed || isFull)
+            // 켠 조건이 하나 이상 글자로 보여야 한다(툴팁 아님): 보이는 칩 가운데 첫 조건 글로 시작하는 칩이 있다. 숨기면 실패다
+            let firstTitle = chipValues.chips.first?.title ?? ""
+            let conditionVisible = expected == 0 || chips.contains { ($0.key == collapsedKey || $0.key == "listHeader.chip.\(firstTitle)") && $0.value.width > 24 }
+            let chipsOK = expected == 0 ? chips.isEmpty : (scene.longColorName ? isCollapsed : (isCollapsed || isFull)) && conditionVisible
             var parts: [(String, CGRect)] = []
             for name in ["listHeader.search", "listHeader.filter"] { if let frame = frames[name] { parts.append((name, frame)) } }
             parts += chips.map { ($0.key, $0.value) }
@@ -256,18 +270,18 @@ extension DevSelfTests {
             let hidden = toolbarItemIDs.filter { !visibleIDs.contains($0) }
             let passed = required && ordered && inside && chipsOK && infoOK && hidden.isEmpty
             let mode = expected == 0 ? "칩 없음" : isCollapsed ? "하나로 줄임(\(chips[0].key.dropFirst("listHeader.chip.".count)))" : isFull ? "칩 \(chips.count)개" : "알 수 없음(\(chips.count)개)"
+            let shown = conditionVisible ? "켠 조건 글자로 보임" : "켠 조건이 안 보임"
             let line = parts.map { "\($0.0.dropFirst("listHeader.".count)) \(Int($0.1.minX))–\(Int($0.1.maxX))" }.joined(separator: " · ")
             report("머리 줄 \(scene.name) 창 \(Int(scene.width))", passed,
-                   "실제 \(Int(content.width)) · \(mode) · 순서·겹침 \(ordered ? "맞음" : "어긋남") · 창 안 \(inside ? "맞음" : "어긋남") · ⓘ \(infoOK ? "맞음" : "어긋남") · 툴바 \(hidden.isEmpty ? "모두 보임" : "접힘 \(hidden.joined(separator: ","))") · \(line)")
+                   "실제 \(Int(content.width)) · \(mode) · 순서·겹침 \(ordered ? "맞음" : "어긋남") · 창 안 \(inside ? "맞음" : "어긋남") · ⓘ \(infoOK ? "맞음" : "어긋남") · 툴바 \(hidden.isEmpty ? "모두 보임" : "접힘 \(hidden.joined(separator: ","))") · \(shown) · \(line)")
             if !capture(window, "header-\(Int(scene.width))-\(scene.name)") { failures += 1 }
         }
-        // 머리 줄 오른쪽 구성(#340): 모드마다 가장 긴 이름을 값으로 넣어 실제 창에서 폭을 잰다. 칩 두 개를 켠 가장 좁은 상태다
+        // 머리 줄 오른쪽 구성(#340): 모드마다 가장 긴 이름을 값으로 넣어 실제 창에서 폭을 잰다. 조건 셋을 켠 가장 좁은 상태다
         // 앞 장면이 남긴 긴 곡 색 이름을 되돌린 뒤 기본 글자 크기에서 잰다
         store.trackColors = colors
         failures += await runActionScenes(window: window, toolbar: toolbar, store: store, capture: capture, report: report, wait: wait)
         // 필터 칩 하나를 눌러 끄는 길: 칩 값이 같은 입구로 그 조건만 끈다(눌러 보기는 사람이 한다)
-        store.minimumRating = 0
-        store.colorFilter = nil
+        store.filter = TrackFilter()
         store.trackColors = colors
         store.sidebar = selection
         // 인스펙터를 먼저 닫고 가라앉힌 뒤 사이드바를 되돌린다. 인스펙터가 열린 채 사이드바를 열면 폭이 모자라 다시 접히면서 접힌 값이 남는다
@@ -286,7 +300,7 @@ extension DevSelfTests {
 
     /// 머리 줄 오른쪽 구성(#340)이 모드마다 겹치거나 잘리지 않는지 실제 창에서 본다. 저장소 상태를 만들기 어려운 가장 긴 이름
     /// (세 자리 곡 수, 함께 쓰는 재생 목록·재생 기록 건수, 연결되지 않은 초안)을 `ListHeaderActionsDebugOverride`로 값 그대로 넣는다.
-    /// 칩 두 개를 켠 채 창 1155의 사이드바 열림(본문 약 925)과 인스펙터 열림(본문 약 815)에서 잰다. 파일 없음·BPM 없음은 저장소 상태 그대로 본다.
+    /// 조건 셋을 켠 채 창 1155의 사이드바 열림(본문 약 925)과 인스펙터 열림(본문 약 815)에서 잰다. 파일 없음·BPM 없음은 저장소 상태 그대로 본다.
     /// 반환값은 캡처를 못 남긴 횟수다. 통과·실패는 `report`가 센다.
     @MainActor
     static func runActionScenes(window: NSWindow, toolbar: NSToolbar, store: LibraryStore,
@@ -313,7 +327,7 @@ extension DevSelfTests {
         let keys = [SettingKeys.showTagEditor.name, SettingKeys.sheetMode.name]
         let saved = keys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
         let selection = store.sidebar
-        let rating = store.minimumRating, color = store.colorFilter
+        let savedFilter = store.filter
         UserDefaults.standard.set(false, forKey: SettingKeys.sheetMode.name)
         // 글자 배율은 호출한 쪽이 끝에서 되돌린다(`runHeaderScenes`)
         UserDefaults.standard.set(1.0, forKey: SettingKeys.textScale.name)
@@ -321,8 +335,7 @@ extension DevSelfTests {
         defer {
             ListHeaderActionsDebugOverride.shared.value = nil
             store.sidebar = selection
-            store.minimumRating = rating
-            store.colorFilter = color
+            store.filter = savedFilter
             for (key, value) in saved {
                 if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
             }
@@ -331,9 +344,8 @@ extension DevSelfTests {
             for (name, actions, sidebar) in modes {
                 ListHeaderActionsDebugOverride.shared.value = actions
                 store.sidebar = sidebar
-                // 파일 없음·BPM 없음 목록은 필터가 걸리지 않게 두면 칩이 없다. 그 밖은 칩 두 개를 켠 가장 좁은 상태로 잰다
-                store.minimumRating = actions == nil ? 0 : 3
-                store.colorFilter = actions == nil ? nil : "2"
+                // 파일 없음·BPM 없음 목록은 필터가 걸리지 않게 두면 칩이 없다. 그 밖은 조건 셋을 켠 가장 좁은 상태로 잰다
+                store.filter = actions == nil ? TrackFilter() : Self.threeConditions
                 UserDefaults.standard.set(inspector, forKey: SettingKeys.showTagEditor.name)
                 window.makeFirstResponder(nil)
                 // 사이드바·인스펙터를 바꾸면 창이 본문 폭을 지키려고 넓어지고, 사이드바는 늦게 열린다.

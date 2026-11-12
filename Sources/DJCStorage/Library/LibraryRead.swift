@@ -56,10 +56,10 @@ public struct LibraryRead {
         // 파일 확인은 이 필터를 고를 때만 한다(곡마다 파일 시스템에 묻는다).
         let missing = filter == .missingFile
             ? MissingFiles.scan(tracks, exists: { FileManager.default.fileExists(atPath: $0) }).trackIDs : []
+        // BPM·키 판정은 앱 곡 목록의 필터와 같은 함수다(`TrackFilter`). 키는 Camelot으로 바꿔 비교하므로 `--key 8A`가 `Am`으로 저장된 곡도 찾는다
+        let attributes = TrackFilter(bpm: bpm.map(BPMRange.init), key: key.map { KeyCondition($0) })
         let result = tracks.filter { track in
-            guard query.matches(track),
-                  bpm.map({ range in track.bpm.map(range.contains) ?? false }) ?? true,
-                  key.map({ track.key?.caseInsensitiveCompare($0) == .orderedSame }) ?? true,
+            guard query.matches(track), attributes.matches(track),
                   allowed?.contains(track.id) ?? true else { return false }
             return filter.includes(track: track, comment: commentRule?.evaluate(track.comment),
                                    hasCues: !library.cues(for: track).isEmpty, playCount: library.playCounts[track.id, default: 0],

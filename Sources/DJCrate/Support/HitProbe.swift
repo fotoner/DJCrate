@@ -53,6 +53,8 @@ private struct SelfTestFrameModifier: ViewModifier {
         content
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { SelfTestFrames.frames[scope + name] = $0 }
             .onDisappear { if clearsOnDisappear { SelfTestFrames.frames[scope + name] = nil } }
+            // 같은 자리의 뷰가 이름만 바꿀 수 있다(줄인 칩의 글이 「BPM 120–130 외 5」에서 「… 외 2」로). 옛 이름의 자리는 지운다
+            .onChange(of: name) { old, _ in if clearsOnDisappear { SelfTestFrames.frames[scope + old] = nil } }
     }
 }
 #endif

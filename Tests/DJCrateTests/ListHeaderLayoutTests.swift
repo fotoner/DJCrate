@@ -5,7 +5,7 @@ import DJCTestKit
 import SwiftUI
 import Testing
 
-/// 머리 줄(#339)의 폭 맞춤: 폭이 모자라면 켜진 필터 칩이 「필터 N」 하나로 줄고, 어느 폭에서도 검색칸·필터 단추·칩·ⓘ·보기 전환이
+/// 머리 줄(#339·#351)의 폭 맞춤: 폭이 모자라면 켜진 필터 칩이 첫 조건 글을 남긴 「BPM 120–130 외 2」 하나로 줄고, 어느 폭에서도 검색칸·필터 단추·칩·ⓘ·보기 전환이
 /// 겹치거나 밖으로 나가지 않는다. 실제 창에 머리 줄만 올려 `SelfTestFrames`(디버그 전용 자리 기록)로 잰다.
 /// 자리 기록은 프로세스 하나에 하나뿐이고 다른 시험도 머리 줄을 띄우므로, 장면마다 이름 앞에 붙일 글자(`selfTestFrameScope`)를 따로 줘 서로 섞이지 않게 한다.
 /// 주 창은 최소 폭(1155)에서도 본문이 약 700pt 밑으로 좁아지지 않아 줄어든 모양이 거의 안 나오기 때문에 머리 줄만 따로 좁힌다.
@@ -16,8 +16,7 @@ struct ListHeaderLayoutTests {
 
     struct Scene {
         var width: CGFloat
-        var rating = 0
-        var color: String?
+        var filter = TrackFilter()
         var sheet = false
         var scale = 1.0
         var sidebar: SidebarItem = .filter(.all)
@@ -26,6 +25,11 @@ struct ListHeaderLayoutTests {
         /// 폭이 아주 모자라면 칩이 숨는다(`ListHeaderLayout`의 마지막 수단). 이 장면은 칩이 있거나 없거나 둘 다 맞다
         var chipsMayHide = false
     }
+
+    /// 켠 조건 둘·셋(#351). 셋은 BPM 범위·어울리는 키·장르다
+    static let two = TrackFilter(minimumRating: 3, colorIDs: ["2"])
+    static let three = TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("8A", mode: .compatible), genre: "House")
+    static let threeTitles = ["BPM 120–130", "어울리는 키 8A", "장르 House"]
 
     /// 머리 줄 안 자리들(왼쪽에서 오른쪽 순서). 칩은 이름에 글을 단다
     struct Measured {
@@ -58,8 +62,7 @@ struct ListHeaderLayoutTests {
             store = LibraryStore.test(activityLog: ActivityLog(url: nil))
             store.phase = .loaded
             store.sidebar = scene.sidebar
-            store.minimumRating = scene.rating
-            store.colorFilter = scene.color
+            store.filter = scene.filter
             let defaults = TestDefaults.make("header-layout")
             defaults.set(scene.sheet, forKey: SettingKeys.sheetMode.name)
             let root = ListHeaderBar(store: store, window: LibraryWindowModel(store: store), actions: ListActionBarModel(store: store))
@@ -92,7 +95,7 @@ struct ListHeaderLayoutTests {
                 let current = frames()
                 defer { previous = current }
                 let hasChips = current.keys.contains { $0.hasPrefix("listHeader.chip.") }
-                let expectsChips = store.listIsFilterable && (scene.rating > 0 || scene.color != nil)
+                let expectsChips = store.listIsFilterable && !scene.filter.isEmpty
                 return (current["listHeader.search"] != nil) == store.listIsSearchable
                     && (current["listHeader.filter"] != nil) == store.listIsFilterable
                     && current["listHeader.viewMode"] != nil
@@ -126,23 +129,32 @@ struct ListHeaderLayoutTests {
         return try await hosted.measure()
     }
 
-    @Test func 폭이_넉넉하면_켠_조건마다_칩이_붙고_폭이_모자라면_필터_N_하나로_줄어든다() async throws {
-        let wide = try await measure(Scene(width: 900, rating: 3, color: "2"))
+    @Test func 폭이_넉넉하면_켠_조건마다_칩이_붙고_폭이_모자라면_첫_조건_글을_남긴_칩_하나로_줄어든다() async throws {
+        let wide = try await measure(Scene(width: 900, filter: Self.two))
         #expect(wide.chips.map(\.title) == ["★★★ 이상", "곡 색 Red"])
         #expect(wide.isOrdered && wide.isInside(width: 900))
 
-        let narrow = try await measure(Scene(width: 560, rating: 3, color: "2"))
-        #expect(narrow.chips.map(\.title) == ["필터 2"])
-        #expect(narrow.isOrdered && narrow.isInside(width: 560))
+        let narrow = try await measure(Scene(width: 600, filter: Self.two))
+        #expect(narrow.chips.map(\.title) == ["★★★ 이상 외 1"])
+        #expect(narrow.isOrdered && narrow.isInside(width: 600))
         // 검색칸은 줄이기 전과 같은 폭을 지킨다(칩이 먼저 줄어든다)
         #expect(narrow.search?.width == wide.search?.width)
     }
 
-    @Test func 칩이_하나여도_폭이_모자라면_필터_1로_줄어든다() async throws {
-        let wide = try await measure(Scene(width: 700, rating: 4))
+    @Test func 조건_셋은_넉넉하면_칩_셋이고_모자라면_BPM_글을_남긴_하나로_줄어든다() async throws {
+        let wide = try await measure(Scene(width: 1000, filter: Self.three))
+        #expect(wide.chips.map(\.title) == Self.threeTitles)
+        #expect(wide.isOrdered && wide.isInside(width: 1000))
+        let narrow = try await measure(Scene(width: 600, filter: Self.three))
+        #expect(narrow.chips.map(\.title) == ["BPM 120–130 외 2"])
+        #expect(narrow.isOrdered && narrow.isInside(width: 600))
+    }
+
+    @Test func 칩이_하나면_폭이_모자라도_그_조건_그대로다() async throws {
+        let wide = try await measure(Scene(width: 700, filter: TrackFilter(minimumRating: 4)))
         #expect(wide.chips.map(\.title) == ["★★★★ 이상"])
-        let narrow = try await measure(Scene(width: 440, rating: 4))
-        #expect(narrow.chips.map(\.title) == ["필터 1"])
+        let narrow = try await measure(Scene(width: 440, filter: TrackFilter(minimumRating: 4)))
+        #expect(narrow.chips.map(\.title) == ["★★★★ 이상"])
         #expect(narrow.isOrdered && narrow.isInside(width: 440))
     }
 
@@ -159,20 +171,20 @@ struct ListHeaderLayoutTests {
     @Test(arguments: [620.0, 700.0, 860.0, 1000.0])
     func 본문_폭이_바뀌어도_글자를_키워도_머리_줄이_겹치거나_잘리지_않는다(width: CGFloat) async throws {
         for scale in [1.0, 1.5] {
-            let measured = try await measure(Scene(width: width, rating: 3, color: "2", sheet: true, scale: scale))
+            let measured = try await measure(Scene(width: width, filter: Self.two, sheet: true, scale: scale))
             #expect(measured.isOrdered, "겹침: 폭 \(width) 배율 \(scale) \(measured.parts)")
             #expect(measured.isInside(width: width), "밖으로 나감: 폭 \(width) 배율 \(scale)")
             #expect(measured.info != nil, "태그 시트에는 ⓘ가 보인다")
             // 칩은 전부 보이거나 하나로 줄어든다(일부만 보이지 않는다)
-            #expect(measured.chips.map(\.title) == ["★★★ 이상", "곡 색 Red"] || measured.chips.map(\.title) == ["필터 2"],
+            #expect(measured.chips.map(\.title) == ["★★★ 이상", "곡 색 Red"] || measured.chips.map(\.title) == ["★★★ 이상 외 1"],
                     "칩 모양: 폭 \(width) 배율 \(scale) \(measured.chips.map(\.title))")
         }
     }
 
     @Test func 태그_시트일_때만_ⓘ가_보인다() async throws {
-        let list = try await measure(Scene(width: 700, rating: 3))
+        let list = try await measure(Scene(width: 700, filter: TrackFilter(minimumRating: 3)))
         #expect(list.info == nil)
-        let sheet = try await measure(Scene(width: 700, rating: 3, sheet: true))
+        let sheet = try await measure(Scene(width: 700, filter: TrackFilter(minimumRating: 3), sheet: true))
         #expect(sheet.info != nil)
         #expect(sheet.isOrdered)
     }
@@ -181,7 +193,7 @@ struct ListHeaderLayoutTests {
 
     @Test(arguments: [SidebarItem.duplicates, .usb(.pending(volumeKey: "V"))])
     func 필터가_걸리지_않는_목록에서는_켜진_조건이_있어도_필터_단추와_칩이_없다(_ sidebar: SidebarItem) async throws {
-        let hosted = Hosted(Scene(width: 800, rating: 3, color: "2", sidebar: sidebar))
+        let hosted = Hosted(Scene(width: 800, filter: Self.two, sidebar: sidebar))
         defer { hosted.close() }
         let measured = try await hosted.measure()
         #expect(measured.filter == nil)
@@ -190,7 +202,7 @@ struct ListHeaderLayoutTests {
         // 검색칸은 중복 후보에는 있고 USB 쓰기 대기에는 없다(#338)
         #expect((measured.search != nil) == (sidebar == .duplicates))
         // 조건은 꺼지지 않고 남는다: 곡 목록으로 돌아오면 칩이 다시 보인다
-        #expect(hosted.store.minimumRating == 3 && hosted.store.colorFilter == "2")
+        #expect(hosted.store.minimumRating == 3 && hosted.store.colorFilters == ["2"])
         hosted.store.sidebar = .filter(.all)
         #expect(try await hosted.measure().chips.map(\.title) == ["★★★ 이상", "곡 색 Red"])
     }
@@ -226,7 +238,7 @@ struct ListHeaderLayoutTests {
     func 모드마다_가장_긴_오른쪽_구성도_겹치거나_잘리지_않고_주_단추와_메뉴는_남는다(width: CGFloat) async throws {
         for mode in Self.modeActions {
             for scale in [1.0, 1.5] {
-                let scene = Scene(width: width, rating: 3, color: "2", scale: scale, sidebar: mode.sidebar, actions: mode.actions, chipsMayHide: true)
+                let scene = Scene(width: width, filter: Self.three, scale: scale, sidebar: mode.sidebar, actions: mode.actions, chipsMayHide: true)
                 let measured = try await measure(scene)
                 let note = "\(mode.name) · 폭 \(width) · 배율 \(scale) · \(measured.parts.map { "\(Int($0.minX))–\(Int($0.maxX))" })"
                 #expect(measured.isOrdered, Comment(rawValue: "겹침: \(note)"))
@@ -246,11 +258,11 @@ struct ListHeaderLayoutTests {
         var lastStage = 0
         var stages: [Int] = []
         for width: CGFloat in [1600, 1400, 1200, 1100, 1000, 900, 820, 780, 740, 700, 680, 660, 640, 620] {
-            let m = try await measure(Scene(width: width, rating: 3, color: "2", scale: scale, sidebar: mode.sidebar, actions: mode.actions,
+            let m = try await measure(Scene(width: width, filter: Self.three, scale: scale, sidebar: mode.sidebar, actions: mode.actions,
                                             chipsMayHide: true))
             let chipsHidden = m.chips.isEmpty
-            let chipsOne = m.chips.map(\.title) == ["필터 2"]
-            let chipsAll = m.chips.count == 2
+            let chipsOne = m.chips.map(\.title) == ["BPM 120–130 외 2"]
+            let chipsAll = m.chips.map(\.title) == Self.threeTitles
             let statusIcon = (m.status?.width ?? 0) < 130 * scale
             let searchNarrow = (m.search?.width ?? 0) <= ListSearchField.narrowWidth + 0.5
             let searchLeast = (m.search?.width ?? 0) <= ListSearchField.minimumWidth + 0.5
