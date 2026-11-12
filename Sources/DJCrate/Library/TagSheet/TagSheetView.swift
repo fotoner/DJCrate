@@ -9,6 +9,7 @@ import SwiftUI
 /// - 커서 줄은 고른 곡일 뿐 덱은 그대로다. ⌘→·오른쪽 클릭 '덱에 불러오기'로 덱에 올린다(#93)
 /// - ⌘C·⌘V: 탭 구분 텍스트(엑셀·구글 시트 호환) / ⌘D: 아래로 채우기 / Delete: 지우기
 /// - ⌘Z·⇧⌘Z: 실행 취소·실행 복귀 / ⌘A: 전체 선택
+/// - 맨 앞 앨범아트 열은 보기만 한다(곡 목록과 같은 그림). 선택·복사에 들지 않는다. 파일 칸은 음원 전체 경로다(#352)
 struct TagSheetView: NSViewRepresentable {
     @Bindable var store: LibraryStore
 
@@ -37,6 +38,11 @@ struct TagSheetView: NSViewRepresentable {
             if column.key != nil {
                 tableColumn.sortDescriptorPrototype = NSSortDescriptor(key: column.id, ascending: true)
             }
+            if column.id == SheetColumn.artworkID {
+                // 폭이 좁아 글자 머리글은 잘린다. 곡 목록과 같은 사진 아이콘 머리글을 쓴다
+                tableColumn.headerCell.attributedStringValue = TrackColumn.artworkHeader
+                tableColumn.headerCell.setAccessibilityLabel(column.title)
+            }
             table.addTableColumn(tableColumn)
         }
         table.autosaveName = SheetColumn.autosaveName
@@ -47,6 +53,8 @@ struct TagSheetView: NSViewRepresentable {
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
         context.coordinator.table = table
+        // 저장된 배치를 되살린 뒤의 제목 열에서 시작한다(열을 더해도 시작 칸이 제목이다)
+        context.coordinator.placeCursorOnTitleColumn()
         context.coordinator.updateTextScale(context.environment.textScale)
         return scroll
     }
@@ -69,13 +77,22 @@ struct SheetColumn {
     var minWidth: CGFloat = 30
 
     /// 표가 열 배치를 저장하는 이름. 열을 더하기 전에 저장한 배치는 열 순서가 달라 새 열이 맨 끝으로 밀리므로 이름을 올려 새로 시작한다
-    /// (키 열 "v2", 평점·곡 색 열 "v3").
-    static let autosaveName = "djc.tagSheet.v3"
+    /// (키 열 "v2", 평점·곡 색 열 "v3", 앨범아트 열 "v4").
+    static let autosaveName = "djc.tagSheet.v4"
 
     /// 열 이름(identifier)으로 열 정의를 찾는다. 화면 위치로 찾지 않는다: 저장된 배치를 되살리거나 사용자가 열을 옮기면 위치가 `all` 순서와 다르다.
     static func spec(id: String) -> SheetColumn? { all.first { $0.id == id } }
 
+    /// 앨범아트 열: 보기만 한다. 칸을 고르거나 복사하는 자리에 들지 않는다.
+    static let artworkID = "thumb"
+    /// 앨범아트 그림 크기(pt). 곡 목록은 24pt 줄에 22pt를 그린다. 시트 줄은 22pt라 위아래 눈금선과 겹치지 않게 조금 작게 그린다.
+    static let artworkSize: CGFloat = 20
+
+    /// 시트를 처음 열 때 커서가 서는 열(제목). 열 정의 순서의 자리이고, 표가 있으면 표의 자리를 쓴다(`SheetCoordinator.placeCursorOnTitleColumn`).
+    static let initialCursorColumn = all.firstIndex { $0.id == "title" } ?? 0
+
     static let all: [SheetColumn] = [
+        SheetColumn(id: artworkID, title: String(ui: "앨범아트"), width: 30, key: nil, minWidth: 26),
         SheetColumn(id: "index", title: "#", width: 44, key: nil),
         SheetColumn(id: "title", title: String(ui: "제목"), width: 220, key: .title),
         SheetColumn(id: "artist", title: String(ui: "아티스트"), width: 170, key: .artist),
@@ -94,7 +111,8 @@ struct SheetColumn {
         SheetColumn(id: "rating", title: String(ui: "평점"), width: 76, key: .rating, minWidth: 40),
         SheetColumn(id: "color", title: String(ui: "곡 색"), width: 76, key: .color, minWidth: 48),
         SheetColumn(id: "comment", title: String(ui: "코멘트"), width: 300, key: .comment),
-        SheetColumn(id: "file", title: String(ui: "파일"), width: 220, key: nil),
+        // 음원 전체 경로. 폭에 안 들어가면 가운데를 줄인다(폴더와 파일 이름이 모두 보이게). 복사 값은 줄이지 않은 경로 전체다
+        SheetColumn(id: "file", title: String(ui: "파일"), width: 360, key: nil),
     ]
 }
 

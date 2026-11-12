@@ -373,7 +373,7 @@ struct TagSheetDeckLoadTests {
         table.delegate = coordinator
         coordinator.table = table
         coordinator.update(rows: [TrackListTagEditTests.row("1"), TrackListTagEditTests.row("2")], revision: 0)
-        coordinator.select(CellPosition(row: 1, column: 1), extend: false)
+        coordinator.select(CellPosition(row: 1, column: SheetColumn.titleIndex), extend: false)
         #expect(store.selection == ["2"])
         await drainMainActor()
         #expect(log.rows.isEmpty)
@@ -385,9 +385,9 @@ struct TagSheetDeckLoadTests {
         }
         press(.command)
         #expect(log.ids == ["2"])
-        #expect(coordinator.cursor == CellPosition(row: 1, column: 1))
+        #expect(coordinator.cursor == CellPosition(row: 1, column: SheetColumn.titleIndex))
         press([])
-        #expect(coordinator.cursor == CellPosition(row: 1, column: 2))
+        #expect(coordinator.cursor == CellPosition(row: 1, column: SheetColumn.titleIndex + 1))
         #expect(log.ids == ["2"])
         // 오른쪽 클릭한 줄을 올린다(커서가 다른 줄에 있어도)
         let menu = coordinator.contextMenu(forRow: 0)

@@ -29,7 +29,7 @@ struct SheetEditingTests {
         let table = try #require(findTable(in: controller.view))
         let coordinator = try #require(table.coordinator)
         let tagsAfterLoad = coordinator.rows.map { store.tags.tagDraft(for: $0).fields }
-        coordinator.select(.init(row: 1, column: 1), extend: false)
+        coordinator.select(.init(row: 1, column: SheetColumn.titleIndex), extend: false)
         window.makeFirstResponder(table)
         coordinator.beginEditing()
         #expect(coordinator.isEditing)
@@ -55,10 +55,10 @@ struct SheetEditingTests {
         var loads: [String?] = []
         h.store.onLoadToDeck = { loads.append($0?.id) }
         h.store.loadToDeck(h.coordinator.rows[0])
-        h.coordinator.select(.init(row: 1, column: 1), extend: false)
+        h.coordinator.select(.init(row: 1, column: SheetColumn.titleIndex), extend: false)
         switch entry {
         case "더블클릭":
-            let rect = h.table.frameOfCell(atColumn: 1, row: 1)
+            let rect = h.table.frameOfCell(atColumn: SheetColumn.titleIndex, row: 1)
             let point = h.table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
             let event = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [],
                                                       timestamp: 0, windowNumber: h.window.windowNumber,
@@ -131,8 +131,8 @@ struct SheetEditingTests {
         defer { h.window.close() }
         let undo = UndoManager()
         h.store.undoManager = undo
-        h.coordinator.select(.init(row: 0, column: 1), extend: false)
-        h.coordinator.select(.init(row: 1, column: 1), extend: true)
+        h.coordinator.select(.init(row: 0, column: SheetColumn.titleIndex), extend: false)
+        h.coordinator.select(.init(row: 1, column: SheetColumn.titleIndex), extend: true)
         #expect(h.table.selectedRowIndexes == IndexSet(integersIn: 0...1))
         #expect(h.store.canFillDownTags)
         h.coordinator.beginEditing()
@@ -149,8 +149,8 @@ struct SheetEditingTests {
         h.window.contentView?.layoutSubtreeIfNeeded()
         #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == "확정한 제목")
         #expect(h.store.tags.tagCell(h.coordinator.rows[0], .title) == "합성 곡 1")
-        let expected = command == "Return" ? CellPosition(row: 2, column: 1)
-            : CellPosition(row: 1, column: command == "Tab" ? 2 : 0)
+        let expected = command == "Return" ? CellPosition(row: 2, column: SheetColumn.titleIndex)
+            : CellPosition(row: 1, column: SheetColumn.titleIndex + (command == "Tab" ? 1 : -1))
         #expect(h.coordinator.cursor == expected)
         #expect(!h.coordinator.isEditing && h.window.firstResponder === h.table)
         #expect(undo.canUndo)
@@ -163,7 +163,7 @@ struct SheetEditingTests {
     @Test func 포커스를_옮기면_긴_제목을_확정하고_입력_칸을_남기지_않는다() throws {
         let h = SheetEditingHarness()
         defer { h.window.close() }
-        h.coordinator.select(.init(row: 1, column: 1), extend: false)
+        h.coordinator.select(.init(row: 1, column: SheetColumn.titleIndex), extend: false)
         h.coordinator.beginEditing()
         let field = try h.field()
         let editor = try #require(field.currentEditor() as? NSTextView)
@@ -177,12 +177,12 @@ struct SheetEditingTests {
         #expect(h.store.tags.tagCell(h.coordinator.rows[1], .title) == title)
         #expect(field.superview == nil)
         h.coordinator.update(rows: h.coordinator.rows, revision: h.store.tagRevision)
-        h.coordinator.select(.init(row: 2, column: 1), extend: false)
+        h.coordinator.select(.init(row: 2, column: SheetColumn.titleIndex), extend: false)
         h.window.contentView?.layoutSubtreeIfNeeded()
         h.coordinator.beginEditing()
         #expect(try h.field().stringValue == "합성 곡 3")
         h.coordinator.cancelEditing()
-        let cell = try #require(h.table.view(atColumn: 1, row: 2, makeIfNecessary: false) as? SheetCell)
+        let cell = try #require(h.table.view(atColumn: SheetColumn.titleIndex, row: 2, makeIfNecessary: false) as? SheetCell)
         #expect(cell.editingField == nil && !cell.label.isHidden)
     }
 

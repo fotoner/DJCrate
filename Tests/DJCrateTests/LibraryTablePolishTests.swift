@@ -83,7 +83,7 @@ struct LibraryTablePolishTests {
         let a = TrackListTagEditTests.row("1", title: "A")
         let b = TrackListTagEditTests.row("2", title: "B")
         coordinator.update(rows: [a, b], revision: 0)
-        coordinator.select(CellPosition(row: 0, column: 1), extend: false)
+        coordinator.select(CellPosition(row: 0, column: SheetColumn.titleIndex), extend: false)
         store.sortOrder = [KeyPathComparator(\TrackRow.title, order: .reverse)]
         coordinator.update(rows: [b, a], revision: 0)
         #expect(coordinator.cursor.row == 1)
