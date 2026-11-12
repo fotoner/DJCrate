@@ -41113,6 +41113,22 @@
         }
       }
     },
+    "재생 목록이나 곡을 고르세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose playlists or tracks"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリストまたは曲を選んでください"
+          }
+        }
+      }
+    },
     "재생 볼륨" : {
       "localizations" : {
         "en" : {
@@ -50289,22 +50305,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "形式・CRC確認済み"
-          }
-        }
-      }
-    },
-    "형식과 원본을 고른 뒤 미리 보기를 누르세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose formats and a source, then click Preview"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "形式とソースを選んでから、プレビューを押してください"
           }
         }
       }

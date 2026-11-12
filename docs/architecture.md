@@ -919,6 +919,7 @@ DJCApplication 유스케이스 `UsbMigrateSession`이 아래 순서를 부른다
   - 원본 목록 트리
   - 고른 곡
   - 미리 보기
+- **시트의 미리 보기는 형식·원본이 바뀔 때마다 스스로 계산한다(#314).** `UsbExportSheetModel`이 고른 것(`UsbExportSelection.previewInputs`)을 지켜본다. 바뀌면 앞 계산의 결과를 버리고 `UsbWriteFlow.preview`로 다시 계산한다. 미리 보기는 볼륨 잠금을 하나만 쓰므로 새 계산은 앞 계산이 끝난 뒤에 돈다. 그 사이에 바뀐 선택은 건너뛴다. 계산이 막히면(`previewStopped`) 시트에 [다시 시도]가 보인다.
 - **무엇을 물을지와 순서는 DJCApplication 유스케이스 `UsbWriteFlow`가 정한다.** 확인 창은 `UserConfirmation` 포트가 답만 한다. 화면 쪽 `UsbWriteCoordinator`는 포트를 붙여 부르기만 한다. 흐름은 아래 순서로 간다.
   1. rekordbox와 rekordboxAgent가 꺼져 있는지 본다.
   2. `UsbStore.beginWrite`로 볼륨을 잠근다.

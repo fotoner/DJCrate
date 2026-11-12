@@ -3,7 +3,8 @@ import DJCDomain
 import SwiftUI
 
 /// "USB로 내보내기…" 시트: 대상 볼륨 · 형식 · 원본(목록 트리·고른 곡) · 미리 보기(곡·목록 수, 공간, 막힘 이유별 수).
-/// 시트에 볼륨 줄(실물이면 "실물 USB입니다")과 미리 보기를 보이고, [USB에 쓰기]를 쓰기 동의로 본다. 시트를 닫은 뒤 코디네이터가 확인 창 없이 쓴다(#212)
+/// 형식·원본을 바꾸면 미리 보기를 저절로 계산한다(#314). 시트에 볼륨 줄(실물이면 "실물 USB입니다")과 미리 보기를 보이고,
+/// [USB에 쓰기]를 쓰기 동의로 본다. 시트를 닫은 뒤 코디네이터가 확인 창 없이 쓴다(#212)
 struct UsbExportSheet: View {
     let store: LibraryStore
     @State private var model: UsbExportSheetModel
@@ -15,6 +16,8 @@ struct UsbExportSheet: View {
     }
 
     private var selection: UsbExportSelection { model.selection }
+    /// 계산하는 동안과 끝난 뒤 시트 높이가 널뛰지 않게 미리 보기 구역의 바닥 높이를 둔다
+    private static let previewMinHeight: CGFloat = 78
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -31,14 +34,13 @@ struct UsbExportSheet: View {
             HStack {
                 Spacer()
                 Button(.ui("취소")) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(.ui("미리 보기")) { model.previewTapped() }
-                    .disabled(!model.canPreview)
                 Button(.ui("USB에 쓰기")) { model.writeTapped(dismiss: { dismiss() }) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.canExport)
             }
         }
         .onChange(of: store.toast, initial: true) { _, toast in model.toastChanged(toast) }
+        .onAppear { model.appeared() }
         .onDisappear { model.disappeared() }
         .padding(20)
         .frame(width: 520)
@@ -138,11 +140,15 @@ struct UsbExportSheet: View {
                 ForEach(UsbWriteFlow.blockLines(summary), id: \.self) { line in
                     Text(verbatim: line).font(.caption).foregroundStyle(.secondary)
                 }
-            } else {
-                Text(.ui("형식과 원본을 고른 뒤 미리 보기를 누르세요")).foregroundStyle(.secondary)
+            } else if !selection.canPreview(layout: model.layout) {
+                // 고른 원본이 없을 때만 빈 상태다
+                Text(.ui("재생 목록이나 곡을 고르세요")).foregroundStyle(.secondary)
+            } else if model.previewStopped {
+                // 계산이 막혔다(이유는 안내나 확인 창이 말한다). 원인을 푼 뒤 선택을 바꾸지 않고 다시 계산한다
+                Button(.ui("다시 시도")) { model.retryPreview() }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: Self.previewMinHeight, alignment: .topLeading)
     }
 }
 

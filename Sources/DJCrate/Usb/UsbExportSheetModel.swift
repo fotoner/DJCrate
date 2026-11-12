@@ -40,6 +40,17 @@ struct UsbExportSelection: Equatable {
 
     var isTestVolume: Bool { volume.isDiskImage }
 
+    /// 미리 보기 계산이 달라지는 입력(형식·원본). 요약만 바뀐 것은 다시 계산하지 않는다
+    struct PreviewInputs: Equatable {
+        var formats: Set<UsbFormat>
+        var playlistIDs: Set<String>
+        var includesSelectedTracks: Bool
+    }
+
+    var previewInputs: PreviewInputs {
+        PreviewInputs(formats: formats, playlistIDs: playlistIDs, includesSelectedTracks: includesSelectedTracks)
+    }
+
     /// 형식을 켜고 끈다. 마지막 하나는 끌 수 없다
     mutating func setFormat(_ format: UsbFormat, on: Bool) {
         var next = formats
@@ -122,6 +133,7 @@ struct UsbExportSelection: Equatable {
 }
 
 /// "USB로 내보내기…" 시트의 화면 모델: 고른 것(`UsbExportSelection`)을 들고, 미리 보기와 [USB에 쓰기]를 쓰기 흐름(`UsbWriteCoordinator`)으로 부른다.
+/// 형식·원본이 바뀌면 미리 보기를 저절로 다시 계산한다(#314): 앞의 계산은 버리고, 미리 보기는 USB 잠금이 하나라 앞 계산이 끝난 뒤 마지막 선택만 계산한다.
 /// [USB에 쓰기]는 시트가 볼륨 줄과 미리 보기를 보인 뒤의 쓰기 동의라, 시트를 닫은 뒤 확인 창 없이 쓴다(#212). 순서·판정은 쓰기 흐름에 있다.
 @MainActor @Observable
 final class UsbExportSheetModel {
@@ -143,13 +155,26 @@ final class UsbExportSheetModel {
     }
 
     let request: UsbExportSheetRequest
-    var selection: UsbExportSelection
+    var selection: UsbExportSelection {
+        didSet {
+            // 막힌 뒤에는 저절로 다시 계산하지 않는다. 계산마다 끝나지 않은 쓰기 회복 창·오류 창이 다시 뜨므로 [다시 시도]로만 계산한다
+            guard selection.previewInputs != oldValue.previewInputs, !previewStopped else { return }
+            restartPreview()
+        }
+    }
+    /// 미리 보기를 계산하는 중(진행 표시)
     private(set) var isPreviewing = false
+    /// 계산이 막히거나 실패해 요약이 없다(rekordbox 켜짐·다른 쓰기 중·오류). 선택을 바꾸지 않고 [다시 시도]할 수 있다
+    private(set) var previewStopped = false
     /// 시트를 닫은 뒤 동기화 창을 연다(‘USB 동기화…’)
     private(set) var opensSyncAfterDismissal = false
     /// 미리 보기를 막은 USB 안내(rekordbox 켜짐·쓰는 중). 창 토스트는 시트 뒤에 가리고 저절로 닫히므로(#296)
     /// 시트에서 닫거나 다음 안내가 올 때까지 여기에 둔다(#230)
     private(set) var notice: AppToast?
+    /// 가장 최근에 시작한 미리 보기 계산(앞 계산이 끝나길 기다린 뒤 돈다). 시험이 끝을 기다릴 때 쓴다
+    @ObservationIgnored private(set) var previewTask: Task<Void, Never>?
+    /// 계산마다 올린다. 끝난 계산이 지금 것인지 가린다
+    @ObservationIgnored private var previewGeneration = 0
     @ObservationIgnored private let usb: UsbStore
     @ObservationIgnored private let ports: Ports
 
@@ -190,7 +215,8 @@ final class UsbExportSheetModel {
             && usb.volume(request.volumeKey)?.matchesSyncWriteVolume(retry.volume) == true
     }
 
-    var canPreview: Bool { !isPreviewing && sourceIsCurrent && selection.canPreview(layout: layout) }
+    /// 미리 보기를 계산할 수 있는지(원본이 그대로이고 고른 것이 있다)
+    var canPreview: Bool { sourceIsCurrent && selection.canPreview(layout: layout) }
     var canExport: Bool { !isPreviewing && sourceIsCurrent && selection.canWrite }
     /// ‘USB 동기화…’를 누를 수 있는지(쓰는 중에는 동기화 창을 열지 않는다)
     var canOpenSync: Bool { !isPreviewing && usb.activeWrite == nil }
@@ -208,9 +234,14 @@ final class UsbExportSheetModel {
         return notice?.id
     }
 
-    /// [미리 보기]. 뷰는 기다리지 않는다
-    @discardableResult
-    func previewTapped() -> Task<Void, Never> { Task { await preview() } }
+    /// 시트가 열릴 때: 미리 본 요약이 없는 선택(다시 미리 보기로 돌아온 시트)이면 계산한다
+    func appeared() {
+        guard selection.summary == nil, previewTask == nil else { return }
+        restartPreview()
+    }
+
+    /// 막힌 미리 보기를 같은 선택으로 다시 계산한다(원인을 푼 뒤)
+    func retryPreview() { restartPreview() }
 
     /// [USB에 쓰기]: 시트를 먼저 닫고 미리 본 요약으로 쓴다(시트의 동의). 쓸 것이 없으면(미리 보기 전) nil
     @discardableResult
@@ -228,6 +259,7 @@ final class UsbExportSheetModel {
 
     /// 시트가 닫힐 때: 재시도 원본 사본을 놓고, 동기화 재시도면 지난 쓰기·시트 요청을 지운다(옛 원본으로 다시 열지 않게)
     func disappeared() {
+        cancelPreview()
         selection.releaseRetrySnapshot()
         if request.job?.syncSourceContext != nil {
             usb.lastExports[request.volumeKey] = nil
@@ -243,12 +275,40 @@ final class UsbExportSheetModel {
                              catalogRevision: ports.catalogRevision(), readEpoch: ports.readEpoch())
     }
 
-    private func preview() async {
-        guard let job = job(), let coordinator = ports.coordinator() else { return }
+    /// 형식·원본이 바뀌었다: 앞 계산을 버리고(요약은 선택 값이 이미 비웠다) 고른 것이 있으면 다시 계산한다
+    private func restartPreview() {
+        cancelPreview()
+        guard canPreview else { return }
+        let previous = previewTask, generation = previewGeneration
         isPreviewing = true
-        defer { isPreviewing = false }
+        previewTask = Task { [weak self] in
+            // 미리 보기는 볼륨 잠금을 하나만 쓴다. 앞 계산이 끝나길 기다리면 사이에 바뀐 선택은 취소돼 건너뛴다
+            await previous?.value
+            guard let self, !Task.isCancelled else { return }
+            await preview(generation: generation)
+        }
+    }
+
+    /// 계산 중인 미리 보기를 버린다(이미 도는 계산의 결과는 쓰지 않는다). 새 계산이 이어 서지 않으면 진행 표시를 끈다
+    private func cancelPreview() {
+        previewGeneration += 1
+        previewTask?.cancel()
+        isPreviewing = false
+        previewStopped = false
+    }
+
+    private func preview(generation: Int) async {
+        guard let job = job(), let coordinator = ports.coordinator() else {
+            if generation == previewGeneration { isPreviewing = false }
+            return
+        }
         let summary = await coordinator.preview(job)
-        // 기다리는 동안 고른 것이 바뀌었으면 버린다
-        if self.job() == job { selection.summary = summary }
+        // 기다리는 동안 고른 것이 바뀌었거나 시트가 닫혔으면 버린다
+        guard generation == previewGeneration else { return }
+        // 선택은 그대로인데 볼륨·읽은 사본 정보가 바뀌어 같은 계산이 아니다: 그 요약은 쓰지 않고 새 정보로 다시 계산한다
+        guard self.job() == job else { return restartPreview() }
+        selection.summary = summary
+        previewStopped = summary == nil
+        isPreviewing = false
     }
 }

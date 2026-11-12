@@ -138,62 +138,218 @@ struct UsbExportSheetModelTests {
 
     // MARK: - 시트 화면 모델
 
-    /// 시트 화면 모델과 그 쓰기 흐름(가짜 창구·확인 창). 볼륨은 빈 FAT32 디스크 이미지
+    /// 시트 화면 모델과 그 쓰기 흐름(가짜 창구·확인 창). 볼륨은 빈 FAT32 디스크 이미지.
+    /// rekordbox가 켜졌는지는 가짜 창구 상태(`rekordboxRunning`)를 따른다
     @MainActor
-    private func sheet(_ request: UsbExportSheetRequest? = nil) async -> (UsbExportSheetModel, UsbStore, FakeUsbWriteService,
-                                                                          FakeUsbWriteHost, ScriptedPrompter) {
-        let usbHost = FakeUsbHost([image])
+    private func sheet(_ request: UsbExportSheetRequest? = nil, usbHost: FakeUsbHost? = nil, withCoordinator: Bool = true) async
+        -> (UsbExportSheetModel, UsbStore, FakeUsbWriteService, FakeUsbWriteHost, ScriptedPrompter) {
+        let usbHost = usbHost ?? FakeUsbHost([image])
         usbHost.serveEmpty(image)
         let service = FakeUsbWriteService(), host = FakeUsbWriteHost(), prompter = ScriptedPrompter()
         let usb = UsbTestData.store(usbHost, service: service)
         await usb.refresh()
-        let coordinator = UsbWriteCoordinator(usb: usb, host: host, service: service, prompter: prompter, isRekordboxRunning: { false })
+        let coordinator = UsbWriteCoordinator(usb: usb, host: host, service: service, prompter: prompter,
+                                              isRekordboxRunning: { service.current.rekordboxRunning })
         let source = UsbSyncSource(layout: Self.layout, rekordbox: Self.layout, iTunes: PlaylistLayout(), notices: [:], iTunesStatus: .ready)
         let ports = UsbExportSheetModel.Ports(
             snapshot: { URL(filePath: "/tmp/djc-fixture/m.db") }, share: { URL(filePath: "/tmp/djc-fixture/share") },
             playlists: { Self.layout }, syncSource: { source }, catalogRevision: { 1 }, readEpoch: { 0 },
-            sourceIsCurrent: { _, _, _ in true }, coordinator: { coordinator })
+            sourceIsCurrent: { _, _, _ in true }, coordinator: { withCoordinator ? coordinator : nil })
         let model = UsbExportSheetModel(request: request ?? UsbExportSheetRequest(volume: image), usb: usb, selectedTrackIDs: ["104"], ports: ports)
         return (model, usb, service, host, prompter)
     }
 
-    @Test("시트 화면 모델: 미리 보기는 그동안 진행을 보이고 요약을 남긴다. 그 사이 고른 것이 바뀌면 그 요약을 버린다")
+    /// 메인 액터 밖 가짜 창구가 미리 보기를 몇 번째로 받았는지 센다
+    final class PreviewCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        func next() -> Int { lock.withLock { count += 1; return count } }
+    }
+
+    @Test("시트 화면 모델: 원본을 고르면 단추 없이 미리 보기가 시작되고, 그동안 진행을 보이며, 끝나면 요약을 남긴다")
     @MainActor
-    func sheetModelPreview() async throws {
+    func sheetModelAutoPreview() async throws {
         let (model, _, service, _, _) = await sheet()
-        #expect(!model.canPreview && !model.canExport)
-        model.selection.setPlaylist("2", selected: true)
-        #expect(model.canPreview && !model.canExport)
+        // 고른 원본이 없으면 계산하지 않는다
+        #expect(!model.canPreview && !model.canExport && !model.isPreviewing && service.current.calls.isEmpty)
 
         let gate = TestGate()
         service.update { $0.onPreview = { gate.pass() } }
-        let previewing = model.previewTapped()
+        model.selection.setPlaylist("2", selected: true)
         #expect(await waitForState { model.isPreviewing && gate.arrivals == 1 })
-        #expect(!model.canPreview && !model.canExport)
+        #expect(model.selection.summary == nil && !model.canExport)
         gate.open()
-        await previewing.value
+        await model.previewTask?.value
         #expect(!gate.timedOut && !model.isPreviewing)
         #expect(model.selection.summary == service.current.summary && model.canExport)
+        #expect(service.current.calls == ["preview"])
+    }
 
-        let again = TestGate()
-        service.update { $0.onPreview = { again.pass() } }
-        let second = model.previewTapped()
-        #expect(await waitForState { again.arrivals == 1 })
+    @Test("형식을 바꾸면 요약을 버리고 다시 계산한다. 계산 중 다시 바꾸면 앞의 결과는 버리고 앞 계산이 끝난 뒤 마지막 선택만 계산한다")
+    @MainActor
+    func sheetModelRecomputesAndDropsStale() async throws {
+        let (model, _, service, host, _) = await sheet()
+        model.selection.setPlaylist("2", selected: true)
+        await model.previewTask?.value
+        #expect(model.selection.summary != nil)
+
+        // 앞 계산은 stale을, 새 계산은 fresh를 돌려준다(훅이 계산마다 요약을 정한 뒤 문 앞에서 멈춘다)
+        let stale = UsbTestData.summary(tracks: 1), fresh = UsbTestData.summary(tracks: 9)
+        let first = TestGate(), second = TestGate(), counter = PreviewCounter()
+        service.update {
+            $0.calls = []
+            $0.onPreview = {
+                let number = counter.next()
+                service.update { $0.summary = number == 1 ? stale : fresh }
+                (number == 1 ? first : second).pass()
+            }
+        }
         model.selection.setFormat(.deviceLibrary, on: false)
-        again.open()
-        await second.value
-        #expect(!again.timedOut && model.selection.summary == nil && !model.canExport)
+        #expect(model.selection.summary == nil && model.isPreviewing)
+        #expect(await waitForState { first.arrivals == 1 })
+
+        // 앞 계산이 도는 동안 두 번 더 바꾼다: 가운데 선택은 계산하지 않는다
+        model.selection.setFormat(.deviceLibrary, on: true)
+        model.selection.setPlaylist("1", selected: true)
+        first.open()
+        #expect(await waitForState { second.arrivals == 1 })
+        // 앞 계산(stale)은 이미 끝났다. 그 결과는 쓰지 않고, 새 계산이 끝날 때까지 진행을 보인다
+        #expect(model.selection.summary == nil && model.isPreviewing && !model.canExport)
+        second.open()
+        await model.previewTask?.value
+        #expect(!first.timedOut && !second.timedOut && !model.isPreviewing)
+        #expect(model.selection.summary == fresh && model.canExport)
+        #expect(service.current.calls == ["preview", "preview"])
+        // 새 계산이 앞 계산과 겹쳐 시작했다면 볼륨 잠금에 걸려 "쓰는 중" 안내가 떴을 것이다
+        #expect(host.toast == nil)
+    }
+
+    @Test("계산하는 동안 볼륨·읽은 사본 정보가 바뀌어 같은 계산이 아니게 되면 진행 표시를 남기지 않고 새 정보로 다시 계산한다")
+    @MainActor
+    func sheetModelRestartsWhenJobChanges() async throws {
+        let usbHost = FakeUsbHost([image])
+        let (model, usb, service, _, _) = await sheet(usbHost: usbHost)
+        let gate = TestGate(), counter = PreviewCounter()
+        service.update { $0.onPreview = { if counter.next() == 1 { gate.pass() } } }
+        model.selection.setPlaylist("2", selected: true)
+        #expect(await waitForState { gate.arrivals == 1 })
+
+        // 선택은 그대로, 볼륨의 여유 용량만 달라진다(`job()`이 달라진다)
+        var changed = image
+        changed.available -= 4096
+        usbHost.mounted = [changed]
+        await usb.refresh()
+        #expect(usb.volume(image.usbKey)?.available == changed.available)
+        gate.open()
+        // 앞 계산이 끝나면 새 계산이 이어 선다(그 Task는 지금 `previewTask`다). 진행 표시가 꺼질 때까지 기다린다
+        #expect(await waitForState { !model.isPreviewing })
+        await model.previewTask?.value
+        #expect(!gate.timedOut && !model.isPreviewing)
+        #expect(model.selection.summary == service.current.summary && model.canExport)
+        #expect(service.current.calls == ["preview", "preview"])
+    }
+
+    @Test("계산이 막히면(rekordbox 켜짐) 요약 없이 멈추고, 선택을 바꾸지 않아도 다시 시도할 수 있다. 계산할 창구가 없어도 진행 표시를 남기지 않는다")
+    @MainActor
+    func sheetModelStoppedCanRetry() async throws {
+        let (model, _, service, host, _) = await sheet()
+        service.update { $0.rekordboxRunning = true }
+        model.selection.setPlaylist("2", selected: true)
+        await model.previewTask?.value
+        #expect(!model.isPreviewing && model.previewStopped && model.selection.summary == nil && !model.canExport)
+        #expect(host.toast != nil && service.current.calls.isEmpty)
+
+        // rekordbox를 끈 뒤 [다시 시도]
+        service.update { $0.rekordboxRunning = false }
+        model.retryPreview()
+        #expect(model.isPreviewing && !model.previewStopped)
+        await model.previewTask?.value
+        #expect(!model.isPreviewing && !model.previewStopped)
+        #expect(model.selection.summary == service.current.summary && model.canExport)
+
+        let (without, _, _, _, _) = await sheet(withCoordinator: false)
+        without.selection.setPlaylist("2", selected: true)
+        await without.previewTask?.value
+        #expect(!without.isPreviewing && without.selection.summary == nil)
+    }
+
+    @Test("계산이 막힌 뒤에는 선택을 바꿔도 저절로 다시 계산하지 않는다(끝나지 않은 쓰기 회복 창이 선택마다 다시 뜨지 않게). [다시 시도]로만 다시 계산한다")
+    @MainActor
+    func sheetModelStoppedDoesNotReaskOnSelectionChange() async throws {
+        let (model, _, service, _, prompter) = await sheet()
+        service.update { $0.journal = .state(.committing) }
+        prompter.answer = false
+        model.selection.setPlaylist("2", selected: true)
+        await model.previewTask?.value
+        #expect(model.previewStopped && prompter.shown.count == 1, "회복 창을 한 번 묻는다([나중에])")
+
+        // 선택을 두 번 바꾼다: 막힌 채로 두고 같은 창을 다시 띄우지 않는다
+        model.selection.setFormat(.deviceLibrary, on: false)
+        model.selection.setPlaylist("1", selected: true)
+        await model.previewTask?.value
+        #expect(model.previewStopped && !model.isPreviewing && model.selection.summary == nil)
+        #expect(prompter.shown.count == 1)
+        #expect(service.current.calls.isEmpty)
+
+        // 원인을 푼 뒤 [다시 시도]는 바뀐 선택으로 계산한다
+        service.update { $0.journal = .none }
+        model.retryPreview()
+        await model.previewTask?.value
+        #expect(!model.previewStopped && model.selection.summary == service.current.summary)
+        #expect(prompter.shown.count == 1 && service.current.calls == ["preview"])
+    }
+
+    @Test("고른 원본을 모두 빼면 계산 중인 미리 보기를 버리고 진행 표시를 끈다. 시트를 닫아도 결과를 남기지 않는다")
+    @MainActor
+    func sheetModelCancelsPreview() async throws {
+        let (model, _, service, _, _) = await sheet()
+        let gate = TestGate()
+        service.update { $0.onPreview = { gate.pass() } }
+        model.selection.setPlaylist("2", selected: true)
+        #expect(await waitForState { gate.arrivals == 1 })
+        model.selection.setPlaylist("2", selected: false)
+        #expect(!model.isPreviewing && !model.canPreview)
+        gate.open()
+        await model.previewTask?.value
+        #expect(model.selection.summary == nil && !model.canExport && !model.isPreviewing)
+
+        let closing = TestGate()
+        service.update { $0.onPreview = { closing.pass() }; $0.calls = [] }
+        model.selection.setPlaylist("2", selected: true)
+        #expect(await waitForState { closing.arrivals == 1 })
+        model.disappeared()
+        #expect(!model.isPreviewing)
+        closing.open()
+        await model.previewTask?.value
+        #expect(model.selection.summary == nil && service.current.calls == ["preview"])
+    }
+
+    @Test("시트를 열 때 미리 본 요약이 없는 선택이면 계산하고, 요약이 있으면 다시 계산하지 않는다")
+    @MainActor
+    func sheetModelAppeared() async throws {
+        let job = UsbExportJob(database: URL(filePath: "/tmp/djc-fixture/m.db"), share: URL(filePath: "/tmp/djc-fixture/share"), volume: image,
+                               selection: .playlists(["2"]), formats: UsbFormat.defaultSet, snapshotTime: nil, playlistLayout: Self.layout)
+        let (without, _, service, _, _) = await sheet(UsbExportSheetRequest(volume: image, job: job, summary: nil))
+        #expect(without.selection.summary == nil && service.current.calls.isEmpty)
+        without.appeared()
+        await without.previewTask?.value
+        #expect(without.selection.summary == service.current.summary && service.current.calls == ["preview"])
+
+        let (with, _, other, _, _) = await sheet(UsbExportSheetRequest(volume: image, job: job, summary: UsbTestData.summary()))
+        with.appeared()
+        await with.previewTask?.value
+        #expect(with.selection.summary == UsbTestData.summary() && other.current.calls.isEmpty)
     }
 
     @Test("USB에 쓰기는 시트를 먼저 닫고, 미리 본 요약으로 확인 창 없이 쓴다(시트의 쓰기 단추가 쓰기 동의, #212)")
     @MainActor
     func sheetModelWriteIsConsent() async throws {
         let (model, usb, service, host, prompter) = await sheet()
-        model.selection.setPlaylist("2", selected: true)
         var dismissed = 0
-        // 미리 보기 전에는 쓰지 않는다
+        // 고른 원본이 없으면(미리 본 요약이 없으면) 쓰지 않는다
         #expect(model.writeTapped(dismiss: { dismissed += 1 }) == nil && dismissed == 0)
-        await model.previewTapped().value
+        model.selection.setPlaylist("2", selected: true)
+        await model.previewTask?.value
         service.update { $0.calls = [] }
         let writing = try #require(model.writeTapped(dismiss: { dismissed += 1 }))
         #expect(dismissed == 1)
