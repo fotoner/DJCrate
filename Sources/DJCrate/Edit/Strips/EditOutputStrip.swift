@@ -322,21 +322,23 @@ private struct EditHoverHandles: View {
             guard clips.indices.contains(target.index) else { return }
             let clip = clips[target.index]
             let from = scale.x(clip.outputStart), to = scale.x(clip.outputEnd)
-            let width: CGFloat = 7, top = EditMetrics.ruler + 2, lane = size.height - top - 2
+            // 눌렀을 때 다듬기가 되는 자리 안에만 그린다. 더 넓게 그리면 핸들 바깥쪽을 끌 때 클립 순서가 바뀐다.
+            let width = CGFloat(EditPointer.handleWidth(clipPoints: Double(to - from)))
+            let top = EditMetrics.ruler + 2, lane = size.height - top - 2
             let height = min(40, max(18, lane * 0.4))
             func handle(_ edge: EditEdge) {
                 let px = edge == .start ? from : to
-                guard px >= -width, px <= size.width + width else { return }
+                guard width >= 2, px >= -width, px <= size.width + width else { return }
                 // 클립 안쪽에 그려 이웃 클립 가장자리와 겹치지 않게 한다.
-                let x = edge == .start ? max(px, 0) + 1 : min(px, size.width) - width - 1
+                let x = edge == .start ? max(px, 0) : min(px, size.width) - width
                 let rect = CGRect(x: x, y: top + (lane - height) / 2, width: width, height: height)
                 let active = target.edge == edge
-                let shape = Path(roundedRect: rect, cornerRadius: 3)
+                let shape = Path(roundedRect: rect, cornerRadius: 2)
                 // 밝은 파형 위에서도 어두운 파형 위에서도 보이게 어두운 바탕에 흰 테두리. 포인터가 있는 쪽은 흰 바탕에 강조 테두리.
                 context.fill(shape, with: .color(active ? .white : .black.opacity(0.7)))
-                context.stroke(shape, with: .color(active ? .accentColor : .white.opacity(0.85)), lineWidth: active ? 2 : 1)
-                for dx in [CGFloat(2.5), 4.5] {
-                    context.fill(Path(CGRect(x: rect.minX + dx, y: rect.minY + 6, width: 1, height: height - 12)),
+                context.stroke(shape, with: .color(active ? .accentColor : .white.opacity(0.85)), lineWidth: active ? 1.5 : 1)
+                if width >= 4 {
+                    context.fill(Path(CGRect(x: rect.midX - 0.5, y: rect.minY + 6, width: 1, height: height - 12)),
                                  with: .color(active ? .black.opacity(0.5) : .white.opacity(0.7)))
                 }
             }

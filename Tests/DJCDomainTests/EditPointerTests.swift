@@ -130,6 +130,22 @@ struct EditPointerTests {
         #expect(context.outputHover(atOutput: 3.7, inRuler: false, secondsPerPoint: 0.01) == .clip(0))
     }
 
+    /// 핸들은 눌렀을 때 다듬기가 되는 자리 안에만 그린다. 핸들 바깥쪽을 끌었는데 클립 순서가 바뀌면 안 된다.
+    @Test(arguments: [0.1, 0.5])
+    func 가장자리_핸들은_다듬기_판정_안에만_그린다(secondsPerPoint: Double) throws {
+        // 클립 출력 0~4, 4~8, 8~12초. 0.1초/pt면 클립 40pt, 0.5초/pt면 8pt(좁은 클립)
+        let context = try context(three)
+        let width = EditPointer.handleWidth(clipPoints: 4 / secondsPerPoint)
+        #expect(width > 0 && width <= EditPointer.edgeReach)
+        for fraction in [0.0, 0.5, 0.99] {
+            let inset = width * fraction * secondsPerPoint
+            #expect(context.outputHover(atOutput: 4 + inset, inRuler: false, secondsPerPoint: secondsPerPoint)
+                    == .edge(EditEdgeHit(clip: 1, edge: .start)), "시작 핸들 \(fraction)")
+            #expect(context.outputHover(atOutput: 8 - inset - 0.0001, inRuler: false, secondsPerPoint: secondsPerPoint)
+                    == .edge(EditEdgeHit(clip: 1, edge: .end)), "끝 핸들 \(fraction)")
+        }
+    }
+
     @Test func 결과가_비면_포인터는_아무것도_가리키지_않고_규칙에_안_맞는_목록도_가른다() throws {
         #expect(try context().outputHover(atOutput: 1, inRuler: false, secondsPerPoint: 0.1) == nil)
         // 규칙에 맞지 않는 목록(곡 머리가 둘째에)도 클립은 그려 누르고 고른다
