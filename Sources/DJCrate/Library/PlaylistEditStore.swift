@@ -53,9 +53,6 @@ final class PlaylistEditStore {
     private(set) var writeFreeze: Set<UUID>?
     /// 쓰고 있는 재생 기록(보존 기록 ID). 얼려 둔 동안 이 기록은 저장 대기에서 빼지 못한다(이미 쓰고 있다)
     private(set) var writingHistories: Set<String> = []
-    /// 동기화 실패로 건너뛴 곡 추가 복원의 연결 초기화 대상(ContentID). 디스크 초안을 다시 받으면 그 초안으로 초기화한다(`resumeAfterSync`).
-    /// 앱 메모리에만 있다: 그 전에 앱을 끄면 사라진다(그 곡의 연결 기록은 처리 완료로 남는다)
-    @ObservationIgnored var pendingImportsReset: Set<String> = []
     /// 저장 실패를 알린 창 알림(넣기·빼기 결과가 실패를 함께 적었으면 그 알림). 다시 저장하면 거둔다
     @ObservationIgnored var saveFailureToast: AppToast.ID?
     /// 재생 목록 연결 기록(컬렉션에 들어간 뒤 만들 목록 연결, `PlaylistEditStore+Imports`)
@@ -451,15 +448,9 @@ final class PlaylistEditStore {
     @discardableResult
     func adoptExternalDraft(_ disk: PlaylistDraft?) -> Bool {
         defer {
-            // 읽기에 성공해 메모리가 디스크와 같아졌다: 동기화 실패 표시를 풀고 그동안 미룬 일을 이어 한다
-            if let disk, playlistDraftNeedsSync, disk == playlistDraft, disk.stepIDs == playlistDraft.stepIDs {
-                playlistDraftNeedsSync = false
-                resumeAfterSync()
-            }
+            if let disk, disk == playlistDraft, disk.stepIDs == playlistDraft.stepIDs { playlistDraftNeedsSync = false }
         }
-        // 복원 뒤 다시 쌓을 편집이 기다리고 있어도 동기화 실패 표시가 있으면 받는다(메모리를 믿을 수 없는 동안은 서로 기다리지 않는다)
-        guard let disk, !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty || playlistDraftNeedsSync,
-              !library.libraryBusy else { return false }
+        guard let disk, !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty, !library.libraryBusy else { return false }
         let changed = disk != playlistDraft
         guard changed || disk.stepIDs != playlistDraft.stepIDs else { return false }
         playlistDraft = disk
@@ -484,22 +475,10 @@ final class PlaylistEditStore {
         case failed
     }
 
-    /// 동기화 실패 동안 미룬 일을 이어 한다(디스크 초안을 받아 메모리가 디스크와 같아졌을 때). 곡 추가 복원의 연결 초기화를 받은 초안으로 한 뒤
-    /// 복원한 재생 목록 편집을 그 위에 쌓는다(평소 순서와 같다: 복원 때 초기화, 다시 읽은 뒤 다시 쌓기)
-    private func resumeAfterSync() {
-        if !pendingImportsReset.isEmpty {
-            let contentIDs = pendingImportsReset
-            pendingImportsReset = []
-            applyPlaylistImportsReset(library.useCases.playlists.resetImports(contentIDs: contentIDs, draft: playlistDraft, rekordbox: rekordboxPlaylists,
-                                                                              imports: playlistImports, importsLoadFailed: playlistImportsLoadFailed))
-        }
-        restoreAwaitingPlaylistEdits()
-    }
-
     /// 디스크 초안을 읽어 맞춘다. 읽지 못하면 `failed`로 알리고 디스크 초안을 받을 때까지 저장을 막는다(#402).
     /// 쓰는 동안은 CLI가 초안 파일을 고치지 못하므로(초안 파일 잠금) 다시 읽지 않는다
     func syncExternal() -> ExternalSync {
-        guard !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty || playlistDraftNeedsSync else { return .current }
+        guard !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty else { return .current }
         guard !library.libraryBusy else { return .held }
         do {
             let adopted = adoptExternalDraft(try library.useCases.playlists.loadDraft())
@@ -611,11 +590,8 @@ final class PlaylistEditStore {
     }
 
     /// 새 스냅샷을 읽은 뒤: 복원한 재생 목록 편집을 되돌린 rekordbox 상태에 다시 쌓는다(쌓지 못한 편집은 알린다).
-    /// 디스크 초안을 확인하지 못했으면(동기화 실패) 메모리 초안 위에 쌓아 저장하지 않는다: 대기열에 남기고 확인하면 이어 한다(`resumeAfterSync`)
     func restoreAwaitingPlaylistEdits() {
         guard !playlistEditsAwaitingReload.isEmpty else { return }
-        if playlistDraftNeedsSync { _ = syncExternal() }
-        guard !playlistDraftNeedsSync, !playlistEditsAwaitingReload.isEmpty else { return }
         let edits = playlistEditsAwaitingReload
         playlistEditsAwaitingReload = []
         let unrestored = restorePlaylistEdits(edits)

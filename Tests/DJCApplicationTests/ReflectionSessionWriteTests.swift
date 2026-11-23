@@ -275,6 +275,44 @@ struct ReflectionSessionWriteTests {
         #expect(h.gateCalls.value.previews.first?.playlists == draft && h.gateCalls.value.writes.first?.playlists == draft)
     }
 
+    @Test func S1_초안_파일_잠금을_쥐지_못해_재생_목록을_뺐으면_재생_기록만_넣는_묶음에서도_재생_목록_초안을_다시_저장하지_않는다() async {
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftUnsaved = true
+        h.state.playlistDraftFileLocked = false
+        h.state.pendingHistories = [ReflectionSessionHistoryTests.history("a")]
+        h.script.preview = ReflectionSessionHistoryTests.report([ReflectionSessionHistoryTests.outcome("a", .written)])
+
+        let outcome = await h.session.write(rows: [])
+
+        #expect(outcome.name == "written")
+        #expect(!h.log.contains("save playlist"), "재생 목록 초안은 저장 재시도조차 하지 않는다(바깥이 더한 단계를 덮지 않게)")
+        #expect(h.gateCalls.value.writes.first?.playlists == nil && h.gateCalls.value.writes.first?.histories.count == 1, "재생 기록은 쓴다")
+    }
+
+    @Test func S10_재생_목록을_뺐고_곡도_모두_막혀_쓸_것이_없으면_그_결과에도_이유를_담는다() async {
+        pendingCue("a")
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftFileLocked = false
+        h.script.preview = H.report(cues: [H.outcome("a", .blocked, reason: "VBR MP3")])
+
+        let outcome = await h.session.write(rows: [H.row("a")])
+
+        guard case let .nothingWritable(preview, _) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(preview.exclusions.contains(Self.playlistHeldText), "곡이 막혀 쓸 것이 없어도 재생 목록을 건드리지 않은 이유를 보인다")
+    }
+
+    @Test func S16_잠금_전에는_재생_목록_초안이_비었어도_잠금_동안_받은_초안은_묶음에_넣는다() async {
+        // 재생 기록만 대기 중이고 재생 목록 초안은 비어 있다. 쓰기 잠금을 거는 동안(동기화) CLI가 더한 초안을 받았다
+        let draft = playlistDraft()
+        h.state.pendingHistories = [ReflectionSessionHistoryTests.history("a")]
+        h.script.preview = ReflectionSessionHistoryTests.report([ReflectionSessionHistoryTests.outcome("a", .written)])
+        h.onLock = { [h] locked in if locked { h.state.playlistDraft = draft } }
+
+        _ = await h.session.write(rows: [])
+
+        #expect(h.gateCalls.value.previews.first?.playlists == draft, "잠금 전 초안이 비었다는 이유로 빠뜨리지 않는다")
+    }
+
     @Test func 재생_목록_편집이_모두_막히면_쓰지_않는다() async {
         h.state.playlistDraft = playlistDraft()
         h.script.preview = playlistReport([PlaylistOutcome(edit: .rename(playlist: .id("9"), name: "x"), playlistID: nil, name: "스마트",

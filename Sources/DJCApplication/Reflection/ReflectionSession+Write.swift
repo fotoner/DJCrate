@@ -27,7 +27,8 @@ extension ReflectionSession {
         // 메모리를 정본으로 정리하는 전제(쓰는 동안 초안 파일 잠금을 쥐고 디스크 초안과 같다)가 서지 않으면 이번 묶음에서 재생 목록만 뺀다.
         // 다른 종류 초안은 쓰고 결과에 이유를 담는다
         let state = ports.library.state()
-        let hasPlaylists = hasPlaylistDraft && !state.playlistDraft.isEmpty
+        // 잠금 전 상태는 "아무것도 없음" 조기 종료에만 쓴다: 잠금 동안(동기화) 받은 초안도 묶음에 넣는다
+        let hasPlaylists = playlists && !state.playlistDraft.isEmpty
         let withPlaylists = hasPlaylists && state.canWritePlaylists
         let playlistHeld = hasPlaylists && !state.canWritePlaylists
         guard !chosen.isEmpty || withPlaylists || withHistories else {
@@ -43,7 +44,12 @@ extension ReflectionSession {
             try Task.checkCancellation()
             stage(nil)
             // 창 대신 결과에 제외한 초안까지 남긴다(#230). 막힌 초안은 화면이 복구 시트로 고치게 한다(#232).
-            guard preview.hasWritable else { return publish(.nothingWritable(preview, targets: chosen)) }
+            guard preview.hasWritable else {
+                // 곡이 막혀 쓸 것이 없어도 재생 목록을 건드리지 않은 이유를 "저장하지 않는 것"에 담는다
+                var preview = preview
+                if playlistHeld { preview.exclusions.append(Self.playlistSyncHeldText) }
+                return publish(.nothingWritable(preview, targets: chosen))
+            }
             // 막힘·제외·손실이 없으면 묻지 않고 쓴다. 결과 토스트와 메뉴의 "쓰기 전으로 복원…"으로 되돌린다(#210).
             let canBackUp = ports.backups.canWrite(location.backupDirectory)
             if !WriteConfirmPolicy.reasons(preview.report, exclusions: preview.exclusions, canBackUp: canBackUp).isEmpty {
@@ -85,7 +91,8 @@ extension ReflectionSession {
         try requireReadableDrafts(for: uuids, playlists: playlists)
         try requireDraftSaves(for: uuids)
         guard ports.library.state().failedTagSaves.isDisjoint(with: uuids) else { throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage) }
-        if playlists { try requirePlaylistDraftSaved() }
+        // 재생 목록 초안을 묶음에 넣을 때만 저장을 다시 시도한다(재생 기록만 넣는 묶음은 하지 않는다: 보류한 초안으로 바깥 편집을 덮지 않게)
+        if playlists, withPlaylistDraft { try requirePlaylistDraftSaved() }
         let batch = try draftBatch(for: targets, playlists: playlists, withPlaylistDraft: withPlaylistDraft)
         // 미리 보기는 길이만 잰다(음량은 쓸 때 잰다. 막히는지 보는 데는 필요 없다).
         let inputs = try await analysisInputs(for: batch.grids, measuringLoudness: false)

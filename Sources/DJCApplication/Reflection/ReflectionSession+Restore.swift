@@ -211,12 +211,9 @@ extension ReflectionSession {
         var playlistHeld = false
         if !contentIDs.isEmpty {
             let state = ports.library.state()
-            // 디스크 재생 목록 초안을 읽지 못했으면 옛 메모리 초안으로 저장하지 않는다(초안·연결 기록을 건드리지 않는다).
-            // 곡만 화면에 보관시키고(앱 메모리에만 남는다: 앱을 끄면 사라진다) 초안을 다시 받으면 화면이 이어서 초기화한다
+            // 디스크 재생 목록 초안을 읽지 못했으면 옛 메모리 초안으로 저장하지 않는다(초안·연결 기록을 건드리지 않는다)
             playlistHeld = state.playlistDraftNeedsSync
-            if playlistHeld {
-                apply(.playlistImportsReset(EditPlaylists.ImportsReset(contentIDs: contentIDs, deferred: true)))
-            } else {
+            if !playlistHeld {
                 apply(.playlistImportsReset(playlistEdits.resetImports(contentIDs: contentIDs, draft: state.playlistDraft,
                                                                        rekordbox: state.rekordboxPlaylists, imports: state.playlistImports,
                                                                        importsLoadFailed: state.playlistImportsLoadFailed)))

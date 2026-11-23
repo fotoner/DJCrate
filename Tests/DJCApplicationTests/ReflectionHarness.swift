@@ -298,7 +298,7 @@ final class ReflectionHarness {
             case let .unstaged(uuids): "unstaged \(uuids.sorted())"
             case let .restaged(tracks): "restaged \(tracks.map(\.uuid))"
             case let .deckTrackMoved(id): "deck \(id)"
-            case let .playlistImportsReset(reset): "imports reset\(reset.deferred ? " deferred" : "") \(reset.contentIDs.sorted())"
+            case let .playlistImportsReset(reset): "imports reset \(reset.contentIDs.sorted())"
             case .unlinkedDraftsChanged: "unlinked"
             case let .libraryError(text): "error \(text)"
             case let .showAdded(id): "show \(id)"

@@ -288,17 +288,6 @@ public struct EditPlaylists: Sendable {
         public var draftError: (any Error)?
         /// 초안을 저장했으면 연결 기록 저장 결과
         public var imports: ImportsChange?
-        /// 디스크 재생 목록 초안을 확인하지 못해(동기화 실패) 아직 하지 않았다: 화면이 `contentIDs`를 보관했다가 초안을 확인한 뒤 다시 한다
-        public var deferred = false
-
-        public init(contentIDs: Set<String>, draft: PlaylistDraft? = nil, draftError: (any Error)? = nil, imports: ImportsChange? = nil,
-                    deferred: Bool = false) {
-            self.contentIDs = contentIDs
-            self.draft = draft
-            self.draftError = draftError
-            self.imports = imports
-            self.deferred = deferred
-        }
     }
 
     /// 곡 추가를 되돌린 뒤: 되돌린 곡(ContentID)의 연결 기록을 다시 기다리는 연결로 돌리고, 초안에서 그 곡 편집을 잊어 저장한 다음 연결 기록을 저장한다

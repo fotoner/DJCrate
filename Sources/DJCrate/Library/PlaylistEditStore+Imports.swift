@@ -14,11 +14,6 @@ extension PlaylistEditStore {
 
     /// 곡 넣기를 되돌린 뒤: 반영 세션이 그 곡의 연결 기록과 초안 편집을 잊어 저장한 결과를 맞춘다
     func applyPlaylistImportsReset(_ reset: EditPlaylists.ImportsReset) {
-        // 동기화 실패로 건너뛰었다: 곡만 보관하고 디스크 초안을 받은 뒤 초기화한다(`resumeAfterSync`)
-        if reset.deferred {
-            pendingImportsReset.formUnion(reset.contentIDs)
-            return
-        }
         if let error = reset.draftError {
             library.notify(.notice(text: String(ui: "재생 목록 편집을 보관하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .warning))
             return
