@@ -310,6 +310,8 @@ extension RekordboxWriter {
                 swaps[index].old = staged
                 swaps[index].staged = nil
                 swaps[index].swapped = true
+                // 분석 루트 안 폴더를 하나 더 옮기므로 그 직전에도 실행을 다시 본다(켜졌으면 제자리는 차 있으니 기록·임시 폴더를 둔 채 멈춘다)
+                try run?.recheck(.fileReplace)
                 try fm.moveItem(at: staged, to: swaps[index].oldPath)
                 swaps[index].old = swaps[index].oldPath
             } else {

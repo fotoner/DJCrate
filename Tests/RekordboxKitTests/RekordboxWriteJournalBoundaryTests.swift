@@ -576,4 +576,38 @@ struct RekordboxWriteJournalBoundaryTests {
         #expect(!FileManager.default.fileExists(atPath: again.oldPath.path) && !FileManager.default.fileExists(atPath: again.stagedPath.path))
         withExtendedLifetime((root, other)) {}
     }
+
+    // MARK: 4라운드(S8·S22)
+
+    @Test func 미정리_목록이_있는데_백업_폴더가_사라져_잠글_것이_없으면_목록을_게시하지_않고_기록을_남긴다() throws {
+        let fixture = try RekordboxFixture()
+        let backup = fixture.backups.appending(path: "2026-09-25T120000-write")
+        try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
+        let run = try WriteRun(database: fixture.database, guard: Kit.copyGuard, backups: fixture.backups)
+        try run.begin(RekordboxWriteJournal(operationID: "op-1", kind: .files, entry: .drafts, basis: .init(writeBackup: backup.path)))
+        // 라이브러리 변경을 마친 뒤 백업 폴더가 통째로 옮겨졌다(저장소 잠금을 잡을 폴더가 없다)
+        try FileManager.default.moveItem(at: fixture.backups, to: fixture.root.appending(path: "moved-backups"))
+        let list = DraftCleanupList(operationID: "op-1", target: RekordboxWriteLockKey(device: 0, inode: 0), draftHome: "/drafts", backupFolder: "")
+        let error = try #require(throws: DJCError.self) {
+            try RekordboxWriter.finishRun(run, backup: backup, backups: fixture.backups, list: list, now: now)
+        }
+        guard case .restoreFailed = error else { Issue.record("기록을 남긴 멈춤이 아님: \(error)"); return }
+        #expect(!FileManager.default.fileExists(atPath: fixture.backups.path), "백업 없는 미정리 목록을 게시하지 않는다")
+        #expect(try Kit.journal(fixture) != nil, "기록이 남아 중단으로 다룬다")
+    }
+
+    @Test func 시점_복원은_맞바꾼_뒤_복원_전_내용을_옮기기_직전에도_실행을_다시_본다() throws {
+        let (fixture, target) = try pointFixture()
+        let script = WriteHookScript()
+        // 분석 폴더를 맞바꾼 직후, 준비 자리로 간 복원 전 내용을 옛 자리로 옮기기 직전에 켜진다
+        script.startRunning(at: .recheck(.fileReplace), occurrence: 2)
+        let error = try #require(throws: DJCError.self) {
+            try points.restore(fixture, target, at: now.addingTimeInterval(20), guard: script.writeGuard)
+        }
+        guard case .pointRestoreFailed = error else { Issue.record("켜짐을 보고 멈춘 것이 아님: \(error)"); return }
+        let journal = try #require(try Kit.journal(fixture), "기록이 남는다")
+        let role = try #require(journal.pointRestore?.folders?.first { $0.target.hasSuffix("/USBANLZ") })
+        #expect(FileManager.default.fileExists(atPath: role.staged), "복원 전 내용을 옮기지 않았다")
+        #expect(!FileManager.default.fileExists(atPath: role.old))
+    }
 }

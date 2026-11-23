@@ -54,7 +54,7 @@ public struct LoadLibrary: Sendable {
         let mayCaptureMusic = location.mayCaptureMusic
         let sourceDatabase = snapshotDirectory.isSameDirectory(as: location.snapshotDirectory) ? location.liveDatabase : nil
         let cached = music.cached(latest)
-        let sourceDirectory = (sourceDatabase ?? latest).deletingLastPathComponent()
+        let sourceDirectory = Self.syncDirectory(of: sourceDatabase ?? latest)
         let hasCurrentCatalog = mayCaptureMusic && cached.status == .ready && cached.sourcePlaylists != nil
             && !music.selectionChanged(cached.syncData, sourceDirectory)
         return .latest(latest, refreshMusic: mayCaptureMusic && !hasCurrentCatalog, sourceDatabase: sourceDatabase,
@@ -79,7 +79,7 @@ public struct LoadLibrary: Sendable {
             return .library
         }
         guard location.mayCaptureMusic, !refreshingMusic,
-              music.selectionChanged(musicSyncData, location.rekordboxDirectory) else { return .none }
+              music.selectionChanged(musicSyncData, Self.syncDirectory(of: location.liveDatabase)) else { return .none }
         return .musicSelection
     }
 
@@ -429,7 +429,7 @@ public struct LoadLibrary: Sendable {
     /// - Parameter database: 동기화 창을 연 사본
     public func syncDiffersFromTarget(_ base: Data, opened database: URL, location: LibraryLocation) -> Bool {
         !Self.showsSync(of: location.database, in: database, location: location)
-            && music.selectionChanged(base, location.database.deletingLastPathComponent())
+            && music.selectionChanged(base, Self.syncDirectory(of: location.database))
     }
 
     /// 사본은 옆의 동기화 파일을 읽는다. 명시한 사본은 쓰기 대상과 같은 폴더여야 쓴 선택이 그 사본에 보인다
@@ -479,11 +479,14 @@ public struct LoadLibrary: Sendable {
         return sourceDatabase?.standardizedFileURL.path == expected.standardizedFileURL.path
     }
 
-    /// 동기화 선택 원문(`playlists3.sync`, 원본 DB가 있으면 그 폴더). 파일이 없으면 nil.
-    /// 링크를 푼 DB 옆 파일을 읽는다(쓰기 관문이 견주는 파일과 같다: 파일 링크 DB도 링크 쪽 폴더의 같은 이름 파일을 읽지 않는다)
+    /// 동기화 선택 원문(`playlists3.sync`, 원본 DB가 있으면 그 폴더). 파일이 없으면 nil
     private func syncFile(snapshot: URL, sourceDatabase: URL?) -> Result<Data, any Error>? {
-        music.syncFile((sourceDatabase ?? snapshot).resolvingSymlinksInPath().deletingLastPathComponent())
+        music.syncFile(Self.syncDirectory(of: sourceDatabase ?? snapshot))
     }
+
+    /// 그 DB의 동기화 파일(`playlists3.sync`) 폴더: 링크를 푼 DB 옆이다(쓰기 관문이 견주는 파일과 같다. 파일 링크 DB도
+    /// 링크 쪽 폴더의 같은 이름 파일을 읽거나 견주지 않는다)
+    static func syncDirectory(of database: URL) -> URL { database.resolvingSymlinksInPath().deletingLastPathComponent() }
 
     private func syncData(snapshot: URL, sourceDatabase: URL?) -> Data? {
         try? syncFile(snapshot: snapshot, sourceDatabase: sourceDatabase)?.get()

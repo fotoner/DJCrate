@@ -504,6 +504,8 @@ extension RekordboxWriter {
             if list != nil { throw listNotSaved(error) }
         }
         defer { hold?.release() }
+        // 목록은 실제 잠금을 쥔 경우에만 게시한다(백업 폴더가 사라져 잠글 것이 없으면 백업 없는 목록을 만들지 않고 멈춘다)
+        if list != nil, hold == nil { throw listNotSaved(POSIXError(.ENOENT)) }
         if var list {
             list.target = run.key
             list.backupFolder = backup.lastPathComponent

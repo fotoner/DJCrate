@@ -198,6 +198,25 @@ struct LoadLibraryTests {
         withExtendedLifetime((real, links)) {}
     }
 
+    @Test func 파일_링크_라이브_DB의_선택_변경은_링크를_푼_DB_옆_동기화_파일과_견준다() throws {
+        let real = try TemporaryFolder(), links = try TemporaryFolder()
+        let database = real.url.appending(path: "master.db")
+        try Data().write(to: database)
+        try FileManager.default.createSymbolicLink(at: links.url.appending(path: "master.db"), withDestinationURL: database)
+        let music = MemoryMusicLibrary()
+        for folder in [real.url, real.url.resolvingSymlinksInPath()] { music.setSelection(["B"], in: folder) }
+        music.setSelection(["A"], in: links.url)
+        let location = LibraryLocation(rekordboxDirectory: links.url, rekordboxDirectoryOverridden: false, snapshotDirectory: Self.snapshots,
+                                       opensExplicitCopy: false, explicitCopy: nil, database: links.url.appending(path: "master.db"),
+                                       shareRoot: nil, backupDirectory: URL(filePath: "/fake/backups"), draftHome: URL(filePath: "/fake/home"),
+                                       movesDamagedDrafts: false)
+        let loader = Self.loader([:], music: music)
+        // 지금 보이는 목록은 링크를 푼 DB 옆 선택(B)과 같다: 바뀐 것이 없다
+        #expect(loader.change(since: Self.snapshots.appending(path: "master-1.db"), location: location,
+                              musicSyncData: MemoryMusicLibrary.syncData(["B"]), refreshingMusic: false) == .none)
+        withExtendedLifetime((real, links)) {}
+    }
+
     @Test func Music을_읽지_못하면_같은_폴더의_이전_목록을_낡음으로_쓴다() {
         let snapshot = Self.snapshots.appending(path: "master-3.db")
         let older = Self.snapshots.appending(path: "master-2.db")
