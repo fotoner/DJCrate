@@ -129,7 +129,13 @@ extension LibraryStore {
                            started: ContinuousClock.Instant) {
         let opened = read.opened, loaded = read.opened.loaded
         let snapshot = read.snapshot, generation = read.generation, synchronizingDrafts = read.synchronizingDrafts
-        undoManager?.removeAllActions(withTarget: self)
+        // 초안 쓰기 뒤 읽기(쓰는 곡이 없는 재생 목록·재생 기록만 쓰는 묶음 포함)는 저장한 곡과 기준값이 옮겨진 곡의 태그 ⌘Z 단계만 무효로 한다(아래).
+        // 다른 곡을 저장 중에 고친 ⌘Z는 남긴다. 그 밖의 읽기는 ⌘Z 기록을 통째로 지운다: 쓰는 동안 바뀐 것은 태그뿐이다
+        // (재생 목록·재생 기록·합치기는 `libraryBusy`로 막혀 쓰기 시작 때 이미 지웠다)
+        // 쓰기 잠금이 먼저 꺼진 뒤에 성공한 읽기도 같다: 초안 쓰기 뒤 읽기 대기(`draftWriteReadPending`)가 읽기가 성공할 때까지 남는다.
+        let keepsUndo = !synchronizingDrafts && (isDraftWrite || draftWriteReadPending) && playlists.playlistEditsAwaitingReload.isEmpty
+        draftWriteReadPending = false
+        if !keepsUndo { undoManager?.removeAllActions(withTarget: self) }
         applyLoadedRows(from: loaded)
         let previousTags = tagDrafts, previousPlaylist = playlists.playlistDraft
         // 읽는 동안 사용자가 편집했거나 저장에 실패한 입력은 디스크의 오래된 값으로 덮지 않는다. 동기화면 충돌하지 않는 초안의 base를
@@ -139,6 +145,13 @@ extension LibraryStore {
                                                        artworkChanged: artworkChanges != artworkChangeCount)
         let conflicts = reconciled.tags.conflicts
         tagDrafts = reconciled.tags.tags
+        if keepsUndo {
+            // 저장한 곡·기준값을 옮긴 곡에 더해, 이 읽기가 태그 초안을 바꾼 곡도 무효로 한다. 읽기 실패 사이 바깥(CLI)이 저장한 초안을 다음 읽기가
+            // 외부 변경 감시보다 먼저 받아들이면 그 곡의 옛 ⌘Z가 새 초안을 이전 값으로 덮는다. 초안이 그대로인 곡의 ⌘Z는 남긴다.
+            var stale = writtenAwaitingReload.union(reconciled.tags.rebased.map(\.trackUUID))
+            for uuid in Set(previousTags.keys).union(tagDrafts.keys) where previousTags[uuid] != tagDrafts[uuid] { stale.insert(uuid) }
+            invalidateTagUndo(stale)
+        }
         rememberTagSaves(reconciled.tags.rebased)
         tagRevision += 1
         setDraftMarks(cue: loaded.cueDraftUUIDs, grid: loaded.gridDraftUUIDs, gain: loaded.gainDraftUUIDs)

@@ -91,7 +91,7 @@ struct CueListView: View {
                 Label(issues.joined(separator: " · "), systemImage: "exclamationmark.triangle")
                     .font(.scaled(.caption, textScale)).foregroundStyle(UIColors.warning.color)
             }
-            if deck.editsFrozen {
+            if deck.isEditLocked {
                 Text(.ui("rekordbox에 저장하는 중이라 큐 편집을 잠시 막았습니다.")).font(.scaled(.caption2, textScale)).foregroundStyle(.secondary)
             }
         }

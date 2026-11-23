@@ -174,7 +174,7 @@ final class PlaylistEditStore {
     /// (건너뛴 이유는 부른 쪽이 보인다). 묶음 하나는 ⌘Z 한 번에 되돌린다.
     @discardableResult
     func applyPlaylistRequests(_ requests: [PlaylistEditRequest], actionName: String, allOrNothing: Bool = true) -> EditPlaylists.Batch? {
-        guard !library.editsFrozen, !requests.isEmpty else { return nil }
+        guard !library.libraryBusy, !requests.isEmpty else { return nil }
         // 바깥(CLI)에서 바뀐 초안이 있으면 먼저 받고 그 위에 쌓는다(덮지 않게)
         syncExternalPlaylistDraft()
         let batch = planPlaylistRequests(requests, allOrNothing: allOrNothing)
@@ -217,7 +217,7 @@ final class PlaylistEditStore {
         refreshPlaylists()
         guard let undoManager = library.undoManager else { return }
         undoManager.registerUndo(withTarget: library) { target in
-            guard !target.editsFrozen else { return }
+            guard !target.libraryBusy else { return }
             target.playlists.setPlaylistDraft(before, actionName: actionName)
         }
         undoManager.setActionName(actionName)
@@ -280,7 +280,7 @@ final class PlaylistEditStore {
     /// '재생 목록에 넣기…'(이름으로 찾기) 시트를 연다. 시트 모델은 여기서 한 번 만든다(본문이 다시 그려져도 같은 모델).
     func openPlaylistPicker(tracks: [TrackRow]? = nil) {
         let tracks = library.uniqueTracks(tracks ?? library.selectedRows).filter { !$0.isStaged }
-        guard !tracks.isEmpty, !library.editsFrozen else { return }
+        guard !tracks.isEmpty, !library.libraryBusy else { return }
         playlistPicker = PlaylistPickerModel(playlists: self, tracks: tracks)
     }
 
@@ -345,6 +345,8 @@ final class PlaylistEditStore {
 
     /// 목록(폴더면 그 아래까지)의 초안을 버린다. nil이면 재생 목록 초안 모두.
     func discardPlaylistDraft(_ id: String? = nil) {
+        // 쓰는 동안은 재생 목록 초안을 바꾸지 않는다(재생 목록 얼리기는 W2-G2). 사이드바 메뉴는 통째 잠금일 때만 막혀 이 가드가 맡는다
+        guard !library.libraryBusy else { return }
         var draft = playlistDraft
         if let id { draft.discard(playlist: id, rekordbox: rekordboxPlaylists) } else { draft = PlaylistDraft() }
         setPlaylistDraft(draft, actionName: String(ui: "재생 목록 편집 버리기"))
@@ -352,6 +354,7 @@ final class PlaylistEditStore {
 
     /// rekordbox에서 바뀌어 쓸 수 없는 편집만 버린다.
     func discardBlockedPlaylistEdits() {
+        guard !library.libraryBusy else { return }
         var draft = playlistDraft
         draft.discardBlocked(rekordbox: rekordboxPlaylists, contentIDs: Set(library.rowsByID.keys))
         setPlaylistDraft(draft, actionName: String(ui: "재생 목록 편집 버리기"))

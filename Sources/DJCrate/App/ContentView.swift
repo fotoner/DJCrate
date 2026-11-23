@@ -40,9 +40,9 @@ struct ContentView: View {
         let _ = PerfProbe.body(Self.self)
         NavigationSplitView(columnVisibility: columnVisibility) {
             Sidebar(store: store, playlistSidebar: app.playlistSidebar)
-                // 안쪽에 가드가 없는 조작(추가 목록 제거, USB 편집 메뉴)도 이 줄이 막아 준다. 그래서 libraryBusy다.
-                // 편집 잠금만 푸는 PR은 그 조작에 가드를 더한 뒤 이 줄을 editsFrozen으로 바꾼다(#301).
-                .disabled(store.libraryBusy)
+                // 통째로 잠글 때(복원·곡 넣기·빼기·재생 목록만 쓰는 묶음)만 막는다. 곡 단위로 쓰는 동안은 사이드바가 그대로 된다(R21).
+                // 안쪽 조작은 각자 가드를 든다: 읽기·쓰기·USB·추가 목록은 libraryBusy, 재생 목록·재생 기록 편집도 libraryBusy, 곡 편집은 곡 단위 잠금
+                .disabled(store.editsFrozen)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 230)
         } detail: {
             detail
@@ -50,6 +50,17 @@ struct ContentView: View {
                 // 분할 화면 전체 아래에 붙이면 열의 화면이 막대 위까지 덮어 플레이어 칸이 끌어다 놓기를 받지 못했다(#274). 상세 열 안에 둔다
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let link = app.link { LinkBar(model: link) }
+                }
+                // 곡 단위로 쓰는 동안 취소할 수 있는 단계에는 덮개 대신 작은 진행·취소 자리를 둔다(R21). 목록·태그 시트 바깥, 목록과 상태 줄 사이의
+                // 고정 띠라서 행 클릭을 가로채지 않고 덱 컨트롤과도 겹치지 않는다. 그 단계가 끝나면 띠는 사라진다
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if store.showsWriteProgressChip, let stage = store.writeStage {
+                        HStack(spacing: 0) {
+                            WritingProgressChip(stage: stage, onCancel: { store.cancelWritePreparation() })
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                    }
                 }
                 // 창 맨 아래 상태 줄(#298). LINK 막대처럼 상세 열 안에 둔다: 사이드바를 접어도 상세 열은 늘 있고,
                 // 분할 화면 전체 아래에 붙이면 열의 화면이 막대를 덮었다(#274). 읽지 않은 수는 상태 줄만 읽는다
@@ -62,8 +73,8 @@ struct ContentView: View {
                 }
                 .task(id: showTagEditor) { await InspectorReveal.follow(showTagEditor, shown: $inspectorContentShown) }
                 .modifier(LibraryWindowTitle(store: store))
-                // 안쪽 가드가 없는 조작을 막아 주므로 libraryBusy다(사이드바와 같다).
-                .disabled(store.libraryBusy)
+                // 사이드바와 같다: 통째로 잠글 때만 상세(덱·목록·인스펙터)를 막는다
+                .disabled(store.editsFrozen)
                 // 덱을 가리지 않게 아래에 띄운다(#122). 목록 위 오류·안내 줄도 모두 이 알림으로 옮겼다(#307).
                 // 덮개는 아래 덧댄 상태 줄의 자리를 모르므로 그 높이만큼 올린다(#298)
                 .overlay(alignment: .bottom) {
@@ -81,10 +92,12 @@ struct ContentView: View {
                     }
                 }
                 .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.35), value: store.toast?.id)
+
         }
-        // rekordbox·USB에 쓰는 동안은 창 전체를 덮어 다른 조작을 막는다.
+        // 통째로 잠그는 rekordbox 쓰기(복원·곡 넣기·빼기)와 USB 쓰기는 창 전체를 덮어 다른 조작을 막는다.
+        // 곡 단위로 쓰는 동안(R21)은 덮지 않는다: 진행 단계는 `writeStage`가 들고, 종료를 기다리는 안내만 아래 갈래에서 뜬다.
         .overlay {
-            if let stage = store.writeStage {
+            if let stage = store.writeStage, store.showsWriteOverlay {
                 WritingOverlay(stage: stage, quitWait: store.quitWait.current, onCancel: { store.cancelWritePreparation() },
                                onCancelQuit: { store.quitWait.cancel() }).transition(.opacity)
             } else if let write = store.usb?.activeWrite {

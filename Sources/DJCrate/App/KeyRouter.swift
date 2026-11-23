@@ -75,7 +75,8 @@ final class KeyRouter {
         if context.hasShortcutModifiers { return event }
         let lock = WriteLockPolicy(isWriting: deck.editsFrozen, canCancelPreparation: store?.writeStage?.cancellable == true)
         if lock.blocksKey(event.keyCode, in: context) { return nil }
-        if lock.isWriting, lock.canCancelPreparation, event.keyCode == Self.escape { return event }
+        // 준비 단계(취소할 수 있는 단계)의 Esc는 취소 단추가 받는다: 통째 잠금의 덮개와 곡 단위 쓰기의 작은 취소 자리(R21) 모두
+        if lock.canCancelPreparation, event.keyCode == Self.escape { return event }
         if let editor = responder as? NSTextView {
             return routeWhileTyping(event, editor: editor, window: window)
         }

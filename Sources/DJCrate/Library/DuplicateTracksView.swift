@@ -22,9 +22,10 @@ struct DuplicateTracksView: View {
                     Text(.ui("합치기 저장 대기 · \(draft.keeping.title) 유지 · \(draft.removing.count)곡 빼기"))
                     Spacer()
                     Button(.ui("편집 버리기")) {
-                        do { try store.setMergeDrafts(store.mergeDrafts.filter { $0.id != draft.id }) }
+                        do { try store.discardMerge(draft.id) }
                         catch { store.showToast(.notice(text: error.localizedDescription, kind: .warning)) }
                     }
+                    .disabled(store.libraryBusy)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 4)
             }
@@ -69,7 +70,6 @@ struct DuplicateTracksView: View {
                 }
             }
         }
-        .disabled(store.editsFrozen)
         .navigationTitle(store.sidebarTitle)
         .navigationSubtitle(String(ui: "\(store.displayDuplicateGroups.count)묶음 · \(store.displayRows.count)곡"))
     }
@@ -110,7 +110,8 @@ struct DuplicateTracksView: View {
                     model.startMerge(keeping: member.id, removing: group.tracks.filter { $0.id != member.id }.map(\.id))
                 }
                 .buttonStyle(.borderless)
-                .disabled(model.isPreparing || group.tracks.contains { store.pendingUUIDs.contains($0.track.uuid) })
+                // 합치기는 쓰는 동안 시작하지 않는다(`prepareMerge`·`stageMerge`도 같은 가드). 목록과 덱에 불러오기는 그대로 된다
+                .disabled(model.isPreparing || store.libraryBusy || group.tracks.contains { store.pendingUUIDs.contains($0.track.uuid) })
             }
         }
     }

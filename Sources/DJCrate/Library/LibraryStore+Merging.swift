@@ -8,6 +8,12 @@ extension LibraryStore {
         try setMergeDrafts(MergeDuplicates.staging(draft, onto: mergeDrafts, pending: pendingUUIDs, playlistDraftEmpty: playlists.playlistDraft.isEmpty))
     }
 
+    /// 합치기 초안 하나를 버린다. 쓰는 동안은 버리지 않는다: 합치기 초안은 쓰는 묶음에 들 수 있다(중복 후보 목록 전체를 막지 않고 여기서 막는다)
+    func discardMerge(_ id: String) throws {
+        guard !libraryBusy else { return }
+        try setMergeDrafts(mergeDrafts.filter { $0.id != id })
+    }
+
     func setMergeDrafts(_ drafts: [DuplicateMergeDraft]) throws {
         let before = mergeDrafts
         let moved = try useCases.merge.save(drafts, takingMovedFiles: location.movesDamagedDrafts)

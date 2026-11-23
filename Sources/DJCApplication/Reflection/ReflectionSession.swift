@@ -75,6 +75,23 @@ public struct ReflectionSession {
     // MARK: - 공통
 
     func lock(_ locked: Bool) { ports.lock.set(locked, true) }
+
+    /// 초안을 쓰는 동안의 잠금(R21): 쓰는 묶음에 든 곡의 편집만 막고 덱 재생·사이드바·목록·다른 곡 편집은 그대로 둔다.
+    /// 라이브러리는 쓰는 중으로 묶어(`set(true, false)`) 다른 쓰기·읽기와 겹치지 않게 하되 덱은 잠그지 않아 재생을 멈추지 않는다.
+    /// 곡이 없는 묶음(재생 목록·재생 기록만)도 초안 쓰기 표시로 곡 단위 쓰기가 된다. 재생 목록·재생 기록 편집은 쓰는 중이라 막는다(재생 목록 얼리기는 #402).
+    /// 곡과 초안 쓰기를 먼저 정해야 쓰는 중으로 바뀌는 순간에도 통째 잠금이 한 틱 켜지지 않는다.
+    func lockDraftWrite(tracks: Set<String>) {
+        ports.lock.setTracks(tracks)
+        ports.lock.setDraftWriting(true)
+        ports.lock.set(true, false)
+    }
+
+    /// `lockDraftWrite`를 푼다. 쓰는 중을 먼저 풀고 초안 쓰기·곡을 비운다(곡이 먼저 비면 통째 잠금이 한 틱 켜진다)
+    func unlockDraftWrite() {
+        ports.lock.set(false, false)
+        ports.lock.setDraftWriting(false)
+        ports.lock.setTracks([])
+    }
     func stage(_ stage: WriteStage?) { ports.lock.stage(stage) }
     func apply(_ change: ReflectionLibraryChange) { ports.library.apply(change) }
 

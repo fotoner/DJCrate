@@ -46,6 +46,8 @@ struct LibraryDetail: View {
                         .frame(minWidth: 0, maxWidth: .infinity, minHeight: DeckLayout.minimumLibraryHeight, maxHeight: .infinity)
                 } else if case let .usb(.pending(volumeKey)) = store.sidebar, let usb = store.usb {
                     UsbPendingView(store: store, usb: usb, volumeKey: volumeKey)
+                        // USB 쓰기는 쓰는 동안 라이브러리 사본과 겹치지 않게 막는다(곡 단위로 쓰는 동안 상세 전체를 막지 않으므로 여기서 막는다)
+                        .disabled(store.libraryBusy)
                         .id(volumeKey)
                         .frame(minWidth: 0, maxWidth: .infinity, minHeight: DeckLayout.minimumLibraryHeight, maxHeight: .infinity)
                 } else if showsSheet {

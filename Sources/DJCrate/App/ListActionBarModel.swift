@@ -123,7 +123,7 @@ final class ListActionBarModel {
     // MARK: - BPM 없는 곡
 
     var displayedCount: Int { store.displayRows.count }
-    var isGridEstimateBlocked: Bool { store.displayRows.isEmpty || staging.gridJob != nil }
+    var isGridEstimateBlocked: Bool { store.displayRows.isEmpty || staging.gridJob != nil || store.libraryBusy }
     func estimateGridsForDisplayedRows() { staging.estimateGridsForDisplayedRows() }
 
     // MARK: - 파일 없음(#126)
@@ -137,7 +137,7 @@ final class ListActionBarModel {
     // MARK: - 머리 줄 오른쪽 구성(#340)
 
     private var locks: ListHeaderActions.Locks {
-        .init(busy: store.libraryBusy, sheetBlocked: store.writesBlockedBySheet, editsFrozen: store.editsFrozen)
+        .init(busy: store.libraryBusy, sheetBlocked: store.writesBlockedBySheet, editsFrozen: store.libraryBusy)
     }
 
     /// 지금 사이드바 항목의 머리 줄 오른쪽 구성. 항목에 필요한 값만 읽는다

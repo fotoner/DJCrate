@@ -244,6 +244,31 @@ suite DJCApplicationTests.AutoReflectionContractTests
 suite DJCApplicationTests.PortContractTests
 suite DJCrateTests.AutoReflectSelfTestRunTests
 
+# 쓰는 곡만 잠그기(#401, R21): 초안을 쓰는 동안 덱 재생·창 덮개·편집 잠금이 쓰기 종류별로 갈린다. 잠금 값이 여러 파일에 걸쳐 기호 grep이 놓칠 수 있어 경로로 고른다.
+group track-write-lock
+when Sources/DJCrate/Library/LibraryStore.swift
+when Sources/DJCrate/Library/LibraryStore+ReflectionState.swift
+when Sources/DJCrate/Library/TagEditStore.swift
+when Sources/DJCrate/Library/LibraryStore+Artwork.swift
+when Sources/DJCrate/Library/ArtworkInspectorModel.swift
+when Sources/DJCrate/Deck/DeckModel.swift
+when Sources/DJCrate/App/ContentView.swift
+when Sources/DJCrate/Library/LibraryStore+Loading.swift
+when Sources/DJCrate/Library/LibraryStore+Deck.swift
+when Sources/DJCrate/Library/TagInspectorModel.swift
+when Sources/DJCrate/Deck/DeckModel+Loading.swift
+when Sources/DJCApplication/Library/StageTracks.swift
+when Sources/DJCApplication/Reflection/ReflectionSession.swift
+when Sources/DJCApplication/Reflection/ReflectionSession+Write.swift
+suite DJCrateTests.TrackWriteLockTests
+suite DJCrateTests.TrackWriteLockFollowUpTests
+suite DJCApplicationTests.StageTracksTests
+suite DJCrateTests.WriteLockSplitTests
+suite DJCrateTests.WriteLockPolicyTests
+suite DJCrateTests.ArtworkInspectorModelTests
+suite DJCrateTests.TagInspectorModelTests
+suite DJCApplicationTests.ReflectionSessionWriteTests
+
 # 번역 카탈로그·화면 문구 검사 도구
 group localization
 when Sources/**/*.xcstrings

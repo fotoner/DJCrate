@@ -251,7 +251,10 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
 
     /// rekordbox에 쓰기 시작하면 고치던 칸을 닫는다(쓰는 동안에는 초안을 바꾸지 않는다).
     func updateWriteLock(_ locked: Bool) {
-        if locked { cancelEditing() }
+        if locked { cancelEditing(); return }
+        // 곡 단위로 쓰기 시작하면 고치던 칸의 곡이 쓰는 곡일 때만 닫는다(R21). 다른 곡의 칸은 그대로 고친다
+        guard let edit = inlineEdit, edit.session.targets.contains(where: { store.isEditLocked($0.track.uuid) }) else { return }
+        cancelEditing()
     }
 
     /// USB 목록도 컬렉션과 같은 칸 배치(보이는 칸·순서·폭)를 쓴다. 다른 점은 갱신 상태 칸이 USB 목록에서만 보이는 것뿐이다(#256).
