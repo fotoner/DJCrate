@@ -33,13 +33,20 @@ public enum PlaylistStepStamping {
         (try? DraftContentHash(step: step, in: draft)) ?? DraftContentHash(hex: "")
     }
 
-    /// 겹치는 식별자는 뒤 단계를 nil로 만든다(식별자는 단계마다 하나다)
-    private static func uniqueIDs(_ draft: PlaylistDraft) -> [UUID?] {
-        var seen = Set<UUID>()
-        return draft.stepIDs.map { id in
-            guard let id, seen.insert(id).inserted else { return nil }
-            return id
+    /// 단계 식별자. 같은 식별자를 가진 단계가 둘 이상이면 어느 단계가 그 식별자의 단계인지 확인할 수 없으므로 모두 nil로 만든다
+    /// (첫 단계에 옛 판을 붙이지 않는다). `duplicated`는 그렇게 비운 자리다
+    private static func uniqueIDs(_ draft: PlaylistDraft) -> (ids: [UUID?], duplicated: Set<Int>) {
+        let all = draft.stepIDs
+        let counts = Dictionary(all.compactMap { $0 }.map { ($0, 1) }, uniquingKeysWith: +)
+        var ids = all
+        var duplicated = Set<Int>()
+        for index in ids.indices {
+            if let id = ids[index], counts[id, default: 0] > 1 {
+                ids[index] = nil
+                duplicated.insert(index)
+            }
         }
+        return (ids, duplicated)
     }
 
     /// 파일에 있는 초안의 단계에 식별자를 맞추고 도장 줄을 맞춘다.
@@ -48,7 +55,7 @@ public enum PlaylistStepStamping {
     ///   멈춘 단계, 도장을 모르는 쪽이 더한 단계)는 새 판과 모름 출처의 도장을 받는다. 단계 수가 같아도 같은 자리의 도장을 잇지 않는다.
     public static func adopt(_ draft: PlaylistDraft, entries: [PlaylistStampEntry], newID: () -> UUID,
                              newRevision: () throws -> DraftRevision) throws -> Result {
-        var ids = uniqueIDs(draft)
+        var ids = uniqueIDs(draft).ids
         var fresh = Set<Int>()
         for index in ids.indices where ids[index] == nil {
             ids[index] = newID()
@@ -85,24 +92,26 @@ public enum PlaylistStepStamping {
     public static func save(_ incoming: PlaylistDraft, previous: PlaylistDraft, entries: [PlaylistStampEntry], origin: DraftOrigin,
                             previousUnreadable: Bool = false, newID: () -> UUID,
                             newRevision: () throws -> DraftRevision) throws -> Result {
-        var ids = uniqueIDs(incoming)
+        let unique = uniqueIDs(incoming)
+        var ids = unique.ids
         let given = ids
         for index in ids.indices where ids[index] == nil { ids[index] = newID() }
         var saved = incoming
         saved.setStepIDs(ids)
 
         if previousUnreadable {
-            let known = Dictionary(entries.map { ($0.id, $0.stamp) }, uniquingKeysWith: { first, _ in first })
+            let remembered = Dictionary(entries.map { ($0.id, $0.stamp) }, uniquingKeysWith: { first, _ in first })
             var stamps: [PlaylistStampEntry] = []
             for (index, step) in saved.steps.enumerated() {
                 let id = ids[index]!
-                let origins = (given[index] == nil ? [] : known[id]?.origins ?? []).union([origin, .unknown])
+                let origins = (given[index] == nil ? [] : remembered[id]?.origins ?? []).union([origin, .unknown])
                 stamps.append(PlaylistStampEntry(id: id, stamp: DraftStamp(revision: try newRevision(), origins: origins,
                                                                           contentHash: hash(step, in: saved))))
             }
             return Result(draft: saved, entries: stamps, changed: true)
         }
 
+        let known = Dictionary(entries.map { ($0.id, $0.stamp) }, uniquingKeysWith: { first, _ in first })
         let prior = try adopt(previous, entries: entries, newID: newID, newRevision: newRevision)
         let before = Dictionary(uniqueKeysWithValues: zip(prior.draft.steps, prior.entries).map { ($0.id!, ($0, $1.stamp)) })
         var stamps: [PlaylistStampEntry] = []
@@ -110,11 +119,15 @@ public enum PlaylistStepStamping {
             let id = ids[index]!
             let current = hash(step, in: saved)
             guard given[index] != nil else {
-                stamps.append(PlaylistStampEntry(id: id, stamp: DraftStamp(revision: try newRevision(), origins: [origin], contentHash: current)))
+                // 식별자가 없는 단계는 이번 출처가 새로 만든 단계다. 식별자가 겹쳐 비운 단계는 확인할 수 없으니 모름도 더한다
+                let origins: Set<DraftOrigin> = unique.duplicated.contains(index) ? [origin, .unknown] : [origin]
+                stamps.append(PlaylistStampEntry(id: id, stamp: DraftStamp(revision: try newRevision(), origins: origins, contentHash: current)))
                 continue
             }
             guard let (previousStep, old) = before[id] else {
-                stamps.append(PlaylistStampEntry(id: id, stamp: DraftStamp(revision: try newRevision(), origins: [origin, .unknown],
+                // 식별자는 있는데 지금 파일에 단계가 없다(정리·복구로 파일에서 빠졌다). 사이드카에 도장이 남아 있으면 그 출처를 잇고 모름을 더한다
+                let remembered = known[id]?.origins ?? []
+                stamps.append(PlaylistStampEntry(id: id, stamp: DraftStamp(revision: try newRevision(), origins: remembered.union([origin, .unknown]),
                                                                           contentHash: current)))
                 continue
             }

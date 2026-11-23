@@ -92,20 +92,39 @@ struct PlaylistStepStampingTests {
         #expect(!again.changed)
     }
 
-    @Test func 도장이_없는_단계는_모름이고_식별자가_겹치면_뒤_단계가_새_식별자를_받는다() throws {
+    @Test func 도장이_없는_단계는_모름_도장을_받고_도장이_있는_단계는_그대로다() throws {
         let counter = Counter()
         var draft = try Self.draft([Self.add, Self.remove, Self.add])
-        let id = counter.newID()
-        draft.setStepIDs([id, id, nil])
-        let result = try PlaylistStepStamping.adopt(draft, entries: [PlaylistStampEntry(id: id, stamp: Self.stamp(1, [.human], draft, 0))],
+        let ids = [counter.newID(), counter.newID()]
+        draft.setStepIDs([ids[0], ids[1], nil])
+        let result = try PlaylistStepStamping.adopt(draft, entries: [PlaylistStampEntry(id: ids[0], stamp: Self.stamp(1, [.human], draft, 0))],
                                                     newID: counter.newID, newRevision: counter.newRevision)
-        let ids = result.draft.stepIDs.compactMap { $0 }
-        #expect(ids.count == 3 && Set(ids).count == 3 && ids[0] == id)
-        #expect(result.entries[0].stamp.origins == [.human])
+        let adopted = result.draft.stepIDs.compactMap { $0 }
+        #expect(adopted.count == 3 && Set(adopted).count == 3 && Array(adopted.prefix(2)) == ids)
+        #expect(result.entries[0].stamp.origins == [.human] && result.entries[0].stamp.revision == DraftRevision(1))
         #expect(result.entries[1].stamp.origins == [.unknown] && result.entries[2].stamp.origins == [.unknown])
     }
 
     /// 원칙: 단계의 동일성을 확인할 수 없으면 옛 판을 어떤 단계에도 붙이지 않는다. 단계 수가 같아도 같은 자리의 도장을 잇지 않는다
+    /// 같은 식별자를 가진 단계가 둘 이상이면 어느 단계가 그 식별자의 단계인지 확인할 수 없다: 모두 새 식별자·새 판·모름을 받는다
+    @Test func 식별자가_겹친_단계는_모두_새_식별자와_모름_도장을_받는다() throws {
+        let counter = Counter()
+        var written = try Self.draft([Self.add])
+        let id = counter.newID()
+        written.setStepIDs([id])
+        let entries = [PlaylistStampEntry(id: id, stamp: Self.stamp(1, [.human], written, 0))]
+        var outside = try Self.draft([.rename(playlist: .id("B"), name: "x"), Self.add])
+        outside.setStepIDs([id, id])
+        let result = try PlaylistStepStamping.adopt(outside, entries: entries, newID: counter.newID, newRevision: counter.newRevision)
+        let ids = result.draft.stepIDs.compactMap { $0 }
+        #expect(ids.count == 2 && Set(ids).count == 2 && !ids.contains(id))
+        #expect(result.entries.allSatisfy { $0.stamp.origins == [.unknown] && $0.stamp.revision.value > 100 })
+        // 저장하는 초안에서도 겹친 식별자는 어느 단계도 잇지 않는다(이번 출처와 모름)
+        let saved = try PlaylistStepStamping.save(outside, previous: written, entries: entries, origin: .human,
+                                                  newID: counter.newID, newRevision: counter.newRevision)
+        #expect(!saved.draft.stepIDs.contains(id) && saved.entries.allSatisfy { $0.stamp.origins == [.human, .unknown] })
+    }
+
     @Test func 식별자가_없으면_단계_수가_같아도_같은_자리의_도장을_잇지_않는다() throws {
         let counter = Counter()
         let before = try Self.draft([Self.add, .rename(playlist: .id("B"), name: "x")])

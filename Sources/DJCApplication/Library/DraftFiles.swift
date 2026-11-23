@@ -19,6 +19,10 @@ public struct DraftFiles: Sendable {
     /// 실제 구현은 쓴 뒤 정리(판 지정 삭제)와 같은 초안 잠금 안에서 하므로 재확인과 저장 사이에 정리가 끼어들어 쓴 단계를 되살리지 못한다(R22).
     /// nil이면(잠금이 없는 가짜) `savePlaylist(_:ifCurrentIs:)`가 `readPlaylist`로 읽어 견준 뒤 `savePlaylist`로 저장한다
     public var savePlaylistIfUnchanged: (@Sendable (_ expected: PlaylistDraft, _ draft: PlaylistDraft) throws -> Bool)?
+    /// 재생 목록 초안 파일을 단계 식별자를 채워 읽는다(CLI가 단계를 쌓기 전에). 식별자 없는 옛 파일의 기존 단계는 식별자와 모름 도장을 받아
+    /// 파일에 적힌다(건드리지 않은 기존 단계에 CLI 출처가 붙지 않게 한다, R5). 쓰기가 없는 미리 보기는 `readPlaylist`로 읽는다.
+    /// nil이면(도장이 없는 가짜) `readPlaylist`와 같다
+    public var readPlaylistIdentified: (@Sendable () throws -> PlaylistDraft)?
     /// 재생 목록 초안 파일 잠금(#260): 잡으면 푸는 함수, 앱이 rekordbox에 쓰는 중이거나 다른 실행이 들고 있으면 nil.
     /// 읽기·계획·저장을 이 잠금 안에서 한다. 잠금이 없는 구현은 늘 잡는다
     public var lockPlaylist: @Sendable () -> (@Sendable () -> Void)? = { {} }
@@ -91,5 +95,13 @@ extension DraftFiles {
         guard current == expected else { return false }
         try savePlaylist(draft)
         return true
+    }
+}
+
+extension DraftFiles {
+    /// 재생 목록 초안 파일을 단계 식별자를 채워 읽는다(`readPlaylistIdentified`, 없으면 `readPlaylist`)
+    public func readPlaylistWithIdentifiers() throws -> PlaylistDraft {
+        if let readPlaylistIdentified { return try readPlaylistIdentified() }
+        return try readPlaylist()
     }
 }

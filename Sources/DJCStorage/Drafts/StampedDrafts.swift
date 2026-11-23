@@ -37,14 +37,17 @@ public enum StampedDrafts {
     // MARK: 곡 초안 저장
 
     /// 파일이 있었는지 보고, 쓰고, 읽은 값의 해시로 도장을 적는다. 덮어쓰기 전에 지금 파일 내용의 해시를 저장된 도장의 해시와 견준다:
-    /// 다르면(바깥에서 고쳤다) 새 도장의 출처에 모름을 더한다. 읽지 못해도 같다
+    /// 다르면(바깥에서 고쳤다) 새 도장의 출처에 모름을 더한다. 읽지 못해도 같다. 파일은 없는데 도장이 남아 있어도 같다
     private static func stamped(_ key: DraftKey, home: URL, file: URL, origin: DraftOrigin, write: () throws -> Void,
                                 hash: () -> DraftContentHash?) throws {
         try DraftStampStore.withLock(home: home) {
-            let existed = FileManager.default.fileExists(atPath: file.path)
-            let outside = existed ? DraftStampStore.read(key, home: home).map { hash() != $0.contentHash } ?? false : false
+            let present = FileManager.default.fileExists(atPath: file.path)
+            let old = DraftStampStore.read(key, home: home)
+            // 파일은 없는데 그 키의 도장이 남아 있다(손상 파일을 복구가 옮겼거나 바깥이 지웠다): 기존 출처를 잇고 모름을 더한다
+            let stale = !present && old != nil
+            let outside = stale || (present ? old.map { hash() != $0.contentHash } ?? false : false)
             try write()
-            try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: hash(), outside: outside)
+            try DraftStampStore.restamp(key, home: home, existed: present || stale, origin: origin, hash: hash(), outside: outside)
         }
     }
 
@@ -94,8 +97,10 @@ public enum StampedDrafts {
             let unreadable = readable == nil
             let current = readable?[trackUUID]
             let old = DraftStampStore.read(key, home: home)
-            let existed = current != nil || (unreadable && old != nil)
-            let outside = unreadable || (current != nil && old.map { hash(current) != $0.contentHash } ?? false)
+            // 그 곡의 도장이 남아 있는데 곡이 파일에 없다(손상 파일을 복구가 옮겼거나 바깥이 지웠다)도 기존 출처를 잇고 모름을 더한다
+            let stale = current == nil && old != nil
+            let existed = current != nil || stale
+            let outside = unreadable || stale || (current != nil && old.map { hash(current) != $0.contentHash } ?? false)
             try GainDraftStore.save(gain, trackUUID: trackUUID, url: url)
             let saved = (try? GainDraftStore.read(url: url))?[trackUUID]
             try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: hash(saved), outside: outside)
@@ -138,13 +143,14 @@ public enum StampedDrafts {
             for draft in saved {
                 guard let hash = try? DraftContentHash(of: draft) else { continue }
                 // 덮어쓰기 전 파일의 초안 해시가 도장의 해시와 다르면(바깥에서 고쳤다) 내용이 같아도 새 도장이다
-                let outside = unreadable || (existing[draft.id].flatMap { before in old[draft.id].map { self.hash(before) != $0.contentHash } } ?? false)
+                let stale = existing[draft.id] == nil && old[draft.id] != nil
+                let outside = unreadable || stale || (existing[draft.id].flatMap { before in old[draft.id].map { self.hash(before) != $0.contentHash } } ?? false)
                 if let stamp = old[draft.id], stamp.contentHash == hash, !outside { stamps[draft.id] = stamp } else { changed.append((draft, hash, outside)) }
             }
             let revisions = try DraftStampStore.nextRevisions(changed.count, home: home)
             for (item, revision) in zip(changed, revisions) {
                 var origins: Set<DraftOrigin> = [origin]
-                if existing[item.draft.id] != nil || (unreadable && old[item.draft.id] != nil) { origins.formUnion(old[item.draft.id]?.origins ?? [.unknown]) }
+                if existing[item.draft.id] != nil || old[item.draft.id] != nil { origins.formUnion(old[item.draft.id]?.origins ?? [.unknown]) }
                 if item.outside { origins.insert(.unknown) }
                 stamps[item.draft.id] = DraftStamp(revision: revision, origins: origins, contentHash: item.hash)
             }

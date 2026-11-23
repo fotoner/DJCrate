@@ -168,7 +168,8 @@ public struct EditDraftFiles: Sendable {
             // 쓰는 동안 바꾼 초안은 앱의 쓴 뒤 정리가 지우거나 낡은 편집으로 남긴다(#260). 미리 보기는 저장하지 않아 잡지 않는다
             let unlock = dryRun ? nil : try lockPlaylist()
             defer { unlock?() }
-            let base = try existing { try files.readPlaylist() } ?? PlaylistDraft()
+            // 저장할 때는 계획하기 전에 기존 단계에 식별자와 모름 도장을 붙인다(건드리지 않은 기존 단계에 CLI 출처가 붙지 않게). 미리 보기는 파일을 쓰지 않는다
+            let base = try existing { dryRun ? try files.readPlaylist() : try files.readPlaylistWithIdentifiers() } ?? PlaylistDraft()
             let batch = EditPlaylists.planning(requests, onto: base, rekordbox: rekordbox, contentIDs: contentIDs,
                                                allOrNothing: allOrNothing, newKey: newKey)
             if batch.skippedCount > 0, !batch.hasChanges { throw Self.blocked(batch) }

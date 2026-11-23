@@ -727,4 +727,81 @@ struct DraftStampLiveTests {
         try Data("깨짐".utf8).write(to: places.playlist)
         #expect(throws: (any Error).self) { try app.readPlaylistDraft() }
     }
+
+    // MARK: 리뷰 3라운드(S1·S3·S9)
+
+    /// S1: 식별자가 겹치면 어느 단계도 옛 판을 잇지 않는다. 바깥이 `[미반영 B, 쓴 A]`를 둘 다 A의 식별자로 저장해도
+    /// A의 판으로 하는 정리는 B를 지우지 않는다
+    @Test func 식별자가_겹친_단계는_모두_옛_판을_잇지_않아_정리가_미반영_단계를_지우지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        try app.savePlaylistDraft(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])]))
+        let stamps = app.playlistStamps()
+        let id = try #require(app.playlistDraft().stepIDs[0])
+        let written = [WrittenPlaylistStep(revision: stamps[0].revision, contentHash: stamps[0].contentHash)]
+        // 바깥이 [미반영 B, A]를 둘 다 A의 식별자로 저장했다
+        var outside = try Self.playlist([.rename(playlist: .id("B"), name: "x"), .addTracks(playlist: .id("A"), contentIDs: ["9"])])
+        outside.setStepIDs([id, id])
+        try PlaylistDraftStore.save(outside, url: places.playlist)
+        let restarted = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let result = try restarted.removeWrittenSteps(PlaylistStepCleanup(written: written, newPlaylistIDs: [:],
+                                                                           backups: folder.url.appending(path: "backups"), backupFolder: "b"))
+        #expect(result.removed.isEmpty && result.notFound == [written[0].revision] && restarted.playlistDraft().steps.count == 2)
+        let after = restarted.playlistStamps()
+        #expect(after.allSatisfy { $0.origins == [.unknown] } && Set(after.map(\.revision)).count == 2)
+        #expect(Set(restarted.playlistDraft().stepIDs.compactMap { $0 }).count == 2)
+    }
+
+    /// S3: 손상 파일을 앱의 복구 경로가 옮긴 뒤 메모리 초안을 다시 저장해도 그 키의 도장이 남아 있으면 기존 출처를 잇고 모름을 더한다
+    @Test func 복구가_손상_파일을_옮긴_뒤_다시_저장해도_기존_출처를_잇고_모름을_더한다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let cli = DraftFiles.live(home: folder.url).with(origin: .cli)
+        let merge = DuplicateMergeDraft(keeping: .init(contentID: "1", trackUUID: "m", title: "가", duration: 60, offset: 0, cues: []),
+                                        removing: [], base: "b")
+        var tag = TagDraft(trackUUID: "t", base: TagFields())
+        tag.fields.comment = "CLI 코멘트"
+        try cli.saveTag(tag)
+        try cli.saveCue(Self.cue("a", at: 1))
+        try StampedDrafts.saveGain(-3, trackUUID: "g", url: places.gain, origin: .cli)
+        try StampedDrafts.saveMerges([merge], url: places.merge, origin: .cli)
+        try cli.savePlaylist(try Self.playlist([.rename(playlist: .id("A"), name: "x")]))
+        let memoryPlaylist = app.playlistDraft()
+        // 파일이 깨졌고 앱의 복구 경로가 그 파일을 옮겼다
+        for url in [places.tags.appending(path: "t.json"), places.cue.appending(path: "a.json"), places.gain, places.merge, places.playlist] {
+            try Data("깨짐".utf8).write(to: url)
+        }
+        #expect(app.preserveDamaged().count == 5)
+        #expect(!FileManager.default.fileExists(atPath: places.tags.appending(path: "t.json").path))
+        // 복구 경로가 메모리 초안을 다시 저장한다
+        app.saveTags([tag])
+        app.saveCue(Self.cue("a", at: 1))
+        app.saveGain(-3, trackUUID: "g")
+        try app.saveMergeDrafts([merge])
+        var resaved = memoryPlaylist
+        try resaved.append(.addTracks(playlist: .id("B"), contentIDs: ["9"]), rekordbox: Self.rekordbox)
+        try app.savePlaylistDraft(resaved)
+        app.flush()
+        for key in [DraftKey(.tag, "t"), DraftKey(.cue, "a"), DraftKey(.gain, "g"), DraftKey(.merge, "m")] {
+            #expect(app.stamp(key)?.origins == [.cli, .human, .unknown], "\(key)")
+        }
+        // 재생 목록: 도장이 남은 단계는 기존 출처를 잇고, 새로 더한 단계는 이번 출처다
+        let stamps = app.playlistStamps()
+        #expect(stamps.count == 2 && stamps[0].origins == [.cli, .human, .unknown] && stamps[1].origins == [.human])
+    }
+
+    /// S9: 업데이트 전(식별자 없는) 재생 목록 초안에 CLI로 단계를 더해도 건드리지 않은 기존 단계는 모름이다. 새 단계만 CLI다
+    @Test func 식별자_없는_옛_재생_목록에_CLI가_단계를_더해도_기존_단계는_모름이다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try PlaylistDraftStore.save(try Self.playlist([.rename(playlist: .id("A"), name: "x")]), url: places.playlist)
+        let edits = EditDraftFiles(files: DraftFiles.live(home: folder.url).with(origin: .cli))
+        let request = PlaylistEditRequest.create(name: "새 목록", isFolder: false, parent: .ref(.root), position: nil, alias: nil, tracks: [])
+        // 미리 보기는 파일을 쓰지 않는다: 식별자도 도장도 적지 않는다
+        let preview = try edits.stackPlaylistEdits([request], rekordbox: Self.rekordbox, contentIDs: ["9"], allOrNothing: false, dryRun: true)
+        #expect(preview.hasChanges && PlaylistDraftStore.load(url: places.playlist).stepIDs == [nil])
+        #expect(!FileManager.default.fileExists(atPath: DraftStampStore.folder(home: folder.url).path))
+        _ = try edits.stackPlaylistEdits([request], rekordbox: Self.rekordbox, contentIDs: ["9"], allOrNothing: false, dryRun: false)
+        let stamps = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human).playlistStamps()
+        #expect(stamps.count == 2 && stamps[0].origins == [.unknown] && stamps[1].origins == [.cli])
+    }
 }

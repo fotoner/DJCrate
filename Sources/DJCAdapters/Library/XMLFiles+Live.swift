@@ -73,6 +73,7 @@ extension DraftFiles {
             do { return try StampedDrafts.savePlaylist(draft, url: places.playlist, origin: origin, expecting: expected) }
             catch is DraftFileDamaged { throw DraftFilesUnreadable() }
         }
+        files.readPlaylistIdentified = { try StampedDrafts.identifiedPlaylist(home: home) }
         files.origin = origin
         files.stamp = { DraftStampStore.stamp($0, home: home) }
         files.originVariant = { live(home: home, origin: $0) }
