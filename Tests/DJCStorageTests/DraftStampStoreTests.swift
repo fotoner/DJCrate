@@ -174,6 +174,38 @@ struct DraftStampStoreTests {
         #expect(DraftSuggestion.judge(stamp: stamp, currentHash: file) != nil)
     }
 
+    /// 재리뷰 S11: 지우기도 도장을 먼저 고친다. 도장 기록이 실패하면 초안 파일(바깥이 고친 내용 포함)은 지워지지 않고 오류를 던진다
+    @Test func 도장_기록이_실패하면_초안_지우기도_파일을_남긴다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a", at: 1), directory: places.cue, origin: .human)
+        // 앱이 아직 읽지 않은 바깥(CLI) 편집
+        try CueDraftStore.save(Self.cue("a", at: 7), directory: places.cue)
+        let before = try Data(contentsOf: places.cue.appending(path: "a.json"))
+        let stamps = DraftStampStore.folder(home: folder.url)
+        try FileManager.default.moveItem(at: stamps, to: folder.url.appending(path: "옮긴-도장"))
+        try Data("막음".utf8).write(to: stamps)
+        #expect(throws: (any Error).self) { try StampedDrafts.removeCue(trackUUID: "a", directory: places.cue) }
+        #expect(try Data(contentsOf: places.cue.appending(path: "a.json")) == before)
+    }
+
+    /// 재리뷰 S12: 같은 내용을 같은 출처로 다시 저장하면 파일도 도장도 그대로다(판이 그대로라 이미 쓴 판의 정리가 찾는다).
+    /// 파일을 다시 쓰지 않으므로 초안 폴더에 쓸 수 없어도 실패하지 않는다
+    @Test func 같은_내용을_같은_출처로_다시_저장하면_판이_그대로다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let draft = Self.cue("a", at: 1)
+        try StampedDrafts.saveCue(draft, directory: places.cue, origin: .human)
+        let first = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: places.cue.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: places.cue.path) }
+        try StampedDrafts.saveCue(draft, directory: places.cue, origin: .human)
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url) == first)
+        // 다른 출처가 같은 내용을 저장하면 출처가 합쳐져 새 판이다(제안)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: places.cue.path)
+        try StampedDrafts.saveCue(draft, directory: places.cue, origin: .cli)
+        let merged = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        #expect(merged.revision > first.revision && merged.origins == [.human, .cli])
+    }
+
     @Test func 도장_자리는_초안_폴더_밖_이름을_받지_않는다() throws {
         let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
         // 도장 자리를 이름으로 풀 때 도장 폴더 밖을 읽거나 쓰지 않는다(초안 파일 쪽 검사는 지금과 같다)

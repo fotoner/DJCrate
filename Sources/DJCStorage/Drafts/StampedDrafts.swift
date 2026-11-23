@@ -46,7 +46,8 @@ public enum StampedDrafts {
     /// 읽지 못해도 같고, 파일은 없는데 도장이 남아 있어도 같다.
     /// 저장은 도장을 초안 파일보다 먼저 쓴다(`written`: 파일에 쓸 값이 읽혀 돌아올 때의 해시). 도장 기록에 실패하면 초안 파일은 한 바이트도
     /// 바뀌지 않고 오류를 던진다. 도장을 쓴 뒤 파일 쓰기에 실패해도 도장의 해시가 파일과 달라 제안 쪽으로만 틀어진다.
-    /// 지우기(`written`이 nil)는 파일을 먼저 지우고 도장을 지운다(지우기 실패는 도장도 그대로 둔다)
+    /// 지우기(`written`이 nil)도 도장을 먼저 지운다: 도장 기록에 실패하면 파일은 그대로 남고, 파일 지우기에 실패하면 도장 없는 파일이라 모름(제안)으로 보인다.
+    /// 같은 내용을 같은 출처로 다시 저장하면 파일도 도장도 건드리지 않는다(판을 올리지 않아 이미 쓴 판의 정리가 그대로 찾는다)
     private static func stamped(_ key: DraftKey, home: URL, file: URL, origin: DraftOrigin, write: () throws -> Void,
                                 hash: () -> DraftContentHash?, written: () -> DraftContentHash?) throws {
         try DraftStampStore.withLock(home: home) {
@@ -56,11 +57,12 @@ public enum StampedDrafts {
             let stale = !present && old != nil
             let outside = stale || (present ? old.map { hash() != $0.contentHash } ?? false : false)
             if let next = written() {
+                if present, !outside, let old, old.contentHash == next, old.origins.contains(origin) { return }
                 try DraftStampStore.restamp(key, home: home, existed: present || stale, origin: origin, hash: next, outside: outside)
                 try write()
             } else {
-                try write()
                 try DraftStampStore.restamp(key, home: home, existed: present || stale, origin: origin, hash: nil, outside: outside)
+                try write()
             }
         }
     }
@@ -130,13 +132,14 @@ public enum StampedDrafts {
             let stale = current == nil && old != nil
             let existed = current != nil || stale
             let outside = unreadable || stale || (current != nil && old.map { hash(current) != $0.contentHash } ?? false)
-            // 저장은 도장을 먼저 쓴다(도장 기록에 실패하면 게인 파일은 바뀌지 않는다). 지우기는 파일을 먼저 고친다
+            // 저장·지우기 모두 도장을 먼저 고친다(도장 기록에 실패하면 게인 파일은 바뀌지 않는다). 같은 값을 같은 출처로 다시 저장하면 그대로 둔다
             if let gain {
+                if current == gain, !outside, let old, old.contentHash == hash(gain), old.origins.contains(origin) { return }
                 try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: hash(gain), outside: outside)
                 try GainDraftStore.save(gain, trackUUID: trackUUID, url: url)
             } else {
-                try GainDraftStore.save(nil, trackUUID: trackUUID, url: url)
                 try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: nil, outside: outside)
+                try GainDraftStore.save(nil, trackUUID: trackUUID, url: url)
             }
         }
     }
