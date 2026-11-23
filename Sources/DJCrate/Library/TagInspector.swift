@@ -68,6 +68,8 @@ struct TagInspector: View {
         }
         .formStyle(.grouped)
         .font(.scaled(.body, textScale))
+        // 쓰는 묶음에 든 곡을 골랐으면 칸을 막는다(R21). 다른 곡을 골랐으면 쓰는 동안에도 고친다
+        .disabled(model.isWriteLocked(rows))
     }
 
     private func field(_ key: TagFields.Key, rows: [TrackRow], axis: Axis = .horizontal) -> some View {

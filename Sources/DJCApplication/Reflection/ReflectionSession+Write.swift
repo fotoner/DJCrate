@@ -18,8 +18,9 @@ extension ReflectionSession {
             return publish(.notice(title: String(ui: "저장할 편집이 없습니다"), text: String(ui: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 편집이 없습니다."),
                                    lines: exclusions(for: rows, blockedOnly: false)))
         }
-        lock(true)
-        defer { lock(false) }
+        // 쓰는 곡만 잠근다(R21): 고른 곡과 합치기로 묶인 곡. 덱 재생은 멈추지 않는다
+        lockDraftWrite(tracks: lockedTracks(for: chosen))
+        defer { unlockDraftWrite() }
         do {
             stage(WriteStage(String(ui: "바꿀 내용을 확인하는 중…"), completed: 0, total: chosen.count, cancellable: true))
             try Task.checkCancellation()
@@ -46,6 +47,13 @@ extension ReflectionSession {
             // 미리 보기에서 제외한 초안은 따로 창을 띄우지 않고 실패 알림에 합친다(#230).
             return publish(.failed(title: String(ui: "rekordbox에 저장하지 않았습니다"), error: error, exclusions: exclusions(for: rows, blockedOnly: true)))
         }
+    }
+
+    /// 쓰는 동안 편집을 막을 곡: 쓸 곡과, 그 곡이 든 합치기 초안으로 묶인 곡 모두(`DraftWriteBatch.trackUUIDs`와 같은 범위)
+    func lockedTracks(for rows: [TrackRow]) -> Set<String> {
+        let uuids = Set(rows.map(\.track.uuid))
+        let merged = ports.library.state().mergeDrafts.filter { $0.members.contains { uuids.contains($0.trackUUID) } }
+        return uuids.union(merged.flatMap { $0.members.map(\.trackUUID) })
     }
 
     /// 미리 보기(단계): 초안을 확인해 묶고, 위치의 rekordbox에서 새 사본을 떠 끝까지 써 본다(rekordbox는 건드리지 않는다).

@@ -172,6 +172,8 @@ final class TrackStagingStore {
     }
 
     func removeStaged(_ ids: Set<TrackRow.ID>) {
+        // 쓰는 동안은 추가 목록을 바꾸지 않는다. 사이드바·상세를 통째로 막던 줄이 곡 단위로 쓰는 동안 풀려 이 가드가 맡는다(R21)
+        guard !library.libraryBusy else { return }
         let removing = staged.filter { ids.contains($0.id) }
         guard !removing.isEmpty else { return }
         var imports = library.playlists.playlistImports
@@ -240,6 +242,8 @@ final class TrackStagingStore {
 
     /// 지금 보이는 "BPM·그리드 없음" 곡을 모두 추정한다.
     func estimateGridsForDisplayedRows() {
+        // 쓰는 동안은 그리드 초안을 새로 만들지 않는다(쓰는 곡의 초안이 쓰는 도중 생기지 않게, R21)
+        guard !library.libraryBusy else { return }
         enqueueGrid(library.displayRows.filter { !$0.track.isStreaming }.map {
             GridJobItem(uuid: $0.track.uuid, path: $0.track.folderPath, staged: $0.isStaged)
         })
@@ -258,6 +262,8 @@ final class TrackStagingStore {
     }
 
     private func estimateGrid(_ item: GridJobItem) async {
+        // 이미 줄 선 곡이 그 사이 쓰는 묶음에 들었으면 건너뛴다(쓰는 곡의 초안을 만들지 않는다)
+        guard !library.isEditLocked(item.uuid) else { return }
         switch await library.useCases.stage.estimateGrid(item) {
         case let .existing(bpm):
             // 덱에서 이미 적용했거나 편집한 곡: 목록 BPM만 맞춘다.

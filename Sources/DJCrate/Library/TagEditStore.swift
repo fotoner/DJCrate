@@ -54,8 +54,8 @@ final class TagEditStore {
         settings.setStrings(SettingKeys.dismissedKeySuggestions, dismissedKeySuggestions)
     }
 
-    /// 쓰는 동안(덱 제안 줄의 단추를 막는다)
-    var editsFrozen: Bool { library.editsFrozen }
+    /// 이 곡들 가운데 쓰는 곡이 있는지(덱 제안 줄의 단추를 막는다). 통째 잠금이면 모든 곡이 잠긴 것이다.
+    func isLocked(_ rows: [TrackRow]) -> Bool { rows.contains { library.isEditLocked($0.track.uuid) } }
 
     /// 목록에 있는 같은 곡의 행(동기화로 rekordbox 값이 바뀌었으면 새 값)
     func listedRow(uuid: String) -> TrackRow? { library.rowsByUUID[uuid] }
@@ -84,21 +84,27 @@ final class TagEditStore {
     }
 
     func revertTags(rows: [TrackRow]) {
-        guard !library.editsFrozen else { return }
+        let rows = editable(rows)
+        guard !rows.isEmpty else { return }
         commit(edit.revert(rows, drafts: library.tagDrafts, colors: library.trackColors))
     }
 
     /// 현재 값과 충돌한 칸 하나만 사용자가 선택한다. 다른 칸의 충돌은 writer가 계속 막는다.
     func resolveTagConflict(_ key: TagFields.Key, keepingDraft: Bool, rows: [TrackRow]) {
-        guard !library.editsFrozen else { return }
+        let rows = editable(rows)
+        guard !rows.isEmpty else { return }
         commit(edit.resolveConflict(key, keepingDraft: keepingDraft, rows: rows, drafts: library.tagDrafts, current: library.rowsByUUID))
     }
 
     /// 여러 셀을 한 번에 바꾼다(태그 시트 붙여넣기·채우기). 되돌리기 한 단위가 된다.
     func applyTagEdits(_ changes: [(row: TrackRow, key: TagFields.Key, value: String)]) {
-        guard !library.editsFrozen else { return }
+        let changes = changes.filter { !library.isEditLocked($0.row.track.uuid) }
+        guard !changes.isEmpty else { return }
         commit(edit.edit(changes, drafts: library.tagDrafts, colors: library.trackColors))
     }
+
+    /// 쓰는 묶음에 든 곡은 뺀다(R21: 쓰는 곡의 초안만 막고 다른 곡은 고친다). 통째 잠금이면 모두 뺀다.
+    private func editable(_ rows: [TrackRow]) -> [TrackRow] { rows.filter { !library.isEditLocked($0.track.uuid) } }
 
     private func commit(_ change: DraftChange<[String: TagDraft]>?) {
         guard let change else { return }
@@ -116,7 +122,8 @@ final class TagEditStore {
             undoManager.beginUndoGrouping()
         }
         undoManager.registerUndo(withTarget: library) { target in
-            guard !target.editsFrozen else { return }
+            // 쓰는 곡이 든 단계는 통째로 건너뛴다(쓰는 초안을 되돌리지 않는다). 쓰기를 시작하면 이 대상의 되돌리기 단계는 이미 지워진다
+            guard !change.before.keys.contains(where: target.isEditLocked) else { return }
             target.tags.show(change.before)
             target.tags.registerUndo(change.reversed)
         }

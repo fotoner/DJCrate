@@ -60,6 +60,9 @@ final class TagInspectorModel {
     /// 글자 칸을 막을지(고른 곡이 모두 USB·스트리밍 곡)
     func isTextLocked(_ rows: [TrackRow]) -> Bool { rows.allSatisfy { $0.isUsb || $0.track.isStreaming } }
 
+    /// 고른 곡 가운데 쓰는 곡이 있는지(R21): 인스펙터 칸을 모두 막는다. 쓰는 동안만이라 안내 문구는 두지 않는다
+    func isWriteLocked(_ rows: [TrackRow]) -> Bool { tags.isLocked(rows) }
+
     /// 글자 칸 도움말(첫 곡을 고칠 수 없으면 그 이유)
     func textHelp(_ key: TagFields.Key, rows: [TrackRow]) -> String {
         rows.first.flatMap { TrackListTagEditing.unavailableReason($0, key: key) } ?? key.label

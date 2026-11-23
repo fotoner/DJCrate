@@ -44,7 +44,9 @@ struct Sidebar: View {
             }
             SidebarHistorySection(history: store.history)
             if let usb = store.usb {
+                // USB 쓰기·편집은 쓰는 동안 라이브러리 사본과 겹치지 않게 막는다(곡 단위로 쓰는 동안 사이드바 전체를 막지 않으므로 여기서 막는다)
                 UsbSidebarSection(store: store, usb: usb)
+                    .disabled(store.libraryBusy)
             }
             SidebarStatusSections(store: store)
         }

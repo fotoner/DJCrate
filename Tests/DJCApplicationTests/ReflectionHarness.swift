@@ -25,8 +25,11 @@ final class ReflectionHarness {
     var answer = true
     var choice: ReflectionChoice = .confirm
     var locked = false
-    /// (잠금, 덱도) 차례
+    var lockedTrackSet: Set<String> = []
+    /// 잠금을 건 차례: "true"·"false"(쓰는 중, 덱도 잠그면 접미 없음, 덱 빼면 " (덱 빼고)")와 "곡 a,b"(곡 단위 잠금, 비면 "곡 -")가 한 줄에 섞여 선후를 본다
     var locks: [String] = []
+    /// 곡 단위 편집 잠금이 정해진 차례(R21: 쓰는 묶음에 든 곡, 비면 푼 것)
+    var trackLocks: [Set<String>] = []
     var stages: [WriteStage?] = []
     /// 단계를 알릴 때마다 부른다(그 순간 화면 상태를 본다)
     var onStage: (@MainActor (WriteStage?) -> Void)?
@@ -108,13 +111,7 @@ final class ReflectionHarness {
                             self.postponed.append((written, edits))
                             return true
                         }),
-                        lock: WriteLock(isLocked: { self.locked }, set: { locked, deck in
-                            self.locked = locked
-                            self.locks.append("\(locked)\(deck ? "" : " (덱 빼고)")")
-                        }, stage: {
-                            self.stages.append($0)
-                            self.onStage?($0)
-                        }),
+                        lock: lock,
                         confirmation: UserConfirmation(confirm: { prompt in
                             self.prompts.append(prompt)
                             self.onPrompt?()
@@ -131,6 +128,23 @@ final class ReflectionHarness {
                         playlistImports: PlaylistImportsStore(load: { PlaylistImports() }, save: { imports in
                             MainActor.assumeIsolated { self.importsSaved.append(imports) }
                         }))
+    }
+
+    private var lock: WriteLock {
+        var lock = WriteLock(isLocked: { self.locked }, set: { locked, deck in
+            self.locked = locked
+            self.locks.append("\(locked)\(deck ? "" : " (덱 빼고)")")
+        }, stage: {
+            self.stages.append($0)
+            self.onStage?($0)
+        })
+        lock.setTracks = { tracks in
+            self.lockedTrackSet = tracks
+            self.trackLocks.append(tracks)
+            self.locks.append("곡 " + (tracks.isEmpty ? "-" : tracks.sorted().joined(separator: ",")))
+        }
+        lock.lockedTracks = { self.lockedTrackSet }
+        return lock
     }
 
     private var libraryState: ReflectionLibraryState {

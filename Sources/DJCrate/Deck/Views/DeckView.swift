@@ -31,7 +31,7 @@ struct DeckView: View {
                                 .textSelection(.enabled)
                             Spacer(minLength: 8)
                             Button(.ui("다시 적용")) { deck.retryDraftSaves() }
-                                .disabled(deck.editsFrozen)
+                                .disabled(deck.isEditLocked)
                         }
                         .font(.scaled(.caption, textScale))
                     }

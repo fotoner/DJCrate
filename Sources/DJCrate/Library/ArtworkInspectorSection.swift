@@ -34,7 +34,7 @@ struct ArtworkInspectorSection: View {
                     Button(.ui("앨범아트 편집 버리기")) { model.discardDrafts(rows: editable) }
                         .disabled(drafts.isEmpty)
                 }
-                .disabled(editable.isEmpty || model.isLocked)
+                .disabled(editable.isEmpty || model.isLocked(rows: rows))
             }
             if let message = model.message {
                 Label(message.text, systemImage: WarningMark.symbol)

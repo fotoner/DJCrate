@@ -60,7 +60,9 @@ extension LibraryStore {
         }
     }
 
-    /// 쓰는 동안 잠근다. `deck`이면 덱도 재생을 멈추고 조작을 막는다(iTunes 동기화는 덱을 잠그지 않는다).
+    /// 쓰는 동안 라이브러리를 쓰는 중으로 묶는다(`libraryBusy`·종료 판단). `deck`이면 덱도 재생을 멈추고 조작을 막는다(iTunes 동기화는 덱을 잠그지 않는다).
+    /// 초안을 쓸 때는 곡 단위 잠금(`lockedTracks`, 쓰기 포트 `setTracks`)을 먼저 정한 뒤 `deck: false`로 부른다: 그러면 편집 잠금이 통째로 걸리지 않고(`editsFrozen`)
+    /// 덮개도 뜨지 않으며 쓰는 곡만 막힌다(R21).
     func setWriteLock(_ locked: Bool, deck: Bool = true) {
         if locked {
             // 쓰는 동안 CLI가 재생 목록 초안 파일을 고치지 못하게 잡고(#260), 그 전에 바깥에서 바뀐 초안을 먼저 받는다(1초 확인을 기다리지 않게)

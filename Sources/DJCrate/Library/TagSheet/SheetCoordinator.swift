@@ -163,7 +163,8 @@ final class SheetCoordinator: NSObject, NSTableViewDataSource, NSTableViewDelega
 
     /// 편집 가능한 칸인가. 스트리밍 곡은 파일 태그가 없어 편집하지 않는다.
     func editableKey(row: Int, column: Int) -> TagFields.Key? {
-        guard rows.indices.contains(row), !rows[row].track.isStreaming, let key = spec(atColumn: column)?.key else { return nil }
+        guard rows.indices.contains(row), !rows[row].track.isStreaming, !store.isEditLocked(rows[row].track.uuid),
+              let key = spec(atColumn: column)?.key else { return nil }
         // 그 칸을 고칠 수 없는 곡(키: USB·스트리밍, 평점·곡 색: 추가한 곡·확인 밖 곡, `TrackListTagEditing.unavailableReason`)은
         // 고르기 메뉴도 열지 않고 붙여넣기·채우기도 건너뛴다
         if TrackListTagEditing.unavailableReason(rows[row], key: key) != nil { return nil }

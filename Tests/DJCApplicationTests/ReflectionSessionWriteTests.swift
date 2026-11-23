@@ -91,7 +91,8 @@ struct ReflectionSessionWriteTests {
         guard case let .nothingWritable(preview, targets) = outcome else { Issue.record("\(outcome.name)"); return }
         #expect(targets.map(\.id) == ["a", "b"] && preview.report.blocked.map(\.trackUUID) == ["a"])
         #expect(h.prompts.isEmpty && h.gateCalls.value.writes.isEmpty)
-        #expect(h.locks == ["true", "false"] && h.stages.last == .some(nil) && h.published.map(\.name) == ["nothingWritable"])
+        #expect(h.locks == ["곡 a,b", "true (덱 빼고)", "false (덱 빼고)", "곡 -"] && h.trackLocks == [["a", "b"], []]
+                && h.stages.last == .some(nil) && h.published.map(\.name) == ["nothingWritable"])
     }
 
     @Test func 미리_보기는_막힌_초안의_빠진_이유를_함께_든다() async throws {
@@ -101,6 +102,24 @@ struct ReflectionSessionWriteTests {
         h.state.rows["b"] = H.row("b")
         let preview = try await h.session.previewWrite(rows: [H.row("a"), H.row("b")], playlists: false)
         #expect(preview.exclusions == ["• 곡 b: " + WritePart.grid.blocked("편집을 불러오지 못했으니 편집 파일과 접근 권한을 확인한 뒤 다시 불러오세요")])
+    }
+
+    /// R21: 쓰는 동안 잠그는 것은 쓰는 곡(합치기로 묶인 곡 포함)의 편집뿐이다. 덱은 잠그지 않아 재생이 멈추지 않는다.
+    @Test func 쓰는_동안_쓰는_곡만_잠그고_덱은_잠그지_않는다() async {
+        pendingCue("a", "other")
+        h.state.rows["r1"] = H.row("r1")
+        h.state.rows["r2"] = H.row("r2")
+        h.state.mergeDrafts = [Self.merge("m1", members: ["a", "r1"]), Self.merge("m2", members: ["r2"])]
+        h.script.preview = H.report(cues: [H.outcome("a", .written)])
+        var duringWrite: (locked: Bool, tracks: Set<String>, deckLocks: [String])?
+        h.onStage = { [h] stage in
+            if stage?.text == String(ui: "rekordbox에 저장하는 중…") { duringWrite = (h.locked, h.lockedTrackSet, h.locks) }
+        }
+        _ = await h.session.write(rows: [H.row("a")])
+        #expect(duringWrite?.locked == true, "쓰는 중에는 라이브러리를 쓰는 중으로 묶는다")
+        #expect(duringWrite?.tracks == ["a", "r1", "m1"], "고른 곡과 같은 합치기(남기는 곡·빼는 곡)로 묶인 곡만. 고르지 않은 곡과 다른 합치기의 곡은 잠그지 않는다")
+        #expect(duringWrite?.deckLocks == ["곡 a,m1,r1", "true (덱 빼고)"], "곡을 먼저 정하고 쓰는 중으로 바꾸며 덱은 잠그지 않는다")
+        #expect(h.lockedTrackSet.isEmpty && !h.locked && Array(h.locks.suffix(2)) == ["false (덱 빼고)", "곡 -"], "끝나면 쓰는 중을 먼저 풀고 곡 잠금을 비운다")
     }
 
     @Test func 취소하면_쓰지_않고_잠금을_푼다() async {
@@ -138,7 +157,8 @@ struct ReflectionSessionWriteTests {
         let outcome = await h.session.write(rows: ["a", "b", "c", "d"].map { H.row($0) })
         let written = try #require(h.gateCalls.value.writes.first)
         #expect(written.drafts.map(\.trackUUID) == ["a"] && written.grids.map(\.trackUUID) == ["a"] && written.gains == ["d": -3])
-        #expect(h.gateCalls.value.writeTargets == [h.session.target] && h.locks == ["true", "false"])
+        #expect(h.gateCalls.value.writeTargets == [h.session.target]
+                && Array(h.locks.dropFirst().prefix(2)) == ["true (덱 빼고)", "false (덱 빼고)"] && h.locks.last == "곡 -" && h.trackLocks.last == [])
         guard case let .written(report, preview, _) = outcome else { Issue.record("\(outcome.name)"); return }
         #expect(report.dryRun == false && preview.dryRun == true)
     }
@@ -255,7 +275,8 @@ struct ReflectionSessionWriteTests {
         h.script.preview = H.report(cues: [H.outcome("a", .written)])
         h.script.writeError = DJCError.writeRolledBack("무결성 검사 실패: x")
         let outcome = await h.session.write(rows: [H.row("a")])
-        #expect(outcome.failure?.error is DJCError && h.locks == ["true", "false"] && h.stages.last == .some(nil))
+        #expect(outcome.failure?.error is DJCError && h.locks == ["곡 a", "true (덱 빼고)", "false (덱 빼고)", "곡 -"] && h.trackLocks == [["a"], []]
+                && h.stages.last == .some(nil))
         // 쓴 뒤 정리를 하지 않는다
         #expect(h.memory.cue("a") != nil && h.reloads.isEmpty)
     }

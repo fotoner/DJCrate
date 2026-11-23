@@ -180,7 +180,8 @@ struct AppToastView: View {
 
 }
 
-/// rekordbox에 쓰는 동안 창 전체를 덮어 다른 조작을 막는다. 종료를 기다리는 중이면(#300) 카드 안에 안내와 [종료 취소]를 넣는다.
+/// 통째로 잠그는 rekordbox 쓰기(복원·곡 넣기·빼기)와 준비 단계 동안 창 전체를 덮어 다른 조작을 막는다. 종료를 기다리는 중이면(#300) 카드 안에 안내와 [종료 취소]를 넣는다.
+/// 초안을 쓰는 동안(곡 단위 잠금, R21)은 띄우지 않는다(`LibraryStore.showsWriteOverlay`).
 struct WritingOverlay: View {
     let stage: WriteStage
     var quitWait: QuitWait?

@@ -223,6 +223,18 @@ final class DeckModel {
         }
     }
     var resumeAfterWrite = false
+    /// 곡 단위 편집 잠금(R21, `LibraryStore.lockedTracks`의 덱 쪽 복사본, `onLockedTracks`로 받는다): 쓰는 묶음에 든 곡.
+    /// 재생은 멈추지 않는다(`editsFrozen`만 멈춘다). 덱의 곡이 여기 들면 그 곡의 편집만 막는다.
+    var lockedTracks: Set<String> = [] {
+        didSet {
+            // 덱의 곡이 새로 잠기면 이 곡의 되돌리기 기록을 비운다(쓰는 초안과 덱 초안이 어긋나지 않게, 통째 잠금과 같다)
+            guard let uuid = row?.track.uuid, lockedTracks.contains(uuid), !oldValue.contains(uuid) else { return }
+            clearDraftUndo()
+        }
+    }
+    /// 덱의 곡을 편집하지 못하게 막는 잠금(통째 잠금이거나 이 곡이 쓰는 묶음에 든다). 큐·그리드·게인 편집 가드가 읽는다.
+    /// 재생·키 입력 차단은 통째 잠금(`editsFrozen`)만 본다
+    var isEditLocked: Bool { editsFrozen || row.map { lockedTracks.contains($0.track.uuid) } == true }
     var softReloadTask: Task<Void, Never>?
     /// 편집 전 재생성 오차가 크면(다이내믹 그리드 등) 그리드 편집을 막는다.
     var gridEditBlockedReason: String?

@@ -381,10 +381,31 @@ final class LibraryStore {
         }
     }
     /// 라이브러리 내부 배타: 읽기·복원·USB·iTunes·자동 시점 스냅샷·재생 목록 복구·곡 추가 목록이 쓰기와 겹치지 않게 막는다. 초안 파일 잠금(flock)도 이 동안 든다.
-    /// 사이드바·상세를 통째로 막는 줄도 이 값이다(안쪽에 가드가 없는 조작을 막아 준다). 판단이 어려운 자리는 이 값을 읽는다(나중에 편집 잠금만 풀 때 잘못 풀리지 않게).
+    /// 판단이 어려운 자리는 이 값을 읽는다(편집 잠금만 풀 때 잘못 풀리지 않게). 재생 목록·재생 기록 편집이 그렇다.
     var libraryBusy: Bool { isWritingRekordbox }
-    /// 편집 잠금: 덱 큐·그리드·게인, 태그·그림·재생 목록 편집, 키 입력, ⌘Z 기록, 덱 재생·곡 올리기를 막는다. 풀어 갈 값이다.
-    var editsFrozen: Bool { isWritingRekordbox }
+    /// 통째 편집 잠금: 덱 큐·그리드·게인, 태그·그림 편집, 키 입력, ⌘Z 기록, 덱 재생·곡 올리기를 막는다.
+    /// 곡 단위로 쓰는 동안(`lockedTracks`가 비어 있지 않을 때)은 걸지 않는다. 그때는 `isEditLocked(_:)`가 쓰는 곡만 막는다(R21).
+    /// 재생 목록·재생 기록 편집은 쓰는 동안 늘 막는다(`libraryBusy`). 재생 목록 얼리기(W2-G2) 전까지 이 값으로 풀지 않는다.
+    var editsFrozen: Bool { isWritingRekordbox && lockedTracks.isEmpty }
+    /// 곡 단위 편집 잠금(R21): 쓰는 묶음에 든 곡. 이 곡의 편집만 막고 덱 재생·사이드바·목록·다른 곡 편집은 그대로다.
+    /// 쓰기 포트(`WriteLock.setTracks`)가 쓰기 시작 전에 정하고 쓰기가 끝나면 비운다. 비어 있지 않으면 곡 단위로 쓰는 중이라 창 덮개를 띄우지 않고 편집 잠금을 통째로 걸지 않는다.
+    /// 쓰는 묶음에 곡이 없는 쓰기(재생 목록만)와 복원·곡 넣기·빼기·iTunes 동기화는 비어 있어 통째로 잠근다.
+    private(set) var lockedTracks: Set<String> = [] {
+        didSet { if lockedTracks != oldValue { onLockedTracks?(lockedTracks) } }
+    }
+    /// 이 곡의 편집을 막는지: 통째 편집 잠금이거나 쓰는 묶음에 든다. 곡 편집(덱·태그·그림·목록 칸)이 읽는다.
+    func isEditLocked(_ trackUUID: String) -> Bool { editsFrozen || lockedTracks.contains(trackUUID) }
+    /// 쓰는 동안 창 전체를 덮는 진행 카드를 띄울지. 곡 단위로 쓰는 동안에는 단계만 알리고 덮지 않는다(R21). 종료 기다림 안내는 따로 뜬다.
+    var showsWriteOverlay: Bool { writeStage != nil && lockedTracks.isEmpty }
+    func setLockedTracks(_ uuids: Set<String>) { lockedTracks = uuids }
+    /// 곡 단위 잠금이 바뀌었다(덱 쪽 복사본을 맞춘다, `connectWriteLocks`)
+    var onLockedTracks: ((Set<String>) -> Void)?
+    /// 쓰기 잠금을 덱에 잇는다: 통째 잠금은 재생도 멈추고(`editsFrozen`), 곡 단위 잠금은 그 곡의 편집만 막는다(`lockedTracks`).
+    /// 앱 조립 지점과 시험이 같은 연결을 쓴다.
+    func connectWriteLocks(to deck: DeckModel) {
+        onWriteLock = { [weak deck] in deck?.editsFrozen = $0 }
+        onLockedTracks = { [weak deck] in deck?.lockedTracks = $0 }
+    }
     /// 종료 판단: 앱 끄기와 업데이트 설치를 미룬다(`writeActivity`의 rekordbox 단계, #300).
     var quitBlocked: Bool { isWritingRekordbox }
     /// 쓰는 동안 든 재생 목록 초안 파일 잠금을 푸는 함수(#260)
@@ -581,7 +602,7 @@ final class LibraryStore {
 
     /// CDJ가 덱의 곡을 실었다: 덱 곡 ID와 함께 내린다. rekordbox에 쓰는 동안이면 끝난 뒤에 내린다(#278)
     func unloadDeckForCDJ() {
-        guard !editsFrozen else {
+        guard !libraryBusy else {
             unloadsDeckAfterWrite = true
             return
         }
