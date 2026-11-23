@@ -35,10 +35,15 @@ public struct DraftWriteBatch: Sendable, Equatable {
     public var merges: [DuplicateMergeDraft]
     /// 함께 쓸 쓰기 대기 재생 기록(#43, 가져온 차례). 결과는 `historyOutcomes`(기록 ID로 맞춘다)
     public var histories: [HistoryImport]
+    /// 초안마다 묶음을 읽은 때의 판(R22: 쓴 뒤 정리는 이 판만 지운다). 비어 있으면 판을 모른다(지금 동작)
+    public var revisions: DraftBatchRevisions
+    /// 정리 할 일을 적을 자리(앱의 쓰기). nil이면 미정리 목록을 적지 않는다(CLI·시험, 지금 동작)
+    public var operation: DraftWriteOperation?
 
     public init(drafts: [CueDraft] = [], grids: [GridDraft] = [], gains: [String: Double] = [:], tags: [TagDraft] = [],
                 artworks: [ArtworkEdit] = [], playlists: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [],
-                histories: [HistoryImport] = []) {
+                histories: [HistoryImport] = [], revisions: DraftBatchRevisions = DraftBatchRevisions(),
+                operation: DraftWriteOperation? = nil) {
         self.drafts = drafts
         self.grids = grids
         self.gains = gains
@@ -47,12 +52,21 @@ public struct DraftWriteBatch: Sendable, Equatable {
         self.playlists = playlists
         self.merges = merges
         self.histories = histories
+        self.revisions = revisions
+        self.operation = operation
     }
 
     /// 묶음이 건드리는 곡(합치기는 묶인 곡 모두)
     public var trackUUIDs: Set<String> {
         Set(drafts.map(\.trackUUID)).union(grids.map(\.trackUUID)).union(gains.keys).union(tags.map(\.trackUUID))
             .union(artworks.map(\.trackUUID)).union(merges.flatMap { $0.members.map(\.trackUUID) })
+    }
+
+    /// 묶음에 든 곡 초안(종류, 곡). 합치기는 합치기 초안 ID로 가리킨다. 재생 목록 단계·재생 기록은 들지 않는다
+    public var draftKeys: Set<DraftKey> {
+        Set(drafts.map { DraftKey(.cue, $0.trackUUID) }).union(grids.map { DraftKey(.grid, $0.trackUUID) })
+            .union(gains.keys.map { DraftKey(.gain, $0) }).union(tags.map { DraftKey(.tag, $0.trackUUID) })
+            .union(artworks.map { DraftKey(.artwork, $0.trackUUID) }).union(merges.map { DraftKey(.merge, $0.id) })
     }
 }
 
@@ -75,14 +89,19 @@ public struct WritePreview: Sendable {
         let cues = Set(report.written.map(\.trackUUID)), grids = Set((report.gridWritten + report.analysisWritten).map(\.trackUUID))
         let gains = Set(report.gainWritten.map(\.trackUUID)), tags = Set(report.tagWritten.map(\.trackUUID))
         let artworks = Set(report.artworkWritten.map(\.trackUUID)), histories = Set(report.historyWritten.map(\.id))
-        return DraftWriteBatch(drafts: batch.drafts.filter { cues.contains($0.trackUUID) },
-                               grids: batch.grids.filter { grids.contains($0.trackUUID) },
-                               gains: batch.gains.filter { gains.contains($0.key) },
-                               tags: batch.tags.filter { tags.contains($0.trackUUID) },
-                               artworks: batch.artworks.filter { artworks.contains($0.trackUUID) },
-                               playlists: report.playlistWritten.isEmpty ? nil : batch.playlists,
-                               merges: batch.merges.filter { draft in report.mergeWritten.contains { $0.trackUUID == draft.id } },
-                               histories: batch.histories.filter { histories.contains($0.id) })
+        var writable = DraftWriteBatch(drafts: batch.drafts.filter { cues.contains($0.trackUUID) },
+                                       grids: batch.grids.filter { grids.contains($0.trackUUID) },
+                                       gains: batch.gains.filter { gains.contains($0.key) },
+                                       tags: batch.tags.filter { tags.contains($0.trackUUID) },
+                                       artworks: batch.artworks.filter { artworks.contains($0.trackUUID) },
+                                       playlists: report.playlistWritten.isEmpty ? nil : batch.playlists,
+                                       merges: batch.merges.filter { draft in report.mergeWritten.contains { $0.trackUUID == draft.id } },
+                                       histories: batch.histories.filter { histories.contains($0.id) },
+                                       operation: batch.operation)
+        // 판은 남긴 초안의 것만 나른다(재생 목록 단계는 초안 전체를 넘기므로 그대로)
+        writable.revisions = batch.revisions.restricted(to: writable.draftKeys)
+        if writable.playlists == nil { writable.revisions.playlistSteps = [] }
+        return writable
     }
 
     /// 쓸 것이 하나라도 있는지

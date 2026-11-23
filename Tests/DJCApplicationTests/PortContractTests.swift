@@ -25,6 +25,17 @@ struct PortContractTests {
 
     @Test func 반영_묶음_저장() throws { try reflectionBatchStoreContract(MemoryReflectionBatches().port) }
 
+    @Test func 쓰기_잠금() throws {
+        try rekordboxWriteLockContract(MemoryWriteLocks().port, database: URL(filePath: "/a/master.db"), other: URL(filePath: "/b/master.db"))
+    }
+
+    @Test func 자동_저장_기록() throws { try autoReflectionRecordsContract(MemoryAutoReflectionRecords().port) }
+
+    @Test func 초안_출처와_판() throws {
+        let drafts = MemoryDrafts()
+        try draftRevisionContract(drafts.store(origin: .human), cli: drafts.store(origin: .cli), editOutside: { drafts.editOutside($0) })
+    }
+
     @Test func 시점_스냅샷() throws {
         try pointSnapshotFilesContract(MemoryPointSnapshotFiles().port, database: URL(filePath: "/copy/master.db"), shareRoot: nil,
                                        directory: URL(filePath: "/points"), now: Date(timeIntervalSince1970: 1_790_337_600))

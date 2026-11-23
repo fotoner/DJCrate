@@ -21,6 +21,22 @@ public struct RekordboxWriteGate: Sendable {
     /// iTunes 동기화 선택을 쓰고 rekordbox 동기화 파일(`playlists3.sync`)을 다시 읽어 돌려준다
     public var syncITunes: @Sendable (ITunesSyncWrite, RekordboxWriteTarget) throws -> Data
 
+    // MARK: 쓰기 기록(R11)·미정리 목록(R22). 기본값은 지금 동작(기록·목록이 없다)이다. 실제 구현은 `.live`가 채운다(W1-A).
+
+    /// 대상의 쓰기 기록을 판정한다. 쓰기 잠금을 비차단으로 잡은 뒤에만 판정·정리하고, 못 잡으면 진행 중이다
+    public var journal: @Sendable (RekordboxWriteTarget) throws -> RekordboxJournalVerdict = { _ in .none }
+    /// 중단 기록으로 복원한다(입구에 따라: 쓰기 전 백업으로 되돌리기, 같은 복원 다시 하기, `playlists3.sync`만 되돌리기).
+    /// 백업 사슬 검사를 타지 않고 기록의 근거와 파일 목록만으로 한다. 시작할 때 "복원 중"을 적고, 검증이 끝나면 그 쓰기의 미정리 목록을
+    /// 먼저 지우고 기록은 마지막에 지운다. 다시 멈추면 같은 기록으로 다시 복원한다
+    public var restoreJournal: @Sendable (RekordboxWriteTarget) throws -> RekordboxJournalRestore = { _ in .nothing }
+    /// "이대로 둔다"의 마지막 단계: 그 작업의 쓰기 기록을 지운다. 그 전에 세션이 미정리 목록을 지우고 기록에 적힌 판의 초안을 제안으로 바꾼다.
+    /// 남은 기록의 작업 ID가 다르면 지우지 않고 던진다
+    public var keepJournal: @Sendable (RekordboxWriteTarget, _ operationID: String) throws -> Void = { _, _ in }
+    /// 대상의 미정리 목록 가운데 이 초안 저장소의 것(대상·저장소가 다른 목록은 건드리지 않는다). 읽지 못하는 목록이 있으면 던진다
+    public var cleanupLists: @Sendable (RekordboxWriteTarget, _ draftHome: URL) throws -> [DraftCleanupList] = { _, _ in [] }
+    /// 정리를 모두 마친 목록을 지운다(초안과 연결 ID를 다 저장한 뒤)
+    public var removeCleanupList: @Sendable (DraftCleanupList, RekordboxWriteTarget) throws -> Void = { _, _ in }
+
     public init(write: @escaping @Sendable (DraftWriteBatch, [String: RekordboxAnalysisInput], RekordboxWriteTarget, Bool) throws -> RekordboxWriteReport,
                 preview: @escaping @Sendable (DraftWriteBatch, [String: RekordboxAnalysisInput], RekordboxWriteTarget,
                                               @escaping @Sendable () async -> Void) async throws -> RekordboxWriteReport,

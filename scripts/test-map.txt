@@ -214,6 +214,26 @@ suite DJCApplicationTests.LinkFileHoldTests
 suite DJCApplicationTests.LinkDiscoveryTests
 suite DJCrateTests.LinkBarModelTests
 
+# 자동 저장 계약(#398): 쓰기 기록·미정리 목록·자동 저장 기록 형식(다른 실행이 읽는다), 초안 출처·판·해시, 진단 실행 인자.
+# 형식 값은 반환값·JSON으로만 닿아 기호 grep이 놓칠 수 있어 경로로 고른다.
+group autosave-contract
+when Sources/DJCDomain/Common/DraftProvenance.swift
+when Sources/DJCDomain/Rekordbox/RekordboxWriteJournal.swift
+when Sources/DJCDomain/Rekordbox/RekordboxWriteLockKey.swift
+when Sources/DJCDomain/Rekordbox/RekordboxWriteHooks.swift
+when Sources/DJCDomain/Reflection/DraftCleanupList.swift
+when Sources/DJCApplication/Reflection/AutoReflection*.swift
+when Sources/DJCApplication/Reflection/ReflectionHold.swift
+when Sources/DJCApplication/Reflection/RekordboxJournalValues.swift
+when Sources/DJCApplication/Library/MemoryDrafts.swift
+when Sources/DJCrate/Diagnostics/DiagnosticRun.swift
+when Sources/DJCrate/Settings/SettingsStore.swift
+suite DJCDomainTests.DraftProvenanceTests
+suite DJCDomainTests.RekordboxWriteJournalTests
+suite DJCApplicationTests.AutoReflectionContractTests
+suite DJCApplicationTests.PortContractTests
+suite DJCrateTests.AutoReflectSelfTestRunTests
+
 # 번역 카탈로그·화면 문구 검사 도구
 group localization
 when Sources/**/*.xcstrings

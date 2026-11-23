@@ -22,6 +22,12 @@ public struct GateScript: Sendable {
     public var restoreError: (any Error)?
     public var pointError: (any Error)?
     public var syncData = Data("sync".utf8)
+    /// 쓰기 기록 판정(R11). 기본은 지금 동작과 같은 "기록 없음"
+    public var journal = RekordboxJournalVerdict.none
+    public var journalRestore = RekordboxJournalRestore.nothing
+    public var journalError: (any Error)?
+    /// 미정리 목록(R22)
+    public var cleanupLists: [DraftCleanupList] = []
 
     public init() {}
 }
@@ -44,7 +50,12 @@ public final class GateCalls: Sendable {
         public var points: [URL] = []
         public var playlistWrites: [[PlaylistEdit]] = []
         public var iTunesTargets: [RekordboxWriteTarget] = []
-        /// 관문을 부른 차례("preview"·"write"·"restore"·"add preview"·"add"·"delete preview"·"delete"·"point")
+        /// "이대로 둔다"로 지운 기록의 작업 ID
+        public var keptJournals: [String] = []
+        /// 지운 미정리 목록의 작업 ID
+        public var removedCleanupLists: [String] = []
+        /// 관문을 부른 차례("preview"·"write"·"restore"·"add preview"·"add"·"delete preview"·"delete"·"point"·
+        /// "journal"·"restore journal"·"keep journal"·"cleanup lists"·"remove cleanup list")
         public var order: [String] = []
     }
     private let calls = Mutex(Calls())
@@ -72,7 +83,7 @@ extension RekordboxWriteGate {
     /// 복원은 되돌리기 직전 상태를 대상의 백업 폴더에 남긴 백업을 돌려준다.
     /// 동기 입구(쓰기·복원·넣기·빼기·시점 복원·재생 목록·동기화)는 협력 풀 밖에서 불려야 한다(`expectBlockingOffPool`, 세션은 `BlockingWork`).
     public static func scripted(_ script: GateScript, calls: GateCalls = GateCalls(), hold: PreviewHold = PreviewHold()) -> Self {
-        RekordboxWriteGate(
+        var gate = RekordboxWriteGate(
             write: { batch, inputs, target, dryRun in
                 expectBlockingOffPool()
                 calls.record {
@@ -135,6 +146,32 @@ extension RekordboxWriteGate {
                 calls.record { $0.iTunesTargets.append(target) }
                 return script.syncData
             })
+        gate.journal = { _ in
+            expectBlockingOffPool()
+            calls.record { $0.order.append("journal") }
+            if let error = script.journalError { throw error }
+            return script.journal
+        }
+        gate.restoreJournal = { _ in
+            expectBlockingOffPool()
+            calls.record { $0.order.append("restore journal") }
+            if let error = script.journalError { throw error }
+            return script.journalRestore
+        }
+        gate.keepJournal = { _, operationID in
+            expectBlockingOffPool()
+            calls.record { $0.keptJournals.append(operationID); $0.order.append("keep journal") }
+        }
+        gate.cleanupLists = { _, _ in
+            expectBlockingOffPool()
+            calls.record { $0.order.append("cleanup lists") }
+            return script.cleanupLists
+        }
+        gate.removeCleanupList = { list, _ in
+            expectBlockingOffPool()
+            calls.record { $0.removedCleanupLists.append(list.operationID); $0.order.append("remove cleanup list") }
+        }
+        return gate
     }
 }
 
