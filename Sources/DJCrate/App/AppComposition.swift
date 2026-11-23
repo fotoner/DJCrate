@@ -253,6 +253,7 @@ final class AppComposition {
                              stage: { [weak store] in store?.writeStage = $0 })
         lock.setTracks = { [weak store] in store?.setLockedTracks($0) }
         lock.lockedTracks = { [weak store] in store?.lockedTracks ?? [] }
+        lock.setDraftWriting = { [weak store] in store?.setDraftWriting($0) }
         // 반영 세션은 라이브러리와 같은 초안 저장 큐·스냅샷 뜨기·연결 기록을 쓴다(라이브러리 유스케이스 묶음에서 받는다).
         let ports = ReflectionPorts(gate: gate, backups: backups, sharing: store.useCases, audio: audio, library: library,
                                     reload: LibraryReloader(reload: { [weak store] written, edits in
@@ -339,11 +340,6 @@ final class AppComposition {
         deck.onCueDraftChange = { [weak store] draft in store?.cueDraftChanged(draft) }
         deck.onReanalyze = { [weak store] uuid in store?.tags.restoreKeySuggestion(uuid: uuid) }
         store.connectWriteLocks(to: deck)
-        store.onRekordboxWritten = { [weak deck, weak store] uuids in
-            // 처음부터 다시 불러오지 않고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다(소리·파형은 그대로).
-            guard let deck, let uuid = deck.row?.track.uuid, uuids.contains(uuid) else { return }
-            deck.refreshAfterWrite(store?.rowsByUUID[uuid])
-        }
         keys.install(deck: deck, store: store, windows: windows)
         let editLinks = EditWindowLinks(deck: deck, store: store, reflection: reflection, writer: Self.renderEdit(store: store),
                                         makeAudio: { EditAudioPlayer() },

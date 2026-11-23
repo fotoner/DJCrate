@@ -37,11 +37,28 @@ extension DeckModel {
     }
 
     /// rekordbox에 쓰거나 되돌린 뒤: 소리·파형·분석은 그대로 두고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다.
+    /// 음원 파일이 바뀌었으면 처음부터 다시 불러온다. 새 초안·기준값을 다 적용하기 전에는 그 곡의 편집을 막는다(`isEditLocked`):
+    /// 쓰기 잠금이 풀린 뒤 도착하는 늦은 읽기가 그 사이 편집을 덮거나 편집이 쓰기 전 기준값으로 저장되지 않게 한다(R21).
     func refreshAfterWrite(_ newRow: TrackRow?) {
         guard let current = row else { return }
         let target = newRow ?? current
         guard target.id == current.id else { return }
-        softReload(target)
+        guard target.track.folderPath == current.track.folderPath else {
+            load(target)
+            return
+        }
+        writeRefreshToken += 1
+        let token = writeRefreshToken, uuid = target.track.uuid
+        writeRefreshTokens[uuid] = token
+        writeRefreshing.insert(uuid)
+        softReload(target, writeRefreshToken: token)
+    }
+
+    /// 새 값 적용을 끝냈다(읽기가 늦게 도착해 버려진 경우도 부른다). 그 사이 같은 곡의 갱신이 다시 시작됐으면 그쪽이 풀 때까지 둔다.
+    func finishWriteRefresh(uuid: String, token: Int) {
+        guard writeRefreshTokens[uuid] == token else { return }
+        writeRefreshTokens[uuid] = nil
+        writeRefreshing.remove(uuid)
     }
 
     /// 백그라운드 읽기를 시작할 때의 곡이 아직 덱에 있는지(곡을 바꿀 때마다 `loadGeneration`이 오른다)
@@ -63,7 +80,7 @@ extension DeckModel {
     }
 
     /// 같은 곡·같은 파일인데 내용(큐·그리드·게인·메타데이터)만 바뀌었을 때.
-    func softReload(_ newRow: TrackRow) {
+    func softReload(_ newRow: TrackRow, writeRefreshToken token: Int? = nil) {
         clearDraftUndo()
         replaceRow(newRow)
         // rekordbox 키가 바뀌었을 수 있다(장·단 기준과 키 제안을 새 값으로 맞춘다).
@@ -73,7 +90,10 @@ extension DeckModel {
         softReloadTask?.cancel()
         softReloadTask = Task {
             let (content, gainDraft) = await loader.reloadContent(request, duration: length)
-            guard self.isCurrentLoad(generation) else { return }
+            guard self.isCurrentLoad(generation) else {
+                if let token { self.finishWriteRefresh(uuid: request.uuid, token: token) }
+                return
+            }
             self.clearDraftUndo()
             self.gainDraft = gainDraft
             self.applyGain()
@@ -82,6 +102,8 @@ extension DeckModel {
             self.applyAnalysisState(content.analysisState)
             self.refreshGrid()
             self.refreshSuggestionNote()
+            // 새 초안·기준값을 적용했다: 저장한 곡의 편집을 푼다
+            if let token { self.finishWriteRefresh(uuid: request.uuid, token: token) }
             // 고른 큐·걸린 루프는 같은 자리·종류의 새 큐로 잇는다(반영하면 rekordbox 큐로 바뀌어 ID가 새로 생긴다).
             func match(_ old: EditableCue?) -> EditableCue.ID? {
                 old.flatMap { o in content.draft.cues.first { $0.kind == o.kind && abs($0.time - o.time) < 0.002 }?.id }

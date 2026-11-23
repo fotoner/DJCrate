@@ -10,7 +10,10 @@ struct TagInspector: View {
     let model: TagInspectorModel
 
     var body: some View {
-        let rows = model.rows
+        // 쓰는 곡과 아닌 곡을 함께 고르면 쓰는 곡은 편집 대상에서 빠진다(값 표시·편집·그림 단추가 같은 곡 집합을 쓴다). 모두 쓰는 곡이면 칸을 막는다
+        let selected = model.rows
+        let locked = model.isWriteLocked(selected)
+        let rows = locked ? selected : model.writableRows(selected)
         Form {
             if rows.isEmpty {
                 Text(.ui("목록에서 곡을 선택하세요. 여러 곡을 고르면 한꺼번에 편집합니다."))
@@ -68,8 +71,7 @@ struct TagInspector: View {
         }
         .formStyle(.grouped)
         .font(.scaled(.body, textScale))
-        // 쓰는 묶음에 든 곡을 골랐으면 칸을 막는다(R21). 다른 곡을 골랐으면 쓰는 동안에도 고친다
-        .disabled(model.isWriteLocked(rows))
+        .disabled(locked)
     }
 
     private func field(_ key: TagFields.Key, rows: [TrackRow], axis: Axis = .horizontal) -> some View {

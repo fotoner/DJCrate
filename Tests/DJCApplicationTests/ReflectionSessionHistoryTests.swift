@@ -48,8 +48,9 @@ struct ReflectionSessionHistoryTests {
         #expect(h.recordedHistories == [[Self.outcome("a", .written)]])
         #expect(h.log.first("record histories")! < h.log.first("reload")!)
         // 쓸 곡이 없는 묶음(재생 기록만)은 곡을 정할 수 없어 편집을 통째로 막되 덱은 잠그지 않는다
-        // 곡을 먼저 정하고 쓰는 중으로 바꾸며, 풀 때는 쓰는 중을 먼저 풀고 곡을 비운다(사이에 통째 편집 잠금이 한 틱 켜지지 않게)
-        #expect(h.locks == ["곡 -", "true (덱 빼고)", "false (덱 빼고)", "곡 -"] && h.trackLocks == [[], []])
+        // 재생 기록만 쓰는 묶음도 곡이 없을 뿐 초안 쓰기라 통째 편집 잠금을 걸지 않는다(R21). 곡·초안 쓰기를 먼저 정하고 쓰는 중으로 바꾸며,
+        // 풀 때는 쓰는 중을 먼저 풀고 초안 쓰기·곡을 비운다(사이에 통째 편집 잠금이 한 틱 켜지지 않게)
+        #expect(h.locks == ["곡 -", "초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false", "곡 -"] && h.trackLocks == [[], []])
     }
 
     @Test func 막힌_재생_기록이_있으면_확인_창에_이유를_보이고_쓸_수_있는_것만_쓴다() async throws {

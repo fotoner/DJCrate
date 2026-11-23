@@ -73,7 +73,11 @@ extension LibraryStore {
     /// 라이브러리를 새로 읽거나 추가한 곡을 뺀 뒤: 덱의 곡을 새 값으로 맞추고, 없어진 곡은 내린다(지워진 곡을 붙들지 않게).
     func refreshDeckTrack() {
         guard let id = deckTrackID else { return }
-        setDeckTrack(rowsByID[id])
+        let row = rowsByID[id]
+        // 방금 쓴 곡이 덱에 올라 있으면 여기서 다시 불러오지 않는다. 그림을 쓰면 `imagePath`가 바뀌어 일반 불러오기로 가서 소리를 다시 열고
+        // 재생이 멈춘다(R21). 읽은 뒤 알림(`deliverWrittenAfterReload`)이 `refreshAfterWrite`로 한 번만 재생을 이어 가며 갱신한다.
+        if let row, writtenAwaitingReload.contains(row.track.uuid) { return }
+        setDeckTrack(row)
     }
 }
 

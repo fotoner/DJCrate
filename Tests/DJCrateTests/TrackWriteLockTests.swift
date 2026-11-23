@@ -16,16 +16,18 @@ struct TrackWriteLockTests {
     /// 앱 조립 지점과 같은 연결로 만든 쓰기 잠금 포트
     var lock: WriteLock { store.reflection.session.ports.lock }
 
-    /// 초안을 쓰는 동안의 잠금(세션 `lockDraftWrite`와 같다): 쓰는 곡을 정하고 라이브러리를 쓰는 중으로 만든다. 덱은 잠그지 않는다.
+    /// 초안을 쓰는 동안의 잠금(세션 `lockDraftWrite`와 같다): 쓰는 곡과 초안 쓰기를 정하고 라이브러리를 쓰는 중으로 만든다. 덱은 잠그지 않는다.
     func beginDraftWrite(_ tracks: Set<String>) {
         let lock = lock
         lock.setTracks(tracks)
+        lock.setDraftWriting(true)
         lock.set(true, false)
     }
 
     func endDraftWrite() {
         let lock = lock
         lock.set(false, false)
+        lock.setDraftWriting(false)
         lock.setTracks([])
     }
 
@@ -173,16 +175,41 @@ struct TrackWriteLockTests {
         #expect(!store.libraryBusy && !store.quitBlocked && !lock.isLocked() && lock.lockedTracks().isEmpty)
     }
 
-    @Test func 곡이_없는_묶음은_통째_편집_잠금이고_덱은_멈추지_않는다() async throws {
+    /// S3: 재생 목록·재생 기록만 쓰는 묶음은 곡 집합이 비어도 초안 쓰기라 통째 편집 잠금도 덮개도 없다(R21).
+    @Test func 재생_목록만_쓰는_동안에도_덮개가_없고_곡_태그_편집은_되고_재생_목록_편집은_막힌다() async throws {
         let h = try DeckHarness()
         try await h.loaded()
         store.connectWriteLocks(to: h.deck)
         h.deck.togglePlay()
+        let row = TagInspectorModelTests.row("b")
         beginDraftWrite([])
-        #expect(store.libraryBusy && store.editsFrozen && !h.deck.editsFrozen && h.deck.isPlaying,
-                "재생 목록만 쓰는 묶음은 재생 목록 얼리기(W2-G2) 전까지 편집을 통째로 막되 덱은 잠그지 않는다")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
+        #expect(store.libraryBusy && store.lockedTracks.isEmpty)
+        #expect(!store.editsFrozen && !store.showsWriteOverlay && !h.deck.editsFrozen && h.deck.isPlaying, "덮개도 통째 잠금도 없고 덱은 멈추지 않는다")
+        #expect(!store.isEditLocked(row.track.uuid))
+        store.tags.setTag(.title, "새 제목", rows: [row])
+        #expect(store.tagDrafts[row.track.uuid] != nil, "곡 태그 편집은 된다")
+        store.playlists.openPlaylistPicker(tracks: [row])
+        #expect(store.playlists.playlistPicker == nil, "재생 목록 편집은 libraryBusy로 막는다(얼리기는 #402)")
+        store.writeStage = nil
         endDraftWrite()
-        #expect(!store.editsFrozen && h.deck.isPlaying)
+        #expect(!store.libraryBusy && !store.isEditLocked(row.track.uuid) && h.deck.isPlaying)
+    }
+
+    @Test func 초안_쓰기_표시만_있어도_곡_단위_쓰기이고_복원은_통째_잠금이다() {
+        lock.setDraftWriting(true)
+        lock.set(true, false)
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
+        #expect(!store.editsFrozen && !store.showsWriteOverlay)
+        store.writeStage = nil
+        lock.set(false, false)
+        lock.setDraftWriting(false)
+        // 복원·곡 넣기·빼기·iTunes 동기화는 초안 쓰기 표시가 없어 그대로 통째로 잠근다
+        lock.set(true, true)
+        store.writeStage = WriteStage("rekordbox를 복원하는 중…")
+        #expect(store.editsFrozen && store.showsWriteOverlay)
+        store.writeStage = nil
+        lock.set(false, true)
     }
 
     // MARK: - 재생 목록은 아직 쓰는 동안 통째로 막는다

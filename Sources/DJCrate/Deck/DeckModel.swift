@@ -232,9 +232,15 @@ final class DeckModel {
             clearDraftUndo()
         }
     }
-    /// 덱의 곡을 편집하지 못하게 막는 잠금(통째 잠금이거나 이 곡이 쓰는 묶음에 든다). 큐·그리드·게인 편집 가드가 읽는다.
+    /// 저장한 곡의 새 초안·기준값을 덱에 적용하는 중인 곡(`refreshAfterWrite`). 쓰기 잠금이 먼저 풀려도 적용이 끝날 때까지 그 곡의 편집을 막는다.
+    var writeRefreshing: Set<String> = []
+    @ObservationIgnored var writeRefreshTokens: [String: Int] = [:]
+    @ObservationIgnored var writeRefreshToken = 0
+    /// 덱의 곡을 편집하지 못하게 막는 잠금(통째 잠금이거나 이 곡이 쓰는 묶음에 들거나 저장한 값을 적용하는 중이다). 큐·그리드·게인 편집 가드가 읽는다.
     /// 재생·키 입력 차단은 통째 잠금(`editsFrozen`)만 본다
-    var isEditLocked: Bool { editsFrozen || row.map { lockedTracks.contains($0.track.uuid) } == true }
+    var isEditLocked: Bool {
+        editsFrozen || row.map { lockedTracks.contains($0.track.uuid) || writeRefreshing.contains($0.track.uuid) } == true
+    }
     var softReloadTask: Task<Void, Never>?
     /// 편집 전 재생성 오차가 크면(다이내믹 그리드 등) 그리드 편집을 막는다.
     var gridEditBlockedReason: String?

@@ -94,6 +94,14 @@ struct ContentView: View {
                 QuitWaitOverlay(wait: wait, onCancel: { store.quitWait.cancel() }).transition(.opacity)
             }
         }
+        // 곡 단위로 쓰는 동안 취소할 수 있는 단계에는 덮개 대신 작은 진행·취소 자리를 모서리에 둔다(R21). 목록·덱을 가리지 않는다
+        .overlay(alignment: .topTrailing) {
+            if store.showsWriteProgressChip, let stage = store.writeStage {
+                WritingProgressChip(stage: stage, onCancel: { store.cancelWritePreparation() })
+                    .padding(.top, 8).padding(.trailing, 12)
+                    .transition(.opacity)
+            }
+        }
         .sheet(item: Binding(get: { store.usb?.syncSheet }, set: { store.usb?.syncSheet = $0 })) { request in
             if let usb = store.usb {
                 UsbSyncView(store: store, usb: usb, request: request)

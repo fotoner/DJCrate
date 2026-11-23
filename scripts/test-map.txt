@@ -253,9 +253,16 @@ when Sources/DJCrate/Library/LibraryStore+Artwork.swift
 when Sources/DJCrate/Library/ArtworkInspectorModel.swift
 when Sources/DJCrate/Deck/DeckModel.swift
 when Sources/DJCrate/App/ContentView.swift
+when Sources/DJCrate/Library/LibraryStore+Loading.swift
+when Sources/DJCrate/Library/LibraryStore+Deck.swift
+when Sources/DJCrate/Library/TagInspectorModel.swift
+when Sources/DJCrate/Deck/DeckModel+Loading.swift
+when Sources/DJCApplication/Library/StageTracks.swift
 when Sources/DJCApplication/Reflection/ReflectionSession.swift
 when Sources/DJCApplication/Reflection/ReflectionSession+Write.swift
 suite DJCrateTests.TrackWriteLockTests
+suite DJCrateTests.TrackWriteLockFollowUpTests
+suite DJCApplicationTests.StageTracksTests
 suite DJCrateTests.WriteLockSplitTests
 suite DJCrateTests.WriteLockPolicyTests
 suite DJCrateTests.ArtworkInspectorModelTests

@@ -144,6 +144,7 @@ final class ReflectionHarness {
             self.locks.append("곡 " + (tracks.isEmpty ? "-" : tracks.sorted().joined(separator: ",")))
         }
         lock.lockedTracks = { self.lockedTrackSet }
+        lock.setDraftWriting = { writing in self.locks.append("초안 쓰기 \(writing)") }
         return lock
     }
 

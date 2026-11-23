@@ -60,10 +60,14 @@ public struct WriteLock {
     /// 쓰기 단계 안내(nil이면 지운다)
     public var stage: @MainActor @Sendable (WriteStage?) -> Void
     /// 곡 단위 편집 잠금(R21): 쓰는 묶음에 든 곡의 편집만 막는다(빈 집합이면 푼다). 덱 재생·사이드바·목록·다른 곡 편집은 그대로다.
-    /// 기본값은 아무것도 하지 않는다(지금은 `set`이 통째로 잠근다). 동작은 W1-G(#401)가 붙인다
+    /// 기본값은 아무것도 하지 않는다. 초안을 쓸 때는 곡을 먼저 정하고(`setTracks`) `setDraftWriting(true)` 뒤 `set(true, false)`로 쓰는 중을 켠다.
+    /// 풀 때는 `set(false, false)`, `setDraftWriting(false)`, `setTracks([])` 순서다(사이에 통째 잠금이 한 틱도 켜지지 않게).
     public var setTracks: @MainActor (Set<String>) -> Void = { _ in }
     /// 지금 편집을 막은 곡
     public var lockedTracks: @MainActor () -> Set<String> = { [] }
+    /// 초안을 쓰는 중(곡 집합이 비어도 통째 편집 잠금·창 덮개를 걸지 않는다). 재생 목록·재생 기록만 쓰는 묶음이 곡 없이도 곡 단위 쓰기가 되게 한다.
+    /// 재생 목록·재생 기록 편집은 이 동안도 쓰는 중(`isLocked`)으로 막는다(재생 목록 얼리기는 #402). 기본값은 아무것도 하지 않는다
+    public var setDraftWriting: @MainActor (Bool) -> Void = { _ in }
 
     public init(isLocked: @escaping @MainActor () -> Bool, set: @escaping @MainActor (Bool, Bool) -> Void,
                 stage: @escaping @MainActor @Sendable (WriteStage?) -> Void) {

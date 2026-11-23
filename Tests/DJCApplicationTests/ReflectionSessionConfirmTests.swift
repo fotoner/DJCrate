@@ -32,7 +32,8 @@ struct ReflectionSessionConfirmTests {
         h.script.write = H.report(cues: [H.outcome("a", .written)], tags: [H.outcome("t", .written)], backup: "/tmp/djc-test-backup", dryRun: false)
         let outcome = await h.session.write(rows: ["a", "t"].map { H.row($0) })
         // 쓰는 곡만 잠그고(R21) 덱은 잠그지 않는다
-        #expect(h.prompts.isEmpty && h.locks == ["곡 a,t", "true (덱 빼고)", "false (덱 빼고)", "곡 -"] && h.trackLocks == [["a", "t"], []])
+        #expect(h.prompts.isEmpty && h.locks == ["곡 a,t", "초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false", "곡 -"]
+                && h.trackLocks == [["a", "t"], []])
         let written = try #require(h.gateCalls.value.writes.first)
         #expect(written.drafts.map(\.trackUUID) == ["a"] && written.tags.map(\.trackUUID) == ["t"])
         guard case let .written(report, _, _) = outcome else { Issue.record("\(outcome.name)"); return }
@@ -84,7 +85,7 @@ struct ReflectionSessionConfirmTests {
         _ = await h.session.write(rows: rows)
         let written = try #require(h.gateCalls.value.writes.first)
         #expect(h.prompts.isEmpty && written.grids.count == 100 && written.gains.count == 100
-                && Array(h.locks.dropFirst().prefix(2)) == ["true (덱 빼고)", "false (덱 빼고)"] && h.locks.last == "곡 -"
+                && Array(h.locks.dropFirst().prefix(4)) == ["초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false"] && h.locks.last == "곡 -"
                 && h.trackLocks == [Set(rows.map(\.track.uuid)), []])
     }
 

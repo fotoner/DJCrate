@@ -431,19 +431,23 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
     - 읽기, 복원, USB, iTunes
     - 자동 시점 스냅샷, 재생 목록 복구, 곡 추가 목록
     - 재생 목록·재생 기록 편집. 재생 목록 얼리기(W2-G2) 전까지 곡 단위로 풀지 않는다.
-  - `lockedTracks`는 곡 단위 편집 잠금이다. 비어 있지 않으면 곡 단위로 쓰는 중이다.
-    - 쓰기 포트 `WriteLock.setTracks`가 쓰기 시작 전에 정한다. 끝나면 비운다.
+  - `lockedTracks`는 곡 단위 편집 잠금이다. 쓰기 포트 `WriteLock.setTracks`가 쓰기 시작 전에 정한다. 끝나면 비운다.
     - 곡은 고른 곡과 합치기로 묶인 곡이다.
-  - `editsFrozen`은 통째 편집 잠금이다. `isWritingRekordbox && lockedTracks.isEmpty`라서 곡 단위로 쓰는 동안은 거짓이다.
+    - 재생 목록·재생 기록만 쓰는 묶음은 곡이 없다. 이 경우를 위해 `isDraftWrite`(`WriteLock.setDraftWriting`)를 따로 둔다.
+    - `isTrackScopedWrite`는 `isDraftWrite`이거나 `lockedTracks`가 비어 있지 않을 때 참이다. 곡 단위로 쓰는 중이라는 뜻이다.
+  - `editsFrozen`은 통째 편집 잠금이다. `isWritingRekordbox && !isTrackScopedWrite`라서 초안을 쓰는 동안은 거짓이다.
     - 덱 재생과 곡 올리기, 키 입력, ⌘Z 기록을 막는다.
-    - 사이드바와 상세를 통째로 막는 줄(`ContentView`)도 이 값이다. 곡이 없는 쓰기(재생 목록만)와 복원·곡 넣기·빼기에서만 막는다.
+    - 사이드바와 상세를 통째로 막는 줄(`ContentView`)도 이 값이다. 복원·곡 넣기·빼기에서만 막는다.
   - `isEditLocked(_:)`는 곡 하나의 편집을 막는지다. 통째 잠금이면 참이다. 그 곡이 `lockedTracks`에 들어도 참이다.
     - 덱의 큐·그리드·게인 편집이 읽는다.
     - 태그·그림 편집, 목록 칸과 태그 시트 편집, 곡 편집 창 열기도 읽는다.
+    - 덱은 저장한 곡의 새 초안·기준값을 적용하는 동안(`writeRefreshing`)에도 그 곡의 편집을 막는다. 쓰기 잠금이 먼저 풀려도 늦은 읽기가 편집을 덮지 않게 한다.
   - 덱은 사본 `DeckModel.editsFrozen`과 `DeckModel.lockedTracks`를 든다. `LibraryStore.connectWriteLocks`가 잇는다.
     - 덱의 편집 가드는 `isEditLocked`다.
     - iTunes 동기화는 덱을 잠그지 않아 저장소 값과 다를 수 있다.
   - `showsWriteOverlay`는 진행 카드로 창을 덮을지다. 곡 단위로 쓰는 동안은 거짓이다. 종료를 기다리는 안내는 따로 뜬다.
+  - `showsWriteProgressChip`은 곡 단위로 쓰는 동안 취소할 수 있는 단계에 작은 진행·취소 자리(`WritingProgressChip`)를 보일지다. Esc도 이 자리가 받는다.
+  - 곡 단위로 쓴 뒤 읽기는 ⌘Z 기록을 통째로 지우지 않는다. 저장한 곡과 기준값이 옮겨진 곡의 태그 단계만 건너뛴다(`tagUndoGeneration`).
   - `quitBlocked`는 앱 종료와 업데이트 설치 판단이다. `writeActivity`의 rekordbox 단계가 이 값을 읽는다(#300).
   - 사이드바와 상세 안쪽 조작은 각자 가드를 든다. 새 조작을 더하면 가드를 함께 둔다.
     - 라이브러리 읽기·쓰기 조작은 `libraryBusy`를 읽는다. USB 조작도 같다.

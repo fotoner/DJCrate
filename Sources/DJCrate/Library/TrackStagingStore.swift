@@ -264,7 +264,8 @@ final class TrackStagingStore {
     private func estimateGrid(_ item: GridJobItem) async {
         // 이미 줄 선 곡이 그 사이 쓰는 묶음에 들었으면 건너뛴다(쓰는 곡의 초안을 만들지 않는다)
         guard !library.isEditLocked(item.uuid) else { return }
-        switch await library.useCases.stage.estimateGrid(item) {
+        // 저장은 메인 액터에서 잠금을 다시 확인한 뒤에 한다(추정하는 동안 그 곡이 쓰는 묶음에 들었을 수 있다)
+        switch await library.useCases.stage.estimateGrid(item, canSave: { [library] in !library.isEditLocked(item.uuid) }) {
         case let .existing(bpm):
             // 덱에서 이미 적용했거나 편집한 곡: 목록 BPM만 맞춘다.
             if item.staged { updateStaged(item.uuid, bpm: bpm, confident: nil) }
