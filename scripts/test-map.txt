@@ -92,6 +92,16 @@ suite djcTests.UsbPlanLabTests
 suite djcTests.UsbExportCommandTests
 suite djcTests.CLIRefusalTests
 
+# USB 수정 생성 조합(#383): 편집 계획·모델 적용·두 형식 작성기를 바꾸면 생성한 편집 묶음으로 기준 모델과 형식 불변식을 함께 본다.
+# 이 시험은 재료(UsbEditFixture.edit·plan)를 거쳐 엔진에 닿아 계획기 내부 타입의 기호 grep에 걸리지 않는다.
+group usb-edit-generated
+when Sources/RekordboxKit/Usb/Write/UsbEdit*
+when Sources/RekordboxKit/Usb/Write/OneLibraryWriter*
+when Sources/RekordboxKit/Usb/Write/Pdb*
+when Sources/RekordboxKit/Usb/Write/UsbExportAssembly*
+when Sources/RekordboxKit/Usb/Write/UsbWriter*
+suite RekordboxKitTests.UsbEditGeneratedTests
+
 # djc 명령·실험 도구는 시험이 .build/debug/djc 프로세스를 명령 문자열로 띄워 닿는다(기호 grep이 못 찾음) → djcTests 전체.
 # DJCAdapters의 실제 구현(.live)도 CLI가 같은 것을 프로세스 안에서 쓴다.
 group djc-process
