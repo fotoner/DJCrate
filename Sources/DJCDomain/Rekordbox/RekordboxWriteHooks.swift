@@ -24,6 +24,8 @@ public enum RekordboxWriteStep: String, Hashable, Codable, CaseIterable, Sendabl
     case journalRemove
     /// 보고서 저장
     case reportSave
+    /// 쓰기 기록 판정의 변경 카운터 읽기(master.db 사본)
+    case counterRead
 }
 
 /// 훅을 부르는 때

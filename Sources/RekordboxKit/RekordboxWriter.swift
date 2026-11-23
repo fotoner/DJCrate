@@ -27,6 +27,10 @@ public enum RekordboxWriter {
     /// 백업은 한 개에 150MB 안팎이다. 최근 이만큼만 남긴다.
     /// 확인 창 없이 바로 쓰게 하면서(#210) 되돌릴 수 있는 쓰기 수를 5에서 20으로 늘렸다(사용자 결정 2026-10-07, #209).
     static let backupsToKeep = 20
+    /// 최근 24시간 안의 쓰기 백업이 많아도 이보다 많이 남기지 않는다(R13)
+    static let backupsToKeepMax = 200
+    /// 이 시간 안에 뜬 쓰기 백업은 `backupsToKeepMax`까지 모두 남긴다(R13, 이름의 시각으로 잰다)
+    static let recentBackupWindow: TimeInterval = 24 * 3600
 
     static func isLive(_ database: URL, liveDatabase: URL = liveDatabase) -> Bool {
         RekordboxWriteGuard.sameFile(database, liveDatabase)
@@ -53,7 +57,8 @@ public enum RekordboxWriter {
                              iTunesSync: RekordboxITunesSyncChange? = nil,
                              to database: URL, dryRun: Bool,
                              now: Date = .now, backups: URL, shareRoot: URL? = nil,
-                             guard writeGuard: RekordboxWriteGuard = .system) throws -> Report {
+                             guard writeGuard: RekordboxWriteGuard = .system,
+                             record: RekordboxDraftRecord<Report>? = nil) throws -> Report {
         if let iTunesSync {
             guard drafts.isEmpty, grids.isEmpty, gains.isEmpty, tags.isEmpty, artworks.isEmpty, analysisInputs.isEmpty,
                   playlists.isEmpty, playlistDraft == nil, merges.isEmpty, histories.isEmpty else { throw RekordboxITunesSyncChange.invalidSource }
@@ -62,7 +67,7 @@ public enum RekordboxWriter {
         return try write(drafts: drafts, grids: grids, gains: gains, tags: tags, artworks: artworks, analysisInputs: analysisInputs, playlists: playlists,
                   playlistDraft: playlistDraft, merges: merges, histories: histories, to: database,
                   dryRun: dryRun, now: now, backups: backups, shareRoot: shareRoot, guard: writeGuard, attachesAnalysis: attachesAnalysis,
-                  writesArtwork: RekordboxTrackWriter.writesArtwork)
+                  writesArtwork: RekordboxTrackWriter.writesArtwork, record: record)
     }
 
     /// - Parameters:
@@ -83,7 +88,9 @@ public enum RekordboxWriter {
                               tagKeys: Set<TagFields.Key> = writableTagKeys,
                               tagScopes: [TagFields.Key: TagWriteScope] = TagWriteScope.byKey,
                               writesHistories: Bool = RekordboxWriter.writesHistories,
-                              historyEnvironment: HistoryEnvironment = .system) throws -> Report {
+                              historyEnvironment: HistoryEnvironment = .system,
+                              record: RekordboxDraftRecord<Report>? = nil,
+                              readXML: @escaping (URL) throws -> MasterPlaylistsXML = { try MasterPlaylistsXML(contentsOf: $0) }) throws -> Report {
         let stamp = CueJSON.timestamps(now)
         let grids = grids.filter(\.hasChanges)
         var tags = tags.filter(\.hasChanges)
@@ -108,7 +115,15 @@ public enum RekordboxWriter {
             return report
         }
         let live = writeGuard.isLive(database)
-        let gridRoot = try writeGuard.checkTargets(database, shareRoot: shareRoot, dryRun: dryRun)
+        let gridRoot = try writeGuard.checkTargetsBeforeLock(database, shareRoot: shareRoot, dryRun: dryRun)
+        // 쓰기 잠금(R9)을 사전 확인부터 파일 단계·복구가 끝날 때까지 쥔다. 라이브 확인·중단 기록 거절(R11)은 잡은 뒤에 한다.
+        // 시험 실행(dryRun)은 라이브러리를 바꾸지 않아 잠그지 않는다.
+        let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups, refusesHardLinks: false)
+        defer { run?.close() }
+        try run?.prepareWrite()
+        /// 준비 폴더를 둘 루트(R10): XML은 DB 폴더, 분석·그림은 분석 루트. 남은 준비 폴더는 쓰기 전에 지운다
+        let stagingRoots = [run?.resolved.deletingLastPathComponent(), gridRoot].compactMap { $0 }
+        if let run { removeStaging(roots: stagingRoots, key: run.key) }
         do {
             let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
             defer { reader.close() }
@@ -140,7 +155,9 @@ public enum RekordboxWriter {
         // 재생 목록 편집과 곡 정보 쓰기는 DB 옆 masterPlaylists6.xml도 고친다(곡 정보는 그 곡이 든 목록의 Timestamp, #173).
         // 쓰는 DB 옆 파일만 대상이고 없으면 DB만 쓴다. 곡 정보는 그 곡이 든 살아 있는 목록이 있을 때만 읽는다. 사본 옆 파일이 라이브 XML의
         // 링크이거나 읽지 못하면 그 곡정보 초안만 막는다(큐·그리드 등은 쓴다). 재생 목록·합치기는 예전처럼 쓰기째 막는다.
-        let playlistXMLURL = playlistXMLURL(for: database)
+        // 곁 파일은 링크를 푼 DB 옆 것이다(파일 링크 DB도 실제 DB의 곁 파일을 고친다. 기록 경로 검증과 같은 기준, O12).
+        // 시험 실행(잠그지 않는다)도 같은 자리를 본다(미리 보기와 실제 쓰기가 같은 XML을 본다, S20)
+        let playlistXMLURL = playlistXMLURL(for: try run?.resolved ?? RekordboxWriteLocks.resolve(database))
         var playlistXML: MasterPlaylistsXML?
         let editsPlaylists = !playlistSteps.isEmpty || !merges.isEmpty
         if editsPlaylists || !xmlTags.isEmpty {
@@ -311,11 +328,15 @@ public enum RekordboxWriter {
             }
         }
 
-        let backup = dryRun ? nil : try makeBackup(of: database, in: backups, now: now, label: "write")
+        let backup = dryRun ? nil : try makeBackup(of: run?.resolved ?? database, in: backups, now: now, label: "write")
         // 분석 파일도 원본을 백업에 둔다(되돌리기용).
-        if let backup, let gridRoot, !gridPlans.isEmpty { try backupAnalysis(gridPlans, in: backup, shareRoot: gridRoot) }
+        /// 원래 파일 경로 → 쓰기 전 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
+        var originalCopies: [String: URL] = [:]
+        if let backup, let gridRoot, !gridPlans.isEmpty { originalCopies.merge(try backupAnalysis(gridPlans, in: backup, shareRoot: gridRoot)) { a, _ in a } }
         // 바꾸거나 지울 그림 파일도 둔다(그리드 백업이 manifest를 새로 쓰므로 그 뒤에 더한다).
-        if let backup, let gridRoot, !artworkPlans.isEmpty { try backupArtworkFiles(artworkPlans, in: backup, shareRoot: gridRoot) }
+        if let backup, let gridRoot, !artworkPlans.isEmpty {
+            originalCopies.merge(try backupArtworkFiles(artworkPlans, in: backup, shareRoot: gridRoot)) { a, _ in a }
+        }
 
         var outcomes: [Outcome] = []
         var gainOutcomes: [Outcome] = []
@@ -335,12 +356,100 @@ public enum RekordboxWriter {
         var merged: [MergeExpectation] = []
         var mergeRenumbered = RekordboxTrackWriter.Renumbered()
         var mergeFiles: [URL] = []
+        /// 합치기가 지울 파일의 지금 바이트(실패하면 되돌린다)
+        var mergeOriginals: [String: Data] = [:]
         var historyExpectations: [HistoryExpectation] = []
         /// 기록을 쓴 곡 행(ContentID → 쓴 뒤 칸)
         var historyPlays: [String: HistoryPlay] = [:]
         var finalUpdateCount: Int?
         var committed = false
+        /// 커밋 뒤 파일 단계(R10). 커밋 전에 정하고 준비 폴더에 새 내용을 만든다
+        var fileSteps: [FileStep] = []
+        /// XML·분석 붙이기·그리드·그림·합치기 파일 단계(커밋 뒤 이 차례로 한다: DB를 확인한 뒤 XML, 분석 파일, 그림, 합치기가 지울 파일)
+        func plannedFileSteps() -> [FileStep] {
+            var steps: [FileStep] = []
+            let databaseFolder = run?.resolved.deletingLastPathComponent() ?? database.deletingLastPathComponent()
+            if let backup, let updatedXML, let original = playlistXML, updatedXML != original {
+                steps.append(xmlFileStep(updatedXML, original: original, url: playlistXMLURL, backup: backup, root: databaseFolder, read: readXML))
+            }
+            guard let gridRoot else { return steps }
+            // 분석 붙이기(새 파일): 확인한 뒤 링크가 생겼어도 share 밖에 쓰지 않는다
+            for plan in attached {
+                let files = plan.ready.files + (plan.artwork?.files ?? [])
+                for (url, data) in files {
+                    var step = FileStep(target: url, action: .place(data), original: nil, root: gridRoot, mustNotExist: true, check: {
+                        guard try Data(contentsOf: url) == data else {
+                            throw DJCError.writeVerificationFailed(String(ui: "파일 확인 실패: \(url.lastPathComponent) (\(plan.title))"))
+                        }
+                    })
+                    step.precheck = {
+                        if let artwork = plan.artwork, artwork.files.contains(where: { hasSymlinkComponent($0.0, under: artwork.share) }) {
+                            throw DJCError.writeVerificationFailed("\(artworkLinkReason) (\(plan.title))")
+                        }
+                    }
+                    steps.append(step)
+                }
+            }
+            // 그리드(바꾸기): 같은 곡의 .DAT·.EXT를 끼운 뒤 함께 확인한다
+            for plan in gridPlans {
+                var files = [(plan.datURL, plan.newDat, plan.originalDat)]
+                if let extURL = plan.extURL, let newExt = plan.newExt, let originalExt = plan.originalExt { files.append((extURL, newExt, originalExt)) }
+                for (offset, (url, data, original)) in files.enumerated() {
+                    steps.append(FileStep(target: url, action: .place(data), original: original, originalCopy: originalCopies[url.path],
+                                          root: gridRoot, check: offset < files.count - 1 ? nil : {
+                        let dat = try Data(contentsOf: plan.datURL)
+                        let ext = try plan.extURL.map { try Data(contentsOf: $0) }
+                        guard dat == plan.newDat, ext == plan.newExt else {
+                            throw DJCError.writeVerificationFailed(String(ui: "분석 파일이 저장한 내용과 다릅니다(\(plan.title))"))
+                        }
+                        try RekordboxGridWriter.verify(plan, written: dat, ext: ext)
+                    }))
+                }
+            }
+            // 그림(넣기·바꾸기·지우기): 끼우거나 지운 뒤 그림 기록의 해시·크기와 맞춘다
+            for expectation in drawn {
+                let plan = expectation.plan
+                func fail(_ reason: String) -> DJCError { .writeVerificationFailed("\(reason) (\(plan.title))") }
+                // 확인한 뒤 링크가 생겼어도 share 밖에 쓰거나 지우지 않는다(바꾸기 직전마다 본다)
+                let linked = { () throws -> Void in
+                    guard !(plan.files.map(\.0) + plan.existing.map(\.0)).contains(where: { hasSymlinkComponent($0, under: plan.share) }) else {
+                        throw fail(artworkLinkReason)
+                    }
+                }
+                switch plan.kind {
+                case .add, .replace:
+                    let existing = Dictionary(plan.existing.map { ($0.0.path, $0.1) }) { a, _ in a }
+                    for (offset, (url, data)) in plan.files.enumerated() {
+                        steps.append(FileStep(target: url, action: .place(data), original: existing[url.path], originalCopy: originalCopies[url.path],
+                                              root: gridRoot, mustNotExist: plan.kind == .add, check: {
+                            guard try Data(contentsOf: url) == data else { throw fail(String(ui: "파일 확인 실패: \(url.lastPathComponent)")) }
+                            guard offset == plan.files.count - 1 else { return }
+                            guard let full = plan.files.first, case .text(md5(try Data(contentsOf: full.0)))? = expectation.file?["Hash"],
+                                  case .int(try Data(contentsOf: full.0).count)? = expectation.file?["Size"] else {
+                                throw fail(String(ui: "앨범아트 파일과 앨범아트 기록의 해시·크기가 다릅니다"))
+                            }
+                        }, precheck: linked))
+                    }
+                case .delete:
+                    // 폴더는 남긴다(묶음 2 S3·#173 S2 U09)
+                    for (url, data) in plan.existing {
+                        steps.append(FileStep(target: url, action: .remove(cleansFolders: false), original: data, originalCopy: originalCopies[url.path],
+                                              root: gridRoot, check: {
+                            guard !FileManager.default.fileExists(atPath: url.path) else { throw fail(String(ui: "앨범아트 파일을 지우지 못했습니다")) }
+                        }, precheck: linked))
+                    }
+                }
+            }
+            // 합치기가 지울 분석·그림 파일(비게 된 곡 폴더도 지운다)
+            for file in Set(mergeFiles).sorted(by: { $0.path < $1.path }) {
+                steps.append(FileStep(target: file, action: .remove(cleansFolders: true), original: mergeOriginals[file.path],
+                                      originalCopy: originalCopies[file.path], root: gridRoot))
+            }
+            return steps
+        }
         do {
+            // 쓰기 연결을 열기 바로 직전에 실행을 다시 본다(켜졌으면 아무것도 바꾸지 않고 보류)
+            try run?.recheck(.begin)
             let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive(), writable: true)
             try db.execute("BEGIN IMMEDIATE")
             var finished = false
@@ -447,7 +556,8 @@ public enum RekordboxWriter {
                         let cues = plan.cues
                         let result = try applyMerge(plan.draft, cue: cues, work: &work, db: db, usn: &usn, stamp: stamp, share: gridRoot,
                                                     renumbered: &mergeRenumbered)
-                        try backupDeletionFiles(result.files, in: backup, shareRoot: gridRoot)
+                        originalCopies.merge(try backupDeletionFiles(result.files, in: backup, shareRoot: gridRoot)) { a, _ in a }
+                        if backup != nil { for file in result.files { mergeOriginals[file.path] = try Data(contentsOf: file) } }
                         try verifyPlaylists(work, db: db)
                         try db.execute("RELEASE djc_merge")
                         merged.append(result.expectation); mergeFiles += result.files
@@ -603,84 +713,101 @@ public enum RekordboxWriter {
             if dryRun || !databaseChanged {
                 try db.execute("ROLLBACK")
             } else {
+                // 커밋 전: 분석·그림·XML의 새 내용을 준비 폴더에 만들고(R10), 실행을 다시 본 뒤 쓰기 기록을 남긴다(R11).
+                // 켜짐을 보면 롤백하고 보류한다(기록을 남기지 않는다).
+                if let run, let backup {
+                    fileSteps = plannedFileSteps()
+                    try stage(&fileSteps, key: run.key)
+                    try run.recheck(.commit)
+                    try run.begin(RekordboxWriteJournal(operationID: record?.operationID ?? UUID().uuidString, kind: .counter, entry: .drafts,
+                                                        basis: .init(writeBackup: backup.path), files: journalFiles(fileSteps),
+                                                        drafts: record?.drafts, startCounter: startUSN, finalCounter: usn))
+                    // 기록 남기기는 저장소 잠금을 기다릴 수 있다: 커밋 직전에 다시 본다(켜졌으면 롤백하고 기록을 지운 뒤 보류, S12)
+                    try run.recheck(.commit)
+                    try run.before(.commit)
+                }
                 try db.execute("COMMIT")
                 committed = true
+                run?.changed = true
                 try? db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             }
             finished = true
             db.close()
         } catch {
-            // 커밋 전 실패는 ROLLBACK으로 끝난다. 백업은 남겨 두지만 쓸 일은 없다.
+            // 커밋 전 실패는 ROLLBACK으로 끝난다. 백업은 남겨 두지만 쓸 일은 없다. 바꾼 것이 없으니 기록·준비 폴더도 지운다
+            // (강제 종료 흉내는 그대로 둔다: 다음 판정이 카운터로 가린다).
+            if let run {
+                if !run.changed, !(error is RekordboxWriteStop) {
+                    try? run.finish()
+                    removeStaging(roots: stagingRoots, key: run.key)
+                }
+                if let passed = run.passThrough(error) { throw passed }
+            }
             throw error
         }
 
-        // 커밋한 쓰기는 모두 무결성 검사와 다시 읽기를 거친다(백업은 시험 실행이 아닐 때만 있다).
-        if let backup, committed {
+        // 커밋한 쓰기는 모두 무결성 검사와 다시 읽기를 거친다(백업은 시험 실행이 아닐 때만 있다). 그 뒤 준비한 파일을 끼운다(R10):
+        // masterPlaylists6.xml(DB를 확인한 뒤) → 분석 파일(붙이기는 새로 만들고, 그리드는 고친다) → 그림 → 합치기가 지울 파일.
+        // 어느 단계든 실패하면 DB·파일 모두 쓰기 전으로 되돌린다(만든 파일은 지운다). 큐 없이 BPM·게인만 커밋했어도 DB를 되돌린다.
+        // BPM이 그대로인 그리드만 든 쓰기는 DB를 바꾸지 않아(ROLLBACK) 첫 파일 변경 직전에 파일 쓰기 기록을 남긴다.
+        var performed = 0
+        if let run, let backup {
             do {
-                try checkIntegrity(of: database)
-                let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-                defer { db.close() }
-                for item in written { try verify(db: db, contentID: item.contentID, item.expectation) }
-                // 분석을 붙인 뒤 태그·재생 기록도 쓴 곡은 곡 정보 변경 횟수를 그쪽에서 본다.
-                let taggedIDs = Set(tagged.map(\.contentID)).union(historyPlays.keys)
-                for plan in attached { try verifyAttach(plan, db: db, skipsTrackInfo: taggedIDs.contains(plan.contentID)) }
-                for expectation in tagged { try verifyTags(db: db, expectation) }
-                for expectation in drawn { try verifyArtwork(db: db, expectation) }
-                for expectation in regridded { try verifyGrid(db: db, expectation) }
-                for expectation in gained { try verifyGain(db: db, expectation) }
-                if let playlistWork { try verifyPlaylists(playlistWork, db: db) }
-                for expectation in merged { try verifyMerge(expectation, db: db) }
-                try RekordboxTrackWriter.verifyRenumbered(mergeRenumbered, db: db)
-                for expectation in historyExpectations { try verifyHistory(db: db, expectation) }
-                try verifyHistoryPlays(db: db, historyPlays)
-            } catch {
-                throw recover(from: error, database: database, backup: backup, live: live)
-            }
-        }
-        // masterPlaylists6.xml: DB를 확인한 뒤 적는다. 고칠 줄이 없으면(곡이 든 목록의 NODE가 없음 등) 같은 내용을 다시 쓰지 않는다.
-        if let backup, let updatedXML, let original = playlistXML, updatedXML != original {
-            try writePlaylistXML(updatedXML, original: original, to: playlistXMLURL, database: database, backup: backup, live: live)
-        }
-
-        // 분석 파일(붙이기는 새로 만들고, 그리드는 고친다): DB가 끝난 뒤 쓴다. 하나라도 검증에 실패하면 DB·파일 모두 쓰기 전으로
-        // 되돌린다(만든 파일은 지운다). 큐 없이 BPM·게인만 커밋했어도 DB를 되돌린다.
-        var created: [URL] = []
-        if let backup, !gridPlans.isEmpty || !attached.isEmpty {
-            do {
-                for plan in attached { try writeAnalysisFiles(plan, created: &created) }
-                for plan in gridPlans { try RekordboxGridWriter.apply(plan) }
-            } catch {
-                throw recover(from: error, database: database, backup: backup, live: live, restoreDatabase: committed) {
-                    try removeAnalysisFiles(created)
-                    try restoreGridFiles(gridPlans)
+                if committed {
+                    try run.databaseChanged()
+                    try run.after(.commit)
+                    try run.before(.verify)
+                    try checkIntegrity(of: database)
+                    let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
+                    defer { db.close() }
+                    for item in written { try verify(db: db, contentID: item.contentID, item.expectation) }
+                    // 분석을 붙인 뒤 태그·재생 기록도 쓴 곡은 곡 정보 변경 횟수를 그쪽에서 본다.
+                    let taggedIDs = Set(tagged.map(\.contentID)).union(historyPlays.keys)
+                    for plan in attached { try verifyAttach(plan, db: db, skipsTrackInfo: taggedIDs.contains(plan.contentID)) }
+                    for expectation in tagged { try verifyTags(db: db, expectation) }
+                    for expectation in drawn { try verifyArtwork(db: db, expectation) }
+                    for expectation in regridded { try verifyGrid(db: db, expectation) }
+                    for expectation in gained { try verifyGain(db: db, expectation) }
+                    if let playlistWork { try verifyPlaylists(playlistWork, db: db) }
+                    for expectation in merged { try verifyMerge(expectation, db: db) }
+                    try RekordboxTrackWriter.verifyRenumbered(mergeRenumbered, db: db)
+                    for expectation in historyExpectations { try verifyHistory(db: db, expectation) }
+                    try verifyHistoryPlays(db: db, historyPlays)
+                    try run.after(.verify)
+                } else if !gridPlans.isEmpty {
+                    fileSteps = plannedFileSteps()
+                    try stage(&fileSteps, key: run.key)
                 }
-            }
-        }
-
-        // 그림 파일: 분석 파일 다음에 쓴다. 실패하면 만든 파일을 지우고 바꾸거나 지운 옛 그림을 백업에서 되살린 뒤 DB를 되돌린다.
-        if let backup, !drawn.isEmpty {
-            do {
-                for expectation in drawn { try writeArtworkFiles(expectation, created: &created) }
-            } catch {
-                throw recover(from: error, database: database, backup: backup, live: live) {
-                    try removeAnalysisFiles(created)
-                    try restoreGridFiles(gridPlans)
-                    try restoreArtworkFiles(drawn)
+                if !fileSteps.isEmpty {
+                    if run.journal == nil {
+                        try run.recheck(.fileReplace)
+                        try run.begin(RekordboxWriteJournal(operationID: record?.operationID ?? UUID().uuidString, kind: .files, entry: .drafts,
+                                                            basis: .init(writeBackup: backup.path), files: journalFiles(fileSteps),
+                                                            drafts: record?.drafts))
+                    }
+                    try applyFileSteps(fileSteps, run: run, performed: &performed)
                 }
-            }
-        }
-
-        if let backup, !mergeFiles.isEmpty {
-            do {
-                try removeOwnedFiles(mergeFiles)
             } catch {
-                throw recover(from: error, database: database, backup: backup, live: live) {
-                    try restoreAnalysis(from: backup,
-                                        shareRoot: gridRoot ?? database.deletingLastPathComponent().appending(path: "share"))
-                    try removeAnalysisFiles(created)
+                // 아직 아무것도 바꾸지 않았다(파일만 바꾸는 쓰기의 첫 변경 전): 기록·준비 폴더를 지우고 그대로 던진다
+                if !run.changed {
+                    if !(error is RekordboxWriteStop) {
+                        try? run.finish()
+                        removeStaging(roots: stagingRoots, key: run.key)
+                    }
+                    throw run.passThrough(error) ?? error
                 }
+                let steps = fileSteps.prefix(performed)
+                let failure = recover(from: error, run: run, database: database, backup: backup, live: live, restoreDatabase: committed,
+                                      filesLabel: steps.contains { $0.target == playlistXMLURL } && steps.count == 1 ? "masterPlaylists6.xml" : nil) {
+                    try revertFileSteps(steps, run: run)
+                }
+                // 다 되돌려 기록을 지웠으면 준비 폴더도 지운다. 기록이 남았으면(멈춤·복구 실패) 기록으로 복원이나 다음 쓰기가 지운다
+                if run.journal == nil { removeStaging(roots: stagingRoots, key: run.key) }
+                throw failure
             }
+            removeStaging(roots: stagingRoots, key: run.key)
         }
+        let created = fileSteps.prefix(performed).filter { $0.original == nil && $0.originalCopy == nil }.map(\.target)
 
         var report = Report(outcomes: outcomes, backup: backup?.path, dryRun: dryRun, createdAt: stamp.json,
                             finalUpdateCount: finalUpdateCount)
@@ -695,8 +822,9 @@ public enum RekordboxWriter {
         report.mergeOutcomes = mergeOutcomes.isEmpty ? nil : mergeOutcomes
         report.artworkOutcomes = artworkOutcomes.isEmpty ? nil : artworkOutcomes
         report.historyOutcomes = historyReport()
-        if let backup {
-            if let warning = saveReport(report, in: backup, shareRoot: gridRoot) { report.warnings = [warning] }
+        if let backup, let run {
+            // 보고서 저장은 기록을 지우기 전에 한다. 실패해도 쓰기를 실패로 돌리지 않고 경고한다(R11)
+            if let warning = try saveReport(report, in: backup, shareRoot: gridRoot, run: run) { report.warnings = [warning] }
             // 되돌리면 DJCrate 초안도 살릴 수 있게 쓴 초안을 백업 옆에 둔다.
             let written = Set(report.written.map(\.trackUUID))
             let folder = backup.appending(path: "cue-drafts")
@@ -741,68 +869,95 @@ public enum RekordboxWriter {
             if !playlistWritten.isEmpty {
                 try? JSONEncoder().encode(playlistWritten).write(to: backup.appending(path: "playlist-edits.json"), options: .atomic)
             }
-            prune(backups)
+            // 앱의 쓰기: 라이브러리 변경이 끝난 뒤 기록을 지우기 직전에 미정리 목록을 적는다(R22). 적지 못하면 기록을 남긴다(중단)
+            try finishRun(run, backup: backup, backups: backups, list: record.flatMap { $0.cleanupList(report) }, now: now)
         }
         return report
     }
 
     // MARK: - 커밋 뒤 실패
 
-    /// masterPlaylists6.xml을 적고 다시 읽어 확인한다(DB를 커밋하고 확인한 뒤). 적거나 다시 읽다 실패하면 DB를 되돌리기 전에 원본 XML부터
-    /// 다시 쓰고(재생 목록 쓰기 #38과 같은 순서라 DB 복원이 실패해도 XML은 원본) DB를 백업으로 되돌린다.
+    /// masterPlaylists6.xml을 적고 다시 읽어 확인한다(DB를 커밋하고 확인한 뒤). 초안 쓰기와 같은 파일 단계(R10)로 한다: 새 내용을 DB 폴더의
+    /// 준비 폴더에 만든 뒤 이름 바꾸기로 끼운다. 끼우거나 다시 읽다 실패하면 DB를 되돌리기 전에 원본 XML부터 다시 쓰고(재생 목록 쓰기 #38과
+    /// 같은 순서라 DB 복원이 실패해도 XML은 원본) DB를 백업으로 되돌린다.
     /// - Parameter read: 다시 읽기(시험만 바꾼다)
     static func writePlaylistXML(_ updated: MasterPlaylistsXML, original: MasterPlaylistsXML, to url: URL, database: URL, backup: URL, live: Bool,
-                                 read: (URL) throws -> MasterPlaylistsXML = { try MasterPlaylistsXML(contentsOf: $0) }) throws {
+                                 read: @escaping (URL) throws -> MasterPlaylistsXML = { try MasterPlaylistsXML(contentsOf: $0) }) throws {
+        let root = url.deletingLastPathComponent()
+        var steps = [xmlFileStep(updated, original: original, url: url, backup: backup, root: root, read: read)]
+        let key = try RekordboxWriteLocks.key(database)
+        try stage(&steps, key: key)
+        defer { removeStaging(roots: [root], key: key) }
+        var performed = 0
         do {
-            try updated.data.write(to: url, options: .atomic)
-            guard try read(url) == updated else {
-                throw DJCError.writeVerificationFailed(String(ui: "masterPlaylists6.xml을 다시 읽으니 적은 것과 다릅니다"))
-            }
+            try applyFileSteps(steps, run: nil, performed: &performed)
         } catch {
             throw recover(from: error, database: database, backup: backup, live: live, filesLabel: "masterPlaylists6.xml") {
-                // 원자적 쓰기가 실패했으면 원본 그대로다. 같은 내용을 다시 쓰다 같은 이유로 실패해 복원 실패로 알리지 않는다.
-                guard (try? Data(contentsOf: url)) != original.data else { return }
-                try original.data.write(to: url, options: .atomic)
+                try revertFileSteps(steps.prefix(performed), run: nil)
             }
         }
     }
 
+    /// masterPlaylists6.xml 파일 단계: 새 내용을 DB 폴더의 준비 폴더에서 끼우고 다시 읽어 적은 것과 같은지 본다. 원본 사본은 쓰기 전 백업의 XML이다
+    static func xmlFileStep(_ updated: MasterPlaylistsXML, original: MasterPlaylistsXML, url: URL, backup: URL, root: URL,
+                            read: @escaping (URL) throws -> MasterPlaylistsXML) -> FileStep {
+        FileStep(target: url, action: .place(updated.data), original: original.data, originalCopy: backup.appending(path: url.lastPathComponent),
+                 root: root, check: {
+            guard try read(url) == updated else {
+                throw DJCError.writeVerificationFailed(String(ui: "masterPlaylists6.xml을 다시 읽으니 적은 것과 다릅니다"))
+            }
+        })
+    }
+
     /// 커밋 뒤 확인·분석 파일 쓰기가 실패했을 때 쓰기 전으로 되돌리고 던질 오류를 고른다.
     /// 모두 되돌렸으면 `writeRolledBack`, 하나라도 못 했거나 되돌린 DB가 무결성 검사를 통과하지 못하면 `restoreFailed`.
+    /// 쓰기 기록이 있으면(R11) 켜짐부터 다시 보고(켜졌으면 아무것도 바꾸지 않고 기록을 그대로 둔 채 멈춘다, R10), 첫 변경 전에 "복구 중"을 적고,
+    /// 다 되돌리면 기록을 지우고, 못 되돌리면 "복구 실패"로 고쳐 남긴다(R7). 강제 종료 흉내는 그대로 던진다.
     /// - Parameters:
     ///   - restoreDatabase: DB를 커밋했으면 true(백업의 master.db로 바꾼다)
     ///   - files: 분석 파일 되돌리기(바꾼 파일은 원본으로, 만든 파일은 지우기)
-    static func recover(from failure: any Error, database: URL, backup: URL, live: Bool, restoreDatabase: Bool = true,
-                        filesLabel: String? = nil, files: () throws -> Void = {}) -> DJCError {
+    static func recover(from failure: any Error, run: WriteRun? = nil, database: URL, backup: URL, live: Bool, restoreDatabase: Bool = true,
+                        filesLabel: String? = nil, files: () throws -> Void = {}) -> any Error {
+        if let run, let passed = run.passThrough(failure) { return passed }
+        if let run, let refused = run.markRecovering(failure) { return refused }
+        // 링크로 가리킨 DB면 링크를 파일로 바꾸지 않게 링크를 푼 자리를 되돌린다(안내 문구는 부른 쪽의 경로 그대로)
+        let target = run?.resolved ?? database
         var problems: [String] = []
         // files는 분석 파일·아트워크(그리드·분석 붙이기·합치기)나 원본 XML(filesLabel)을 되돌린다. DB와 XML은 restoreFiles가 백업에서 살린다.
         do { try files() } catch {
+            if let run, let passed = run.passThrough(error) { return passed }
             let reason = DJCError.reason(of: error)
             problems.append(filesLabel.map { "\($0): \(reason)" } ?? String(ui: "분석·앨범아트 파일: \(reason)"))
         }
         if restoreDatabase {
             // restoreFiles는 DB를 되살린 뒤에만 XML을 되살리고, 실패에 꼬리표("master.db:"·"masterPlaylists6.xml:")를 붙여 던진다.
-            do { try restoreFiles(from: backup, to: database) } catch { problems.append(DJCError.reason(of: error)) }
-            do { try checkIntegrity(of: database) } catch { problems.append("master.db: \(DJCError.reason(of: error))") }
+            do { try restoreFiles(from: backup, to: target, run: run) } catch {
+                if let run, let passed = run.passThrough(error) { return passed }
+                problems.append(DJCError.reason(of: error))
+            }
+            do { try checkIntegrity(of: target) } catch { problems.append("master.db: \(DJCError.reason(of: error))") }
         }
         let reason = DJCError.reason(of: failure)
         guard problems.isEmpty else {
-            return .restoreFailed(reason: reason, restoreError: problems.joined(separator: " / "), backup: backup.path,
-                                  database: live ? nil : database.path)
+            if let run {
+                do { try run.update { $0.marks.insert(.recoveryFailed) } } catch {
+                    if let passed = run.passThrough(error) { return passed }
+                }
+            }
+            return DJCError.restoreFailed(reason: reason, restoreError: problems.joined(separator: " / "), backup: backup.path,
+                                          database: live ? nil : database.path)
         }
-        return .writeRolledBack(reason)
-    }
-
-    /// 그리드를 쓴 분석 파일을 원본 바이트로 되돌린다. 원본 그대로인 파일(쓰기 전에 실패한 곡)은 건드리지 않는다.
-    static func restoreGridFiles(_ plans: [RekordboxGridWriter.Plan]) throws {
-        var files: [(URL, Data)] = []
-        for plan in plans {
-            files.append((plan.datURL, plan.originalDat))
-            if let extURL = plan.extURL, let originalExt = plan.originalExt { files.append((extURL, originalExt)) }
+        if let run {
+            do {
+                try run.after(.recovery)
+                try run.finish()
+            } catch {
+                if let passed = run.passThrough(error) { return passed }
+                return DJCError.restoreFailed(reason: reason, restoreError: DJCError.reason(of: error), backup: backup.path,
+                                              database: live ? nil : database.path)
+            }
         }
-        try each(files.filter { (try? Data(contentsOf: $0.0)) != $0.1 }) { url, original in
-            try original.write(to: url, options: .atomic)
-        }
+        return DJCError.writeRolledBack(reason)
     }
 
     /// 하나가 실패해도 나머지를 모두 해 보고, 처음 실패를 던진다(되돌리기를 중간에 멈추지 않게).

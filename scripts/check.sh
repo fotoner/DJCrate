@@ -128,7 +128,9 @@ fi
 live_library="$HOME/Library/Pioneer/rekordbox"
 touch "$log_dir/live-reference"
 live_fingerprint() {
-    local live_files=("$live_library"/master.db*(N) "$live_library"/masterPlaylists6.xml(N))
+    # 쓰기 기록 master.db.djc-write(master.db* 글롭에 든다)와 준비 폴더 .djc-staging(DB 폴더·share)도 본다(#399): 시험이 남기면 드러난다
+    local live_files=("$live_library"/master.db*(N) "$live_library"/masterPlaylists6.xml(N)
+                      "$live_library"/.djc-staging(N) "$live_library"/share/.djc-staging(N))
     # 파일이 없을 때 인자 없는 stat은 표준 입력을 읽어 실행마다 값이 달라진다.
     if (( ${#live_files} )); then /usr/bin/stat -f '%N %z %m %i' "${live_files[@]}" 2>/dev/null || true; fi
     find "$live_library/share/PIONEER/USBANLZ" -newer "$log_dir/live-reference" 2>/dev/null | head -5 || true

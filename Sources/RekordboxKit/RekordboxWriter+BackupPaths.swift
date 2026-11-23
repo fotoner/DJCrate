@@ -6,6 +6,8 @@ extension RekordboxWriter {
         var target: URL
         var relative: String
         var data: Data
+        /// 백업 안 원본(쓰기 기록이 다시 하는 복원의 근거로 적는다)
+        var source: URL
     }
 
     static func invalidBackup(_ reason: String) -> DJCError {
@@ -95,7 +97,7 @@ extension RekordboxWriter {
             let target = try backupTarget(path, shareRoot: shareRoot)
             let source = folder.appending(path: name)
             try validateBackupFile(source, under: backup, required: true)
-            files.append(AnalysisRestoreFile(target: target.url, relative: target.relative, data: try Data(contentsOf: source)))
+            files.append(AnalysisRestoreFile(target: target.url, relative: target.relative, data: try Data(contentsOf: source), source: source))
         }
         try validateRestoreTargets(files.map(\.target), database: backup.appending(path: "master.db"), shareRoot: shareRoot)
         return files

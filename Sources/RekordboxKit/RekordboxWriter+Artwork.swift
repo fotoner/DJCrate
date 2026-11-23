@@ -230,9 +230,12 @@ extension RekordboxWriter {
 
     /// 바꾸거나 지울 옛 그림 파일을 백업 `anlz/`에 둔다(이름 `artwork-<n>.jpg`, 원래 자리는 manifest.json에 더한다).
     /// 그리드 백업(`backupAnalysis`)이 manifest를 새로 쓰므로 그 뒤에 부른다.
-    static func backupArtworkFiles(_ plans: [ArtworkPlan], in backup: URL, shareRoot: URL) throws {
+    /// - Returns: 원래 파일 경로 → 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
+    @discardableResult
+    static func backupArtworkFiles(_ plans: [ArtworkPlan], in backup: URL, shareRoot: URL) throws -> [String: URL] {
         let files = plans.flatMap(\.existing)
-        guard !files.isEmpty else { return }
+        guard !files.isEmpty else { return [:] }
+        var copies: [String: URL] = [:]
         let folder = backup.appending(path: "anlz")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let manifestURL = folder.appending(path: "manifest.json")
@@ -241,8 +244,10 @@ extension RekordboxWriter {
             let name = "artwork-\(manifest.count).\(file.pathExtension)"
             try data.write(to: folder.appending(path: name))
             manifest[name] = try backupTarget(file.path, shareRoot: shareRoot).relative
+            copies[file.path] = folder.appending(path: name)
         }
         try JSONEncoder().encode(manifest).write(to: manifestURL, options: .atomic)
+        return copies
     }
 
     /// 그림 초안 하나를 트랜잭션 안에서 쓴다. 막히면 `Blocked`(부른 쪽이 SAVEPOINT로 되돌린다).
@@ -326,46 +331,6 @@ extension RekordboxWriter {
             }
         } catch DJCError.writeVerificationFailed {
             throw DJCError.writeVerificationFailed("\(String(ui: "앨범아트 기록 확인 실패")) (\(expected.plan.title))")
-        }
-    }
-
-    /// 커밋 뒤 그림 파일을 쓰거나 지운다. 새로 만든 파일은 `created`에 더한다(실패하면 지우고, "쓰기 전으로 복원…"도 지운다).
-    /// 바꾸기·지우기의 옛 파일은 백업에 있어 실패하면 `restoreAnalysis`가 되살린다. 쓴 뒤 `artwork.jpg`의 MD5·크기가 파일 행과 같은지 본다.
-    static func writeArtworkFiles(_ expected: ArtworkExpectation, created: inout [URL]) throws {
-        let fm = FileManager.default
-        let plan = expected.plan
-        func fail(_ reason: String) -> DJCError { .writeVerificationFailed("\(reason) (\(plan.title))") }
-        // 확인한 뒤 링크가 생겼어도 share 밖에 쓰거나 지우지 않는다.
-        guard !(plan.files.map(\.0) + plan.existing.map(\.0)).contains(where: { hasSymlinkComponent($0, under: plan.share) }) else {
-            throw fail(artworkLinkReason)
-        }
-        switch plan.kind {
-        case .add, .replace:
-            for (url, data) in plan.files {
-                let existed = fm.fileExists(atPath: url.path)
-                if plan.kind == .add, existed { throw fail(String(ui: "파일이 이미 있습니다: \(url.lastPathComponent)")) }
-                try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try data.write(to: url, options: .atomic)
-                if !existed { created.append(url) }
-                guard try Data(contentsOf: url) == data else { throw fail(String(ui: "파일 확인 실패: \(url.lastPathComponent)")) }
-            }
-            guard let full = plan.files.first, case .text(md5(try Data(contentsOf: full.0)))? = expected.file?["Hash"],
-                  case .int(try Data(contentsOf: full.0).count)? = expected.file?["Size"] else {
-                throw fail(String(ui: "앨범아트 파일과 앨범아트 기록의 해시·크기가 다릅니다"))
-            }
-        case .delete:
-            // 폴더는 남긴다(묶음 2 S3·#173 S2 U09)
-            for (url, _) in plan.existing where fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
-            guard plan.existing.allSatisfy({ !fm.fileExists(atPath: $0.0.path) }) else { throw fail(String(ui: "앨범아트 파일을 지우지 못했습니다")) }
-        }
-    }
-
-    /// 바꾸거나 지운 옛 그림을 원래 바이트로 되돌린다(쓰기 실패 뒤). 그대로인 파일은 건드리지 않는다(잠긴 폴더에서 쓰기 전에 실패한 경우).
-    static func restoreArtworkFiles(_ expectations: [ArtworkExpectation]) throws {
-        let files = expectations.flatMap(\.plan.existing).filter { (try? Data(contentsOf: $0.0)) != $0.1 }
-        try each(files) { url, original in
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try original.write(to: url, options: .atomic)
         }
     }
 

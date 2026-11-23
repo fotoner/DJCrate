@@ -10972,6 +10972,22 @@
         }
       }
     },
+    "master.db가 다른 곳과 하드 링크로 이어져 있어 저장하지 않습니다. 하드 링크를 끊은 실제 사본을 고른 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "master.db is hard-linked elsewhere, so nothing was saved. Choose a real copy without the hard link and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "master.dbが別の場所とハードリンクでつながっているため保存しません。ハードリンクのない実際のコピーを選んでからもう一度お試しください"
+          }
+        }
+      }
+    },
     "masterPlaylists6.xml 모양이 다릅니다" : {
       "localizations" : {
         "en" : {
@@ -13345,6 +13361,22 @@
         }
       }
     },
+    "rekordbox가 켜져 있어 되돌리지 않고 남은 단계를 멈췄습니다. rekordbox를 종료한 뒤 상태 줄에서 저장 전으로 복원하거나 이대로 두세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox is running, so the remaining steps stopped without undoing. Quit rekordbox, then restore to before saving or keep as is from the status bar."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxが起動しているため、元に戻さず残りの手順を止めました。rekordboxを終了してから、ステータスバーで保存前に復元するかこのままにしてください"
+          }
+        }
+      }
+    },
     "rekordbox가 켜져 있어 복원 시점을 남기지 않았습니다. rekordbox를 완전히 종료한 뒤 다시 누르세요" : {
       "localizations" : {
         "en" : {
@@ -14309,6 +14341,22 @@
         }
       }
     },
+    "rekordbox에는 저장했지만 쓰기 기록이 남아 다음 저장을 막습니다. 상태 줄에서 이대로 두세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved to rekordbox, but the write record remains and blocks the next save. Choose Keep as is in the status bar."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxには保存しましたが、書き込み記録が残って次の保存を止めています。ステータスバーでこのままにしてください"
+          }
+        }
+      }
+    },
     "rekordbox에는 저장했지만 앨범아트 편집 %lld곡을 정리하지 못했으니 저장 대기 목록에서 앨범아트 편집 버리기로 버리세요." : {
       "localizations" : {
         "en" : {
@@ -14349,6 +14397,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rekordboxには保存しましたが、プレイリストの編集を整理できませんでした。"
+          }
+        }
+      }
+    },
+    "rekordbox에는 저장했지만 정리 목록이 없어 초안을 정리하지 않고 쓰기 기록을 남겼습니다. 상태 줄에서 이대로 두거나 저장 전으로 복원하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved to rekordbox, but without a cleanup list the drafts were not cleaned and the write record was kept. Keep as is or restore to before saving from the status bar."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxには保存しましたが、整理リストがないため下書きを整理せず書き込み記録を残しました。ステータスバーでこのままにするか保存前に復元してください"
           }
         }
       }
@@ -20689,6 +20753,22 @@
         }
       }
     },
+    "기록으로 복원한 라이브러리가 기록의 근거와 다릅니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library restored from the record does not match the record's source"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録から復元したライブラリが記録の根拠と一致しません"
+          }
+        }
+      }
+    },
     "기록의 곡을 재생 순서대로 보기" : {
       "localizations" : {
         "en" : {
@@ -21207,6 +21287,22 @@
         }
       }
     },
+    "끝나지 않은 저장 기록이 이 복원 시점을 쓰고 있어 지우지 않습니다. 상태 줄에서 복원하거나 이대로 둔 뒤 지우세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An unfinished save record uses this restore point, so it was not deleted. Restore or keep as is from the status bar, then delete it."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終わっていない保存記録がこの復元ポイントを使っているため削除しません。ステータスバーで復元するかこのままにしてから削除してください"
+          }
+        }
+      }
+    },
     "끝날 때까지 USB를 뽑지 마세요" : {
       "localizations" : {
         "en" : {
@@ -21641,6 +21737,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "内蔵ディスクには書き込めません。USBを接続して選んでください"
+          }
+        }
+      }
+    },
+    "넘긴 쓰기 잠금이 이 라이브러리의 것이 아니라 쓰기 기록을 판정하지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The passed write lock belongs to a different library, so the write record was not checked"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "渡された書き込みロックがこのライブラリのものではないため、書き込み記録を判定しませんでした"
           }
         }
       }
@@ -24163,6 +24275,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリ情報を読み込めませんでした"
+          }
+        }
+      }
+    },
+    "라이브러리 폴더를 읽지 못했습니다. 폴더가 있는지 확인한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read the library folder. Check that the folder exists and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリフォルダを読み込めませんでした。フォルダがあるか確認してからもう一度お試しください"
+          }
+        }
+      }
+    },
+    "라이브러리 폴더를 찾지 못했습니다. 폴더가 있는지 확인한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't find the library folder. Check that the folder exists and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリフォルダが見つかりませんでした。フォルダがあるか確認してからもう一度お試しください"
           }
         }
       }
@@ -28543,6 +28687,22 @@
         }
       }
     },
+    "복구 중 표시를 남기지 못해 되돌리지 않았습니다: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't mark the write as recovering, so nothing was undone: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復旧中の印を残せなかったため元に戻しませんでした: %@"
+          }
+        }
+      }
+    },
     "복구할 편집을 확인하지 못했으니 편집을 보관하고 곡을 다시 선택하세요." : {
       "localizations" : {
         "en" : {
@@ -28941,6 +29101,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "復元ポイントを削除しました。"
+          }
+        }
+      }
+    },
+    "복원 전 %@ 폴더를 찾지 못해 그 폴더를 되돌리지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't find the pre-restore %@ folder, so that folder was not put back"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元前の%@フォルダが見つからないため、そのフォルダを元に戻しませんでした"
           }
         }
       }
@@ -32819,6 +32995,70 @@
         }
       }
     },
+    "쓰기 기록(master.db.djc-write)을 남기지 못했습니다: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't create the write record (master.db.djc-write): %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み記録(master.db.djc-write)を残せませんでした: %@"
+          }
+        }
+      }
+    },
+    "쓰기 기록(master.db.djc-write)을 읽지 못해 저장하지 않았습니다. 이 DJCrate가 모르는 형식이면 DJCrate를 업데이트한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read the write record (master.db.djc-write), so nothing was saved. If this DJCrate doesn't know the format, update DJCrate and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み記録(master.db.djc-write)を読めなかったため保存しません。このDJCrateが知らない形式ならDJCrateをアップデートしてからもう一度お試しください"
+          }
+        }
+      }
+    },
+    "쓰기 기록(master.db.djc-write)을 지우지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't remove the write record (master.db.djc-write)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み記録(master.db.djc-write)を削除できませんでした"
+          }
+        }
+      }
+    },
+    "쓰기 기록에 되돌릴 근거가 없어 복원하지 않았습니다. 상태 줄에서 이대로 두세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The write record has nothing to restore from, so nothing was restored. Choose Keep as is in the status bar."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み記録に戻す根拠がないため復元しませんでした。ステータスバーでこのままにしてください"
+          }
+        }
+      }
+    },
     "쓰기 기록은 없고 임시 파일 %lld개가 있습니다. 지우려면 --discard-temp를 주세요" : {
       "localizations" : {
         "en" : {
@@ -32835,6 +33075,38 @@
         }
       }
     },
+    "쓰기 기록을 지우지 못했습니다: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't remove the write record: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み記録を削除できませんでした: %@"
+          }
+        }
+      }
+    },
+    "쓰기 기록이 라이브러리 밖의 경로를 가리켜 복원하지 않았습니다. 상태 줄에서 이대로 두세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The write record points outside the library, so nothing was restored. Choose Keep as is in the status bar."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み記録がライブラリの外のパスを指しているため復元しませんでした。ステータスバーでこのままにしてください"
+          }
+        }
+      }
+    },
     "쓰기 대기가 그 사이 바뀌어 다시 계획했으니 바뀐 내용을 확인한 뒤 쓰세요" : {
       "localizations" : {
         "en" : {
@@ -32847,6 +33119,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "その間にUSB書き込み待ちが変更されたため計画し直しました。変更内容を確認してから書き込んでください"
+          }
+        }
+      }
+    },
+    "쓰기 잠금 폴더를 쓸 수 없습니다(%@). %@ 폴더를 확인한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't use the write lock folder (%1$@). Check the %2$@ folder and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込みロックフォルダを使えません(%1$@)。%2$@フォルダを確認してからもう一度お試しください"
+          }
+        }
+      }
+    },
+    "쓰기 잠금을 잡지 못했습니다(%@). 잠시 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't acquire the write lock (%@). Try again in a moment."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込みロックを取得できませんでした(%@)。しばらくしてからもう一度お試しください"
           }
         }
       }
@@ -37493,6 +37797,22 @@
         }
       }
     },
+    "이 라이브러리에 끝나지 않은 저장 기록이 남아 있어 저장하지 않았습니다. DJCrate 상태 줄에서 기록으로 복원하거나 이대로 두세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An unfinished save record remains for this library, so nothing was saved. Restore from the record or keep as is from the DJCrate status bar."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このライブラリに終わっていない保存記録が残っているため保存しませんでした。DJCrateのステータスバーで記録から復元するかこのままにしてください"
+          }
+        }
+      }
+    },
     "이 루프의 박 수를 편집으로 보존할 수 없으니 rekordbox에서 직접 가져오세요." : {
       "localizations" : {
         "en" : {
@@ -37661,6 +37981,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "このバックアップの後に復元ポイントへ復元したため、保存前のバックアップでは解析ファイルまで合わせられません。rekordbox › 復元ポイント…で「復元直前」のポイントかそれ以前の時点を選んでください"
+          }
+        }
+      }
+    },
+    "이 백업 뒤의 저장 전 백업이 정리돼 분석 파일까지 맞출 수 없으니 더 최근 백업이나 복원 시점을 고르세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backups taken after this one were cleaned up, so analysis files can't be matched. Choose a more recent backup or a restore point."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このバックアップより後の保存前バックアップが整理されたため分析ファイルまで合わせられません。より新しいバックアップか復元ポイントを選んでください"
           }
         }
       }
@@ -39655,6 +39991,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "作曲者"
+          }
+        }
+      }
+    },
+    "작업 ID를 파일 이름으로 쓸 수 없어 저장하지 않았습니다. 다시 저장하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The operation ID can't be used as a file name, so nothing was saved. Save again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業IDをファイル名に使えないため保存しませんでした。もう一度保存してください"
           }
         }
       }
@@ -41729,6 +42081,22 @@
         }
       }
     },
+    "저장 전 백업 %@이 사라져 저장하지 않았습니다. 다른 DJCrate가 백업을 정리하는 중이면 잠시 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The pre-save backup %@ is gone, so nothing was saved. If another DJCrate is cleaning up backups, try again in a moment."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存前バックアップ%@がなくなったため保存しませんでした。別のDJCrateがバックアップを整理中ならしばらくしてからもう一度お試しください"
+          }
+        }
+      }
+    },
     "저장 전 백업 %lld개 (%@)" : {
       "localizations" : {
         "en" : {
@@ -41887,6 +42255,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存の確認に失敗し、自動復元もできませんでした"
+          }
+        }
+      }
+    },
+    "저장하는 도중 rekordbox가 켜졌습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox started while saving"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存中にrekordboxが起動しました"
           }
         }
       }
@@ -42107,6 +42491,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存できない編集"
+          }
+        }
+      }
+    },
+    "저장할 파일을 미리 만들 준비 폴더를 %@에 둘 수 없어 저장하지 않았습니다(%@). 그 폴더에 쓸 수 있는지 확인한 뒤 다시 저장하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't place the staging folder for the files to save in %1$@, so nothing was saved (%2$@). Check that the folder is writable and save again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存するファイルを準備するフォルダを%1$@に置けないため保存しませんでした(%2$@)。そのフォルダに書き込めるか確認してからもう一度保存してください"
           }
         }
       }
@@ -43043,6 +43443,54 @@
         }
       }
     },
+    "주인이나 권한이 다름" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "different owner or permissions"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有者または権限が異なる"
+          }
+        }
+      }
+    },
+    "준비 폴더가 루트와 다른 볼륨에 있음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "the staging folder is on a different volume from the root"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備フォルダがルートと別のボリュームにある"
+          }
+        }
+      }
+    },
+    "준비 폴더와 바꿀 파일이 다른 볼륨에 있음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "the staging folder and the file to replace are on different volumes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備フォルダと置き換えるファイルが別のボリュームにある"
+          }
+        }
+      }
+    },
     "준비(분석 파일·앨범아트·DB)" : {
       "localizations" : {
         "en" : {
@@ -43071,6 +43519,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "準備したファイルが変更されたか、見つかりません。もう一度プレビューしてから書き込んでください"
+          }
+        }
+      }
+    },
+    "준비한 파일이 없습니다: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The prepared file is missing: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備したファイルがありません: %@"
           }
         }
       }
@@ -44117,6 +44581,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最初の1拍目より前の曲頭（0小節）%@"
+          }
+        }
+      }
+    },
+    "초안 정리 목록(%@)을 읽지 못했습니다. 이 DJCrate가 모르는 형식이면 DJCrate를 업데이트한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read the draft cleanup list (%@). If this DJCrate doesn't know the format, update DJCrate and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下書き整理リスト(%@)を読めませんでした。このDJCrateが知らない形式ならDJCrateをアップデートしてからもう一度お試しください"
+          }
+        }
+      }
+    },
+    "초안 정리 목록을 남기지 못했습니다: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't save the draft cleanup list: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下書き整理リストを残せませんでした: %@"
           }
         }
       }
@@ -47669,6 +48165,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ファイルを作成できませんでした。保存場所と権限を確認してください。"
+          }
+        }
+      }
+    },
+    "파일을 바꾸지 못했습니다: %@ (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't replace the file: %1$@ (%2$@)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルを置き換えられませんでした: %1$@ (%2$@)"
           }
         }
       }

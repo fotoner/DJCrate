@@ -77,10 +77,12 @@ public enum RekordboxTrackWriter {
                            keys: [String: String] = [:], to database: URL,
                            shareRoot: URL? = nil, dryRun: Bool, now: Date = .now, backups: URL,
                            guard writeGuard: RekordboxWriteGuard = .system,
-                           writesArtwork: Bool = RekordboxTrackWriter.writesArtwork) throws -> Report {
+                           writesArtwork: Bool = RekordboxTrackWriter.writesArtwork,
+                           record: RekordboxDraftRecord<Report>? = nil) throws -> Report {
         var report = Report(dryRun: dryRun)
         guard !plans.isEmpty else { return report }
-        let share = try preflight(database, shareRoot: shareRoot, dryRun: dryRun, guard: writeGuard)
+        let (share, run) = try preflight(database, shareRoot: shareRoot, dryRun: dryRun, backups: backups, guard: writeGuard)
+        defer { run?.close() }
         let live = writeGuard.isLive(database)
         // 곡 UUID를 먼저 정한다(분석·아트워크 폴더 이름이 된다)
         let uuids = Dictionary(plans.map { ($0.path, UUID().uuidString.lowercased()) }) { first, _ in first }
@@ -110,7 +112,16 @@ public enum RekordboxTrackWriter {
         var cueChecks: [(contentID: String, expectation: RekordboxWriter.Expectation)] = []
         /// 곡과 함께 쓴 키(커밋 뒤 태그 쓰기와 같은 검증으로 다시 읽는다)
         var keyChecks: [RekordboxWriter.TagExpectation] = []
-        report.finalUpdateCount = try transaction(database, dryRun: dryRun) { db, usn in
+        /// 넣을 분석·아트워크 파일(넣은 곡만, 커밋 뒤 만든다). 쓰기 기록에 새로 만들 파일로 적는다
+        func newFiles(_ written: [String]) -> [(URL, Data)] {
+            written.flatMap { path in (prepared[path].flatMap { $0.blocked == nil ? $0.files : nil } ?? []) + (artworks[path]?.files ?? []) }
+        }
+        report.finalUpdateCount = try transaction(database, dryRun: dryRun, run: run, journal: { startUSN, finalUSN in
+            RekordboxWriteJournal(operationID: record?.operationID ?? UUID().uuidString, kind: .counter, entry: .trackAdd,
+                                  basis: .init(writeBackup: backup?.path),
+                                  files: newFiles(report.added.filter(\.written).map(\.path)).map { .init(path: $0.0.path, original: nil) },
+                                  drafts: record?.drafts, startCounter: startUSN, finalCounter: finalUSN)
+        }) { db, usn in
             let library = try libraryIdentity(db)
             for plan in plans {
                 try db.execute("SAVEPOINT djc_add")
@@ -227,7 +238,7 @@ public enum RekordboxTrackWriter {
             return !inserted.isEmpty
         }
         if let backup, !inserted.isEmpty {
-            try afterCommit(database, backup: backup, live: live) { db in
+            try afterCommit(database, backup: backup, live: live, run: run) { db in
                 for item in inserted { try verify(db, table: "djmdContent", id: item.id, item.expected) }
                 for row in extraRows { try verify(db, table: row.table, id: row.id, row.values) }
                 for check in cueChecks { try RekordboxWriter.verify(db: db, contentID: check.contentID, check.expectation) }
@@ -244,22 +255,29 @@ public enum RekordboxTrackWriter {
                     let analysisFiles = prepared[path].flatMap { $0.blocked == nil ? $0.files : nil } ?? []
                     for (url, data) in analysisFiles + (artworks[path]?.files ?? []) {
                         guard !FileManager.default.fileExists(atPath: url.path) else { throw DJCError.writeVerificationFailed(String(ui: "파일이 이미 있습니다: \(url.path)")) }
+                        // 파일을 만들기 바로 직전마다 실행을 다시 본다(R10)
+                        try run?.recheck(.fileReplace)
+                        try run?.before(.fileReplace)
                         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                         try data.write(to: url, options: .atomic)
                         created.append(url)
                         guard try Data(contentsOf: url) == data else { throw DJCError.writeVerificationFailed(String(ui: "파일 확인 실패: \(url.lastPathComponent)")) }
+                        try run?.after(.fileReplace)
                     }
                 }
             } catch {
-                throw RekordboxWriter.recover(from: error, database: database, backup: backup, live: live) {
-                    try RekordboxWriter.removeAnalysisFiles(created)
+                throw RekordboxWriter.recover(from: error, run: run, database: database, backup: backup, live: live) {
+                    try RekordboxWriter.removeAnalysisFiles(created, run: run)
                 }
             }
             report.createdFiles = created.map(\.path)
         }
-        if let backup {
+        if let backup, let run {
+            // 보고서 저장은 기록을 지우기 전에 한다(실패해도 넣기를 실패로 돌리지 않는다, R11)
+            do { try run.before(.reportSave) } catch let stop as RekordboxWriteStop { throw stop } catch {}
             try? save(report, in: backup, shareRoot: share)
-            RekordboxWriter.prune(backups)
+            do { try run.after(.reportSave) } catch let stop as RekordboxWriteStop { throw stop } catch {}
+            try RekordboxWriter.finishRun(run, backup: backup, backups: backups, list: record.flatMap { $0.cleanupList(report) }, now: now)
         }
         return report
     }
@@ -476,15 +494,22 @@ public enum RekordboxTrackWriter {
                               dryRun: Bool, now: Date = .now, backups: URL, guard writeGuard: RekordboxWriteGuard = .system) throws -> Report {
         var report = Report(dryRun: dryRun)
         guard !contentIDs.isEmpty else { return report }
-        let share = try preflight(database, shareRoot: shareRoot, dryRun: dryRun, guard: writeGuard)
+        let (share, run) = try preflight(database, shareRoot: shareRoot, dryRun: dryRun, backups: backups, guard: writeGuard)
+        defer { run?.close() }
         let live = writeGuard.isLive(database)
         let stamp = CueJSON.timestamps(now)
         let backup = dryRun ? nil : try RekordboxWriter.makeBackup(of: database, in: backups, now: now, label: "delete")
         report.backup = backup?.path
         var gone: [String] = []
         var files: [URL] = []
+        /// 지울 파일 → 쓰기 전 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
+        var copies: [String: URL] = [:]
         var renumbered = Renumbered()
-        report.finalUpdateCount = try transaction(database, dryRun: dryRun) { db, usn in
+        report.finalUpdateCount = try transaction(database, dryRun: dryRun, run: run, journal: { startUSN, finalUSN in
+            RekordboxWriteJournal(operationID: UUID().uuidString, kind: .counter, entry: .trackDelete, basis: .init(writeBackup: backup?.path),
+                                  files: files.map { .init(path: $0.path, original: copies[$0.path]?.path) }, startCounter: startUSN,
+                                  finalCounter: finalUSN)
+        }) { db, usn in
             for id in contentIDs {
                 try db.execute("SAVEPOINT djc_delete")
                 let savedRenumbered = renumbered
@@ -493,7 +518,7 @@ public enum RekordboxTrackWriter {
                     try db.query("SELECT Title FROM djmdContent WHERE ID = ?", [.text(id)]) { title = $0.string(0) ?? id }
                     let filePlan = try RekordboxWriter.deletionFiles(id, db: db, share: share)
                     var deleted = try deleteRow(id, db: db, usn: &usn, stamp: stamp, renumbered: &renumbered)
-                    try RekordboxWriter.backupDeletionFiles(filePlan.files, in: backup, shareRoot: share)
+                    copies.merge(try RekordboxWriter.backupDeletionFiles(filePlan.files, in: backup, shareRoot: share)) { a, _ in a }
                     deleted.reason = filePlan.warning
                     title = deleted.title
                     try db.execute("RELEASE djc_delete")
@@ -510,28 +535,36 @@ public enum RekordboxTrackWriter {
             return !gone.isEmpty
         }
         // 백업은 시험 실행이 아닐 때만 있다
-        guard let backup else { return report }
+        guard let backup, let run else { return report }
         guard !gone.isEmpty else {
-            RekordboxWriter.prune(backups)
+            RekordboxWriter.prune(backups, now: now)
             return report
         }
-        try afterCommit(database, backup: backup, live: live) { db in
+        try afterCommit(database, backup: backup, live: live, run: run) { db in
             for id in gone where try RekordboxWriter.scalar(db, "SELECT count(*) FROM djmdContent WHERE ID = ?", [.text(id)]) != 0 {
                 throw DJCError.writeVerificationFailed(String(ui: "지운 곡이 다시 읽혔습니다"))
             }
             try verifyRenumbered(renumbered, db: db)
         }
         do {
-            try RekordboxWriter.removeOwnedFiles(files)
+            // 파일을 지우기 바로 직전마다 실행을 다시 본다(R10)
+            for file in Set(files).sorted(by: { $0.path < $1.path }) {
+                try run.recheck(.fileReplace)
+                try run.before(.fileReplace)
+                try RekordboxWriter.removeOwnedFiles([file])
+                try run.after(.fileReplace)
+            }
         } catch {
-            throw RekordboxWriter.recover(from: error, database: database, backup: backup, live: live) {
-                try RekordboxWriter.restoreAnalysis(from: backup,
-                                                     shareRoot: share ?? database.deletingLastPathComponent().appending(path: "share"))
+            throw RekordboxWriter.recover(from: error, run: run, database: database, backup: backup, live: live) {
+                try RekordboxWriter.restoreAnalysis(from: backup, shareRoot: share ?? database.deletingLastPathComponent().appending(path: "share"),
+                                                     run: run)
             }
         }
         report.removedFiles = files.map(\.path).sorted()
+        do { try run.before(.reportSave) } catch let stop as RekordboxWriteStop { throw stop } catch {}
         try? save(report, in: backup, shareRoot: share)
-        RekordboxWriter.prune(backups)
+        do { try run.after(.reportSave) } catch let stop as RekordboxWriteStop { throw stop } catch {}
+        try RekordboxWriter.finishRun(run, backup: backup, backups: backups, list: nil, now: now)
         return report
     }
 
@@ -746,53 +779,93 @@ public enum RekordboxTrackWriter {
     }
 
     /// 라이브 DB면 rekordbox 꺼짐·WAL·버전, 어느 DB든 구조·카운터(백업 전에).
-    static func preflight(_ database: URL, shareRoot: URL?, dryRun: Bool, guard writeGuard: RekordboxWriteGuard) throws -> URL? {
-        let share = try writeGuard.checkTargets(database, shareRoot: shareRoot, dryRun: dryRun)
-        let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-        defer { reader.close() }
-        try RekordboxCompatibility.checkSchema(reader)
-        let counters = try RekordboxCompatibility.updateCounters(reader)
-        if let local = counters.local { try RekordboxCompatibility.checkCounters(local: local, cloud: counters.cloud) }
-        return share
+    /// 대상 경계 확인 → 쓰기 잠금(R9, 시험 실행은 잡지 않는다) → 잠금 안에서 라이브 확인·중단 기록 거절(R11) → DB 구조·카운터 확인.
+    /// 잠금은 부르는 쪽이 `close`로 푼다
+    static func preflight(_ database: URL, shareRoot: URL?, dryRun: Bool, backups: URL,
+                          guard writeGuard: RekordboxWriteGuard) throws -> (share: URL?, run: WriteRun?) {
+        let share = try writeGuard.checkTargetsBeforeLock(database, shareRoot: shareRoot, dryRun: dryRun)
+        let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups, refusesHardLinks: false)
+        do {
+            try run?.prepareWrite()
+            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
+            defer { reader.close() }
+            try RekordboxCompatibility.checkSchema(reader)
+            let counters = try RekordboxCompatibility.updateCounters(reader)
+            if let local = counters.local { try RekordboxCompatibility.checkCounters(local: local, cloud: counters.cloud) }
+        } catch {
+            run?.close()
+            throw error
+        }
+        return (share, run)
     }
 
     /// 한 트랜잭션 안에서 `body`를 돌린다. 변경 카운터를 올려 적고, 시험 실행이거나 바뀐 게 없으면 되돌린다.
     /// 커밋했으면 마지막 변경 카운터를 돌려준다.
     @discardableResult
-    static func transaction(_ database: URL, dryRun: Bool, _ body: (CipherDatabase, inout Int) throws -> Bool) throws -> Int? {
-        let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive(), writable: true)
-        defer { db.close() }
-        try db.execute("BEGIN IMMEDIATE")
-        var finished = false
-        defer { if !finished { try? db.execute("ROLLBACK") } }
-        var usn = try RekordboxWriter.localUpdateCount(db)
-        let start = usn
-        let changed = try body(db, &usn)
-        if usn != start {
-            guard try db.run("UPDATE agentRegistry SET int_1 = ? WHERE registry_id = 'localUpdateCount'", [.int(usn)]) == 1 else {
-                throw DJCError.writeVerificationFailed(String(ui: "변경 카운터를 올리지 못했습니다"))
+    /// - Parameters:
+    ///   - run: 쓰기 기록(R11). 있으면 커밋 직전에 실행을 다시 보고(켜졌으면 롤백·보류, R10) `journal`로 만든 카운터 쓰기 기록을 남긴다.
+    ///     커밋 뒤에는 master.db 크기·시각을 적는다. 커밋 전 실패는 바꾼 것이 없어 기록을 지운다(강제 종료 흉내는 그대로 둔다)
+    ///   - journal: 시작 카운터와 커밋할 최종 카운터로 쓰기 기록을 만든다
+    static func transaction(_ database: URL, dryRun: Bool, run: WriteRun? = nil, journal: (_ start: Int, _ final: Int) -> RekordboxWriteJournal = {
+        RekordboxWriteJournal(operationID: UUID().uuidString, kind: .counter, entry: .trackAdd, startCounter: $0, finalCounter: $1)
+    }, _ body: (CipherDatabase, inout Int) throws -> Bool) throws -> Int? {
+        let result: Int?
+        do {
+            // 쓰기 연결을 열기 바로 직전에 실행을 다시 본다
+            try run?.recheck(.begin)
+            let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive(), writable: true)
+            defer { db.close() }
+            try db.execute("BEGIN IMMEDIATE")
+            var finished = false
+            defer { if !finished { try? db.execute("ROLLBACK") } }
+            var usn = try RekordboxWriter.localUpdateCount(db)
+            let start = usn
+            let changed = try body(db, &usn)
+            if usn != start {
+                guard try db.run("UPDATE agentRegistry SET int_1 = ? WHERE registry_id = 'localUpdateCount'", [.int(usn)]) == 1 else {
+                    throw DJCError.writeVerificationFailed(String(ui: "변경 카운터를 올리지 못했습니다"))
+                }
             }
-        }
-        if dryRun || !changed {
-            try db.execute("ROLLBACK")
+            if dryRun || !changed {
+                try db.execute("ROLLBACK")
+                finished = true
+                return nil
+            }
+            if let run {
+                try run.recheck(.commit)
+                try run.begin(journal(start, usn))
+                // 기록 남기기는 저장소 잠금을 기다릴 수 있다: 커밋 직전에 다시 본다(켜졌으면 롤백하고 기록을 지운 뒤 보류, S12)
+                try run.recheck(.commit)
+                try run.before(.commit)
+            }
+            try db.execute("COMMIT")
+            run?.changed = true
+            try? db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             finished = true
-            return nil
+            result = usn
+        } catch {
+            if let run {
+                if !run.changed, !(error is RekordboxWriteStop) { try? run.finish() }
+                if let passed = run.passThrough(error) { throw passed }
+            }
+            throw error
         }
-        try db.execute("COMMIT")
-        try? db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        finished = true
-        return usn
+        return result
     }
 
     /// 커밋 뒤 무결성 검사와 다시 읽기. 실패하면 백업으로 되돌린다(되돌리지 못하면 `restoreFailed`).
-    static func afterCommit(_ database: URL, backup: URL, live: Bool, _ check: (CipherDatabase) throws -> Void) throws {
+    static func afterCommit(_ database: URL, backup: URL, live: Bool, run: WriteRun? = nil, _ check: (CipherDatabase) throws -> Void) throws {
         do {
+            try run?.databaseChanged()
+            try run?.after(.commit)
+            try run?.before(.verify)
             try RekordboxWriter.checkIntegrity(of: database)
             let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
             defer { db.close() }
             try check(db)
+            try run?.after(.verify)
         } catch {
-            throw RekordboxWriter.recover(from: error, database: database, backup: backup, live: live)
+            throw RekordboxWriter.recover(from: error, run: run, database: database, backup: backup, live: live)
         }
     }
 

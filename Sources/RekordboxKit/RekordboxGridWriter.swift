@@ -230,39 +230,6 @@ public enum RekordboxGridWriter {
     }
 }
 
-extension RekordboxGridWriter {
-    /// 계획대로 파일을 바꾼다(같은 폴더의 임시 파일에 쓰고 바꿔 끼운다). 다시 읽어 검증하고, 실패하면 원본으로 되돌리고 던진다.
-    static func apply(_ plan: Plan) throws {
-        let fm = FileManager.default
-        func replace(_ url: URL, with data: Data) throws {
-            let partial = url.deletingLastPathComponent().appending(path: ".\(url.lastPathComponent).djc-part")
-            try? fm.removeItem(at: partial)
-            try data.write(to: partial)
-            if let attributes = try? fm.attributesOfItem(atPath: url.path), let mode = attributes[.posixPermissions] {
-                try? fm.setAttributes([.posixPermissions: mode], ofItemAtPath: partial.path)
-            }
-            _ = try fm.replaceItemAt(url, withItemAt: partial)
-        }
-        do {
-            try replace(plan.datURL, with: plan.newDat)
-            if let extURL = plan.extURL, let newExt = plan.newExt { try replace(extURL, with: newExt) }
-            let dat = try Data(contentsOf: plan.datURL)
-            let ext = try plan.extURL.map { try Data(contentsOf: $0) }
-            guard dat == plan.newDat, ext == plan.newExt else { throw DJCError.writeVerificationFailed(String(ui: "분석 파일이 저장한 내용과 다릅니다(\(plan.title))")) }
-            try verify(plan, written: dat, ext: ext)
-        } catch {
-            try? restore(plan)
-            throw error
-        }
-    }
-
-    /// 원본 바이트로 되돌린다.
-    static func restore(_ plan: Plan) throws {
-        try plan.originalDat.write(to: plan.datURL, options: .atomic)
-        if let extURL = plan.extURL, let originalExt = plan.originalExt { try originalExt.write(to: extURL, options: .atomic) }
-    }
-}
-
 extension RekordboxGridWriter.Plan {
     /// 새 `.DAT`의 MD5(`contentFile.Hash`와 같은 형식)
     public var newDatMD5: String { Insecure.MD5.hash(data: newDat).map { String(format: "%02x", $0) }.joined() }

@@ -253,8 +253,15 @@ public enum RekordboxPointSnapshot {
     /// 사용자가 고른 스냅샷을 지운다. 고정한 스냅샷은 고정을 푼 뒤에만 지운다.
     public static func delete(_ entry: URL, in directory: URL) throws {
         let folder = try owned(entry, in: directory)
+        // 기록 핀 게시와 겹치지 않게 저장소 잠금 아래에서 본다(S8)
+        let hold = try RekordboxWriteLocks.lockStore(directory)
+        defer { hold?.release() }
         if metadata(in: folder)?.pinned == true {
             throw DJCError.writeRefused(String(ui: "고정한 복원 시점은 지우지 않습니다. 고정을 푼 뒤 지우세요"))
+        }
+        // 중단된 쓰기 기록이 가리키는 시점은 기록이 남은 동안 지우지 않는다(R11: 기록으로 복원이 그 시점을 다시 쓴다)
+        if RekordboxWriter.journalFolders(in: directory).contains(folder.lastPathComponent) {
+            throw DJCError.writeRefused(String(ui: "끝나지 않은 저장 기록이 이 복원 시점을 쓰고 있어 지우지 않습니다. 상태 줄에서 복원하거나 이대로 둔 뒤 지우세요"))
         }
         try FileManager.default.removeItem(at: folder)
     }
@@ -274,6 +281,9 @@ public enum RekordboxPointSnapshot {
     /// 10분 넘은 반쯤 뜬 폴더도 치운다(뜨는 중인 것은 건드리지 않는다).
     @discardableResult
     public static func prune(in directory: URL, autoDays: Int, now: Date = .now) -> [URL] {
+        // 기록 핀 게시와 겹치지 않게 저장소 잠금 아래에서 한다(S8). 잡지 못하면 솎지 않는다
+        guard let hold = try? RekordboxWriteLocks.lockStore(directory) else { return [] }
+        defer { hold.release() }
         let fm = FileManager.default
         var removed: [URL] = []
         let entries = list(in: directory).filter { !$0.metadata.pinned }
@@ -283,7 +293,9 @@ public enum RekordboxPointSnapshot {
         let expired = list(in: directory).filter { $0.metadata.kind == .auto && $0.metadata.createdAt < cutoff }
         removed += expired.dropFirst().filter { !$0.metadata.pinned }.map(\.url)
         removed += entries.filter { $0.metadata.kind == .beforeRestore }.dropFirst(beforeRestoreToKeep).map(\.url)
-        removed = removed.filter { (try? fm.removeItem(at: $0)) != nil }
+        // 중단된 쓰기 기록이 가리키는 시점은 기록이 남은 동안 솎지 않는다(R11)
+        let protected = RekordboxWriter.journalFolders(in: directory)
+        removed = removed.filter { !protected.contains($0.lastPathComponent) && (try? fm.removeItem(at: $0)) != nil }
         for stale in (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.creationDateKey])) ?? []
         where stale.lastPathComponent.hasPrefix(".partial-") {
             let created = (try? stale.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantFuture

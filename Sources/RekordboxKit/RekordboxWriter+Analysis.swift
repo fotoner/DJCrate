@@ -161,21 +161,21 @@ extension RekordboxWriter {
         }
     }
 
-    /// 커밋 뒤 분석 파일(과 아트워크 파일 셋)을 만든다(없던 파일만). 만든 파일은 `created`에 더한다(실패하면 되돌릴 때 지운다).
-    static func writeAnalysisFiles(_ plan: AttachPlan, created: inout [URL]) throws {
-        let fm = FileManager.default
-        if let artwork = plan.artwork, artwork.files.contains(where: { hasSymlinkComponent($0.0, under: artwork.share) }) {
-            throw DJCError.writeVerificationFailed("\(artworkLinkReason) (\(plan.title))")
-        }
-        for (url, data) in plan.ready.files + (plan.artwork?.files ?? []) {
-            guard !fm.fileExists(atPath: url.path) else { throw DJCError.writeVerificationFailed(String(ui: "파일이 이미 있습니다: \(url.lastPathComponent)")) }
-            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try data.write(to: url, options: .atomic)
-            created.append(url)
-            guard try Data(contentsOf: url) == data else {
-                throw DJCError.writeVerificationFailed(String(ui: "파일 확인 실패: \(url.lastPathComponent) (\(plan.title))"))
+    /// 만든 파일을 하나씩 지운다(쓰기 기록이 있으면 지우기 바로 직전마다 실행을 다시 본다, R10). 켜짐·강제 종료 흉내는 곧바로 던지고,
+    /// 그 밖의 실패는 나머지를 해 본 뒤 처음 것을 던진다
+    static func removeAnalysisFiles(_ created: [URL], run: WriteRun?) throws {
+        var first: (any Error)?
+        for file in created where FileManager.default.fileExists(atPath: file.path) {
+            do {
+                try run?.recheck(.fileReplace)
+                try removeAnalysisFiles([file])
+            } catch let error where error is RekordboxRunningSeen || error is RekordboxWriteStop {
+                throw error
+            } catch {
+                first = first ?? error
             }
         }
+        if let first { throw first }
     }
 
     /// 만든 분석·아트워크 파일을 지우고, 비게 된 `USBANLZ`·`Artwork` 아래 `<3자>/<나머지>` 폴더도 지운다.
