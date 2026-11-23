@@ -99,9 +99,10 @@ extension DraftFiles {
 }
 
 extension DraftFiles {
-    /// 재생 목록 초안 파일을 단계 식별자를 채워 읽는다(`readPlaylistIdentified`, 없으면 `readPlaylist`)
+    /// 재생 목록 초안 파일을 단계 식별자를 채워 읽는다(`readPlaylistIdentified`, 없으면 `readPlaylist`).
+    /// 식별자·도장을 적지 못하면 식별자 없는 초안을 돌려주지 않고 던진다. 읽지 못한 파일은 `DraftFilesUnreadable`이다
     public func readPlaylistWithIdentifiers() throws -> PlaylistDraft {
         if let readPlaylistIdentified { return try readPlaylistIdentified() }
-        return try readPlaylist()
+        do { return try readPlaylist() } catch { throw DraftFilesUnreadable() }
     }
 }

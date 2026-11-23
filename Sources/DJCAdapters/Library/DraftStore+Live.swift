@@ -73,8 +73,13 @@ extension DraftStore {
             artworkEdit: { try ArtworkDraftStore.load(trackUUID: $0, directory: places.artwork) },
             saveArtwork: { try StampedDrafts.saveArtwork($0, directory: places.artwork, origin: origin) },
             removeArtwork: { try StampedDrafts.removeArtwork(trackUUID: $0, directory: places.artwork) },
-            // 읽을 때 단계 식별자를 채운다: 앱이 메모리에 받는 초안의 단계가 식별자를 가져야 저장이 새 단계로 보지 않는다(R5·R22)
-            playlistDraft: { (try? StampedDrafts.identifiedPlaylist(home: home)) ?? PlaylistDraftStore.load(url: places.playlist) },
+            // 읽을 때 단계 식별자를 채운다: 앱이 메모리에 받는 초안의 단계가 식별자를 가져야 저장이 새 단계로 보지 않는다(R5·R22).
+            // 식별자를 적지 못하면 읽기는 던진다(`readPlaylistDraft`, 지금의 읽기 실패). 던지지 않는 읽기는 식별자 없는 초안 대신 메모리에서만
+            // 식별자를 준 초안을 돌려준다
+            playlistDraft: {
+                (try? StampedDrafts.identifiedPlaylist(home: home))
+                    ?? StampedDrafts.withEphemeralIdentifiers(PlaylistDraftStore.load(url: places.playlist))
+            },
             readPlaylistDraft: { try StampedDrafts.identifiedPlaylist(home: home) },
             savePlaylistDraft: { try StampedDrafts.savePlaylist($0, url: places.playlist, origin: origin) },
             mergeDrafts: { DuplicateMergeDraftStore.load(url: places.merge) },

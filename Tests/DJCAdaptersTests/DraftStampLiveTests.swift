@@ -804,4 +804,65 @@ struct DraftStampLiveTests {
         let stamps = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human).playlistStamps()
         #expect(stamps.count == 2 && stamps[0].origins == [.unknown] && stamps[1].origins == [.cli])
     }
+
+    // MARK: 리뷰 4라운드(S9·S10)
+
+    /// 도장 사이드카 쓰기를 실패시킨다: 도장 폴더의 `playlist.json` 자리를 폴더로 막는다(판 번호 파일은 쓸 수 있다)
+    static func blockPlaylistStampWrites(home: URL) throws {
+        try FileManager.default.createDirectory(at: DraftStampStore.folder(home: home).appending(path: "playlist.json"),
+                                                withIntermediateDirectories: true)
+    }
+
+    static func unblockPlaylistStampWrites(home: URL) throws {
+        try FileManager.default.removeItem(at: DraftStampStore.folder(home: home).appending(path: "playlist.json"))
+    }
+
+    /// S10: CLI가 쌓기 전에 식별자·도장을 적지 못하면 그 자리에서 `draft_io_failed`로 멈춘다. 초안 파일은 한 바이트도 바뀌지 않는다
+    /// (식별자만 적고 도장 저장에 실패해 식별자 적기 전 값으로 이어 쌓다 `draft_changed`가 되는 길이 없다)
+    @Test func 식별자나_도장을_적지_못하면_CLI_쌓기는_즉시_draft_io_failed이고_초안은_그대로다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try PlaylistDraftStore.save(try Self.playlist([.rename(playlist: .id("A"), name: "x")]), url: places.playlist)
+        let before = try Data(contentsOf: places.playlist)
+        try Self.blockPlaylistStampWrites(home: folder.url)
+        let cli = DraftFiles.live(home: folder.url).with(origin: .cli)
+        #expect(throws: (any Error).self) { try cli.readPlaylistWithIdentifiers() }
+        let edits = EditDraftFiles(files: cli)
+        let request = PlaylistEditRequest.create(name: "새 목록", isFolder: false, parent: .ref(.root), position: nil, alias: nil, tracks: [])
+        var code: String?
+        do { _ = try edits.stackPlaylistEdits([request], rekordbox: Self.rekordbox, contentIDs: ["9"], allOrNothing: false, dryRun: false) }
+        catch let failure as ReadFailure { code = failure.code }
+        #expect(code == "draft_io_failed")
+        #expect(try Data(contentsOf: places.playlist) == before)
+        // 미리 보기는 식별자를 적지 않으니 막힌 쓰기와 상관없이 계획한다
+        let preview = try edits.stackPlaylistEdits([request], rekordbox: Self.rekordbox, contentIDs: ["9"], allOrNothing: false, dryRun: true)
+        let afterPreview = try Data(contentsOf: places.playlist)
+        #expect(preview.hasChanges && afterPreview == before)
+        // 기존 초안을 읽지 못하면(손상) 도장 오류와 달리 `invalid_draft`다
+        try Self.unblockPlaylistStampWrites(home: folder.url)
+        try Data("깨짐".utf8).write(to: places.playlist)
+        var damagedCode: String?
+        do { _ = try edits.stackPlaylistEdits([request], rekordbox: Self.rekordbox, contentIDs: ["9"], allOrNothing: false, dryRun: false) }
+        catch let failure as ReadFailure { damagedCode = failure.code }
+        #expect(damagedCode == "invalid_draft")
+    }
+
+    /// S9: 앱이 읽을 때 식별자를 적지 못해도 식별자 없는 초안을 돌려주지 않는다. 읽기(`readPlaylistDraft`)는 지금의 읽기 실패로 던지고,
+    /// 던지지 않는 `playlistDraft()`는 식별자를 파일에 적지 못한 채 메모리에서만 부여한다. 그 초안을 저장해도 기존 단계가 이번 출처 하나로 적히지 않는다
+    @Test func 앱_읽기가_식별자를_적지_못해도_기존_단계가_사람_하나로_적히지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try PlaylistDraftStore.save(try Self.playlist([.rename(playlist: .id("A"), name: "x")]), url: places.playlist)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        try Self.blockPlaylistStampWrites(home: folder.url)
+        #expect(throws: (any Error).self) { try app.readPlaylistDraft() }
+        var memory = app.playlistDraft()
+        #expect(memory.stepIDs.allSatisfy { $0 != nil })
+        // 파일에는 적지 못했다
+        #expect(PlaylistDraftStore.load(url: places.playlist).stepIDs == [nil])
+        try Self.unblockPlaylistStampWrites(home: folder.url)
+        try memory.append(.addTracks(playlist: .id("B"), contentIDs: ["9"]), rekordbox: Self.rekordbox)
+        try app.savePlaylistDraft(memory)
+        let stamps = app.playlistStamps()
+        #expect(stamps.count == 2 && stamps[0].origins.contains(.unknown) && stamps[1].origins == [.human])
+        #expect(app.playlistSuggestions()[0] == .unknownOrigin)
+    }
 }

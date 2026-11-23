@@ -169,7 +169,13 @@ public struct EditDraftFiles: Sendable {
             let unlock = dryRun ? nil : try lockPlaylist()
             defer { unlock?() }
             // 저장할 때는 계획하기 전에 기존 단계에 식별자와 모름 도장을 붙인다(건드리지 않은 기존 단계에 CLI 출처가 붙지 않게). 미리 보기는 파일을 쓰지 않는다
-            let base = try existing { dryRun ? try files.readPlaylist() : try files.readPlaylistWithIdentifiers() } ?? PlaylistDraft()
+            // 식별자·도장을 적지 못하면 그 자리에서 `draft_io_failed`로 멈춘다(식별자 없는 초안으로 이어 쌓지 않는다). 읽지 못한 기존 초안은 `invalid_draft`다
+            let base: PlaylistDraft
+            if dryRun {
+                base = try existing { try files.readPlaylist() } ?? PlaylistDraft()
+            } else {
+                do { base = try files.readPlaylistWithIdentifiers() } catch is DraftFilesUnreadable { throw Self.corrupt() }
+            }
             let batch = EditPlaylists.planning(requests, onto: base, rekordbox: rekordbox, contentIDs: contentIDs,
                                                allOrNothing: allOrNothing, newKey: newKey)
             if batch.skippedCount > 0, !batch.hasChanges { throw Self.blocked(batch) }

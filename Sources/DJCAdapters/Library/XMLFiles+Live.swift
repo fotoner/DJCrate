@@ -73,7 +73,11 @@ extension DraftFiles {
             do { return try StampedDrafts.savePlaylist(draft, url: places.playlist, origin: origin, expecting: expected) }
             catch is DraftFileDamaged { throw DraftFilesUnreadable() }
         }
-        files.readPlaylistIdentified = { try StampedDrafts.identifiedPlaylist(home: home) }
+        // 읽지 못한 파일은 `DraftFilesUnreadable`(invalid_draft), 잠금·식별자·도장 기록 오류는 그대로 던진다(draft_io_failed)
+        files.readPlaylistIdentified = {
+            do { return try StampedDrafts.identifiedPlaylist(home: home) }
+            catch is DraftFileDamaged { throw DraftFilesUnreadable() }
+        }
         files.origin = origin
         files.stamp = { DraftStampStore.stamp($0, home: home) }
         files.originVariant = { live(home: home, origin: $0) }

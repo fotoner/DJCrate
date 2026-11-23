@@ -191,8 +191,10 @@ public enum StampedDrafts {
         let result = try PlaylistStepStamping.adopt(draft, entries: readPlaylistEntries(home: home), newID: { UUID() },
                                                     newRevision: { try DraftStampStore.nextRevisions(1, home: home)[0] })
         if result.changed {
-            if result.draft.stepIDs != draft.stepIDs { try PlaylistDraftStore.save(result.draft, url: url) }
+            // 도장 사이드카를 먼저 적는다: 사이드카 쓰기에 실패하면 초안 파일은 바뀌지 않는다(식별자만 적히고 도장이 없는 상태를 만들지 않는다).
+            // 파일 쓰기에 실패하면 사이드카에는 파일에 없는 식별자의 줄이 남지만, 다음에 읽을 때 걸러진다
             try writePlaylistEntries(result.entries, home: home)
+            if result.draft.stepIDs != draft.stepIDs { try PlaylistDraftStore.save(result.draft, url: url) }
         }
         return result
     }
@@ -208,14 +210,30 @@ public enum StampedDrafts {
         return (try? DraftStampStore.withLock(home: home) { try adoptedPlaylist(home: home).entries.map(\.stamp) }) ?? []
     }
 
-    /// 재생 목록 초안을 식별자를 채워 읽는다(앱이 메모리에 받을 때). 식별자가 이미 다 있으면 잠그지 않는다. 없는 단계는 새 식별자와 모름 도장을
-    /// 받고 초안 파일·사이드카에 적는다(식별자 없는 메모리 초안을 저장하면 그 단계가 새 단계로 보이기 때문이다). 식별자를 적지 못하면
-    /// (잠금·저장 오류) 읽은 그대로 돌려준다. 파일을 읽지 못하면 던진다
+    /// 재생 목록 초안을 식별자를 채워 읽는다(CLI가 쌓기 전, 앱이 메모리에 받을 때). 식별자가 이미 다 있으면 잠그지 않는다. 없는 단계는
+    /// 새 식별자와 모름 도장을 받고 도장 사이드카와 초안 파일에 적는다(식별자 없는 초안으로 이어 저장하면 기존 단계가 새 단계로 보여
+    /// 이번 출처 하나로 적히기 때문이다). 식별자나 도장을 적지 못하면(잠금·판 번호·저장 오류) 식별자 없는 초안을 돌려주지 않고 던진다.
+    /// 파일을 읽지 못하면 `DraftFileDamaged`를 던진다
     public static func identifiedPlaylist(home: URL) throws -> PlaylistDraft {
         let draft = try PlaylistDraftStore.read(url: DraftLocations(home: home).playlist)
         let ids = draft.stepIDs
         if ids.allSatisfy({ $0 != nil }), Set(ids.compactMap { $0 }).count == ids.count { return draft }
-        return (try? DraftStampStore.withLock(home: home) { try adoptedPlaylist(home: home).draft }) ?? draft
+        return try DraftStampStore.withLock(home: home) { try adoptedPlaylist(home: home).draft }
+    }
+
+    /// 식별자를 파일에 적지 못할 때(`identifiedPlaylist`가 던질 때) 앱이 던지지 않는 읽기(`playlistDraft()`)에 주는 초안: 식별자 없는 단계에
+    /// 메모리에서만 새 식별자를 부여한다(파일에는 적지 않는다). 그 초안을 저장하면 그 식별자들은 지금 파일에 없는 단계라 `[이번 출처, 모름]`으로
+    /// 적히고, 식별자 없는 초안처럼 기존 단계가 이번 출처 하나로 적히지 않는다
+    public static func withEphemeralIdentifiers(_ draft: PlaylistDraft) -> PlaylistDraft {
+        var seen = Set<UUID>()
+        var identified = draft
+        identified.setStepIDs(draft.stepIDs.map { id in
+            if let id, seen.insert(id).inserted { return id }
+            let fresh = UUID()
+            seen.insert(fresh)
+            return fresh
+        })
+        return identified
     }
 
     /// 재생 목록 초안을 통째로 저장한다: 단계 식별자를 맞추고(`PlaylistStepStamping.save`) 도장을 갱신한다. 초안 잠금 안에서 한다.
