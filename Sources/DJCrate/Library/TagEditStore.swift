@@ -121,14 +121,15 @@ final class TagEditStore {
             undoManager.groupsByEvent = false
             undoManager.beginUndoGrouping()
         }
-        // 단계가 가리키는 곡의 기준 세대: 저장 뒤 읽기가 그 곡을 쓰거나 기준을 옮겼으면 이 단계는 건너뛴다(`LibraryStore.invalidateTagUndo`)
-        let generations = change.before.keys.map { ($0, library.tagUndoGeneration[$0, default: 0]) }
+        // 단계가 가리키는 곡의 기준 세대: 저장 뒤 읽기가 그 곡을 쓰거나 기준을 옮겼으면 그 곡은 되돌리지 않는다(`LibraryStore.invalidateTagUndo`)
+        let generations = Set(change.before.keys).union(change.after.keys).map { ($0, library.tagUndoGeneration[$0, default: 0]) }
         undoManager.registerUndo(withTarget: library) { target in
-            // 쓰는 곡이 든 단계는 통째로 건너뛴다(쓰는 초안을 되돌리지 않는다). 쓰기를 시작하면 이 대상의 되돌리기 단계는 이미 지워진다
-            guard !change.before.keys.contains(where: target.isEditLocked),
-                  generations.allSatisfy({ target.tagUndoGeneration[$0.0, default: 0] == $0.1 }) else { return }
-            target.tags.show(change.before)
-            target.tags.registerUndo(change.reversed)
+            // 쓰는 곡과 세대가 바뀐 곡은 빼고 나머지 곡만 되돌리며, 실제로 되돌린 곡만 ⇧⌘Z에 남긴다(쓰는 초안·새로 받은 초안을 덮지 않는다)
+            let valid = Set(generations.filter { !target.isEditLocked($0.0) && target.tagUndoGeneration[$0.0, default: 0] == $0.1 }.map(\.0))
+            guard let partial = DraftChange(before: change.before.filter { valid.contains($0.key) },
+                                            after: change.after.filter { valid.contains($0.key) }) else { return }
+            target.tags.show(partial.before)
+            target.tags.registerUndo(partial.reversed)
         }
         undoManager.setActionName(String(ui: "태그 편집"))
         if grouping {

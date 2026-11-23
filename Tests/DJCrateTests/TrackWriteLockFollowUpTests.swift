@@ -494,6 +494,45 @@ struct TrackWriteLockFollowUpTests {
         #expect(store.tagDrafts[unchanged.track.uuid]?.hasChanges != true)
     }
 
+    /// S16: 두 곡을 한 번에 고친 단계에서 다음 읽기가 한 곡의 CLI 초안만 받아들이면, 그 곡만 빼고 나머지 곡은 ⌘Z로 되돌린다
+    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    func 두_곡을_한_번에_고친_단계에서_바깥이_바꾼_곡만_빼고_되돌린다() async throws {
+        let rig = try await Rig()
+        rig.addCueDraft()
+        let store = rig.store
+        let undo = UndoManager()
+        store.undoManager = undo
+        let unchanged = rig.otherRow, changedOutside = rig.thirdRow
+        let pause = WriteLockSplitTests.GatePause()
+        let coordinator = ReflectionCoordinator.test(store: store, gate: Self.pausing(.live(), at: pause))
+        rig.failingSnapshots.set(true)
+        let writing = Task { await coordinator.write(rows: [rig.writingRow]) }
+        #expect(await waitForState(until: { pause.hasEntered }), "관문 쓰기에 닿지 못함")
+        // 저장 중에 두 곡의 태그를 한 번에 고친다: ⌘Z 단계 하나
+        store.tags.applyTagEdits([(row: unchanged, key: .title, value: "한 번에 고친 제목"),
+                                  (row: changedOutside, key: .title, value: "한 번에 고친 제목")])
+        pause.release()
+        await writing.value
+
+        var outside = TagDraft(trackUUID: changedOutside.track.uuid, base: changedOutside.tagFields)
+        outside.fields.title = "CLI가 저장한 제목"
+        store.testDrafts.saveTags([outside])
+        store.testDrafts.flush()
+        rig.failingSnapshots.set(false)
+        await store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(store.tagDrafts[changedOutside.track.uuid]?.fields.title == "CLI가 저장한 제목")
+
+        #expect(undo.canUndo)
+        undo.undo()
+        #expect(store.tagDrafts[unchanged.track.uuid]?.hasChanges != true, "초안이 그대로인 곡은 되돌려진다")
+        #expect(store.tagDrafts[changedOutside.track.uuid]?.fields.title == "CLI가 저장한 제목", "바깥이 바꾼 곡은 덮지 않는다")
+        // ⇧⌘Z는 실제로 되돌린 곡만 다시 한다
+        #expect(undo.canRedo)
+        undo.redo()
+        #expect(store.tagDrafts[unchanged.track.uuid]?.fields.title == "한 번에 고친 제목")
+        #expect(store.tagDrafts[changedOutside.track.uuid]?.fields.title == "CLI가 저장한 제목")
+    }
+
     @Test(.enabled(if: LiveDraftHome.isIsolated))
     func 재생_목록만_저장한_뒤_읽기가_실패해도_다음_성공한_읽기가_되돌리기를_지우지_않는다() async throws {
         let rig = try await Rig()
