@@ -221,8 +221,15 @@ public final class ScriptedJournal: Sendable {
     }
     func clear() { state.withLock { $0 = .none } }
 
+    /// 작업 잠금을 기다린 적이 있는 호출 수(겹친 호출이 잠금 경합에 닿았는지 시험이 본다)
+    public var contended: Int { waits.withLock { $0 } }
+    private let waits = Mutex(0)
+
     func serialized<T>(_ body: () throws -> T) rethrows -> T {
-        operation.lock()
+        if !operation.try() {
+            waits.withLock { $0 += 1 }
+            operation.lock()
+        }
         defer { operation.unlock() }
         return try body()
     }

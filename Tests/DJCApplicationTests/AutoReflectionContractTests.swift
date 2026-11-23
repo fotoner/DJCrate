@@ -156,7 +156,7 @@ struct AutoReflectionContractTests {
         let gate = RekordboxWriteGate.scripted(GateScript(), calls: calls, journal: journal)
         let target = RekordboxWriteTarget.copy(database: URL(filePath: "/copy/master.db"), shareRoot: nil)
         try await journalKeepOverlapContract(gate, target: target, request: finding.request, journalExists: { journal.exists },
-                                             secondEntered: { calls.value.order.filter { $0 == "keep journal" }.count == 2 })
+                                             secondContended: { journal.contended >= 1 })
         #expect(calls.value.keptJournals == ["op-1"])
     }
 
