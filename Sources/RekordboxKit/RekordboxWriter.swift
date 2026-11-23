@@ -118,7 +118,7 @@ public enum RekordboxWriter {
         let gridRoot = try writeGuard.checkTargetsBeforeLock(database, shareRoot: shareRoot, dryRun: dryRun)
         // 쓰기 잠금(R9)을 사전 확인부터 파일 단계·복구가 끝날 때까지 쥔다. 라이브 확인·중단 기록 거절(R11)은 잡은 뒤에 한다.
         // 시험 실행(dryRun)은 라이브러리를 바꾸지 않아 잠그지 않는다.
-        let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups)
+        let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups, refusesHardLinks: false)
         defer { run?.close() }
         try run?.prepareWrite()
         /// 준비 폴더를 둘 루트(R10): XML은 DB 폴더, 분석·그림은 분석 루트. 남은 준비 폴더는 쓰기 전에 지운다
@@ -155,7 +155,8 @@ public enum RekordboxWriter {
         // 재생 목록 편집과 곡 정보 쓰기는 DB 옆 masterPlaylists6.xml도 고친다(곡 정보는 그 곡이 든 목록의 Timestamp, #173).
         // 쓰는 DB 옆 파일만 대상이고 없으면 DB만 쓴다. 곡 정보는 그 곡이 든 살아 있는 목록이 있을 때만 읽는다. 사본 옆 파일이 라이브 XML의
         // 링크이거나 읽지 못하면 그 곡정보 초안만 막는다(큐·그리드 등은 쓴다). 재생 목록·합치기는 예전처럼 쓰기째 막는다.
-        let playlistXMLURL = playlistXMLURL(for: database)
+        // 곁 파일은 링크를 푼 DB 옆 것이다(파일 링크 DB도 실제 DB의 곁 파일을 고친다. 기록 경로 검증과 같은 기준, O12)
+        let playlistXMLURL = playlistXMLURL(for: run?.resolved ?? database)
         var playlistXML: MasterPlaylistsXML?
         let editsPlaylists = !playlistSteps.isEmpty || !merges.isEmpty
         if editsPlaylists || !xmlTags.isEmpty {
@@ -326,7 +327,7 @@ public enum RekordboxWriter {
             }
         }
 
-        let backup = dryRun ? nil : try makeBackup(of: database, in: backups, now: now, label: "write")
+        let backup = dryRun ? nil : try makeBackup(of: run?.resolved ?? database, in: backups, now: now, label: "write")
         // 분석 파일도 원본을 백업에 둔다(되돌리기용).
         /// 원래 파일 경로 → 쓰기 전 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
         var originalCopies: [String: URL] = [:]
@@ -720,6 +721,8 @@ public enum RekordboxWriter {
                     try run.begin(RekordboxWriteJournal(operationID: record?.operationID ?? UUID().uuidString, kind: .counter, entry: .drafts,
                                                         basis: .init(writeBackup: backup.path), files: journalFiles(fileSteps),
                                                         drafts: record?.drafts, startCounter: startUSN, finalCounter: usn))
+                    // 기록 남기기는 저장소 잠금을 기다릴 수 있다: 커밋 직전에 다시 본다(켜졌으면 롤백하고 기록을 지운 뒤 보류, S12)
+                    try run.recheck(.commit)
                     try run.before(.commit)
                 }
                 try db.execute("COMMIT")
@@ -750,8 +753,8 @@ public enum RekordboxWriter {
         if let run, let backup {
             do {
                 if committed {
-                    try run.after(.commit)
                     try run.databaseChanged()
+                    try run.after(.commit)
                     try run.before(.verify)
                     try checkIntegrity(of: database)
                     let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())

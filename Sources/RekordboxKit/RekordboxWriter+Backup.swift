@@ -109,13 +109,15 @@ extension RekordboxWriter {
         guard writes.count > keep, let protected = try? protectedBackupFolders(in: directory) else { return }
         let cut = Array(folders.dropFirst(writes[keep - 1] + 1))
         // 지켜서 남긴 옛 백업보다 뒤의 백업을 지우면 그 사슬이 끊긴다: 그 폴더에 표시를 남겨 일반 연쇄 복원이 거절하게 한다
-        // (S6, 기록으로 복원은 기록의 근거로 한다). `cut`은 최근 것부터다
+        // (S6, 기록으로 복원은 기록의 근거로 한다). 표시를 남기지 못하면(읽기 전용 등) 그 뒤 백업은 이번에 지우지 않는다. `cut`은 최근 것부터다
+        var held = Set<String>()
         for (index, kept) in cut.enumerated() where protected.contains(kept.lastPathComponent)
             && cut.prefix(index).contains(where: { !protected.contains($0.lastPathComponent) }) {
             let marker = kept.appending(path: chainCutName)
             if !fm.fileExists(atPath: marker.path) { try? Data(folders[writes[keep - 1]].lastPathComponent.utf8).write(to: marker, options: .atomic) }
+            if !fm.fileExists(atPath: marker.path) { held.formUnion(cut.prefix(index).map(\.lastPathComponent)) }
         }
-        for old in cut where !protected.contains(old.lastPathComponent) { try? fm.removeItem(at: old) }
+        for old in cut where !protected.contains(old.lastPathComponent) && !held.contains(old.lastPathComponent) { try? fm.removeItem(at: old) }
     }
 
     /// 솎기가 뒤 백업을 지운 뒤에도 지켜서 남긴 백업 안의 표시(그 뒤 사슬이 끊겼다). 내용은 그때 남긴 가장 옛 쓰기 백업 이름
@@ -170,7 +172,7 @@ extension RekordboxWriter {
         // 쓰기 잠금(R9)을 잡은 뒤 실행을 본다. 중단 기록이 남았으면 그 기록의 백업으로 되돌리는 것만 받아 기록으로 복원한다
         // (R11: 다른 백업·시점은 막는다). 복원 실패 안내의 명령(`djc rekordbox-restore --backup <그 백업>`)과 앱의 "가장 최근 백업으로
         // 되돌리기"가 이 길로 간다
-        let run = try WriteRun.locked(database, guard: writeGuard, backups: backups)
+        let run = try WriteRun.locked(database, guard: writeGuard, backups: backups, refusesHardLinks: false)
         defer { run.close() }
         try run.prepareRestore()
         switch try run.judge() {
@@ -209,11 +211,13 @@ extension RekordboxWriter {
         let (steps, touched) = try restoreSteps(later + [backup], database: database, shareRoot: share)
         let saved = try makeBackup(of: database, in: backups, now: now, label: "before-restore")
         try saveRestoreUndo(touched, in: saved, restoredFrom: backup, now: now, shareRoot: share)
-        // 첫 변경 직전에 파일 쓰기 기록을 남긴다(R11). 기록으로 복원은 같은 복원을 다시 한다: DB·XML은 고른 백업에서, 파일은 사슬 끝의 상태로
+        // 첫 변경 직전에 파일 쓰기 기록을 남긴다(R11). 기록으로 복원은 같은 복원을 다시 한다: DB·XML은 고른 백업에서, 파일은 사슬 끝의 상태로.
+        // 여기서 확인한 뒤 백업들을 근거로 적어, 백업 폴더 밖의 백업으로 시작한 복원도 같은 근거로 이어 간다(S15)
         do {
             try run.recheck(.databaseReplace)
             try run.begin(RekordboxWriteJournal(operationID: UUID().uuidString, kind: .files, entry: .restore,
-                                                basis: .init(writeBackup: backup.path), files: restoreJournalFiles(steps)))
+                                                basis: .init(writeBackup: backup.path, chain: later.isEmpty ? nil : later.map(\.path)),
+                                                files: restoreJournalFiles(steps)))
         } catch {
             throw run.abandon(error)
         }

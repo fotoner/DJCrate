@@ -73,11 +73,15 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
         public var pointSnapshot: String?
         /// iTunes 동기화 전 파일(`itunes-sync-before.xml`)
         public var iTunesSyncBefore: String?
+        /// 쓰기 전으로 복원이 고른 백업과 함께 차례로 되돌린 뒤 백업 폴더(처음 복원 때 확인한 근거). 기록으로 복원은 원본 사본을
+        /// 쓰기 전 백업 폴더 뿌리나 이 폴더들 안에서만 받는다(백업 폴더 밖의 백업으로 시작한 연쇄 복원도 이어 간다). 옛 기록에는 없다
+        public var chain: [String]?
 
-        public init(writeBackup: String? = nil, pointSnapshot: String? = nil, iTunesSyncBefore: String? = nil) {
+        public init(writeBackup: String? = nil, pointSnapshot: String? = nil, iTunesSyncBefore: String? = nil, chain: [String]? = nil) {
             self.writeBackup = writeBackup
             self.pointSnapshot = pointSnapshot
             self.iTunesSyncBefore = iTunesSyncBefore
+            self.chain = chain
         }
     }
 
@@ -110,14 +114,33 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
 
     /// 시점 복원이 적는 것
     public struct PointRestore: Codable, Equatable, Sendable {
+        /// 바꿔 끼우는 폴더 하나의 자리 역할. "이대로 둔다"는 이름이 아니라 이 역할로 빈 폴더 자리를 채운다
+        public struct Folder: Codable, Equatable, Sendable {
+            /// 바꿔 끼우는 폴더 자리(분석·앨범아트)
+            public var target: String
+            /// 시점 내용을 클론하는 준비 자리(`.djc-restore-*`). 한 번에 맞바꾸면 그 뒤 복원 전 내용이 여기 있다
+            public var staged: String
+            /// 맞바꾸지 못할 때 복원 전 내용을 옮겨 두는 자리(`.djc-old-*`)
+            public var old: String
+
+            public init(target: String, staged: String, old: String) {
+                self.target = target
+                self.staged = staged
+                self.old = old
+            }
+        }
+
         /// 첫 변경 전에 뜬 복원 직전 스냅샷. 기록으로 복원할 때 새로 뜨지 않고 이것을 다시 쓴다
         public var snapshotBeforeRestore: String
         /// 만들 임시 폴더 이름(`.djc-restore-*`·`.djc-old-*`). 다시 한 복원의 검증이 끝난 뒤 지운다
         public var temporaryFolders: [String]
+        /// 폴더 자리마다의 역할(복원·다시 한 복원 차례). 옛 기록에는 없다
+        public var folders: [Folder]?
 
-        public init(snapshotBeforeRestore: String, temporaryFolders: [String]) {
+        public init(snapshotBeforeRestore: String, temporaryFolders: [String], folders: [Folder]? = nil) {
             self.snapshotBeforeRestore = snapshotBeforeRestore
             self.temporaryFolders = temporaryFolders
+            self.folders = folders
         }
     }
 

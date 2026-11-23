@@ -426,7 +426,8 @@ struct RekordboxWriteJournalHardeningTests {
     @Test func 커밋과_크기·시각_사이에_멈춰도_그_차이는_이_쓰기의_것이라_경고하지_않는다() throws {
         let fixture = try RekordboxFixture()
         let script = WriteHookScript()
-        script.stop(at: .after(.commit))
+        // 기록 남기기(1) 다음, 커밋 뒤 크기·시각을 적기(2) 직전에 멈춘다
+        script.stop(at: .before(.journalWrite), occurrence: 2)
         #expect(throws: RekordboxWriteStop.self) { try flow.writeCue(fixture, try flow.cueDraft(fixture), guard: script.writeGuard) }
         let found = try #require(Kit.interrupted(try Kit.judge(fixture)))
         #expect(found.journal.database != found.stamp, "커밋 뒤 크기·시각을 적기 전에 멈췄다")

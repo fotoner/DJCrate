@@ -784,7 +784,7 @@ public enum RekordboxTrackWriter {
     static func preflight(_ database: URL, shareRoot: URL?, dryRun: Bool, backups: URL,
                           guard writeGuard: RekordboxWriteGuard) throws -> (share: URL?, run: WriteRun?) {
         let share = try writeGuard.checkTargetsBeforeLock(database, shareRoot: shareRoot, dryRun: dryRun)
-        let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups)
+        let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups, refusesHardLinks: false)
         do {
             try run?.prepareWrite()
             let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
@@ -834,6 +834,8 @@ public enum RekordboxTrackWriter {
             if let run {
                 try run.recheck(.commit)
                 try run.begin(journal(start, usn))
+                // 기록 남기기는 저장소 잠금을 기다릴 수 있다: 커밋 직전에 다시 본다(켜졌으면 롤백하고 기록을 지운 뒤 보류, S12)
+                try run.recheck(.commit)
                 try run.before(.commit)
             }
             try db.execute("COMMIT")
@@ -854,8 +856,8 @@ public enum RekordboxTrackWriter {
     /// 커밋 뒤 무결성 검사와 다시 읽기. 실패하면 백업으로 되돌린다(되돌리지 못하면 `restoreFailed`).
     static func afterCommit(_ database: URL, backup: URL, live: Bool, run: WriteRun? = nil, _ check: (CipherDatabase) throws -> Void) throws {
         do {
-            try run?.after(.commit)
             try run?.databaseChanged()
+            try run?.after(.commit)
             try run?.before(.verify)
             try RekordboxWriter.checkIntegrity(of: database)
             let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())

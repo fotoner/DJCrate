@@ -11,12 +11,14 @@ extension RekordboxWriter {
         _ = try writeGuard.checkTargetsBeforeLock(database, shareRoot: nil, dryRun: dryRun)
         if writeGuard.isLive(database), !writesITunesSync { throw RekordboxITunesSyncChange.invalidSource }
         // 쓰기 잠금(R9)을 잡은 뒤 라이브 확인·중단 기록 거절(R11)을 한다. 시험 실행은 잠그지 않는다
-        let locked = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups)
+        let locked = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups, refusesHardLinks: false)
         defer { locked?.close() }
         try locked?.prepareWrite()
-        let target = database.deletingLastPathComponent().appending(path: "playlists3.sync")
+        // 곁 파일은 링크를 푼 DB 옆 것이다(파일 링크 DB도 실제 DB의 동기화 파일을 고친다. 기록 경로 검증과 같은 기준, O12)
+        let resolved = try locked?.resolved ?? RekordboxWriteLocks.resolve(database)
+        let target = resolved.deletingLastPathComponent().appending(path: "playlists3.sync")
         try writeGuard.checkAdjacentFile(target, database: database)
-        try validateBackupFile(target, under: database.deletingLastPathComponent(), required: true)
+        try validateBackupFile(target, under: resolved.deletingLastPathComponent(), required: true)
         guard try Data(contentsOf: target) == change.base else { throw iTunesSyncConflict }
         let counters: (local: Int?, cloud: Int?)
         do {
@@ -33,7 +35,7 @@ extension RekordboxWriter {
         report.iTunesSyncWritten = changed
         guard changed, let run = locked else { return report }
         try checkIntegrity(of: database)
-        let backup = try makeBackup(of: database, in: backups, now: now, label: "write")
+        let backup = try makeBackup(of: resolved, in: backups, now: now, label: "write")
         try saveITunesSyncBackup(before: change.base, after: rendered, in: backup)
         report.backup = backup.path
         // 백업 중 rekordbox를 켰거나 다른 창에서 바꿨으면 원본에 손대지 않는다.
@@ -46,6 +48,8 @@ extension RekordboxWriter {
             try run.begin(RekordboxWriteJournal(operationID: UUID().uuidString, kind: .files, entry: .iTunesSync,
                                                 basis: .init(writeBackup: backup.path, iTunesSyncBefore: before.path),
                                                 files: [.init(path: target.path, original: before.path)]))
+            // 기록 남기기는 저장소 잠금을 기다릴 수 있다: 파일을 바꾸기 직전에 다시 본다(켜졌으면 기록을 지운 뒤 보류, S12)
+            try run.recheck(.fileReplace)
         } catch {
             throw run.abandon(error)
         }
@@ -88,11 +92,11 @@ extension RekordboxWriter {
         let original = try Data(contentsOf: before), written = try Data(contentsOf: after)
         _ = try RekordboxITunesSelection.parse(original)
         _ = try RekordboxITunesSelection.parse(written)
-        let target = database.deletingLastPathComponent().appending(path: "playlists3.sync")
+        let target = run.resolved.deletingLastPathComponent().appending(path: "playlists3.sync")
         try writeGuard.checkAdjacentFile(target, database: database)
-        try validateBackupFile(target, under: database.deletingLastPathComponent(), required: true)
+        try validateBackupFile(target, under: run.resolved.deletingLastPathComponent(), required: true)
         guard try Data(contentsOf: target) == written else { throw iTunesSyncConflict }
-        let saved = try makeBackup(of: database, in: backups, now: now, label: "before-restore")
+        let saved = try makeBackup(of: run.resolved, in: backups, now: now, label: "before-restore")
         try saveITunesSyncBackup(before: written, after: original, in: saved)
         if writeGuard.isLive(database), writeGuard.isRekordboxRunning() { throw DJCError.rekordboxRunning }
         guard try Data(contentsOf: target) == written else { throw iTunesSyncConflict }
@@ -102,6 +106,7 @@ extension RekordboxWriter {
             try run.begin(RekordboxWriteJournal(operationID: UUID().uuidString, kind: .files, entry: .restore,
                                                 basis: .init(writeBackup: backup.path, iTunesSyncBefore: before.path),
                                                 files: [.init(path: target.path, original: before.path)]))
+            try run.recheck(.fileReplace)
         } catch {
             throw run.abandon(error)
         }

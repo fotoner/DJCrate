@@ -29105,6 +29105,22 @@
         }
       }
     },
+    "복원 전 %@ 폴더를 찾지 못해 그 폴더를 되돌리지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't find the pre-restore %@ folder, so that folder was not put back"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元前の%@フォルダが見つからないため、そのフォルダを元に戻しませんでした"
+          }
+        }
+      }
+    },
     "복원 전으로 돌리려면: %@" : {
       "localizations" : {
         "en" : {
@@ -39975,6 +39991,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "作曲者"
+          }
+        }
+      }
+    },
+    "작업 ID를 파일 이름으로 쓸 수 없어 저장하지 않았습니다. 다시 저장하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The operation ID can't be used as a file name, so nothing was saved. Save again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業IDをファイル名に使えないため保存しませんでした。もう一度保存してください"
           }
         }
       }

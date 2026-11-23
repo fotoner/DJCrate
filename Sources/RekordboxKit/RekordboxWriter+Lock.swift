@@ -115,9 +115,32 @@ public struct RekordboxWriteLocks: Sendable {
     /// 그래야 다른 대상의 솎기가 핀을 두기 직전의 근거를 지우거나, 핀을 둔 근거를 지우지 않는다. 키는 그 폴더의 (장치, inode)이고 잠금 파일은
     /// 기본 잠금 폴더의 `<키>.store.lock`이다(저장소 폴더에 파일을 더하지 않는다). 폴더가 없으면 nil(지킬 것이 없다)
     public static func lockStore(_ folder: URL) throws -> RekordboxWriteLockHold? {
+        guard let key = storeKey(folder) else { return nil }
+        return try lockStore(key: key)
+    }
+
+    /// 여러 저장소를 함께 잠근다(S17): 같은 폴더(장치·inode가 같다)는 한 번만, 늘 키 차례로 잡는다. 잠금은 다시 들어갈 수 없어
+    /// 같은 폴더를 두 번 잡으면 스스로를 기다리고, 프로세스마다 차례가 다르면 서로를 기다린다. 없는 폴더는 건너뛴다
+    static func lockStores(_ folders: [URL]) throws -> [RekordboxWriteLockHold] {
+        let keys = Set(folders.compactMap(storeKey)).sorted { ($0.device, $0.inode) < ($1.device, $1.inode) }
+        var holds: [RekordboxWriteLockHold] = []
+        do {
+            for key in keys { holds.append(try lockStore(key: key)) }
+        } catch {
+            holds.forEach { $0.release() }
+            throw error
+        }
+        return holds
+    }
+
+    /// 저장소 폴더의 (장치, inode). 없으면 nil
+    private static func storeKey(_ folder: URL) -> RekordboxWriteLockKey? {
         var info = stat()
         guard stat(folder.path, &info) == 0 else { return nil }
-        let key = RekordboxWriteLockKey(device: UInt64(UInt32(bitPattern: info.st_dev)), inode: UInt64(info.st_ino))
+        return RekordboxWriteLockKey(device: UInt64(UInt32(bitPattern: info.st_dev)), inode: UInt64(info.st_ino))
+    }
+
+    private static func lockStore(key: RekordboxWriteLockKey) throws -> RekordboxWriteLockHold {
         let locks = Self()
         let fd = try locks.open(fileName: key.name + ".store.lock")
         while flock(fd, LOCK_EX) != 0 {

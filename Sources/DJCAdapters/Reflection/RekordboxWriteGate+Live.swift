@@ -55,8 +55,9 @@ extension RekordboxWriteGate {
                 _ = try RekordboxWriter.write(drafts: [], iTunesSync: RekordboxITunesSyncChange(base: change.base, source: change.source,
                                                                                                  selection: change.selection),
                                               to: target.database, dryRun: false, backups: target.backups, guard: writeGuard)
-                // rekordbox가 쓰기 뒤 맞춘 동기화 파일(선택 창이 다음에 열 때의 원문)
-                return try Data(contentsOf: target.database.deletingLastPathComponent().appending(path: "playlists3.sync"))
+                // rekordbox가 쓰기 뒤 맞춘 동기화 파일(선택 창이 다음에 열 때의 원문). 입구처럼 링크를 푼 DB 옆 파일을 읽는다
+                let folder = try RekordboxWriteLocks.resolve(target.database).deletingLastPathComponent()
+                return try Data(contentsOf: folder.appending(path: "playlists3.sync"))
             })
         gate.journal = { target, hold in
             if let hold, hold.key != (try RekordboxWriteLocks.key(target.database)) {
