@@ -83,7 +83,8 @@ public struct DraftCleanupList: Codable, Equatable, Sendable {
     /// 초안 저장소 위치(그 실행의 `DJC_HOME` 초안 폴더)
     public var draftHome: String
     /// 이 쓰기의 백업 폴더(백업 루트 기준 상대 경로, 예 `2026-11-24_120000`). 다시 켠 뒤 정리도 바깥에서 고친 재생 목록 단계의 사본을
-    /// 이 폴더에 남긴다(`PlaylistStepCleanup.backupFolder`)
+    /// 이 폴더에 남긴다(`PlaylistStepCleanup.backupFolder`). 그래서 이 목록이 남아 있는 동안 이 폴더는 백업 솎기에서 뺀다(R22,
+    /// `protectedBackupFolders`·`RekordboxBackups.protectedFolders`)
     public var backupFolder: String
     /// 쓴 곡 초안
     public var written: [WrittenDraft]
@@ -125,6 +126,9 @@ public struct DraftCleanupList: Codable, Equatable, Sendable {
         newPlaylistIDs = try container.decode([String: String].self, forKey: .newPlaylistIDs)
         trackAdds = try container.decode([TrackAdd].self, forKey: .trackAdds)
     }
+
+    /// 남은 미정리 목록들이 가리키는 백업 폴더(백업 루트 기준 상대 경로). 솎기는 목록이 지워질 때까지 이 폴더들을 지우지 않는다(R22)
+    public static func protectedBackupFolders(_ lists: some Sequence<Self>) -> Set<String> { Set(lists.map(\.backupFolder)) }
 
     /// 파일에 적는 형식(키 정렬)
     public static var encoder: JSONEncoder {

@@ -35,6 +35,14 @@ public final class MemoryDrafts: Sendable {
             stamps[key] = newStamp(origins: (stamps[key]?.origins ?? []).union([origin]), hash: hash)
         }
 
+        /// 그 초안을 제안으로 바꾼다: 출처에 모름을 더하고 지금 내용의 해시로 새 판을 준다. 새 판(초안이 없으면 nil)
+        mutating func markSuggestion(_ key: DraftKey) -> DraftRevision? {
+            guard let old = stamps[key] else { return nil }
+            let stamp = newStamp(origins: old.origins.union([.unknown]), hash: currentHash(key) ?? old.contentHash)
+            stamps[key] = stamp
+            return stamp.revision
+        }
+
         mutating func newStamp(origins: Set<DraftOrigin>, hash: DraftContentHash) -> DraftStamp {
             lastDraftRevision += 1
             return DraftStamp(revision: DraftRevision(lastDraftRevision), origins: origins, contentHash: hash)
@@ -148,16 +156,17 @@ public final class MemoryDrafts: Sendable {
     }
 
     /// 그 판의 초안을 제안으로 바꾼다(`DraftStore.markSuggestions`의 규칙)
-    public func markSuggestions(_ drafts: [WrittenDraft], playlistSteps: Set<DraftRevision>) -> Set<DraftRevision> {
+    public func markSuggestions(_ drafts: [WrittenDraft], playlistSteps: Set<DraftRevision>) -> [DraftRevision: DraftRevision] {
         state.withLock { state in
-            var marked = Set<DraftRevision>()
+            var marked: [DraftRevision: DraftRevision] = [:]
             for item in drafts where state.stamps[item.key]?.revision == item.revision {
-                state.stamps[item.key]?.origins.insert(.unknown)
-                marked.insert(item.revision)
+                marked[item.revision] = state.markSuggestion(item.key)
             }
             for index in state.playlistStamps.indices where playlistSteps.contains(state.playlistStamps[index].revision) {
-                state.playlistStamps[index].origins.insert(.unknown)
-                marked.insert(state.playlistStamps[index].revision)
+                let old = state.playlistStamps[index]
+                let hash = Self.stepHash(state.playlist.steps[index], in: state.playlist)
+                state.playlistStamps[index] = state.newStamp(origins: old.origins.union([.unknown]), hash: hash)
+                marked[old.revision] = state.playlistStamps[index].revision
             }
             return marked
         }
@@ -212,8 +221,9 @@ public final class MemoryDrafts: Sendable {
                     state.remove(item.key)
                     result.removed.append(item)
                 } else {
-                    // 바깥에서 고친 초안: 같은 잠금 안에서 제안으로 기록한다(내용이 저장 당시로 돌아와도 제안이다)
-                    state.stamps[item.key]?.origins.insert(.unknown)
+                    // 바깥에서 고친 초안: 같은 잠금 안에서 새 판을 주고 제안으로 기록한다(내용이 저장 당시로 돌아와도,
+                    // 같은 미정리 목록으로 정리를 다시 해도 지우지 않는다)
+                    _ = state.markSuggestion(item.key)
                     result.suggested.append(item)
                 }
             }

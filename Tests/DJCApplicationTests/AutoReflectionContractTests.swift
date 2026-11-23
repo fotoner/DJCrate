@@ -105,6 +105,8 @@ struct AutoReflectionContractTests {
                                                     backupFolder: "w1"), target)
         let backups = MemoryBackups().port
         #expect(backups.autoSaveCondition(URL(filePath: "/backups"), target.database) == .unknown)
+        // 솎기에서 뺄 백업 폴더의 기본값은 없음(지금 동작, S13)
+        #expect(try backups.protectedFolders(URL(filePath: "/backups")).isEmpty)
     }
 
     /// 가짜 관문은 정한 판정을 돌려주고 부른 차례·넘긴 잠금·요청을 남긴다(엔진·세션 시험의 재료).
@@ -137,11 +139,25 @@ struct AutoReflectionContractTests {
         let finding = RekordboxJournalFinding(journal: RekordboxWriteJournal(operationID: "op-1", kind: .files, entry: .pointRestore),
                                               changedSince: false, database: stamp)
         script.journal = .interrupted(finding)
-        let gate = RekordboxWriteGate.scripted(script)
+        let journal = ScriptedJournal(script.journal)
+        let gate = RekordboxWriteGate.scripted(script, journal: journal)
         let target = RekordboxWriteTarget.copy(database: URL(filePath: "/copy/master.db"), shareRoot: nil)
         try journalKeepContract(gate, target: target, matching: finding.request,
                                 stale: RekordboxJournalRequest(operationID: "op-1", database: RekordboxFileStamp(size: 11, modifiedNanoseconds: 7)),
-                                journalExists: { try gate.journal(target, nil) != .none })
+                                journalExists: { journal.exists })
+    }
+
+    /// 같은 요청으로 "이대로 둔다"를 겹쳐 불러도 재확인·넘긴 일·기록 삭제가 한 잠금 안이라 넘긴 일은 한 번, 하나는 `.nothing`이다(S3)
+    @Test func 이대로_둔다를_겹쳐_불러도_넘긴_일은_한_번이다() async throws {
+        let finding = RekordboxJournalFinding(journal: RekordboxWriteJournal(operationID: "op-1", kind: .counter, entry: .drafts),
+                                              changedSince: false, database: RekordboxFileStamp(size: 10, modifiedNanoseconds: 7))
+        let journal = ScriptedJournal(.interrupted(finding))
+        let calls = GateCalls()
+        let gate = RekordboxWriteGate.scripted(GateScript(), calls: calls, journal: journal)
+        let target = RekordboxWriteTarget.copy(database: URL(filePath: "/copy/master.db"), shareRoot: nil)
+        try await journalKeepOverlapContract(gate, target: target, request: finding.request, journalExists: { journal.exists },
+                                             secondEntered: { calls.value.order.filter { $0 == "keep journal" }.count == 2 })
+        #expect(calls.value.keptJournals == ["op-1"])
     }
 
     /// 묶음은 초안마다 판과 읽어 넣은 내용의 해시를 나르고, 쓸 수 있는 묶음은 남긴 초안의 판만 나른다.

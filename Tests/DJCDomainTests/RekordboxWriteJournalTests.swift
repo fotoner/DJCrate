@@ -70,6 +70,10 @@ struct RekordboxWriteJournalTests {
         #expect(try DraftCleanupList.decode(data) == list)
         // 그 쓰기의 백업 폴더(백업 루트 기준 상대 경로)를 적어 다시 켠 뒤에도 사본 자리를 찾는다(S5)
         #expect(String(decoding: data, as: UTF8.self).contains(#""backupFolder":"2026-11-24_120000""#))
+        // 남은 목록들이 가리키는 백업 폴더는 솎기에서 뺀다(S13)
+        let other = DraftCleanupList(operationID: "op-2", target: Self.key, draftHome: "/h/drafts", backupFolder: "2026-11-24_130000")
+        #expect(DraftCleanupList.protectedBackupFolders([list, other, list]) == ["2026-11-24_120000", "2026-11-24_130000"])
+        #expect(DraftCleanupList.protectedBackupFolders([]).isEmpty)
         var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         object["version"] = 0
         #expect(throws: (any Error).self) { try DraftCleanupList.decode(JSONSerialization.data(withJSONObject: object)) }

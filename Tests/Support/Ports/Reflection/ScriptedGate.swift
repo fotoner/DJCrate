@@ -88,7 +88,9 @@ extension RekordboxWriteGate {
     /// 쓰기·넣기·빼기·재생 목록 쓰기는 `dryRun`을 결과에 그대로 적는다, 쓰면(dryRun 아님) 대상의 백업 폴더에 백업을 남긴다,
     /// 복원은 되돌리기 직전 상태를 대상의 백업 폴더에 남긴 백업을 돌려준다.
     /// 동기 입구(쓰기·복원·넣기·빼기·시점 복원·재생 목록·동기화)는 협력 풀 밖에서 불려야 한다(`expectBlockingOffPool`, 세션은 `BlockingWork`).
-    public static func scripted(_ script: GateScript, calls: GateCalls = GateCalls(), hold: PreviewHold = PreviewHold()) -> Self {
+    /// - Parameter journal: 가짜 관문이 드는 쓰기 기록 상태(시험이 기록이 남았는지 직접 본다). 주지 않으면 `script.journal`로 새로 만든다
+    public static func scripted(_ script: GateScript, calls: GateCalls = GateCalls(), hold: PreviewHold = PreviewHold(),
+                                journal: ScriptedJournal? = nil) -> Self {
         var gate = RekordboxWriteGate(
             write: { batch, inputs, target, dryRun in
                 expectBlockingOffPool()
@@ -153,7 +155,7 @@ extension RekordboxWriteGate {
                 return script.syncData
             })
         // 중단 기록은 가짜 관문이 상태로 든다: "이대로 둔다"가 끝나면 사라진다
-        let journal = ScriptedJournal(script.journal)
+        let journal = journal ?? ScriptedJournal(script.journal)
         gate.journal = { _, hold in
             expectBlockingOffPool()
             calls.record { $0.journalHolds.append(hold?.key); $0.order.append("journal") }
@@ -172,18 +174,22 @@ extension RekordboxWriteGate {
         }
         gate.keepJournal = { _, request, apply in
             expectBlockingOffPool()
+            // 들어온 차례는 잠금 앞에서 적는다(겹친 호출이 잠금을 기다리는 것을 시험이 본다)
             calls.record { $0.journalRequests.append(request); $0.order.append("keep journal") }
             if let error = script.journalError { throw error }
-            if let refused = journal.refusal(for: request) { return refused }
-            do {
-                try apply()
-            } catch {
-                calls.record { $0.order.append("keep journal: apply failed") }
-                throw error
+            // 실제 관문의 쓰기 잠금처럼 재확인·넘긴 일·기록 삭제를 한 잠금 안에서 차례로 한다
+            return try journal.serialized {
+                if let refused = journal.refusal(for: request) { return refused }
+                do {
+                    try apply()
+                } catch {
+                    calls.record { $0.order.append("keep journal: apply failed") }
+                    throw error
+                }
+                journal.clear()
+                calls.record { $0.keptJournals.append(request.operationID); $0.order.append("remove journal") }
+                return .kept
             }
-            journal.clear()
-            calls.record { $0.keptJournals.append(request.operationID); $0.order.append("remove journal") }
-            return .kept
         }
         gate.cleanupLists = { _, _ in
             expectBlockingOffPool()
@@ -198,14 +204,28 @@ extension RekordboxWriteGate {
     }
 }
 
-/// 가짜 관문이 든 쓰기 기록 상태
-private final class ScriptedJournal: Sendable {
+/// 가짜 관문이 든 쓰기 기록 상태. 상태 읽기(`verdict`·`exists`)는 작업 잠금(`serialized`)과 따로 잠가,
+/// "이대로 둔다"의 넘긴 일 안에서도 기록이 남았는지 볼 수 있다(실제 관문은 기록 파일을 직접 본다)
+public final class ScriptedJournal: Sendable {
     private let state: Mutex<RekordboxJournalVerdict>
+    /// 실제 관문의 쓰기 잠금을 흉내 낸다(기록을 다루는 일을 차례로 세운다)
+    private let operation = NSLock()
 
-    init(_ verdict: RekordboxJournalVerdict) { state = Mutex(verdict) }
+    public init(_ verdict: RekordboxJournalVerdict) { state = Mutex(verdict) }
 
-    var verdict: RekordboxJournalVerdict { state.withLock { $0 } }
+    public var verdict: RekordboxJournalVerdict { state.withLock { $0 } }
+    /// 중단 기록이 남아 있는지
+    public var exists: Bool {
+        if case .interrupted = verdict { return true }
+        return false
+    }
     func clear() { state.withLock { $0 = .none } }
+
+    func serialized<T>(_ body: () throws -> T) rethrows -> T {
+        operation.lock()
+        defer { operation.unlock() }
+        return try body()
+    }
 
     /// 요청을 받아들일 수 없으면 그 결과(기록 없음·달라짐), 받아들이면 nil
     func refusal(for request: RekordboxJournalRequest) -> RekordboxJournalKeep? {
