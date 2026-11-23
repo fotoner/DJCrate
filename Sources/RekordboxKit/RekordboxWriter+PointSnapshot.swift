@@ -19,14 +19,32 @@ extension RekordboxWriter {
         var beforeRestore: String
     }
 
-    /// 분석·앨범아트 폴더 하나를 바꿔 끼우는 상태
+    /// 분석·앨범아트 폴더 하나를 바꿔 끼우는 상태. 임시 폴더 이름은 미리 정해 쓰기 기록에 적는다(R11)
     struct FolderSwap {
         var target: URL
+        /// 새 내용을 클론할 자리(`.djc-restore-*`, 대상 옆)
+        var stagedPath: URL
+        /// 지금 내용을 옮겨 둘 자리(`.djc-old-*`, 대상 옆)
+        var oldPath: URL
         /// 스냅샷에서 클론한 새 내용(스냅샷에 없던 폴더면 nil)
         var staged: URL?
         /// 옮겨 둔 지금 내용(지금 없던 폴더면 nil)
         var old: URL?
         var swapped = false
+
+        init(target: URL) {
+            self.target = target
+            let parent = target.deletingLastPathComponent(), id = UUID().uuidString
+            stagedPath = parent.appending(path: ".djc-restore-\(id)-\(target.lastPathComponent)")
+            oldPath = parent.appending(path: ".djc-old-\(id)-\(target.lastPathComponent)")
+        }
+
+        var temporaryFolders: [String] { [stagedPath.path, oldPath.path] }
+    }
+
+    /// 분석·앨범아트 폴더마다 바꿔 끼울 상태(임시 폴더 이름까지 정한다)
+    static func pointSwaps(share: URL) -> [FolderSwap] {
+        RekordboxPointSnapshot.shareFolders.map { FolderSwap(target: share.appending(path: $0)) }
     }
 
     /// 고른 시점 스냅샷으로 rekordbox 라이브러리를 되돌린다. 대상 DB·share·폴더는 부르는 쪽이 적는다(라이브 기본 인자 없음).
@@ -38,6 +56,28 @@ extension RekordboxWriter {
         let live = writeGuard.isLive(database)
         if live, writeGuard.isRekordboxRunning() {
             throw DJCError.writeRefused(String(ui: "rekordbox가 켜져 있습니다. rekordbox를 완전히 종료한 뒤 되돌리세요"))
+        }
+        // 쓰기 잠금(R9). 중단 기록이 남았으면 그 기록으로 다시 하는 복원만 받는다(R11): 기록의 시점이나, 복원 실패 안내대로 그 복원 직전 시점.
+        // 다른 시점·백업으로 복원하는 것은 기록이 남은 동안 막는다
+        let run = try WriteRun.locked(database, guard: writeGuard, backups: backups, snapshots: snapshots)
+        defer { run.close() }
+        switch try run.judge() {
+        case .none: break
+        case .undecided: throw DJCError.rekordboxRunning
+        case let .interrupted(journal, _, _):
+            let requested = pointSnapshot.standardizedFileURL.comparablePath
+            guard journal.entry == .pointRestore, let point = journal.pointRestore,
+                  [journal.basis.pointSnapshot, point.snapshotBeforeRestore].compactMap({ $0 })
+                    .contains(where: { URL(filePath: $0).standardizedFileURL.comparablePath == requested }) else {
+                throw interruptedRefusal
+            }
+            run.adopt(journal)
+            _ = try restoreByJournal(journal, run: run, backups: backups, shareRoot: share, now: now, pointTarget: pointSnapshot)
+            guard let before = RekordboxPointSnapshot.metadata(in: URL(filePath: point.snapshotBeforeRestore))
+                    .map({ RekordboxPointSnapshot.Entry(url: URL(filePath: point.snapshotBeforeRestore), metadata: $0) }) else {
+                throw journalBasisMissing
+            }
+            return PointRestoreReport(restored: try validPointSnapshot(pointSnapshot), beforeRestore: before)
         }
         let entry = try validPointSnapshot(pointSnapshot)
         try checkSameLibrary(backup: entry.url.appending(path: "master.db"), target: database)
@@ -55,19 +95,75 @@ extension RekordboxWriter {
             try? FileManager.default.removeItem(at: before.url)
             throw error
         }
-        var swaps: [FolderSwap] = []
+        // 첫 변경 직전에 실행을 다시 보고 파일 쓰기 기록을 남긴다(R10·R11): 복원 직전 스냅샷과 만들 임시 폴더 이름까지 적는다.
+        // 기록으로 복원은 같은 시점으로 다시 하고, 이 복원 직전 스냅샷을 다시 쓴다(새로 뜨지 않는다)
+        var swaps = pointSwaps(share: share)
         do {
-            swaps = try stagePointFolders(from: entry.url, share: share)
-            try replaceLibraryFiles(from: entry.url, to: database)
-            try swapPointFolders(&swaps)
-            try verifyPointRestore(entry, database: database, share: share)
+            try run.recheck(.databaseReplace)
+            try run.begin(RekordboxWriteJournal(operationID: UUID().uuidString, kind: .files, entry: .pointRestore,
+                                                basis: .init(writeBackup: marker.path, pointSnapshot: entry.url.path),
+                                                pointRestore: .init(snapshotBeforeRestore: before.url.path,
+                                                                    temporaryFolders: swaps.flatMap(\.temporaryFolders))))
         } catch {
-            throw rollbackPointRestore(error, before: before, database: database, swaps: swaps, marker: marker, live: live)
+            // 강제 종료 흉내는 아무것도 치우지 않는다(기록이 이미 남았으면 그 스냅샷을 가리킨다)
+            if !(error is RekordboxWriteStop) {
+                try? FileManager.default.removeItem(at: marker)
+                try? FileManager.default.removeItem(at: before.url)
+            }
+            throw run.abandon(error)
+        }
+        do {
+            try stagePointFolders(&swaps, from: entry.url)
+            try replaceLibraryFiles(from: entry.url, to: database, run: run)
+            try swapPointFolders(&swaps, run: run)
+            try run.step(.verify, recheck: false) { try verifyPointRestore(entry, database: database, share: share) }
+        } catch {
+            if error is RekordboxWriteStop { throw error }
+            // 아직 아무것도 바꾸지 않았으면(클론을 만든 뒤 켜짐 등) 클론·표시·복원 직전 스냅샷과 기록을 치우고 보류·실패로 끝낸다
+            if !run.changed {
+                for swap in swaps { if let staged = swap.staged { try? FileManager.default.removeItem(at: staged) } }
+                try? FileManager.default.removeItem(at: marker)
+                try? FileManager.default.removeItem(at: before.url)
+                throw run.abandon(error)
+            }
+            if let passed = run.passThrough(error) { throw passed }
+            throw rollbackPointRestore(error, before: before, database: database, swaps: swaps, marker: marker, live: live, run: run)
         }
         for swap in swaps { if let old = swap.old { try? FileManager.default.removeItem(at: old) } }
-        prune(backups)
+        try finishRun(run, backup: marker, backups: backups, list: nil, now: now)
         RekordboxPointSnapshot.prune(in: snapshots, autoDays: autoDays, now: now)
         return PointRestoreReport(restored: entry, beforeRestore: before)
+    }
+
+    /// 중단된 시점 복원을 기록으로 다시 한다(R11). 기록에 적힌 복원 직전 스냅샷을 다시 쓰고(새로 뜨지 않는다), 목표는 기록의 시점이나
+    /// (복원 실패 안내대로) 그 복원 직전 시점이다. 이미 목표 상태면 끝난 것으로 본다. 기록에 적힌 임시 폴더는 다시 한 복원의 검증이 끝난 뒤
+    /// 지운다. 다시 한 복원이 실패하면 되돌리지 않고 기록을 남겨 같은 목표로 다시 할 수 있게 한다.
+    static func redoPointRestore(_ journal: RekordboxWriteJournal, to snapshot: URL, run: WriteRun, shareRoot: URL?) throws -> JournalRestoreResult {
+        guard let point = journal.pointRestore else { throw journalBasisMissing }
+        let share = try RekordboxPointSnapshot.resolvedShare(run.database, shareRoot: shareRoot, guard: run.writeGuard)
+        let entry = try validPointSnapshot(snapshot)
+        func removeTemporaryFolders() throws {
+            let recorded = run.journal?.pointRestore?.temporaryFolders ?? point.temporaryFolders
+            for path in recorded where FileManager.default.fileExists(atPath: path) {
+                // 임시 폴더는 분석 루트 안이라 지우기 직전에도 실행을 다시 본다
+                try run.recheck(.fileReplace)
+                try FileManager.default.removeItem(atPath: path)
+            }
+        }
+        if (try? verifyPointRestore(entry, database: run.database, share: share)) != nil,
+           try sameContents(run.database, entry.url.appending(path: "master.db")),
+           try sameSidecar(of: run.database, as: entry.url.appending(path: "master.db")) {
+            try removeTemporaryFolders()
+            return .alreadyRestored
+        }
+        var swaps = pointSwaps(share: share)
+        try run.update { $0.pointRestore?.temporaryFolders += swaps.flatMap(\.temporaryFolders) }
+        try stagePointFolders(&swaps, from: entry.url)
+        try replaceLibraryFiles(from: entry.url, to: run.database, run: run)
+        try swapPointFolders(&swaps, run: run)
+        try run.step(.verify, recheck: false) { try verifyPointRestore(entry, database: run.database, share: share) }
+        try removeTemporaryFolders()
+        return .restored(URL(filePath: point.snapshotBeforeRestore))
     }
 
     // MARK: - 확인
@@ -101,62 +197,87 @@ extension RekordboxWriter {
     // MARK: - 바꾸기
 
     /// 스냅샷의 분석·앨범아트 폴더를 대상 폴더 옆(같은 볼륨)에 클론으로 준비한다. 아직 지금 폴더는 그대로다.
-    static func stagePointFolders(from snapshot: URL, share: URL) throws -> [FolderSwap] {
+    static func stagePointFolders(_ swaps: inout [FolderSwap], from snapshot: URL) throws {
         let fm = FileManager.default
-        var swaps: [FolderSwap] = []
         do {
-            for folder in RekordboxPointSnapshot.shareFolders {
-                let target = share.appending(path: folder)
-                let source = snapshot.appending(path: "share").appending(path: folder)
-                var swap = FolderSwap(target: target)
+            for index in swaps.indices {
+                let target = swaps[index].target
+                let source = snapshot.appending(path: "share").appending(path: target.deletingLastPathComponent().lastPathComponent)
+                    .appending(path: target.lastPathComponent)
                 if fm.fileExists(atPath: source.path) {
                     try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    let staged = target.deletingLastPathComponent().appending(path: ".djc-restore-\(UUID().uuidString)-\(target.lastPathComponent)")
-                    try fm.copyItem(at: source, to: staged)
-                    swap.staged = staged
+                    try fm.copyItem(at: source, to: swaps[index].stagedPath)
+                    swaps[index].staged = swaps[index].stagedPath
                 }
-                swaps.append(swap)
             }
         } catch {
-            for swap in swaps { if let staged = swap.staged { try? fm.removeItem(at: staged) } }
+            for index in swaps.indices {
+                if let staged = swaps[index].staged { try? fm.removeItem(at: staged) }
+                swaps[index].staged = nil
+            }
             throw error
         }
-        return swaps
     }
 
     /// 스냅샷의 `master.db`로 바꾸고(곁 `-wal`·`-shm`은 지운다) 재생 목록 파일·iTunes 동기화 파일을 스냅샷 것으로 쓴다.
     /// 스냅샷에 없던 파일은 지금 것을 그대로 둔다(그 시점에 rekordbox가 아직 만들지 않은 파일).
-    static func replaceLibraryFiles(from snapshot: URL, to database: URL) throws {
+    /// 쓰기 기록(`run`)이 있으면 DB 교체·`-wal`·`-shm` 삭제·파일 바꾸기 바로 직전마다 실행을 다시 보고(R10), DB 교체 전에 준비 사본의
+    /// 크기·시각을, 바꾼 뒤 master.db 크기·시각을 기록에 적는다(R11).
+    static func replaceLibraryFiles(from snapshot: URL, to database: URL, run: WriteRun? = nil) throws {
         let fm = FileManager.default
         let partial = URL(filePath: database.path + ".djc-restore")
         try? fm.removeItem(at: partial)
         try fm.copyItem(at: snapshot.appending(path: "master.db"), to: partial)
+        if let run { try run.update { $0.restoreCopy = fileStamp(partial) } }
+        try run?.recheck(.databaseReplace)
+        try run?.before(.databaseReplace)
+        run?.changed = true
         _ = try fm.replaceItemAt(database, withItemAt: partial)
+        try run?.databaseChanged()
+        try run?.after(.databaseReplace)
         for suffix in ["-wal", "-shm"] where fm.fileExists(atPath: database.path + suffix) {
+            try run?.recheck(.sidecarRemove)
+            try run?.before(.sidecarRemove)
+            run?.changed = true
             try fm.removeItem(atPath: database.path + suffix)
+            try run?.after(.sidecarRemove)
         }
         for name in RekordboxPointSnapshot.adjacentFiles {
             let source = snapshot.appending(path: name)
             guard fm.fileExists(atPath: source.path) else { continue }
             let data = try Data(contentsOf: source), target = database.deletingLastPathComponent().appending(path: name)
-            if (try? Data(contentsOf: target)) != data { try data.write(to: target, options: .atomic) }
+            if (try? Data(contentsOf: target)) != data {
+                try run?.recheck(.fileReplace)
+                try run?.before(.fileReplace)
+                run?.changed = true
+                try data.write(to: target, options: .atomic)
+                try run?.after(.fileReplace)
+            }
         }
     }
 
     /// 지금 폴더를 옆으로 옮기고 준비한 폴더를 그 이름으로 바꾼다(같은 폴더 안 이름 바꾸기).
-    static func swapPointFolders(_ swaps: inout [FolderSwap]) throws {
+    /// 옮기기 바로 직전마다 실행을 다시 본다(R10, `run`이 있을 때).
+    static func swapPointFolders(_ swaps: inout [FolderSwap], run: WriteRun? = nil) throws {
         let fm = FileManager.default
         for index in swaps.indices {
             let target = swaps[index].target
             if fm.fileExists(atPath: target.path) {
-                let old = target.deletingLastPathComponent().appending(path: ".djc-old-\(UUID().uuidString)-\(target.lastPathComponent)")
-                try fm.moveItem(at: target, to: old)
-                swaps[index].old = old
+                try run?.recheck(.fileReplace)
+                try run?.before(.fileReplace)
+                run?.changed = true
+                try fm.moveItem(at: target, to: swaps[index].oldPath)
+                swaps[index].old = swaps[index].oldPath
+                try run?.after(.fileReplace)
             }
             swaps[index].swapped = true
             if let staged = swaps[index].staged {
+                try run?.recheck(.fileReplace)
+                try run?.before(.fileReplace)
+                run?.changed = true
                 try fm.moveItem(at: staged, to: target)
                 swaps[index].staged = nil
+                try run?.after(.fileReplace)
             }
         }
     }
@@ -180,20 +301,36 @@ extension RekordboxWriter {
 
     /// 복원 도중 실패: DB·파일은 복원 직전 스냅샷에서, 폴더는 옮겨 둔 지금 내용으로 돌린다. 표시도 지운다.
     /// 그것도 못 하면 복원 직전 스냅샷으로 되돌릴 명령을 준다.
+    /// 쓰기 기록(`run`)이 있으면 켜짐부터 다시 보고(켜졌으면 기록을 그대로 둔 채 멈춘다), 첫 변경 전에 "복구 중"을 적고, 다 돌리면 기록을 지우고,
+    /// 못 돌리면 "복구 실패"로 남긴다(R7·R11).
     static func rollbackPointRestore(_ failure: any Error, before: RekordboxPointSnapshot.Entry, database: URL,
-                                     swaps: [FolderSwap], marker: URL, live: Bool) -> any Error {
+                                     swaps: [FolderSwap], marker: URL, live: Bool, run: WriteRun? = nil) -> any Error {
         let fm = FileManager.default
+        if let run {
+            do {
+                try run.recheck(.recovery)
+                try run.before(.recovery)
+                try run.update { $0.marks.insert(.recovering) }
+            } catch {
+                if let passed = run.passThrough(error) { return passed }
+            }
+        }
         do {
-            try replaceLibraryFiles(from: before.url, to: database)
+            try replaceLibraryFiles(from: before.url, to: database, run: run)
             for swap in swaps.reversed() {
                 if let staged = swap.staged { try? fm.removeItem(at: staged) }
                 guard swap.swapped else { continue }
+                try run?.recheck(.fileReplace)
                 if fm.fileExists(atPath: swap.target.path) { try fm.removeItem(at: swap.target) }
                 if let old = swap.old { try fm.moveItem(at: old, to: swap.target) }
             }
+            try run?.after(.recovery)
+            try run?.finish()
             try? fm.removeItem(at: marker)
             return failure
         } catch {
+            if let run, let passed = run.passThrough(error) { return passed }
+            if let run { try? run.update { $0.marks.insert(.recoveryFailed) } }
             return DJCError.pointRestoreFailed(reason: DJCError.reason(of: failure), restoreError: DJCError.reason(of: error),
                                                snapshot: before.id, database: live ? nil : database.path)
         }

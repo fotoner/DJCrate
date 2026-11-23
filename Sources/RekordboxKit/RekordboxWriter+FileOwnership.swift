@@ -91,8 +91,11 @@ extension RekordboxWriter {
         return DeletionFiles(files: candidates.filter { FileManager.default.fileExists(atPath: $0.path) })
     }
 
-    static func backupDeletionFiles(_ files: [URL], in backup: URL?, shareRoot: URL?) throws {
-        guard let backup, !files.isEmpty else { return }
+    /// - Returns: 원래 파일 경로 → 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
+    @discardableResult
+    static func backupDeletionFiles(_ files: [URL], in backup: URL?, shareRoot: URL?) throws -> [String: URL] {
+        guard let backup, !files.isEmpty else { return [:] }
+        var copies: [String: URL] = [:]
         let folder = backup.appending(path: "anlz")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let manifestURL = folder.appending(path: "manifest.json")
@@ -101,8 +104,10 @@ extension RekordboxWriter {
             let name = "delete-\(manifest.count).\(file.pathExtension)"
             try FileManager.default.copyItem(at: file, to: folder.appending(path: name))
             manifest[name] = try backupRelativePaths([file.path], shareRoot: shareRoot)[0]
+            copies[file.path] = folder.appending(path: name)
         }
         try JSONEncoder().encode(manifest).write(to: manifestURL, options: .atomic)
+        return copies
     }
 
     static func removeOwnedFiles(_ files: [URL]) throws {

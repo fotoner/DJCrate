@@ -163,6 +163,10 @@ public struct RekordboxWriteGuard: Sendable {
     public var isLive: @Sendable (URL) -> Bool
     public var isRekordboxRunning: @Sendable () -> Bool
     public var appVersion: @Sendable () -> String?
+    /// 단계마다의 실패 주입·진단용 시각 훅·재확인 흉내(R10·R11). 실제 실행은 아무것도 하지 않는다
+    public var hooks: RekordboxWriteHooks = .none
+    /// 프로세스 사이 쓰기 잠금(R9). 시험은 잠금 폴더·경합 알림을 바꿔 넣는다
+    public var locks: RekordboxWriteLocks = .system
     private let liveDirectories: [URL]
     /// 시험 프로세스에서 쓰기·복원을 거부할 폴더. 실제 rekordbox 폴더는 늘 들어 있고, 시험은 합성 폴더를 더해 입구마다 막히는지 본다.
     private let protectedInTests: [URL]
