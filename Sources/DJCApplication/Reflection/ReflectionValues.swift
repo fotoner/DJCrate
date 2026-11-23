@@ -86,10 +86,28 @@ public struct WritePreview: Sendable {
         self.exclusions = exclusions
     }
 
-    /// 미리 보기에서 쓸 수 있다고 나온 것만(분석을 붙이는 곡도 그리드 초안으로 쓴다). 재생 목록은 쓰는 편집이 있으면 초안 전체를 넘긴다.
-    /// 판·작업 정보·쓰기 방식은 그대로 나른다(`.allOrNothing`이면 하나라도 막혔을 때 쓰지 않는 일은 세션·관문이 한다).
-    /// 재생 기록도 곡 초안처럼 미리 보기에서 쓸 수 있던 기록만 넘긴다(막힌 기록은 쓰기 대기에 남는다).
+    /// 관문에 넘길 쓰기 요청. nil이면 쓰지 않는다.
+    /// - `.writable`(지금 동작): 미리 보기에서 쓸 수 있다고 나온 것만(`writableBatch`). 쓸 것이 없으면 nil
+    /// - `.allOrNothing`(여러 곡 역편집, R12): 하나라도 막혔거나 빠졌으면 nil, 모두 통과하면 원래 묶음 전체(판·작업 정보 포함)
+    public var writeRequest: DraftWriteBatch? {
+        switch batch.commitPolicy {
+        case .writable: partialHasWritable ? partialBatch : nil
+        case .allOrNothing: passesAll ? batch : nil
+        }
+    }
+
+    /// 쓰기 요청의 묶음(세션이 관문에 넘긴다). 쓰기 요청이 없으면 아무것도 쓰지 않는 빈 묶음이다:
+    /// `.allOrNothing` 묶음은 막힌 곡을 뺀 일부만 남기지 않는다(관문이 남은 곡만 커밋하지 않게)
     public var writableBatch: DraftWriteBatch {
+        writeRequest ?? DraftWriteBatch(operation: batch.operation, commitPolicy: batch.commitPolicy)
+    }
+
+    /// 쓸 것이 하나라도 있는지(쓰기 요청이 있는지)
+    public var hasWritable: Bool { writeRequest != nil }
+
+    /// 미리 보기에서 쓸 수 있다고 나온 것만(분석을 붙이는 곡도 그리드 초안으로 쓴다). 재생 목록은 쓰는 편집이 있으면 초안 전체를 넘긴다.
+    /// 재생 기록도 곡 초안처럼 미리 보기에서 쓸 수 있던 기록만 넘긴다(막힌 기록은 쓰기 대기에 남는다). 판·작업 정보·쓰기 방식은 나른다
+    private var partialBatch: DraftWriteBatch {
         let cues = Set(report.written.map(\.trackUUID)), grids = Set((report.gridWritten + report.analysisWritten).map(\.trackUUID))
         let gains = Set(report.gainWritten.map(\.trackUUID)), tags = Set(report.tagWritten.map(\.trackUUID))
         let artworks = Set(report.artworkWritten.map(\.trackUUID)), histories = Set(report.historyWritten.map(\.id))
@@ -108,11 +126,30 @@ public struct WritePreview: Sendable {
         return writable
     }
 
-    /// 쓸 것이 하나라도 있는지
-    public var hasWritable: Bool {
+    private var partialHasWritable: Bool {
         !report.written.isEmpty || !report.gridWritten.isEmpty || !report.analysisWritten.isEmpty || !report.gainWritten.isEmpty
             || !report.tagWritten.isEmpty || !report.artworkWritten.isEmpty || !report.playlistWritten.isEmpty || !report.mergeWritten.isEmpty
             || !report.historyWritten.isEmpty
+    }
+
+    /// 묶음 전체가 막힘 없이 통과했는지: 빠진 초안·막힌 결과가 없고, 묶음의 초안마다 결과(쓰기·바뀐 것 없음)가 있다.
+    /// 결과가 없는 초안은 쓰였는지 모르므로 통과로 보지 않는다
+    private var passesAll: Bool {
+        guard exclusions.isEmpty else { return false }
+        let blocked = !report.blocked.isEmpty || !report.gridBlocked.isEmpty || !report.analysisBlocked.isEmpty || !report.gainBlocked.isEmpty
+            || !report.tagBlocked.isEmpty || !report.artworkBlocked.isEmpty || !report.playlistBlocked.isEmpty || !report.mergeBlocked.isEmpty
+            || !report.historyBlocked.isEmpty
+        guard !blocked else { return false }
+        let cues = Set(report.outcomes.map(\.trackUUID))
+        let grids = Set(((report.gridOutcomes ?? []) + (report.analysisOutcomes ?? [])).map(\.trackUUID))
+        let gains = Set((report.gainOutcomes ?? []).map(\.trackUUID)), tags = Set((report.tagOutcomes ?? []).map(\.trackUUID))
+        let artworks = Set((report.artworkOutcomes ?? []).map(\.trackUUID)), merges = Set((report.mergeOutcomes ?? []).map(\.trackUUID))
+        let histories = Set((report.historyOutcomes ?? []).map(\.id))
+        let playlistsDone = batch.playlists.map { (report.playlistOutcomes ?? []).count == $0.steps.count } ?? true
+        return batch.drafts.allSatisfy { cues.contains($0.trackUUID) } && batch.grids.allSatisfy { grids.contains($0.trackUUID) }
+            && batch.gains.keys.allSatisfy(gains.contains) && batch.tags.allSatisfy { tags.contains($0.trackUUID) }
+            && batch.artworks.allSatisfy { artworks.contains($0.trackUUID) } && batch.merges.allSatisfy { merges.contains($0.id) }
+            && batch.histories.allSatisfy { histories.contains($0.id) } && playlistsDone
     }
 }
 

@@ -42,10 +42,26 @@ public func draftRevisionContract(_ human: DraftStore, cli: DraftStore, editOuts
 
     // 판이 같아도 지금 해시가 다르면(바깥에서 고침) 지우지 않고 제안으로 남긴다
     let stamp = try #require(human.stamp(DraftKey(.cue, "b")))
+    let savedB = try #require(human.cueDraft("b"))
     try editOutside(cue("b", at: 9))
     let outside = WrittenDraft(key: DraftKey(.cue, "b"), revision: stamp.revision, contentHash: stamp.contentHash)
     #expect(try human.removeWritten([outside]) == DraftRemoval(suggested: [outside]))
     #expect(human.cueDraft("b") != nil)
+    // 제안으로 남긴 초안은 그 상태가 기록된다: 파일이 저장 당시 내용으로 돌아와도 사람 편집만 든 도장이 아니다(S11)
+    try editOutside(savedB)
+    let suggested = try #require(human.stamp(DraftKey(.cue, "b")))
+    #expect(suggested.revision == stamp.revision && suggested.origins.contains(.unknown) && !suggested.isHumanOnly)
+
+    // "이대로 둔다": 판이 같은 초안만 제안으로 바꾸고 지우지 않는다. 판이 다르면(쓰는 동안 새로 저장) 그대로다
+    human.saveCue(cue("c", at: 1))
+    human.flush()
+    let c = try #require(human.stamp(DraftKey(.cue, "c")))
+    #expect(c.isHumanOnly)
+    let staleC = WrittenDraft(key: DraftKey(.cue, "c"), revision: DraftRevision(c.revision.value + 1000), contentHash: c.contentHash)
+    #expect(try human.markSuggestions([staleC], []).isEmpty && (human.stamp(DraftKey(.cue, "c"))?.isHumanOnly == true))
+    let writtenC = WrittenDraft(key: DraftKey(.cue, "c"), revision: c.revision, contentHash: c.contentHash)
+    #expect(try human.markSuggestions([writtenC], []) == [c.revision])
+    #expect(human.cueDraft("c") != nil && human.stamp(DraftKey(.cue, "c"))?.origins == [.human, .unknown])
 }
 
 /// 재생 목록 단계의 판 계약(R22): 단계마다 판과 `DraftContentHash(step:in:)` 해시를 적는다. 쓴 단계는 판으로 찾아 빼고,
@@ -53,8 +69,11 @@ public func draftRevisionContract(_ human: DraftStore, cli: DraftStore, editOuts
 /// 막힌 단계(쓰지 않은 단계)는 남는다. 판을 모르는 단계는 `notFound`다.
 /// `editOutside`는 바깥이 단계 수를 바꾸지 않고 초안 파일 내용만 고치는 일, `failCopies`는 사본 쓰기 실패를 흉내 낸다.
 @MainActor
-public func playlistStepRevisionContract(_ store: DraftStore, copyFolder: URL, editOutside: (PlaylistDraft) throws -> Void,
+public func playlistStepRevisionContract(_ store: DraftStore, backups: URL, editOutside: (PlaylistDraft) throws -> Void,
                                          failCopies: (Bool) -> Void, readCopy: (URL) throws -> PlaylistStepCopy?) throws {
+    // 사본은 그 쓰기의 백업 폴더(백업 루트 기준 상대 경로, 미정리 목록의 `backupFolder`)에 남는다(S5)
+    let backupFolder = "2026-11-24_120000"
+    let copyFolder = backups.appending(path: backupFolder, directoryHint: .isDirectory)
     let rekordbox = PlaylistLayout([(PlaylistLayout.Item(id: "A", name: "가"), 1), (PlaylistLayout.Item(id: "B", name: "나"), 2),
                                     (PlaylistLayout.Item(id: "C", name: "다"), 3)])
     func draft(renameB: String) throws -> PlaylistDraft {
@@ -75,7 +94,7 @@ public func playlistStepRevisionContract(_ store: DraftStore, copyFolder: URL, e
     try editOutside(try draft(renameB: "y"))
     let stray = DraftRevision(stamps.map(\.revision.value).max()! + 100)
     let removal = try store.removeWrittenSteps(PlaylistStepCleanup(written: written + [WrittenPlaylistStep(revision: stray, contentHash: stamps[0].contentHash)],
-                                                                   newPlaylistIDs: [:], copyFolder: copyFolder))
+                                                                   newPlaylistIDs: [:], backups: backups, backupFolder: backupFolder))
     #expect(removal.removed == Set(written.map(\.revision)) && removal.copyFailed.isEmpty && removal.notFound == [stray])
     let copyURL = try #require(removal.copied[written[1].revision])
     #expect(copyURL == PlaylistStepCopy.url(folder: copyFolder, revision: written[1].revision))
@@ -91,7 +110,11 @@ public func playlistStepRevisionContract(_ store: DraftStore, copyFolder: URL, e
     failCopies(true)
     defer { failCopies(false) }
     let failed = try store.removeWrittenSteps(PlaylistStepCleanup(written: [WrittenPlaylistStep(revision: again[1].revision, contentHash: again[1].contentHash)],
-                                                                  newPlaylistIDs: [:], copyFolder: copyFolder))
+                                                                  newPlaylistIDs: [:], backups: backups, backupFolder: backupFolder))
     #expect(failed.copyFailed == [again[1].revision] && failed.removed.isEmpty)
     #expect(store.playlistDraft().edits.count == 3)
+
+    // "이대로 둔다": 판이 같은 단계를 제안으로 바꾸고 빼지 않는다
+    #expect(try store.markSuggestions([], [again[0].revision]) == [again[0].revision])
+    #expect(store.playlistStamps().first?.origins.contains(.unknown) == true && store.playlistDraft().edits.count == 3)
 }

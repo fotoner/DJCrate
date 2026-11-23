@@ -71,6 +71,33 @@ struct DraftProvenanceTests {
         #expect(try DraftContentHash(step: one.steps[1], in: one) != DraftContentHash(step: otherBase.steps[1], in: otherBase))
     }
 
+    /// 단계 해시는 그 단계가 실제로 견주는 기준만 본다(S12): 다시 적용한 기준(`recoveryBase`)이 있으면 그것만 보고,
+    /// 다른 단계 때문에 공유 base에 자식 차례(`childIDs`)가 붙어도 그 목록에 기대지 않는 단계의 해시는 같다
+    @Test func 재생_목록_단계_해시는_단계가_견주는_기준만_본다() throws {
+        func layout(cName: String) -> PlaylistLayout {
+            PlaylistLayout([(PlaylistLayout.Item(id: "F", name: "폴더", isFolder: true), 1),
+                            (PlaylistLayout.Item(id: "A", name: "가", parentID: "F"), 1), (PlaylistLayout.Item(id: "B", name: "나", parentID: "F"), 2),
+                            (PlaylistLayout.Item(id: "C", name: cName), 2)])
+        }
+        // 다시 적용한 기준이 고정된 단계: 공유 base가 달라도 같은 해시
+        var one = PlaylistDraft(), other = PlaylistDraft()
+        try one.append(.rename(playlist: .id("C"), name: "새"), rekordbox: layout(cName: "다"))
+        try other.append(.rename(playlist: .id("C"), name: "새"), rekordbox: layout(cName: "라"))
+        #expect(one.base["C"] != other.base["C"])
+        var fixed = one.steps[0]
+        fixed.recoveryBase = ["C": PlaylistDraft.Base(PlaylistLayout.Item(id: "C", name: "마"))]
+        #expect(try DraftContentHash(step: fixed, in: one) == DraftContentHash(step: fixed, in: other))
+        #expect(try DraftContentHash(step: one.steps[0], in: one) != DraftContentHash(step: other.steps[0], in: other))
+
+        // 다른 단계(F 안 순서 바꾸기)가 공유 base F에 자식 차례를 붙여도, F에 기대지 않는 단계(C 이름)의 해시는 같다
+        var plain = PlaylistDraft(), reordered = PlaylistDraft()
+        try plain.append(.rename(playlist: .id("C"), name: "새"), rekordbox: layout(cName: "다"))
+        try reordered.append(.rename(playlist: .id("C"), name: "새"), rekordbox: layout(cName: "다"))
+        try reordered.append(.reorder(playlist: .id("A"), index: 1), rekordbox: layout(cName: "다"))
+        #expect(plain.base["F"] == nil && reordered.base["F"]?.childIDs != nil)
+        #expect(try DraftContentHash(step: plain.steps[0], in: plain) == DraftContentHash(step: reordered.steps[0], in: reordered))
+    }
+
     /// 해시의 정규 형식: 키를 정렬한 JSON(빈칸 없음, `/` 그대로)의 SHA-256, 소문자 16진 64자. 바꾸면 앱·CLI가 남긴 해시가 모두 어긋난다.
     @Test func 정규_형식은_키를_정렬한_JSON의_SHA256이다() throws {
         #expect(try DraftContentHash(of: ["a": 1]).hex == "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862")

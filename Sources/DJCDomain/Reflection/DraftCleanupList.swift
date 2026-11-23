@@ -82,6 +82,9 @@ public struct DraftCleanupList: Codable, Equatable, Sendable {
     public var target: RekordboxWriteLockKey
     /// 초안 저장소 위치(그 실행의 `DJC_HOME` 초안 폴더)
     public var draftHome: String
+    /// 이 쓰기의 백업 폴더(백업 루트 기준 상대 경로, 예 `2026-11-24_120000`). 다시 켠 뒤 정리도 바깥에서 고친 재생 목록 단계의 사본을
+    /// 이 폴더에 남긴다(`PlaylistStepCleanup.backupFolder`)
+    public var backupFolder: String
     /// 쓴 곡 초안
     public var written: [WrittenDraft]
     /// 시도한 재생 목록 단계
@@ -90,12 +93,13 @@ public struct DraftCleanupList: Codable, Equatable, Sendable {
     public var newPlaylistIDs: [String: String]
     public var trackAdds: [TrackAdd]
 
-    public init(operationID: String, target: RekordboxWriteLockKey, draftHome: String, written: [WrittenDraft] = [],
+    public init(operationID: String, target: RekordboxWriteLockKey, draftHome: String, backupFolder: String, written: [WrittenDraft] = [],
                 playlistSteps: [PlaylistStep] = [], newPlaylistIDs: [String: String] = [:], trackAdds: [TrackAdd] = []) {
         version = Self.formatVersion
         self.operationID = operationID
         self.target = target
         self.draftHome = draftHome
+        self.backupFolder = backupFolder
         self.written = written
         self.playlistSteps = playlistSteps
         self.newPlaylistIDs = newPlaylistIDs
@@ -103,7 +107,7 @@ public struct DraftCleanupList: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, operationID, target, draftHome, written, playlistSteps, newPlaylistIDs, trackAdds
+        case version, operationID, target, draftHome, backupFolder, written, playlistSteps, newPlaylistIDs, trackAdds
     }
 
     public init(from decoder: any Decoder) throws {
@@ -115,6 +119,7 @@ public struct DraftCleanupList: Codable, Equatable, Sendable {
         operationID = try container.decode(String.self, forKey: .operationID)
         target = try container.decode(RekordboxWriteLockKey.self, forKey: .target)
         draftHome = try container.decode(String.self, forKey: .draftHome)
+        backupFolder = try container.decode(String.self, forKey: .backupFolder)
         written = try container.decode([WrittenDraft].self, forKey: .written)
         playlistSteps = try container.decode([PlaylistStep].self, forKey: .playlistSteps)
         newPlaylistIDs = try container.decode([String: String].self, forKey: .newPlaylistIDs)

@@ -54,7 +54,7 @@ struct PortContractTests {
 
     @Test func 재생_목록_단계의_판() throws {
         let drafts = MemoryDrafts()
-        try playlistStepRevisionContract(drafts.store, copyFolder: URL(filePath: "/backups/write-1"), editOutside: { drafts.editPlaylistOutside($0) },
+        try playlistStepRevisionContract(drafts.store, backups: URL(filePath: "/backups"), editOutside: { drafts.editPlaylistOutside($0) },
                                          failCopies: { drafts.failPlaylistCopies($0) }, readCopy: { drafts.playlistCopies[$0] })
     }
 

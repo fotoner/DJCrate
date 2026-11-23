@@ -73,15 +73,19 @@ public struct DraftContentHash: Hashable, Codable, Sendable, CustomStringConvert
 }
 
 extension DraftContentHash {
-    /// 재생 목록 단계 하나의 해시: 단계(편집·기대는 목록·다시 적용한 기준)와 그 단계가 기대는 목록의 처음 상태(`base`)를 함께 넣는다.
-    /// 편집이 같아도 기대는 base가 바뀌면 다른 해시다. 메모리 구현과 실제 저장소가 이 함수 하나를 쓴다
+    /// 재생 목록 단계 하나의 해시: 단계(편집·기대는 목록·다시 적용한 기준)와 그 단계가 실제로 견주는 기준을 함께 넣는다.
+    /// 기준은 낡음 판정(`PlaylistDraft.staleReason(for:rekordbox:)`)과 같다: 단계에 다시 적용한 기준(`recoveryBase`)이 있으면 그것만,
+    /// 없으면 공유 `base` 가운데 그 단계의 `depends`에 든 목록만. 그래서 편집이 같아도 견주는 기준이 바뀌면 다른 해시이고,
+    /// 다른 단계 때문에 공유 base가 바뀌어도(그 목록에 기대지 않거나 고정된 기준을 쓰는 단계는) 같은 해시다.
+    /// 메모리 구현과 실제 저장소가 이 함수 하나를 쓴다
     public init(step: PlaylistDraft.Step, in draft: PlaylistDraft) throws {
         struct Content: Encodable {
             var step: PlaylistDraft.Step
             var base: [String: PlaylistDraft.Base]
         }
         let depends = Set(step.depends)
-        try self.init(of: Content(step: step, base: draft.base.filter { depends.contains($0.key) }))
+        let bases = step.recoveryBase ?? draft.base
+        try self.init(of: Content(step: step, base: bases.filter { depends.contains($0.key) }))
     }
 }
 

@@ -99,9 +99,10 @@ struct AutoReflectionContractTests {
         let request = RekordboxJournalRequest(operationID: "op", database: nil)
         #expect(try gate.journal(target, nil) == .none)
         #expect(try gate.restoreJournal(target, request) == .nothing)
-        #expect(try gate.keepJournal(target, request) == .nothing)
+        #expect(try gate.keepJournal(target, request) { Issue.record("기록이 없으면 넘긴 일을 하지 않는다") } == .nothing)
         #expect(try gate.cleanupLists(target, URL(filePath: "/drafts")).isEmpty)
-        try gate.removeCleanupList(DraftCleanupList(operationID: "op", target: RekordboxWriteLockKey(device: 1, inode: 2), draftHome: "/drafts"), target)
+        try gate.removeCleanupList(DraftCleanupList(operationID: "op", target: RekordboxWriteLockKey(device: 1, inode: 2), draftHome: "/drafts",
+                                                    backupFolder: "w1"), target)
         let backups = MemoryBackups().port
         #expect(backups.autoSaveCondition(URL(filePath: "/backups"), target.database) == .unknown)
     }
@@ -113,7 +114,6 @@ struct AutoReflectionContractTests {
         let journal = RekordboxWriteJournal(operationID: "op-1", kind: .counter, entry: .drafts)
         let finding = RekordboxJournalFinding(journal: journal, changedSince: true, database: RekordboxFileStamp(size: 10, modifiedNanoseconds: 7))
         script.journal = .interrupted(finding)
-        script.journalKeep = .kept
         let calls = GateCalls()
         let gate = RekordboxWriteGate.scripted(script, calls: calls)
         let target = RekordboxWriteTarget.copy(database: URL(filePath: "/copy/master.db"), shareRoot: nil)
@@ -122,9 +122,26 @@ struct AutoReflectionContractTests {
         #expect(try gate.journal(target, hold) == .interrupted(finding))
         hold.release()
         #expect(finding.request == RekordboxJournalRequest(operationID: "op-1", database: RekordboxFileStamp(size: 10, modifiedNanoseconds: 7)))
-        #expect(try gate.keepJournal(target, finding.request) == .kept)
-        #expect(calls.value.journalHolds == [MemoryWriteLocks.key(for: target.database)] && calls.value.journalRequests == [finding.request])
-        #expect(calls.value.keptJournals == ["op-1"] && calls.value.order == ["journal", "keep journal"])
+        #expect(try gate.restoreJournal(target, RekordboxJournalRequest(operationID: "op-0", database: finding.database)) == .changed)
+        #expect(try gate.keepJournal(target, finding.request) {} == .kept)
+        #expect(try gate.journal(target, nil) == .none)
+        #expect(calls.value.journalHolds == [MemoryWriteLocks.key(for: target.database), nil])
+        #expect(calls.value.journalRequests.map(\.operationID) == ["op-0", "op-1"] && calls.value.keptJournals == ["op-1"])
+        #expect(calls.value.order == ["journal", "restore journal", "keep journal", "remove journal", "journal"])
+    }
+
+    /// "이대로 둔다"의 순서(S3): 요청이 다르면 넘긴 일 0회, 같으면 넘긴 일 뒤에 기록 삭제, 넘긴 일이 실패하면 기록이 남는다
+    @Test func 이대로_둔다는_확인_뒤_넘긴_일을_하고_기록을_마지막에_지운다() throws {
+        var script = GateScript()
+        let stamp = RekordboxFileStamp(size: 10, modifiedNanoseconds: 7)
+        let finding = RekordboxJournalFinding(journal: RekordboxWriteJournal(operationID: "op-1", kind: .files, entry: .pointRestore),
+                                              changedSince: false, database: stamp)
+        script.journal = .interrupted(finding)
+        let gate = RekordboxWriteGate.scripted(script)
+        let target = RekordboxWriteTarget.copy(database: URL(filePath: "/copy/master.db"), shareRoot: nil)
+        try journalKeepContract(gate, target: target, matching: finding.request,
+                                stale: RekordboxJournalRequest(operationID: "op-1", database: RekordboxFileStamp(size: 11, modifiedNanoseconds: 7)),
+                                journalExists: { try gate.journal(target, nil) != .none })
     }
 
     /// 묶음은 초안마다 판과 읽어 넣은 내용의 해시를 나르고, 쓸 수 있는 묶음은 남긴 초안의 판만 나른다.
@@ -140,15 +157,38 @@ struct AutoReflectionContractTests {
                                                                    playlistSteps: [entry(4), entry(5)]),
                                     operation: DraftWriteOperation(id: "op", draftHome: URL(filePath: "/drafts")), commitPolicy: .allOrNothing)
         #expect(batch.draftKeys == [DraftKey(.cue, "a"), DraftKey(.cue, "b"), DraftKey(.gain, "c")])
-        let report = ReflectionHarness.report(cues: [ReflectionHarness.outcome("a", .written)])
-        let writable = WritePreview(report: report, batch: batch).writableBatch
-        #expect(writable.revisions.tracks.keys.sorted() == [DraftKey(.cue, "a")])
-        #expect(writable.operation == batch.operation && writable.revisions.playlistSteps.isEmpty && writable.commitPolicy == .allOrNothing)
+        // 쓸 수 있는 것만 쓰는 묶음(지금 동작)은 남긴 초안의 판만 나른다
+        var partial = batch
+        partial.commitPolicy = .writable
+        let report = ReflectionHarness.report(cues: [ReflectionHarness.outcome("a", .written), ReflectionHarness.outcome("b", .blocked)])
+        let writable = WritePreview(report: report, batch: partial).writableBatch
+        #expect(writable.drafts.map(\.trackUUID) == ["a"] && writable.revisions.tracks.keys.sorted() == [DraftKey(.cue, "a")])
+        #expect(writable.operation == batch.operation && writable.revisions.playlistSteps.isEmpty && writable.commitPolicy == .writable)
         #expect(batch.revisions.written([DraftKey(.gain, "c"), DraftKey(.cue, "a"), DraftKey(.tag, "x")])
             == [WrittenDraft(key: DraftKey(.cue, "a"), revision: DraftRevision(1), contentHash: read),
                 WrittenDraft(key: DraftKey(.gain, "c"), revision: DraftRevision(3), contentHash: read)])
         #expect(batch.revisions.writtenSteps(at: [1, 7]) == [WrittenPlaylistStep(revision: DraftRevision(5), contentHash: read)])
         #expect(DraftWriteBatch().commitPolicy == .writable)
+    }
+
+    /// 전부 쓰거나 전부 안 쓰는 묶음(S8, R12): 하나라도 막혔거나 결과가 없으면 쓰기 요청이 없고(쓰기 0회), 모두 통과하면 원래 묶음 전체다
+    @Test func 전부_아니면_안_쓰는_묶음은_일부만_넘기지_않는다() {
+        let batch = DraftWriteBatch(drafts: [ReflectionHarness.cue("a"), ReflectionHarness.cue("b")], gains: ["c": -1],
+                                    operation: DraftWriteOperation(id: "op", draftHome: URL(filePath: "/drafts")), commitPolicy: .allOrNothing)
+        let oneBlocked = ReflectionHarness.report(cues: [ReflectionHarness.outcome("a", .written), ReflectionHarness.outcome("b", .blocked)],
+                                                  gains: [ReflectionHarness.outcome("c", .written)])
+        for preview in [WritePreview(report: oneBlocked, batch: batch),
+                        WritePreview(report: ReflectionHarness.report(cues: [ReflectionHarness.outcome("a", .written)]), batch: batch),
+                        WritePreview(report: ReflectionHarness.report(cues: [ReflectionHarness.outcome("a", .written), ReflectionHarness.outcome("b", .written)],
+                                                                     gains: [ReflectionHarness.outcome("c", .written)]),
+                                     batch: batch, exclusions: ["읽지 못한 초안"])] {
+            #expect(preview.writeRequest == nil && !preview.hasWritable)
+            #expect(preview.writableBatch.drafts.isEmpty && preview.writableBatch.gains.isEmpty && preview.writableBatch.commitPolicy == .allOrNothing)
+        }
+        let passed = ReflectionHarness.report(cues: [ReflectionHarness.outcome("a", .written), ReflectionHarness.outcome("b", .unchanged)],
+                                              gains: [ReflectionHarness.outcome("c", .written)])
+        let preview = WritePreview(report: passed, batch: batch)
+        #expect(preview.writeRequest == batch && preview.hasWritable && preview.writableBatch == batch)
     }
 
     /// 쓰기 방식(S8)·판·작업 정보는 세션이 미리 보기와 관문 쓰기까지 버리지 않고 나른다
@@ -162,6 +202,20 @@ struct AutoReflectionContractTests {
         let calls = harness.gateCalls.value
         #expect(calls.writes.map(\.commitPolicy) == [.allOrNothing] && calls.writes.map(\.operation) == [batch.operation])
         #expect(calls.previews.map(\.commitPolicy) == [.allOrNothing])
+    }
+
+    /// 다시 켠 뒤 정리는 미정리 목록에서 쓴 단계·연결 ID·그 쓰기의 백업 폴더를 읽어 같은 사본 자리를 쓴다(S5)
+    @Test func 미정리_목록으로_재생_목록_단계_정리를_만든다() {
+        let hash = DraftContentHash(hex: "d")
+        var list = DraftCleanupList(operationID: "op", target: RekordboxWriteLockKey(device: 1, inode: 2), draftHome: "/drafts",
+                                    backupFolder: "2026-11-24_120000")
+        list.playlistSteps = [.init(revision: DraftRevision(5), contentHash: hash, outcome: .written),
+                              .init(revision: DraftRevision(6), contentHash: hash, outcome: .blocked("목록이 바뀌었습니다")),
+                              .init(revision: DraftRevision(7), contentHash: hash, outcome: .notTried)]
+        list.newPlaylistIDs = ["new:a": "123"]
+        let cleanup = PlaylistStepCleanup(list: list, backups: URL(filePath: "/backups"))
+        #expect(cleanup.written == [WrittenPlaylistStep(revision: DraftRevision(5), contentHash: hash)])
+        #expect(cleanup.newPlaylistIDs == ["new:a": "123"] && cleanup.copyFolder.path == "/backups/2026-11-24_120000")
     }
 
     /// 곡 넣기 묶음도 옛 UUID별 초안 판과 작업 정보를 나른다(S2). 기본값은 지금 동작(모름·nil)이다

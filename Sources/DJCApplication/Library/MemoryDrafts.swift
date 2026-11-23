@@ -147,6 +147,22 @@ public final class MemoryDrafts: Sendable {
         }
     }
 
+    /// 그 판의 초안을 제안으로 바꾼다(`DraftStore.markSuggestions`의 규칙)
+    public func markSuggestions(_ drafts: [WrittenDraft], playlistSteps: Set<DraftRevision>) -> Set<DraftRevision> {
+        state.withLock { state in
+            var marked = Set<DraftRevision>()
+            for item in drafts where state.stamps[item.key]?.revision == item.revision {
+                state.stamps[item.key]?.origins.insert(.unknown)
+                marked.insert(item.revision)
+            }
+            for index in state.playlistStamps.indices where playlistSteps.contains(state.playlistStamps[index].revision) {
+                state.playlistStamps[index].origins.insert(.unknown)
+                marked.insert(state.playlistStamps[index].revision)
+            }
+            return marked
+        }
+    }
+
     /// 재생 목록 단계의 해시(단계와 그 단계가 기대는 base, 실제 저장소와 같은 함수)
     static func stepHash(_ step: PlaylistDraft.Step, in draft: PlaylistDraft) -> DraftContentHash {
         (try? DraftContentHash(step: step, in: draft)) ?? DraftContentHash(hex: "")
@@ -196,6 +212,8 @@ public final class MemoryDrafts: Sendable {
                     state.remove(item.key)
                     result.removed.append(item)
                 } else {
+                    // 바깥에서 고친 초안: 같은 잠금 안에서 제안으로 기록한다(내용이 저장 당시로 돌아와도 제안이다)
+                    state.stamps[item.key]?.origins.insert(.unknown)
                     result.suggested.append(item)
                 }
             }
@@ -292,6 +310,7 @@ public final class MemoryDrafts: Sendable {
         store.playlistStamps = { self.playlistStamps }
         store.removeWritten = { self.removeWritten($0) }
         store.removeWrittenSteps = { self.removeWrittenSteps($0) }
+        store.markSuggestions = { self.markSuggestions($0, playlistSteps: $1) }
         return store
     }
 }

@@ -102,10 +102,15 @@ public struct DraftStore: Sendable {
     public var playlistStamps: @Sendable () -> [DraftStamp] = { [] }
     /// 곡 초안의 판 지정 삭제(쓴 뒤 정리, R22). 견주는 해시는 `WrittenDraft.contentHash`(묶음에 실제로 읽어 넣은 내용)다.
     /// - 판과 지금 내용의 해시가 모두 쓴 것과 같으면 지운다(`removed`).
-    /// - 판이 같고 지금 해시가 다르면(바깥에서 고침) 지우지 않고 제안으로 남긴다(`suggested`).
+    /// - 판이 같고 지금 해시가 다르면(바깥에서 고침) 지우지 않고 제안으로 남긴다(`suggested`). 같은 잠금 안에서 그 초안의 출처에
+    ///   모름(`.unknown`)을 더해 기록한다. 그래서 나중에 파일이 저장 당시 내용으로 돌아와도 제안이다(사람 편집만 든 도장이 아니다).
     /// - 판이 다르거나 초안이 없으면(쓰는 동안 새로 저장, 이미 지움) 그대로 둔다(`kept`).
     /// 비교와 삭제는 앱·CLI가 같은 초안 잠금 안에서 한다. 앞서 걸린 저장 뒤에 한다
     public var removeWritten: @Sendable ([WrittenDraft]) throws -> DraftRemoval = { DraftRemoval(kept: $0) }
+    /// 그 판의 초안을 제안으로 바꾼다("이대로 둔다", R11): 판이 같은 곡 초안과 재생 목록 단계의 출처에 모름(`.unknown`)을 더한다.
+    /// 지우지 않는다. 판이 다른 초안(쓰는 동안 새로 저장)은 그대로 둔다. 바꾼 판을 돌려준다. 같은 초안 잠금 안에서 한다
+    public var markSuggestions: @Sendable (_ drafts: [WrittenDraft], _ playlistSteps: Set<DraftRevision>) throws -> Set<DraftRevision> =
+        { _, _ in [] }
     /// 쓴 재생 목록 단계의 정리(R22). 판으로 찾은 쓴 단계는 해시가 달라도 뺀다. 다만 지금 해시가 쓴 해시와 다르면 바깥에서 고친 지금 내용을
     /// 실제 목록 ID와 함께 `PlaylistStepCopy`로 `copyFolder`에 남긴 뒤에만 뺀다. 사본을 남기지 못하면 그 단계를 남긴다(`copyFailed`:
     /// 부르는 쪽은 미정리 목록을 지우지 않고 그 대상의 다음 쓰기를 보류한 채 다음 정리 때 다시 한다).
@@ -249,14 +254,27 @@ public struct PlaylistStepCleanup: Equatable, Sendable {
     public var written: [WrittenPlaylistStep]
     /// 새 목록의 연결 ID(`new:키` → 실제 ID)
     public var newPlaylistIDs: [String: String]
-    /// 바깥에서 고친 단계의 사본을 남길 폴더(그 쓰기의 백업 폴더). 사본 자리는 `PlaylistStepCopy.url(folder:revision:)`
-    public var copyFolder: URL
+    /// 백업 루트(대상의 백업 폴더)
+    public var backups: URL
+    /// 그 쓰기의 백업 폴더(백업 루트 기준 상대 경로, 미정리 목록의 `backupFolder`). 다시 켠 뒤 정리도 같은 폴더를 찾는다
+    public var backupFolder: String
 
-    public init(written: [WrittenPlaylistStep], newPlaylistIDs: [String: String], copyFolder: URL) {
+    public init(written: [WrittenPlaylistStep], newPlaylistIDs: [String: String], backups: URL, backupFolder: String) {
         self.written = written
         self.newPlaylistIDs = newPlaylistIDs
-        self.copyFolder = copyFolder
+        self.backups = backups
+        self.backupFolder = backupFolder
     }
+
+    /// 미정리 목록으로 다시 하는 정리(다시 켠 뒤): 쓴 단계·연결 ID·백업 폴더를 목록에서 읽는다
+    public init(list: DraftCleanupList, backups: URL) {
+        self.init(written: list.playlistSteps.filter { $0.outcome == .written }
+                    .map { WrittenPlaylistStep(revision: $0.revision, contentHash: $0.contentHash) },
+                  newPlaylistIDs: list.newPlaylistIDs, backups: backups, backupFolder: list.backupFolder)
+    }
+
+    /// 바깥에서 고친 단계의 사본을 남길 폴더(그 쓰기의 백업 폴더). 사본 자리는 `PlaylistStepCopy.url(folder:revision:)`
+    public var copyFolder: URL { backups.appending(path: backupFolder, directoryHint: .isDirectory) }
 }
 
 /// 쓴 재생 목록 단계 정리의 결과(R22)

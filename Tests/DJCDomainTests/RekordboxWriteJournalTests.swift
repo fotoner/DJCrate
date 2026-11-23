@@ -55,7 +55,7 @@ struct RekordboxWriteJournalTests {
     }
 
     @Test func 미정리_목록은_왕복이_같고_백업_폴더_안_이름이다() throws {
-        var list = DraftCleanupList(operationID: "op-1", target: Self.key, draftHome: "/h/drafts")
+        var list = DraftCleanupList(operationID: "op-1", target: Self.key, draftHome: "/h/drafts", backupFolder: "2026-11-24_120000")
         list.written = [WrittenDraft(key: DraftKey(.grid, "t2"), revision: DraftRevision(9), contentHash: Self.hash)]
         list.playlistSteps = [.init(revision: DraftRevision(5), contentHash: Self.hash, outcome: .written),
                               .init(revision: DraftRevision(6), contentHash: Self.hash, outcome: .blocked("목록이 바뀌었습니다")),
@@ -68,6 +68,8 @@ struct RekordboxWriteJournalTests {
                                 blockedFields: ["musicalKey"])]
         let data = try DraftCleanupList.encoder.encode(list)
         #expect(try DraftCleanupList.decode(data) == list)
+        // 그 쓰기의 백업 폴더(백업 루트 기준 상대 경로)를 적어 다시 켠 뒤에도 사본 자리를 찾는다(S5)
+        #expect(String(decoding: data, as: UTF8.self).contains(#""backupFolder":"2026-11-24_120000""#))
         var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         object["version"] = 0
         #expect(throws: (any Error).self) { try DraftCleanupList.decode(JSONSerialization.data(withJSONObject: object)) }

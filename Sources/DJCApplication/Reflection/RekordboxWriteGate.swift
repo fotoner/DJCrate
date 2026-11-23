@@ -33,12 +33,18 @@ public struct RekordboxWriteGate: Sendable {
     /// 백업 사슬 검사를 타지 않고 기록의 근거와 파일 목록만으로 한다. 시작할 때 "복원 중"을 적고, 검증이 끝나면 그 쓰기의 미정리 목록을
     /// 먼저 지우고 기록은 마지막에 지운다. 다시 멈추면 같은 기록으로 다시 복원한다
     public var restoreJournal: @Sendable (RekordboxWriteTarget, RekordboxJournalRequest) throws -> RekordboxJournalRestore = { _, _ in .nothing }
-    /// "이대로 둔다"의 마지막 단계: 사용자가 확인한 쓰기 기록을 지운다. 그 전에 세션이 미정리 목록을 지우고 기록에 적힌 판의 초안을
-    /// 제안으로 바꾼다. 쓰기 잠금 안에서 기록의 작업 ID와 master.db 크기·시각이 요청과 다르면 지우지 않고 `.changed`다
-    public var keepJournal: @Sendable (RekordboxWriteTarget, RekordboxJournalRequest) throws -> RekordboxJournalKeep = { _, _ in .nothing }
+    /// "이대로 둔다"(R11). 한 쓰기 잠금 안에서 이 차례로 한다.
+    /// 1. 요청(작업 ID·master.db 크기·시각)을 남은 기록·지금 DB와 다시 견준다. 다르면 아무것도 하지 않고 `.changed`(`apply`를 부르지 않는다).
+    ///    기록이 없으면 `.nothing`(`apply`를 부르지 않는다).
+    /// 2. 같으면 부르는 쪽이 넘긴 일 `apply`를 부른다: 그 쓰기의 미정리 목록을 지우고, 기록에 적힌 판의 초안을 제안으로 바꾼다
+    ///    (`DraftStore.markSuggestions`). `apply`가 던지면 기록을 지우지 않고 그 오류를 던진다(다시 고를 수 있다).
+    /// 3. 쓰기 기록을 마지막에 지우고 `.kept`.
+    /// `apply`는 잠금을 쥔 채 메인 액터 밖에서 불린다. 그 안에서 쓰기 잠금을 잡는 입구(쓰기·복원·`journal(_, nil)`)를 부르지 않는다
+    public var keepJournal: @Sendable (RekordboxWriteTarget, RekordboxJournalRequest, _ apply: @Sendable () throws -> Void) throws -> RekordboxJournalKeep =
+        { _, _, _ in .nothing }
     /// 대상의 미정리 목록 가운데 이 초안 저장소의 것(대상·저장소가 다른 목록은 건드리지 않는다). 읽지 못하는 목록이 있으면 던진다
     public var cleanupLists: @Sendable (RekordboxWriteTarget, _ draftHome: URL) throws -> [DraftCleanupList] = { _, _ in [] }
-    /// 정리를 모두 마친 목록을 지운다(초안과 연결 ID를 다 저장한 뒤)
+    /// 정리를 모두 마친 목록을 지운다(초안과 연결 ID를 다 저장한 뒤). 쓰기 잠금을 잡지 않는다("이대로 둔다"의 `apply` 안에서도 부른다)
     public var removeCleanupList: @Sendable (DraftCleanupList, RekordboxWriteTarget) throws -> Void = { _, _ in }
 
     public init(write: @escaping @Sendable (DraftWriteBatch, [String: RekordboxAnalysisInput], RekordboxWriteTarget, Bool) throws -> RekordboxWriteReport,
