@@ -162,4 +162,78 @@ struct LocalizationTests {
         let length = ["ko": "길이: 120초", "en": "Length: 120 s", "ja": "長さ: 120秒"]
         #expect(text.contains(try #require(length[language])))
     }
+
+    private func realPath(_ path: String) -> String {
+        guard let resolved = realpath(path, nil) else { return path }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+
+    /// 번역 검사 스크립트(`scripts/i18n.swift`)는 작업 트리가 `/tmp`·`/var/folders`처럼 `/private`를 거치는 경로여도
+    /// 소스의 `.stringsdata`를 찾는다(#381). 컴파일러는 실제 경로(`/private/…`)를 `source`에 남긴다.
+    /// 합성 저장소에 스크립트 사본을 두고, 안쪽 `swift build`·`xcstringstool`은 PATH 앞의 가짜로 흉내 낸다.
+    @Test(arguments: ["실제 경로", "링크 경로"])
+    func 번역_검사는_작업_트리가_private_아래여도_소스를_찾는다(sourceForm: String) throws {
+        let fm = FileManager.default
+        // TMPDIR이 /private 밖인 러너에서도 재현되게 /tmp(= /private/tmp) 아래에 둔다
+        let sandbox = URL(filePath: "/tmp").appending(path: "djc-i18n-private-\(UUID().uuidString)")
+        try fm.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: sandbox) }
+        let repo = URL(filePath: realPath(sandbox.path)).appending(path: "repo")
+        try #require(repo.path.hasPrefix("/private/"), "임시 폴더가 /private 아래가 아니라 이 결함을 재현할 수 없습니다: \(repo.path)")
+
+        let realRoot = URL(filePath: realPath(URL(filePath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().path))
+        let script = repo.appending(path: "scripts/i18n.swift")
+        let source = repo.appending(path: "Sources/DJCrate/A.swift")
+        let catalog = "{\n  \"sourceLanguage\" : \"ko\",\n  \"strings\" : {\n\n  },\n  \"version\" : \"1.0\"\n}\n"
+        let stringsdata = repo.appending(path: ".build/out/Intermediates.noindex/Pkg/Debug/A.stringsdata")
+        let bin = sandbox.appending(path: "bin")
+        let log = sandbox.appending(path: "xcstringstool.log")
+        for folder in [script, source, stringsdata].map({ $0.deletingLastPathComponent() }) + [bin, repo.appending(path: "Sources/DJCrate/Resources")] {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try fm.copyItem(at: realRoot.appending(path: "scripts/i18n.swift"), to: script)
+        for name in ["Localizable", "InfoPlist"] {
+            try catalog.write(to: repo.appending(path: "Sources/DJCrate/Resources/\(name).xcstrings"), atomically: true, encoding: .utf8)
+        }
+        // 한 줄짜리 소스: `String(ui:)` 밖의 지역화 문구라 검사가 상대 경로로 문제를 알린다
+        try "let x = Text(\"안녕\")\n".write(to: source, atomically: true, encoding: .utf8)
+        let sourceInData = sourceForm == "실제 경로" ? source.path : String(source.path.dropFirst("/private".count))
+        let entry: [String: Any] = ["key": "안녕", "location": ["startingLine": 1, "startingColumn": 5]]
+        try JSONSerialization.data(withJSONObject: ["source": sourceInData, "tables": ["Localizable": [entry]], "version": 1] as [String: Any])
+            .write(to: stringsdata)
+        let fakes = ["swift": "#!/bin/sh\nexit 0\n",
+                     "xcrun": "#!/bin/sh\nif [ \"$1\" = xcstringstool ]; then echo \"$@\" >> \"$FAKE_XCSTRINGSTOOL_LOG\"; exit 0; fi\nexec /usr/bin/xcrun \"$@\"\n"]
+        for (name, body) in fakes {
+            let file = bin.appending(path: name)
+            try body.write(to: file, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path)
+        }
+
+        let stdout = sandbox.appending(path: "stdout.txt"), stderr = sandbox.appending(path: "stderr.txt")
+        fm.createFile(atPath: stdout.path, contents: nil)
+        fm.createFile(atPath: stderr.path, contents: nil)
+        let process = Process()
+        process.executableURL = URL(filePath: "/usr/bin/xcrun")
+        process.arguments = ["swift", script.path, "check"]
+        process.currentDirectoryURL = repo
+        process.environment = ProcessInfo.processInfo.environment.merging([
+            "PATH": bin.path + ":" + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"),
+            "FAKE_XCSTRINGSTOOL_LOG": log.path,
+        ]) { _, new in new }
+        process.standardOutput = try FileHandle(forWritingTo: stdout)
+        process.standardError = try FileHandle(forWritingTo: stderr)
+        try process.run()
+        process.waitUntilExit()
+
+        let output = (try? String(contentsOf: stdout, encoding: .utf8)) ?? "", errors = (try? String(contentsOf: stderr, encoding: .utf8)) ?? ""
+        #expect(!errors.contains(".stringsdata가 없습니다"), "\(errors)")
+        // 문구를 찾았으니 검사는 문제 하나로 실패한다. 상대 경로는 저장소 뿌리를 뗀다
+        #expect(process.terminationStatus == 1, "\(output)\(errors)")
+        #expect(output.contains("    Sources/DJCrate/A.swift:1:"), "\(output)")
+        #expect(!output.contains("/private"), "\(output)")
+        let calls = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
+        #expect(calls.contains("--stringsdata \(stringsdata.path)"), "\(calls)")
+    }
 }
