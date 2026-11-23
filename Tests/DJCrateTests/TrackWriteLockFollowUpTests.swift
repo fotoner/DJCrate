@@ -25,10 +25,13 @@ struct TrackWriteLockFollowUpTests {
         let store: LibraryStore
         let writing: TrackSpec
         let other: TrackSpec
+        /// 쓰는 곡도 `other`도 아닌 곡(바깥 CLI가 초안을 바꾸는 곡으로 쓴다)
+        let third: TrackSpec
         let writer = DraftWriter()
 
         var writingRow: TrackRow { store.rowsByUUID[writing.uuid]! }
         var otherRow: TrackRow { store.rowsByUUID[other.uuid]! }
+        var thirdRow: TrackRow { store.rowsByUUID[third.uuid]! }
 
         /// 켜면 쓴 뒤 다시 읽기(스냅샷 뜨기)가 실패한다
         let failingSnapshots = TestSwitch()
@@ -42,6 +45,8 @@ struct TrackWriteLockFollowUpTests {
             try fixture.add(first)
             other = TrackSpec()
             try fixture.add(other)
+            third = TrackSpec()
+            try fixture.add(third)
             let writer = writer, failing = failingSnapshots
             store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("lock-round1"), persist: false),
                                       activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
@@ -448,6 +453,45 @@ struct TrackWriteLockFollowUpTests {
         #expect(undo.canUndo)
         await store.takeSnapshot(quiet: true, refreshITunes: false)
         #expect(!undo.canUndo)
+    }
+
+    /// S15: 읽기 실패 사이 바깥(CLI)이 다른 곡의 태그 초안을 바꾸면, 다음 읽기가 그 초안을 받아들이므로 그 곡의 옛 ⌘Z는 무효가 된다
+    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    func 읽기_실패_사이_바깥이_바꾼_곡의_되돌리기만_무효가_되고_나머지는_남는다() async throws {
+        let rig = try await Rig()
+        rig.addCueDraft()
+        let store = rig.store
+        let undo = UndoManager()
+        store.undoManager = undo
+        let unchanged = rig.otherRow, changedOutside = rig.thirdRow
+        let pause = WriteLockSplitTests.GatePause()
+        let coordinator = ReflectionCoordinator.test(store: store, gate: Self.pausing(.live(), at: pause))
+        rig.failingSnapshots.set(true)
+        let writing = Task { await coordinator.write(rows: [rig.writingRow]) }
+        #expect(await waitForState(until: { pause.hasEntered }), "관문 쓰기에 닿지 못함")
+        // 저장 중에 두 곡의 태그를 고친다: ⌘Z 단계가 둘이다(먼저 고친 곡이 아래)
+        store.tags.setTag(.title, "그대로 둘 곡의 제목", rows: [unchanged])
+        store.tags.setTag(.title, "내가 고친 제목", rows: [changedOutside])
+        pause.release()
+        await writing.value
+        #expect(!store.libraryBusy && store.writtenAwaitingReload == [rig.writing.uuid], "저장은 됐고 읽기는 실패했다")
+
+        // 그 사이 바깥(CLI)이 `changedOutside`의 태그 초안을 다른 값으로 저장한다
+        var outside = TagDraft(trackUUID: changedOutside.track.uuid, base: changedOutside.tagFields)
+        outside.fields.title = "CLI가 저장한 제목"
+        store.testDrafts.saveTags([outside])
+        store.testDrafts.flush()
+        rig.failingSnapshots.set(false)
+        await store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(store.tagDrafts[changedOutside.track.uuid]?.fields.title == "CLI가 저장한 제목", "다음 읽기가 CLI 초안을 받아들였다")
+
+        // 가장 나중 단계(바깥이 바꾼 곡): 옛 값으로 CLI 초안을 덮지 않는다
+        undo.undo()
+        #expect(store.tagDrafts[changedOutside.track.uuid]?.fields.title == "CLI가 저장한 제목", "⌘Z가 새 CLI 초안을 이전 값으로 덮으면 안 된다")
+        // 그 앞 단계(변하지 않은 곡): 그대로 되돌려진다
+        #expect(undo.canUndo, "변하지 않은 곡의 ⌘Z는 남는다")
+        undo.undo()
+        #expect(store.tagDrafts[unchanged.track.uuid]?.hasChanges != true)
     }
 
     @Test(.enabled(if: LiveDraftHome.isIsolated))

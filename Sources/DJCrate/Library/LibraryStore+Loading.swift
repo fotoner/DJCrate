@@ -145,7 +145,13 @@ extension LibraryStore {
                                                        artworkChanged: artworkChanges != artworkChangeCount)
         let conflicts = reconciled.tags.conflicts
         tagDrafts = reconciled.tags.tags
-        if keepsUndo { invalidateTagUndo(writtenAwaitingReload.union(reconciled.tags.rebased.map(\.trackUUID))) }
+        if keepsUndo {
+            // 저장한 곡·기준값을 옮긴 곡에 더해, 이 읽기가 태그 초안을 바꾼 곡도 무효로 한다. 읽기 실패 사이 바깥(CLI)이 저장한 초안을 다음 읽기가
+            // 외부 변경 감시보다 먼저 받아들이면 그 곡의 옛 ⌘Z가 새 초안을 이전 값으로 덮는다. 초안이 그대로인 곡의 ⌘Z는 남긴다.
+            var stale = writtenAwaitingReload.union(reconciled.tags.rebased.map(\.trackUUID))
+            for uuid in Set(previousTags.keys).union(tagDrafts.keys) where previousTags[uuid] != tagDrafts[uuid] { stale.insert(uuid) }
+            invalidateTagUndo(stale)
+        }
         rememberTagSaves(reconciled.tags.rebased)
         tagRevision += 1
         setDraftMarks(cue: loaded.cueDraftUUIDs, grid: loaded.gridDraftUUIDs, gain: loaded.gainDraftUUIDs)
