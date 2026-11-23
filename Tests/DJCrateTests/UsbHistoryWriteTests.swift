@@ -270,6 +270,37 @@ struct UsbHistoryWriteTests {
         #expect(store.toast == nil)
     }
 
+    @Test("재생 목록 단계를 얼려 둔 쓰기 중에는 쓰고 있는 기록만 저장 대기에서 빼지 못한다(#402)")
+    func excludeWhileFrozenWrite() async throws {
+        let scratch = Self.scratch()
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let fixture = try historyFixture()
+        let writing = Self.archived("writing", ["102", "101"], sequence: 1)
+        let other = Self.archived("other", ["102"], sequence: 2)
+        let (store, _) = try await Self.makeStore(fixture, scratch: scratch, archived: [writing, other])
+        #expect(Set(store.history.pendingHistoryIDs) == [writing.id, other.id])
+
+        // 초안 쓰기가 재생 목록 단계와 쓰는 기록을 얼린다(세션이 거는 순서와 같다)
+        let lock = store.reflection.session.ports.lock
+        lock.setTracks([])
+        lock.setDraftWriting(true)
+        lock.set(true, false)
+        store.history.setHistoriesExcluded([other.id], excluded: true)
+        #expect(Set(store.history.pendingHistoryIDs) == [writing.id, other.id], "얼리지 않은 쓰기는 기록 편집을 받지 않는다")
+        #expect(store.playlists.freezeWrite(store.playlists.playlistDraft, histories: [writing.id]))
+
+        store.history.setHistoriesExcluded([writing.id, other.id], excluded: true)
+        #expect(store.history.pendingHistoryIDs == [writing.id], "쓰고 있는 기록은 그대로, 다른 기록은 뺀다")
+        store.history.setHistoriesExcluded([other.id], excluded: false)
+        #expect(Set(store.history.pendingHistoryIDs) == [writing.id, other.id])
+
+        lock.set(false, false)
+        lock.setDraftWriting(false)
+        lock.setTracks([])
+        store.history.setHistoriesExcluded([writing.id], excluded: true)
+        #expect(store.history.pendingHistoryIDs == [other.id], "쓰기를 마치면 얼림이 풀려 모든 기록을 뺄 수 있다")
+    }
+
     @Test("쓴 기록 표시: 다시 읽기 전에도 대기에서 빠지고 파일에 남으며, 다시 읽은 rekordbox에 그 기록이 없으면 다시 대기다")
     func recordWritten() async throws {
         let scratch = Self.scratch()

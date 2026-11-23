@@ -20,6 +20,7 @@ extension PlaylistEditStore {
         }
         if let draft = reset.draft {
             playlistDraft = draft
+            adoptSavedIdentifiers()
             refreshPlaylists()
         }
         if let imports = reset.imports { applyImportsChange(imports) }
@@ -69,6 +70,7 @@ extension PlaylistEditStore {
         }
         if let draft = resolution.draft {
             playlistDraft = draft
+            adoptSavedIdentifiers()
             refreshPlaylists()
         }
         guard let imports = resolution.imports, applyImportsChange(imports) else { return }

@@ -73,6 +73,8 @@ extension LibraryStore {
         } else {
             playlistDraftUnlock?()
             playlistDraftUnlock = nil
+            // 쓰기를 마쳤거나 멈췄다: 얼려 둔 재생 목록 단계를 푼다(다음 쓰기가 다시 얼린다, #402)
+            playlists.thawWrite()
         }
         isWritingRekordbox = locked
         if deck { onWriteLock?(locked) }

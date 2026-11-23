@@ -381,11 +381,11 @@ final class LibraryStore {
         }
     }
     /// 라이브러리 내부 배타: 읽기·복원·USB·iTunes·자동 시점 스냅샷·재생 목록 복구·곡 추가 목록이 쓰기와 겹치지 않게 막는다. 초안 파일 잠금(flock)도 이 동안 든다.
-    /// 판단이 어려운 자리는 이 값을 읽는다(편집 잠금만 풀 때 잘못 풀리지 않게). 재생 목록·재생 기록 편집이 그렇다.
+    /// 판단이 어려운 자리는 이 값을 읽는다(편집 잠금만 풀 때 잘못 풀리지 않게). 재생 목록·재생 기록 편집은 이 값이 아니라
+    /// `playlists.isEditBlocked`가 가른다: 초안 쓰기가 재생 목록 단계를 얼려 둔 동안(#402)만 받는다.
     var libraryBusy: Bool { isWritingRekordbox }
     /// 통째 편집 잠금: 덱 큐·그리드·게인, 태그·그림 편집, 키 입력, ⌘Z 기록, 덱 재생·곡 올리기를 막는다.
     /// 초안을 쓰는 동안(`isTrackScopedWrite`)은 걸지 않는다. 그때는 `isEditLocked(_:)`가 쓰는 곡만 막는다(R21).
-    /// 재생 목록·재생 기록 편집은 쓰는 동안 늘 막는다(`libraryBusy`). 재생 목록 얼리기(#402) 전까지 이 값으로 풀지 않는다.
     var editsFrozen: Bool { isWritingRekordbox && !isTrackScopedWrite }
     /// 초안을 쓰는 중(쓰기 포트 `WriteLock.setDraftWriting`): 쓰는 곡 집합이 비어도(재생 목록·재생 기록만 쓰는 묶음) 곡 단위 쓰기다.
     /// 복원·곡 넣기·빼기·iTunes 동기화는 이 표시를 켜지 않아 통째로 잠근다.

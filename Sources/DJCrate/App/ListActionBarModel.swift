@@ -137,7 +137,7 @@ final class ListActionBarModel {
     // MARK: - 머리 줄 오른쪽 구성(#340)
 
     private var locks: ListHeaderActions.Locks {
-        .init(busy: store.libraryBusy, sheetBlocked: store.writesBlockedBySheet, editsFrozen: store.libraryBusy)
+        .init(busy: store.libraryBusy, sheetBlocked: store.writesBlockedBySheet, editsFrozen: store.playlists.isEditBlocked)
     }
 
     /// 지금 사이드바 항목의 머리 줄 오른쪽 구성. 항목에 필요한 값만 읽는다

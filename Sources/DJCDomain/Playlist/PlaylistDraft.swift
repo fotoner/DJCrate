@@ -86,27 +86,55 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
 
     /// 편집을 더한다. 지금 rekordbox 상태에 초안을 얹은 모양에서 쓸 수 없는 편집이면 `PlaylistLayout.Blocked`를 던지고 그대로 둔다.
     /// 같은 목록의 이름은 마지막 것만 남기고, 초안으로 만든 목록을 지우면 만든 편집부터 없던 일로 한다.
+    /// - Parameter frozen: 지금 rekordbox에 쓰고 있는 단계의 식별자(얼림, R21). 쓰고 있는 단계는 `fold`에서 빼서 합치지도 지우지도 않고,
+    ///   새 편집은 뒤에 쌓는다. 쓰고 있는 단계가 바꾸는 목록에 기대는 새 단계는 쓰는 단계를 쓴 뒤의 모양을 기준(`recoveryBase`)으로 삼는다.
+    ///   그래서 쓴 뒤 앞 단계를 빼도 새 단계는 낡은 것으로 막히지 않는다(앞 단계를 쓰지 못했으면 막힌다).
+    ///   식별자가 없는 단계는 얼릴 수 없다(부르는 쪽이 식별자를 확인한 뒤 얼린다)
     /// - Returns: 더한 뒤 모양
     @discardableResult
-    public mutating func append(_ edit: PlaylistEdit, rekordbox: PlaylistLayout) throws -> PlaylistLayout {
-        let before = project(onto: rekordbox).layout
+    public mutating func append(_ edit: PlaylistEdit, rekordbox: PlaylistLayout, frozen: Set<UUID> = []) throws -> PlaylistLayout {
+        let before = project(onto: rekordbox, frozen: frozen).layout
         var after = before
         try after.apply(edit)
         var draft = self
         let needs = Self.needs(edit, in: before, rekordbox: rekordbox)
         for need in needs { draft.capture(need.id, children: need.children, from: rekordbox) }
-        switch draft.fold(edit, before: before, rekordbox: rekordbox) {
+        // 쓰고 있는 단계가 바꾸는 목록: 쓴 뒤 모양이 지금 rekordbox와 다르다
+        var written: [String: Base] = [:]
+        if !frozen.isEmpty {
+            let afterFrozen = frozenLayout(onto: rekordbox, frozen: frozen)
+            for need in needs {
+                if let now = Self.makeBase(need.id, children: need.children, in: rekordbox),
+                   let then = Self.makeBase(need.id, children: need.children, in: afterFrozen), then != now { written[need.id] = then }
+            }
+        }
+        switch draft.fold(edit, before: before, rekordbox: rekordbox, frozen: frozen) {
         case .merged:
             break
         case let .separate(inheriting):
             var step = Step(edit: edit, depends: needs.map(\.id))
             step.id = inheriting
+            if !written.isEmpty {
+                // 기준을 단계 안에 둔다(공유 기준은 쓰고 있는 단계의 것이다). 쓴 뒤 모양이 다른 목록만 그 모양이고 나머지는 공유 기준이다
+                step.recoveryBase = Dictionary(uniqueKeysWithValues: needs.compactMap { need in
+                    (written[need.id] ?? draft.base[need.id]).map { (need.id, $0) }
+                })
+            }
             draft.steps.append(step)
         }
         draft.pruneBase()
         self = draft
         return after
     }
+
+    /// 쓰고 있는 단계(`frozen`)만 얹은 모양(그 단계들을 쓴 뒤의 rekordbox 모양)
+    private func frozenLayout(onto rekordbox: PlaylistLayout, frozen: Set<UUID>) -> PlaylistLayout {
+        var writing = self
+        writing.steps = steps.filter { isFrozen($0, frozen) }
+        return writing.project(onto: rekordbox).layout
+    }
+
+    private func isFrozen(_ step: Step, _ frozen: Set<UUID>) -> Bool { step.id.map(frozen.contains) ?? false }
 
     /// 편집이 기대는 rekordbox 목록(초안으로 만든 목록은 뺀다)
     static func needs(_ edit: PlaylistEdit, in layout: PlaylistLayout, rekordbox: PlaylistLayout) -> [(id: String, children: Bool)] {
@@ -130,14 +158,15 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
     }
 
     mutating func capture(_ id: String, children: Bool, from rekordbox: PlaylistLayout) {
-        if base[id] == nil {
-            if id == PlaylistLayout.root {
-                base[id] = .root(childIDs: rekordbox.childIDs(of: id))
-            } else if let item = rekordbox.item(id) {
-                base[id] = Base(item)
-            }
-        }
+        if base[id] == nil { base[id] = Self.makeBase(id, children: false, in: rekordbox) }
         if children, base[id] != nil, base[id]?.childIDs == nil { base[id]?.childIDs = rekordbox.childIDs(of: id) }
+    }
+
+    /// 그 목록의 기준(맨 위는 자식 순서만). 목록이 없으면 nil. `children`이면 자식 순서도 적는다
+    static func makeBase(_ id: String, children: Bool, in layout: PlaylistLayout) -> Base? {
+        if id == PlaylistLayout.root { return .root(childIDs: layout.childIDs(of: id)) }
+        guard let item = layout.item(id) else { return nil }
+        return Base(item, childIDs: children ? layout.childIDs(of: id) : nil)
     }
 
     /// 편집을 쌓은 결과: 앞 단계에 합쳐졌거나(새 단계 없음), 새 단계로 붙는다. 지운 단계를 대신해 붙는 새 단계는 지운 단계의 식별자를 잇는다
@@ -147,23 +176,39 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         case separate(inheriting: UUID?)
     }
 
-    /// 앞 편집과 합칠 수 있으면 합친다
-    mutating func fold(_ edit: PlaylistEdit, before: PlaylistLayout, rekordbox: PlaylistLayout) -> Fold {
+    /// 앞 편집과 합칠 수 있으면 합친다. 쓰고 있는 단계(`frozen`)는 합치지도 지우지도 않는다
+    mutating func fold(_ edit: PlaylistEdit, before: PlaylistLayout, rekordbox: PlaylistLayout, frozen: Set<UUID> = []) -> Fold {
         switch edit {
         case let .rename(ref, name):
-            if case let .new(key) = ref, let index = createIndex(key), case let .create(_, _, isFolder, parent) = steps[index].edit {
+            if case let .new(key) = ref, let index = createIndex(key), !isFrozen(steps[index], frozen),
+               case let .create(_, _, isFolder, parent) = steps[index].edit {
                 steps[index].edit = .create(key: key, name: name, isFolder: isFolder, parent: parent)
                 return .merged
             }
             // 이름은 마지막 것만 쓴다. rekordbox 이름으로 되돌리면 편집이 없다.
-            let replaced = steps.compactMap { step -> UUID? in
-                if case .rename(ref, _) = step.edit { step.id } else { nil }
+            // 다만 쓰고 있는 이름 바꾸기가 있으면 쓴 뒤 이름이 달라지므로 rekordbox 이름으로 되돌리는 것도 편집이다.
+            let writingRename = steps.contains { step in
+                if isFrozen(step, frozen), case .rename(ref, _) = step.edit { true } else { false }
             }
-            steps.removeAll { if case .rename(ref, _) = $0.edit { true } else { false } }
-            return rekordbox.item(ref.layoutID)?.name == name ? .merged : .separate(inheriting: replaced.first)
+            var replaced: [UUID] = [], kept: [Step] = []
+            for step in steps {
+                if !isFrozen(step, frozen), case .rename(ref, _) = step.edit {
+                    if let id = step.id { replaced.append(id) }
+                } else {
+                    kept.append(step)
+                }
+            }
+            steps = kept
+            return !writingRename && rekordbox.item(ref.layoutID)?.name == name ? .merged : .separate(inheriting: replaced.first)
         case let .delete(.new(key)):
             let subtree = Set(before.subtree(of: PlaylistRef.new(key).layoutID))
-            guard let start = createIndex(key), subtree.allSatisfy({ $0.hasPrefix("new:") }) else { return .separate(inheriting: nil) }
+            guard let start = createIndex(key), !isFrozen(steps[start], frozen), subtree.allSatisfy({ $0.hasPrefix("new:") })
+            else { return .separate(inheriting: nil) }
+            // 쓰고 있는 단계가 그 아래 목록을 만들었거나 거쳐 갔으면 없던 일로 할 수 없다(쓰고 있는 단계를 지우지 않는다)
+            guard !steps.contains(where: { step in
+                isFrozen(step, frozen)
+                    && (subtree.contains(step.edit.playlist.layoutID) || step.edit.destination.map { subtree.contains($0.layoutID) } == true)
+            }) else { return .separate(inheriting: nil) }
             let outside = steps.filter { !subtree.contains($0.edit.playlist.layoutID) }
             // 다른 목록이 이 폴더를 거쳐 갔거나(만든 뒤 밖으로 옮김), 뒤에 부모 안 자리에 기대는 순서 바꾸기가 있으면 그대로 지운다.
             guard !outside.contains(where: { $0.edit.destination.map { subtree.contains($0.layoutID) } == true }),
@@ -191,21 +236,22 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
 
     /// 이 목록(폴더면 그 아래까지, 초안을 얹은 모양 기준)을 건드린 편집을 버린다.
     /// 버린 새 목록을 가리키던 편집(그 안에 만든 목록, 그리로 옮긴 목록 등)도 함께 버린다.
-    public mutating func discard(playlist id: String, rekordbox: PlaylistLayout) {
-        let layout = project(onto: rekordbox).layout
+    /// - Parameter frozen: 지금 rekordbox에 쓰고 있는 단계의 식별자. 쓰고 있는 단계는 버리지 않는다(R21)
+    public mutating func discard(playlist id: String, rekordbox: PlaylistLayout, frozen: Set<UUID> = []) {
+        let layout = project(onto: rekordbox, frozen: frozen).layout
         let ids = Set(layout.item(id) != nil ? layout.subtree(of: id) : [id])
-        steps.removeAll { ids.contains($0.edit.playlist.layoutID) }
-        dropOrphans()
+        steps = steps.filter { isFrozen($0, frozen) || !ids.contains($0.edit.playlist.layoutID) }
+        dropOrphans(frozen: frozen)
         pruneBase()
     }
 
-    /// 지금 rekordbox 상태에서 쓸 수 없는 편집을 모두 버린다(그 편집에 기대던 편집도).
-    public mutating func discardBlocked(rekordbox: PlaylistLayout, contentIDs: Set<String>? = nil) {
+    /// 지금 rekordbox 상태에서 쓸 수 없는 편집을 모두 버린다(그 편집에 기대던 편집도). 쓰고 있는 단계(`frozen`)는 버리지 않는다.
+    public mutating func discardBlocked(rekordbox: PlaylistLayout, contentIDs: Set<String>? = nil, frozen: Set<UUID> = []) {
         while true {
-            let blocked = project(onto: rekordbox, contentIDs: contentIDs).blocked
-            guard blocked.contains(where: { $0 != nil }) else { break }
-            steps = zip(steps, blocked).filter { $0.1 == nil }.map(\.0)
-            dropOrphans()
+            let blocked = project(onto: rekordbox, contentIDs: contentIDs, frozen: frozen).blocked
+            guard zip(steps, blocked).contains(where: { !isFrozen($0.0, frozen) && $0.1 != nil }) else { break }
+            steps = zip(steps, blocked).filter { isFrozen($0.0, frozen) || $0.1 == nil }.map(\.0)
+            dropOrphans(frozen: frozen)
         }
         pruneBase()
     }
@@ -215,6 +261,20 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         let drop = Set(offsets)
         steps = steps.enumerated().filter { !drop.contains($0.offset) }.map(\.element)
         pruneBase()
+    }
+
+    /// 쓴 뒤 새 목록의 연결 ID를 남은 단계에 옮긴다(R22): 남은 단계의 대상과 목적지(만들기의 부모, 옮기기의 폴더)가 가리키던 `new:키`를
+    /// 받은 rekordbox ID로 바꾼다. 만든 단계가 남아 있는 키는 `ids`에서 빼서 부른다(그 키는 아직 `new:키`다). 단계 식별자·기준은 그대로다.
+    /// 다시 해도 결과가 같다(옮길 `new:키`가 이미 없으면 바뀌는 것이 없다)
+    public func remapped(_ ids: [String: String]) -> PlaylistDraft {
+        guard !ids.isEmpty else { return self }
+        var draft = self
+        draft.steps = steps.map { step in
+            var step = step
+            step.edit = step.edit.remapped(ids)
+            return step
+        }
+        return draft
     }
 
     /// 곡 추가를 되돌리면 사라진 ContentID를 초안에서도 뺀다. 다른 목록의 base는 그대로 둔다.
@@ -253,21 +313,21 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         pruneBase()
     }
 
-    /// 만든 편집이 없어진 새 목록을 가리키는 편집을 버린다(없어질 때까지 되풀이)
-    mutating func dropOrphans() {
+    /// 만든 편집이 없어진 새 목록을 가리키는 편집을 버린다(없어질 때까지 되풀이). 쓰고 있는 단계(`frozen`)는 늘 남긴다
+    mutating func dropOrphans(frozen: Set<UUID> = []) {
         while true {
             var created = Set<String>()
             var kept: [Step] = []
             for step in steps {
                 let refs = [step.edit.playlist, step.edit.destination].compactMap { $0 }
                 if case let .create(key, _, _, _) = step.edit {
-                    if refs.dropFirst().allSatisfy({ ref in if case .new = ref { created.contains(ref.layoutID) } else { true } }) {
+                    if isFrozen(step, frozen) || refs.dropFirst().allSatisfy({ ref in if case .new = ref { created.contains(ref.layoutID) } else { true } }) {
                         created.insert(PlaylistRef.new(key).layoutID)
                         kept.append(step)
                     }
                     continue
                 }
-                if refs.allSatisfy({ ref in if case .new = ref { created.contains(ref.layoutID) } else { true } }) { kept.append(step) }
+                if isFrozen(step, frozen) || refs.allSatisfy({ ref in if case .new = ref { created.contains(ref.layoutID) } else { true } }) { kept.append(step) }
             }
             guard kept.count != steps.count else { return }
             steps = kept
@@ -325,13 +385,16 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
     }
 
     /// 지금 rekordbox 상태에 편집을 차례로 얹는다. base와 달라진 목록에 기대는 편집, 얹을 수 없는 편집은 막힌 것으로 두고 건너뛴다.
-    public func project(onto rekordbox: PlaylistLayout, contentIDs: Set<String>? = nil) -> Projection {
+    /// - Parameter frozen: 지금 rekordbox에 쓰고 있는 단계의 식별자. 쓰고 있지 않은 단계는 쓰고 있는 단계를 쓴 뒤의 모양을 기준으로 낡음을 본다
+    ///   (쓰는 동안 옛 사본 위에 보여 주려고. 쓰기가 끝나 쓴 단계를 빼고 새 사본을 읽으면 `frozen` 없이 같은 기준으로 맞는다)
+    public func project(onto rekordbox: PlaylistLayout, contentIDs: Set<String>? = nil, frozen: Set<UUID> = []) -> Projection {
         var layout = rekordbox
+        let written = frozen.isEmpty ? rekordbox : frozenLayout(onto: rekordbox, frozen: frozen)
         var blocked: [String?] = [], changed = Set<String>(), targets: [String: String] = [:]
         for step in steps {
             let target = step.edit.playlist.layoutID
             let parent = layout.item(target)?.parentID
-            var reason = staleReason(for: step, rekordbox: rekordbox)
+            var reason = staleReason(for: step, rekordbox: frozen.isEmpty || isFrozen(step, frozen) ? rekordbox : written)
             if reason == nil, let contentIDs, case let .addTracks(_, ids) = step.edit,
                !ids.allSatisfy({ contentIDs.contains($0) }) {
                 reason = String(ui: "넣을 곡이 rekordbox 컬렉션에서 사라졌으니 이 편집을 버리고 곡을 다시 선택하세요.")
