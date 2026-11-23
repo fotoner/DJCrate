@@ -5,7 +5,15 @@
 // 문구는 디버그 빌드가 뽑은 .stringsdata(컴파일러가 타입을 보고 뽑음)에서 읽는다. 규칙은 docs/i18n.md.
 import Foundation
 
-let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().standardizedFileURL
+/// 실제 경로(realpath). 컴파일러가 `.stringsdata`의 `source`에 남기는 `/private/tmp/…`와 견줄 수 있게 한다.
+/// `standardizedFileURL`·`resolvingSymlinksInPath()`는 `/private`를 떼서 `/tmp`·`/var/folders` 아래 작업 트리에서 어긋난다(#381).
+func realPath(_ path: String) -> String {
+    guard let resolved = realpath(path, nil) else { return path }
+    defer { free(resolved) }
+    return String(cString: resolved)
+}
+
+let root = URL(fileURLWithPath: realPath(#filePath)).deletingLastPathComponent().deletingLastPathComponent()
 let resources = root.appending(path: "Sources/DJCrate/Resources")
 let catalogURL = resources.appending(path: "Localizable.xcstrings")
 let infoPlistCatalogURL = resources.appending(path: "InfoPlist.xcstrings")
@@ -54,7 +62,7 @@ func stringsdataFiles() -> [URL] {
     where url.pathExtension == "stringsdata" && url.path.contains("/Debug/") && !url.path.contains("-testable-") {
         guard let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let source = json["source"] as? String,
+              let source = (json["source"] as? String).map(realPath),
               prefixes.contains(where: { source.hasPrefix($0) }),
               FileManager.default.fileExists(atPath: source) else { continue }
         let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -67,7 +75,7 @@ func extracted(from files: [URL]) -> [Extracted] {
     var result: [Extracted] = []
     for url in files {
         let json = (try? JSONSerialization.jsonObject(with: Data(contentsOf: url))) as? [String: Any] ?? [:]
-        let source = json["source"] as? String ?? ""
+        let source = realPath(json["source"] as? String ?? "")
         for (table, entries) in json["tables"] as? [String: [[String: Any]]] ?? [:] {
             for entry in entries {
                 let location = entry["location"] as? [String: Int] ?? [:]
