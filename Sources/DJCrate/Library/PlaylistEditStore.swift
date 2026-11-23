@@ -100,6 +100,10 @@ final class PlaylistEditStore {
     /// 얼린 단계(없으면 빈 집합)
     private var frozen: Set<UUID> { writeFreeze ?? [] }
 
+    /// 쓰기 묶음에 넣을 재생 목록 초안. 디스크 초안을 읽지 못해 메모리가 디스크와 같은지 모르면(`playlistDraftNeedsSync`) 비어 있다:
+    /// ⌘S·자동 저장 모두 옛 메모리로 재생 목록을 쓰지 않는다(디스크 초안을 받으면 다시 든다)
+    var writablePlaylistDraft: PlaylistDraft { playlistDraftNeedsSync ? PlaylistDraft() : playlistDraft }
+
     /// 쓸 수 없는 초안 편집 수(rekordbox에서 바뀐 목록 등)
     var blockedPlaylistEditCount: Int { playlistProjection.blocked.compactMap { $0 }.count }
 
@@ -246,7 +250,7 @@ final class PlaylistEditStore {
         case .failed:
             library.showToast(.notice(text: Self.syncFailureText, kind: .warning))
             return
-        case .current:
+        case .current, .held:
             guard !playlistDraftNeedsSync else { return }
         }
         // 쓰고 있는 단계는 바꾸지 않는다(되돌리기·다시 하기가 쓰는 단계를 되살리거나 지우지 않게)
@@ -267,7 +271,7 @@ final class PlaylistEditStore {
     /// 편집하기 전에 디스크 초안을 맞춘다. 읽지 못하면 알리고 false(옛 메모리 위에 쌓지 않는다)
     private func syncBeforeEdit() -> Bool {
         switch syncExternal() {
-        case .current, .adopted:
+        case .current, .adopted, .held:
             // 쓰는 중이라 다시 읽지 못했는데 앞서 읽기가 실패했으면 디스크와 같은지 모른다: 쌓지 않는다
             if playlistDraftNeedsSync {
                 library.showToast(.notice(text: Self.syncFailureText, kind: .warning))
@@ -469,6 +473,8 @@ final class PlaylistEditStore {
         case current
         /// 바뀐 디스크 초안을 받았다
         case adopted
+        /// 쓰는 중이라 다시 읽지 않았다(초안 파일 잠금이 바깥 편집을 막고 있어 앞서 읽은 것과 같다고 본다). 앞서 읽기가 실패했으면 아직 모른다
+        case held
         /// 디스크 초안을 읽지 못했다(도장 기록 실패·손상). 디스크 초안을 받을 때까지 재생 목록 저장을 막는다
         case failed
     }
@@ -476,7 +482,8 @@ final class PlaylistEditStore {
     /// 디스크 초안을 읽어 맞춘다. 읽지 못하면 `failed`로 알리고 디스크 초안을 받을 때까지 저장을 막는다(#402).
     /// 쓰는 동안은 CLI가 초안 파일을 고치지 못하므로(초안 파일 잠금) 다시 읽지 않는다
     func syncExternal() -> ExternalSync {
-        guard !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty, !library.libraryBusy else { return .current }
+        guard !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty else { return .current }
+        guard !library.libraryBusy else { return .held }
         do {
             let adopted = adoptExternalDraft(try library.useCases.playlists.loadDraft())
             return adopted ? .adopted : .current
@@ -535,8 +542,12 @@ final class PlaylistEditStore {
 
     /// 쓰기 전에: 저장하지 못한 재생 목록 초안은 다시 저장해 본다. 저장했거나 저장할 것이 없으면 true(아니면 쓰기가 막는다).
     func ensurePlaylistDraftSaved() -> Bool {
-        // 디스크 초안을 읽지 못한 채 쓰면 바깥에서 더한 단계를 놓친다: 다시 읽어 보고 읽지 못하면 쓰기를 막는다
-        if playlistDraftNeedsSync, syncExternal() == .failed { return false }
+        // 디스크 초안을 읽지 못한 채 쓰면 바깥에서 더한 단계를 놓친다: 다시 읽어 보고, 읽지 못했으면 재생 목록은 쓰기 묶음에서 빠진다
+        // (`writablePlaylistDraft`). 다른 종류 초안을 쓰는 것은 막지 않는다
+        if playlistDraftNeedsSync {
+            _ = syncExternal()
+            if playlistDraftNeedsSync { return true }
+        }
         guard playlistDraftUnsaved else { return true }
         return savePlaylistDraft()
     }

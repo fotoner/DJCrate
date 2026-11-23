@@ -206,4 +206,84 @@ struct PlaylistDraftFreezeTests {
         #expect(draft.remapped([:]) == draft)
         #expect(draft.remapped([PlaylistRef.new("zzz").layoutID: "900"]) == draft)
     }
+
+    // MARK: - 리뷰 1라운드(S3·S4·S5)
+
+    @Test func S3_폴더_이름을_쓰는_동안_그_폴더_안_순서를_바꿔도_쓰는_단계의_공유_기준과_해시는_그대로다() throws {
+        var draft = PlaylistDraft()
+        try draft.append(.rename(playlist: .id("F"), name: "바꾼 폴더"), rekordbox: Self.rekordbox)
+        let frozen = Self.freeze(&draft)
+        let hash = try DraftContentHash(step: draft.steps[0], in: draft)
+        let shared = draft.base["F"]
+
+        try draft.append(.reorder(playlist: .id("B"), index: 0), rekordbox: Self.rekordbox, frozen: frozen)
+
+        #expect(draft.base["F"] == shared, "쓰는 단계가 기대는 공유 기준에 자식 순서를 더하지 않는다")
+        #expect(try DraftContentHash(step: draft.steps[0], in: draft) == hash, "쓰는 단계의 해시가 바뀌지 않아 쓴 뒤 정리가 판으로 찾는다")
+        let base = try #require(draft.steps[1].recoveryBase?["F"])
+        #expect(base.name == "바꾼 폴더" && base.childIDs == ["A", "B"], "새 순서 편집의 기준은 그 단계 안에 쓴 뒤 모양으로 둔다")
+        // 쓴 뒤 앞 단계를 빼면 남은 순서 편집은 막히지 않는다
+        let written = try Self.afterWriting([.rename(playlist: .id("F"), name: "바꾼 폴더")])
+        var remaining = draft
+        remaining.removeSteps(at: [0])
+        #expect(remaining.project(onto: written).blocked == [nil])
+    }
+
+    @Test func S4_쓰는_동안_맨_위에_새_목록이_생기면_순서_편집_기준의_새_목록_키도_받은_ID로_옮긴다() throws {
+        var draft = PlaylistDraft()
+        try draft.append(.create(key: "k", name: "새 목록", isFolder: false, parent: .root), rekordbox: Self.rekordbox)
+        let frozen = Self.freeze(&draft)
+        try draft.append(.reorder(playlist: .id("C"), index: 0), rekordbox: Self.rekordbox, frozen: frozen)
+        #expect(draft.steps[1].recoveryBase?[PlaylistLayout.root]?.childIDs == ["new:k", "F", "C", "S"])
+        // 쓴 뒤 rekordbox: 새 목록이 맨 위에 실제 ID(900)로 생겼다
+        let written = PlaylistDraftTests.library(extra: [(PlaylistDraftTests.item("900", "새 목록"), 0)])
+        var remaining = draft
+        remaining.removeSteps(at: [0])
+
+        let moved = remaining.remapped(["new:k": "900"])
+
+        #expect(moved.steps[0].recoveryBase?[PlaylistLayout.root]?.childIDs == ["900", "F", "C", "S"])
+        #expect(moved.project(onto: written).blocked == [nil], "정상 순서 편집이 막히지 않는다")
+    }
+
+    @Test func S4_기준의_부모_ID에_든_새_목록_키도_옮긴다() throws {
+        var draft = PlaylistDraft()
+        try draft.append(.create(key: "a", name: "폴더", isFolder: true, parent: .root), rekordbox: Self.rekordbox)
+        try draft.append(.move(playlist: .id("C"), into: .new("a")), rekordbox: Self.rekordbox)
+        let frozen = Self.freeze(&draft)
+        // 새 폴더로 옮겨 쓰는 동안 그 목록의 곡을 고친다: 곡 편집의 기준(쓴 뒤 C)은 부모가 새 폴더다
+        try draft.append(.addTracks(playlist: .id("C"), contentIDs: ["9"]), rekordbox: Self.rekordbox, frozen: frozen)
+        #expect(draft.steps[2].recoveryBase?["C"]?.parentID == "new:a")
+        var remaining = draft
+        remaining.removeSteps(at: [0, 1])
+
+        let moved = remaining.remapped(["new:a": "900"])
+
+        #expect(moved.steps[0].recoveryBase?["C"]?.parentID == "900")
+        // 쓴 뒤 rekordbox: 새 폴더(900) 안에 C가 있다
+        let written = PlaylistDraftTests.library(extra: [(PlaylistDraftTests.item("900", "폴더", folder: true), 0)])
+        var layout = written
+        try layout.apply(.move(playlist: .id("C"), into: .id("900")))
+        #expect(moved.project(onto: layout).blocked == [nil])
+    }
+
+    @Test func S5_목록을_폴더로_옮겨_쓰는_동안_그_폴더를_지우면_쓴_뒤_구조의_하위_목록_기준을_남긴다() throws {
+        var draft = PlaylistDraft()
+        try draft.append(.move(playlist: .id("C"), into: .id("F")), rekordbox: Self.rekordbox)
+        let frozen = Self.freeze(&draft)
+
+        try draft.append(.delete(playlist: .id("F")), rekordbox: Self.rekordbox, frozen: frozen)
+
+        let step = draft.steps[1]
+        #expect(Set(step.depends) == ["F", "A", "B", "C"], "방금 들어온 C도 삭제 기준에 든다")
+        #expect(step.recoveryBase?["C"]?.parentID == "F")
+        let written = try Self.afterWriting([.move(playlist: .id("C"), into: .id("F"))])
+        var remaining = draft
+        remaining.removeSteps(at: [0])
+        #expect(remaining.project(onto: written).blocked == [nil], "쓴 뒤 구조에서는 삭제가 막히지 않는다")
+        // 쓴 뒤 rekordbox에서 C에 곡이 더해졌으면 지우지 않는다
+        var changed = written
+        try changed.apply(.addTracks(playlist: .id("C"), contentIDs: ["9"]))
+        #expect(remaining.project(onto: changed).blocked[0] != nil)
+    }
 }

@@ -97,7 +97,7 @@ struct PlaylistWriteFreezeTests {
         #expect(playlists.playlistDraft == draft, "읽지 못해 편집하지 않았다")
         #expect(playlists.playlistDraftNeedsSync)
         #expect(!playlists.savePlaylistDraft(), "디스크 초안을 받을 때까지 저장하지 않는다")
-        #expect(!playlists.ensurePlaylistDraftSaved(), "그동안 rekordbox에 쓰지도 않는다")
+        #expect(store.reflectionState().playlistDraft.isEmpty, "그동안 재생 목록은 rekordbox에 쓰지 않는다(다른 종류 초안은 쓴다: 쓰기 묶음에서만 뺀다)")
         #expect(try Data(contentsOf: file) == Data("깨진 파일".utf8), "깨진 파일을 메모리로 덮지 않았다")
 
         // 디스크 초안이 다시 읽히면(바깥이 고쳤다) 받고 이어 간다
@@ -222,5 +222,46 @@ struct PlaylistWriteFreezeTests {
         #expect(playlists.playlistDraft.isEmpty, "고친 단계도 쓴 단계라 빠진다")
         #expect(store.activityLog.latest?.kind == .warning, "사본을 남겼다고 경고한다")
         endDraftWrite()
+    }
+
+    // MARK: - 리뷰 1라운드(S6·S7)
+
+    @Test func S6_동기화_실패_표시가_남은_채_쓰기_잠금이_걸리면_재생_목록은_쓰기_묶음에서_빠지고_다른_초안은_막지_않는다() throws {
+        playlists.renamePlaylist("B", to: "새 이름")
+        let draft = playlists.playlistDraft
+        try Data("깨진 파일".utf8).write(to: file)
+
+        // 쓰기 잠금을 거는 순간의 동기화가 디스크 초안을 읽지 못한다
+        beginDraftWrite()
+        #expect(playlists.playlistDraftNeedsSync)
+        #expect(store.reflectionState().playlistDraft.isEmpty, "옛 메모리 재생 목록 편집은 쓰기 묶음에 들지 않는다(⌘S·자동 저장 모두 이 상태를 본다)")
+        #expect(playlists.ensurePlaylistDraftSaved(), "다른 종류 초안을 쓰는 것은 막지 않는다")
+        #expect(playlists.syncExternal() != .current, "쓰기 잠금 때문에 읽지 않은 것을 맞춘 것으로 보지 않는다")
+        #expect(playlists.playlistDraft == draft)
+        endDraftWrite()
+
+        // 디스크 초안을 다시 읽으면 재생 목록도 쓰기 묶음에 든다
+        try PlaylistDraftStore.save(draft, url: file)
+        #expect(playlists.syncExternal() == .current && !playlists.playlistDraftNeedsSync)
+        #expect(store.reflectionState().playlistDraft == draft)
+    }
+
+    @Test func S7_동기화_실패_동안은_가져온_곡의_재생_목록_연결과_연결_기록_저장을_미룬다() throws {
+        playlists.playlistImports.addFiles(["/fixtures/a"], to: .id("A"))
+        playlists.renamePlaylist("B", to: "새 이름")
+        let draft = playlists.playlistDraft
+        try Data("깨진 파일".utf8).write(to: file)
+
+        playlists.resolvePlaylistImports(contentIDsByPath: ["/fixtures/a": "9"])
+
+        #expect(playlists.playlistDraft == draft, "옛 메모리에 곡을 더하지 않는다")
+        #expect(playlists.playlistImports.pendingCount == 1, "연결은 소비하지 않고 기다린다")
+        #expect(try Data(contentsOf: file) == Data("깨진 파일".utf8), "읽지 못한 파일을 옛 메모리로 덮지 않는다")
+
+        // 디스크 초안을 다시 읽으면 이어서 연결한다
+        try PlaylistDraftStore.save(draft, url: file)
+        playlists.resolvePlaylistImports(contentIDsByPath: ["/fixtures/a": "9"])
+        #expect(playlists.playlistImports.pendingCount == 0)
+        #expect(playlists.playlistDraft.edits == [.rename(playlist: .id("B"), name: "새 이름"), .addTracks(playlist: .id("A"), contentIDs: ["9"])])
     }
 }

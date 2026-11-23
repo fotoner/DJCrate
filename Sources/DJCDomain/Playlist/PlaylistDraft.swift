@@ -26,6 +26,14 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
             self.childIDs = childIDs
         }
 
+        /// 부모 ID와 자식 순서에 든 새 목록 키(`new:키`)를 받은 rekordbox ID로 바꾼 기준
+        func remapped(_ ids: [String: String]) -> Base {
+            var base = self
+            base.parentID = ids[parentID] ?? parentID
+            base.childIDs = childIDs?.map { ids[$0] ?? $0 }
+            return base
+        }
+
         /// 맨 위(자식 순서만 본다)
         static func root(childIDs: [String]) -> Base {
             var base = Base(PlaylistLayout.Item(id: PlaylistLayout.root, name: "", parentID: "", isFolder: true))
@@ -97,16 +105,21 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         var after = before
         try after.apply(edit)
         var draft = self
-        let needs = Self.needs(edit, in: before, rekordbox: rekordbox)
-        for need in needs { draft.capture(need.id, children: need.children, from: rekordbox) }
-        // 쓰고 있는 단계가 바꾸는 목록: 쓴 뒤 모양이 지금 rekordbox와 다르다
-        var written: [String: Base] = [:]
-        if !frozen.isEmpty {
-            let afterFrozen = frozenLayout(onto: rekordbox, frozen: frozen)
-            for need in needs {
-                if let now = Self.makeBase(need.id, children: need.children, in: rekordbox),
-                   let then = Self.makeBase(need.id, children: need.children, in: afterFrozen), then != now { written[need.id] = then }
+        // 쓰고 있는 단계를 쓴 뒤의 rekordbox 모양. 지우기는 이 모양에서 하위 목록을 구한다(쓰는 동안 폴더로 들어온 목록도 삭제 기준에 든다)
+        let afterFrozen = frozen.isEmpty ? nil : frozenLayout(onto: rekordbox, frozen: frozen)
+        let needs = Self.needs(edit, in: before, rekordbox: rekordbox, structure: afterFrozen)
+        // 쓰고 있는 단계가 기대는 목록의 공유 기준은 바꾸지 않는다(그 단계의 해시·판이 바뀌어 쓴 뒤 정리가 찾지 못한다).
+        // 그런 목록과 쓰고 있는 단계가 바꾸는 목록(쓴 뒤 모양이 지금 rekordbox와 다르다)에 새 단계가 기대는 기준은 그 단계 안에 둔다
+        let writingDepends = Set(steps.filter { isFrozen($0, frozen) }.flatMap(\.depends))
+        var own: [String: Base] = [:]
+        for need in needs {
+            let then = afterFrozen.flatMap { Self.makeBase(need.id, children: need.children, in: $0) }
+            if writingDepends.contains(need.id) {
+                own[need.id] = then ?? Self.makeBase(need.id, children: need.children, in: rekordbox)
+                continue
             }
+            draft.capture(need.id, children: need.children, from: rekordbox)
+            if let then, let now = Self.makeBase(need.id, children: need.children, in: rekordbox), then != now { own[need.id] = then }
         }
         switch draft.fold(edit, before: before, rekordbox: rekordbox, frozen: frozen) {
         case .merged:
@@ -114,11 +127,10 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         case let .separate(inheriting):
             var step = Step(edit: edit, depends: needs.map(\.id))
             step.id = inheriting
-            if !written.isEmpty {
-                // 기준을 단계 안에 둔다(공유 기준은 쓰고 있는 단계의 것이다). 쓴 뒤 모양이 다른 목록만 그 모양이고 나머지는 공유 기준이다
-                step.recoveryBase = Dictionary(uniqueKeysWithValues: needs.compactMap { need in
-                    (written[need.id] ?? draft.base[need.id]).map { (need.id, $0) }
-                })
+            if !own.isEmpty {
+                // 기준을 단계 안에 둔다: 위에서 가린 목록만 그 기준이고 나머지는 공유 기준이다(단계 기준은 모든 `depends`를 덮어야 한다)
+                step.recoveryBase = Dictionary(needs.compactMap { need in (own[need.id] ?? draft.base[need.id]).map { (need.id, $0) } },
+                                               uniquingKeysWith: { first, _ in first })
             }
             draft.steps.append(step)
         }
@@ -137,7 +149,9 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
     private func isFrozen(_ step: Step, _ frozen: Set<UUID>) -> Bool { step.id.map(frozen.contains) ?? false }
 
     /// 편집이 기대는 rekordbox 목록(초안으로 만든 목록은 뺀다)
-    static func needs(_ edit: PlaylistEdit, in layout: PlaylistLayout, rekordbox: PlaylistLayout) -> [(id: String, children: Bool)] {
+    /// - Parameter structure: 편집을 쓰는 때의 목록 구조(쓰고 있는 단계를 쓴 뒤 모양). 지우기는 이 구조에서 하위 목록을 구한다. 없으면 rekordbox 구조다
+    static func needs(_ edit: PlaylistEdit, in layout: PlaylistLayout, rekordbox: PlaylistLayout,
+                      structure: PlaylistLayout? = nil) -> [(id: String, children: Bool)] {
         func existing(_ ref: PlaylistRef) -> String? {
             if case let .id(id) = ref, rekordbox.item(id) != nil { id } else { nil }
         }
@@ -153,7 +167,8 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
             return needs
         case let .delete(ref):
             guard let id = existing(ref) else { return [] }
-            return rekordbox.subtree(of: id).map { ($0, rekordbox.item($0)?.isFolder == true) }
+            let shape = structure ?? rekordbox
+            return shape.subtree(of: id).filter { rekordbox.item($0) != nil }.map { ($0, shape.item($0)?.isFolder == true) }
         }
     }
 
@@ -264,7 +279,8 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
     }
 
     /// 쓴 뒤 새 목록의 연결 ID를 남은 단계에 옮긴다(R22): 남은 단계의 대상과 목적지(만들기의 부모, 옮기기의 폴더)가 가리키던 `new:키`를
-    /// 받은 rekordbox ID로 바꾼다. 만든 단계가 남아 있는 키는 `ids`에서 빼서 부른다(그 키는 아직 `new:키`다). 단계 식별자·기준은 그대로다.
+    /// 받은 rekordbox ID로 바꾼다. 단계 기준(`base`·`recoveryBase`)의 부모 ID와 자식 순서에 든 `new:키`도 옮긴다(쓰는 동안 쌓은 순서 편집의 기준이
+    /// 쓴 뒤 모양을 담는다). 만든 단계가 남아 있는 키는 `ids`에서 빼서 부른다(그 키는 아직 `new:키`다). 단계 식별자는 그대로다.
     /// 다시 해도 결과가 같다(옮길 `new:키`가 이미 없으면 바뀌는 것이 없다)
     public func remapped(_ ids: [String: String]) -> PlaylistDraft {
         guard !ids.isEmpty else { return self }
@@ -272,7 +288,23 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         draft.steps = steps.map { step in
             var step = step
             step.edit = step.edit.remapped(ids)
+            step.recoveryBase = step.recoveryBase?.mapValues { $0.remapped(ids) }
             return step
+        }
+        draft.base = base.mapValues { $0.remapped(ids) }
+        return draft
+    }
+
+    /// 저장하지 못해 메모리에만 있던 편집의 단계를 뒤에 합친다(쓴 뒤 정리, R22). 그 단계가 기대던 기준(`memory`의 공유 기준)은 단계 안(`recoveryBase`)에 둔다:
+    /// 이 초안의 공유 기준과 섞지 않는다(같은 목록의 기준이 다르면 어느 쪽이 맞는지 모른 채 하나로 합치지 않는다)
+    public func appending(unsaved pending: [Step], basedOn memory: PlaylistDraft) -> PlaylistDraft {
+        guard !pending.isEmpty else { return self }
+        var draft = self
+        for var step in pending {
+            if step.recoveryBase == nil, !step.depends.isEmpty {
+                step.recoveryBase = Dictionary(step.depends.compactMap { id in memory.base[id].map { (id, $0) } }, uniquingKeysWith: { first, _ in first })
+            }
+            draft.steps.append(step)
         }
         return draft
     }
