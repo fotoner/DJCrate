@@ -159,8 +159,8 @@ public enum DraftStampStore {
                 highest = max(highest, stamp.revision.value)
             } else if let stamps = try? decoder.decode([String: DraftStamp].self, from: data) {
                 highest = max(highest, stamps.values.map(\.revision.value).max() ?? 0)
-            } else if let stamps = try? decoder.decode([DraftStamp].self, from: data) {
-                highest = max(highest, stamps.map(\.revision.value).max() ?? 0)
+            } else if let entries = try? decoder.decode([PlaylistStampEntry].self, from: data) {
+                highest = max(highest, entries.map(\.stamp.revision.value).max() ?? 0)
             }
         }
         return highest

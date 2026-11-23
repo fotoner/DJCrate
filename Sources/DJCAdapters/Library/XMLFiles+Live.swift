@@ -70,7 +70,8 @@ extension DraftFiles {
         // 다른 djc가 잠깐 들고 있는 것은 기다린다. 앱의 쓰기는 길어 기다리지 않고 알린다
         files.lockPlaylist = { PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: places.playlist), wait: 2) }
         files.savePlaylistIfUnchanged = { expected, draft in
-            try StampedDrafts.savePlaylist(draft, url: places.playlist, origin: origin, expecting: expected)
+            do { return try StampedDrafts.savePlaylist(draft, url: places.playlist, origin: origin, expecting: expected) }
+            catch is DraftFileDamaged { throw DraftFilesUnreadable() }
         }
         files.origin = origin
         files.stamp = { DraftStampStore.stamp($0, home: home) }

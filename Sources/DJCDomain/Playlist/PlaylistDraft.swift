@@ -95,8 +95,13 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         var draft = self
         let needs = Self.needs(edit, in: before, rekordbox: rekordbox)
         for need in needs { draft.capture(need.id, children: need.children, from: rekordbox) }
-        if !draft.fold(edit, before: before, rekordbox: rekordbox) {
-            draft.steps.append(Step(edit: edit, depends: needs.map(\.id)))
+        switch draft.fold(edit, before: before, rekordbox: rekordbox) {
+        case .merged:
+            break
+        case let .separate(inheriting):
+            var step = Step(edit: edit, depends: needs.map(\.id))
+            step.id = inheriting
+            draft.steps.append(step)
         }
         draft.pruneBase()
         self = draft
@@ -135,31 +140,41 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         if children, base[id] != nil, base[id]?.childIDs == nil { base[id]?.childIDs = rekordbox.childIDs(of: id) }
     }
 
-    /// 앞 편집과 합칠 수 있으면 합치고 true
-    mutating func fold(_ edit: PlaylistEdit, before: PlaylistLayout, rekordbox: PlaylistLayout) -> Bool {
+    /// 편집을 쌓은 결과: 앞 단계에 합쳐졌거나(새 단계 없음), 새 단계로 붙는다. 지운 단계를 대신해 붙는 새 단계는 지운 단계의 식별자를 잇는다
+    /// (같은 대상의 마지막 편집만 쓰는 이름 바꾸기: 앞 출처가 새 단계 도장에 합쳐진다, R5)
+    enum Fold {
+        case merged
+        case separate(inheriting: UUID?)
+    }
+
+    /// 앞 편집과 합칠 수 있으면 합친다
+    mutating func fold(_ edit: PlaylistEdit, before: PlaylistLayout, rekordbox: PlaylistLayout) -> Fold {
         switch edit {
         case let .rename(ref, name):
             if case let .new(key) = ref, let index = createIndex(key), case let .create(_, _, isFolder, parent) = steps[index].edit {
                 steps[index].edit = .create(key: key, name: name, isFolder: isFolder, parent: parent)
-                return true
+                return .merged
             }
             // 이름은 마지막 것만 쓴다. rekordbox 이름으로 되돌리면 편집이 없다.
+            let replaced = steps.compactMap { step -> UUID? in
+                if case .rename(ref, _) = step.edit { step.id } else { nil }
+            }
             steps.removeAll { if case .rename(ref, _) = $0.edit { true } else { false } }
-            return rekordbox.item(ref.layoutID)?.name == name
+            return rekordbox.item(ref.layoutID)?.name == name ? .merged : .separate(inheriting: replaced.first)
         case let .delete(.new(key)):
             let subtree = Set(before.subtree(of: PlaylistRef.new(key).layoutID))
-            guard let start = createIndex(key), subtree.allSatisfy({ $0.hasPrefix("new:") }) else { return false }
+            guard let start = createIndex(key), subtree.allSatisfy({ $0.hasPrefix("new:") }) else { return .separate(inheriting: nil) }
             let outside = steps.filter { !subtree.contains($0.edit.playlist.layoutID) }
             // 다른 목록이 이 폴더를 거쳐 갔거나(만든 뒤 밖으로 옮김), 뒤에 부모 안 자리에 기대는 순서 바꾸기가 있으면 그대로 지운다.
             guard !outside.contains(where: { $0.edit.destination.map { subtree.contains($0.layoutID) } == true }),
                   !steps[start...].contains(where: { step in
                       if case let .reorder(ref, _) = step.edit { !subtree.contains(ref.layoutID) } else { false }
                   })
-            else { return false }
+            else { return .separate(inheriting: nil) }
             steps = outside
-            return true
+            return .merged
         default:
-            return false
+            return .separate(inheriting: nil)
         }
     }
 

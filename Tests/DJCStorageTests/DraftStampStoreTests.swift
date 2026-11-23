@@ -331,7 +331,9 @@ struct DraftStampStoreTests {
         #expect(first.count == 1 && first[0].origins == [.human])
         #expect(try first[0].contentHash == DraftContentHash(step: one.steps[0], in: one))
         // CLI가 한 단계를 더하면 앞 단계는 도장을 그대로 두고 새 단계만 CLI 도장을 받는다
-        let two = try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"]), .rename(playlist: .id("B"), name: "새")])
+        // (CLI는 파일에서 읽은 초안에 이어 쌓는다: 앞 단계는 식별자를 가진다)
+        var two = PlaylistDraftStore.load(url: places.playlist)
+        try two.append(.rename(playlist: .id("B"), name: "새"), rekordbox: Self.rekordbox)
         try StampedDrafts.savePlaylist(two, url: places.playlist, origin: .cli)
         let second = StampedDrafts.playlistStamps(home: folder.url)
         #expect(second.count == 2 && second[0] == first[0] && second[1].origins == [.cli] && second[1].revision > first[0].revision)
@@ -391,22 +393,43 @@ struct DraftStampStoreTests {
         #expect(PlaylistDraftStore.load(url: places.playlist).steps.count == 2)
     }
 
-    @Test func 식별자_없는_저장은_지금_파일의_단계와_내용_차례로_맞춘다() throws {
+    /// 원칙: 식별자 없는 저장은 지금 파일의 단계와 내용으로 맞춰 보지 않는다. 앱은 저장한 뒤 디스크에서 다시 읽어 식별자를 받아야 단계의 판이
+    /// 저장마다 바뀌지 않는다
+    @Test func 식별자_없는_저장은_새_단계로_받고_다시_읽은_초안은_판을_그대로_둔다() throws {
         let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
         let add = PlaylistEdit.addTracks(playlist: .id("A"), contentIDs: ["9"])
         let remove = PlaylistEdit.removeTracks(playlist: .id("A"), entries: [PlaylistEntry(trackNo: 1, contentID: "9")])
-        // 앱이 메모리에 든 채(식별자 없음) 저장을 거듭한다: 단계의 판이 저장마다 바뀌지 않는다
         var memory = try Self.playlist([add])
         try StampedDrafts.savePlaylist(memory, url: places.playlist, origin: .human)
         let first = StampedDrafts.playlistStamps(home: folder.url)
+        // 식별자를 받지 않은 메모리를 다시 저장하면 같은 내용이어도 새 단계다(옛 판을 붙이지 않는다)
         try memory.append(remove, rekordbox: Self.rekordbox)
         try StampedDrafts.savePlaylist(memory, url: places.playlist, origin: .human)
-        let second = StampedDrafts.playlistStamps(home: folder.url)
-        #expect(second.count == 2 && second[0] == first[0])
-        try memory.append(add, rekordbox: Self.rekordbox)
-        try StampedDrafts.savePlaylist(memory, url: places.playlist, origin: .human)
+        let blind = StampedDrafts.playlistStamps(home: folder.url)
+        #expect(blind.count == 2 && !blind.map(\.revision).contains(first[0].revision))
+        // 디스크에서 다시 읽어 식별자를 받은 초안을 이어 저장하면 판이 그대로다
+        var reread = try StampedDrafts.identifiedPlaylist(home: folder.url)
+        try reread.append(add, rekordbox: Self.rekordbox)
+        try StampedDrafts.savePlaylist(reread, url: places.playlist, origin: .human)
         let third = StampedDrafts.playlistStamps(home: folder.url)
-        #expect(third.count == 3 && third[0] == first[0] && third[1] == second[1] && Set(third.map(\.revision)).count == 3)
+        #expect(third.count == 3 && third[0] == blind[0] && third[1] == blind[1] && Set(third.map(\.revision)).count == 3)
+    }
+
+    /// 읽을 때 식별자를 채운다: 식별자 없는 옛 파일을 앱이 받으면 단계가 식별자와 모름 도장을 가진다(저장이 새 단계로 보지 않는다)
+    @Test func 식별자_없는_옛_파일을_읽으면_식별자를_채워_파일에_적는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try PlaylistDraftStore.save(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])]), url: places.playlist)
+        #expect(PlaylistDraftStore.load(url: places.playlist).stepIDs == [nil])
+        let identified = try StampedDrafts.identifiedPlaylist(home: folder.url)
+        #expect(identified.stepIDs.allSatisfy { $0 != nil } && PlaylistDraftStore.load(url: places.playlist).stepIDs == identified.stepIDs)
+        #expect(StampedDrafts.playlistStamps(home: folder.url).map(\.origins) == [[.unknown]])
+        // 식별자가 이미 있으면 파일을 다시 쓰지 않는다
+        let stamp = try FileManager.default.attributesOfItem(atPath: places.playlist.path)[.modificationDate] as? Date
+        #expect(try StampedDrafts.identifiedPlaylist(home: folder.url).stepIDs == identified.stepIDs)
+        #expect(try FileManager.default.attributesOfItem(atPath: places.playlist.path)[.modificationDate] as? Date == stamp)
+        // 읽지 못하는 파일은 던진다(빈 초안으로 받지 않는다)
+        try Data("깨짐".utf8).write(to: places.playlist)
+        #expect(throws: (any Error).self) { try StampedDrafts.identifiedPlaylist(home: folder.url) }
     }
 
     /// S6(저장소): 원본을 견주어 저장한다. 그 사이 정리가 쓴 단계를 뺐으면 저장하지 않아 쓴 단계가 되살아나지 않는다
@@ -434,8 +457,10 @@ struct DraftStampStoreTests {
         try StampedDrafts.savePlaylist(try Self.playlist(edits), url: places.playlist, origin: .human)
         let stamps = StampedDrafts.playlistStamps(home: folder.url)
         let written = stamps.map { (revision: $0.revision, contentHash: $0.contentHash) }
-        // 둘째 단계만 바깥에서 고쳤다
-        try PlaylistDraftStore.save(try Self.playlist([edits[0], .rename(playlist: .id("B"), name: "y")]), url: places.playlist)
+        // 둘째 단계만 바깥에서 고쳤다(식별자를 아는 편집기라 식별자는 그대로다)
+        var outside = try Self.playlist([edits[0], .rename(playlist: .id("B"), name: "y")])
+        outside.setStepIDs(PlaylistDraftStore.load(url: places.playlist).stepIDs)
+        try PlaylistDraftStore.save(outside, url: places.playlist)
         let stray = DraftRevision(stamps.map(\.revision.value).max()! + 50)
         let result = try StampedDrafts.removeWrittenSteps(written + [(stray, stamps[0].contentHash)], newPlaylistIDs: [:],
                                                           copyFolder: copyFolder, home: folder.url)
@@ -472,5 +497,16 @@ struct DraftStampStoreTests {
         #expect(!FileManager.default.fileExists(atPath: places.playlist.path))
         // 읽는 쪽은 잠금 없이 읽는다
         #expect(StampedDrafts.playlistStamps(home: folder.url).isEmpty)
+    }
+
+    /// S7: 판 번호 파일을 잃었을 때 최고 판을 세는 곳이 재생 목록 단계 도장(`[PlaylistStampEntry]`)도 읽는다
+    @Test func 판_번호_파일을_잃어도_재생_목록_단계의_판_뒤로_잇는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.savePlaylist(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"]), .rename(playlist: .id("B"), name: "x")]),
+                                       url: places.playlist, origin: .human)
+        let highest = try #require(StampedDrafts.playlistStamps(home: folder.url).map(\.revision).max())
+        try FileManager.default.removeItem(at: DraftStampStore.folder(home: folder.url).appending(path: "revision"))
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        #expect(try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url)).revision > highest)
     }
 }

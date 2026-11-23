@@ -73,8 +73,9 @@ extension DraftStore {
             artworkEdit: { try ArtworkDraftStore.load(trackUUID: $0, directory: places.artwork) },
             saveArtwork: { try StampedDrafts.saveArtwork($0, directory: places.artwork, origin: origin) },
             removeArtwork: { try StampedDrafts.removeArtwork(trackUUID: $0, directory: places.artwork) },
-            playlistDraft: { PlaylistDraftStore.load(url: places.playlist) },
-            readPlaylistDraft: { try PlaylistDraftStore.read(url: places.playlist) },
+            // 읽을 때 단계 식별자를 채운다: 앱이 메모리에 받는 초안의 단계가 식별자를 가져야 저장이 새 단계로 보지 않는다(R5·R22)
+            playlistDraft: { (try? StampedDrafts.identifiedPlaylist(home: home)) ?? PlaylistDraftStore.load(url: places.playlist) },
+            readPlaylistDraft: { try StampedDrafts.identifiedPlaylist(home: home) },
             savePlaylistDraft: { try StampedDrafts.savePlaylist($0, url: places.playlist, origin: origin) },
             mergeDrafts: { DuplicateMergeDraftStore.load(url: places.merge) },
             saveMergeDrafts: { try StampedDrafts.saveMerges($0, url: places.merge, origin: origin) },

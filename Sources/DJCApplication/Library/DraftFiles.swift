@@ -77,11 +77,18 @@ extension DraftFiles {
     }
 }
 
+/// 재생 목록 초안 파일을 읽지 못했다(형식 오류·손상). 잠금·저장 오류와 구분한다: CLI는 이것을 `invalid_draft`로, 잠금·저장 오류를 `draft_io_failed`로 알린다
+public struct DraftFilesUnreadable: Error, Sendable {
+    public init() {}
+}
+
 extension DraftFiles {
     /// 지금 파일의 재생 목록 초안이 `expected`와 같을 때만 저장한다. 같은 초안 잠금 안에서 하는 구현이 있으면 그것을 쓴다(`savePlaylistIfUnchanged`)
     public func savePlaylist(_ draft: PlaylistDraft, ifCurrentIs expected: PlaylistDraft) throws -> Bool {
         if let savePlaylistIfUnchanged { return try savePlaylistIfUnchanged(expected, draft) }
-        guard try readPlaylist() == expected else { return false }
+        let current: PlaylistDraft
+        do { current = try readPlaylist() } catch { throw DraftFilesUnreadable() }
+        guard current == expected else { return false }
         try savePlaylist(draft)
         return true
     }

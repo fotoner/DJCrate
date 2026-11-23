@@ -99,6 +99,8 @@ struct DraftFilesOriginTests {
         var draft = PlaylistDraft()
         try draft.append(.addTracks(playlist: .id("A"), contentIDs: ["9"]), rekordbox: rekordbox)
         try memory.store(origin: .human).savePlaylistDraft(draft)
+        // CLI는 저장된 초안(앞 단계는 식별자를 가진다)에 이어 쌓는다
+        draft = memory.store(origin: .cli).playlistDraft()
         try draft.append(.rename(playlist: .id("B"), name: "새"), rekordbox: rekordbox)
         try memory.store(origin: .cli).savePlaylistDraft(draft)
         #expect(memory.store.playlistSuggestions() == [nil, .notHuman])

@@ -174,7 +174,10 @@ public struct EditDraftFiles: Sendable {
             if batch.skippedCount > 0, !batch.hasChanges { throw Self.blocked(batch) }
             guard !dryRun, batch.draft != base else { return batch }
             // 원본 재확인과 저장은 한 번에 한다(같은 초안 잠금 안에서): 그 사이에 앱의 쓴 뒤 정리가 끼어들어 쓴 단계를 되살리지 않게 한다
-            guard try files.savePlaylist(batch.draft, ifCurrentIs: base) else {
+            // 잠금 안에서 읽지 못한 파일은 `invalid_draft`, 잠금·저장 오류는 `draft_io_failed`다
+            let saved: Bool
+            do { saved = try files.savePlaylist(batch.draft, ifCurrentIs: base) } catch is DraftFilesUnreadable { throw Self.corrupt() }
+            guard saved else {
                 throw ReadFailure("draft_changed", String(ui: "편집을 계획하는 동안 재생 목록 편집이 바뀌었습니다. 같은 명령을 다시 실행하세요"))
             }
             return batch

@@ -105,18 +105,18 @@ struct PlaylistStepStampingTests {
         #expect(result.entries[1].stamp.origins == [.unknown] && result.entries[2].stamp.origins == [.unknown])
     }
 
-    @Test func 식별자가_없고_수가_같으면_같은_자리의_도장을_잇는다() throws {
+    /// 원칙: 단계의 동일성을 확인할 수 없으면 옛 판을 어떤 단계에도 붙이지 않는다. 단계 수가 같아도 같은 자리의 도장을 잇지 않는다
+    @Test func 식별자가_없으면_단계_수가_같아도_같은_자리의_도장을_잇지_않는다() throws {
         let counter = Counter()
         let before = try Self.draft([Self.add, .rename(playlist: .id("B"), name: "x")])
         let ids = [counter.newID(), counter.newID()]
         let entries = [PlaylistStampEntry(id: ids[0], stamp: Self.stamp(1, [.human], before, 0)),
                        PlaylistStampEntry(id: ids[1], stamp: Self.stamp(2, [.human], before, 1))]
-        // 식별자를 모르는 쪽이 둘째 단계의 내용만 고쳐 다시 썼다
-        let outside = try Self.draft([Self.add, .rename(playlist: .id("B"), name: "y")])
-        let result = try PlaylistStepStamping.adopt(outside, entries: entries, newID: counter.newID, newRevision: counter.newRevision)
-        #expect(result.draft.stepIDs == ids && result.entries == entries)
-        // 도장은 그대로라 내용 해시가 어긋난다(제안·사본 대상)
-        #expect(PlaylistStepStamping.hash(result.draft.steps[1], in: result.draft) != result.entries[1].stamp.contentHash)
+        // 식별자를 모르는 쪽이 [쓴 A, 막힌 B]를 [막힌 B, 새 C]로 다시 썼다
+        let rewritten = try Self.draft([.rename(playlist: .id("B"), name: "x"), .addTracks(playlist: .id("B"), contentIDs: ["7"])])
+        let result = try PlaylistStepStamping.adopt(rewritten, entries: entries, newID: counter.newID, newRevision: counter.newRevision)
+        #expect(result.entries.allSatisfy { $0.stamp.origins == [.unknown] && $0.stamp.revision.value > 100 })
+        #expect(Set(result.draft.stepIDs.compactMap { $0 }).isDisjoint(with: ids))
     }
 
     @Test func 식별자가_없고_수가_다르면_해시로_잇지_않고_모두_모름으로_받는다() throws {
@@ -131,21 +131,58 @@ struct PlaylistStepStampingTests {
 
     // MARK: 저장(save)
 
-    @Test func 같은_내용의_단계가_둘이어도_식별자와_판이_섞이지_않는다() throws {
+    @Test func 같은_내용의_단계가_둘이어도_식별자가_판을_가른다() throws {
         let counter = Counter()
         var disk = try Self.draft([Self.add, Self.remove, Self.add])
         let ids = [counter.newID(), counter.newID(), counter.newID()]
         disk.setStepIDs(ids)
         let entries = (0..<3).map { PlaylistStampEntry(id: ids[$0], stamp: Self.stamp(UInt64($0 + 1), [.human], disk, $0)) }
-        // 정리가 첫 단계를 뺀 뒤 앱이 식별자 없는 메모리 초안(옛 세 단계)을 저장한다: 마지막 단계가 첫 단계의 식별자를 받지 않는다
+        // 정리가 첫 단계를 뺀 파일을 식별자를 받은 앱이 그대로 저장한다: 남은 두 단계는 자기 도장을 쓴다
         var remaining = disk
         remaining.removeSteps(at: [0])
-        let stale = try Self.draft([Self.add, Self.remove, Self.add])
-        let result = try PlaylistStepStamping.save(stale, previous: remaining, entries: [entries[1], entries[2]], origin: .human,
+        let result = try PlaylistStepStamping.save(remaining, previous: remaining, entries: [entries[1], entries[2]], origin: .human,
                                                    newID: counter.newID, newRevision: counter.newRevision)
-        // 맞춘 둘은 자기 식별자와 도장을 쓰고, 맞지 않는 첫 단계가 새 식별자를 받는다
-        #expect(Array(result.draft.stepIDs.suffix(2)) == [ids[1], ids[2]] && !ids.contains(result.draft.stepIDs[0]!))
-        #expect(Array(result.entries.suffix(2)) == [entries[1], entries[2]])
+        #expect(result.draft.stepIDs == [ids[1], ids[2]] && result.entries == [entries[1], entries[2]])
+    }
+
+    /// 원칙: 식별자 없는 메모리 초안의 단계는 지금 파일의 단계와 맞춰 보지 않는다. 내용이 같아도 새 단계(이번 출처 하나)다
+    @Test func 식별자_없는_단계는_지금_파일의_단계와_맞춰_보지_않고_새_단계로_받는다() throws {
+        let counter = Counter()
+        var disk = try Self.draft([Self.add, Self.remove])
+        let ids = [counter.newID(), counter.newID()]
+        disk.setStepIDs(ids)
+        let entries = (0..<2).map { PlaylistStampEntry(id: ids[$0], stamp: Self.stamp(UInt64($0 + 1), [.cli], disk, $0)) }
+        let memory = try Self.draft([Self.add, Self.remove, Self.add])
+        let result = try PlaylistStepStamping.save(memory, previous: disk, entries: entries, origin: .human,
+                                                   newID: counter.newID, newRevision: counter.newRevision)
+        #expect(Set(result.draft.stepIDs.compactMap { $0 }).isDisjoint(with: ids) && result.draft.stepIDs.compactMap { $0 }.count == 3)
+        #expect(result.entries.allSatisfy { $0.stamp.origins == [.human] && $0.stamp.revision.value > 100 })
+    }
+
+    /// 식별자가 있는데 지금 파일에 없는 단계(정리로 빠진 단계를 낡은 메모리가 되살림)는 새 판에 모름을 더한다
+    @Test func 정리로_빠진_단계를_낡은_메모리가_되살리면_모름을_더한다() throws {
+        let counter = Counter()
+        var memory = try Self.draft([Self.add])
+        let id = counter.newID()
+        memory.setStepIDs([id])
+        let result = try PlaylistStepStamping.save(memory, previous: PlaylistDraft(), entries: [], origin: .human,
+                                                   newID: counter.newID, newRevision: counter.newRevision)
+        #expect(result.draft.stepIDs == [id] && result.entries[0].stamp.origins == [.human, .unknown])
+    }
+
+    /// S3: 지금 파일을 읽지 못했으면(손상) 빈 파일과 다르다: 기존 도장의 출처를 잇고 모름을 더한다. 새 출처 하나만 받지 않는다
+    @Test func 지금_파일을_읽지_못했으면_기존_출처를_잇고_모름을_더한다() throws {
+        let counter = Counter()
+        var memory = try Self.draft([Self.add])
+        let id = counter.newID()
+        memory.setStepIDs([id])
+        try memory.append(.rename(playlist: .id("B"), name: "x"), rekordbox: Self.rekordbox)
+        let entries = [PlaylistStampEntry(id: id, stamp: Self.stamp(1, [.cli], memory, 0))]
+        let result = try PlaylistStepStamping.save(memory, previous: PlaylistDraft(), entries: entries, origin: .human, previousUnreadable: true,
+                                                   newID: counter.newID, newRevision: counter.newRevision)
+        #expect(result.entries[0].stamp.origins == [.cli, .human, .unknown] && result.entries[0].stamp.revision.value > 100)
+        // 식별자가 없던 새 단계도 모름을 더한다
+        #expect(result.entries[1].stamp.origins == [.human, .unknown])
     }
 
     @Test func 합쳐져_내용이_바뀐_단계는_새_판과_합친_출처를_받는다() throws {
@@ -163,32 +200,6 @@ struct PlaylistStepStampingTests {
         #expect(result.entries.count == 1 && result.entries[0].id == id && result.entries[0].stamp.revision.value > 1)
         #expect(result.entries[0].stamp.origins == [.cli, .human])
         #expect(result.entries[0].stamp.contentHash == PlaylistStepStamping.hash(result.draft.steps[0], in: result.draft))
-    }
-
-    /// 식별자 없는 메모리 초안(옛 파일을 앱이 읽은 채)에서 합쳐진 단계는 맞춘 단계 사이 빈틈의 1:1 짝으로 잇는다
-    @Test func 식별자_없는_메모리의_합쳐진_단계는_빈틈_짝으로_잇고_모름을_유지한다() throws {
-        let counter = Counter()
-        var created = PlaylistDraft()
-        try created.append(.create(key: "k", name: "새 목록", isFolder: false, parent: .root), rekordbox: Self.rekordbox)
-        // 도장 없는 옛 파일: 지금 파일은 식별자가 없다
-        var edited = created
-        try edited.append(.rename(playlist: .new("k"), name: "고침"), rekordbox: Self.rekordbox)
-        let result = try PlaylistStepStamping.save(edited, previous: created, entries: [], origin: .human,
-                                                   newID: counter.newID, newRevision: counter.newRevision)
-        #expect(result.entries.count == 1 && result.entries[0].stamp.origins == [.unknown, .human])
-    }
-
-    @Test func 식별자_없는_메모리_저장은_지금_파일의_단계와_내용_차례로_맞춘다() throws {
-        let counter = Counter()
-        var disk = try Self.draft([Self.add, Self.remove])
-        let ids = [counter.newID(), counter.newID()]
-        disk.setStepIDs(ids)
-        let entries = (0..<2).map { PlaylistStampEntry(id: ids[$0], stamp: Self.stamp(UInt64($0 + 1), [.human], disk, $0)) }
-        let memory = try Self.draft([Self.add, Self.remove, Self.add])
-        let result = try PlaylistStepStamping.save(memory, previous: disk, entries: entries, origin: .human,
-                                                   newID: counter.newID, newRevision: counter.newRevision)
-        #expect(Array(result.draft.stepIDs.prefix(2)) == ids && Array(result.entries.prefix(2)) == entries)
-        #expect(result.entries[2].stamp.origins == [.human] && !ids.contains(result.entries[2].id))
     }
 
     @Test func 바깥에서_고친_단계는_덮어쓰기_전에_해시가_어긋나_모름이_섞인다() throws {
@@ -220,10 +231,23 @@ struct PlaylistStepStampingTests {
         #expect(result.entries == entries)
     }
 
-    @Test func 최장_공통_부분_수열은_차례를_지킨다() throws {
-        func hashes(_ names: [String]) throws -> [DraftContentHash] { try names.map { try DraftContentHash(of: $0) } }
-        let pairs = PlaylistStepStamping.commonSubsequence(try hashes(["rm", "add"]), try hashes(["add", "rm", "add"]))
-        #expect(pairs.map(\.0) == [0, 1] && pairs.map(\.1) == [1, 2])
-        #expect(PlaylistStepStamping.commonSubsequence([], try hashes(["a"])).isEmpty)
+    // MARK: 식별자 잇기(S2)
+
+    /// 같은 대상의 마지막 편집만 쓰는 이름 바꾸기는 지운 단계의 식별자를 새 단계에 잇는다
+    @Test func 이름을_다시_바꾸면_지운_단계의_식별자를_새_단계가_잇는다() throws {
+        var draft = try Self.draft([.rename(playlist: .id("A"), name: "x"), Self.add])
+        let ids = [UUID(), UUID()]
+        draft.setStepIDs(ids)
+        try draft.append(.rename(playlist: .id("A"), name: "y"), rekordbox: Self.rekordbox)
+        #expect(draft.steps.map(\.edit) == [Self.add, .rename(playlist: .id("A"), name: "y")])
+        #expect(draft.stepIDs == [ids[1], ids[0]])
+        // 새 단계가 하나 더 붙는 편집은 식별자가 없다
+        try draft.append(.rename(playlist: .id("B"), name: "z"), rekordbox: Self.rekordbox)
+        #expect(draft.stepIDs.last! == nil)
+        // rekordbox 이름으로 되돌리면 편집이 없다: 단계가 사라지고 식별자도 함께 사라진다
+        var back = try Self.draft([.rename(playlist: .id("A"), name: "x")])
+        back.setStepIDs([ids[0]])
+        try back.append(.rename(playlist: .id("A"), name: "가"), rekordbox: Self.rekordbox)
+        #expect(back.steps.isEmpty)
     }
 }

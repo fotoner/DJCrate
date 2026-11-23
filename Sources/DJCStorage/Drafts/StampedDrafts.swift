@@ -84,16 +84,21 @@ public enum StampedDrafts {
                     write: { try TagDraftStore.remove(trackUUID: trackUUID, directory: directory) }, hash: { nil })
     }
 
-    /// 게인 초안(nil이면 지우기). 모든 곡이 한 파일이라 곡별 도장은 `gain.json` 사전에 적는다
+    /// 게인 초안(nil이면 지우기). 모든 곡이 한 파일이라 곡별 도장은 `gain.json` 사전에 적는다.
+    /// 지금 파일을 읽지 못하면(손상) 빈 파일과 다르다: 그 곡의 기존 도장의 출처를 잇고 모름을 더한다
     public static func saveGain(_ gain: Double?, trackUUID: String, url: URL, origin: DraftOrigin) throws {
         let home = url.deletingLastPathComponent()
         try DraftStampStore.withLock(home: home) {
             let key = DraftKey(.gain, trackUUID)
-            let current = (try? GainDraftStore.read(url: url))?[trackUUID]
-            let outside = current != nil ? DraftStampStore.read(key, home: home).map { hash(current) != $0.contentHash } ?? false : false
+            let readable = try? GainDraftStore.read(url: url)
+            let unreadable = readable == nil
+            let current = readable?[trackUUID]
+            let old = DraftStampStore.read(key, home: home)
+            let existed = current != nil || (unreadable && old != nil)
+            let outside = unreadable || (current != nil && old.map { hash(current) != $0.contentHash } ?? false)
             try GainDraftStore.save(gain, trackUUID: trackUUID, url: url)
             let saved = (try? GainDraftStore.read(url: url))?[trackUUID]
-            try DraftStampStore.restamp(key, home: home, existed: current != nil, origin: origin, hash: hash(saved), outside: outside)
+            try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: hash(saved), outside: outside)
         }
     }
 
@@ -116,7 +121,14 @@ public enum StampedDrafts {
     public static func saveMerges(_ drafts: [DuplicateMergeDraft], url: URL, origin: DraftOrigin) throws {
         let home = url.deletingLastPathComponent()
         try DraftStampStore.withLock(home: home) {
-            let existing = Dictionary(DuplicateMergeDraftStore.load(url: url).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            // 지금 파일을 읽지 못하면(손상) 빈 파일과 다르다: 기존 도장의 출처를 잇고 모름을 더한다
+            var existing: [String: DuplicateMergeDraft] = [:]
+            var unreadable = false
+            do {
+                existing = Dictionary((try DamagedDrafts.read([DuplicateMergeDraft].self, at: url) ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            } catch {
+                unreadable = true
+            }
             try DuplicateMergeDraftStore.save(drafts, url: url)
             let saved = DuplicateMergeDraftStore.load(url: url)
             let stampURL = DraftStampStore.folder(home: home).appending(path: "\(DraftKey.Kind.merge.rawValue).json")
@@ -126,13 +138,13 @@ public enum StampedDrafts {
             for draft in saved {
                 guard let hash = try? DraftContentHash(of: draft) else { continue }
                 // 덮어쓰기 전 파일의 초안 해시가 도장의 해시와 다르면(바깥에서 고쳤다) 내용이 같아도 새 도장이다
-                let outside = existing[draft.id].flatMap { before in old[draft.id].map { self.hash(before) != $0.contentHash } } ?? false
+                let outside = unreadable || (existing[draft.id].flatMap { before in old[draft.id].map { self.hash(before) != $0.contentHash } } ?? false)
                 if let stamp = old[draft.id], stamp.contentHash == hash, !outside { stamps[draft.id] = stamp } else { changed.append((draft, hash, outside)) }
             }
             let revisions = try DraftStampStore.nextRevisions(changed.count, home: home)
             for (item, revision) in zip(changed, revisions) {
                 var origins: Set<DraftOrigin> = [origin]
-                if existing[item.draft.id] != nil { origins.formUnion(old[item.draft.id]?.origins ?? [.unknown]) }
+                if existing[item.draft.id] != nil || (unreadable && old[item.draft.id] != nil) { origins.formUnion(old[item.draft.id]?.origins ?? [.unknown]) }
                 if item.outside { origins.insert(.unknown) }
                 stamps[item.draft.id] = DraftStamp(revision: revision, origins: origins, contentHash: item.hash)
             }
@@ -190,6 +202,16 @@ public enum StampedDrafts {
         return (try? DraftStampStore.withLock(home: home) { try adoptedPlaylist(home: home).entries.map(\.stamp) }) ?? []
     }
 
+    /// 재생 목록 초안을 식별자를 채워 읽는다(앱이 메모리에 받을 때). 식별자가 이미 다 있으면 잠그지 않는다. 없는 단계는 새 식별자와 모름 도장을
+    /// 받고 초안 파일·사이드카에 적는다(식별자 없는 메모리 초안을 저장하면 그 단계가 새 단계로 보이기 때문이다). 식별자를 적지 못하면
+    /// (잠금·저장 오류) 읽은 그대로 돌려준다. 파일을 읽지 못하면 던진다
+    public static func identifiedPlaylist(home: URL) throws -> PlaylistDraft {
+        let draft = try PlaylistDraftStore.read(url: DraftLocations(home: home).playlist)
+        let ids = draft.stepIDs
+        if ids.allSatisfy({ $0 != nil }), Set(ids.compactMap { $0 }).count == ids.count { return draft }
+        return (try? DraftStampStore.withLock(home: home) { try adoptedPlaylist(home: home).draft }) ?? draft
+    }
+
     /// 재생 목록 초안을 통째로 저장한다: 단계 식별자를 맞추고(`PlaylistStepStamping.save`) 도장을 갱신한다. 초안 잠금 안에서 한다.
     /// - Parameter expecting: 주면 지금 파일의 초안이 이것과 같을 때만 저장한다(CLI가 계획한 원본의 재확인과 저장을 한 잠금에서 한다).
     ///   다르면 저장하지 않고 false
@@ -197,16 +219,22 @@ public enum StampedDrafts {
     public static func savePlaylist(_ draft: PlaylistDraft, url: URL, origin: DraftOrigin, expecting: PlaylistDraft? = nil) throws -> Bool {
         let home = url.deletingLastPathComponent()
         return try DraftStampStore.withLock(home: home) {
-            // 저장만 하면 읽지 못하는 파일은 저장소가 옮겨 보관하고 새로 쓴다. 원본을 견주면 읽지 못할 때 던진다
-            let current: PlaylistDraft
+            // 저장만 하면 읽지 못하는 파일은 저장소가 옮겨 보관하고 새로 쓴다. 이때 빈 파일과 다르다(`previousUnreadable`): 기존 도장의 출처를 잇고
+            // 모름을 더한다. 원본을 견주면 읽지 못할 때 던진다
+            var current = PlaylistDraft()
+            var unreadable = false
             if let expecting {
                 current = try PlaylistDraftStore.read(url: url)
-                if current != expecting { return false }
+                // 단계 식별자도 견준다: 같은 내용으로 다시 만든 단계는 다른 단계다
+                if current != expecting || current.stepIDs != expecting.stepIDs { return false }
+            } else if let read = try? PlaylistDraftStore.read(url: url) {
+                current = read
             } else {
-                current = (try? PlaylistDraftStore.read(url: url)) ?? PlaylistDraft()
+                unreadable = true
             }
             let result = try PlaylistStepStamping.save(draft, previous: current, entries: readPlaylistEntries(home: home), origin: origin,
-                                                       newID: { UUID() }, newRevision: { try DraftStampStore.nextRevisions(1, home: home)[0] })
+                                                       previousUnreadable: unreadable, newID: { UUID() },
+                                                       newRevision: { try DraftStampStore.nextRevisions(1, home: home)[0] })
             try PlaylistDraftStore.save(result.draft, url: url)
             // 도장의 해시는 파일에서 다시 읽은 단계의 해시다(쓰기 묶음이 읽어 넣는 값과 같다)
             let saved = try PlaylistDraftStore.read(url: url)
