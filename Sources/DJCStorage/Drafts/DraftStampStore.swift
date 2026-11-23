@@ -19,14 +19,16 @@ public enum DraftStampStore {
 
     /// 초안 잠금 안에서 일한다: 판 번호 받기, 도장 쓰기, 판 비교와 삭제가 모두 이 안에서 한다. flock이라 같은 프로세스 안에서도
     /// 따로 연 잠금끼리 막고, 프로세스가 죽으면 커널이 푼다. 재진입할 수 없다(안에서 다시 부르지 않는다).
-    /// 잠금 파일을 열지 못하면 잡은 것으로 본다(초안 저장이 같은 이유로 실패해 알린다)
-    public static func withLock<T>(home: URL, _ body: () throws -> T) rethrows -> T {
+    /// 잠금 파일을 열거나 잡지 못하면 `body`를 하지 않고 던진다: 잠금 없이 쓰면 판 번호가 겹치고 정리가 다른 프로세스의 저장과 섞인다.
+    /// 앱은 지금의 저장 실패로 알리고 CLI는 초안 입출력 실패로 알린다
+    public static func withLock<T>(home: URL, _ body: () throws -> T) throws -> T {
         try? FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         let descriptor = open(lockURL(home: home).path, O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0o644)
-        if descriptor >= 0 {
-            while flock(descriptor, LOCK_EX) != 0, errno == EINTR {}
+        guard descriptor >= 0 else { throw CocoaError(.fileLocking) }
+        defer { close(descriptor) }
+        while flock(descriptor, LOCK_EX) != 0 {
+            guard errno == EINTR else { throw CocoaError(.fileLocking) }
         }
-        defer { if descriptor >= 0 { close(descriptor) } }
         return try body()
     }
 
@@ -118,7 +120,8 @@ public enum DraftStampStore {
 
     /// 초안 하나를 저장한 뒤 새 판으로 도장을 적는다. 출처는 포트의 출처에 앞 도장의 출처를 모은다. 저장 전에 파일이 있었는데
     /// 도장이 없으면 업데이트 전부터 있던 초안이라 출처를 모름으로 모은다. `hash`가 nil이면 초안이 없어진 것이라 도장도 지운다
-    static func restamp(_ key: DraftKey, home: URL, existed: Bool, origin: DraftOrigin, hash: DraftContentHash?) throws {
+    /// `outside`: 덮어쓰기 전 파일 내용이 도장의 해시와 달랐다(바깥에서 고쳤다). 그 위에 쓴 초안이라 모름도 더한다
+    static func restamp(_ key: DraftKey, home: URL, existed: Bool, origin: DraftOrigin, hash: DraftContentHash?, outside: Bool = false) throws {
         guard isSafeName(key.id) || !perFile(key.kind) else { return }
         guard let hash else {
             try write(nil, for: key, home: home)
@@ -126,6 +129,7 @@ public enum DraftStampStore {
         }
         var origins: Set<DraftOrigin> = [origin]
         if existed { origins.formUnion(read(key, home: home)?.origins ?? [.unknown]) }
+        if outside { origins.insert(.unknown) }
         let revision = try nextRevisions(1, home: home)[0]
         try write(DraftStamp(revision: revision, origins: origins, contentHash: hash), for: key, home: home)
     }

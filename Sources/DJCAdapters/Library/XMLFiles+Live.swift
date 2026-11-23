@@ -69,6 +69,9 @@ extension DraftFiles {
             newCueID: { UUID() })
         // 다른 djc가 잠깐 들고 있는 것은 기다린다. 앱의 쓰기는 길어 기다리지 않고 알린다
         files.lockPlaylist = { PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: places.playlist), wait: 2) }
+        files.savePlaylistIfUnchanged = { expected, draft in
+            try StampedDrafts.savePlaylist(draft, url: places.playlist, origin: origin, expecting: expected)
+        }
         files.origin = origin
         files.stamp = { DraftStampStore.stamp($0, home: home) }
         files.originVariant = { live(home: home, origin: $0) }

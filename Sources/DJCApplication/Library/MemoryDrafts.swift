@@ -19,7 +19,8 @@ public final class MemoryDrafts: Sendable {
         var merges: [DuplicateMergeDraft] = []
         var revision: UInt64 = 0
         var stamps: [DraftKey: DraftStamp] = [:]
-        var playlistStamps: [DraftStamp] = []
+        /// 재생 목록 단계 도장 줄(실제 저장소의 사이드카와 같다: 단계 식별자별)
+        var playlistEntries: [PlaylistStampEntry] = []
         /// 마지막으로 준 판(저장소 전체에서 늘어난다)
         var lastDraftRevision: UInt64 = 0
         /// 남긴 재생 목록 단계 사본(사본 자리 → 사본)
@@ -41,6 +42,17 @@ public final class MemoryDrafts: Sendable {
             let stamp = newStamp(origins: old.origins.union([.unknown]), hash: currentHash(key) ?? old.contentHash)
             stamps[key] = stamp
             return stamp.revision
+        }
+
+        /// 재생 목록 초안의 단계 식별자·도장을 맞춘다(실제 저장소의 `PlaylistStepStamping.adopt`와 같은 규칙, 읽을 때와 정리 앞에서 한다)
+        mutating func adoptPlaylist() -> PlaylistStepStamping.Result? {
+            var next = lastDraftRevision
+            guard let result = try? PlaylistStepStamping.adopt(playlist, entries: playlistEntries, newID: { MemoryCueIDs.next() },
+                                                               newRevision: { next += 1; return DraftRevision(next) }) else { return nil }
+            lastDraftRevision = next
+            playlist = result.draft
+            playlistEntries = result.entries
+            return result
         }
 
         mutating func newStamp(origins: Set<DraftOrigin>, hash: DraftContentHash) -> DraftStamp {
@@ -86,7 +98,7 @@ public final class MemoryDrafts: Sendable {
     public func tag(_ uuid: String) -> TagDraft? { state.withLock { $0.tags[uuid] } }
     /// 초안의 도장(없으면 nil)
     public func stamp(_ key: DraftKey) -> DraftStamp? { state.withLock { $0.stamps[key] } }
-    public var playlistStamps: [DraftStamp] { state.withLock { $0.playlistStamps } }
+    public var playlistStamps: [DraftStamp] { state.withLock { $0.adoptPlaylist()?.entries.map(\.stamp) ?? [] } }
 
     public func save(_ draft: CueDraft, origin: DraftOrigin = .human) {
         state.withLock {
@@ -157,11 +169,13 @@ public final class MemoryDrafts: Sendable {
             for item in drafts where state.stamps[item.key]?.revision == item.revision {
                 marked[item.revision] = state.markSuggestion(item.key)
             }
-            for index in state.playlistStamps.indices where playlistSteps.contains(state.playlistStamps[index].revision) {
-                let old = state.playlistStamps[index]
-                let hash = Self.stepHash(state.playlist.steps[index], in: state.playlist)
-                state.playlistStamps[index] = state.newStamp(origins: old.origins.union([.unknown]), hash: hash)
-                marked[old.revision] = state.playlistStamps[index].revision
+            if !playlistSteps.isEmpty, let adopted = state.adoptPlaylist() {
+                for index in adopted.entries.indices where playlistSteps.contains(adopted.entries[index].stamp.revision) {
+                    let old = adopted.entries[index].stamp
+                    let hash = Self.stepHash(state.playlist.steps[index], in: state.playlist)
+                    state.playlistEntries[index].stamp = state.newStamp(origins: old.origins.union([.unknown]), hash: hash)
+                    marked[old.revision] = state.playlistEntries[index].stamp.revision
+                }
             }
             return marked
         }
@@ -172,30 +186,22 @@ public final class MemoryDrafts: Sendable {
         (try? DraftContentHash(step: step, in: draft)) ?? DraftContentHash(hex: "")
     }
 
-    /// 재생 목록 초안을 통째로 저장한다: 앞 도장 가운데 내용이 같은 단계의 도장을 차례로 이어 쓰고, 나머지 단계만 새 판을 받는다
+    /// 재생 목록 초안을 통째로 저장한다: 단계 식별자를 맞추고 도장을 갱신한다(실제 저장소와 같은 `PlaylistStepStamping.save`)
     private func savePlaylist(_ draft: PlaylistDraft, origin: DraftOrigin) {
         state.withLock { state in
-            var previous = state.playlistStamps
-            var stamps: [DraftStamp] = []
-            for step in draft.steps {
-                let hash = Self.stepHash(step, in: draft)
-                if let index = previous.firstIndex(where: { $0.contentHash == hash }) {
-                    stamps.append(previous.remove(at: index))
-                } else {
-                    stamps.append(state.newStamp(origins: [origin], hash: hash))
-                }
-            }
-            state.playlist = draft
-            state.playlistStamps = stamps
+            var next = state.lastDraftRevision
+            guard let result = try? PlaylistStepStamping.save(draft, previous: state.playlist, entries: state.playlistEntries, origin: origin,
+                                                              newID: { MemoryCueIDs.next() }, newRevision: { next += 1; return DraftRevision(next) }) else { return }
+            state.lastDraftRevision = next
+            state.playlist = result.draft
+            state.playlistEntries = result.entries
         }
     }
 
-    /// 바깥(다른 프로세스)이 재생 목록 초안 파일만 고친 것처럼 한다: 단계 수가 같으면 도장은 그대로 두고 내용만 바꾼다
+    /// 바깥(다른 프로세스)이 재생 목록 초안 파일만 고친 것처럼 한다: 도장은 그대로 두고 내용만 바꾼다. 바깥 도구는 단계 식별자를 모를 수 있어
+    /// 넘긴 초안의 식별자를 그대로 쓴다(없으면 파일에 식별자가 없는 것과 같다)
     public func editPlaylistOutside(_ draft: PlaylistDraft) {
-        state.withLock { state in
-            precondition(draft.steps.count == state.playlistStamps.count, "바깥 수정 흉내는 단계 수를 바꾸지 않는다")
-            state.playlist = draft
-        }
+        state.withLock { $0.playlist = draft }
     }
 
     /// 남긴 재생 목록 단계 사본(사본 자리 → 사본). 실제 구현은 백업 폴더의 파일이다
@@ -230,9 +236,10 @@ public final class MemoryDrafts: Sendable {
     public func removeWrittenSteps(_ cleanup: PlaylistStepCleanup) -> PlaylistStepRemoval {
         state.withLock { state in
             var result = PlaylistStepRemoval()
+            guard let adopted = state.adoptPlaylist() else { return result }
             var offsets: [Int] = []
             for written in cleanup.written {
-                guard let offset = state.playlistStamps.firstIndex(where: { $0.revision == written.revision }) else {
+                guard let offset = adopted.entries.firstIndex(where: { $0.stamp.revision == written.revision }) else {
                     result.notFound.insert(written.revision)
                     continue
                 }
@@ -261,7 +268,7 @@ public final class MemoryDrafts: Sendable {
             }
             let removing = Set(offsets)
             state.playlist.removeSteps(at: offsets.sorted())
-            state.playlistStamps = state.playlistStamps.enumerated().filter { !removing.contains($0.offset) }.map(\.element)
+            state.playlistEntries = state.playlistEntries.enumerated().filter { !removing.contains($0.offset) }.map(\.element)
             return result
         }
     }

@@ -173,10 +173,10 @@ public struct EditDraftFiles: Sendable {
                                                allOrNothing: allOrNothing, newKey: newKey)
             if batch.skippedCount > 0, !batch.hasChanges { throw Self.blocked(batch) }
             guard !dryRun, batch.draft != base else { return batch }
-            guard try existing({ try files.readPlaylist() }) == base else {
+            // 원본 재확인과 저장은 한 번에 한다(같은 초안 잠금 안에서): 그 사이에 앱의 쓴 뒤 정리가 끼어들어 쓴 단계를 되살리지 않게 한다
+            guard try files.savePlaylist(batch.draft, ifCurrentIs: base) else {
                 throw ReadFailure("draft_changed", String(ui: "편집을 계획하는 동안 재생 목록 편집이 바뀌었습니다. 같은 명령을 다시 실행하세요"))
             }
-            try files.savePlaylist(batch.draft)
             return batch
         }
     }

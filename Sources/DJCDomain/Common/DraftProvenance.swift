@@ -85,7 +85,10 @@ extension DraftContentHash {
         }
         let depends = Set(step.depends)
         let bases = step.recoveryBase ?? draft.base
-        try self.init(of: Content(step: step, base: bases.filter { depends.contains($0.key) }))
+        // 식별자(`Step.id`)는 내용이 아니다: 저장소가 식별자를 부여해도 해시는 그대로다
+        var content = step
+        content.id = nil
+        try self.init(of: Content(step: content, base: bases.filter { depends.contains($0.key) }))
     }
 }
 

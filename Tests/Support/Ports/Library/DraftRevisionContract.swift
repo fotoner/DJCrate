@@ -130,3 +130,67 @@ public func playlistStepRevisionContract(_ store: DraftStore, backups: URL, edit
                                                                  newPlaylistIDs: [:], backups: backups, backupFolder: backupFolder))
     #expect(rerun.notFound == [again[0].revision] && rerun.removed.isEmpty && store.playlistDraft().edits.count == 3)
 }
+
+/// 재생 목록 단계 식별자 계약(R5·R22, 리뷰 S1~S3): 도장은 단계에 저장한 식별자로 단계를 잇는다. 해시로 다시 붙이지 않는다.
+/// - 같은 내용의 단계가 둘이어도(넣기 → 빼기 → 다시 넣기) 초안 저장과 도장 갱신 사이에 멈춘 뒤 재시작 정리가 마지막 단계를 지우지 않는다
+/// - 기존 단계에 합쳐진 편집은 새 판을 받고 출처를 합친다
+/// - 바깥에서 고친 단계를 덮어쓰면 출처에 모름이 섞인다
+/// 가짜(`MemoryDrafts`)는 DJCApplicationTests가, 실제 구현은 DJCAdaptersTests가 같은 함수로 돌린다.
+/// - Parameters:
+///   - rawWrite: 도장을 갱신하지 않고 초안 파일만 쓴다(정리 도중 멈춤, 바깥 수정)
+///   - restart: 같은 저장소를 다시 연 새 포트(앱을 다시 켠 뒤)
+@MainActor
+public func playlistStepIdentityContract(human: DraftStore, cli: DraftStore, rawWrite: (PlaylistDraft) throws -> Void,
+                                         restart: () -> DraftStore, backups: URL) throws {
+    let rekordbox = PlaylistLayout([(PlaylistLayout.Item(id: "A", name: "가"), 1), (PlaylistLayout.Item(id: "B", name: "나"), 2)])
+    let add = PlaylistEdit.addTracks(playlist: .id("A"), contentIDs: ["9"])
+    let remove = PlaylistEdit.removeTracks(playlist: .id("A"), entries: [PlaylistEntry(trackNo: 1, contentID: "9")])
+    func draft(_ edits: [PlaylistEdit]) throws -> PlaylistDraft {
+        var draft = PlaylistDraft()
+        for edit in edits { try draft.append(edit, rekordbox: rekordbox) }
+        return draft
+    }
+
+    // S1: 같은 내용의 단계 둘 + 정리 도중 멈춤 + 재시작 정리
+    try human.savePlaylistDraft(try draft([add, remove, add]))
+    let stamps = human.playlistStamps()
+    #expect(stamps.count == 3 && Set(stamps.map(\.revision)).count == 3 && stamps[0].contentHash == stamps[2].contentHash)
+    let written = [WrittenPlaylistStep(revision: stamps[0].revision, contentHash: stamps[0].contentHash)]
+    var remaining = human.playlistDraft()
+    remaining.removeSteps(at: [0])
+    try rawWrite(remaining)
+    let restarted = restart()
+    let result = try restarted.removeWrittenSteps(PlaylistStepCleanup(written: written, newPlaylistIDs: [:], backups: backups, backupFolder: "b"))
+    #expect(result.removed.isEmpty && result.notFound == [written[0].revision])
+    #expect(restarted.playlistDraft().edits == [remove, add])
+    #expect(restarted.playlistStamps().map(\.revision) == [stamps[1].revision, stamps[2].revision])
+
+    // 처음부터 다시: 초안을 비운다
+    try rawWrite(PlaylistDraft())
+    #expect(restarted.playlistStamps().isEmpty)
+
+    // S2: CLI가 만든 새 목록의 이름을 앱에서 바꾸면(만들기 단계에 합쳐짐) 새 판과 합친 출처를 받는다
+    try cli.savePlaylistDraft(try draft([.create(key: "k", name: "새 목록", isFolder: false, parent: .root)]))
+    let created = human.playlistStamps()
+    #expect(created.count == 1 && created[0].origins == [.cli])
+    var loaded = human.playlistDraft()
+    try loaded.append(.rename(playlist: .new("k"), name: "고침"), rekordbox: rekordbox)
+    #expect(loaded.steps.count == 1)
+    try human.savePlaylistDraft(loaded)
+    let merged = human.playlistStamps()
+    #expect(merged.count == 1 && merged[0].revision > created[0].revision && merged[0].origins == [.cli, .human])
+    #expect(human.playlistSuggestions() == [.mixedOrigins])
+
+    // S3: 바깥에서 고친 단계(식별자는 그대로, 도장은 옛것)를 앱이 덮어쓰면 그 단계는 모름이 섞인다
+    try rawWrite(PlaylistDraft())
+    try human.savePlaylistDraft(try draft([add]))
+    var outside = try draft([.addTracks(playlist: .id("A"), contentIDs: ["7"])])
+    outside.setStepIDs(human.playlistDraft().stepIDs)
+    try rawWrite(outside)
+    var more = outside
+    try more.append(.rename(playlist: .id("B"), name: "새"), rekordbox: rekordbox)
+    try human.savePlaylistDraft(more)
+    let overwritten = human.playlistStamps()
+    #expect(overwritten.count == 2 && overwritten[0].origins == [.human, .unknown] && overwritten[1].origins == [.human])
+    #expect(human.playlistSuggestions() == [.unknownOrigin, nil])
+}

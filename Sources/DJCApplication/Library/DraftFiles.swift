@@ -15,6 +15,10 @@ public struct DraftFiles: Sendable {
     /// 재생 목록 초안 파일(없으면 빈 초안, 읽지 못하면 던진다: CLI `djc draft playlist`가 손상 파일을 덮지 않게)
     public var readPlaylist: @Sendable () throws -> PlaylistDraft
     public var savePlaylist: @Sendable (PlaylistDraft) throws -> Void
+    /// 지금 파일의 재생 목록 초안이 `expected`와 같을 때만 `draft`를 저장한다(CLI가 계획한 원본의 재확인과 저장을 한 번에). 다르면 저장하지 않고 false.
+    /// 실제 구현은 쓴 뒤 정리(판 지정 삭제)와 같은 초안 잠금 안에서 하므로 재확인과 저장 사이에 정리가 끼어들어 쓴 단계를 되살리지 못한다(R22).
+    /// nil이면(잠금이 없는 가짜) `savePlaylist(_:ifCurrentIs:)`가 `readPlaylist`로 읽어 견준 뒤 `savePlaylist`로 저장한다
+    public var savePlaylistIfUnchanged: (@Sendable (_ expected: PlaylistDraft, _ draft: PlaylistDraft) throws -> Bool)?
     /// 재생 목록 초안 파일 잠금(#260): 잡으면 푸는 함수, 앱이 rekordbox에 쓰는 중이거나 다른 실행이 들고 있으면 nil.
     /// 읽기·계획·저장을 이 잠금 안에서 한다. 잠금이 없는 구현은 늘 잡는다
     public var lockPlaylist: @Sendable () -> (@Sendable () -> Void)? = { {} }
@@ -70,5 +74,15 @@ extension DraftFiles {
         var copy = self
         copy.origin = origin
         return copy
+    }
+}
+
+extension DraftFiles {
+    /// 지금 파일의 재생 목록 초안이 `expected`와 같을 때만 저장한다. 같은 초안 잠금 안에서 하는 구현이 있으면 그것을 쓴다(`savePlaylistIfUnchanged`)
+    public func savePlaylist(_ draft: PlaylistDraft, ifCurrentIs expected: PlaylistDraft) throws -> Bool {
+        if let savePlaylistIfUnchanged { return try savePlaylistIfUnchanged(expected, draft) }
+        guard try readPlaylist() == expected else { return false }
+        try savePlaylist(draft)
+        return true
     }
 }

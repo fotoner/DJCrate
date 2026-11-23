@@ -103,4 +103,12 @@ struct DraftFilesOriginTests {
         try memory.store(origin: .cli).savePlaylistDraft(draft)
         #expect(memory.store.playlistSuggestions() == [nil, .notHuman])
     }
+
+    /// 재생 목록 단계 식별자 계약(S1~S3)을 가짜에 돌린다. 실제 저장소는 DJCAdaptersTests가 같은 함수로 돌린다
+    @Test func 재생_목록_단계_식별자_계약() throws {
+        let drafts = MemoryDrafts()
+        try playlistStepIdentityContract(human: drafts.store(origin: .human), cli: drafts.store(origin: .cli),
+                                         rawWrite: { drafts.editPlaylistOutside($0) }, restart: { drafts.store(origin: .human) },
+                                         backups: URL(filePath: "/backups"))
+    }
 }

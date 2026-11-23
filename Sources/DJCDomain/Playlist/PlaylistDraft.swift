@@ -40,10 +40,25 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         public var depends: [String]
         /// 선택해 다시 적용한 편집의 기준. 같은 목록에 기대는 미선택 편집의 기준과 분리한다.
         public var recoveryBase: [String: Base]?
+        /// 단계의 식별자(자동 저장 R5·R22). 한번 받으면 바뀌지 않는다: 편집이 합쳐져도(`fold`) 복사돼도 그대로다.
+        /// 초안 저장소가 저장할 때 부여하고 초안 파일에 적는다(핵심부는 ID를 만들지 않는다). 도장(출처·판)은 이 식별자로 단계를 잇는다.
+        /// 아직 저장하지 않은 단계와 옛 파일의 단계는 nil이고, 저장소가 저장하거나 읽을 때 새로 부여한다.
+        /// 같음과 해시는 식별자를 보지 않는다(편집 내용이 같으면 같은 단계다)
+        public var id: UUID?
 
         public init(edit: PlaylistEdit, depends: [String] = []) {
             self.edit = edit
             self.depends = depends
+        }
+
+        public static func == (lhs: Step, rhs: Step) -> Bool {
+            lhs.edit == rhs.edit && lhs.depends == rhs.depends && lhs.recoveryBase == rhs.recoveryBase
+        }
+
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(edit)
+            hasher.combine(depends)
+            hasher.combine(recoveryBase)
         }
     }
 
@@ -55,6 +70,15 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
 
     public var edits: [PlaylistEdit] { steps.map(\.edit) }
     public var isEmpty: Bool { steps.isEmpty }
+
+    /// 단계별 식별자(`Step.id`, 단계 차례)
+    public var stepIDs: [UUID?] { steps.map(\.id) }
+
+    /// 단계 식별자를 차례대로 적는다(초안 저장소가 부여한 값). 개수는 단계 수와 같아야 한다
+    public mutating func setStepIDs(_ ids: [UUID?]) {
+        precondition(ids.count == steps.count, "식별자 수가 단계 수와 다르다")
+        for index in steps.indices { steps[index].id = ids[index] }
+    }
 
     static var changedReason: String { String(ui: "편집을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 편집을 버리세요.") }
 

@@ -5,6 +5,7 @@ import DJCStorage
 import DJCTestKit
 import Foundation
 import PortTestKit
+import Synchronization
 import Testing
 
 /// 초안 출처·판·해시(R5·R22 저장소 몫)의 실제 구현: 같은 계약 함수(PortTestKit)를 가짜(`MemoryDrafts`·`MemoryDraftFiles`)와 실제 저장소에 돌리고,
@@ -55,6 +56,15 @@ struct DraftStampLiveTests {
             }
         },
                                          readCopy: { try JSONDecoder().decode(PlaylistStepCopy.self, from: Data(contentsOf: $0)) })
+    }
+
+    @Test func 재생_목록_단계_식별자_계약() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let human = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        try playlistStepIdentityContract(human: human, cli: human.with(origin: .cli),
+                                         rawWrite: { try PlaylistDraftStore.save($0, url: places.playlist) },
+                                         restart: { DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human) },
+                                         backups: folder.url.appending(path: "backups"))
     }
 
     @Test func 곡별_초안_파일_도장_계약() throws {
@@ -322,5 +332,213 @@ struct DraftStampLiveTests {
         try cli.removeCue("a")
         try cli.removeTag("a")
         #expect(app.stamp(DraftKey(.cue, "a")) == nil && app.stamp(DraftKey(.tag, "a")) == nil)
+    }
+
+    // MARK: 리뷰 1라운드(S1~S5)
+
+    /// S1: 단계의 판은 해시가 아니라 단계에 저장한 식별자로 잇는다. 같은 내용의 단계가 둘이어도(같은 곡 넣기 → 빼기 → 다시 넣기)
+    /// 초안 저장과 도장 갱신 사이에 멈춘 뒤 재시작 정리가 마지막 단계까지 지우지 않는다
+    @Test func 같은_내용의_단계가_둘이어도_멈춘_뒤_정리가_마지막_추가를_지우지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let rekordbox = Self.rekordbox
+        var draft = PlaylistDraft()
+        try draft.append(.addTracks(playlist: .id("A"), contentIDs: ["9"]), rekordbox: rekordbox)
+        try draft.append(.removeTracks(playlist: .id("A"), entries: [PlaylistEntry(trackNo: 1, contentID: "9")]), rekordbox: rekordbox)
+        try draft.append(.addTracks(playlist: .id("A"), contentIDs: ["9"]), rekordbox: rekordbox)
+        #expect(draft.steps.count == 3)
+        try app.savePlaylistDraft(draft)
+        let stamps = app.playlistStamps()
+        #expect(stamps.count == 3 && Set(stamps.map(\.revision)).count == 3)
+        let written = [WrittenPlaylistStep(revision: stamps[0].revision, contentHash: stamps[0].contentHash)]
+        // 정리가 초안 파일에서 쓴 첫 단계를 뺀 뒤 도장을 갱신하기 전에 멈췄다
+        var remaining = app.playlistDraft()
+        remaining.removeSteps(at: [0])
+        try PlaylistDraftStore.save(remaining, url: places.playlist)
+        // 재시작: 새 프로세스의 저장소가 같은 미정리 목록으로 정리한다
+        let restarted = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let result = try restarted.removeWrittenSteps(PlaylistStepCleanup(written: written, newPlaylistIDs: [:],
+                                                                           backups: folder.url.appending(path: "backups"), backupFolder: "b"))
+        #expect(result.removed.isEmpty && result.notFound == [written[0].revision])
+        #expect(restarted.playlistDraft().edits == [.removeTracks(playlist: .id("A"), entries: [PlaylistEntry(trackNo: 1, contentID: "9")]),
+                                                    .addTracks(playlist: .id("A"), contentIDs: ["9"])])
+        // 남은 두 단계는 각자의 판을 쓴다
+        #expect(restarted.playlistStamps().map(\.revision) == [stamps[1].revision, stamps[2].revision])
+    }
+
+    /// S2: 기존 단계에 합쳐진 편집(CLI가 만든 새 목록의 이름을 앱에서 바꿈 → 만들기 단계에 합쳐짐)은 새 판을 받고 출처를 합친다
+    @Test func 기존_단계에_합쳐진_편집은_새_판을_받고_출처를_합쳐_제안이다() throws {
+        let folder = try TemporaryFolder()
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let cli = DraftFiles.live(home: folder.url).with(origin: .cli)
+        var created = PlaylistDraft()
+        try created.append(.create(key: "k", name: "새 목록", isFolder: false, parent: .root), rekordbox: Self.rekordbox)
+        try cli.savePlaylist(created)
+        let first = app.playlistStamps()
+        #expect(first.count == 1 && first[0].origins == [.cli])
+        // 앱이 읽어 이름을 바꾼다: 만들기 단계에 합쳐져 단계는 하나다
+        var loaded = app.playlistDraft()
+        try loaded.append(.rename(playlist: .new("k"), name: "고침"), rekordbox: Self.rekordbox)
+        #expect(loaded.steps.count == 1)
+        try app.savePlaylistDraft(loaded)
+        let second = app.playlistStamps()
+        #expect(second.count == 1 && second[0].revision > first[0].revision && second[0].origins == [.cli, .human])
+        #expect(app.playlistSuggestions() == [.mixedOrigins])
+    }
+
+    /// S2(도장 없는 옛 단계): 도장 없는 기존 단계에 합쳐지면 모름을 유지한다
+    @Test func 도장_없는_옛_단계에_합쳐진_편집은_모름을_유지한다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        var created = PlaylistDraft()
+        try created.append(.create(key: "k", name: "새 목록", isFolder: false, parent: .root), rekordbox: Self.rekordbox)
+        try PlaylistDraftStore.save(created, url: places.playlist)
+        var loaded = app.playlistDraft()
+        try loaded.append(.rename(playlist: .new("k"), name: "고침"), rekordbox: Self.rekordbox)
+        try app.savePlaylistDraft(loaded)
+        let stamps = app.playlistStamps()
+        #expect(stamps.count == 1 && stamps[0].origins.contains(.unknown) && stamps[0].origins.contains(.human))
+        #expect(app.playlistSuggestions() == [.unknownOrigin])
+    }
+
+    /// S3: 덮어쓰기 전에 지금 파일 내용의 해시를 저장된 도장과 견준다. 다르면(바깥에서 고쳤다) 출처에 모름을 더한다
+    @Test func 바깥에서_고친_태그_초안을_앱이_덮어쓰면_모름이_섞여_제안이다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        var tag = TagDraft(trackUUID: "a", base: TagFields())
+        tag.fields.title = "원래"
+        app.saveTags([tag])
+        app.flush()
+        #expect(app.suggestion(DraftKey(.tag, "a")) == nil)
+        // 바깥(도장을 적지 않는 쓰기)이 코멘트를 더했다
+        var outside = tag
+        outside.fields.comment = "AI가 더한 코멘트"
+        try TagDraftStore.save(outside, directory: places.tags)
+        // 앱이 자기 메모리 값에서 제목만 바꿔 저장한다
+        var edited = tag
+        edited.fields.title = "새 제목"
+        app.saveTags([edited])
+        app.flush()
+        #expect(app.stamp(DraftKey(.tag, "a"))?.origins == [.human, .unknown])
+        #expect(app.suggestion(DraftKey(.tag, "a")) == .unknownOrigin)
+    }
+
+    @Test func 바깥에서_고친_초안은_큐_그리드_게인_합치기도_덮어쓰면_모름이_섞인다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let merge = DuplicateMergeDraft(keeping: .init(contentID: "1", trackUUID: "m", title: "가", duration: 60, offset: 0, cues: []),
+                                        removing: [], base: "b")
+        app.saveCue(Self.cue("a", at: 1))
+        app.saveGain(-3, trackUUID: "g")
+        try app.saveMergeDrafts([merge])
+        app.flush()
+        try CueDraftStore.save(Self.cue("a", at: 9), directory: places.cue)
+        try GainDraftStore.save(-8, trackUUID: "g", url: places.gain)
+        var outsideMerge = merge
+        outsideMerge.base = "바깥"
+        try DuplicateMergeDraftStore.save([outsideMerge], url: places.merge)
+        app.saveCue(Self.cue("a", at: 2))
+        app.saveGain(-4, trackUUID: "g")
+        try app.saveMergeDrafts([merge])
+        app.flush()
+        for key in [DraftKey(.cue, "a"), DraftKey(.gain, "g"), DraftKey(.merge, "m")] {
+            #expect(app.stamp(key)?.origins == [.human, .unknown], "\(key)")
+        }
+    }
+
+    @Test func 바깥에서_고친_재생_목록_단계를_앱이_저장하면_그_단계는_모름이_섞인다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        try app.savePlaylistDraft(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])]))
+        // 바깥이 단계 내용만 고쳤다(단계 수 같음)
+        let outside = try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["7"])])
+        try PlaylistDraftStore.save(outside, url: places.playlist)
+        // 앱이 그 위에 한 단계를 더해 저장한다
+        var more = outside
+        try more.append(.rename(playlist: .id("B"), name: "새"), rekordbox: Self.rekordbox)
+        try app.savePlaylistDraft(more)
+        let stamps = app.playlistStamps()
+        #expect(stamps.count == 2 && stamps[0].origins == [.human, .unknown] && stamps[1].origins == [.human])
+        #expect(app.playlistSuggestions() == [.unknownOrigin, nil])
+    }
+
+    /// S4(범위 밖, 저장소만 고정): 복원이 되살린 초안의 출처 `.restored`는 호출부(W2-D)가 정한다. 저장소는 곡 초안과 재생 목록 단계 모두에 적는다
+    @Test func 되살림_출처_포트는_곡_초안과_재생_목록_단계_모두에_되살림을_적는다() throws {
+        let folder = try TemporaryFolder()
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let restored = app.with(origin: .restored)
+        restored.saveCue(Self.cue("a"))
+        restored.flush()
+        try restored.savePlaylistDraft(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])]))
+        #expect(app.stamp(DraftKey(.cue, "a"))?.origins == [.restored])
+        #expect(app.playlistStamps().map(\.origins) == [[.restored]])
+        #expect(app.suggestion(DraftKey(.cue, "a")) == .notHuman && app.playlistSuggestions() == [.notHuman])
+    }
+
+    /// S5(앱): 초안 잠금을 잡지 못하면 저장하지 않고 지금의 저장 실패로 알린다
+    @Test func 잠금을_잡지_못하면_앱_저장은_실패로_알리고_초안을_쓰지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        try FileManager.default.createDirectory(at: DraftStampStore.lockURL(home: folder.url), withIntermediateDirectories: true)
+        let failure = Mutex<DraftSaveFailure?>(nil)
+        app.saveCue(Self.cue("a")) { result in failure.withLock { $0 = result } }
+        app.flush()
+        #expect(failure.withLock { $0 } != nil && !app.failures().isEmpty)
+        #expect(CueDraftStore.load(trackUUID: "a", directory: places.cue) == nil)
+        #expect(throws: (any Error).self) { try app.savePlaylistDraft(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])])) }
+        #expect(!FileManager.default.fileExists(atPath: places.playlist.path))
+    }
+
+    /// S6: CLI의 재생 목록 쌓기는 원본 재확인과 저장을 한 초안 잠금 안에서 한다. 계획을 끝내고 저장하려는 순간 앱의 쓴 뒤 정리가
+    /// 쓴 단계를 빼면(잠금을 쥔 동안) `draft_changed`로 끝나고 쓴 단계가 되살아나지 않는다
+    @Test func CLI_재생_목록_쌓기는_저장_직전에_끼어든_정리가_쓴_단계를_되살리지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        try app.savePlaylistDraft(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])]))
+        let live = DraftFiles.live(home: folder.url).with(origin: .cli)
+        var wrapped = live
+        let attempting = DispatchSemaphore(value: 0), finished = DispatchSemaphore(value: 0)
+        let original = try #require(live.savePlaylistIfUnchanged)
+        wrapped.savePlaylistIfUnchanged = { expected, draft in
+            attempting.signal()
+            return try original(expected, draft)
+        }
+        let outcome = Mutex<String?>(nil)
+        let edits = EditDraftFiles(files: wrapped)
+        let request = PlaylistEditRequest.create(name: "새 목록", isFolder: false, parent: .ref(.root), position: nil, alias: nil, tracks: [])
+        try DraftStampStore.withLock(home: folder.url) {
+            DispatchQueue.global().async {
+                do {
+                    _ = try edits.stackPlaylistEdits([request], rekordbox: Self.rekordbox, contentIDs: ["9"], allOrNothing: false, dryRun: false)
+                    outcome.withLock { $0 = "ok" }
+                } catch let failure as ReadFailure {
+                    outcome.withLock { $0 = failure.code }
+                } catch {
+                    outcome.withLock { $0 = "other" }
+                }
+                finished.signal()
+            }
+            // CLI가 계획을 끝내고 저장하려는 순간(잠금을 기다린다). 그 틈에 정리가 쓴 단계를 뺀다
+            attempting.wait()
+            try PlaylistDraftStore.save(PlaylistDraft(), url: places.playlist)
+        }
+        finished.wait()
+        #expect(outcome.withLock { $0 } == "draft_changed")
+        #expect(PlaylistDraftStore.load(url: places.playlist).isEmpty)
+    }
+
+    /// S5(CLI): 잠금을 잡지 못하면 CLI는 초안 입출력 실패로 알리고 저장하지 않는다
+    @Test func 잠금을_잡지_못하면_CLI_저장은_초안_입출력_실패이고_저장하지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try FileManager.default.createDirectory(at: DraftStampStore.lockURL(home: folder.url), withIntermediateDirectories: true)
+        let edits = EditDraftFiles(files: DraftFiles.live(home: folder.url).with(origin: .cli))
+        let request = EditDraftFiles.CueRequest(time: 10, loopEnd: nil, beats: nil, slot: 1, name: "B", active: false)
+        let track = Track(id: "7", uuid: "u7", title: "곡", artist: nil, album: nil, albumArtist: nil, genre: nil, composer: nil,
+                          releaseYear: nil, trackNumber: nil, key: nil, bpm: 128, lengthSeconds: 120, folderPath: "/m/a.mp3", comment: "",
+                          importedOn: nil, analysisDataPath: nil, imagePath: nil, isDeleted: false, rating: 0, dataStatus: 256)
+        var code: String?
+        do { _ = try edits.addCue({ request }, track: track, rekordboxCues: [], dryRun: false) } catch let failure as ReadFailure { code = failure.code }
+        #expect(code == "draft_io_failed")
+        #expect(CueDraftStore.load(trackUUID: "u7", directory: places.cue) == nil)
     }
 }

@@ -36,13 +36,15 @@ public struct PlaylistStepRemovalResult: Equatable, Sendable {
 public enum StampedDrafts {
     // MARK: 곡 초안 저장
 
-    /// 파일이 있었는지 보고, 쓰고, 읽은 값의 해시로 도장을 적는다
+    /// 파일이 있었는지 보고, 쓰고, 읽은 값의 해시로 도장을 적는다. 덮어쓰기 전에 지금 파일 내용의 해시를 저장된 도장의 해시와 견준다:
+    /// 다르면(바깥에서 고쳤다) 새 도장의 출처에 모름을 더한다. 읽지 못해도 같다
     private static func stamped(_ key: DraftKey, home: URL, file: URL, origin: DraftOrigin, write: () throws -> Void,
                                 hash: () -> DraftContentHash?) throws {
         try DraftStampStore.withLock(home: home) {
             let existed = FileManager.default.fileExists(atPath: file.path)
+            let outside = existed ? DraftStampStore.read(key, home: home).map { hash() != $0.contentHash } ?? false : false
             try write()
-            try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: hash())
+            try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: hash(), outside: outside)
         }
     }
 
@@ -86,10 +88,12 @@ public enum StampedDrafts {
     public static func saveGain(_ gain: Double?, trackUUID: String, url: URL, origin: DraftOrigin) throws {
         let home = url.deletingLastPathComponent()
         try DraftStampStore.withLock(home: home) {
-            let existed = ((try? GainDraftStore.read(url: url)) ?? [:])[trackUUID] != nil
+            let key = DraftKey(.gain, trackUUID)
+            let current = (try? GainDraftStore.read(url: url))?[trackUUID]
+            let outside = current != nil ? DraftStampStore.read(key, home: home).map { hash(current) != $0.contentHash } ?? false : false
             try GainDraftStore.save(gain, trackUUID: trackUUID, url: url)
             let saved = (try? GainDraftStore.read(url: url))?[trackUUID]
-            try DraftStampStore.restamp(DraftKey(.gain, trackUUID), home: home, existed: existed, origin: origin, hash: hash(saved))
+            try DraftStampStore.restamp(key, home: home, existed: current != nil, origin: origin, hash: hash(saved), outside: outside)
         }
     }
 
@@ -107,25 +111,29 @@ public enum StampedDrafts {
                     write: { try ArtworkDraftStore.remove(trackUUID: trackUUID, directory: directory) }, hash: { nil })
     }
 
-    /// 합치기 초안 목록을 통째로 저장한다: 내용이 같은 초안은 도장을 그대로 두고, 바뀌거나 새로 든 초안만 새 판을 받는다
+    /// 합치기 초안 목록을 통째로 저장한다: 내용이 같은 초안은 도장을 그대로 두고, 바뀌거나 새로 든 초안만 새 판을 받는다.
+    /// 덮어쓰기 전 파일의 초안 해시가 도장의 해시와 다르면(바깥에서 고쳤다) 그 초안의 출처에 모름을 더한다
     public static func saveMerges(_ drafts: [DuplicateMergeDraft], url: URL, origin: DraftOrigin) throws {
         let home = url.deletingLastPathComponent()
         try DraftStampStore.withLock(home: home) {
-            let before = Set(DuplicateMergeDraftStore.load(url: url).map(\.id))
+            let existing = Dictionary(DuplicateMergeDraftStore.load(url: url).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             try DuplicateMergeDraftStore.save(drafts, url: url)
             let saved = DuplicateMergeDraftStore.load(url: url)
             let stampURL = DraftStampStore.folder(home: home).appending(path: "\(DraftKey.Kind.merge.rawValue).json")
             let old = (try? Data(contentsOf: stampURL)).flatMap { try? JSONDecoder().decode([String: DraftStamp].self, from: $0) } ?? [:]
             var stamps: [String: DraftStamp] = [:]
-            var changed: [(draft: DuplicateMergeDraft, hash: DraftContentHash)] = []
+            var changed: [(draft: DuplicateMergeDraft, hash: DraftContentHash, outside: Bool)] = []
             for draft in saved {
                 guard let hash = try? DraftContentHash(of: draft) else { continue }
-                if let stamp = old[draft.id], stamp.contentHash == hash { stamps[draft.id] = stamp } else { changed.append((draft, hash)) }
+                // 덮어쓰기 전 파일의 초안 해시가 도장의 해시와 다르면(바깥에서 고쳤다) 내용이 같아도 새 도장이다
+                let outside = existing[draft.id].flatMap { before in old[draft.id].map { self.hash(before) != $0.contentHash } } ?? false
+                if let stamp = old[draft.id], stamp.contentHash == hash, !outside { stamps[draft.id] = stamp } else { changed.append((draft, hash, outside)) }
             }
             let revisions = try DraftStampStore.nextRevisions(changed.count, home: home)
             for (item, revision) in zip(changed, revisions) {
                 var origins: Set<DraftOrigin> = [origin]
-                if before.contains(item.draft.id) { origins.formUnion(old[item.draft.id]?.origins ?? [.unknown]) }
+                if existing[item.draft.id] != nil { origins.formUnion(old[item.draft.id]?.origins ?? [.unknown]) }
+                if item.outside { origins.insert(.unknown) }
                 stamps[item.draft.id] = DraftStamp(revision: revision, origins: origins, contentHash: item.hash)
             }
             try DraftStampStore.writeAggregate(stamps, to: stampURL)
@@ -134,88 +142,81 @@ public enum StampedDrafts {
 
     // MARK: 재생 목록 단계
 
-    private static func stepHash(_ step: PlaylistDraft.Step, in draft: PlaylistDraft) -> DraftContentHash? { try? DraftContentHash(step: step, in: draft) }
+    // 단계의 도장은 단계 식별자(`PlaylistDraft.Step.id`, 초안 파일 안)로 잇는다. 사이드카 `playlist.json`은 단계 차례의 `PlaylistStampEntry` 배열이다.
+    // 식별자·도장 규칙은 `PlaylistStepStamping`(DJCDomain)이다. 메모리 구현과 같은 함수를 쓴다
 
     private static func playlistStampURL(home: URL) -> URL {
         DraftStampStore.folder(home: home).appending(path: "playlist.json")
     }
 
-    private static func readPlaylistStamps(home: URL) -> [DraftStamp] {
-        (try? Data(contentsOf: playlistStampURL(home: home))).flatMap { try? JSONDecoder().decode([DraftStamp].self, from: $0) } ?? []
+    private static func readPlaylistEntries(home: URL) -> [PlaylistStampEntry] {
+        (try? Data(contentsOf: playlistStampURL(home: home))).flatMap { try? JSONDecoder().decode([PlaylistStampEntry].self, from: $0) } ?? []
     }
 
-    private static func writePlaylistStamps(_ stamps: [DraftStamp], home: URL) throws {
+    private static func writePlaylistEntries(_ entries: [PlaylistStampEntry], home: URL) throws {
         let url = playlistStampURL(home: home)
-        guard !stamps.isEmpty else {
+        guard !entries.isEmpty else {
             do { try FileManager.default.removeItem(at: url) } catch CocoaError.fileNoSuchFile {}
             return
         }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        try encoder.encode(stamps).write(to: url, options: .atomic)
+        try encoder.encode(entries).write(to: url, options: .atomic)
     }
 
-    /// 단계 차례와 맞춘 도장. 단계 수가 사이드카와 같으면 차례대로 짝이다(바깥이 내용만 고쳐도 그 자리의 도장을 쓴다). 수가 다르면(도장을
-    /// 모르는 쪽이 단계를 더하거나 뺐다) 해시가 같은 단계만 앞 도장을 잇고, 나머지 단계는 새 판과 모름 출처의 도장을 받는다.
-    /// 잠금 안에서 부른다. `persist`면 바뀐 사이드카를 적는다
-    private static func alignedPlaylistStamps(_ draft: PlaylistDraft, home: URL, persist: Bool) throws -> [DraftStamp] {
-        let stamps = readPlaylistStamps(home: home)
-        guard stamps.count != draft.steps.count else { return stamps }
-        var pool = stamps
-        var slots: [DraftStamp?] = []
-        for step in draft.steps {
-            if let hash = stepHash(step, in: draft), let index = pool.firstIndex(where: { $0.contentHash == hash }) {
-                slots.append(pool.remove(at: index))
-            } else {
-                slots.append(nil)
-            }
+    /// 지금 파일의 초안에 식별자·도장을 맞춘다(없는 것은 모름으로 받는다). 바뀌었으면 초안 파일과 사이드카를 다시 적는다. 잠금 안에서 부른다.
+    /// 초안 파일을 읽지 못하면 던진다(손상된 파일 때문에 도장을 지우지 않게)
+    private static func adoptedPlaylist(home: URL) throws -> PlaylistStepStamping.Result {
+        let url = DraftLocations(home: home).playlist
+        let draft = try PlaylistDraftStore.read(url: url)
+        let result = try PlaylistStepStamping.adopt(draft, entries: readPlaylistEntries(home: home), newID: { UUID() },
+                                                    newRevision: { try DraftStampStore.nextRevisions(1, home: home)[0] })
+        if result.changed {
+            if result.draft.stepIDs != draft.stepIDs { try PlaylistDraftStore.save(result.draft, url: url) }
+            try writePlaylistEntries(result.entries, home: home)
         }
-        let missing = slots.filter { $0 == nil }.count
-        var revisions = persist ? try DraftStampStore.nextRevisions(missing, home: home)[...] : []
-        let aligned = zip(draft.steps, slots).map { step, slot -> DraftStamp in
-            if let slot { return slot }
-            let hash = stepHash(step, in: draft) ?? DraftContentHash(hex: "")
-            // 저장하지 않는 읽기는 판을 받지 않는다(받아 적을 때까지 판 0으로 두고 쓰지 않는다)
-            return DraftStamp(revision: revisions.popFirst() ?? DraftRevision(0), origins: [.unknown], contentHash: hash)
-        }
-        if persist { try writePlaylistStamps(aligned, home: home) }
-        return aligned
+        return result
     }
 
-    /// 재생 목록 초안의 단계별 도장(`playlist-drafts.json`의 단계 차례와 같다). 도장이 없는 단계는 모름 출처로 새 판을 받아 사이드카에 적는다
+    /// 재생 목록 초안의 단계별 도장(`playlist-drafts.json`의 단계 차례와 같다). 식별자나 도장이 없는 단계는 모름 출처로 새 판을 받아
+    /// 적는다(그래서 읽기가 초안 파일과 사이드카를 쓸 수 있다). 읽지 못하거나 잠금을 잡지 못하면 빈 배열(모름)이다
     public static func playlistStamps(home: URL) -> [DraftStamp] {
-        let draft = (try? PlaylistDraftStore.read(url: DraftLocations(home: home).playlist)) ?? PlaylistDraft()
-        // 사이드카와 이미 맞으면 잠그지 않고 읽는다(자주 부르는 읽기)
-        let stamps = readPlaylistStamps(home: home)
-        if stamps.count == draft.steps.count { return stamps }
-        return DraftStampStore.withLock(home: home) {
-            let current = (try? PlaylistDraftStore.read(url: DraftLocations(home: home).playlist)) ?? PlaylistDraft()
-            return (try? alignedPlaylistStamps(current, home: home, persist: true)) ?? []
-        }
+        guard let draft = try? PlaylistDraftStore.read(url: DraftLocations(home: home).playlist) else { return [] }
+        // 식별자와 도장이 이미 맞으면 잠그지 않고 읽는다(자주 부르는 읽기)
+        let entries = readPlaylistEntries(home: home)
+        let ids = draft.stepIDs
+        if ids.allSatisfy({ $0 != nil }), ids.compactMap({ $0 }) == entries.map(\.id) { return entries.map(\.stamp) }
+        return (try? DraftStampStore.withLock(home: home) { try adoptedPlaylist(home: home).entries.map(\.stamp) }) ?? []
     }
 
-    /// 재생 목록 초안을 통째로 저장한다: 앞 도장 가운데 내용이 같은 단계의 도장을 이어 쓰고, 나머지 단계만 새 판을 받는다
-    public static func savePlaylist(_ draft: PlaylistDraft, url: URL, origin: DraftOrigin) throws {
+    /// 재생 목록 초안을 통째로 저장한다: 단계 식별자를 맞추고(`PlaylistStepStamping.save`) 도장을 갱신한다. 초안 잠금 안에서 한다.
+    /// - Parameter expecting: 주면 지금 파일의 초안이 이것과 같을 때만 저장한다(CLI가 계획한 원본의 재확인과 저장을 한 잠금에서 한다).
+    ///   다르면 저장하지 않고 false
+    @discardableResult
+    public static func savePlaylist(_ draft: PlaylistDraft, url: URL, origin: DraftOrigin, expecting: PlaylistDraft? = nil) throws -> Bool {
         let home = url.deletingLastPathComponent()
-        try DraftStampStore.withLock(home: home) {
-            let previous = try alignedPlaylistStamps((try? PlaylistDraftStore.read(url: url)) ?? PlaylistDraft(), home: home, persist: false)
-            try PlaylistDraftStore.save(draft, url: url)
-            let saved = (try? PlaylistDraftStore.read(url: url)) ?? PlaylistDraft()
-            var pool = previous.filter { $0.revision.value > 0 }
-            var slots: [DraftStamp?] = []
-            for step in saved.steps {
-                if let hash = stepHash(step, in: saved), let index = pool.firstIndex(where: { $0.contentHash == hash }) {
-                    slots.append(pool.remove(at: index))
-                } else {
-                    slots.append(nil)
-                }
+        return try DraftStampStore.withLock(home: home) {
+            // 저장만 하면 읽지 못하는 파일은 저장소가 옮겨 보관하고 새로 쓴다. 원본을 견주면 읽지 못할 때 던진다
+            let current: PlaylistDraft
+            if let expecting {
+                current = try PlaylistDraftStore.read(url: url)
+                if current != expecting { return false }
+            } else {
+                current = (try? PlaylistDraftStore.read(url: url)) ?? PlaylistDraft()
             }
-            var revisions = try DraftStampStore.nextRevisions(slots.filter { $0 == nil }.count, home: home)[...]
-            let stamps = zip(saved.steps, slots).map { step, slot -> DraftStamp in
-                slot ?? DraftStamp(revision: revisions.popFirst()!, origins: [origin], contentHash: stepHash(step, in: saved) ?? DraftContentHash(hex: ""))
+            let result = try PlaylistStepStamping.save(draft, previous: current, entries: readPlaylistEntries(home: home), origin: origin,
+                                                       newID: { UUID() }, newRevision: { try DraftStampStore.nextRevisions(1, home: home)[0] })
+            try PlaylistDraftStore.save(result.draft, url: url)
+            // 도장의 해시는 파일에서 다시 읽은 단계의 해시다(쓰기 묶음이 읽어 넣는 값과 같다)
+            let saved = try PlaylistDraftStore.read(url: url)
+            let entries = zip(saved.steps, result.entries).map { step, entry -> PlaylistStampEntry in
+                var entry = entry
+                entry.stamp.contentHash = PlaylistStepStamping.hash(step, in: saved)
+                return entry
             }
-            try writePlaylistStamps(stamps, home: home)
+            try writePlaylistEntries(saved.steps.count == entries.count ? entries : result.entries, home: home)
+            return true
         }
     }
 
@@ -225,17 +226,17 @@ public enum StampedDrafts {
                                           copyFolder: URL, home: URL) throws -> PlaylistStepRemovalResult {
         let url = DraftLocations(home: home).playlist
         return try DraftStampStore.withLock(home: home) {
-            let draft = try PlaylistDraftStore.read(url: url)
-            let stamps = try alignedPlaylistStamps(draft, home: home, persist: true)
+            let adopted = try adoptedPlaylist(home: home)
+            let draft = adopted.draft
             var result = PlaylistStepRemovalResult()
             var offsets: [Int] = []
             for item in written {
-                guard let offset = stamps.firstIndex(where: { $0.revision == item.revision }) else {
+                guard let offset = adopted.entries.firstIndex(where: { $0.stamp.revision == item.revision }) else {
                     result.notFound.insert(item.revision)
                     continue
                 }
                 let step = draft.steps[offset]
-                let current = stepHash(step, in: draft) ?? DraftContentHash(hex: "")
+                let current = PlaylistStepStamping.hash(step, in: draft)
                 if current != item.contentHash {
                     // 바깥에서 고친 단계: 사본을 디스크에 남긴 뒤에만 뺀다
                     let playlistID: String? = switch step.edit.playlist {
@@ -267,7 +268,7 @@ public enum StampedDrafts {
             remaining.removeSteps(at: offsets)
             try PlaylistDraftStore.save(remaining, url: url)
             let dropped = Set(offsets)
-            try writePlaylistStamps(stamps.enumerated().filter { !dropped.contains($0.offset) }.map(\.element), home: home)
+            try writePlaylistEntries(adopted.entries.enumerated().filter { !dropped.contains($0.offset) }.map(\.element), home: home)
             return result
         }
     }
@@ -346,17 +347,17 @@ public enum StampedDrafts {
                 marked[stamp.revision] = try markSuggestion(item.key, old: stamp, current: currentHash(item.key, places: places), home: home)
             }
             guard !playlistSteps.isEmpty else { return marked }
-            let draft = (try? PlaylistDraftStore.read(url: places.playlist)) ?? PlaylistDraft()
-            var stamps = try alignedPlaylistStamps(draft, home: home, persist: true)
-            let indices = stamps.indices.filter { playlistSteps.contains(stamps[$0].revision) }
+            let adopted = try adoptedPlaylist(home: home)
+            var entries = adopted.entries
+            let indices = entries.indices.filter { playlistSteps.contains(entries[$0].stamp.revision) }
             let revisions = try DraftStampStore.nextRevisions(indices.count, home: home)
             for (index, revision) in zip(indices, revisions) {
-                let old = stamps[index]
+                let old = entries[index].stamp
                 marked[old.revision] = revision
-                stamps[index] = DraftStamp(revision: revision, origins: old.origins.union([.unknown]),
-                                           contentHash: stepHash(draft.steps[index], in: draft) ?? old.contentHash)
+                entries[index].stamp = DraftStamp(revision: revision, origins: old.origins.union([.unknown]),
+                                                  contentHash: PlaylistStepStamping.hash(adopted.draft.steps[index], in: adopted.draft))
             }
-            if !indices.isEmpty { try writePlaylistStamps(stamps, home: home) }
+            if !indices.isEmpty { try writePlaylistEntries(entries, home: home) }
             return marked
         }
     }
