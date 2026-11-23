@@ -289,6 +289,20 @@ struct ReflectionSessionWriteTests {
         #expect(h.gateCalls.value.writes.first?.playlists == nil && h.gateCalls.value.writes.first?.histories.count == 1, "재생 기록은 쓴다")
     }
 
+    @Test func S1_재생_목록을_뺀_묶음은_재생_목록_초안_파일이_손상돼도_재생_기록을_쓴다() async {
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftFileLocked = false
+        h.state.pendingHistories = [ReflectionSessionHistoryTests.history("a")]
+        h.preserved = [DamagedDraftFile(name: "playlist-drafts.json", preserved: URL(filePath: "/drafts/damaged-drafts/playlist-drafts.json"),
+                                        trackUUID: nil)]
+        h.script.preview = ReflectionSessionHistoryTests.report([ReflectionSessionHistoryTests.outcome("a", .written)])
+
+        let outcome = await h.session.write(rows: [])
+
+        #expect(outcome.name == "written", "묶음에 넣지 않은 재생 목록 초안 파일 때문에 재생 기록 쓰기를 막지 않는다")
+        #expect(h.gateCalls.value.writes.first?.playlists == nil && h.gateCalls.value.writes.first?.histories.count == 1)
+    }
+
     @Test func S10_재생_목록을_뺐고_곡도_모두_막혀_쓸_것이_없으면_그_결과에도_이유를_담는다() async {
         pendingCue("a")
         h.state.playlistDraft = playlistDraft()

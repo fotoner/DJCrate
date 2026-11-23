@@ -88,7 +88,8 @@ extension ReflectionSession {
         let targets = writeTargets(rows)
         let uuids = Set(targets.map(\.track.uuid))
         // 읽지 못한 초안 파일이 미리 보기에서 조용히 빠지지 않게 먼저 옮기고 알린다(#174).
-        try requireReadableDrafts(for: uuids, playlists: playlists)
+        // 묶음에 넣지 않는 재생 목록 초안 파일은 이 쓰기를 막지 않는다(재생 기록만 넣는 묶음)
+        try requireReadableDrafts(for: uuids, playlists: playlists && withPlaylistDraft)
         try requireDraftSaves(for: uuids)
         guard ports.library.state().failedTagSaves.isDisjoint(with: uuids) else { throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage) }
         // 재생 목록 초안을 묶음에 넣을 때만 저장을 다시 시도한다(재생 기록만 넣는 묶음은 하지 않는다: 보류한 초안으로 바깥 편집을 덮지 않게)
