@@ -155,6 +155,7 @@ private final class CueListRowHeightProbe: NSView {
             table = findTable(in: content, covering: point)
         }
         guard let table else {
+            // SwiftUI가 List의 표를 아직 창에 붙이지 않았을 수 있어 잠시 뒤 다시 찾는다(최대 3번)
             if retries < 3 {
                 retries += 1
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.scheduleConfiguration() }

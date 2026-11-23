@@ -32,7 +32,7 @@ description: 서브에이전트·다른 세션·워커에게 DJCrate 구현·리
 - 실제 rekordbox 라이브러리·DJCrate 사용자 폴더에 쓰지 않는다. 시험·실험은 DJC_REKORDBOX_DIR=<사본>, DJC_HOME=$(mktemp -d)
 - 실물 USB(/Volumes/*)에 쓰지 않는다. USB 쓰기 시험은 djc lab usb-image 디스크 이미지에만
 - DB 사본·스냅샷·백업(클라우드 토큰)을 출력·커밋·로그에 넣지 않는다
-- 쓰기 관문(RekordboxWriter.write·restore, RekordboxTrackWriter.add·delete, UsbWriter.write, UsbPhysicalWriteGate)의 위치·동작을 바꾸지 않는다
+- 쓰기 관문(RekordboxWriteGuard·UsbPhysicalWriteGate)을 우회하거나 약하게 하지 않는다. 쓰기 입구(RekordboxWriter.write·restore, RekordboxTrackWriter.add·delete, UsbWriter.write·recover·restore)는 옮기지 않는다
 
 ## 검증
 - 편집 중: scripts/check.sh --quick --filter '^<타깃>\.<Suite>/'(TDD, 빨간색 먼저)

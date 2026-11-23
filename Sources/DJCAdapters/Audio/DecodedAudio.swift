@@ -7,8 +7,6 @@ import Foundation
 ///
 /// 큐 점프·CUE 미리 듣기가 외장 드라이브에서도 바로 반응하도록 곡을 불러올 때 한 번 디코딩해 두고,
 /// 재생은 이 버퍼를 복사 없이 잘라 예약한다.
-/// (처음 겪은 "재시작마다 1~1.7초 무음"의 실제 원인은 파일 읽기가 아니라 엔진 pause→start 뒤의
-/// 시작 시각 어긋남이었다. 그건 `stop()`에서 engine.stop()을 쓰는 것으로 고쳤다.)
 final class DecodedAudio: @unchecked Sendable {
     /// 디코딩이 끝난 뒤에는 바뀌지 않는다(읽기 전용 공유).
     let buffer: AVAudioPCMBuffer

@@ -47,7 +47,7 @@ extension DeckModel {
             if let gridDraft, gridDraft.trackUUID == uuid { persistGrid(gridDraft) }
             else { storage.drafts.retry(.grid, trackUUID: uuid, completion: draftSaveCompletion(.grid, uuid: uuid)) }
         }
-        // 게인은 곡을 고를 때 바로 읽으므로(`loadGain`) 덱의 값이 마지막 입력이다.
+        // 게인은 곡을 고를 때 바로 읽으므로(`prepareAudio`의 `gainDraft`) 덱의 값이 마지막 입력이다.
         if failures.contains(where: { $0.kind == .gain }) { persistGain(gainDraft, uuid: uuid) }
     }
 }

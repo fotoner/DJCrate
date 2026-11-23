@@ -27,17 +27,17 @@ model: inherit
    - **안전 규칙 위반**
      - 실제 rekordbox 라이브러리, 사용자 폴더, 실물 USB에 닿을 수 있는 길
      - 쓰기 관문을 우회하는 변경. 관문을 약하게 하는 변경도 든다.
+     - 쓰기 입구 파일을 옮기는 변경. 쓰기 커버리지 검사가 그 자리를 본다.
      - 시험이 임시 폴더 밖을 씀(#182)
      - 확인하지 않은 쓰기 규칙을 엶
      - 토큰·DB 사본 노출
      - 모듈 경계(`scripts/check-imports.py` 규칙) 위반
 
-쓰기 관문은 아래와 같다.
+쓰기 관문은 `RekordboxWriteGuard`·`UsbPhysicalWriteGate`다. 모든 쓰기 입구가 관문을 먼저 지난다. 입구는 아래와 같다.
 
 - `RekordboxWriter.write`·`restore`
 - `RekordboxTrackWriter.add`·`delete`
-- `UsbWriter.write`
-- `UsbPhysicalWriteGate`
+- `UsbWriter.write`·`recover`·`restore`
 
 ## 보고하지 않는 것
 

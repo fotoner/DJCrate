@@ -389,7 +389,7 @@ struct UsbEditGeneratedTests {
 
         mutating func addTracks() -> Bool {
             // 같은 묶음에서 USB에서 뺀 곡은 다시 넣지 않는다. 지금 엔진은 계획을 통과시키고 쓰기 사전 확인이 분석 파일 셋을
-            // destinationExists로 거부한다(#383 보고, 최소 조합 [곡 빼기 2, 곡 넣기 102]). 엔진을 고치면 이 제외를 푼다
+            // destinationExists로 거부한다(#391). #391을 고치면 이 제외를 푼다
             let candidates = (Self.exported + Self.extra).filter { reference.tracks[Self.path($0)] == nil && !removed.contains(Self.path($0)) }
             guard !candidates.isEmpty else { return false }
             let lists = reference.trackLists

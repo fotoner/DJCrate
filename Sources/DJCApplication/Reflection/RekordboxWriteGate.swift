@@ -1,7 +1,7 @@
 import DJCDomain
 import Foundation
 
-/// rekordbox 쓰기 관문(포트, H2 설계의 `RekordboxLibraryWriter`). `RekordboxWriter`·`RekordboxTrackWriter`를 얇게 감쌀 뿐,
+/// rekordbox 쓰기 관문(포트). `RekordboxWriter`·`RekordboxTrackWriter`를 얇게 감쌀 뿐,
 /// 관문의 사전 확인·백업·트랜잭션·검증·복원은 그대로다. 반영 세션이 메인 스레드 밖에서 부른다.
 /// 실제 구현(`.live`)은 DJCAdapters가 주고 조립 지점이 고른다. 시험은 가짜를 넣는다.
 public struct RekordboxWriteGate: Sendable {
