@@ -1,4 +1,5 @@
 import DJCDomain
+import Darwin
 import Foundation
 
 /// 시험·자가 테스트가 쓰기 도중 강제 종료를 흉내 내려고 훅(`RekordboxWriteHooks.checkpoint`)에서 던진다. 입구는 이 오류를 받으면
@@ -58,10 +59,8 @@ final class WriteRun {
         self.hold = hold
     }
 
-    /// 대상의 쓰기 잠금을 잡고(기다린다) 만든다. 하드 링크 master.db는 거부한다(R9)
+    /// 대상의 쓰기 잠금을 잡고(기다린다) 만든다. 사전 확인은 잡은 뒤에 한다(`prepareWrite`, R9)
     static func locked(_ database: URL, guard writeGuard: RekordboxWriteGuard, backups: URL?, snapshots: URL? = nil) throws -> WriteRun {
-        let resolved = try RekordboxWriteLocks.resolve(database)
-        try RekordboxWriteLocks.refuseHardLinks(resolved)
         let hold = try writeGuard.locks.lock(try RekordboxWriteLocks.key(database))
         do {
             return try WriteRun(database: database, guard: writeGuard, backups: backups, snapshots: snapshots, hold: hold)
@@ -73,6 +72,22 @@ final class WriteRun {
 
     /// 잠금을 푼다(입구 끝에서 `defer`로)
     func close() { hold?.release() }
+
+    /// 잠금을 잡은 뒤의 사전 확인(R9·R11): 라이브면 rekordbox 실행·-wal·버전(`checkLive`), 하드 링크 master.db 거부, 중단 기록 거절.
+    /// 쓰기 입구(초안 쓰기·곡 넣기·빼기·iTunes 동기화)가 백업을 뜨기 전에 부른다
+    func prepareWrite() throws {
+        if live { try writeGuard.checkLive(database, dryRun: false) }
+        try RekordboxWriteLocks.refuseHardLinks(resolved)
+        try refuseInterrupted()
+    }
+
+    /// 잠금을 잡은 뒤의 복원 사전 확인: 라이브면 rekordbox 실행만 본다(비상 복원이라 버전·-wal은 보지 않는다), 하드 링크 거부
+    func prepareRestore() throws {
+        if live, writeGuard.isRekordboxRunning() {
+            throw DJCError.writeRefused(String(ui: "rekordbox가 켜져 있습니다. rekordbox를 완전히 종료한 뒤 되돌리세요"))
+        }
+        try RekordboxWriteLocks.refuseHardLinks(resolved)
+    }
 
     // MARK: - 재확인·훅
 
@@ -107,10 +122,33 @@ final class WriteRun {
         var journal = journal
         if journal.database == nil { journal.database = RekordboxWriter.fileStamp(resolved) }
         try before(.journalWrite)
-        try RekordboxWriter.pinJournal(journal, at: journalURL, roots: [backups, snapshots].compactMap { $0 })
+        // 근거 확인·핀·기록 저장을 저장소 잠금 아래에서 한다(다른 대상의 솎기와 겹치지 않게, S8)
+        let roots = [backups, snapshots].compactMap { $0 }
+        let holds = try roots.map { try RekordboxWriteLocks.lockStore($0) }
+        defer { holds.forEach { $0?.release() } }
+        for root in roots {
+            for name in RekordboxWriter.referencedFolders(journal, in: root).sorted()
+            where !FileManager.default.fileExists(atPath: root.appending(path: name).path) {
+                throw DJCError.writeRefused(String(ui: "저장 전 백업 \(name)이 사라져 저장하지 않았습니다. 다른 DJCrate가 백업을 정리하는 중이면 잠시 뒤 다시 시도하세요"))
+            }
+        }
+        try RekordboxWriter.pinJournal(journal, at: journalURL, roots: roots)
         try RekordboxWriter.saveJournal(journal, at: journalURL)
         self.journal = journal
         try after(.journalWrite)
+    }
+
+    /// 기록 핀을 둔(둘) 뿌리: 이 실행의 백업·시점 스냅샷 폴더와 기록이 가리키는 백업·시점 스냅샷의 부모 폴더.
+    /// 다른 실행이 마친 기록(시점 복원을 기록으로 복원 등)도 처음 둔 핀을 지운다
+    func pinRoots(_ journal: RekordboxWriteJournal) -> [URL] {
+        let named = [journal.basis.writeBackup, journal.basis.pointSnapshot, journal.pointRestore?.snapshotBeforeRestore].compactMap { $0 }
+            .map { URL(filePath: $0).standardizedFileURL.deletingLastPathComponent() }
+        var seen = Set<String>(), roots: [URL] = []
+        for root in [backups, snapshots].compactMap({ $0?.standardizedFileURL }) + named
+        where seen.insert(root.resolvingSymlinksInPath().comparablePath).inserted {
+            roots.append(root)
+        }
+        return roots
     }
 
     /// 남은 기록을 이어받는다(기록으로 복원·다시 하는 복원)
@@ -143,7 +181,7 @@ final class WriteRun {
             throw DJCError.writeVerificationFailed(String(ui: "쓰기 기록(master.db.djc-write)을 지우지 못했습니다"))
         }
         self.journal = nil
-        RekordboxWriter.unpinJournal(journal, roots: [backups, snapshots].compactMap { $0 })
+        RekordboxWriter.unpinJournal(journal, roots: pinRoots(journal))
         try after(.journalRemove)
     }
 
@@ -153,17 +191,21 @@ final class WriteRun {
     func judge() throws -> RekordboxJournalJudgment {
         guard let found = try RekordboxWriter.readJournal(at: journalURL) else { return .none }
         let current = RekordboxWriter.fileStamp(resolved)
-        if found.marks.isEmpty, found.kind == .counter, let start = found.startCounter {
+        var counter: Int?
+        if found.kind == .counter, found.startCounter != nil || found.finalCounter != nil {
             // 카운터는 rekordbox가 꺼졌음을 확인한 뒤 스냅샷 사본에서 읽는다(SAFE-6)
-            if live, writeGuard.isRekordboxRunning() { return .undecided }
-            if let counter = try? RekordboxWriter.snapshotCounter(of: resolved), counter == start {
-                try? FileManager.default.removeItem(at: journalURL)
-                RekordboxWriter.unpinJournal(found, roots: [backups, snapshots].compactMap { $0 })
-                return .none
-            }
+            if found.marks.isEmpty, live, writeGuard.isRekordboxRunning() { return .undecided }
+            if !(live && writeGuard.isRekordboxRunning()) { counter = try? RekordboxWriter.snapshotCounter(of: resolved) }
+        }
+        if found.marks.isEmpty, found.kind == .counter, let start = found.startCounter, counter == start {
+            try? FileManager.default.removeItem(at: journalURL)
+            RekordboxWriter.unpinJournal(found, roots: pinRoots(found))
+            return .none
         }
         let recorded = [found.database, found.restoreCopy].compactMap { $0 }
-        let changedSince = !recorded.isEmpty && !recorded.contains { $0 == current }
+        // 지금 카운터가 이 쓰기의 최종 카운터면 크기·시각 차이는 이 쓰기의 커밋이다(커밋 뒤 크기·시각을 적기 전에 멈췄다)
+        let ownCommit = found.marks.isEmpty && found.finalCounter != nil && counter == found.finalCounter
+        let changedSince = !ownCommit && !recorded.isEmpty && !recorded.contains { $0 == current }
         return .interrupted(found, changedSince: changedSince, database: current)
     }
 
@@ -185,6 +227,23 @@ final class WriteRun {
                                        database: live ? nil : database.path)
         }
         return .restoreFailed(reason: reason, restoreError: detail, backup: journal?.basis.writeBackup ?? "", database: live ? nil : database.path)
+    }
+
+    /// 자동 복구의 시작(R7·R11): 켜짐부터 다시 보고, 첫 변경 전에 "복구 중"을 적는다. 표시를 남기지 못하면 아무것도 되돌리지 않고
+    /// 기록을 그대로 둔 채 복구 실패로 알린다(표시 없이 되돌리다 멈추면 다음 판정이 카운터만 보고 기록을 지워, 바꾼 파일이 남는다).
+    /// 그대로 진행하면 nil, 멈출 때는 던질 오류
+    func markRecovering(_ failure: any Error) -> (any Error)? {
+        do {
+            try recheck(.recovery)
+            try before(.recovery)
+            try update { $0.marks.insert(.recovering) }
+            return nil
+        } catch {
+            if let passed = passThrough(error) { return passed }
+            return DJCError.restoreFailed(reason: DJCError.reason(of: failure),
+                                          restoreError: String(ui: "복구 중 표시를 남기지 못해 되돌리지 않았습니다: \(DJCError.reason(of: error))"),
+                                          backup: journal?.basis.writeBackup ?? "", database: live ? nil : database.path)
+        }
     }
 
     /// 라이브러리를 바꾸기 전에 멈춘 실패: 강제 종료 흉내는 그대로 던지고(아무것도 치우지 않는다), 그 밖은 이 쓰기가 남긴 기록을 지운 뒤
@@ -306,7 +365,8 @@ extension RekordboxWriter {
         for root in roots {
             let folder = root.appending(path: journalPinFolder, directoryHint: .isDirectory)
             try? FileManager.default.removeItem(at: folder.appending(path: journal.operationID + ".json"))
-            if (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == true { try? FileManager.default.removeItem(at: folder) }
+            // 비었을 때만 지운다(rmdir): 다른 기록이 사이에 둔 핀을 함께 지우지 않게
+            rmdir(folder.path)
         }
     }
 
@@ -382,7 +442,8 @@ extension RekordboxWriter {
         let url = DraftCleanupList.url(backups: backups, operationID: operationID)
         if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
         let folder = url.deletingLastPathComponent()
-        if (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == true { try? FileManager.default.removeItem(at: folder) }
+        // 비었을 때만 지운다(rmdir): 다른 실행이 사이에 적은 목록을 함께 지우지 않게
+        rmdir(folder.path)
     }
 
     /// 라이브러리 변경을 모두 마친 쓰기의 끝(R11·R22): 미정리 목록을 적고(앱의 쓰기), 쓰기 기록을 지우고, 백업을 솎는다.

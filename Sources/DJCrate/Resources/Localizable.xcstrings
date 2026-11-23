@@ -28687,6 +28687,22 @@
         }
       }
     },
+    "복구 중 표시를 남기지 못해 되돌리지 않았습니다: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't mark the write as recovering, so nothing was undone: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復旧中の印を残せなかったため元に戻しませんでした: %@"
+          }
+        }
+      }
+    },
     "복구할 편집을 확인하지 못했으니 편집을 보관하고 곡을 다시 선택하세요." : {
       "localizations" : {
         "en" : {
@@ -33055,6 +33071,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "書き込み記録を削除できませんでした: %@"
+          }
+        }
+      }
+    },
+    "쓰기 기록이 라이브러리 밖의 경로를 가리켜 복원하지 않았습니다. 상태 줄에서 이대로 두세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The write record points outside the library, so nothing was restored. Choose Keep as is in the status bar."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "書き込み記録がライブラリの外のパスを指しているため復元しませんでした。ステータスバーでこのままにしてください"
           }
         }
       }
@@ -37937,6 +37969,22 @@
         }
       }
     },
+    "이 백업 뒤의 저장 전 백업이 정리돼 분석 파일까지 맞출 수 없으니 더 최근 백업이나 복원 시점을 고르세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backups taken after this one were cleaned up, so analysis files can't be matched. Choose a more recent backup or a restore point."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このバックアップより後の保存前バックアップが整理されたため分析ファイルまで合わせられません。より新しいバックアップか復元ポイントを選んでください"
+          }
+        }
+      }
+    },
     "이 변속 지점 삭제" : {
       "localizations" : {
         "en" : {
@@ -41997,6 +42045,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存前のバックアップ"
+          }
+        }
+      }
+    },
+    "저장 전 백업 %@이 사라져 저장하지 않았습니다. 다른 DJCrate가 백업을 정리하는 중이면 잠시 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The pre-save backup %@ is gone, so nothing was saved. If another DJCrate is cleaning up backups, try again in a moment."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存前バックアップ%@がなくなったため保存しませんでした。別のDJCrateがバックアップを整理中ならしばらくしてからもう一度お試しください"
           }
         }
       }

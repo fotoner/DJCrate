@@ -116,11 +116,11 @@ public enum RekordboxTrackWriter {
         func newFiles(_ written: [String]) -> [(URL, Data)] {
             written.flatMap { path in (prepared[path].flatMap { $0.blocked == nil ? $0.files : nil } ?? []) + (artworks[path]?.files ?? []) }
         }
-        report.finalUpdateCount = try transaction(database, dryRun: dryRun, run: run, journal: { startUSN in
+        report.finalUpdateCount = try transaction(database, dryRun: dryRun, run: run, journal: { startUSN, finalUSN in
             RekordboxWriteJournal(operationID: record?.operationID ?? UUID().uuidString, kind: .counter, entry: .trackAdd,
                                   basis: .init(writeBackup: backup?.path),
                                   files: newFiles(report.added.filter(\.written).map(\.path)).map { .init(path: $0.0.path, original: nil) },
-                                  drafts: record?.drafts, startCounter: startUSN)
+                                  drafts: record?.drafts, startCounter: startUSN, finalCounter: finalUSN)
         }) { db, usn in
             let library = try libraryIdentity(db)
             for plan in plans {
@@ -267,8 +267,7 @@ public enum RekordboxTrackWriter {
                 }
             } catch {
                 throw RekordboxWriter.recover(from: error, run: run, database: database, backup: backup, live: live) {
-                    try run?.recheck(.fileReplace)
-                    try RekordboxWriter.removeAnalysisFiles(created)
+                    try RekordboxWriter.removeAnalysisFiles(created, run: run)
                 }
             }
             report.createdFiles = created.map(\.path)
@@ -506,9 +505,10 @@ public enum RekordboxTrackWriter {
         /// 지울 파일 → 쓰기 전 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
         var copies: [String: URL] = [:]
         var renumbered = Renumbered()
-        report.finalUpdateCount = try transaction(database, dryRun: dryRun, run: run, journal: { startUSN in
+        report.finalUpdateCount = try transaction(database, dryRun: dryRun, run: run, journal: { startUSN, finalUSN in
             RekordboxWriteJournal(operationID: UUID().uuidString, kind: .counter, entry: .trackDelete, basis: .init(writeBackup: backup?.path),
-                                  files: files.map { .init(path: $0.path, original: copies[$0.path]?.path) }, startCounter: startUSN)
+                                  files: files.map { .init(path: $0.path, original: copies[$0.path]?.path) }, startCounter: startUSN,
+                                  finalCounter: finalUSN)
         }) { db, usn in
             for id in contentIDs {
                 try db.execute("SAVEPOINT djc_delete")
@@ -556,9 +556,8 @@ public enum RekordboxTrackWriter {
             }
         } catch {
             throw RekordboxWriter.recover(from: error, run: run, database: database, backup: backup, live: live) {
-                try run.recheck(.fileReplace)
-                try RekordboxWriter.restoreAnalysis(from: backup,
-                                                     shareRoot: share ?? database.deletingLastPathComponent().appending(path: "share"))
+                try RekordboxWriter.restoreAnalysis(from: backup, shareRoot: share ?? database.deletingLastPathComponent().appending(path: "share"),
+                                                     run: run)
             }
         }
         report.removedFiles = files.map(\.path).sorted()
@@ -780,13 +779,14 @@ public enum RekordboxTrackWriter {
     }
 
     /// 라이브 DB면 rekordbox 꺼짐·WAL·버전, 어느 DB든 구조·카운터(백업 전에).
-    /// 대상 확인 → 쓰기 잠금(R9, 시험 실행은 잡지 않는다)과 중단 기록 확인(R11) → DB 구조·카운터 확인. 잠금은 부르는 쪽이 `close`로 푼다
+    /// 대상 경계 확인 → 쓰기 잠금(R9, 시험 실행은 잡지 않는다) → 잠금 안에서 라이브 확인·중단 기록 거절(R11) → DB 구조·카운터 확인.
+    /// 잠금은 부르는 쪽이 `close`로 푼다
     static func preflight(_ database: URL, shareRoot: URL?, dryRun: Bool, backups: URL,
                           guard writeGuard: RekordboxWriteGuard) throws -> (share: URL?, run: WriteRun?) {
-        let share = try writeGuard.checkTargets(database, shareRoot: shareRoot, dryRun: dryRun)
+        let share = try writeGuard.checkTargetsBeforeLock(database, shareRoot: shareRoot, dryRun: dryRun)
         let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups)
         do {
-            try run?.refuseInterrupted()
+            try run?.prepareWrite()
             let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
             defer { reader.close() }
             try RekordboxCompatibility.checkSchema(reader)
@@ -805,12 +805,14 @@ public enum RekordboxTrackWriter {
     /// - Parameters:
     ///   - run: 쓰기 기록(R11). 있으면 커밋 직전에 실행을 다시 보고(켜졌으면 롤백·보류, R10) `journal`로 만든 카운터 쓰기 기록을 남긴다.
     ///     커밋 뒤에는 master.db 크기·시각을 적는다. 커밋 전 실패는 바꾼 것이 없어 기록을 지운다(강제 종료 흉내는 그대로 둔다)
-    ///   - journal: 시작 카운터로 쓰기 기록을 만든다
-    static func transaction(_ database: URL, dryRun: Bool, run: WriteRun? = nil, journal: (Int) -> RekordboxWriteJournal = {
-        RekordboxWriteJournal(operationID: UUID().uuidString, kind: .counter, entry: .trackAdd, startCounter: $0)
+    ///   - journal: 시작 카운터와 커밋할 최종 카운터로 쓰기 기록을 만든다
+    static func transaction(_ database: URL, dryRun: Bool, run: WriteRun? = nil, journal: (_ start: Int, _ final: Int) -> RekordboxWriteJournal = {
+        RekordboxWriteJournal(operationID: UUID().uuidString, kind: .counter, entry: .trackAdd, startCounter: $0, finalCounter: $1)
     }, _ body: (CipherDatabase, inout Int) throws -> Bool) throws -> Int? {
         let result: Int?
         do {
+            // 쓰기 연결을 열기 바로 직전에 실행을 다시 본다
+            try run?.recheck(.begin)
             let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive(), writable: true)
             defer { db.close() }
             try db.execute("BEGIN IMMEDIATE")
@@ -831,7 +833,7 @@ public enum RekordboxTrackWriter {
             }
             if let run {
                 try run.recheck(.commit)
-                try run.begin(journal(start))
+                try run.begin(journal(start, usn))
                 try run.before(.commit)
             }
             try db.execute("COMMIT")
@@ -852,8 +854,8 @@ public enum RekordboxTrackWriter {
     /// 커밋 뒤 무결성 검사와 다시 읽기. 실패하면 백업으로 되돌린다(되돌리지 못하면 `restoreFailed`).
     static func afterCommit(_ database: URL, backup: URL, live: Bool, run: WriteRun? = nil, _ check: (CipherDatabase) throws -> Void) throws {
         do {
-            try run?.databaseChanged()
             try run?.after(.commit)
+            try run?.databaseChanged()
             try run?.before(.verify)
             try RekordboxWriter.checkIntegrity(of: database)
             let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())

@@ -8,8 +8,12 @@ extension RekordboxWriter {
     static func writeITunesSync(_ change: RekordboxITunesSyncChange, to database: URL, dryRun: Bool, now: Date,
                                 backups: URL, guard writeGuard: RekordboxWriteGuard,
                                 writeFile: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }) throws -> Report {
-        _ = try writeGuard.checkTargets(database, shareRoot: nil, dryRun: dryRun)
+        _ = try writeGuard.checkTargetsBeforeLock(database, shareRoot: nil, dryRun: dryRun)
         if writeGuard.isLive(database), !writesITunesSync { throw RekordboxITunesSyncChange.invalidSource }
+        // 쓰기 잠금(R9)을 잡은 뒤 라이브 확인·중단 기록 거절(R11)을 한다. 시험 실행은 잠그지 않는다
+        let locked = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups)
+        defer { locked?.close() }
+        try locked?.prepareWrite()
         let target = database.deletingLastPathComponent().appending(path: "playlists3.sync")
         try writeGuard.checkAdjacentFile(target, database: database)
         try validateBackupFile(target, under: database.deletingLastPathComponent(), required: true)
@@ -27,11 +31,7 @@ extension RekordboxWriter {
         var report = Report(outcomes: [], backup: nil, dryRun: dryRun, createdAt: CueJSON.timestamps(now).json,
                             finalUpdateCount: counters.local)
         report.iTunesSyncWritten = changed
-        guard changed, !dryRun else { return report }
-        // 쓰기 잠금(R9)과 중단 기록 확인(R11)
-        let run = try WriteRun.locked(database, guard: writeGuard, backups: backups)
-        defer { run.close() }
-        try run.refuseInterrupted()
+        guard changed, let run = locked else { return report }
         try checkIntegrity(of: database)
         let backup = try makeBackup(of: database, in: backups, now: now, label: "write")
         try saveITunesSyncBackup(before: change.base, after: rendered, in: backup)
@@ -60,12 +60,13 @@ extension RekordboxWriter {
             _ = try RekordboxITunesSelection.parse(Data(contentsOf: target))
             try run.after(.fileReplace)
             try checkIntegrity(of: database)
-            try save(report, in: backup)
         } catch {
             if let passed = run.passThrough(error) { throw passed }
             throw recoverITunesSync(from: error, original: change.base, target: target, database: database,
                                      backup: backup, guard: writeGuard, run: run)
         }
+        // 보고서 저장은 기록을 지우기 전에 하되, 실패해도 적용한 선택을 되돌리지 않고 경고한다(R11)
+        if let warning = try saveReport(report, in: backup, shareRoot: nil, run: run) { report.warnings = [warning] }
         try finishRun(run, backup: backup, backups: backups, list: nil, now: now)
         return report
     }
@@ -126,9 +127,7 @@ extension RekordboxWriter {
                                           backup: URL, guard writeGuard: RekordboxWriteGuard, run: WriteRun) -> any Error {
         do {
             if (try? Data(contentsOf: target)) != original {
-                try run.recheck(.recovery)
-                try run.before(.recovery)
-                try run.update { $0.marks.insert(.recovering) }
+                if let refused = run.markRecovering(failure) { return refused }
                 try run.recheck(.fileReplace)
                 try original.write(to: target, options: .atomic)
             }
@@ -138,8 +137,10 @@ extension RekordboxWriter {
         } catch {
             if let passed = run.passThrough(error) { return passed }
             try? run.update { $0.marks.insert(.recoveryFailed) }
+            // 기록이 남으니 안내는 기록이 받는 백업을 가리킨다
             return DJCError.restoreFailed(reason: DJCError.reason(of: failure), restoreError: DJCError.reason(of: error),
-                                          backup: backup.path, database: writeGuard.isLive(database) ? nil : database.path)
+                                          backup: run.journal?.basis.writeBackup ?? backup.path,
+                                          database: writeGuard.isLive(database) ? nil : database.path)
         }
     }
 

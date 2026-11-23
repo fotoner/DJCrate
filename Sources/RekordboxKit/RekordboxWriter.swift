@@ -115,12 +115,12 @@ public enum RekordboxWriter {
             return report
         }
         let live = writeGuard.isLive(database)
-        let gridRoot = try writeGuard.checkTargets(database, shareRoot: shareRoot, dryRun: dryRun)
-        // 쓰기 잠금(R9)을 사전 확인부터 파일 단계·복구가 끝날 때까지 쥔다. 중단 기록이 남은 대상에는 쓰지 않는다(R11).
+        let gridRoot = try writeGuard.checkTargetsBeforeLock(database, shareRoot: shareRoot, dryRun: dryRun)
+        // 쓰기 잠금(R9)을 사전 확인부터 파일 단계·복구가 끝날 때까지 쥔다. 라이브 확인·중단 기록 거절(R11)은 잡은 뒤에 한다.
         // 시험 실행(dryRun)은 라이브러리를 바꾸지 않아 잠그지 않는다.
         let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups)
         defer { run?.close() }
-        try run?.refuseInterrupted()
+        try run?.prepareWrite()
         /// 준비 폴더를 둘 루트(R10): XML은 DB 폴더, 분석·그림은 분석 루트. 남은 준비 폴더는 쓰기 전에 지운다
         let stagingRoots = [run?.resolved.deletingLastPathComponent(), gridRoot].compactMap { $0 }
         if let run { removeStaging(roots: stagingRoots, key: run.key) }
@@ -446,6 +446,8 @@ public enum RekordboxWriter {
             return steps
         }
         do {
+            // 쓰기 연결을 열기 바로 직전에 실행을 다시 본다(켜졌으면 아무것도 바꾸지 않고 보류)
+            try run?.recheck(.begin)
             let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive(), writable: true)
             try db.execute("BEGIN IMMEDIATE")
             var finished = false
@@ -717,7 +719,7 @@ public enum RekordboxWriter {
                     try run.recheck(.commit)
                     try run.begin(RekordboxWriteJournal(operationID: record?.operationID ?? UUID().uuidString, kind: .counter, entry: .drafts,
                                                         basis: .init(writeBackup: backup.path), files: journalFiles(fileSteps),
-                                                        drafts: record?.drafts, startCounter: startUSN))
+                                                        drafts: record?.drafts, startCounter: startUSN, finalCounter: usn))
                     try run.before(.commit)
                 }
                 try db.execute("COMMIT")
@@ -748,8 +750,8 @@ public enum RekordboxWriter {
         if let run, let backup {
             do {
                 if committed {
-                    try run.databaseChanged()
                     try run.after(.commit)
+                    try run.databaseChanged()
                     try run.before(.verify)
                     try checkIntegrity(of: database)
                     let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
@@ -913,16 +915,9 @@ public enum RekordboxWriter {
     static func recover(from failure: any Error, run: WriteRun? = nil, database: URL, backup: URL, live: Bool, restoreDatabase: Bool = true,
                         filesLabel: String? = nil, files: () throws -> Void = {}) -> any Error {
         if let run, let passed = run.passThrough(failure) { return passed }
-        if let run {
-            do {
-                try run.recheck(.recovery)
-                try run.before(.recovery)
-                try run.update { $0.marks.insert(.recovering) }
-            } catch {
-                // 표시를 적지 못해도 되돌리기는 한다(되돌리지 않으면 더 나쁘다). 다 되돌리면 기록을 지운다
-                if let passed = run.passThrough(error) { return passed }
-            }
-        }
+        if let run, let refused = run.markRecovering(failure) { return refused }
+        // 링크로 가리킨 DB면 링크를 파일로 바꾸지 않게 링크를 푼 자리를 되돌린다(안내 문구는 부른 쪽의 경로 그대로)
+        let target = run?.resolved ?? database
         var problems: [String] = []
         // files는 분석 파일·아트워크(그리드·분석 붙이기·합치기)나 원본 XML(filesLabel)을 되돌린다. DB와 XML은 restoreFiles가 백업에서 살린다.
         do { try files() } catch {
@@ -932,11 +927,11 @@ public enum RekordboxWriter {
         }
         if restoreDatabase {
             // restoreFiles는 DB를 되살린 뒤에만 XML을 되살리고, 실패에 꼬리표("master.db:"·"masterPlaylists6.xml:")를 붙여 던진다.
-            do { try restoreFiles(from: backup, to: database, run: run) } catch {
+            do { try restoreFiles(from: backup, to: target, run: run) } catch {
                 if let run, let passed = run.passThrough(error) { return passed }
                 problems.append(DJCError.reason(of: error))
             }
-            do { try checkIntegrity(of: database) } catch { problems.append("master.db: \(DJCError.reason(of: error))") }
+            do { try checkIntegrity(of: target) } catch { problems.append("master.db: \(DJCError.reason(of: error))") }
         }
         let reason = DJCError.reason(of: failure)
         guard problems.isEmpty else {

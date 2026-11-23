@@ -82,7 +82,7 @@ extension RekordboxWriteGate {
         }
         gate.keepJournal = { target, request, apply in
             switch try RekordboxWriter.keepJournal(database: target.database, operationID: request.operationID, databaseStamp: request.database,
-                                                   backups: target.backups, guard: writeGuard, apply: apply) {
+                                                   backups: target.backups, shareRoot: target.shareRoot, guard: writeGuard, apply: apply) {
             case .nothing: .nothing
             case .changed: .changed
             case .done: .kept
@@ -142,6 +142,7 @@ extension TrackAddBatch {
     var draftRecord: RekordboxDraftRecord<RekordboxTrackWriteReport>? {
         guard let operation else { return nil }
         let revisions = revisions, stagedUUIDs = stagedUUIDs, cues = cues, analyses = analyses
+        let plans = Dictionary(plans.map { ($0.path, $0) }) { first, _ in first }
         let drafts = RekordboxWriteJournal.Drafts(home: operation.draftHome.path, written: revisions.written(revisions.tracks.keys))
         return RekordboxDraftRecord(operationID: operation.id, drafts: drafts) { report in
             let adds = report.added.filter(\.written).compactMap { outcome -> DraftCleanupList.TrackAdd? in
@@ -158,8 +159,23 @@ extension TrackAddBatch {
                     written.append(DraftKey(.grid, old))
                     values.grid = analysis.segments
                 }
-                if let key = outcome.keyWritten {
+                // 태그 초안은 넣기 계획에 실려(제목·아티스트 등) 곡 행에 들어갔다. 키는 같은 쓰기에서 따로 쓰고, 막히면 그 칸만 막힌 칸이다
+                if let plan = plans[outcome.path], revisions.tracks[DraftKey(.tag, old)] != nil || outcome.keyWritten != nil {
                     written.append(DraftKey(.tag, old))
+                    var tags = TagFields()
+                    tags.title = plan.title
+                    tags.artist = plan.artist ?? ""
+                    tags.album = plan.album ?? ""
+                    tags.albumArtist = plan.albumArtist ?? ""
+                    tags.genre = plan.genre ?? ""
+                    tags.composer = plan.composer ?? ""
+                    tags.year = plan.year > 0 ? String(plan.year) : ""
+                    tags.trackNumber = plan.trackNumber > 0 ? String(plan.trackNumber) : ""
+                    tags.comment = plan.comment
+                    tags.musicalKey = outcome.keyWritten ?? ""
+                    values.tags = tags
+                }
+                if let key = outcome.keyWritten {
                     values.musicalKey = key
                 } else if outcome.keyReason != nil {
                     blocked.append(TagFields.Key.musicalKey.rawValue)

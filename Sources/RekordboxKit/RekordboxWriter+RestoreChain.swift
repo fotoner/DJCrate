@@ -148,17 +148,9 @@ extension RekordboxWriter {
     /// 못 돌리면 "복구 실패"로 남긴다(R7·R11).
     static func rollbackRestore(_ failure: any Error, saved: URL, database: URL, touched: [TouchedFile], live: Bool, run: WriteRun? = nil) -> any Error {
         let fm = FileManager.default
-        if let run {
-            do {
-                try run.recheck(.recovery)
-                try run.before(.recovery)
-                try run.update { $0.marks.insert(.recovering) }
-            } catch {
-                if let passed = run.passThrough(error) { return passed }
-            }
-        }
+        if let run, let refused = run.markRecovering(failure) { return refused }
         do {
-            try restoreFiles(from: saved, to: database, run: run)
+            try restoreFiles(from: saved, to: run?.resolved ?? database, run: run)
             for file in touched {
                 if let original = file.original {
                     guard (try? Data(contentsOf: file.url)) != original else { continue }
@@ -176,8 +168,9 @@ extension RekordboxWriter {
         } catch {
             if let run, let passed = run.passThrough(error) { return passed }
             if let run { try? run.update { $0.marks.insert(.recoveryFailed) } }
+            // 기록이 남으니 안내는 기록이 받는 백업(그 백업으로 되돌리면 기록으로 복원한다)을 가리킨다
             return DJCError.restoreFailed(reason: DJCError.reason(of: failure), restoreError: DJCError.reason(of: error),
-                                          backup: saved.path, database: live ? nil : database.path)
+                                          backup: run?.journal?.basis.writeBackup ?? saved.path, database: live ? nil : database.path)
         }
     }
 }

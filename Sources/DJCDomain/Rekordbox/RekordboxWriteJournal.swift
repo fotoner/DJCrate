@@ -131,6 +131,9 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
     public var drafts: Drafts?
     /// 시작 카운터(카운터 쓰기)
     public var startCounter: Int?
+    /// 커밋할 최종 카운터(카운터 쓰기, 커밋 전에 안다). 판정에서 지금 카운터가 이 값이면 master.db 크기·시각 차이는 이 쓰기의 커밋이다
+    /// (커밋 뒤 크기·시각을 고쳐 적기 전에 멈춘 경우). 옛 기록에는 없다(nil: 지금 동작)
+    public var finalCounter: Int?
     /// 마지막으로 DB를 바꾼 뒤의 master.db 크기·시각. DB를 바꿀 때마다 고쳐 적고, rekordbox가 켜진 것을 보고 멈출 때는 고치지 않는다
     public var database: RekordboxFileStamp?
     /// DB를 파일로 바꾸는 복원의 준비 사본(`.djc-restore`) 크기·시각. 바꾼 뒤의 DB도 이 값을 그대로 가진다
@@ -140,8 +143,8 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
     public var pointRestore: PointRestore?
 
     public init(operationID: String, kind: Kind, entry: Entry, basis: Basis = Basis(), files: [File] = [], drafts: Drafts? = nil,
-                startCounter: Int? = nil, database: RekordboxFileStamp? = nil, restoreCopy: RekordboxFileStamp? = nil, marks: Set<Mark> = [],
-                pointRestore: PointRestore? = nil) {
+                startCounter: Int? = nil, finalCounter: Int? = nil, database: RekordboxFileStamp? = nil, restoreCopy: RekordboxFileStamp? = nil,
+                marks: Set<Mark> = [], pointRestore: PointRestore? = nil) {
         version = Self.formatVersion
         self.operationID = operationID
         self.kind = kind
@@ -150,6 +153,7 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
         self.files = files
         self.drafts = drafts
         self.startCounter = startCounter
+        self.finalCounter = finalCounter
         self.database = database
         self.restoreCopy = restoreCopy
         self.marks = marks
@@ -157,7 +161,7 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, operationID, kind, entry, basis, files, drafts, startCounter, database, restoreCopy, marks, pointRestore
+        case version, operationID, kind, entry, basis, files, drafts, startCounter, finalCounter, database, restoreCopy, marks, pointRestore
     }
 
     public init(from decoder: any Decoder) throws {
@@ -173,6 +177,7 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
         files = try container.decode([File].self, forKey: .files)
         drafts = try container.decodeIfPresent(Drafts.self, forKey: .drafts)
         startCounter = try container.decodeIfPresent(Int.self, forKey: .startCounter)
+        finalCounter = try container.decodeIfPresent(Int.self, forKey: .finalCounter)
         database = try container.decodeIfPresent(RekordboxFileStamp.self, forKey: .database)
         restoreCopy = try container.decodeIfPresent(RekordboxFileStamp.self, forKey: .restoreCopy)
         marks = Set(try container.decode([Mark].self, forKey: .marks))
@@ -189,6 +194,7 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
         try container.encode(files, forKey: .files)
         try container.encodeIfPresent(drafts, forKey: .drafts)
         try container.encodeIfPresent(startCounter, forKey: .startCounter)
+        try container.encodeIfPresent(finalCounter, forKey: .finalCounter)
         try container.encodeIfPresent(database, forKey: .database)
         try container.encodeIfPresent(restoreCopy, forKey: .restoreCopy)
         try container.encode(marks.sorted(), forKey: .marks)

@@ -94,6 +94,9 @@ extension RekordboxWriter {
     /// 시점 복원 표시(#225)도 같은 순서로 세어 그보다 옛 쓰기 백업이 정리될 때 함께 지운다.
     /// 남은 미정리 목록(R22)과 중단 기록(R11)이 가리키는 폴더는 지우지 않는다. 목록을 읽지 못하면 무엇을 지킬지 몰라 솎지 않는다.
     static func prune(_ directory: URL, now: Date = .now) {
+        // 저장소 잠금 아래에서 한다(기록 핀 게시와 겹치지 않게, S8). 잡지 못하면 솎지 않는다
+        guard let hold = try? RekordboxWriteLocks.lockStore(directory) else { return }
+        defer { hold.release() }
         let fm = FileManager.default
         let folders = ((try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.creationDateKey])) ?? [])
             .filter { fm.fileExists(atPath: $0.appending(path: "master.db").path) || isPointRestoreMarker($0) }
@@ -104,7 +107,24 @@ extension RekordboxWriter {
         }.count
         let keep = min(max(recent, backupsToKeep), backupsToKeepMax)
         guard writes.count > keep, let protected = try? protectedBackupFolders(in: directory) else { return }
-        for old in folders.dropFirst(writes[keep - 1] + 1) where !protected.contains(old.lastPathComponent) { try? fm.removeItem(at: old) }
+        let cut = Array(folders.dropFirst(writes[keep - 1] + 1))
+        // 지켜서 남긴 옛 백업보다 뒤의 백업을 지우면 그 사슬이 끊긴다: 그 폴더에 표시를 남겨 일반 연쇄 복원이 거절하게 한다
+        // (S6, 기록으로 복원은 기록의 근거로 한다). `cut`은 최근 것부터다
+        for (index, kept) in cut.enumerated() where protected.contains(kept.lastPathComponent)
+            && cut.prefix(index).contains(where: { !protected.contains($0.lastPathComponent) }) {
+            let marker = kept.appending(path: chainCutName)
+            if !fm.fileExists(atPath: marker.path) { try? Data(folders[writes[keep - 1]].lastPathComponent.utf8).write(to: marker, options: .atomic) }
+        }
+        for old in cut where !protected.contains(old.lastPathComponent) { try? fm.removeItem(at: old) }
+    }
+
+    /// 솎기가 뒤 백업을 지운 뒤에도 지켜서 남긴 백업 안의 표시(그 뒤 사슬이 끊겼다). 내용은 그때 남긴 가장 옛 쓰기 백업 이름
+    static let chainCutName = ".djc-chain-cut"
+
+    /// 고른 백업 뒤의 백업을 솎기가 지웠으면(사슬이 끊겼다) 거절 이유. 기록으로 복원은 기록의 근거로 하므로 이 검사를 타지 않는다
+    static func chainGapRefusal(for backup: URL) -> String? {
+        guard FileManager.default.fileExists(atPath: backup.appending(path: chainCutName).path) else { return nil }
+        return String(ui: "이 백업 뒤의 저장 전 백업이 정리돼 분석 파일까지 맞출 수 없으니 더 최근 백업이나 복원 시점을 고르세요")
     }
 
     /// 백업 이름 앞의 뜬 시각(`makeBackup`과 같은 형식·시간대). 읽지 못하면 nil
@@ -147,21 +167,19 @@ extension RekordboxWriter {
         let copyShare = writeGuard.isLive(database) ? nil : database.deletingLastPathComponent().appending(path: "share")
         let share = try writeGuard.resolveShareRoot(database, shareRoot: shareRoot ?? copyShare)
             ?? database.deletingLastPathComponent().appending(path: "share")
-        if writeGuard.isLive(database) {
-            guard !writeGuard.isRekordboxRunning() else {
-                throw DJCError.writeRefused(String(ui: "rekordbox가 켜져 있습니다. rekordbox를 완전히 종료한 뒤 되돌리세요"))
-            }
-        }
-        // 쓰기 잠금(R9). 중단 기록이 남았으면 그 기록의 백업으로 되돌리는 것만 받아 기록으로 복원한다(R11: 다른 백업·시점은 막는다).
-        // 복원 실패 안내의 명령(`djc rekordbox-restore --backup <그 백업>`)과 앱의 "가장 최근 백업으로 되돌리기"가 이 길로 간다
+        // 쓰기 잠금(R9)을 잡은 뒤 실행을 본다. 중단 기록이 남았으면 그 기록의 백업으로 되돌리는 것만 받아 기록으로 복원한다
+        // (R11: 다른 백업·시점은 막는다). 복원 실패 안내의 명령(`djc rekordbox-restore --backup <그 백업>`)과 앱의 "가장 최근 백업으로
+        // 되돌리기"가 이 길로 간다
         let run = try WriteRun.locked(database, guard: writeGuard, backups: backups)
         defer { run.close() }
+        try run.prepareRestore()
         switch try run.judge() {
         case .none: break
         case .undecided: throw DJCError.rekordboxRunning
         case let .interrupted(journal, _, _):
             guard journal.entry != .pointRestore, let recorded = journal.basis.writeBackup,
-                  URL(filePath: recorded).standardizedFileURL.comparablePath == backup.standardizedFileURL.comparablePath else {
+                  URL(filePath: recorded).standardizedFileURL.resolvingSymlinksInPath().comparablePath
+                    == backup.standardizedFileURL.resolvingSymlinksInPath().comparablePath else {
                 throw interruptedRefusal
             }
             switch try restoreByJournal(journal, run: run, backups: backups, shareRoot: share, now: now) {
@@ -170,8 +188,10 @@ extension RekordboxWriter {
             }
         }
         try checkSameLibrary(backup: backup.appending(path: "master.db"), target: database)
-        // 이 백업 뒤에 시점 스냅샷으로 복원했으면 사슬로 분석 파일을 맞출 수 없다(#225).
-        if let reason = pointRestoreRefusal(after: backup, in: backups) { throw DJCError.writeRefused(reason) }
+        // 이 백업 뒤에 시점 스냅샷으로 복원했으면 사슬로 분석 파일을 맞출 수 없다(#225). 솎기가 그 뒤 백업을 지웠어도 같다(S6).
+        if let reason = pointRestoreRefusal(after: backup, in: backups) ?? chainGapRefusal(for: backup) {
+            throw DJCError.writeRefused(reason)
+        }
         if let saved = try restoreITunesSync(backup, to: database, now: now, backups: backups, guard: writeGuard, run: run) { return saved }
         // 백업이 멀쩡한지 먼저 본다.
         for name in ["master.db", "master.db-wal", "master.db-shm", "masterPlaylists6.xml"] {
@@ -198,9 +218,10 @@ extension RekordboxWriter {
             throw run.abandon(error)
         }
         do {
-            try restoreFiles(from: backup, to: database, run: run)
+            // 링크로 가리킨 DB면 링크를 파일로 바꾸지 않게 링크를 푼 자리를 되돌린다
+            try restoreFiles(from: backup, to: run.resolved, run: run)
             try applyRestoreSteps(steps, run: run)
-            try run.step(.verify, recheck: false) { try checkIntegrity(of: database) }
+            try run.step(.verify, recheck: false) { try checkIntegrity(of: run.resolved) }
         } catch {
             // 아직 아무것도 바꾸지 않았으면(준비 사본을 만든 뒤 켜짐 등) 기록을 지우고 보류·실패로 끝낸다
             if !run.changed || error is RekordboxWriteStop { throw run.abandon(error) }
@@ -266,8 +287,9 @@ extension RekordboxWriter {
     }
 
     /// 쓰기가 실패했을 때 백업의 분석 파일을 원래 자리로 되돌린다.
-    static func restoreAnalysis(from backup: URL, shareRoot: URL) throws {
-        try applyRestoreSteps([RestoreStep(backup: backup, analysis: analysisRestoreFiles(from: backup, shareRoot: shareRoot), created: [])])
+    /// 쓰기 기록(`run`)이 있으면 파일마다 바로 직전에 실행을 다시 본다(R10)
+    static func restoreAnalysis(from backup: URL, shareRoot: URL, run: WriteRun? = nil) throws {
+        try applyRestoreSteps([RestoreStep(backup: backup, analysis: analysisRestoreFiles(from: backup, shareRoot: shareRoot), created: [])], run: run)
     }
 
     /// DB·XML 되돌리기에서 실패한 것(꼬리표를 붙여)
@@ -291,11 +313,17 @@ extension RekordboxWriter {
                     let partial = URL(filePath: database.path + suffix + ".djc-restore")
                     try? fm.removeItem(at: partial)
                     try fm.copyItem(at: source, to: partial)
-                    if suffix.isEmpty, let run { try run.update { $0.restoreCopy = fileStamp(partial) } }
-                    try run?.recheck(step)
-                    try run?.before(step)
-                    run?.changed = true
-                    _ = try fm.replaceItemAt(target, withItemAt: partial)
+                    do {
+                        if suffix.isEmpty, let run { try run.update { $0.restoreCopy = fileStamp(partial) } }
+                        try run?.recheck(step)
+                        try run?.before(step)
+                        run?.changed = true
+                        _ = try fm.replaceItemAt(target, withItemAt: partial)
+                    } catch {
+                        // 바꾸지 못했으면(켜짐·실패) 준비 사본(클라우드 토큰이 든다)을 남기지 않는다. 강제 종료 흉내는 그대로 둔다
+                        if !(error is RekordboxWriteStop) { try? fm.removeItem(at: partial) }
+                        throw error
+                    }
                     if suffix.isEmpty { try run?.databaseChanged() }
                     try run?.after(step)
                 } else if fm.fileExists(atPath: target.path) {

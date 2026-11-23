@@ -161,6 +161,23 @@ extension RekordboxWriter {
         }
     }
 
+    /// 만든 파일을 하나씩 지운다(쓰기 기록이 있으면 지우기 바로 직전마다 실행을 다시 본다, R10). 켜짐·강제 종료 흉내는 곧바로 던지고,
+    /// 그 밖의 실패는 나머지를 해 본 뒤 처음 것을 던진다
+    static func removeAnalysisFiles(_ created: [URL], run: WriteRun?) throws {
+        var first: (any Error)?
+        for file in created where FileManager.default.fileExists(atPath: file.path) {
+            do {
+                try run?.recheck(.fileReplace)
+                try removeAnalysisFiles([file])
+            } catch let error where error is RekordboxRunningSeen || error is RekordboxWriteStop {
+                throw error
+            } catch {
+                first = first ?? error
+            }
+        }
+        if let first { throw first }
+    }
+
     /// 만든 분석·아트워크 파일을 지우고, 비게 된 `USBANLZ`·`Artwork` 아래 `<3자>/<나머지>` 폴더도 지운다.
     /// 쓰기 실패 때 이번 작업이 만든 파일만 지워 넣기 전 모양으로 돌린다.
     static func removeAnalysisFiles(_ created: [URL]) throws {

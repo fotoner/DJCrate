@@ -212,6 +212,15 @@ public struct RekordboxWriteGuard: Sendable {
         return share
     }
 
+    /// 쓰기 잠금을 잡기 전의 대상 확인(R9): 대상·share 경계만 본다. 라이브 확인(rekordbox 실행·-wal·버전)은 잠금을 잡은 뒤
+    /// `checkLive`로 한다(기다리는 동안 켜진 rekordbox나 다른 쓰기의 체크포인트 전 -wal을 잠금 밖에서 보지 않게). 시험 실행은 잠그지 않으니
+    /// 라이브면 여기서 바로 거절한다.
+    func checkTargetsBeforeLock(_ database: URL, shareRoot: URL?, dryRun: Bool) throws -> URL? {
+        let share = try resolveShareRoot(database, shareRoot: shareRoot)
+        if dryRun, isLive(database) { try checkLive(database, dryRun: true) }
+        return share
+    }
+
     /// 복원도 같은 대상 경계를 쓰되, 비상 복원의 버전 검사 예외는 유지한다.
     func resolveShareRoot(_ database: URL, shareRoot: URL?) throws -> URL? {
         try refuseProtectedInTests([database, shareRoot])

@@ -227,9 +227,32 @@ struct RekordboxWriteJournalLiveTests {
         let list = try #require(record.cleanupList(report))
         let add = try #require(list.trackAdds.first)
         #expect(add.stagedUUID == "old" && add.trackUUID == "new")
-        #expect(add.written.map { $0.key } == [DraftKey(.cue, "old"), DraftKey(.grid, "old")])
+        // 태그 초안은 넣기 계획에 실려 키 밖의 칸을 썼다(키만 막힘)
+        #expect(add.written.map { $0.key } == [DraftKey(.cue, "old"), DraftKey(.grid, "old"), DraftKey(.tag, "old")])
         #expect(add.values.cues == cues && add.values.grid == segments && add.values.musicalKey == nil)
+        #expect(add.values.tags?.title == "A" && add.values.tags?.musicalKey == "")
         #expect(add.blockedFields == [TagFields.Key.musicalKey.rawValue])
+    }
+
+    @Test func 곡_넣기의_미정리_목록은_넣기로_쓴_태그_값을_적는다() throws {
+        let plan = TrackAddPlan(path: "/music/b.mp3", fileName: "b.mp3", title: "새 제목", artist: "새 가수", album: "앨범", genre: "장르",
+                                comment: "코멘트", year: 2024, trackNumber: 3, discNumber: 0, isrc: "", lyricist: "", fileType: 1, fileSize: 1,
+                                fileID: "f", length: 1, duration: 1, dateCreated: "", stockDate: "")
+        let entry = DraftBatchEntry(stamp: DraftStamp(revision: DraftRevision(5), origins: [.human], contentHash: DraftContentHash(hex: "x")),
+                                    contentHash: DraftContentHash(hex: "t5"))
+        let batch = TrackAddBatch(plans: [plan], keys: [plan.path: "8A"], stagedUUIDs: [plan.path: "old"],
+                                  revisions: DraftBatchRevisions(tracks: [DraftKey(.tag, "old"): entry]),
+                                  operation: DraftWriteOperation(id: "add-tags", draftHome: URL(filePath: "/drafts")))
+        let report = RekordboxTrackWriteReport(added: [.init(path: plan.path, contentID: "78", title: "새 제목", written: true, uuid: "new",
+                                                             keyWritten: "8A")], dryRun: false)
+        let record = try #require(batch.draftRecord)
+        let list = try #require(record.cleanupList(report))
+        let add = try #require(list.trackAdds.first)
+        #expect(add.written == [WrittenDraft(key: DraftKey(.tag, "old"), revision: DraftRevision(5), contentHash: DraftContentHash(hex: "t5"))])
+        let tags = try #require(add.values.tags)
+        #expect(tags.title == "새 제목" && tags.artist == "새 가수" && tags.album == "앨범" && tags.genre == "장르" && tags.comment == "코멘트")
+        #expect(tags.year == "2024" && tags.trackNumber == "3" && tags.musicalKey == "8A" && add.values.musicalKey == "8A")
+        #expect(add.blockedFields.isEmpty)
     }
 
     // MARK: 백업 조건(R13)

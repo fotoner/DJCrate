@@ -95,7 +95,8 @@ extension RekordboxWriter {
             let folder = RekordboxStaging.folder(root: root, key: key)
             try? fm.removeItem(at: folder)
             let parent = folder.deletingLastPathComponent()
-            if (try? fm.contentsOfDirectory(atPath: parent.path))?.isEmpty == true { try? fm.removeItem(at: parent) }
+            // 비었을 때만 지운다(rmdir): 다른 대상이 사이에 만든 준비 폴더를 함께 지우지 않게
+            rmdir(parent.path)
         }
     }
 
@@ -161,6 +162,8 @@ extension RekordboxWriter {
         for step in steps.reversed() {
             do {
                 try run?.recheck(.fileReplace)
+                // 되돌리기도 경로에 링크가 생겼으면 share 밖에 쓰거나 지우지 않는다
+                try step.precheck?()
                 if let original = step.original {
                     guard (try? Data(contentsOf: step.target)) != original else { continue }
                     try fm.createDirectory(at: step.target.deletingLastPathComponent(), withIntermediateDirectories: true)

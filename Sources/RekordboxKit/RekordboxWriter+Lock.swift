@@ -51,8 +51,10 @@ public struct RekordboxWriteLocks: Sendable {
             defer { free(real) }
             return URL(filePath: String(cString: real), directoryHint: .notDirectory)
         }
+        // 실패 원인은 곧바로 읽는다(다른 호출이 errno를 바꾸기 전에)
+        let code = errno
         let parent = database.standardizedFileURL.deletingLastPathComponent().path
-        guard errno == ENOENT, let real = realpath(parent, nil) else {
+        guard code == ENOENT, let real = realpath(parent, nil) else {
             throw DJCError.writeRefused(String(ui: "라이브러리 폴더를 찾지 못했습니다. 폴더가 있는지 확인한 뒤 다시 시도하세요"))
         }
         defer { free(real) }
@@ -107,8 +109,27 @@ public struct RekordboxWriteLocks: Sendable {
         throw DJCError.writeRefused(String(ui: "쓰기 잠금을 잡지 못했습니다(\(String(cString: strerror(code)))). 잠시 뒤 다시 시도하세요"))
     }
 
+    // MARK: - 저장소 잠금
+
+    /// 백업·시점 스냅샷 폴더(저장소) 잠금(R11·R13): 솎기·삭제와 기록 핀 게시(근거 확인·핀·기록 저장)를 같은 저장소에 대해 하나씩 한다.
+    /// 그래야 다른 대상의 솎기가 핀을 두기 직전의 근거를 지우거나, 핀을 둔 근거를 지우지 않는다. 키는 그 폴더의 (장치, inode)이고 잠금 파일은
+    /// 기본 잠금 폴더의 `<키>.store.lock`이다(저장소 폴더에 파일을 더하지 않는다). 폴더가 없으면 nil(지킬 것이 없다)
+    public static func lockStore(_ folder: URL) throws -> RekordboxWriteLockHold? {
+        var info = stat()
+        guard stat(folder.path, &info) == 0 else { return nil }
+        let key = RekordboxWriteLockKey(device: UInt64(UInt32(bitPattern: info.st_dev)), inode: UInt64(info.st_ino))
+        let locks = Self()
+        let fd = try locks.open(fileName: key.name + ".store.lock")
+        while flock(fd, LOCK_EX) != 0 {
+            guard errno == EINTR else { try locks.fail(fd) }
+        }
+        return RekordboxWriteLockHold(key: key, fd: fd)
+    }
+
     /// 잠금 폴더(`0700`, 내 것)를 링크를 따라가지 않고 열고 그 안의 잠금 파일을 연다
-    private func open(_ key: RekordboxWriteLockKey) throws -> Int32 {
+    private func open(_ key: RekordboxWriteLockKey) throws -> Int32 { try open(fileName: key.lockFileName) }
+
+    private func open(fileName: String) throws -> Int32 {
         func refuse(_ detail: String) -> DJCError {
             .writeRefused(String(ui: "쓰기 잠금 폴더를 쓸 수 없습니다(\(detail)). \(folder.path) 폴더를 확인한 뒤 다시 시도하세요"))
         }
@@ -123,7 +144,7 @@ public struct RekordboxWriteLocks: Sendable {
         guard fstat(directory, &info) == 0, info.st_uid == getuid(), info.st_mode & 0o077 == 0 else {
             throw refuse(String(ui: "주인이나 권한이 다름"))
         }
-        let fd = openat(directory, key.lockFileName, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let fd = openat(directory, fileName, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw refuse(String(cString: strerror(errno))) }
         return fd
     }

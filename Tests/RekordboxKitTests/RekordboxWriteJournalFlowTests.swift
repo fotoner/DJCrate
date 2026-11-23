@@ -220,7 +220,9 @@ struct RekordboxWriteJournalFlowTests {
         script.stop(at: .after(.commit))
         #expect(throws: RekordboxWriteStop.self) { try writeCue(fixture, try cueDraft(fixture), guard: script.writeGuard) }
         #expect(Kit.interrupted(try Kit.judge(fixture))?.changedSince == false)
+        // rekordbox의 편집은 변경 카운터를 올린다(이 쓰기의 최종 카운터와 달라진다)
         try fixture.execute("UPDATE djmdContent SET Commnt = 'rekordbox에서 고침'")
+        try fixture.execute("UPDATE agentRegistry SET int_1 = int_1 + 1 WHERE registry_id = 'localUpdateCount'")
         #expect(Kit.interrupted(try Kit.judge(fixture))?.changedSince == true)
     }
 

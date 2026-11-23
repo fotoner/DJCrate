@@ -13,7 +13,7 @@ final class WriteHookScript: Sendable {
     private struct State {
         var stop: (moment: RekordboxWriteMoment, occurrence: Int)?
         var fail: (moment: RekordboxWriteMoment, occurrence: Int)?
-        var runningFrom: RekordboxWriteMoment?
+        var runningFrom: (moment: RekordboxWriteMoment, occurrence: Int)?
         var runningSteps: Set<RekordboxWriteStep> = []
         var running = false
         var counts: [RekordboxWriteMoment: Int] = [:]
@@ -30,7 +30,7 @@ final class WriteHookScript: Sendable {
     /// 그 때의 `occurrence`번째에 실패를 던진다
     func fail(at moment: RekordboxWriteMoment, occurrence: Int = 1) { state.withLock { $0.fail = (moment, occurrence) } }
     /// 그 때를 지난 뒤로 모든 재확인이 켜짐을 본다(그 때가 재확인이면 그 재확인부터)
-    func startRunning(at moment: RekordboxWriteMoment) { state.withLock { $0.runningFrom = moment } }
+    func startRunning(at moment: RekordboxWriteMoment, occurrence: Int = 1) { state.withLock { $0.runningFrom = (moment, occurrence) } }
     /// 그 단계의 재확인만 켜짐을 본다
     func running(at steps: Set<RekordboxWriteStep>) { state.withLock { $0.runningSteps = steps } }
     /// 그 때에 시험의 일을 한다(던지기 전에)
@@ -47,7 +47,7 @@ final class WriteHookScript: Sendable {
                     let count = (state.counts[moment] ?? 0) + 1
                     state.counts[moment] = count
                     state.moments.append(moment)
-                    if moment == state.runningFrom { state.running = true }
+                    if let from = state.runningFrom, from.moment == moment, from.occurrence == count { state.running = true }
                     return (state.actions[moment], state.stop.map { $0.moment == moment && $0.occurrence == count } ?? false,
                             state.fail.map { $0.moment == moment && $0.occurrence == count } ?? false)
                 }
@@ -110,7 +110,8 @@ enum JournalTestKit {
             var found: [String] = []
             while let url = enumerator?.nextObject() as? URL {
                 let name = url.lastPathComponent
-                if name == RekordboxStaging.folderName || name.hasPrefix(".djc-restore") || name.hasPrefix(".djc-old-") || name.hasSuffix(".djc-part") {
+                if name == RekordboxStaging.folderName || name.hasPrefix(".djc-restore") || name.hasPrefix(".djc-old-") || name.hasSuffix(".djc-part")
+                    || name.hasSuffix(".djc-restore") {
                     found.append(url.path)
                 }
             }

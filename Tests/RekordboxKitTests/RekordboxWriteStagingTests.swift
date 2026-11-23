@@ -52,7 +52,8 @@ struct RekordboxWriteStagingTests {
         let script = WriteHookScript()
         let journalURL = try Kit.journalURL(fixture), seen = Mutex<Data?>(nil), written = Mutex<Data?>(nil)
         let files = sidecars(fixture), database = fixture.database
-        script.on(.after(.commit)) {
+        // 커밋 뒤 크기·시각을 적은 기록(검사 직전)
+        script.on(.before(.verify)) {
             seen.withLock { $0 = try? Data(contentsOf: journalURL) }
             written.withLock { $0 = try? Data(contentsOf: database) }
         }

@@ -253,6 +253,9 @@ public enum RekordboxPointSnapshot {
     /// 사용자가 고른 스냅샷을 지운다. 고정한 스냅샷은 고정을 푼 뒤에만 지운다.
     public static func delete(_ entry: URL, in directory: URL) throws {
         let folder = try owned(entry, in: directory)
+        // 기록 핀 게시와 겹치지 않게 저장소 잠금 아래에서 본다(S8)
+        let hold = try RekordboxWriteLocks.lockStore(directory)
+        defer { hold?.release() }
         if metadata(in: folder)?.pinned == true {
             throw DJCError.writeRefused(String(ui: "고정한 복원 시점은 지우지 않습니다. 고정을 푼 뒤 지우세요"))
         }
@@ -278,6 +281,9 @@ public enum RekordboxPointSnapshot {
     /// 10분 넘은 반쯤 뜬 폴더도 치운다(뜨는 중인 것은 건드리지 않는다).
     @discardableResult
     public static func prune(in directory: URL, autoDays: Int, now: Date = .now) -> [URL] {
+        // 기록 핀 게시와 겹치지 않게 저장소 잠금 아래에서 한다(S8). 잡지 못하면 솎지 않는다
+        guard let hold = try? RekordboxWriteLocks.lockStore(directory) else { return [] }
+        defer { hold.release() }
         let fm = FileManager.default
         var removed: [URL] = []
         let entries = list(in: directory).filter { !$0.metadata.pinned }
