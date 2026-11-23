@@ -14,6 +14,11 @@ public struct EditDraftFiles: Sendable {
         self.newKey = newKey ?? { files.newCueID().uuidString.lowercased() }
     }
 
+    /// 같은 초안 폴더를 그 출처로 저장하는 입구(LINK 큐 편집은 LINK 출처, R5)
+    public func with(origin: DraftOrigin) -> EditDraftFiles {
+        EditDraftFiles(files: files.with(origin: origin), newKey: newKey)
+    }
+
     public enum Kind: String, Sendable { case cue, tag }
 
     /// 큐 하나 넣기
@@ -163,15 +168,25 @@ public struct EditDraftFiles: Sendable {
             // 쓰는 동안 바꾼 초안은 앱의 쓴 뒤 정리가 지우거나 낡은 편집으로 남긴다(#260). 미리 보기는 저장하지 않아 잡지 않는다
             let unlock = dryRun ? nil : try lockPlaylist()
             defer { unlock?() }
-            let base = try existing { try files.readPlaylist() } ?? PlaylistDraft()
+            // 저장할 때는 계획하기 전에 기존 단계에 식별자와 모름 도장을 붙인다(건드리지 않은 기존 단계에 CLI 출처가 붙지 않게). 미리 보기는 파일을 쓰지 않는다
+            // 식별자·도장을 적지 못하면 그 자리에서 `draft_io_failed`로 멈춘다(식별자 없는 초안으로 이어 쌓지 않는다). 읽지 못한 기존 초안은 `invalid_draft`다
+            let base: PlaylistDraft
+            if dryRun {
+                base = try existing { try files.readPlaylist() } ?? PlaylistDraft()
+            } else {
+                do { base = try files.readPlaylistWithIdentifiers() } catch is DraftFilesUnreadable { throw Self.corrupt() }
+            }
             let batch = EditPlaylists.planning(requests, onto: base, rekordbox: rekordbox, contentIDs: contentIDs,
                                                allOrNothing: allOrNothing, newKey: newKey)
             if batch.skippedCount > 0, !batch.hasChanges { throw Self.blocked(batch) }
             guard !dryRun, batch.draft != base else { return batch }
-            guard try existing({ try files.readPlaylist() }) == base else {
+            // 원본 재확인과 저장은 한 번에 한다(같은 초안 잠금 안에서): 그 사이에 앱의 쓴 뒤 정리가 끼어들어 쓴 단계를 되살리지 않게 한다
+            // 잠금 안에서 읽지 못한 파일은 `invalid_draft`, 잠금·저장 오류는 `draft_io_failed`다
+            let saved: Bool
+            do { saved = try files.savePlaylist(batch.draft, ifCurrentIs: base) } catch is DraftFilesUnreadable { throw Self.corrupt() }
+            guard saved else {
                 throw ReadFailure("draft_changed", String(ui: "편집을 계획하는 동안 재생 목록 편집이 바뀌었습니다. 같은 명령을 다시 실행하세요"))
             }
-            try files.savePlaylist(batch.draft)
             return batch
         }
     }

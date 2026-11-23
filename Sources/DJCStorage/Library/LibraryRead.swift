@@ -143,8 +143,25 @@ public struct LibraryRead {
         return DraftList(drafts: uuids.sorted().compactMap { uuid in
             let state = draftState(uuid: uuid)
             guard !state.kinds.isEmpty else { return nil }
-            return DraftRecord(trackUUID: uuid, contentID: byUUID[uuid]?.id, title: byUUID[uuid]?.title, kinds: state.kinds)
+            let provenance = draftProvenance(uuid: uuid, kinds: state.kinds)
+            return DraftRecord(trackUUID: uuid, contentID: byUUID[uuid]?.id, title: byUUID[uuid]?.title, kinds: state.kinds,
+                               origins: provenance.origins, suggestions: provenance.suggestions)
         })
+    }
+
+    /// 초안 종류마다 출처와 제안 사유(R5). 도장과 초안 파일을 읽기만 한다. 사유는 사람 편집만 든 도장일 때만 지금 내용의 해시를 본다
+    private func draftProvenance(uuid: String, kinds: [String]) -> (origins: [String: [String]], suggestions: [String: String]) {
+        var origins: [String: [String]] = [:], suggestions: [String: String] = [:]
+        let places = DraftLocations(home: home)
+        for name in kinds {
+            guard let kind = DraftKey.Kind(rawValue: name) else { continue }
+            let key = DraftKey(kind, uuid)
+            let stamp = DraftStampStore.stamp(key, home: home)
+            origins[name] = (stamp?.origins ?? [.unknown]).sorted().map(\.rawValue)
+            let current = stamp?.isHumanOnly == true ? StampedDrafts.currentHash(key, places: places) : nil
+            if let reason = DraftSuggestion.judge(stamp: stamp, currentHash: current) { suggestions[name] = reason.rawValue }
+        }
+        return (origins, suggestions)
     }
 
     public func paths(query: String) -> PathList {

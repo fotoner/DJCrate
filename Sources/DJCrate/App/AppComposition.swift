@@ -125,7 +125,8 @@ final class AppComposition {
         let settings = SettingsStore(sharedFile: .live)
         let location = LibraryLocation.resolve(arguments: info.arguments, environment: info.environment)
         // 초안 저장 큐는 하나다: 저장소·덱·반영·복구·그리드 추정이 모두 같은 큐로 쓴다(게인 초안은 모든 곡이 파일 하나라 순서가 지켜져야 한다).
-        let drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome)
+        // 앱의 편집 포트는 사람 편집이다(출처는 조립이 정한다, R5)
+        let drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome, origin: .human)
         let places = DraftLocations(home: location.draftHome)
         var ports = LibraryPorts.live(location: location, drafts: drafts, batches: .live(url: places.reflection))
         // USB 기기 재생 기록 보존(#43)은 앱만 붙인다(시험 저장소·CLI는 보존하지 않는다)

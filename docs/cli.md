@@ -227,7 +227,7 @@ JSON 키는 영문이고 ID·UUID는 문자열이다. 선택 값이 없으면 �
 | `track` | `{track: Track, cues: Cue[], grid: Grid, gain?: Gain, playlists: Playlist[], drafts: DraftState}` |
 | `playlists` | `{playlists: Playlist[]}`; `--tree`면 루트부터 `children`으로 중첩 |
 | `playlist` | `{playlist: Playlist, tracks: Track[]}` |
-| `drafts` | `{drafts: Draft[]}`; UUID 순서, 컬렉션에 없는 초안도 포함 |
+| `drafts` | `{drafts: Draft[]}`; UUID 순서, 컬렉션에 없는 초안도 포함. 종류마다 출처(`origins`)와 제안 사유(`suggestions`)가 있다 |
 | `histories` | `{histories: History[]}` |
 | `history` | `{history: History, entries: HistoryEntry[]}` |
 | `report` | 아래 집계 필드 |
@@ -273,8 +273,20 @@ JSON 키는 영문이고 ID·UUID는 문자열이다. 선택 값이 없으면 �
 - `DraftState`: `cue`, `grid`, `gain`, `tag`, `artwork` 불리언 다섯 개다.
   - `artwork`는 앨범아트 초안이다.
   - 앨범아트 초안은 앱에서만 만든다.
-- `Draft`: `trackUUID`, `kinds`, 선택 `contentID`, `title`.
+- `Draft`: `trackUUID`, `kinds`, `origins`, `suggestions`, 선택 `contentID`, `title`.
   - `kinds`의 순서는 `cue`, `grid`, `gain`, `tag`, `artwork`다.
+  - `origins`: 종류마다 그 초안에 손댄 출처의 배열이다. 값은 아래 순서로 적는다.
+    - `human`: 앱에서 사람이 편집했다.
+    - `cli`, `agent`, `link`
+    - `restored`: 복원이 되살렸다.
+    - `unknown`: 출처를 모른다. 도장이 없는 초안은 `["unknown"]`이다. 업데이트 전부터 있던 초안도 그렇다.
+  - `suggestions`: 앱이 자동으로 쓰지 않는 종류의 사유다. 없는 종류는 자동 저장 대상이다. 사람 편집만 든 초안이다. 내용도 기록과 같다.
+    - `not_human`: 사람 편집이 아닌 출처다.
+    - `mixed_origins`: 사람 편집과 다른 출처가 섞였다.
+    - `unknown_origin`: 출처를 모른다.
+    - `content_changed`: 내용이 기록과 맞지 않는다. 바깥에서 고쳤다.
+  - 제안은 앱에서 ⌘S·저장 단추로 저장할 때 함께 쓴다.
+  - `origins`·`suggestions`는 칸을 더한 것이다. 기존 칸은 그대로다.
   - 컬렉션에 없으면 마지막 두 필드를 생략한다.
   - 큐·그리드·태그는 읽을 수 있고 실제 변경이 있는 초안만 센다.
   - 게인은 저장된 값이 있는 초안만 센다.
@@ -299,6 +311,7 @@ JSON 키는 영문이고 ID·UUID는 문자열이다. 선택 값이 없으면 �
 
 - DB·분석 파일·음원에는 쓰지 않는다.
 - 앱과 같은 JSON을 `DJC_HOME`의 `cue-drafts/`·`tag-drafts/`에 저장한다.
+- 저장하는 초안마다 출처(`cli`)와 새 판, 내용 해시를 `DJC_HOME`의 `draft-stamps/`에 적는다. 판은 저장할 때마다 새로 받는 번호다. 앱은 사람 편집이 아닌 초안과 바깥에서 고친 초안을 자동으로 쓰지 않는다. 앱에서 ⌘S·저장 단추로 저장할 때 함께 쓴다. `djc drafts`의 `origins`·`suggestions`로 본다.
 - 처음 만들 때 스냅샷의 rekordbox 값을 `base`에 담는다.
 - 기존 초안을 이어 고칠 때는 그 `base`와 다른 편집을 보존한다.
 - rekordbox 저장은 앱에서 사람이 별도로 실행한다.
@@ -551,6 +564,7 @@ USB 시점 스냅샷(`usb-point-snapshots/`)의 개수와 사용량도 보인다
 
 - 다음 항목은 어떤 종류에도 없어 지우지 않는다.
   - 초안(`*-drafts/`·`*-drafts.json`)
+  - 초안 도장 `draft-stamps/`와 잠금 파일 `draft-stamps.lock`
   - `staged.json`
   - `playlist-imports.json`
   - `damaged-drafts/`

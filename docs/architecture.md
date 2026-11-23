@@ -315,6 +315,13 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - 초안: `cue-drafts/`, `grid-drafts/`, `gain-drafts.json`, `tag-drafts/`
 - 앨범아트 초안: `artwork-drafts/`. 앨범아트 초안과 고른 앨범아트 사본이 있다.
 - 재생 목록 초안: `playlist-drafts.json`. 재생 목록 편집을 순서대로 적는다. 옆의 `playlist-drafts.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다.
+- 초안 도장: `draft-stamps/`. 초안마다 출처, 판, 내용 해시를 적는다.
+  - 판은 저장할 때마다 새로 받는 번호다.
+  - 옆의 `draft-stamps.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다. 판을 받을 때와 쓴 판을 지울 때 잡는다.
+  - 재생 목록 단계는 단계마다 식별자 `id`를 `playlist-drafts.json`에 적는다. 도장은 그 식별자로 단계를 잇는다.
+  - 단계를 확인할 수 없으면 옛 판을 붙이지 않는다. 그 단계는 새 판과 모름 출처를 받는다.
+  - 식별자가 없는 옛 파일은 앱이 읽을 때와 CLI가 단계를 쌓기 전에 식별자를 채워 적는다.
+  - 도장이 없는 초안은 출처를 모르는 초안이다. 앱이 자동으로 쓰지 않는다.
 - `damaged-drafts/`: 읽지 못한 초안 파일을 옮겨 둔 곳이다. 그 파일을 지우지 않는다. 빈 값으로 덮지도 않는다. 합치기 초안 `merge-drafts.json`과 추가 목록 `staged.json`도 여기로 옮긴다. 앱은 읽기·저장 때 파일을 옮긴 뒤 창 아래 알림으로 알린다.
 - 추가한 곡: `staged.json`
 - 활동 기록: `activity-log.json`(권한 0600). 창 알림과 쓰기 결과의 최근 200건이다.
