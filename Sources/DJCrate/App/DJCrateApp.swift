@@ -87,13 +87,14 @@ struct DJCrateApp: App {
                     appDelegate.consumeUpdateRelaunch = { composition.consumeUpdateRelaunch() }
                     #if DEBUG
                     // 쓰기 시험(`--write-selftest`)도 키 입력 없이 스토어로만 돌아 사용 중인 앱의 포커스를 가져오지 않는다
-                    if !ResizePerfSelfTest.isRequested,
+                    if !ResizePerfSelfTest.isRequested, !DiagnosticRun.isAutoReflectSelfTest(),
                        !ProcessInfo.processInfo.arguments.contains("--playlist-recovery-selftest"),
                        !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--write-selftest" || $0 == "--quit-wait-selftest" || $0 == "--history-selftest" }) {
                         NSApplication.shared.activate()
                     }
                     #else
-                    NSApplication.shared.activate()
+                    // 자동 저장 자가 테스트 인자를 준 릴리스 실행도 진단 실행이라 포커스를 가져오지 않는다(R18)
+                    if !DiagnosticRun.isAutoReflectSelfTest() { NSApplication.shared.activate() }
                     #endif
                     await app.start()
                 }
@@ -162,6 +163,11 @@ private struct MainWindowFrame: NSViewRepresentable {
                     return
                 }
                 #endif
+                // 자동 저장 자가 테스트는 두 빌드 모두 창 위치를 저장하지 않는다(R18)
+                if DiagnosticRun.isAutoReflectSelfTest() {
+                    onRestore()
+                    return
+                }
                 if window.frameAutosaveName != "djc.mainWindow" {
                     window.setFrameUsingName("djc.mainWindow")
                     window.setFrameAutosaveName("djc.mainWindow")

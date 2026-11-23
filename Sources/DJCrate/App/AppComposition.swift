@@ -112,6 +112,8 @@ final class AppComposition {
         // 합성 사본 자가 테스트가 사용자 폴더·설정을 옮기지 않게 한다.
         if CommandLine.arguments.contains("--history-selftest") || CommandLine.arguments.contains(where: { $0.hasPrefix("--usb-snapshot-capture=") }) { return }
         #endif
+        // 자동 저장 사본 자가 테스트는 두 빌드 모두 옮기지 않는다(R18)
+        if DiagnosticRun.isAutoReflectSelfTest(arguments: CommandLine.arguments) { return }
         LegacyMigration.run()
     }
 

@@ -17,11 +17,20 @@ final class SettingsStore: @unchecked Sendable {
     let sharedFile: SharedSettingsWriter?
 
     init(defaults: UserDefaults = .standard,
-         persist: Bool = !ProcessInfo.processInfo.arguments.contains { $0.hasSuffix("-selftest") || $0.hasPrefix("--sidebar-multi-") || $0.hasPrefix("--usb-snapshot-capture=") || $0 == "--autoplay" || $0 == "--scroll-perf" || $0.hasPrefix("--ui-perf=") },
+         persist: Bool = SettingsStore.persists(arguments: ProcessInfo.processInfo.arguments),
          sharedFile: SharedSettingsWriter? = nil) {
         self.defaults = defaults
         self.persist = persist
         self.sharedFile = sharedFile
+    }
+
+    /// 이 실행 인자로 띄운 앱이 설정을 읽고 저장하는지. 자가 테스트·측정·일부 캡처는 기본값으로 돈다(두 빌드 모두).
+    /// 자동 저장 사본 자가 테스트(`--auto-reflect-selftest=<경우>`)는 값과 상관없이 저장하지 않는다(R18)
+    static func persists(arguments: [String]) -> Bool {
+        !arguments.contains {
+            $0.hasSuffix("-selftest") || $0.hasPrefix("--sidebar-multi-") || $0.hasPrefix("--usb-snapshot-capture=") || $0 == "--autoplay"
+                || $0 == "--scroll-perf" || $0.hasPrefix("--ui-perf=") || $0.hasPrefix(AutoReflectSelfTest.argumentPrefix)
+        }
     }
 
     func value<Value>(_ key: SettingKey<Value>) -> Value {
