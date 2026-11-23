@@ -160,6 +160,13 @@ def prepare(root):
     for folder, modules in rules.BROAD_FOLDERS.items():
         (root / folder).mkdir(parents=True, exist_ok=True)
         (root / folder / "Placeholder.swift").write_text("".join(f"import {name}\n" for name in sorted(modules)))
+    # 쓰기 입구 호출처(SAFE-4·USB-7)의 고정 파일은 있어야 하고 허용한 입구를 불러야 한다(자리 채움).
+    for group in rules.WRITE_ENTRY_GROUPS:
+        for relative, entries in group["files"].items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            head = path.read_text() if path.exists() else "import Foundation\n"
+            path.write_text(head + "".join(f"_ = try {call}()\n" for call in entries or group["entries"]))
     # 모듈 경계 검사가 타깃 이름·경로를 읽는 합성 패키지(dump-package는 가짜 swift가 dump.json을 낸다).
     (root / "Package.swift").write_text("// 합성 패키지\n")
     (root / "dump.json").write_text(package_dump(PREPARE_TARGETS))
@@ -750,6 +757,51 @@ IMPORT_CASES = {
                                  VIEW_HEAD + 'Button("a") { Task { save() } }\n    }\n}\n'},
                                 "Sources/DJCrate/Library/LibraryView.swift\tview-task\tTask 2곳\n", 1,
                                 "✘ 갚은 빚(빚 목록 고치기): Sources/DJCrate/Library/LibraryView.swift\tview-task\tTask(빚 2곳 → 지금 1곳)", False),
+    # 쓰기 입구 호출처(SAFE-4·USB-7, #380): Sources/ 안에서 목록 밖 파일이 입구를 부르면 실패하고, 안내는 규칙 ID와 포트를 적는다.
+    # rekordbox 입구는 Lab/ 폴더도 부르지만 USB 입구(UsbWriter)는 UsbImageLab.swift의 write만이라 다른 Lab/ 파일은 실패한다.
+    "imports-write-entry-lab-usb": ({"Sources/djc/Lab/OtherLab.swift": "import Foundation\nlet r = try UsbWriter.write(changes, root: root)\n"}, "", 1,
+                                    "Sources/djc/Lab/OtherLab.swift:2: USB-7: ", False),
+    "imports-write-entry-usb-method": ({"Sources/djc/Lab/UsbImageLab.swift":
+                                        "import Foundation\nlet r = try UsbWriter.write(changes)\ntry UsbWriter.recover(root: root)\n"}, "", 1,
+                                       "Sources/djc/Lab/UsbImageLab.swift:3: USB-7: ", False),
+    # 문자열 보간 안의 호출도 호출이고, 별칭·.self로 넘기면 허용 메서드를 건너뛸 수 있어 함께 막는다.
+    "imports-write-entry-interpolation": ({"Sources/djc/Lab/OtherLab.swift":
+                                           'import Foundation\nprint("결과: \\(try UsbWriter.recover(root: root).outcome)")\n'}, "", 1,
+                                          "Sources/djc/Lab/OtherLab.swift:2: USB-7: ", False),
+    "imports-write-entry-alias": ({"Sources/djc/Lab/UsbImageLab.swift":
+                                   "import Foundation\ntypealias W = UsbWriter\nlet r = try UsbWriter.write(changes)\nlet m = UsbWriter.self\n"}, "", 1,
+                                  "Sources/djc/Lab/UsbImageLab.swift:2: USB-7: ", False),
+    "imports-write-entry-alias-module": ({"Sources/djc/Lab/UsbImageLab.swift":
+                                          "import Foundation\nlet r = try UsbWriter.write(changes)\ntypealias W = RekordboxKit.UsbWriter\n"}, "", 1,
+                                         "Sources/djc/Lab/UsbImageLab.swift:3: USB-7: ", False),
+    # 중첩 타입을 가르는 확인은 같은 줄만 본다: 다음 줄이 문자열로 시작해 .write가 이어져도 별칭을 놓치지 않는다
+    "imports-write-entry-alias-next-line": ({"Sources/djc/Lab/UsbImageLab.swift":
+                                             'import Foundation\nlet r = try UsbWriter.write(changes)\ntypealias W = UsbWriter\n"복구 시작".write(to: &log)\n'
+                                             'let x = try W.recover(root: root)\n'}, "", 1,
+                                            "Sources/djc/Lab/UsbImageLab.swift:3: USB-7: ", False),
+    # 보간 안의 블록 주석이 괄호 깊이를 흐리지 않는다: 닫는 괄호 뒤의 호출도 잡는다
+    "imports-write-entry-interpolation-comment": ({"Sources/djc/Lab/OtherLab.swift":
+                                                   'import Foundation\nprint("\\(String(/* 기준 */ 0) + String(describing: try UsbWriter.recover(root: root).outcome))")\n'},
+                                                  "", 1, "Sources/djc/Lab/OtherLab.swift:2: USB-7: ", False),
+    "imports-write-entry-app": ({"Sources/DJCrate/Library/LibraryModel.swift":
+                                 "final class LibraryModel {\n    func save() throws { try RekordboxWriter.write(drafts: []) }\n}\n"}, "", 1,
+                                "Sources/DJCrate/Library/LibraryModel.swift:2: SAFE-4: ", False),
+    # 입구 이름이 둘레 글자와 이어진 것(writesHistories), 주석·문자열, 입구 자신(RekordboxKit), 시험 파일, 허용한 Lab/ 파일은 보지 않거나 허용한다.
+    "imports-write-entry-ok": ({"Sources/DJCrate/Library/HistoryStore.swift":
+                                '// RekordboxWriter.write는 반영 세션만\nlet s = "RekordboxTrackWriter.delete"\nlet h = RekordboxWriter.writesHistories\n'
+                                'let t = "\\(count)곡 RekordboxWriter.write 안내 \\(name.count)"\n'
+                                'typealias Status = UsbWriter.JournalStatus\n',
+                                "Sources/RekordboxKit/Inner.swift": "func f() { try RekordboxWriter.write(drafts: []) }\n",
+                                "Tests/DJCrateTests/WriteTests.swift": "func t() { try RekordboxWriter.restore(backup) }\nlet u = UsbWriter.write\n",
+                                "Sources/djc/Lab/CueLab.swift": "func g() { try RekordboxWriter.write(drafts: [])\n try RekordboxTrackWriter.add([]) }\n"},
+                               "", 0, "위반 0개", True),
+    # 고정 파일이 없어지거나 더는 입구를 부르지 않으면 목록을 지금 모양으로 고치게 한다.
+    "imports-write-entry-stale-rekordbox": ({"Sources/DJCrate/Diagnostics/TrackSelfTest.swift": "import Foundation\n"}, "", 1,
+                                            "쓰기 입구를 더는 부르지 않는 고정 파일입니다: Sources/DJCrate/Diagnostics/TrackSelfTest.swift", False),
+    "imports-write-entry-stale-usb": ({"Sources/djc/Lab/UsbImageLab.swift": "import Foundation\nlet r = RekordboxWriter.write(drafts: [])\n"}, "", 1,
+                                      "쓰기 입구를 더는 부르지 않는 고정 파일입니다: Sources/djc/Lab/UsbImageLab.swift", False),
+    "imports-write-entry-missing": ({"Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift": None}, "", 1,
+                                    "예외 목록의 파일이 없습니다: Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift", False),
     # --summary는 빚 표와 함께 예외 목록을 보이고 폴더 예외가 넓다는 사실을 따로 적는다.
     "imports-summary": ({}, "", 0, "위반 0개", True),
 }
@@ -818,6 +870,8 @@ SYNTHETIC_TARGETS = [
     ("RekordboxKit", "regular", None, ["DJCDomain", "SQLCipher"]),
     ("djc", "regular", None, ["DJCApplication"]),
     ("DJCrate", "regular", None, ["DJCApplication"]),
+    # 쓰기 입구 호출처의 고정 파일(prepare)이 이 타깃 안에 있다
+    ("DJCAdapters", "regular", None, ["DJCApplication"]),
     ("djcExecutable", "executable", None, ["djc"]),
     ("DJCTestKit", "regular", "Tests/Support/Kit", ["DJCDomain"]),
     ("DJCDomainTests", "test", None, ["DJCDomain", "DJCTestKit"]),
