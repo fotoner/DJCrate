@@ -212,7 +212,7 @@ struct RekordboxWriteJournalBoundaryTests {
         let analysis = fixture.shareRoot.appending(path: "PIONEER/USBANLZ")
         let current = points.shareFiles(fixture)
         let script = WriteHookScript()
-        // 분석 폴더를 한 번에 맞바꾼 직후 멈춘다(복원 전 내용은 준비 자리에 있다)
+        // 분석 폴더를 한 번에 맞바꾼 직후 멈춘다(복원 전 내용은 기록의 폴더 역할 `old` 자리에 있다)
         script.stop(at: .after(.fileReplace))
         #expect(throws: RekordboxWriteStop.self) { try points.restore(fixture, target, at: now.addingTimeInterval(20), guard: script.writeGuard) }
         // 맞바꾼 폴더를 지우고 옮겨 되돌리던 복구가 지운 뒤 멈춘 모양
@@ -228,11 +228,11 @@ struct RekordboxWriteJournalBoundaryTests {
         let outside = try TemporaryFolder()
         let journalURL = try Kit.journalURL(fixture), parked = outside.url.appending(path: "parked")
         let script = WriteHookScript()
-        // 폴더를 바꾼 뒤 검증이 실패하고, 복구를 시작하기 직전 복원 전 내용(맞바꾼 준비 자리)이 사라진다
+        // 폴더를 바꾼 뒤 검증이 실패하고, 복구를 시작하기 직전 복원 전 내용(기록의 폴더 역할 `old` 자리)이 사라진다
         script.fail(at: .before(.verify))
         script.on(.before(.recovery)) {
             guard let journal = try? RekordboxWriter.readJournal(at: journalURL),
-                  let old = journal.pointRestore?.temporaryFolders.first(where: { $0.contains("/.djc-restore-") && $0.hasSuffix("-USBANLZ") }) else { return }
+                  let old = journal.pointRestore?.folders?.first(where: { $0.target.hasSuffix("/USBANLZ") })?.old else { return }
             try? FileManager.default.moveItem(at: URL(filePath: old), to: parked)
         }
         #expect(throws: DJCError.self) { try points.restore(fixture, target, at: now.addingTimeInterval(20), guard: script.writeGuard) }
@@ -415,5 +415,165 @@ struct RekordboxWriteJournalBoundaryTests {
         #expect(try Data(contentsOf: target) != RekordboxITunesSyncTests.original)
         #expect(!FileManager.default.fileExists(atPath: links.url.appending(path: "playlists3.sync").path))
         withExtendedLifetime(links) {}
+    }
+
+    // MARK: 3라운드(S19·S1·S8·S20·O12·G15·O13)
+
+    @Test func 시점_복원_기록을_이대로_두면_교환하지_않은_준비_폴더를_빈_자리에_넣지_않는다() throws {
+        let fixture = try RekordboxFixture(localUpdateCount: 900)
+        let x = try points.gridTrack(fixture, title: "곡 X")
+        _ = try points.artwork(fixture, x)
+        let target = try points.snapshot(fixture, "그림 있음", at: now)
+        // 지금 라이브러리에는 그림 폴더가 없다
+        let artwork = fixture.shareRoot.appending(path: "PIONEER/Artwork")
+        try FileManager.default.removeItem(at: artwork)
+        let script = WriteHookScript()
+        // 시점 폴더를 준비 자리에 복제한 뒤 DB를 바꾸기 직전에 멈춘다(아직 아무 폴더도 바꾸지 않았다)
+        script.stop(at: .before(.databaseReplace))
+        #expect(throws: RekordboxWriteStop.self) { try points.restore(fixture, target, at: now.addingTimeInterval(20), guard: script.writeGuard) }
+        #expect(try keep(fixture).isDone)
+        #expect(!FileManager.default.fileExists(atPath: artwork.path), "복원 전에 없던 자리에 다른 시점의 그림을 넣지 않는다")
+        let pioneer = try FileManager.default.contentsOfDirectory(atPath: fixture.shareRoot.appending(path: "PIONEER").path)
+        #expect(!pioneer.contains { $0.hasPrefix(".djc-") }, "임시 폴더는 지운다: \(pioneer)")
+        #expect(try Kit.journal(fixture) == nil)
+    }
+
+    @Test func iTunes_기록으로_복원은_검사한_근거_URL로_읽는다() throws {
+        let fixture = try RekordboxFixture(), target = fixture.root.appending(path: "playlists3.sync")
+        try RekordboxITunesSyncTests.original.write(to: target)
+        let script = WriteHookScript()
+        script.stop(at: .after(.fileReplace))
+        #expect(throws: RekordboxWriteStop.self) {
+            try RekordboxWriter.writeITunesSync(RekordboxITunesSyncTests().change(), to: fixture.database, dryRun: false, now: now,
+                                                backups: fixture.backups, guard: script.writeGuard)
+        }
+        let backup = URL(filePath: try #require(try Kit.journal(fixture)?.basis.iTunesSyncBefore)).deletingLastPathComponent()
+        // 백업 안 링크를 지나 상위로 가는 경로: 그 실제 자리(밖 폴더)에 파일이 없으면 표준 모양은 글자대로 백업 안이라 검사를 지난다.
+        // 기록의 글자를 다시 열면 실제 자리(밖)를 열어 검사와 적용이 갈린다
+        let outside = try TemporaryFolder()
+        let elsewhere = outside.url.appending(path: "sub")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: backup.appending(path: "link"), withDestinationURL: elsewhere)
+        try tamper(fixture) { $0.basis.iTunesSyncBefore = backup.path + "/link/../itunes-sync-before.xml" }
+        #expect(try Kit.restore(fixture).isRestored)
+        #expect(try Data(contentsOf: target) == RekordboxITunesSyncTests.original, "검사한 백업 안 원본으로 되돌린다")
+        withExtendedLifetime(outside) {}
+    }
+
+    @Test func 기록으로_복원은_검사한_쓰기_전_백업_URL로_되돌린다() throws {
+        let fixture = try RekordboxFixture()
+        let draft = try flow.cueDraft(fixture)
+        let before = try Kit.state(fixture)
+        let script = WriteHookScript()
+        script.stop(at: .after(.commit))
+        #expect(throws: RekordboxWriteStop.self) { try flow.writeCue(fixture, draft, guard: script.writeGuard) }
+        let backup = URL(filePath: try #require(try Kit.journal(fixture)?.basis.writeBackup))
+        // 백업 폴더 안 링크를 지나 상위로 가는 경로: 그 실제 자리(밖 폴더)에는 백업이 없어 표준 모양은 글자대로 이 백업이다
+        let outside = try TemporaryFolder()
+        try FileManager.default.createDirectory(at: outside.url.appending(path: "sub"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: fixture.backups.appending(path: "link"), withDestinationURL: outside.url.appending(path: "sub"))
+        try tamper(fixture) { $0.basis.writeBackup = fixture.backups.path + "/link/../" + backup.lastPathComponent }
+        #expect(try Kit.restore(fixture).isRestored)
+        #expect(try Kit.state(fixture) == before, "검사한 백업으로 되돌린다")
+        withExtendedLifetime(outside) {}
+    }
+
+    @Test func 미정리_목록이_있는데_저장소_잠금을_잡지_못하면_목록을_게시하지_않고_기록을_남긴다() throws {
+        let fixture = try RekordboxFixture()
+        let draft = try flow.cueDraft(fixture)
+        let script = WriteHookScript(), backups = fixture.backups, blocker = Mutex<URL?>(nil)
+        // 보고서를 남긴 다음, 그 백업 폴더의 저장소 잠금 파일 자리를 폴더로 막는다(잠금을 열 수 없다)
+        script.on(.after(.reportSave)) {
+            var info = stat()
+            guard stat(backups.path, &info) == 0 else { return }
+            let key = RekordboxWriteLockKey(device: UInt64(UInt32(bitPattern: info.st_dev)), inode: UInt64(info.st_ino))
+            let file = RekordboxWriteLocks.defaultFolder.appending(path: key.name + ".store.lock")
+            try? FileManager.default.removeItem(at: file)
+            try? FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+            blocker.withLock { $0 = file }
+        }
+        defer { if let file = blocker.withLock({ $0 }) { try? FileManager.default.removeItem(at: file) } }
+        let error = try #require(throws: DJCError.self) {
+            try flow.writeCue(fixture, draft, guard: script.writeGuard, record: flow.record(fixture))
+        }
+        guard case .restoreFailed = error else { Issue.record("기록을 남긴 멈춤이 아님: \(error)"); return }
+        #expect(blocker.withLock { $0 } != nil)
+        #expect(try RekordboxWriter.cleanupLists(in: fixture.backups).isEmpty, "보호를 넘기지 못하면 목록을 게시하지 않는다")
+        #expect(Kit.interrupted(try Kit.judge(fixture)) != nil, "기록이 남아 중단으로 다룬다")
+    }
+
+    @Test func 파일_링크_DB의_재생_목록_미리_보기도_실제_DB_옆_XML을_본다() throws {
+        let lists = RekordboxPlaylistWriterTests()
+        let fixture = try lists.library([PlaylistSpec(id: "100", name: "DJC 실험", seq: 1, isFolder: true)])
+        let (links, link) = try fileLink(fixture)
+        // 링크 쪽 폴더의 같은 이름 파일은 이 DB의 것이 아니다(읽을 수 없는 내용)
+        try Data("깨진 XML".utf8).write(to: links.url.appending(path: "masterPlaylists6.xml"))
+        let report = try RekordboxWriter.write(drafts: [], playlists: [.create(key: "n", name: "새 목록", isFolder: false, parent: .id("100"))],
+                                               to: link, dryRun: true, now: now, backups: fixture.backups, guard: Kit.copyGuard)
+        #expect(report.playlistOutcomes?.first?.status == .written, "실제 쓰기와 같은 XML로 미리 본다")
+        withExtendedLifetime(links) {}
+    }
+
+    @Test func 파일_링크_DB의_쓰기_전으로_복원은_실제_DB_옆_곁_파일까지_복원_직전_백업에_담는다() throws {
+        let fixture = try RekordboxPlaylistWriterTests().library()
+        let report = try flow.writeCue(fixture, try flow.cueDraft(fixture))
+        let backup = URL(filePath: try #require(report.backup))
+        let (links, link) = try fileLink(fixture)
+        let saved = try RekordboxWriter.restore(backup, to: link, now: now.addingTimeInterval(60), backups: fixture.backups, guard: Kit.copyGuard)
+        #expect(FileManager.default.fileExists(atPath: saved.appending(path: "masterPlaylists6.xml").path))
+        withExtendedLifetime(links) {}
+    }
+
+    @Test func 파일_링크_DB의_시점_복원은_복원_직전_시점에_실제_DB_옆_곁_파일을_담는다() throws {
+        let (fixture, target) = try pointFixture()
+        try Data("<xml/>".utf8).write(to: fixture.root.appending(path: "masterPlaylists6.xml"))
+        let (links, link) = try fileLink(fixture)
+        let report = try RekordboxWriter.restore(pointSnapshot: target.url, to: link, shareRoot: fixture.shareRoot, snapshots: points.snapshots(fixture),
+                                                 backups: fixture.backups, autoDays: 7, now: now.addingTimeInterval(20), guard: Kit.copyGuard)
+        #expect(report.beforeRestore.metadata.items.contains("masterPlaylists6.xml"))
+        withExtendedLifetime(links) {}
+    }
+
+    /// 폴더 하나를 바꿔 끼운 뒤의 모양: 자리에는 복원한 내용, `old` 자리에는 복원 전 내용
+    func swappedFolder(_ root: URL) throws -> RekordboxWriter.FolderSwap {
+        var swap = RekordboxWriter.FolderSwap(target: root.appending(path: "USBANLZ"))
+        for (folder, text) in [(swap.target, "복원한 내용"), (swap.oldPath, "복원 전 내용")] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data(text.utf8).write(to: folder.appending(path: "file"))
+        }
+        swap.old = swap.oldPath
+        swap.swapped = true
+        return swap
+    }
+
+    func text(_ folder: URL) -> String? { (try? Data(contentsOf: folder.appending(path: "file"))).map { String(decoding: $0, as: UTF8.self) } }
+
+    @Test func 폴더_되돌리기는_맞바꾸기가_볼륨_탓이_아닌_이유로_실패하면_지금_폴더를_건드리지_않는다() throws {
+        let root = try TemporaryFolder()
+        let swap = try swappedFolder(root.url)
+        #expect(throws: (any Error).self) { try RekordboxWriter.putBack(swap, renameSwap: { _, _ in EACCES }) }
+        #expect(text(swap.target) == "복원한 내용" && text(swap.oldPath) == "복원 전 내용")
+        withExtendedLifetime(root) {}
+    }
+
+    @Test func 폴더_되돌리기의_대체_경로는_이름만_바꿔_어느_내용도_먼저_지우지_않는다() throws {
+        let root = try TemporaryFolder()
+        let swap = try swappedFolder(root.url)
+        // 맞바꾸기를 못 하는 볼륨에서, 복원 전 내용을 자리로 옮기다 실패한다
+        #expect(throws: (any Error).self) {
+            try RekordboxWriter.putBack(swap, renameSwap: { _, _ in ENOTSUP }) { source, destination in
+                guard destination != swap.target else { throw WriteHookScript.Injected() }
+                try FileManager.default.moveItem(at: source, to: destination)
+            }
+        }
+        #expect(text(swap.oldPath) == "복원 전 내용")
+        #expect(text(swap.stagedPath) == "복원한 내용", "지금 폴더는 지우지 않고 빈 준비 자리로 옮겨 둔다")
+        // 실패가 없으면 복원 전 내용이 자리로 돌아오고 임시 자리는 남지 않는다
+        let other = try TemporaryFolder()
+        let again = try swappedFolder(other.url)
+        try RekordboxWriter.putBack(again, renameSwap: { _, _ in EINVAL })
+        #expect(text(again.target) == "복원 전 내용")
+        #expect(!FileManager.default.fileExists(atPath: again.oldPath.path) && !FileManager.default.fileExists(atPath: again.stagedPath.path))
+        withExtendedLifetime((root, other)) {}
     }
 }

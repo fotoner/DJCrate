@@ -75,12 +75,12 @@ extension RekordboxWriter {
                     .first(where: { URL(filePath: $0).standardizedFileURL.resolvingSymlinksInPath().comparablePath == requested }) else {
                 throw interruptedRefusal
             }
-            let target = URL(filePath: matched)
+            let target = standardURL(matched), beforeRestore = standardURL(point.snapshotBeforeRestore)
             let restored = try validPointSnapshot(target)
             run.adopt(journal)
             _ = try restoreByJournal(journal, run: run, backups: backups, shareRoot: share, now: now, pointTarget: target)
-            guard let before = RekordboxPointSnapshot.metadata(in: URL(filePath: point.snapshotBeforeRestore))
-                    .map({ RekordboxPointSnapshot.Entry(url: URL(filePath: point.snapshotBeforeRestore), metadata: $0) }) else {
+            guard let before = RekordboxPointSnapshot.metadata(in: beforeRestore)
+                    .map({ RekordboxPointSnapshot.Entry(url: beforeRestore, metadata: $0) }) else {
                 throw journalBasisMissing
             }
             return PointRestoreReport(restored: restored, beforeRestore: before)
@@ -88,11 +88,12 @@ extension RekordboxWriter {
         let entry = try validPointSnapshot(pointSnapshot)
         try checkSameLibrary(backup: entry.url.appending(path: "master.db"), target: database)
         try checkIntegrity(of: entry.url.appending(path: "master.db"))
+        // 곁 파일은 링크를 푼 DB 옆 것이다(바꾸는 자리와 같다, O12)
         for name in RekordboxPointSnapshot.adjacentFiles {
-            try writeGuard.checkAdjacentFile(database.deletingLastPathComponent().appending(path: name), database: database)
+            try writeGuard.checkAdjacentFile(run.resolved.deletingLastPathComponent().appending(path: name), database: database)
         }
         // 여기까지 아무것도 바꾸지 않았다. 복원 직전 상태를 남기지 못하면(rekordbox 켜짐·WAL 등) 복원하지 않는다.
-        let before = try RekordboxPointSnapshot.take(name: "", kind: .beforeRestore, database: database, shareRoot: share, in: snapshots,
+        let before = try RekordboxPointSnapshot.take(name: "", kind: .beforeRestore, database: run.resolved, shareRoot: share, in: snapshots,
                                                      now: now, guard: writeGuard, restoredFrom: entry.displayName)
         let marker: URL
         do {
@@ -145,8 +146,9 @@ extension RekordboxWriter {
     /// 중단된 시점 복원을 기록으로 다시 한다(R11). 기록에 적힌 복원 직전 스냅샷을 다시 쓰고(새로 뜨지 않는다), 목표는 기록의 시점이나
     /// (복원 실패 안내대로) 그 복원 직전 시점이다. 이미 목표 상태면 끝난 것으로 본다. 기록에 적힌 임시 폴더는 다시 한 복원의 검증이 끝난 뒤
     /// 지운다. 다시 한 복원이 실패하면 되돌리지 않고 기록을 남겨 같은 목표로 다시 할 수 있게 한다.
-    static func redoPointRestore(_ journal: RekordboxWriteJournal, to snapshot: URL, run: WriteRun, shareRoot: URL?) throws -> JournalRestoreResult {
-        guard let point = journal.pointRestore else { throw journalBasisMissing }
+    static func redoPointRestore(_ journal: RekordboxWriteJournal, to snapshot: URL, run: WriteRun, shareRoot: URL?,
+                                 beforeRestore: URL?) throws -> JournalRestoreResult {
+        guard let point = journal.pointRestore, let beforeRestore else { throw journalBasisMissing }
         let share = try RekordboxPointSnapshot.resolvedShare(run.database, shareRoot: shareRoot, guard: run.writeGuard)
         let entry = try validPointSnapshot(snapshot)
         func removeTemporaryFolders() throws {
@@ -178,7 +180,7 @@ extension RekordboxWriter {
         try swapPointFolders(&swaps, run: run)
         try run.step(.verify, recheck: false) { try verifyPointRestore(entry, database: run.resolved, share: share) }
         try removeTemporaryFolders()
-        return .restored(URL(filePath: point.snapshotBeforeRestore))
+        return .restored(beforeRestore)
     }
 
     // MARK: - 확인
@@ -292,8 +294,9 @@ extension RekordboxWriter {
     }
 
     /// 지금 폴더를 준비한 폴더와 바꿔 끼운다(같은 폴더 안 이름 바꾸기). 폴더 하나마다 그 앞에서만 실행을 다시 본다(R10, `run`이 있을 때):
-    /// 둘 다 있으면 한 번에 맞바꾸고(`renamex_np` `RENAME_SWAP`, 옛 내용은 준비 자리에 남는다), 안 되면 옮기기 둘을 사이 재확인 없이 잇는다.
-    /// 그래서 켜짐을 보고 멈춰도 폴더 자리가 비지 않는다.
+    /// 둘 다 있으면 한 번에 맞바꾸고(`renamex_np` `RENAME_SWAP`), 준비 자리로 간 복원 전 내용을 `old` 자리(`.djc-old-*`)로 옮긴다.
+    /// 안 되면 옮기기 둘을 사이 재확인 없이 잇는다(지금 폴더 → `old` 자리, 준비 폴더 → 자리). 그래서 켜짐을 보고 멈춰도 폴더 자리가 비지 않고,
+    /// 바꿔 끼운 뒤 복원 전 내용은 늘 기록의 폴더 역할 `old` 자리에 있다("이대로 둔다"는 그 자리로만 빈 자리를 채운다, S19)
     static func swapPointFolders(_ swaps: inout [FolderSwap], run: WriteRun? = nil) throws {
         let fm = FileManager.default
         for index in swaps.indices {
@@ -303,10 +306,12 @@ extension RekordboxWriter {
             try run?.recheck(.fileReplace)
             try run?.before(.fileReplace)
             run?.changed = true
-            if exists, let staged = swaps[index].staged, renamex_np(staged.path, target.path, UInt32(RENAME_SWAP)) == 0 {
+            if exists, let staged = swaps[index].staged, swapNames(staged, target) == 0 {
                 swaps[index].old = staged
                 swaps[index].staged = nil
                 swaps[index].swapped = true
+                try fm.moveItem(at: staged, to: swaps[index].oldPath)
+                swaps[index].old = swaps[index].oldPath
             } else {
                 if exists {
                     try fm.moveItem(at: target, to: swaps[index].oldPath)
@@ -367,10 +372,13 @@ extension RekordboxWriter {
         }
     }
 
-    /// 바꿔 끼운 폴더 자리를 복원 전 내용으로 되돌린다(S16). 둘 다 있으면 한 번에 맞바꾸고(`RENAME_SWAP`: 사이에 멈춰도 자리가 비지 않는다)
-    /// 옛 자리로 간 복원 내용을 지운다. 복원 전 내용이 없어졌으면 지금 폴더를 지우지 않고 실패한다. 맞바꾸지 못하는 볼륨은 지우고 옮긴다
-    /// (사이에 멈추면 자리가 빈다: "이대로 둔다"가 기록의 폴더 역할로 복원 전 내용을 되돌린다). 복원 전에 없던 폴더는 끼운 폴더를 지운다
-    static func putBack(_ swap: FolderSwap) throws {
+    /// 바꿔 끼운 폴더 자리를 복원 전 내용(`swap.old`)으로 되돌린다(S16·G15·O13). 둘 다 있으면 한 번에 맞바꾸고(`RENAME_SWAP`: 사이에 멈춰도
+    /// 자리가 비지 않는다) 옛 자리로 간 복원 내용을 지운다. 맞바꾸기를 못 하는 볼륨(`ENOTSUP`·`EINVAL`)만 이름 바꾸기로 대신한다:
+    /// 지금 폴더를 빈 임시 자리로 옮기고, 복원 전 내용을 자리로 옮긴 뒤, 마지막에 임시 자리를 지운다(어느 내용도 먼저 지우지 않는다.
+    /// 사이에 멈추면 "이대로 둔다"가 기록의 `old` 자리로 빈 자리를 채운다). 그 밖의 실패와 복원 전 내용이 없어진 경우는 아무것도 바꾸지 않고
+    /// 실패한다. 복원 전에 없던 폴더는 끼운 폴더를 지운다
+    static func putBack(_ swap: FolderSwap, renameSwap: (URL, URL) -> Int32 = swapNames,
+                        move: (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) }) throws {
         let fm = FileManager.default, target = swap.target
         guard let old = swap.old else {
             if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
@@ -379,14 +387,27 @@ extension RekordboxWriter {
         guard fm.fileExists(atPath: old.path) else {
             throw DJCError.writeVerificationFailed(String(ui: "복원 전 \(target.lastPathComponent) 폴더를 찾지 못해 그 폴더를 되돌리지 않았습니다"))
         }
-        if fm.fileExists(atPath: target.path) {
-            if renamex_np(old.path, target.path, UInt32(RENAME_SWAP)) == 0 {
-                try fm.removeItem(at: old)
-                return
-            }
-            try fm.removeItem(at: target)
+        guard fm.fileExists(atPath: target.path) else {
+            try move(old, target)
+            return
         }
-        try fm.moveItem(at: old, to: target)
+        let code = renameSwap(old, target)
+        if code == 0 {
+            try fm.removeItem(at: old)
+            return
+        }
+        guard code == ENOTSUP || code == EINVAL,
+              let aside = [swap.stagedPath, swap.oldPath].first(where: { $0 != old && !fm.fileExists(atPath: $0.path) }) else {
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+        }
+        try move(target, aside)
+        try move(old, target)
+        try fm.removeItem(at: aside)
+    }
+
+    /// 두 이름을 한 번에 맞바꾼다(`renamex_np` `RENAME_SWAP`). 되면 0, 아니면 그 errno
+    static func swapNames(_ a: URL, _ b: URL) -> Int32 {
+        renamex_np(a.path, b.path, UInt32(RENAME_SWAP)) == 0 ? 0 : errno
     }
 
     // MARK: - 쓰기 전 백업 사슬

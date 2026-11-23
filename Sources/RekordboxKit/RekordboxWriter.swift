@@ -155,8 +155,9 @@ public enum RekordboxWriter {
         // 재생 목록 편집과 곡 정보 쓰기는 DB 옆 masterPlaylists6.xml도 고친다(곡 정보는 그 곡이 든 목록의 Timestamp, #173).
         // 쓰는 DB 옆 파일만 대상이고 없으면 DB만 쓴다. 곡 정보는 그 곡이 든 살아 있는 목록이 있을 때만 읽는다. 사본 옆 파일이 라이브 XML의
         // 링크이거나 읽지 못하면 그 곡정보 초안만 막는다(큐·그리드 등은 쓴다). 재생 목록·합치기는 예전처럼 쓰기째 막는다.
-        // 곁 파일은 링크를 푼 DB 옆 것이다(파일 링크 DB도 실제 DB의 곁 파일을 고친다. 기록 경로 검증과 같은 기준, O12)
-        let playlistXMLURL = playlistXMLURL(for: run?.resolved ?? database)
+        // 곁 파일은 링크를 푼 DB 옆 것이다(파일 링크 DB도 실제 DB의 곁 파일을 고친다. 기록 경로 검증과 같은 기준, O12).
+        // 시험 실행(잠그지 않는다)도 같은 자리를 본다(미리 보기와 실제 쓰기가 같은 XML을 본다, S20)
+        let playlistXMLURL = playlistXMLURL(for: try run?.resolved ?? RekordboxWriteLocks.resolve(database))
         var playlistXML: MasterPlaylistsXML?
         let editsPlaylists = !playlistSteps.isEmpty || !merges.isEmpty
         if editsPlaylists || !xmlTags.isEmpty {

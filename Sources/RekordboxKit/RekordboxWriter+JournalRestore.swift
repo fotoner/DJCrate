@@ -62,10 +62,18 @@ extension RekordboxWriter {
         return .done(try restoreByJournal(journal, run: run, backups: backups, shareRoot: share, now: now))
     }
 
-    /// 다시 검증한 기록의 경로. 적용에는 기록의 글자가 아니라 검사한 이 URL을 쓴다
+    /// 다시 검증한 기록의 경로. 적용에는 기록의 글자가 아니라 검사한 이 URL만 쓴다(S1: 표준 모양은 실제 자리에 파일이 없으면 글자대로 풀려,
+    /// 기록의 글자를 다시 열면 링크 너머 다른 자리를 열 수 있다)
     struct JournalPaths {
         /// 기록의 파일마다 바꾸거나 지울 대상과 원본 사본(nil이면 그 쓰기가 만든 파일이라 지운다)
         var files: [(target: URL, original: URL?)] = []
+        /// 쓰기 전 백업 폴더(근거)
+        var writeBackup: URL?
+        /// iTunes 동기화 전·뒤 파일(백업 안)
+        var iTunesSync: (before: URL, after: URL)?
+        /// 시점 복원의 목표 스냅샷·복원 직전 스냅샷(쓰기 전에 `validPointSnapshot`으로 다시 본다)
+        var pointSnapshot: URL?
+        var snapshotBeforeRestore: URL?
     }
 
     /// 기록으로 복원 전에 기록의 경로를 다시 검증한다(S1). 작업 ID는 파일 이름으로 안전해야 하고, 경로는 모두 절대 경로 글자여야 한다
@@ -82,8 +90,12 @@ extension RekordboxWriter {
         func adjacentFile(_ url: URL) -> Bool {
             adjacent.contains(url.comparablePath) && adjacent.contains(url.resolvingSymlinksInPath().comparablePath) && !isSymbolicLink(url)
         }
+        var paths = JournalPaths()
+        paths.writeBackup = journal.basis.writeBackup.map(standardURL)
+        paths.pointSnapshot = journal.basis.pointSnapshot.map(standardURL)
+        paths.snapshotBeforeRestore = journal.pointRestore.map { standardURL($0.snapshotBeforeRestore) }
         // 원본 사본·iTunes 근거의 뿌리: 쓰기 전 백업 폴더와, 처음 복원 때 함께 되돌린 뒤 백업 폴더(master.db가 든 실제 폴더여야 한다)
-        var roots = journal.basis.writeBackup.map { [URL(filePath: $0)] } ?? []
+        var roots = paths.writeBackup.map { [$0] } ?? []
         for path in journal.basis.chain ?? [] {
             let backup = standardURL(path).resolvingSymlinksInPath()
             guard (try? validateBackupFile(backup.appending(path: "master.db"), under: backup, required: true)) != nil else { throw refusal }
@@ -101,7 +113,6 @@ extension RekordboxWriter {
             }
             throw refusal
         }
-        var paths = JournalPaths()
         for file in journal.files {
             let url = standardURL(file.path)
             let target: URL
@@ -114,9 +125,9 @@ extension RekordboxWriter {
             }
             paths.files.append((target, try file.original.map(insideBackups)))
         }
-        if let before = journal.basis.iTunesSyncBefore {
-            _ = try insideBackups(before)
-            _ = try insideBackups(URL(filePath: before).deletingLastPathComponent().appending(path: "itunes-sync-after.xml").path)
+        if let recorded = journal.basis.iTunesSyncBefore {
+            let before = try insideBackups(recorded)
+            paths.iTunesSync = (before, try insideBackups(before.deletingLastPathComponent().appending(path: "itunes-sync-after.xml").path))
         }
         if let point = journal.pointRestore {
             let temporary = point.temporaryFolders + (point.folders ?? []).flatMap { [$0.staged, $0.old] }
@@ -170,11 +181,12 @@ extension RekordboxWriter {
         return url
     }
 
-    /// 그 쓰기의 미정리 목록을 지운다: 이 실행의 백업 폴더와, 기록이 남긴 원래 백업 폴더(`DJC_HOME`이 다른 실행이 복원해도 원래 목록을 지운다)
-    static func removeCleanupLists(of journal: RekordboxWriteJournal, backups: URL) throws {
+    /// 그 쓰기의 미정리 목록을 지운다: 이 실행의 백업 폴더와, 기록이 남긴 원래 백업 폴더(`DJC_HOME`이 다른 실행이 복원해도 원래 목록을 지운다).
+    /// 원래 백업 폴더는 검사한 쓰기 전 백업 URL(`writeBackup`)의 부모다
+    static func removeCleanupLists(of journal: RekordboxWriteJournal, writeBackup: URL?, backups: URL) throws {
         var roots = [backups.standardizedFileURL]
-        if let recorded = journal.basis.writeBackup {
-            let original = URL(filePath: recorded).standardizedFileURL.deletingLastPathComponent()
+        if let writeBackup {
+            let original = writeBackup.deletingLastPathComponent()
             if original.resolvingSymlinksInPath().comparablePath != backups.standardizedFileURL.resolvingSymlinksInPath().comparablePath {
                 roots.append(original)
             }
@@ -200,20 +212,20 @@ extension RekordboxWriter {
             let paths = try validateJournalPaths(journal, database: run.resolved, share: share)
             try run.update { $0.marks.insert(.restoring) }
             let result: JournalRestoreResult
-            if journal.basis.iTunesSyncBefore != nil {
-                result = try restoreITunesJournal(journal, run: run, backups: backups, now: now)
+            if let iTunesSync = paths.iTunesSync {
+                result = try restoreITunesJournal(before: iTunesSync.before, after: iTunesSync.after, run: run, backups: backups, now: now)
             } else if journal.entry == .pointRestore {
-                guard let target = pointTarget ?? journal.basis.pointSnapshot.map({ URL(filePath: $0) }) else { throw journalBasisMissing }
+                guard let target = pointTarget ?? paths.pointSnapshot else { throw journalBasisMissing }
                 // 다른 목표(복원 직전 시점)로 다시 하면 기록의 목표도 고쳐 적는다: 다시 멈춰도 같은 목표로 이어 간다
-                if target.standardizedFileURL.path != journal.basis.pointSnapshot.map({ URL(filePath: $0).standardizedFileURL.path }) {
+                if target.standardizedFileURL.path != paths.pointSnapshot?.path {
                     try run.update { $0.basis.pointSnapshot = target.standardizedFileURL.path }
                 }
-                result = try redoPointRestore(journal, to: target, run: run, shareRoot: share)
+                result = try redoPointRestore(journal, to: target, run: run, shareRoot: share, beforeRestore: paths.snapshotBeforeRestore)
             } else {
                 result = try restoreWriteJournal(journal, paths: paths, run: run, backups: backups, shareRoot: share, now: now)
             }
             // 그 쓰기의 미정리 목록을 먼저 지우고(초안은 그대로 남는다), 이 대상의 준비 폴더를 치운 뒤 기록을 마지막에 지운다
-            try removeCleanupLists(of: journal, backups: backups)
+            try removeCleanupLists(of: journal, writeBackup: paths.writeBackup, backups: backups)
             removeStaging(roots: [run.resolved.deletingLastPathComponent(), share], key: run.key)
             try run.finish()
             prune(backups, now: now)
@@ -227,8 +239,7 @@ extension RekordboxWriter {
     /// 초안 쓰기·곡 넣기/빼기·쓰기 전으로 복원의 기록으로 복원. 파일은 검증한 경로(`paths`)로 다룬다
     static func restoreWriteJournal(_ journal: RekordboxWriteJournal, paths: JournalPaths, run: WriteRun, backups: URL, shareRoot: URL?,
                                     now: Date) throws -> JournalRestoreResult {
-        guard let recorded = journal.basis.writeBackup else { throw journalBasisMissing }
-        let backup = URL(filePath: recorded)
+        guard let backup = paths.writeBackup else { throw journalBasisMissing }
         let fm = FileManager.default
         // DB·XML은 카운터 쓰기(DB를 커밋한 쓰기)와 복원만 되돌린다. 파일만 바꾼 쓰기는 DB를 건드리지 않았다
         let restoresDatabase = journal.kind == .counter || journal.entry == .restore
@@ -291,10 +302,8 @@ extension RekordboxWriter {
         return .restored(saved)
     }
 
-    /// iTunes 동기화(와 그 되돌리기)의 기록으로 복원: `playlists3.sync`만 기록의 목표 값으로
-    static func restoreITunesJournal(_ journal: RekordboxWriteJournal, run: WriteRun, backups: URL, now: Date) throws -> JournalRestoreResult {
-        guard let beforePath = journal.basis.iTunesSyncBefore else { throw journalBasisMissing }
-        let before = URL(filePath: beforePath), after = before.deletingLastPathComponent().appending(path: "itunes-sync-after.xml")
+    /// iTunes 동기화(와 그 되돌리기)의 기록으로 복원: `playlists3.sync`만 기록의 목표 값으로. 근거는 검사한 백업 안 URL이다
+    static func restoreITunesJournal(before: URL, after: URL, run: WriteRun, backups: URL, now: Date) throws -> JournalRestoreResult {
         let target = run.resolved.deletingLastPathComponent().appending(path: "playlists3.sync")
         let original = try Data(contentsOf: before), applied = try Data(contentsOf: after)
         let current = try Data(contentsOf: target)
@@ -340,9 +349,10 @@ extension RekordboxWriter {
         return .done(KeepResult(leftAsIs: left))
     }
 
-    /// 시점 복원 임시 폴더 정리(S16·G12). 먼저 빈 폴더 자리를 기록의 폴더 역할로 채운다(나중 시도부터): 복원 전 내용을 옮겨 둔 자리(`old`)가
-    /// 있으면 그것을, 없으면 한 번에 맞바꾼 준비 자리(`staged`, 맞바꾼 뒤 복원 전 내용이 있다)를 되돌린다. 그 뒤 기록된 임시 폴더 중
-    /// 경계 안의 것은 지우고, 밖의 것은 손대지 않고 돌려준다. 파일을 바꾸기 바로 직전마다 실행을 다시 본다
+    /// 시점 복원 임시 폴더 정리(S16·S19·G12). 먼저 빈 폴더 자리를 기록의 폴더 역할로 채운다(나중 시도부터): 바꿔 끼운 뒤 복원 전 내용은 늘
+    /// `old` 자리에 있어 그 자리만 되돌린다. 준비 자리(`staged`)는 아직 바꿔 끼우지 않은 시점 복제라 빈 자리에 넣지 않는다(복원 전에 없던
+    /// 폴더 자리에 다른 시점 내용을 넣지 않는다). 그 뒤 기록된 임시 폴더 중 경계 안의 것은 지우고, 밖의 것은 손대지 않고 돌려준다.
+    /// 파일을 바꾸기 바로 직전마다 실행을 다시 본다
     static func settleTemporaryFolders(_ point: RekordboxWriteJournal.PointRestore, share: URL, run: WriteRun) throws -> [String] {
         let fm = FileManager.default
         func change(_ body: () throws -> Void) throws {
@@ -353,9 +363,9 @@ extension RekordboxWriter {
             try run.after(.fileReplace)
         }
         for role in (point.folders ?? []).reversed() {
-            guard let target = pointFolderSlot(role.target, share: share), !fm.fileExists(atPath: target.path) else { continue }
-            let source = [role.old, role.staged].lazy.compactMap { pointTemporaryFolder($0, share: share) }.first { fm.fileExists(atPath: $0.path) }
-            if let source { try change { try fm.moveItem(at: source, to: target) } }
+            guard let target = pointFolderSlot(role.target, share: share), !fm.fileExists(atPath: target.path),
+                  let source = pointTemporaryFolder(role.old, share: share), fm.fileExists(atPath: source.path) else { continue }
+            try change { try fm.moveItem(at: source, to: target) }
         }
         var left: [String] = [], seen = Set<String>()
         for path in point.temporaryFolders + (point.folders ?? []).flatMap({ [$0.staged, $0.old] }) where seen.insert(path).inserted {

@@ -1,5 +1,6 @@
 import DJCApplication
 import DJCDomain
+import DJCTestKit
 import Foundation
 import Testing
 
@@ -177,6 +178,24 @@ struct LoadLibraryTests {
         #expect(result.status == .ready)
         #expect(result.playlists.map(\.id) == ["B"])
         #expect(music.cached(snapshot) == result)
+    }
+
+    @Test func 파일_링크_원본_DB의_동기화_선택은_링크를_푼_DB_옆에서_읽는다() throws {
+        let real = try TemporaryFolder(), links = try TemporaryFolder()
+        let database = real.url.appending(path: "master.db")
+        try Data().write(to: database)
+        let link = links.url.appending(path: "master.db")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: database)
+        let music = MemoryMusicLibrary()
+        music.setCapture(ITunesLibrarySnapshot(sourcePlaylists: Self.catalog()))
+        // 쓰기 관문은 링크를 푼 DB 옆 동기화 파일과 견준다. 링크 쪽 폴더의 같은 이름 파일은 이 DB의 것이 아니다
+        for folder in [real.url, real.url.resolvingSymlinksInPath()] { music.setSelection(["B"], in: folder) }
+        music.setSelection(["A"], in: links.url)
+        let loader = Self.loader([:], music: music)
+        let result = loader.readMusic(snapshot: Self.snapshots.appending(path: "master-3.db"), refreshMusic: true,
+                                      fallbackDirectory: Self.snapshots, sourceDatabase: link)
+        #expect(result.playlists.map(\.id) == ["B"])
+        withExtendedLifetime((real, links)) {}
     }
 
     @Test func Music을_읽지_못하면_같은_폴더의_이전_목록을_낡음으로_쓴다() {

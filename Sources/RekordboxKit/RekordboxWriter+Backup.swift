@@ -209,7 +209,8 @@ extension RekordboxWriter {
         }
         // 한 경로라도 잘못됐으면 DB와 복원 전 백업까지 모두 그대로 둔다.
         let (steps, touched) = try restoreSteps(later + [backup], database: database, shareRoot: share)
-        let saved = try makeBackup(of: database, in: backups, now: now, label: "before-restore")
+        // 복원 직전 백업은 링크를 푼 DB와 그 곁 파일로 뜬다(되돌리는 자리와 같다, O12)
+        let saved = try makeBackup(of: run.resolved, in: backups, now: now, label: "before-restore")
         try saveRestoreUndo(touched, in: saved, restoredFrom: backup, now: now, shareRoot: share)
         // 첫 변경 직전에 파일 쓰기 기록을 남긴다(R11). 기록으로 복원은 같은 복원을 다시 한다: DB·XML은 고른 백업에서, 파일은 사슬 끝의 상태로.
         // 여기서 확인한 뒤 백업들을 근거로 적어, 백업 폴더 밖의 백업으로 시작한 복원도 같은 근거로 이어 간다(S15)

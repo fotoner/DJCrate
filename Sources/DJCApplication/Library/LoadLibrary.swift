@@ -479,9 +479,10 @@ public struct LoadLibrary: Sendable {
         return sourceDatabase?.standardizedFileURL.path == expected.standardizedFileURL.path
     }
 
-    /// 동기화 선택 원문(`playlists3.sync`, 원본 DB가 있으면 그 폴더). 파일이 없으면 nil
+    /// 동기화 선택 원문(`playlists3.sync`, 원본 DB가 있으면 그 폴더). 파일이 없으면 nil.
+    /// 링크를 푼 DB 옆 파일을 읽는다(쓰기 관문이 견주는 파일과 같다: 파일 링크 DB도 링크 쪽 폴더의 같은 이름 파일을 읽지 않는다)
     private func syncFile(snapshot: URL, sourceDatabase: URL?) -> Result<Data, any Error>? {
-        music.syncFile((sourceDatabase ?? snapshot).deletingLastPathComponent())
+        music.syncFile((sourceDatabase ?? snapshot).resolvingSymlinksInPath().deletingLastPathComponent())
     }
 
     private func syncData(snapshot: URL, sourceDatabase: URL?) -> Data? {

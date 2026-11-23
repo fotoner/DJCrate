@@ -489,9 +489,20 @@ extension RekordboxWriter {
     }
 
     /// 백업 보호를 기록 핀에서 미정리 목록으로 넘긴다(S8): 목록 게시와 기록 지우기를 그 백업 폴더의 저장소 잠금 아래에서 해서, 솎기가
-    /// 목록을 읽은 뒤 기록 핀만 사라진 틈에 그 백업을 지우지 않게 한다. 잠금을 잡지 못하면 그대로 한다(솎기도 잡지 못해 솎지 않는다)
+    /// 목록을 읽은 뒤 기록 핀만 사라진 틈에 그 백업을 지우지 않게 한다. 목록이 있는데 잠금을 잡지 못하면 게시도 기록 지우기도 하지 않고
+    /// 멈춘다(기록이 남아 중단으로 다룬다). 목록이 없으면 넘길 보호가 없어 잠금 없이도 기록을 지운다
     private static func handOff(_ run: WriteRun, backup: URL, backups: URL, list: DraftCleanupList?) throws {
-        let hold = try? RekordboxWriteLocks.lockStore(backups)
+        func listNotSaved(_ error: any Error) -> DJCError {
+            .restoreFailed(reason: String(ui: "초안 정리 목록을 남기지 못했습니다: \(DJCError.reason(of: error))"),
+                           restoreError: String(ui: "rekordbox에는 저장했지만 정리 목록이 없어 초안을 정리하지 않고 쓰기 기록을 남겼습니다. 상태 줄에서 이대로 두거나 저장 전으로 복원하세요"),
+                           backup: backup.path, database: run.live ? nil : run.database.path)
+        }
+        var hold: RekordboxWriteLockHold?
+        do {
+            hold = try RekordboxWriteLocks.lockStore(backups)
+        } catch {
+            if list != nil { throw listNotSaved(error) }
+        }
         defer { hold?.release() }
         if var list {
             list.target = run.key
@@ -503,10 +514,7 @@ extension RekordboxWriter {
             } catch let stop as RekordboxWriteStop {
                 throw stop
             } catch {
-                throw DJCError.restoreFailed(
-                    reason: String(ui: "초안 정리 목록을 남기지 못했습니다: \(DJCError.reason(of: error))"),
-                    restoreError: String(ui: "rekordbox에는 저장했지만 정리 목록이 없어 초안을 정리하지 않고 쓰기 기록을 남겼습니다. 상태 줄에서 이대로 두거나 저장 전으로 복원하세요"),
-                    backup: backup.path, database: run.live ? nil : run.database.path)
+                throw listNotSaved(error)
             }
         }
         do {

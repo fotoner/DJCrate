@@ -114,13 +114,13 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
 
     /// 시점 복원이 적는 것
     public struct PointRestore: Codable, Equatable, Sendable {
-        /// 바꿔 끼우는 폴더 하나의 자리 역할. "이대로 둔다"는 이름이 아니라 이 역할로 빈 폴더 자리를 채운다
+        /// 바꿔 끼우는 폴더 하나의 자리 역할. "이대로 둔다"는 이름이 아니라 이 역할로 빈 폴더 자리를 채운다(`old` 자리로만)
         public struct Folder: Codable, Equatable, Sendable {
             /// 바꿔 끼우는 폴더 자리(분석·앨범아트)
             public var target: String
-            /// 시점 내용을 클론하는 준비 자리(`.djc-restore-*`). 한 번에 맞바꾸면 그 뒤 복원 전 내용이 여기 있다
+            /// 시점 내용을 클론하는 준비 자리(`.djc-restore-*`). 바꿔 끼우기 전의 시점 복제라 빈 자리에 넣지 않는다
             public var staged: String
-            /// 맞바꾸지 못할 때 복원 전 내용을 옮겨 두는 자리(`.djc-old-*`)
+            /// 바꿔 끼운 뒤 복원 전 내용이 있는 자리(`.djc-old-*`)
             public var old: String
 
             public init(target: String, staged: String, old: String) {
