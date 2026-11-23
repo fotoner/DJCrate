@@ -10,7 +10,8 @@ import Testing
 struct UsbEditInvariantTests {
     /// 쓴 USB를 읽어 합친 모델을 새 내보내기 모양(OneLibrary 새 파일·pdb fresh)으로 다시 만들어 읽은 모델과 비교하고,
     /// 형식마다 계획의 적용 결과(OneLibrary 투영·pdb 작성기 모델)와도 비교한다
-    static func check(_ env: UsbEditFixture, _ result: UsbEditResult) throws {
+    /// context는 실패 메시지 끝에 붙는다(생성 시험의 씨앗·편집 목록)
+    static func check(_ env: UsbEditFixture, _ result: UsbEditResult, _ context: String = "") throws {
         // 보존한 기기 행(기록·기기 큐 같은 모르는 표 행)은 새 내보내기가 만들지 않는다(불변식의 예외)
         var read = try env.read()
         read.histories = []
@@ -23,22 +24,22 @@ struct UsbEditInvariantTests {
         let rebuilt = UsbLibrary.merge(oneLibrary: try OneLibraryReader.read(copyAt: database),
                                        deviceLibrary: try PdbReader.read(export: files.export, exportExt: files.exportExt).0).0
         let differences = UsbLibraryDiff.compare(read, rebuilt, options: .init(ignoreIDs: true)).differences
-        #expect(differences.isEmpty, "다시 만든 모델과 다름: \(differences.prefix(5))")
+        #expect(differences.isEmpty, "다시 만든 모델과 다름: \(differences.prefix(5)) \(context)")
 
-        let applied = try #require(result.applied)
+        let applied = try #require(result.applied, "\(context)")
         let oneLibrary = try #require(try env.read(.oneLibrary))
-        #expect(UsbLibraryDiff.compare(oneLibrary, applied.projected(to: .oneLibrary), options: .init(formats: [.oneLibrary])).differences.isEmpty)
+        #expect(UsbLibraryDiff.compare(oneLibrary, applied.projected(to: .oneLibrary), options: .init(formats: [.oneLibrary])).differences.isEmpty, "\(context)")
         if let written = result.pdbWritten {
             let device = try #require(try env.read(.deviceLibrary))
-            #expect(UsbLibraryDiff.compare(device, written, options: .init(formats: [.deviceLibrary])).differences.isEmpty)
+            #expect(UsbLibraryDiff.compare(device, written, options: .init(formats: [.deviceLibrary])).differences.isEmpty, "\(context)")
             // 기존 곡만 있는 쪽은 pdb 작성기 모델 = 적용 결과의 Device Library 투영(트랙 행 관찰값·지운 ID 빼고)
             let projected = UsbLibraryDiff.compare(device, applied.projected(to: .deviceLibrary),
                                                    options: .init(skipTables: ["deadIDs", "trackRowExtras"], formats: [.deviceLibrary])).differences
-            #expect(projected.isEmpty, "적용 결과와 다름: \(projected.prefix(5))")
+            #expect(projected.isEmpty, "적용 결과와 다름: \(projected.prefix(5)) \(context)")
         }
         // 두 형식의 곡이 같다(한 형식이 막히지 않았으면)
         if result.formatsBlocked.isEmpty {
-            #expect(try env.source().mismatches.filter(\.blocksEditing).isEmpty)
+            #expect(try env.source().mismatches.filter(\.blocksEditing).isEmpty, "\(context)")
         }
     }
 
