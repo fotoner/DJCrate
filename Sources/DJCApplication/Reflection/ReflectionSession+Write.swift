@@ -12,25 +12,34 @@ extension ReflectionSession {
             return publish(.notice(title: String(ui: "rekordbox가 켜져 있어 저장하지 않았습니다"), text: ReflectionPrompts.quitRekordboxText, lines: []))
         }
         let chosen = writeTargets(rows)
-        // 디스크 재생 목록 초안을 읽지 못했으면(동기화 실패) 이번 쓰기 묶음에서 재생 목록만 뺀다. 다른 종류 초안은 쓰고 결과에 이유를 담는다
+        let early = ports.library.state()
+        let hasPlaylistDraft = playlists && !early.playlistDraft.isEmpty
+        let withHistories = playlists && !early.pendingHistories.isEmpty
+        func nothing() -> ReflectionOutcome {
+            publish(.notice(title: String(ui: "저장할 편집이 없습니다"), text: String(ui: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 편집이 없습니다."),
+                            lines: exclusions(for: rows, blockedOnly: false)))
+        }
+        guard !chosen.isEmpty || hasPlaylistDraft || withHistories else { return nothing() }
+        // 쓰는 곡만 잠근다(R21): 고른 곡과 합치기로 묶인 곡. 덱 재생은 멈추지 않는다
+        lockDraftWrite(tracks: lockedTracks(for: chosen))
+        defer { unlockDraftWrite() }
+        // 재생 목록을 묶음에 넣을지와 보류 안내는 쓰기 잠금을 건 뒤(초안 파일 잠금 시도·디스크 초안 동기화 뒤) 한 자리에서 정한다.
+        // 메모리를 정본으로 정리하는 전제(쓰는 동안 초안 파일 잠금을 쥐고 디스크 초안과 같다)가 서지 않으면 이번 묶음에서 재생 목록만 뺀다.
+        // 다른 종류 초안은 쓰고 결과에 이유를 담는다
         let state = ports.library.state()
-        let playlistHeld = playlists && state.playlistDraftNeedsSync && !state.playlistDraft.isEmpty
-        let withPlaylists = playlists && !state.playlistDraft.isEmpty && !state.playlistDraftNeedsSync
-        let withHistories = playlists && !ports.library.state().pendingHistories.isEmpty
+        let hasPlaylists = hasPlaylistDraft && !state.playlistDraft.isEmpty
+        let withPlaylists = hasPlaylists && state.canWritePlaylists
+        let playlistHeld = hasPlaylists && !state.canWritePlaylists
         guard !chosen.isEmpty || withPlaylists || withHistories else {
             if playlistHeld {
                 return publish(.notice(title: String(ui: "rekordbox에 저장하지 않았습니다"), text: Self.playlistSyncHeldText, lines: []))
             }
-            return publish(.notice(title: String(ui: "저장할 편집이 없습니다"), text: String(ui: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 편집이 없습니다."),
-                                   lines: exclusions(for: rows, blockedOnly: false)))
+            return nothing()
         }
-        // 쓰는 곡만 잠근다(R21): 고른 곡과 합치기로 묶인 곡. 덱 재생은 멈추지 않는다
-        lockDraftWrite(tracks: lockedTracks(for: chosen))
-        defer { unlockDraftWrite() }
         do {
             stage(WriteStage(String(ui: "바꿀 내용을 확인하는 중…"), completed: 0, total: chosen.count, cancellable: true))
             try Task.checkCancellation()
-            let preview = try await previewWrite(rows: rows, playlists: withPlaylists || withHistories)
+            let preview = try await previewWrite(rows: rows, playlists: withPlaylists || withHistories, withPlaylistDraft: withPlaylists)
             try Task.checkCancellation()
             stage(nil)
             // 창 대신 결과에 제외한 초안까지 남긴다(#230). 막힌 초안은 화면이 복구 시트로 고치게 한다(#232).
@@ -66,7 +75,8 @@ extension ReflectionSession {
     /// 미리 보기(단계): 초안을 확인해 묶고, 위치의 rekordbox에서 새 사본을 떠 끝까지 써 본다(rekordbox는 건드리지 않는다).
     /// 최신 사본에 이미 있는 재생 기록은 실제로 쓰지 않고 보존본 연결만 갱신한다(쓰기 대기에서 빠진다).
     /// - Parameter playlists: 곡이 아닌 초안(재생 목록 초안·쓰기 대기 재생 기록)도 함께 볼지(곡 초안과 달리 곡을 골라 나누지 않는다)
-    public func previewWrite(rows: [TrackRow], playlists: Bool) async throws -> WritePreview {
+    /// - Parameter withPlaylistDraft: 재생 목록 초안을 묶음에 넣을지(쓰기가 정한다: 초안 파일 잠금·동기화). `playlists`가 거짓이면 늘 넣지 않는다
+    public func previewWrite(rows: [TrackRow], playlists: Bool, withPlaylistDraft: Bool = true) async throws -> WritePreview {
         ports.drafts.flush()
         ports.library.retryTagSaves()
         let targets = writeTargets(rows)
@@ -76,7 +86,7 @@ extension ReflectionSession {
         try requireDraftSaves(for: uuids)
         guard ports.library.state().failedTagSaves.isDisjoint(with: uuids) else { throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage) }
         if playlists { try requirePlaylistDraftSaved() }
-        let batch = try draftBatch(for: targets, playlists: playlists)
+        let batch = try draftBatch(for: targets, playlists: playlists, withPlaylistDraft: withPlaylistDraft)
         // 미리 보기는 길이만 잰다(음량은 쓸 때 잰다. 막히는지 보는 데는 필요 없다).
         let inputs = try await analysisInputs(for: batch.grids, measuringLoudness: false)
         try requireDraftSaves(for: uuids)
@@ -132,7 +142,7 @@ extension ReflectionSession {
     }
 
     /// 쓸 곡(차례대로)의 초안 묶음. 변경 없는 초안은 뺀다.
-    func draftBatch(for rows: [TrackRow], playlists: Bool) throws -> DraftWriteBatch {
+    func draftBatch(for rows: [TrackRow], playlists: Bool, withPlaylistDraft: Bool = true) throws -> DraftWriteBatch {
         let state = ports.library.state(), files = ports.drafts
         let uuids = Set(rows.map(\.track.uuid))
         let merges = state.mergeDrafts.filter { $0.members.contains { uuids.contains($0.trackUUID) } }
@@ -154,7 +164,7 @@ extension ReflectionSession {
                 throw DJCError.writeRefused(String(ui: "앨범아트 편집을 읽지 못했으니 그 곡의 앨범아트를 다시 고른 뒤 저장을 다시 시도하세요."))
             }
         }
-        let playlistDraft = playlists && !state.playlistDraft.isEmpty && !state.playlistDraftNeedsSync ? state.playlistDraft : nil
+        let playlistDraft = playlists && withPlaylistDraft && !state.playlistDraft.isEmpty && !state.playlistDraftNeedsSync ? state.playlistDraft : nil
         // 쓰기 대기 재생 기록(#43)도 재생 목록 초안처럼 곡을 고르지 않고 모두 본다. 관문이 막으면 막힘(이유)으로 돌아온다
         return DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges,
                                histories: playlists ? state.pendingHistories : [])

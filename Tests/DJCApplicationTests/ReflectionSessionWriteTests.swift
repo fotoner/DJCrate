@@ -204,7 +204,7 @@ struct ReflectionSessionWriteTests {
         #expect(h.gateCalls.value.previews.first?.playlists == nil && h.gateCalls.value.writes.first?.playlists == nil)
     }
 
-    static let playlistHeldText = "재생 목록 편집을 읽지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요."
+    static let playlistHeldText = "재생 목록 편집을 확인하지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요."
 
     @Test func S10_재생_목록만_있는데_동기화_실패_표시가_남았으면_저장할_편집이_없다고_하지_않고_이유를_알린다() async {
         h.state.playlistDraft = playlistDraft()
@@ -212,7 +212,8 @@ struct ReflectionSessionWriteTests {
         let outcome = await h.session.write(rows: [])
         #expect(outcome.notice?.title == "rekordbox에 저장하지 않았습니다")
         #expect(outcome.notice?.text == Self.playlistHeldText)
-        #expect(h.gateCalls.value.writes.isEmpty && h.locks.isEmpty)
+        // 보류 여부는 쓰기 잠금을 건 뒤(초안 파일 잠금 시도·동기화 뒤)에 정하므로 잠갔다 풀었고 아무것도 쓰지 않았다
+        #expect(h.gateCalls.value.writes.isEmpty && h.gateCalls.value.previews.isEmpty && !h.locked && h.locks.last == "곡 -")
     }
 
     @Test func S10_곡_편집도_있으면_곡은_쓰고_결과에_재생_목록을_뺀_이유를_담는다() async {
@@ -225,6 +226,53 @@ struct ReflectionSessionWriteTests {
         #expect(followUp.contains(Self.playlistHeldText))
         #expect(h.gateCalls.value.previews.first?.playlists == nil && h.gateCalls.value.writes.first?.playlists == nil, "재생 목록은 쓰기 묶음에서 빠진다")
         #expect(h.gateCalls.value.writes.first?.drafts.map(\.trackUUID) == ["a"])
+    }
+
+    @Test func S1_재생_목록_초안_파일_잠금을_쥐지_못했으면_재생_목록은_쓰기_묶음에서_빠지고_곡은_쓰며_이유를_알린다() async {
+        pendingCue("a")
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftFileLocked = false
+        h.script.preview = H.report(cues: [H.outcome("a", .written)])
+        let outcome = await h.session.write(rows: [H.row("a")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(followUp.contains(Self.playlistHeldText))
+        #expect(h.gateCalls.value.previews.first?.playlists == nil && h.gateCalls.value.writes.first?.playlists == nil)
+        #expect(h.gateCalls.value.writes.first?.drafts.map(\.trackUUID) == ["a"])
+    }
+
+    @Test func S1_잠금을_쥐지_못했고_곡도_없으면_저장할_편집이_없다고_하지_않고_이유를_알린다() async {
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftFileLocked = false
+        let outcome = await h.session.write(rows: [])
+        #expect(outcome.notice?.title == "rekordbox에 저장하지 않았습니다" && outcome.notice?.text == Self.playlistHeldText)
+        #expect(h.gateCalls.value.writes.isEmpty)
+    }
+
+    @Test func S10_잠금을_거는_중_동기화에_실패하면_재생_목록을_빼고_이유를_알린다() async {
+        pendingCue("a")
+        h.state.playlistDraft = playlistDraft()
+        h.script.preview = H.report(cues: [H.outcome("a", .written)])
+        // 잠금 전에는 읽을 수 있었는데 쓰기 잠금을 거는 순간(잠금 시도 + 동기화) 읽지 못했다
+        h.onLock = { [h] locked in if locked { h.state.playlistDraftNeedsSync = true } }
+        let outcome = await h.session.write(rows: [H.row("a")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(followUp.contains(Self.playlistHeldText))
+        #expect(h.gateCalls.value.writes.first?.playlists == nil)
+    }
+
+    @Test func S10_잠금을_거는_중_동기화가_회복되면_재생_목록까지_쓰고_건드리지_않았다고_알리지_않는다() async {
+        pendingCue("a")
+        let draft = playlistDraft()
+        h.state.playlistDraft = draft
+        h.state.playlistDraftNeedsSync = true
+        var report = H.report(cues: [H.outcome("a", .written)])
+        report.playlistOutcomes = [PlaylistOutcome(edit: draft.steps[0].edit, playlistID: "1", name: "세트", status: .written)]
+        h.script.preview = report
+        h.onLock = { [h] locked in if locked { h.state.playlistDraftNeedsSync = false } }
+        let outcome = await h.session.write(rows: [H.row("a")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(!followUp.contains(Self.playlistHeldText))
+        #expect(h.gateCalls.value.previews.first?.playlists == draft && h.gateCalls.value.writes.first?.playlists == draft)
     }
 
     @Test func 재생_목록_편집이_모두_막히면_쓰지_않는다() async {

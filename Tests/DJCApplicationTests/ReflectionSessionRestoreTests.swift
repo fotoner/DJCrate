@@ -253,8 +253,10 @@ struct ReflectionSessionRestoreTests {
         _ = try await h.session.restoreBackup(addBackup(), to: .copy)
 
         #expect(h.memory.store.playlistDraft() == draft, "디스크 재생 목록 초안은 그대로다")
-        #expect(h.importsSaved.isEmpty && !h.changeNames.contains { $0.hasPrefix("imports reset") }, "초안도 연결 기록도 건드리지 않는다")
-        #expect(h.followUp == ["재생 목록 편집을 읽지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요."])
+        #expect(h.importsSaved.isEmpty && h.state.playlistDraft == draft, "초안도 연결 기록도 건드리지 않는다")
+        #expect(h.changeNames.filter { $0.hasPrefix("imports reset") }.count == 1 && h.changeNames.contains { $0.hasPrefix("imports reset deferred") },
+                "화면이 곡을 보관하도록 미룬 초기화만 알린다")
+        #expect(h.followUp == ["재생 목록 편집을 확인하지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요."])
         #expect(h.state.staged.map(\.uuid) == ["a", "b", "k"], "추가 목록 복원은 그대로 한다")
     }
 

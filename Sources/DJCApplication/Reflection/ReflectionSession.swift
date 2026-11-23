@@ -174,9 +174,9 @@ public struct ReflectionSession {
 // MARK: - 문구
 
 extension ReflectionSession {
-    /// 디스크 재생 목록 초안을 읽지 못해(`ReflectionLibraryState.playlistDraftNeedsSync`) 이번 저장·복원이 재생 목록을 건드리지 않았다는 이유
+    /// 디스크 재생 목록 초안을 확인하지 못해(`ReflectionLibraryState.canWritePlaylists`가 아니다) 이번 저장·복원이 재생 목록을 건드리지 않았다는 이유
     public static var playlistSyncHeldText: String {
-        String(ui: "재생 목록 편집을 읽지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요.")
+        String(ui: "재생 목록 편집을 확인하지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요.")
     }
 
     public static var playlistSaveFailureText: String {

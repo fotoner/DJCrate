@@ -17,7 +17,8 @@ extension LibraryStore {
     func reflectionState() -> ReflectionLibraryState {
         ReflectionLibraryState(rows: rowsByUUID, cueDraftUUIDs: cueDraftUUIDs, gridDraftUUIDs: gridDraftUUIDs, gainDraftUUIDs: gainDraftUUIDs,
                                tagDrafts: tagDrafts, artworkDrafts: artworkDrafts, mergeDrafts: mergeDrafts, playlistDraft: playlists.playlistDraft,
-                               playlistDraftUnsaved: playlists.playlistDraftUnsaved, playlistDraftNeedsSync: playlists.playlistDraftNeedsSync, rekordboxPlaylists: playlists.rekordboxPlaylists,
+                               playlistDraftUnsaved: playlists.playlistDraftUnsaved, playlistDraftNeedsSync: playlists.playlistDraftNeedsSync,
+                               playlistDraftFileLocked: playlistDraftUnlock != nil, rekordboxPlaylists: playlists.rekordboxPlaylists,
                                playlistImports: playlists.playlistImports, playlistImportsLoadFailed: playlists.playlistImportsLoadFailed, unreadableDraftKinds: unreadableDraftKinds, failedTagSaves: failedTagSaves(),
                                staged: staging.staged, estimatingGrids: staging.gridJob != nil, iTunesSelection: isITunesSelection,
                                deckStagedUUID: deckTrackID.flatMap { rowsByID[$0] }.flatMap { $0.isStaged ? $0.track.uuid : nil },

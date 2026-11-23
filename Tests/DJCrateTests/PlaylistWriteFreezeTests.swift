@@ -266,4 +266,86 @@ struct PlaylistWriteFreezeTests {
         #expect(playlists.playlistImports.pendingCount == 0)
         #expect(playlists.playlistDraft.edits == [.rename(playlist: .id("B"), name: "새 이름"), .addTracks(playlist: .id("A"), contentIDs: ["9"])])
     }
+
+    // MARK: - 리뷰 3라운드(S1·S11·S12)
+
+    @Test func S1_공용_상태는_초안_파일_잠금을_쥔_동안만_잠금을_쥐었다고_알린다() async throws {
+        let cli = try #require(PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: file)))
+        beginDraftWrite()   // CLI가 잠금을 들고 있어 0.3초를 기다려도 잡지 못한다
+        #expect(!store.reflectionState().playlistDraftFileLocked, "쥐지 못했으면 이번 쓰기 묶음에서 재생 목록을 뺀다")
+        cli()
+        // 쓰는 동안 다시 잡으면(한 번 못 잡았다고 쓰기 내내 잠금 없이 두지 않는다) 그 뒤 상태는 쥔 것이다
+        var held = false
+        for _ in 0..<100 where !held {
+            try await Task.sleep(for: .milliseconds(20))
+            held = store.reflectionState().playlistDraftFileLocked
+        }
+        #expect(held)
+        endDraftWrite()
+    }
+
+    @Test func S11_동기화_실패로_건너뛴_곡_추가_복원의_연결_초기화는_보관했다가_초안을_받은_뒤_한다() throws {
+        playlists.playlistImports.addFiles(["/fixtures/a"], to: .id("A"))
+        playlists.resolvePlaylistImports(contentIDsByPath: ["/fixtures/a": "9"])
+        let draft = playlists.playlistDraft
+        #expect(playlists.playlistImports.pendingCount == 0 && draft.edits == [.addTracks(playlist: .id("A"), contentIDs: ["9"])])
+        try Data("깨진 파일".utf8).write(to: file)
+        #expect(playlists.syncExternal() == .failed)
+
+        // 세션이 동기화 실패로 건너뛴 곡 추가 복원: 화면이 곡을 보관한다
+        store.applyReflection(.playlistImportsReset(EditPlaylists.ImportsReset(contentIDs: ["9"], deferred: true)))
+        #expect(playlists.playlistImports.pendingCount == 0 && playlists.playlistDraft == draft, "아직 연결도 초안도 건드리지 않는다")
+        #expect(try Data(contentsOf: file) == Data("깨진 파일".utf8))
+
+        // 디스크 초안을 다시 읽으면(동기화 실패 표시가 풀리면) 그 초안으로 초기화한다
+        try PlaylistDraftStore.save(draft, url: file)
+        _ = playlists.syncExternal()
+        #expect(!playlists.playlistDraftNeedsSync)
+        #expect(playlists.playlistImports.pendingCount == 1, "복원으로 사라진 곡의 연결이 다시 기다리는 연결이 된다")
+        #expect(playlists.playlistDraft.isEmpty, "초안에서 그 곡 편집이 빠진다")
+        #expect(try store.useCases.playlists.loadDraft().isEmpty)
+    }
+
+    @Test func S12_동기화_실패_중_복원한_재생_목록_편집은_저장하지_않고_대기열에_남기며_회복하면_받은_초안_위에_쌓는다() throws {
+        playlists.renamePlaylist("B", to: "새 이름")
+        try Data("깨진 파일".utf8).write(to: file)
+        #expect(playlists.syncExternal() == .failed)
+        playlists.playlistEditsAwaitingReload = [.addTracks(playlist: .id("A"), contentIDs: ["7"])]
+
+        playlists.restoreAwaitingPlaylistEdits()
+
+        #expect(try Data(contentsOf: file) == Data("깨진 파일".utf8), "메모리 초안으로 읽지 못한 파일을 다시 저장하지 않는다")
+        #expect(playlists.playlistEditsAwaitingReload.count == 1, "복원한 편집은 대기열에 남는다")
+
+        // 대기열이 남아 있어도 디스크 초안을 읽어 표시를 풀 수 있다(서로 기다리며 멈추지 않는다)
+        var disk = PlaylistDraft()
+        try disk.append(.rename(playlist: .id("A"), name: "바깥에서 고친 이름"), rekordbox: Self.rekordbox)
+        try PlaylistDraftStore.save(disk, url: file)
+        _ = playlists.syncExternal()
+
+        #expect(!playlists.playlistDraftNeedsSync && playlists.playlistEditsAwaitingReload.isEmpty)
+        let expected: [PlaylistEdit] = [.addTracks(playlist: .id("A"), contentIDs: ["7"]), .rename(playlist: .id("A"), name: "바깥에서 고친 이름")]
+        #expect(playlists.playlistDraft.edits == expected, "받은 디스크 초안 위에 복원한 편집을 쌓는다")
+        #expect(try store.useCases.playlists.loadDraft().edits == expected)
+    }
+
+    @Test func S11_S12_보관한_연결_초기화와_대기열의_복원_편집은_한_번의_회복에서_차례로_이어_하고_서로_기다리지_않는다() throws {
+        playlists.playlistImports.addFiles(["/fixtures/a"], to: .id("A"))
+        playlists.resolvePlaylistImports(contentIDsByPath: ["/fixtures/a": "9"])
+        let draft = playlists.playlistDraft
+        try Data("깨진 파일".utf8).write(to: file)
+        #expect(playlists.syncExternal() == .failed)
+        store.applyReflection(.playlistImportsReset(EditPlaylists.ImportsReset(contentIDs: ["9"], deferred: true)))
+        playlists.playlistEditsAwaitingReload = [.addTracks(playlist: .id("B"), contentIDs: ["7"])]
+        playlists.restoreAwaitingPlaylistEdits()
+        #expect(playlists.playlistEditsAwaitingReload.count == 1 && playlists.playlistDraft == draft, "실패 중에는 둘 다 미룬다")
+
+        // 한 번 읽어 표시를 풀면 초기화를 먼저 하고 그 초안 위에 복원한 편집을 쌓는다
+        try PlaylistDraftStore.save(draft, url: file)
+        _ = playlists.syncExternal()
+
+        #expect(!playlists.playlistDraftNeedsSync && playlists.playlistEditsAwaitingReload.isEmpty && playlists.playlistImports.pendingCount == 1)
+        #expect(playlists.playlistDraft.edits == [.addTracks(playlist: .id("B"), contentIDs: ["7"])])
+        #expect(try store.useCases.playlists.loadDraft().edits == playlists.playlistDraft.edits)
+    }
 }

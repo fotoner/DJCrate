@@ -18,6 +18,9 @@ public struct ReflectionLibraryState: Sendable {
     /// 디스크 재생 목록 초안을 읽지 못해 메모리 초안이 디스크와 같은지 모른다. 새 쓰기 묶음은 재생 목록 초안을 넣지 않고,
     /// 곡 추가 복원은 재생 목록 초안·연결 기록을 건드리지 않는다(옛 메모리로 디스크 초안을 덮지 않게)
     public var playlistDraftNeedsSync: Bool
+    /// 이 쓰기 동안 재생 목록 초안 파일 잠금을 쥐고 있다(바깥(CLI)이 쓰는 동안 초안을 고치지 못한다). 쥐지 못했으면(CLI가 잠금을 오래 들고 있다)
+    /// 메모리 초안이 디스크와 같다고 믿을 수 없어 이번 쓰기 묶음에서 재생 목록을 뺀다. 잠금이 없는 가짜는 늘 쥔다
+    public var playlistDraftFileLocked: Bool
     /// 스냅샷에서 읽은 rekordbox 재생 목록(초안을 얹기 전)
     public var rekordboxPlaylists: PlaylistLayout
     /// 재생 목록 연결 기록(메모리)과 그 파일을 읽지 못했는지(그러면 저장하지 않는다)
@@ -41,7 +44,7 @@ public struct ReflectionLibraryState: Sendable {
 
     public init(rows: [String: TrackRow] = [:], cueDraftUUIDs: Set<String> = [], gridDraftUUIDs: Set<String> = [], gainDraftUUIDs: Set<String> = [],
                 tagDrafts: [String: TagDraft] = [:], artworkDrafts: [String: ArtworkDraft] = [:], mergeDrafts: [DuplicateMergeDraft] = [],
-                playlistDraft: PlaylistDraft = PlaylistDraft(), playlistDraftUnsaved: Bool = false, playlistDraftNeedsSync: Bool = false,
+                playlistDraft: PlaylistDraft = PlaylistDraft(), playlistDraftUnsaved: Bool = false, playlistDraftNeedsSync: Bool = false, playlistDraftFileLocked: Bool = true,
                 rekordboxPlaylists: PlaylistLayout = PlaylistLayout(), playlistImports: PlaylistImports = PlaylistImports(),
                 playlistImportsLoadFailed: Bool = false, unreadableDraftKinds: [String: Set<WritePart>] = [:], failedTagSaves: Set<String> = [], staged: [StagedTrack] = [],
                 estimatingGrids: Bool = false, iTunesSelection: Bool = false, deckStagedUUID: String? = nil, lastError: String? = nil,
@@ -56,6 +59,7 @@ public struct ReflectionLibraryState: Sendable {
         self.playlistDraft = playlistDraft
         self.playlistDraftUnsaved = playlistDraftUnsaved
         self.playlistDraftNeedsSync = playlistDraftNeedsSync
+        self.playlistDraftFileLocked = playlistDraftFileLocked
         self.rekordboxPlaylists = rekordboxPlaylists
         self.playlistImports = playlistImports
         self.playlistImportsLoadFailed = playlistImportsLoadFailed
@@ -68,6 +72,10 @@ public struct ReflectionLibraryState: Sendable {
         self.lastError = lastError
         self.pendingHistories = pendingHistories
     }
+
+    /// 이번 쓰기 묶음에 재생 목록 초안을 넣어도 되는지: 디스크 초안을 확인했고(`playlistDraftNeedsSync` 아님) 쓰는 동안 초안 파일 잠금을 쥐고 있다.
+    /// 쓰기 잠금을 건 뒤(초안 파일 잠금 시도·동기화 뒤)에 읽어야 한다
+    public var canWritePlaylists: Bool { !playlistDraftNeedsSync && playlistDraftFileLocked }
 
     /// 반영 대기 초안이 있는 곡(큐·그리드·게인·태그·앨범아트 초안, 합치기 초안에 묶인 곡)
     public var pendingUUIDs: Set<String> {
