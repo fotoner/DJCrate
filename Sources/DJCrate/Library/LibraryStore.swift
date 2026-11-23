@@ -453,6 +453,9 @@ final class LibraryStore {
         didSet { if writtenAwaitingReload != oldValue { onWrittenAwaitingReload?(writtenAwaitingReload) } }
     }
     @ObservationIgnored var onWrittenAwaitingReload: ((Set<String>) -> Void)?
+    /// 초안 쓰기 뒤 읽기 대기: 초안을 쓴 뒤 다시 읽기를 시작했고 아직 성공한 읽기가 없다. 읽기가 실패해 쓰기 잠금·초안 쓰기 표시가 먼저 꺼져도,
+    /// 다음에 성공한 읽기(창을 다시 활성화한 자동 읽기 포함)가 다른 곡의 ⌘Z 기록을 지우지 않게 한다. 재생 목록·재생 기록만 쓴 경우도 같다.
+    @ObservationIgnored var draftWriteReadPending = false
     /// 종료를 기다리느라 쓴 뒤 다시 읽기를 미뤘다(#305). 종료를 취소하면 한 번 이어서 읽는다. 읽은 뒤 알릴 곡·쌓을 편집은 위 값들이 들고 있다.
     @ObservationIgnored var reloadPostponedForQuit = false
     /// 마지막 쓰기·복원은 끝났지만 뒤따른 일(초안 정리·다시 읽기·복원 충돌)에 남은 경고. 쓰기 결과와 나눠 알린다.

@@ -1,4 +1,5 @@
 @testable import DJCrate
+import CoreGraphics
 import DJCAdapters
 import DJCApplication
 import DJCDomain
@@ -276,6 +277,90 @@ struct TrackWriteLockFollowUpTests {
         #expect(deck.draft?.cues.count == 2)
     }
 
+    // MARK: - S13 최초 불러오기가 저장 뒤 갱신과 겹쳐도 파형·분석은 이어 간다
+
+    /// 첫 호출만 붙잡는 비동기 문(읽기 도중 다른 갱신이 끼어드는 틈을 만든다)
+    final class AsyncGate: Sendable {
+        private struct State {
+            var isOpen = false
+            var entered = false
+            var waiters: [CheckedContinuation<Void, Never>] = []
+        }
+        private let state = Mutex(State())
+        private let calls = Mutex(0)
+
+        var hasEntered: Bool { state.withLock { $0.entered } }
+
+        /// 첫 호출은 열릴 때까지 기다리고, 뒤 호출은 바로 지나간다
+        func passFirstCall() async {
+            guard calls.withLock({ $0 += 1; return $0 }) == 1 else { return }
+            await withCheckedContinuation { continuation in
+                let resumeNow = state.withLock { state -> Bool in
+                    state.entered = true
+                    if state.isOpen { return true }
+                    state.waiters.append(continuation)
+                    return false
+                }
+                if resumeNow { continuation.resume() }
+            }
+        }
+
+        func open() {
+            let waiters = state.withLock { state -> [CheckedContinuation<Void, Never>] in
+                state.isOpen = true
+                defer { state.waiters = [] }
+                return state.waiters
+            }
+            for waiter in waiters { waiter.resume() }
+        }
+    }
+
+    static func tinyArtwork() throws -> DeckArtwork {
+        let context = try #require(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 0,
+                                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        return DeckArtwork(image: try #require(context.makeImage()))
+    }
+
+    @Test func 최초_불러오기_중_저장_뒤_갱신이_그림을_먼저_채워도_파형과_분석은_이어_간다() async throws {
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
+        let audio = FakeDeckAudio()
+        let drafts = MemoryDrafts()
+        let storage = DeckStorage.memory(drafts)
+        var reader = TrackAssetReader.memory(storage)
+        let artwork = try Self.tinyArtwork()
+        let gate = AsyncGate()
+        reader.embeddedArtwork = { _ in
+            await gate.passFirstCall()
+            return artwork
+        }
+        let waveforms = Mutex(0)
+        let analyzer = TrackAnalyzer(
+            waveform: { _, _ in waveforms.withLock { $0 += 1 }; return Waveform(rate: 1, duration: 0, low: [], mid: [], high: []) },
+            sections: { _, _ in throw CocoaError(.fileNoSuchFile) },
+            estimateGrid: { _, _ in nil }, sectionEnergies: { _ in [] }, memoryCueSuggestions: { _, _ in [] },
+            keyWindows: { _, _ in [] }, keySegments: { _, _, _, _ in ([], nil) }, isMinor: { _, _, _ in false })
+        let deck = DeckModel.test(audio: audio, storage: storage, reader: reader,
+                                  analysis: AnalyzeDeckTrack(analyzer: analyzer, cache: MemoryAnalysisStore().store), runsAnalysis: true)
+        store.connectWriteLocks(to: deck)
+
+        // 쓰는 도중 덱에 올린다: 최초 불러오기가 음원 내장 그림을 읽다가 멈춘다
+        deck.load(Self.track(cues: []))
+        #expect(await waitForState(until: { gate.hasEntered }), "최초 불러오기가 그림 읽기에 닿지 않았다")
+        #expect(deck.canPlay && deck.artwork == nil)
+
+        // 저장 뒤 갱신이 먼저 끝나 그림을 채운다
+        let newRow = Self.track(cues: [Cue(id: "N1", contentID: "1", kind: 1, inMsec: 8000, name: "", colorTableIndex: 0)])
+        store.rowsByUUID["track-1"] = newRow
+        store.onRekordboxWritten?(["track-1"])
+        #expect(await waitForState(until: { deck.artwork != nil && !deck.isEditLocked }), "저장 뒤 갱신이 끝나지 않았다")
+
+        // 늦게 풀린 최초 불러오기는 그림 적용만 건너뛰고 파형·분석을 이어 간다
+        gate.open()
+        await deck.loadTask?.value
+        #expect(waveforms.withLock { $0 } == 1, "곡은 그대로인데 파형·분석이 시작되지 않았다")
+        #expect(deck.draft?.cues.count == 1 && deck.row == newRow, "덱의 큐·기준값은 저장 뒤 값이다")
+    }
+
     // MARK: - S3 재생 목록만 쓰는 묶음(세션)은 TrackWriteLockTests와 ReflectionSession 시험이 본다
 
     // MARK: - S4 저장 중 다른 곡의 ⌘Z는 저장 뒤에도 된다
@@ -328,6 +413,64 @@ struct TrackWriteLockFollowUpTests {
         #expect(undo.canUndo, "저장한 곡이 없어도 초안 쓰기 뒤 읽기는 다른 곡의 ⌘Z를 지우지 않는다")
         undo.undo()
         #expect(store.tagDrafts[other.track.uuid]?.hasChanges != true)
+    }
+
+    /// S11: 저장 직후 읽기가 실패해도 "초안 쓰기 뒤 읽기 대기"는 읽기가 성공할 때까지 남는다(쓰기 잠금·초안 쓰기 표시는 이미 꺼졌다)
+    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    func 저장_직후_읽기가_실패해도_다음_성공한_읽기가_다른_곡_되돌리기를_지우지_않는다() async throws {
+        let rig = try await Rig()
+        rig.addCueDraft()
+        let store = rig.store
+        let undo = UndoManager()
+        store.undoManager = undo
+        let other = rig.otherRow
+        let pause = WriteLockSplitTests.GatePause()
+        let coordinator = ReflectionCoordinator.test(store: store, gate: Self.pausing(.live(), at: pause))
+        rig.failingSnapshots.set(true)
+        let writing = Task { await coordinator.write(rows: [rig.writingRow]) }
+        #expect(await waitForState(until: { pause.hasEntered }), "관문 쓰기에 닿지 못함")
+        store.tags.setTag(.title, "저장 중에 고친 제목", rows: [other])
+        #expect(undo.canUndo)
+        pause.release()
+        await writing.value
+        #expect(!store.libraryBusy && !store.isDraftWrite && store.writtenAwaitingReload == [rig.writing.uuid], "저장은 됐고 읽기는 실패했다")
+        #expect(undo.canUndo, "실패한 읽기는 기록을 지우지 않는다")
+
+        // 창을 다시 활성화해 자동 읽기가 성공한다
+        rig.failingSnapshots.set(false)
+        await store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(store.writtenAwaitingReload.isEmpty)
+        #expect(undo.canUndo, "저장 뒤 첫 성공한 읽기도 다른 곡의 ⌘Z 기록을 지우지 않는다")
+        undo.undo()
+        #expect(store.tagDrafts[other.track.uuid]?.hasChanges != true, "⌘Z로 되돌려진다")
+        // 그 읽기로 대기는 끝났다: 다음 일반 읽기는 기록을 지운다
+        store.tags.setTag(.title, "또 고친 제목", rows: [other])
+        #expect(undo.canUndo)
+        await store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(!undo.canUndo)
+    }
+
+    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    func 재생_목록만_저장한_뒤_읽기가_실패해도_다음_성공한_읽기가_되돌리기를_지우지_않는다() async throws {
+        let rig = try await Rig()
+        let store = rig.store
+        let undo = UndoManager()
+        store.undoManager = undo
+        let other = rig.otherRow
+        let lock = store.reflection.session.ports.lock
+        lock.setTracks([])
+        lock.setDraftWriting(true)
+        lock.set(true, false)
+        store.tags.setTag(.title, "저장 중에 고친 제목", rows: [other])
+        rig.failingSnapshots.set(true)
+        let reloaded = await store.reloadAfterWrite(written: [], playlistEdits: [])
+        #expect(!reloaded, "읽기가 실패했다")
+        lock.set(false, false)
+        lock.setDraftWriting(false)
+        lock.setTracks([])
+        rig.failingSnapshots.set(false)
+        await store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(undo.canUndo, "재생 목록·기록만 저장한 뒤 첫 성공한 읽기도 다른 곡의 ⌘Z를 남긴다")
     }
 
     @Test(.enabled(if: LiveDraftHome.isIsolated))
@@ -389,6 +532,22 @@ struct TrackWriteLockFollowUpTests {
         // 확정하면 고정은 풀린다: 다음 입력은 그때의 대상을 쓴다
         model.commitText(.title, "둘 다", rows: [a, b])
         #expect(Set(store.tagDrafts.keys) == [a.track.uuid, b.track.uuid])
+    }
+
+    /// S12: 입력을 시작할 때는 곡 UUID만 고정한다. 읽기가 그 곡 행을 갱신한 뒤 확정하면 최신 행의 기준으로 초안을 만든다
+    @Test func 입력을_시작한_뒤_읽기가_곡_행을_갱신하면_확정할_때_최신_행의_기준으로_초안을_만든다() {
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
+        let model = TagInspectorModel(store: store)
+        let old = TagInspectorModelTests.row("b", title: "옛 제목")
+        store.rowsByUUID[old.track.uuid] = old
+        model.beginInput(.title, rows: [old])
+        // 입력하는 사이 읽기가 rekordbox의 새 제목을 가져온다
+        let fresh = TagInspectorModelTests.row("b", title: "rekordbox 새 제목")
+        store.rowsByUUID[fresh.track.uuid] = fresh
+        model.commitText(.title, "내 제목", rows: [old])
+        let draft = store.tagDrafts[old.track.uuid]
+        #expect(draft?.fields[.title] == "내 제목")
+        #expect(draft?.base[.title] == "rekordbox 새 제목", "초안의 기준은 확정할 때의 최신 행이다")
     }
 
     @Test func 입력을_시작할_때_대상이던_곡이_확정_전에_잠기면_그_곡은_빠진다() {

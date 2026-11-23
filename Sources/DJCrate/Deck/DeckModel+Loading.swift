@@ -183,8 +183,9 @@ extension DeckModel {
             if contentGen == self.contentGeneration { self.apply(content) }
             if self.artwork == nil, prepared.fileExists, self.runsAnalysis, let url = request.audioFile {
                 let embedded = await loader.embeddedArtwork(url)
-                guard self.isCurrentLoad(generation), self.artwork == nil else { return }
-                self.artwork = embedded.map(Self.image)
+                // 곡이 바뀌었을 때만 작업을 끝낸다. 그 사이 저장 뒤 갱신이 그림을 채웠으면 그림만 건너뛰고 파형·분석은 이어 간다
+                guard self.isCurrentLoad(generation) else { return }
+                if self.artwork == nil { self.artwork = embedded.map(Self.image) }
             }
 
             // 3) 파형: 곡을 넘기면 바로 취소된다(조각 단위로 취소를 확인한다).

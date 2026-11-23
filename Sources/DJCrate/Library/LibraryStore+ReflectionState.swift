@@ -93,6 +93,7 @@ extension LibraryStore {
 
     /// 쓰기·복원 뒤 조용히 다시 읽는다. 쓴 곡은 새 스냅샷을 읽은 뒤 덱에 알리고, 되살린 재생 목록 편집은 읽은 뒤 쌓는다(읽지 못하면 다음 읽기 뒤에).
     func reloadAfterWrite(written: Set<String>, playlistEdits: [PlaylistEdit]) async -> Bool {
+        if isDraftWrite { draftWriteReadPending = true }
         writtenAwaitingReload.formUnion(written)
         playlists.playlistEditsAwaitingReload += playlistEdits
         return await reloadAfterWrite()

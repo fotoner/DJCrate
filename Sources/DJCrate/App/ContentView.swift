@@ -51,6 +51,17 @@ struct ContentView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let link = app.link { LinkBar(model: link) }
                 }
+                // 곡 단위로 쓰는 동안 취소할 수 있는 단계에는 덮개 대신 작은 진행·취소 자리를 둔다(R21). 목록·태그 시트 바깥, 목록과 상태 줄 사이의
+                // 고정 띠라서 행 클릭을 가로채지 않고 덱 컨트롤과도 겹치지 않는다. 그 단계가 끝나면 띠는 사라진다
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if store.showsWriteProgressChip, let stage = store.writeStage {
+                        HStack(spacing: 0) {
+                            WritingProgressChip(stage: stage, onCancel: { store.cancelWritePreparation() })
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                    }
+                }
                 // 창 맨 아래 상태 줄(#298). LINK 막대처럼 상세 열 안에 둔다: 사이드바를 접어도 상세 열은 늘 있고,
                 // 분할 화면 전체 아래에 붙이면 열의 화면이 막대를 덮었다(#274). 읽지 않은 수는 상태 줄만 읽는다
                 .safeAreaInset(edge: .bottom, spacing: 0) { StatusBar(model: app.statusBar) }
@@ -81,16 +92,7 @@ struct ContentView: View {
                     }
                 }
                 .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.35), value: store.toast?.id)
-                // 곡 단위로 쓰는 동안 취소할 수 있는 단계에는 덮개 대신 작은 진행·취소 자리를 둔다(R21). 목록 아래 왼쪽 모서리, 상태 줄 바로 위라서
-                // 덱 컨트롤·큐 목록 필터·목록 머리 줄과 겹치지 않는다. 알림(아래 가운데)과도 자리가 다르다
-                .overlay(alignment: .bottomLeading) {
-                    if store.showsWriteProgressChip, let stage = store.writeStage {
-                        WritingProgressChip(stage: stage, onCancel: { store.cancelWritePreparation() })
-                            .padding(.bottom, 24 + StatusBar.height)
-                            .padding(.leading, 16)
-                            .transition(.opacity)
-                    }
-                }
+
         }
         // 통째로 잠그는 rekordbox 쓰기(복원·곡 넣기·빼기)와 USB 쓰기는 창 전체를 덮어 다른 조작을 막는다.
         // 곡 단위로 쓰는 동안(R21)은 덮지 않는다: 진행 단계는 `writeStage`가 들고, 종료를 기다리는 안내만 아래 갈래에서 뜬다.

@@ -18,8 +18,8 @@ final class TagInspectorModel {
         var edited: Bool
     }
 
-    /// 입력 중인 칸의 고정된 대상(`beginInput`)
-    @ObservationIgnored private var pinnedInputs: [TagFields.Key: [TrackRow]] = [:]
+    /// 입력 중인 칸의 고정된 대상 곡 UUID(`beginInput`). 곡 행은 읽기가 갱신하므로 확정할 때 최신 행을 찾는다
+    @ObservationIgnored private var pinnedInputs: [TagFields.Key: [String]] = [:]
 
     /// 지금 rekordbox 값과 내 초안이 부딪친 칸(곡 하나를 골랐을 때)
     struct Conflict: Equatable {
@@ -66,16 +66,22 @@ final class TagInspectorModel {
     /// 고른 곡이 모두 쓰는 곡인지(R21): 그때만 인스펙터 칸을 모두 막는다. 쓰는 동안만이라 안내 문구는 두지 않는다
     func isWriteLocked(_ rows: [TrackRow]) -> Bool { !rows.isEmpty && writableRows(rows).isEmpty }
 
-    /// 칸 입력을 시작한다: 그때 편집할 수 있는 곡으로 대상을 고정한다(R21). 입력하는 사이 쓰는 곡의 잠금이 풀려도 처음 고른 대상 밖으로 번지지 않게 한다
-    func beginInput(_ key: TagFields.Key, rows: [TrackRow]) { pinnedInputs[key] = writableRows(rows) }
+    /// 칸 입력을 시작한다: 그때 편집할 수 있는 곡의 UUID로 대상을 고정한다(R21). 입력하는 사이 쓰는 곡의 잠금이 풀려도 처음 고른 대상 밖으로 번지지 않게 한다.
+    /// 곡 행은 저장하지 않는다: 읽기가 행을 갱신한 뒤 확정하면 옛 값이 초안의 기준이 되기 때문이다
+    func beginInput(_ key: TagFields.Key, rows: [TrackRow]) { pinnedInputs[key] = writableRows(rows).map(\.track.uuid) }
 
     /// 입력을 끝낸다(확정 없이 지웠다)
     func endInput(_ key: TagFields.Key) { pinnedInputs[key] = nil }
 
-    /// 입력을 확정한다: 시작할 때 고정한 대상(없으면 지금 편집할 수 있는 곡)에 넣는다. 그 가운데 확정할 때 쓰는 곡이 된 곡은 `TagEditStore`가 뺀다.
+    /// 입력을 확정한다: 시작할 때 고정한 곡 UUID의 최신 행 가운데 지금 편집할 수 있는 곡에 넣는다(고정이 없으면 `rows` 가운데 편집할 수 있는 곡).
+    /// 최신 행은 라이브러리 목록에서 찾고, 없으면 화면이 넘긴 `rows`에서 찾는다.
     func commitText(_ key: TagFields.Key, _ text: String, rows: [TrackRow]) {
-        let targets = pinnedInputs.removeValue(forKey: key) ?? writableRows(rows)
-        tags.setTag(key, text, rows: targets)
+        guard let pinned = pinnedInputs.removeValue(forKey: key) else {
+            tags.setTag(key, text, rows: writableRows(rows))
+            return
+        }
+        let known = Dictionary(rows.map { ($0.track.uuid, $0) }, uniquingKeysWith: { first, _ in first })
+        tags.setTag(key, text, rows: writableRows(pinned.compactMap { tags.listedRow(uuid: $0) ?? known[$0] }))
     }
 
     /// 고른 곡 가운데 편집 대상(쓰는 곡은 뺀다). 값 표시와 편집 동작이 이 집합을 함께 쓴다.
