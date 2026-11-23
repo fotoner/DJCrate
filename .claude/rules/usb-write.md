@@ -28,7 +28,7 @@ AGENTS.md "안전 불변식"의 USB 줄을 자세히 적은 규칙이다. 리뷰
 - **USB-4** 두 쓰기를 섞지 않는다. USB 코드는 로컬 DB에 쓰지 않는다.
 - **USB-5** 유스케이스(`Sources/DJCApplication/Usb/`)는 RekordboxKit을 import하지 않는다.
 - **USB-6** USB 쓰기·회복·되돌리기는 엔진 포트(`UsbLibraryEngine.writer`)로 부른다.
-- **USB-7** `UsbWriter`를 부르는 곳은 실제 구현 `Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift` 하나뿐이다. 이 파일은 쓰기 커버리지 그룹이다.
+- **USB-7** `UsbWriter`를 부르는 곳은 실제 구현 `Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift` 하나다. 이 파일은 쓰기 커버리지 그룹이다. 예외는 실험 명령 `Sources/djc/Lab/UsbImageLab.swift`의 `UsbWriter.write` 한 곳이다. 이 명령은 임시 폴더 아래에 마운트한 디스크 이미지에만 쓴다. 호출처는 `scripts/check-imports.py`의 `write-entry`가 고정한다.
 - **USB-8** 가드(`UsbWriteGuard`)와 Mac 쪽 폴더는 조립 지점이 세션에 넘긴다. 세션에 기본값을 두지 않는다.
 - **USB-9** 조립 지점은 앱 `AppComposition+Usb.swift`와 CLI `CLIComposition+Usb.swift`다.
 - **USB-10** 세션은 받은 가드와 폴더를 그대로 엔진 쓰기에 넘긴다.
@@ -70,7 +70,7 @@ AGENTS.md "안전 불변식"의 USB 줄을 자세히 적은 규칙이다. 리뷰
   3. 그 image-path가 일반 파일
 - **USB-35** `DADeviceProtocol`은 "Virtual Interface"라 판정에 쓰지 않는다. BusProtocol "Disk Image"는 보조 조건일 뿐이다.
 - **USB-36** 경로 비교는 `realpath(3)` 결과끼리만 한다(`UsbScratchRoots.realPath`).
-- **USB-37** Foundation 경로 정규화(`resolvingSymlinksInPath`·`standardizedFileURL`)는 쓰지 않는다. 이 정규화는 `/private`를 떼어 경로가 어긋난다.
+- **USB-37** Foundation 경로 정규화(`resolvingSymlinksInPath`·`standardizedFileURL`)는 쓰지 않는다. 이 정규화는 `/private`를 떼어 경로가 어긋난다. 이 규칙은 임시 폴더 뿌리와 마운트 지점을 허용하는 판정(USB-36)에 적용한다. 거부를 넓히기만 하는 USB-16 비교(`UsbLiveDatabase.swift:18`)는 예외다.
 - **USB-38** lab 명령이 받는 아래 경로는 `UsbScratchPath.check`를 거친다. 이 함수는 임시 폴더 아래만 받는다.
   - 이미지
   - 마운트 지점
