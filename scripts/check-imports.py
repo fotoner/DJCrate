@@ -13,6 +13,9 @@
                  await하지 않는다. 화면 모델의 메서드를 부른다(MVVM, Ledger "뷰 본문에서 로직·Task 시작 금지").
                  허용: 수명 수식어 .task {…}·.task(id:) {…}의 본문이 `await 받는쪽.메서드(인자)` 하나뿐인 것(받는 쪽은 self가 아닌 값,
                  호출은 하나, 인자에 클로저·await 없음). 빚 목록에는 파일마다 "Task N곳"·"await N곳"으로 곳 수를 고정한다.
+  write-entry    쓰기 입구(RekordboxWriter.write·restore, RekordboxTrackWriter.add·delete, UsbWriter.write·recover·restore)는
+                 Sources/에서 WRITE_ENTRY_GROUPS에 적은 파일·폴더만 부른다(SAFE-4·USB-7). 입구 자신인 Sources/RekordboxKit/과 Tests/는 보지 않고,
+                 주석·문자열 안도 보지 않는다(문자열 보간 안의 호출은 본다). 입구 타입의 별칭·.self는 입구 전부를 받는 곳에서만 쓴다. 목록 밖 호출, 목록의 고정 파일이 없거나 입구를 더는 부르지 않는 것은 빚 목록에 두지 않고 바로 실패한다.
 
 파일의 모듈은 Package.swift의 타깃 경로(swift package dump-package, .build/check-imports/에 캐시)로 정한다.
 어느 타깃에도 속하지 않는 Swift 파일, ALLOWED에 규칙이 없는 타깃은 실패한다(폴더·타깃을 옮기고 이 검사에서 조용히 빠지지 않게).
@@ -106,6 +109,35 @@ EXTERNAL_FILES = {
     "Sparkle": ["Sources/DJCrate/App/AppUpdater.swift"],
 }
 
+# 예외 ④: 쓰기 입구 호출처(SAFE-4·USB-7, #380). 입구를 부르는 곳을 파일·폴더 목록으로 고정한다.
+# 파일은 이름으로만 적고(이름이 비슷한 새 파일이 슬쩍 예외가 되지 않게), 폴더는 끝에 /를 붙인다. 값은 그 곳이 부를 수 있는 입구이고 None이면 그 묶음의 입구 전부다.
+# 새 호출은 목록에 더하지 말고 포트(RekordboxWriteGate·UsbLibraryEngine)로 부른다. 목록의 고정 파일이 없거나 입구를 더는 부르지 않으면 목록을 줄인다.
+WRITE_ENTRY_EXEMPT = "Sources/RekordboxKit/"
+WRITE_ENTRY_GROUPS = [
+    {
+        "rule": "SAFE-4",
+        "entries": ["RekordboxWriter.write", "RekordboxWriter.restore", "RekordboxTrackWriter.add", "RekordboxTrackWriter.delete"],
+        "advice": "앱·CLI는 쓰기 입구(`{call}`)를 직접 부르지 않습니다. `RekordboxWriteGate` 포트(반영 세션)를 쓰세요",
+        "files": {
+            "Sources/DJCAdapters/Reflection/RekordboxWriteGate+Live.swift": None,
+            # 곡 지우기 자가 테스트(사본에서 관문을 지난다)
+            "Sources/DJCrate/Diagnostics/TrackSelfTest.swift": None,
+        },
+        "folders": {"Sources/djc/Lab/": None},
+    },
+    {
+        "rule": "USB-7",
+        "entries": ["UsbWriter.write", "UsbWriter.recover", "UsbWriter.restore"],
+        "advice": "USB 쓰기 입구(`{call}`)는 엔진 구현(`UsbLibraryEngine+Writer.swift`)만 부릅니다. `UsbLibraryEngine` 포트를 쓰세요",
+        "files": {
+            "Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift": None,
+            # 디스크 이미지 실험 명령(사본 이미지에서 관문을 지난다). write만 부른다
+            "Sources/djc/Lab/UsbImageLab.swift": ["UsbWriter.write"],
+        },
+        "folders": {},
+    },
+]
+
 # 핵심부가 직접 쓰면 안 되는 API(대상 이름, 정규식)
 FORBIDDEN_API = [
     ("FileManager", re.compile(r"\bFileManager\b")),
@@ -191,51 +223,82 @@ def module_of(relative, targets):
     return best
 
 
-def strip_comments_and_strings(text):
-    """주석과 문자열 리터럴을 공백으로 바꾼다(줄 번호는 그대로). 문자열 보간 안의 코드도 문자열로 본다."""
-    out = []
-    i, n = 0, len(text)
+def strip_comments_and_strings(text, keep_interpolation=False):
+    """주석과 문자열 리터럴을 공백으로 바꾼다(줄 번호는 그대로). 문자열 보간 안의 코드도 문자열로 본다.
+    keep_interpolation이면 보간(\\(…)) 안의 코드는 남긴다(쓰기 입구 검사: 보간 안 호출도 호출이다)."""
+    return _strip_code(text, 0, keep_interpolation, False)[0]
+
+
+def _blank(part):
+    return re.sub(r"[^\n]", " ", part)
+
+
+def _strip_code(text, i, keep, stop_on_paren):
+    """코드를 훑어 주석·문자열을 지운다. stop_on_paren이면 짝이 맞는 ')' 앞에서 멈추고 그 위치를 돌려준다."""
+    out, n, depth = [], len(text), 0
     while i < n:
         c = text[i]
+        if stop_on_paren and c == "(":
+            depth += 1
+        elif stop_on_paren and c == ")":
+            if depth == 0:
+                return "".join(out), i
+            depth -= 1
         if text.startswith("//", i):
             j = text.find("\n", i)
             j = n if j < 0 else j
             out.append(" " * (j - i))
             i = j
         elif text.startswith("/*", i):
-            depth, j = 1, i + 2
-            while j < n and depth:
+            nest, j = 1, i + 2
+            while j < n and nest:
                 if text.startswith("/*", j):
-                    depth, j = depth + 1, j + 2
+                    nest, j = nest + 1, j + 2
                 elif text.startswith("*/", j):
-                    depth, j = depth - 1, j + 2
+                    nest, j = nest - 1, j + 2
                 else:
                     j += 1
-            out.append(re.sub(r"[^\n]", " ", text[i:j]))
+            out.append(_blank(text[i:j]))
             i = j
         elif c == '"' or (c == "#" and re.match(r'#+"', text[i:])):
-            hashes = len(re.match(r"#*", text[i:]).group(0))
-            start = i
-            i += hashes
-            triple = text.startswith('"""', i)
-            quote = '"""' if triple else '"'
-            i += len(quote)
-            closing = quote + "#" * hashes
-            while i < n:
-                if hashes == 0 and text[i] == "\\":
-                    i += 2
-                    continue
-                if text.startswith(closing, i):
-                    i += len(closing)
-                    break
-                if not triple and text[i] == "\n":
-                    break
-                i += 1
-            out.append(re.sub(r"[^\n]", " ", text[start:i]))
+            part, i = _strip_string(text, i, keep)
+            out.append(part)
         else:
             out.append(c)
             i += 1
-    return "".join(out)
+    return "".join(out), i
+
+
+def _strip_string(text, i, keep):
+    """문자열 리터럴 하나를 지운다. keep이면 보간 안의 코드는 다시 _strip_code로 훑어 남긴다."""
+    n = len(text)
+    hashes = len(re.match(r"#*", text[i:]).group(0))
+    start = i
+    i += hashes
+    triple = text.startswith('"""', i)
+    quote = '"""' if triple else '"'
+    i += len(quote)
+    closing = quote + "#" * hashes
+    interpolation = "\\" + "#" * hashes + "("
+    pieces, segment = [], start
+    while i < n:
+        if keep and text.startswith(interpolation, i):
+            pieces.append(_blank(text[segment:i + len(interpolation)]))
+            code, i = _strip_code(text, i + len(interpolation), keep, True)
+            pieces.append(code)
+            segment = i
+            continue
+        if hashes == 0 and text[i] == "\\":
+            i += 2
+            continue
+        if text.startswith(closing, i):
+            i += len(closing)
+            break
+        if not triple and text[i] == "\n":
+            break
+        i += 1
+    pieces.append(_blank(text[segment:i]))
+    return "".join(pieces), i
 
 
 def exception_of(relative):
@@ -246,6 +309,47 @@ def exception_of(relative):
         if relative.startswith(folder + "/"):
             return modules, folder
     return set(), None
+
+
+def entry_pattern(entries):
+    """입구 이름들(`타입.메서드`)을 부르는 곳을 찾는 정규식. 뒤가 이어진 이름(writesHistories)은 입구가 아니다"""
+    names = (r"\s*\.\s*".join(re.escape(part) for part in entry.split(".")) for entry in entries)
+    return re.compile(r"\b(" + "|".join(names) + r")\b")
+
+
+def entry_listed(group, relative):
+    """그 파일이 묶음의 호출처 목록에서 받는 입구 이름들(목록 밖이면 빈 집합)"""
+    for listed, entries in group["files"].items():
+        if relative == listed:
+            return set(entries or group["entries"])
+    for folder, entries in group["folders"].items():
+        if relative.startswith(folder):
+            return set(entries or group["entries"])
+    return set()
+
+
+def write_entry_calls(relative, text, called, found):
+    """쓰기 입구 호출을 모은다: called[(규칙, 파일)] = 부른 입구들, found에 목록 밖 호출 (파일, 줄, 안내).
+    문자열 보간 안의 호출도 본다. 입구 타입을 별칭·.self로 넘기면 메서드별 허용을 건너뛰므로 입구 전부를 받는 곳에서만 허용한다."""
+    if not relative.startswith("Sources/") or relative.startswith(WRITE_ENTRY_EXEMPT):
+        return
+    code = strip_comments_and_strings(text, keep_interpolation=True)
+    for group in WRITE_ENTRY_GROUPS:
+        listed = entry_listed(group, relative)
+        for match in entry_pattern(group["entries"]).finditer(code):
+            call = re.sub(r"\s+", "", match.group(1))
+            called.setdefault((group["rule"], relative), set()).add(call)
+            if call not in listed:
+                line = code.count("\n", 0, match.start()) + 1
+                found.append((relative, line, f"{relative}:{line}: {group['rule']}: " + group["advice"].format(call=call)))
+        if listed == set(group["entries"]):
+            continue
+        types = "|".join(sorted({re.escape(entry.split(".")[0]) for entry in group["entries"]}))
+        for match in re.finditer(rf"\btypealias\s+\w+\s*=\s*(?:RekordboxKit\s*\.\s*)?({types})\b(?![ \t]*\.)|\b({types})\s*\.\s*self\b", code):
+            line = code.count("\n", 0, match.start()) + 1
+            name = match.group(1) or match.group(2)
+            found.append((relative, line, f"{relative}:{line}: {group['rule']}: "
+                          + group["advice"].format(call=f"{name}의 별칭·.self")))
 
 
 def implicit_members(code):
@@ -324,6 +428,7 @@ def view_task_counts(code):
 
 def violations(root=ROOT):
     found, unknown, orphans, problems = set(), set(), set(), []
+    called, outside = {}, []
     targets = package_targets(root)
     files = sorted(p for top in ("Sources", "Tests") for p in (root / top).rglob("*.swift"))
     used_in_folder = {folder: set() for folder in BROAD_FOLDERS}
@@ -337,7 +442,8 @@ def violations(root=ROOT):
         if module not in ALLOWED:
             unknown.add(module)
             continue
-        code = strip_comments_and_strings(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        code = strip_comments_and_strings(text)
         extra, folder = exception_of(relative)
         allowed = ALLOWED[module] | {module}
         imported_modules = [name for name in IMPORT.findall(code) if name in PROJECT_MODULES]
@@ -365,6 +471,7 @@ def violations(root=ROOT):
                 found.add((relative, "view-task", f"await {awaits}곳"))
         if relative.startswith("Tests/") and relative != TEST_DEFAULTS_HELPER and TEST_DEFAULTS.search(code):
             found.add((relative, "test-defaults", "UserDefaults(suiteName:)"))
+        write_entry_calls(relative, text, called, outside)
     # 예외 목록을 지금 모양에 맞춘다(타깃이 있는 자리만 본다)
     for relative in ASSEMBLY_FILES:
         if module_of(relative, targets) is not None and not (root / relative).is_file():
@@ -381,6 +488,17 @@ def violations(root=ROOT):
         elif unused := sorted(modules - used_in_folder[folder]):
             problems.append(f"예외가 쓰지 않는 모듈을 허용합니다: {folder}/ {', '.join(unused)}. "
                             "scripts/check-imports.py의 BROAD_FOLDERS에서 빼세요")
+    # 쓰기 입구: 목록 밖 호출은 빚 목록에 두지 않고 바로 실패한다. 고정 파일은 있어야 하고 허용한 입구를 하나는 불러야 한다.
+    problems.extend(message for _, _, message in sorted(outside))
+    for group in WRITE_ENTRY_GROUPS:
+        for relative in group["files"]:
+            if module_of(relative, targets) is None:
+                continue
+            if not (root / relative).is_file():
+                problems.append(f"예외 목록의 파일이 없습니다: {relative}. 지웠거나 옮겼으면 scripts/check-imports.py의 WRITE_ENTRY_GROUPS({group['rule']})를 고치세요")
+            elif not called.get((group["rule"], relative), set()) & entry_listed(group, relative):
+                problems.append(f"쓰기 입구를 더는 부르지 않는 고정 파일입니다: {relative}. "
+                                f"scripts/check-imports.py의 WRITE_ENTRY_GROUPS({group['rule']})에서 빼세요")
     return found, unknown, orphans, problems
 
 

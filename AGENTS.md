@@ -13,7 +13,7 @@ rekordbox 라이브러리와 사용자 데이터를 절대 깨뜨리지 않는�
 - **SAFE-1** IMPORTANT: rekordbox나 rekordboxAgent가 켜져 있으면 라이브러리와 USB에 **절대 쓰지 않는다**.
 - **SAFE-2** 라이브러리는 RekordboxKit 쓰기 입구로만 바꾼다. 입구는 `RekordboxWriter.write`·`restore`와 `RekordboxTrackWriter.add`·`delete`다.
 - **SAFE-3** 모든 쓰기 입구는 관문 `RekordboxWriteGuard`를 먼저 지난다.
-- **SAFE-4** 앱과 CLI는 반영 세션 `ReflectionSession`으로만 쓴다. 이 세션이 포트 `RekordboxWriteGate`로 입구를 부른다.
+- **SAFE-4** 앱과 CLI는 반영 세션 `ReflectionSession`으로만 쓴다. 이 세션이 포트 `RekordboxWriteGate`로 입구를 부른다. 실험 명령(`Lab/`)과 `TrackSelfTest`(곡 지우기)는 사본에서 관문을 지나 입구를 직접 부를 수 있다.
 - **SAFE-5** 그 밖의 코드는 `master.db`와 분석 파일을 직접 고치지 않는다.
 - **SAFE-6** 라이브 DB와 음원은 읽기 전용이다. 읽기는 스냅샷 사본(`LibrarySnapshot`)에서 한다.
 - **SAFE-7** 시험과 실험의 쓰기는 **사본에만** 한다. `DJC_REKORDBOX_DIR=<사본 폴더>`와 `DJC_HOME=<임시 폴더>`를 준다.
