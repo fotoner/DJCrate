@@ -33,8 +33,9 @@ extension XMLFiles {
 }
 
 extension DraftFiles {
-    /// 초안 폴더 `home`의 곡별 초안 파일(큐·그리드·태그·재생 목록)을 바로 읽고 쓴다(저장 큐를 거치지 않는다)
-    public static func live(home: URL) -> DraftFiles {
+    /// 초안 폴더 `home`의 곡별 초안 파일(큐·그리드·태그·재생 목록)을 바로 읽고 쓴다(저장 큐를 거치지 않는다).
+    /// 저장하는 초안에는 `origin`과 새 판·내용 해시를 도장으로 적는다(앱의 저장소와 같은 사이드카). CLI 조립은 CLI, 정하지 않으면 모름이다(R5)
+    public static func live(home: URL, origin: DraftOrigin = .unknown) -> DraftFiles {
         let places = DraftLocations(home: home)
         @Sendable func directory(_ kind: XMLImportDrafts.Kind) -> URL? {
             switch kind {
@@ -49,16 +50,16 @@ extension DraftFiles {
                 guard let directory = directory(kind) else { return false }
                 return FileManager.default.fileExists(atPath: directory.appending(path: "\(uuid).json").path)
             },
-            saveCue: { try CueDraftStore.save($0, directory: places.cue) },
-            saveGrid: { try GridDraftStore.save($0, directory: places.grid) },
-            saveTag: { try TagDraftStore.save($0, directory: places.tags) },
+            saveCue: { try StampedDrafts.saveCue($0, directory: places.cue, origin: origin) },
+            saveGrid: { try StampedDrafts.saveGrid($0, directory: places.grid, origin: origin) },
+            saveTag: { try StampedDrafts.saveTag($0, directory: places.tags, origin: origin) },
             playlist: { PlaylistDraftStore.load(url: places.playlist) },
             readPlaylist: { try PlaylistDraftStore.read(url: places.playlist) },
-            savePlaylist: { try PlaylistDraftStore.save($0, url: places.playlist) },
+            savePlaylist: { try StampedDrafts.savePlaylist($0, url: places.playlist, origin: origin) },
             cue: { try existing(places.cue.appending(path: "\($0).json")) },
             tag: { try existing(places.tags.appending(path: "\($0).json")) },
-            removeCue: { try CueDraftStore.remove(trackUUID: $0, directory: places.cue) },
-            removeTag: { try TagDraftStore.remove(trackUUID: $0, directory: places.tags) },
+            removeCue: { try StampedDrafts.removeCue(trackUUID: $0, directory: places.cue) },
+            removeTag: { try StampedDrafts.removeTag(trackUUID: $0, directory: places.tags) },
             isPlainPath: { kind, uuid in
                 guard let directory = directory(kind) else { return false }
                 let file = directory.appending(path: "\(uuid).json")
@@ -68,6 +69,9 @@ extension DraftFiles {
             newCueID: { UUID() })
         // 다른 djc가 잠깐 들고 있는 것은 기다린다. 앱의 쓰기는 길어 기다리지 않고 알린다
         files.lockPlaylist = { PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: places.playlist), wait: 2) }
+        files.origin = origin
+        files.stamp = { DraftStampStore.stamp($0, home: home) }
+        files.originVariant = { live(home: home, origin: $0) }
         return files
     }
 

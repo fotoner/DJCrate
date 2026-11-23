@@ -14,6 +14,11 @@ public struct EditDraftFiles: Sendable {
         self.newKey = newKey ?? { files.newCueID().uuidString.lowercased() }
     }
 
+    /// 같은 초안 폴더를 그 출처로 저장하는 입구(LINK 큐 편집은 LINK 출처, R5)
+    public func with(origin: DraftOrigin) -> EditDraftFiles {
+        EditDraftFiles(files: files.with(origin: origin), newKey: newKey)
+    }
+
     public enum Kind: String, Sendable { case cue, tag }
 
     /// 큐 하나 넣기

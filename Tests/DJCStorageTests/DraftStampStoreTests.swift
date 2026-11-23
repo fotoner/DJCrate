@@ -1,0 +1,388 @@
+import DJCDomain
+import DJCStorage
+import DJCTestKit
+import Foundation
+import Testing
+
+/// 초안 도장 사이드카(R5·R22 저장소 몫): 출처·판·내용 해시를 초안 폴더 옆 `draft-stamps/`에 적고, 판 지정 삭제·제안 전환은
+/// 앱·CLI가 같은 초안 잠금 안에서 한다. 도장은 초안 파일을 쓴 뒤에 적어, 중간에 멈춰도 해시가 어긋나는(제안) 쪽으로만 틀어진다.
+@Suite("초안 도장 사이드카")
+struct DraftStampStoreTests {
+    static func cue(_ uuid: String, at time: Double = 1) -> CueDraft {
+        var draft = CueDraft(trackUUID: uuid)
+        draft.cues = [EditableCue(kind: .memory, time: time)]
+        return draft
+    }
+
+    static func grid(_ uuid: String, bpm: Double = 124) -> GridDraft {
+        GridDraft(trackUUID: uuid, base: [GridSegment(start: 0.1, bpm: 120, firstBeatNumber: 1)],
+                  segments: [GridSegment(start: 0.2, bpm: bpm, firstBeatNumber: 1)])
+    }
+
+    static func tag(_ uuid: String, comment: String? = "코멘트") -> TagDraft {
+        var draft = TagDraft(trackUUID: uuid, base: TagFields())
+        if let comment { draft.fields.comment = comment }
+        return draft
+    }
+
+    static func hash(_ cue: CueDraft) throws -> DraftContentHash { try DraftContentHash(of: cue) }
+
+    /// 잠금 파일을 비차단으로 잡아 보아, 지금 누가 잠금을 쥐고 있는지 본다
+    static func isLockHeld(home: URL) -> Bool {
+        let descriptor = open(DraftStampStore.lockURL(home: home).path, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { return false }
+        return errno == EWOULDBLOCK
+    }
+
+    @Test func 저장하면_출처와_판과_해시를_초안_폴더_옆_사이드카에_적는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        let stamp = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        #expect(stamp.origins == [.human] && stamp.isHumanOnly)
+        // 해시는 디스크에서 읽은 값의 해시다(쓰기 묶음이 읽어 넣는 값과 같다)
+        #expect(try stamp.contentHash == Self.hash(#require(CueDraftStore.load(trackUUID: "a", directory: places.cue))))
+        // 초안 폴더에는 초안 파일만 있고, 사이드카는 그 옆 폴더에 있다
+        #expect(try FileManager.default.contentsOfDirectory(atPath: places.cue.path) == ["a.json"])
+        #expect(DraftStampStore.folder(home: folder.url) == folder.url.appending(path: "draft-stamps", directoryHint: .isDirectory))
+        #expect(FileManager.default.fileExists(atPath: DraftStampStore.folder(home: folder.url).path))
+    }
+
+    @Test func 다시_저장하면_새_판이고_다른_출처가_고치면_출처가_모인다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a", at: 1), directory: places.cue, origin: .human)
+        let first = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        try StampedDrafts.saveCue(Self.cue("a", at: 2), directory: places.cue, origin: .human)
+        let second = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        #expect(second.revision > first.revision && second.isHumanOnly && second.contentHash != first.contentHash)
+        try StampedDrafts.saveCue(Self.cue("a", at: 3), directory: places.cue, origin: .cli)
+        let third = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        #expect(third.revision > second.revision && third.origins == [.human, .cli] && !third.isHumanOnly)
+    }
+
+    @Test func 판은_종류와_곡에_상관없이_저장소_전체에서_겹치지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let image = Data("그림".utf8)
+        let artwork = ArtworkDraftStore.edit(trackUUID: "w", base: ArtworkBase(imagePath: ""), image: image, imageName: "a.png")
+        let merge = DuplicateMergeDraft(keeping: .init(contentID: "1", trackUUID: "m", title: "가", duration: 60, offset: 0, cues: []),
+                                        removing: [], base: "b")
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        try StampedDrafts.saveCue(Self.cue("b"), directory: places.cue, origin: .human)
+        try StampedDrafts.saveGrid(Self.grid("a"), directory: places.grid, origin: .human)
+        try StampedDrafts.saveTag(Self.tag("a"), directory: places.tags, origin: .human)
+        try StampedDrafts.saveGain(-3, trackUUID: "a", url: places.gain, origin: .human)
+        try StampedDrafts.saveGain(-4, trackUUID: "b", url: places.gain, origin: .human)
+        try StampedDrafts.saveArtwork(artwork, directory: places.artwork, origin: .human)
+        try StampedDrafts.saveMerges([merge], url: places.merge, origin: .human)
+        let keys = [DraftKey(.cue, "a"), DraftKey(.cue, "b"), DraftKey(.grid, "a"), DraftKey(.tag, "a"), DraftKey(.gain, "a"),
+                    DraftKey(.gain, "b"), DraftKey(.artwork, "w"), DraftKey(.merge, "m")]
+        let revisions = try keys.map { try #require(DraftStampStore.stamp($0, home: folder.url)).revision }
+        #expect(Set(revisions).count == keys.count)
+        // 다른 곡의 게인 저장이 앞 곡의 도장을 건드리지 않는다
+        #expect(try DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.contentHash == DraftContentHash(of: -3.0))
+        #expect(try DraftStampStore.stamp(DraftKey(.gain, "b"), home: folder.url)?.contentHash == DraftContentHash(of: -4.0))
+        #expect(try DraftStampStore.stamp(DraftKey(.artwork, "w"), home: folder.url)?.contentHash == DraftContentHash(artwork: artwork))
+        #expect(try DraftStampStore.stamp(DraftKey(.merge, "m"), home: folder.url)?.contentHash == DraftContentHash(of: merge))
+    }
+
+    @Test func 판_번호_파일을_잃어도_번호를_다시_쓰지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        try StampedDrafts.saveCue(Self.cue("b"), directory: places.cue, origin: .human)
+        let highest = try #require(DraftStampStore.stamp(DraftKey(.cue, "b"), home: folder.url)).revision
+        // 번호 파일이 사라지거나 읽지 못해도 남은 도장 가운데 가장 큰 판 뒤로 이어 간다
+        try FileManager.default.removeItem(at: DraftStampStore.folder(home: folder.url).appending(path: "revision"))
+        try StampedDrafts.saveCue(Self.cue("c"), directory: places.cue, origin: .human)
+        #expect(try #require(DraftStampStore.stamp(DraftKey(.cue, "c"), home: folder.url)).revision > highest)
+        try Data("쓰레기".utf8).write(to: DraftStampStore.folder(home: folder.url).appending(path: "revision"))
+        try StampedDrafts.saveCue(Self.cue("d"), directory: places.cue, origin: .human)
+        let revisions = try ["a", "b", "c", "d"].map { try #require(DraftStampStore.stamp(DraftKey(.cue, $0), home: folder.url)).revision }
+        #expect(Set(revisions).count == 4 && revisions[3] > revisions[2])
+    }
+
+    @Test func 고친_것이_없는_저장은_초안과_도장을_지운다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        try StampedDrafts.saveCue(CueDraft(trackUUID: "a"), directory: places.cue, origin: .human)
+        #expect(CueDraftStore.load(trackUUID: "a", directory: places.cue) == nil)
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url) == nil)
+        // 지운 뒤 다시 만들면 이전 출처를 이어받지 않는다
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        try StampedDrafts.removeCue(trackUUID: "a", directory: places.cue)
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url) == nil)
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .cli)
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url)?.origins == [.cli])
+    }
+
+    @Test func 도장_없는_옛_초안은_출처를_모르고_고치면_모름이_섞인다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        // 업데이트 전부터 있던 초안: 파일만 있고 도장이 없다
+        try CueDraftStore.save(Self.cue("a"), directory: places.cue)
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url) == nil)
+        #expect(DraftSuggestion.judge(stamp: nil, currentHash: try Self.hash(Self.cue("a"))) == .unknownOrigin)
+        // 사람이 그 위에 고쳐도 옛 내용의 출처를 모르니 모름이 섞인다(제안)
+        try StampedDrafts.saveCue(Self.cue("a", at: 5), directory: places.cue, origin: .human)
+        let stamp = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        #expect(stamp.origins == [.human, .unknown] && !stamp.isHumanOnly)
+    }
+
+    @Test func 초안_파일만_바깥에서_바뀌면_해시가_어긋나_제안이다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a", at: 1), directory: places.cue, origin: .human)
+        let stamp = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        // 도장을 적지 않는 쓰기(바깥)
+        try CueDraftStore.save(Self.cue("a", at: 9), directory: places.cue)
+        let current = try Self.hash(#require(CueDraftStore.load(trackUUID: "a", directory: places.cue)))
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url) == stamp)
+        #expect(DraftSuggestion.judge(stamp: stamp, currentHash: current) == .contentChanged)
+    }
+
+    @Test func 도장은_초안을_쓴_뒤에_적어_중간에_멈추면_제안_쪽으로만_틀어진다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a", at: 1), directory: places.cue, origin: .human)
+        let before = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        // 도장 폴더 자리를 일반 파일로 막아 도장 쓰기를 실패시킨다. 초안은 이미 쓰였다(저장은 실패로 알린다)
+        let stamps = DraftStampStore.folder(home: folder.url)
+        try FileManager.default.moveItem(at: stamps, to: folder.url.appending(path: "옮긴-도장"))
+        try Data("막음".utf8).write(to: stamps)
+        #expect(throws: (any Error).self) { try StampedDrafts.saveCue(Self.cue("a", at: 2), directory: places.cue, origin: .cli) }
+        let current = try Self.hash(#require(CueDraftStore.load(trackUUID: "a", directory: places.cue)))
+        #expect(current != before.contentHash)
+        // 그 사이 옛 도장(사람 편집)은 못 읽어 모름이거나, 읽었어도 해시가 어긋난다: 어느 쪽이든 제안이다
+        let stale = DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url)
+        #expect(DraftSuggestion.judge(stamp: stale, currentHash: current) != nil)
+    }
+
+    @Test func 도장_자리는_초안_폴더_밖_이름을_받지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        // 도장 자리를 이름으로 풀 때 도장 폴더 밖을 읽거나 쓰지 않는다(초안 파일 쪽 검사는 지금과 같다)
+        try FileManager.default.createDirectory(at: DraftStampStore.folder(home: folder.url), withIntermediateDirectories: true)
+        try Data("밖".utf8).write(to: DraftStampStore.folder(home: folder.url).appending(path: "밖.json"))
+        for uuid in ["../밖", "a/b", "..", ".", ""] {
+            #expect(DraftStampStore.stamp(DraftKey(.cue, uuid), home: folder.url) == nil)
+        }
+        // 이름을 쓸 수 없는 곡의 저장은 도장만 건너뛴다(초안 쓰기의 오류는 초안 저장소가 알린다)
+        try? StampedDrafts.saveCue(Self.cue("a/b"), directory: places.cue, origin: .human)
+        let stamps = (try? FileManager.default.subpathsOfDirectory(atPath: DraftStampStore.folder(home: folder.url).path)) ?? []
+        #expect(stamps.allSatisfy { !$0.contains("..") && !$0.contains("a/b") })
+    }
+
+    @Test func 도장을_쓰는_동안_초안_잠금을_쥐고_쓰고_나면_푼다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        #expect(!Self.isLockHeld(home: folder.url))
+        DraftStampStore.withLock(home: folder.url) { #expect(Self.isLockHeld(home: folder.url)) }
+        #expect(!Self.isLockHeld(home: folder.url))
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        #expect(!Self.isLockHeld(home: folder.url))
+        // 같은 프로세스 안에서 따로 연 잠금끼리도 막는다: 쥔 동안 다른 스레드의 도장 쓰기는 끝나지 못하고, 풀면 끝난다
+        let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0), finished = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            DraftStampStore.withLock(home: folder.url) {
+                entered.signal()
+                release.wait()
+            }
+        }
+        entered.wait()
+        DispatchQueue.global().async {
+            try? StampedDrafts.saveCue(Self.cue("b"), directory: places.cue, origin: .human)
+            finished.signal()
+        }
+        // 잠금이 쥐어진 사실만 확인한다(걸린 시간으로 판정하지 않는다). 풀면 저장이 끝난다
+        #expect(Self.isLockHeld(home: folder.url))
+        release.signal()
+        finished.wait()
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "b"), home: folder.url) != nil)
+    }
+
+    @Test func 여러_스레드가_저장해도_판이_겹치지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let uuids = (0..<40).map { "t\($0)" }
+        DispatchQueue.concurrentPerform(iterations: uuids.count) { index in
+            try? StampedDrafts.saveCue(Self.cue(uuids[index]), directory: places.cue, origin: index.isMultiple(of: 2) ? .human : .cli)
+        }
+        let revisions = uuids.compactMap { DraftStampStore.stamp(DraftKey(.cue, $0), home: folder.url)?.revision }
+        #expect(revisions.count == uuids.count && Set(revisions).count == uuids.count)
+    }
+
+    // MARK: 판 지정 삭제
+
+    @Test func 판과_해시가_같으면_지우고_판이_다르면_두고_해시만_다르면_제안으로_남긴다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a", at: 1), directory: places.cue, origin: .human)
+        try StampedDrafts.saveCue(Self.cue("b", at: 1), directory: places.cue, origin: .human)
+        try StampedDrafts.saveCue(Self.cue("c", at: 1), directory: places.cue, origin: .human)
+        func written(_ uuid: String) throws -> WrittenDraft {
+            let stamp = try #require(DraftStampStore.stamp(DraftKey(.cue, uuid), home: folder.url))
+            return WrittenDraft(key: DraftKey(.cue, uuid), revision: stamp.revision, contentHash: stamp.contentHash)
+        }
+        let a = try written("a"), b = try written("b"), c = try written("c")
+        // b는 쓰는 동안 새로 저장(판이 다름), c는 바깥에서 내용만 고침
+        try StampedDrafts.saveCue(Self.cue("b", at: 2), directory: places.cue, origin: .human)
+        let bBefore = DraftStampStore.stamp(DraftKey(.cue, "b"), home: folder.url)
+        try CueDraftStore.save(Self.cue("c", at: 9), directory: places.cue)
+        let cOld = try #require(DraftStampStore.stamp(DraftKey(.cue, "c"), home: folder.url))
+
+        let result = try StampedDrafts.removeWritten([a, b, c], home: folder.url)
+        #expect(result == DraftRemovalResult(removed: [a], suggested: [c], kept: [b]))
+        #expect(CueDraftStore.load(trackUUID: "a", directory: places.cue) == nil && DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url) == nil)
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "b"), home: folder.url) == bBefore)
+        // 제안으로 남긴 초안은 새 판과 모름 출처를 얻는다
+        let suggested = try #require(DraftStampStore.stamp(DraftKey(.cue, "c"), home: folder.url))
+        #expect(suggested.revision > cOld.revision && suggested.origins.contains(.unknown) && CueDraftStore.load(trackUUID: "c", directory: places.cue) != nil)
+        // 같은 목록으로 정리를 다시 해도(다시 켠 뒤) 지우지 않는다
+        #expect(try StampedDrafts.removeWritten([c], home: folder.url) == DraftRemovalResult(kept: [c]))
+    }
+
+    @Test func 읽지_못하는_초안은_지우지_않고_남긴다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        let stamp = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        let written = WrittenDraft(key: DraftKey(.cue, "a"), revision: stamp.revision, contentHash: stamp.contentHash)
+        try Data("깨짐".utf8).write(to: places.cue.appending(path: "a.json"))
+        #expect(try StampedDrafts.removeWritten([written], home: folder.url) == DraftRemovalResult(kept: [written]))
+        #expect(FileManager.default.fileExists(atPath: places.cue.appending(path: "a.json").path))
+    }
+
+    @Test func 게인은_곡마다_도장을_두고_쓴_곡만_지운다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveGain(-3, trackUUID: "x", url: places.gain, origin: .human)
+        try StampedDrafts.saveGain(-5, trackUUID: "y", url: places.gain, origin: .human)
+        let x = try #require(DraftStampStore.stamp(DraftKey(.gain, "x"), home: folder.url))
+        let written = WrittenDraft(key: DraftKey(.gain, "x"), revision: x.revision, contentHash: x.contentHash)
+        #expect(try StampedDrafts.removeWritten([written], home: folder.url) == DraftRemovalResult(removed: [written]))
+        #expect(try GainDraftStore.read(url: places.gain) == ["y": -5])
+        #expect(DraftStampStore.stamp(DraftKey(.gain, "x"), home: folder.url) == nil && DraftStampStore.stamp(DraftKey(.gain, "y"), home: folder.url) != nil)
+        // nil은 지우기: 도장도 함께 지운다
+        try StampedDrafts.saveGain(nil, trackUUID: "y", url: places.gain, origin: .human)
+        #expect(DraftStampStore.stamp(DraftKey(.gain, "y"), home: folder.url) == nil)
+    }
+
+    @Test func 옛_형식_게인_초안은_그대로_읽고_도장이_없어_제안이다() throws {
+        // 곡마다 dB 하나만 든 옛 파일(base 없음, R23): 격리하지 않고 읽되 출처를 모른다
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try Data(#"{"old":-2.5}"#.utf8).write(to: places.gain)
+        #expect(try GainDraftStore.read(url: places.gain) == ["old": -2.5])
+        #expect(DraftStampStore.stamp(DraftKey(.gain, "old"), home: folder.url) == nil)
+        #expect(!FileManager.default.fileExists(atPath: folder.url.appending(path: DamagedDrafts.folderName).path))
+        // 새 저장은 옛 곡을 그대로 두고 새 곡만 도장을 단다
+        try StampedDrafts.saveGain(-4, trackUUID: "new", url: places.gain, origin: .human)
+        #expect(try GainDraftStore.read(url: places.gain) == ["old": -2.5, "new": -4])
+        #expect(DraftStampStore.stamp(DraftKey(.gain, "old"), home: folder.url) == nil)
+        #expect(DraftStampStore.stamp(DraftKey(.gain, "new"), home: folder.url)?.isHumanOnly == true)
+        // 옛 곡을 사람이 다시 저장하면 옛 내용의 출처를 모르니 모름이 섞인다
+        try StampedDrafts.saveGain(-1, trackUUID: "old", url: places.gain, origin: .human)
+        #expect(DraftStampStore.stamp(DraftKey(.gain, "old"), home: folder.url)?.origins == [.human, .unknown])
+    }
+
+    @Test func 그림과_합치기_초안도_판_지정으로_지운다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let artwork = ArtworkDraftStore.edit(trackUUID: "w", base: ArtworkBase(imagePath: ""), image: Data("그림".utf8), imageName: "a.png")
+        let merge = DuplicateMergeDraft(keeping: .init(contentID: "1", trackUUID: "m", title: "가", duration: 60, offset: 0, cues: []),
+                                        removing: [], base: "b")
+        try StampedDrafts.saveArtwork(artwork, directory: places.artwork, origin: .human)
+        try StampedDrafts.saveMerges([merge], url: places.merge, origin: .human)
+        let keys = [DraftKey(.artwork, "w"), DraftKey(.merge, "m")]
+        let written = try keys.map { key -> WrittenDraft in
+            let stamp = try #require(DraftStampStore.stamp(key, home: folder.url))
+            return WrittenDraft(key: key, revision: stamp.revision, contentHash: stamp.contentHash)
+        }
+        #expect(try StampedDrafts.removeWritten(written, home: folder.url) == DraftRemovalResult(removed: written))
+        #expect(try ArtworkDraftStore.load(trackUUID: "w", directory: places.artwork) == nil && DuplicateMergeDraftStore.load(url: places.merge).isEmpty)
+        #expect(keys.allSatisfy { DraftStampStore.stamp($0, home: folder.url) == nil })
+        // 합치기 목록 저장은 내용이 같은 초안의 도장을 그대로 두고, 바뀌거나 새로 든 초안만 새 판을 받는다
+        try StampedDrafts.saveMerges([merge], url: places.merge, origin: .human)
+        let first = try #require(DraftStampStore.stamp(DraftKey(.merge, "m"), home: folder.url))
+        try StampedDrafts.saveMerges([merge], url: places.merge, origin: .cli)
+        #expect(DraftStampStore.stamp(DraftKey(.merge, "m"), home: folder.url) == first)
+    }
+
+    @Test func 이대로_둔다는_판이_같은_초안만_새_판과_모름으로_제안이_된다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a"), directory: places.cue, origin: .human)
+        try StampedDrafts.saveCue(Self.cue("b"), directory: places.cue, origin: .human)
+        let a = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        let b = try #require(DraftStampStore.stamp(DraftKey(.cue, "b"), home: folder.url))
+        let written = [WrittenDraft(key: DraftKey(.cue, "a"), revision: a.revision, contentHash: a.contentHash),
+                       WrittenDraft(key: DraftKey(.cue, "b"), revision: DraftRevision(b.revision.value + 1_000), contentHash: b.contentHash)]
+        let marked = try StampedDrafts.markSuggestions(written, playlistSteps: [], home: folder.url)
+        let newA = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        #expect(marked == [a.revision: newA.revision] && newA.revision > a.revision && newA.origins == [.human, .unknown])
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "b"), home: folder.url) == b)
+        // 새 판이라 같은 미정리 목록으로 정리를 다시 해도 지우지 않는다
+        #expect(try StampedDrafts.removeWritten([written[0]], home: folder.url) == DraftRemovalResult(kept: [written[0]]))
+    }
+
+    // MARK: 재생 목록 단계
+
+    static let rekordbox = PlaylistLayout([(PlaylistLayout.Item(id: "A", name: "가"), 1), (PlaylistLayout.Item(id: "B", name: "나"), 2)])
+
+    static func playlist(_ edits: [PlaylistEdit]) throws -> PlaylistDraft {
+        var draft = PlaylistDraft()
+        for edit in edits { try draft.append(edit, rekordbox: rekordbox) }
+        return draft
+    }
+
+    @Test func 재생_목록_단계는_저장마다_바뀐_단계만_새_판을_받는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let one = try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])])
+        try StampedDrafts.savePlaylist(one, url: places.playlist, origin: .human)
+        let first = StampedDrafts.playlistStamps(home: folder.url)
+        #expect(first.count == 1 && first[0].origins == [.human])
+        #expect(try first[0].contentHash == DraftContentHash(step: one.steps[0], in: one))
+        // CLI가 한 단계를 더하면 앞 단계는 도장을 그대로 두고 새 단계만 CLI 도장을 받는다
+        let two = try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"]), .rename(playlist: .id("B"), name: "새")])
+        try StampedDrafts.savePlaylist(two, url: places.playlist, origin: .cli)
+        let second = StampedDrafts.playlistStamps(home: folder.url)
+        #expect(second.count == 2 && second[0] == first[0] && second[1].origins == [.cli] && second[1].revision > first[0].revision)
+        // 단계가 모두 빠지면 도장도 지운다
+        try StampedDrafts.savePlaylist(PlaylistDraft(), url: places.playlist, origin: .human)
+        #expect(StampedDrafts.playlistStamps(home: folder.url).isEmpty)
+    }
+
+    @Test func 도장_없는_옛_재생_목록_초안은_단계마다_모름_도장을_받는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let draft = try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"]), .rename(playlist: .id("B"), name: "새")])
+        try PlaylistDraftStore.save(draft, url: places.playlist)
+        let stamps = StampedDrafts.playlistStamps(home: folder.url)
+        #expect(stamps.count == 2 && stamps.allSatisfy { $0.origins == [.unknown] } && Set(stamps.map(\.revision)).count == 2)
+        for (stamp, step) in zip(stamps, draft.steps) { #expect(try stamp.contentHash == DraftContentHash(step: step, in: draft)) }
+        // 다시 읽어도 같은 판이다(받은 도장은 사이드카에 남는다)
+        #expect(StampedDrafts.playlistStamps(home: folder.url) == stamps)
+    }
+
+    @Test func 단계_수가_어긋난_사이드카는_해시가_같은_단계만_잇고_나머지는_모름으로_받는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let one = try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])])
+        try StampedDrafts.savePlaylist(one, url: places.playlist, origin: .human)
+        let human = StampedDrafts.playlistStamps(home: folder.url)[0]
+        // 도장을 모르는 쪽(바깥)이 단계를 더했다
+        let two = try Self.playlist([.rename(playlist: .id("B"), name: "새"), .addTracks(playlist: .id("A"), contentIDs: ["9"])])
+        try PlaylistDraftStore.save(two, url: places.playlist)
+        let stamps = StampedDrafts.playlistStamps(home: folder.url)
+        #expect(stamps.count == 2)
+        // 앞 단계는 모름, 뒤 단계는 내용이 같아 사람 도장을 이어받는다
+        #expect(stamps[0].origins == [.unknown] && stamps[1] == human)
+    }
+
+    @Test func 재생_목록_쓴_단계_정리는_판으로_찾아_빼고_해시가_다르면_사본을_먼저_남긴다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let backups = folder.url.appending(path: "backups")
+        let copyFolder = backups.appending(path: "2026-11-24_120000", directoryHint: .isDirectory)
+        let edits: [PlaylistEdit] = [.addTracks(playlist: .id("A"), contentIDs: ["9"]), .rename(playlist: .id("B"), name: "x")]
+        try StampedDrafts.savePlaylist(try Self.playlist(edits), url: places.playlist, origin: .human)
+        let stamps = StampedDrafts.playlistStamps(home: folder.url)
+        let written = stamps.map { (revision: $0.revision, contentHash: $0.contentHash) }
+        // 둘째 단계만 바깥에서 고쳤다
+        try PlaylistDraftStore.save(try Self.playlist([edits[0], .rename(playlist: .id("B"), name: "y")]), url: places.playlist)
+        let stray = DraftRevision(stamps.map(\.revision.value).max()! + 50)
+        let result = try StampedDrafts.removeWrittenSteps(written + [(stray, stamps[0].contentHash)], newPlaylistIDs: [:],
+                                                          copyFolder: copyFolder, home: folder.url)
+        #expect(result.removed == Set(stamps.map(\.revision)) && result.copyFailed.isEmpty && result.notFound == [stray])
+        let copyURL = try #require(result.copied[stamps[1].revision])
+        #expect(copyURL == PlaylistStepCopy.url(folder: copyFolder, revision: stamps[1].revision))
+        let copy = try JSONDecoder().decode(PlaylistStepCopy.self, from: Data(contentsOf: copyURL))
+        #expect(copy.playlistID == "B" && copy.writtenHash == stamps[1].contentHash && copy.currentHash != copy.writtenHash)
+        #expect(PlaylistDraftStore.load(url: places.playlist).isEmpty && StampedDrafts.playlistStamps(home: folder.url).isEmpty)
+    }
+}

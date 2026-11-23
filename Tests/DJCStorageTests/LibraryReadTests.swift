@@ -146,8 +146,43 @@ struct LibraryReadTests {
         #expect(drafts.first?["contentID"] == nil)
         #expect(drafts.last?["contentID"] as? String == "101")
         #expect(drafts.last?["kinds"] as? [String] == ["gain"])
-        #expect(Set(try #require(drafts.last).keys) == ["trackUUID", "contentID", "title", "kinds"])
+        // 기존 칸은 그대로이고 출처 칸(`origins`·`suggestions`)이 더해진다(R5). 도장 없는 옛 게인 초안은 출처를 모른다
+        #expect(Set(try #require(drafts.last).keys) == ["trackUUID", "contentID", "title", "kinds", "origins", "suggestions"])
+        #expect(drafts.last?["origins"] as? [String: [String]] == ["gain": ["unknown"]])
+        #expect(drafts.last?["suggestions"] as? [String: String] == ["gain": "unknown_origin"])
         #expect(try read.track(id: "101").drafts.gain)
+    }
+
+    /// R5: `djc drafts` JSON이 초안 종류마다 출처와 제안 사유를 보인다. 사람 편집만 든 초안은 사유가 없다(자동 저장 대상)
+    @Test func 초안_JSON은_종류마다_출처와_제안_사유를_보인다() throws {
+        let fixture = try fixture()
+        let home = fixture.root.appending(path: "home"), places = DraftLocations(home: home)
+        func cue(_ time: Double) -> CueDraft {
+            var draft = CueDraft(trackUUID: "track-101")
+            draft.cues = [EditableCue(kind: .memory, time: time)]
+            return draft
+        }
+        var tag = TagDraft(trackUUID: "track-101", base: TagFields())
+        tag.fields.comment = "코멘트"
+        let grid = GridDraft(trackUUID: "track-101", base: [GridSegment(start: 0.1, bpm: 120, firstBeatNumber: 1)],
+                             segments: [GridSegment(start: 0.2, bpm: 124, firstBeatNumber: 1)])
+        try StampedDrafts.saveCue(cue(1), directory: places.cue, origin: .cli)
+        try StampedDrafts.saveTag(tag, directory: places.tags, origin: .human)
+        try StampedDrafts.saveGrid(grid, directory: places.grid, origin: .human)
+        // 그리드 파일만 바깥에서 고쳤다(도장은 그대로)
+        var edited = grid
+        edited.segments = [GridSegment(start: 0.3, bpm: 130, firstBeatNumber: 1)]
+        try GridDraftStore.save(edited, directory: places.grid)
+        try Data(#"{"track-101":-3}"#.utf8).write(to: places.gain)
+        let before = try Data(contentsOf: places.tags.appending(path: "track-101.json"))
+        let read = try reader(fixture)
+        let data = try json("drafts", read.drafts())
+        let record = try #require((data["drafts"] as? [[String: Any]])?.first)
+        #expect(record["kinds"] as? [String] == ["cue", "grid", "gain", "tag"])
+        #expect(record["origins"] as? [String: [String]] == ["cue": ["cli"], "grid": ["human"], "gain": ["unknown"], "tag": ["human"]])
+        #expect(record["suggestions"] as? [String: String] == ["cue": "not_human", "grid": "content_changed", "gain": "unknown_origin"])
+        // 읽기는 초안과 도장을 바꾸지 않는다
+        #expect(try Data(contentsOf: places.tags.appending(path: "track-101.json")) == before)
     }
 
     @Test func 최신_스냅샷만_선택한다() throws {

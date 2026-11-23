@@ -31,6 +31,8 @@ public struct DraftFiles: Sendable {
     public var origin: DraftOrigin = .unknown
     /// 곡 초안의 도장(출처·판·저장한 때의 해시). 없거나 모르면 nil(기본값: 모름)
     public var stamp: @Sendable (DraftKey) -> DraftStamp? = { _ in nil }
+    /// 같은 초안 폴더를 쓰되 출처만 다른 포트를 만든다(LINK 큐 편집). nil이면 `origin`만 바꾼 같은 포트다
+    public var originVariant: (@Sendable (DraftOrigin) -> DraftFiles)?
 
     public init(exists: @escaping @Sendable (_ kind: XMLImportDrafts.Kind, _ trackUUID: String) -> Bool,
                 saveCue: @escaping @Sendable (CueDraft) throws -> Void,
@@ -58,5 +60,15 @@ public struct DraftFiles: Sendable {
         self.removeTag = removeTag
         self.isPlainPath = isPlainPath
         self.newCueID = newCueID
+    }
+}
+
+extension DraftFiles {
+    /// 같은 초안 폴더를 그 출처로 저장하는 포트. `originVariant`가 없는 포트(손으로 만든 포트)는 `origin` 표시만 바뀌고 도장은 그 구현을 따른다
+    public func with(origin: DraftOrigin) -> DraftFiles {
+        if let originVariant { return originVariant(origin) }
+        var copy = self
+        copy.origin = origin
+        return copy
     }
 }

@@ -20,7 +20,8 @@ struct CLIComposition: Sendable {
 
     init(environment: [String: String]) {
         location = .resolve(arguments: [], environment: environment)
-        drafts = .live(writer: DraftWriter(), home: location.draftHome)
+        // CLI가 저장하는 초안의 출처는 CLI다(R5: 앱이 제안으로 본다)
+        drafts = .live(writer: DraftWriter(), home: location.draftHome, origin: .cli)
         writeGate = .live()
     }
 
@@ -61,10 +62,12 @@ struct CLIComposition: Sendable {
         var drafts = drafts
         if let home {
             location.draftHome = home
-            drafts = .live(writer: DraftWriter(), home: home)
+            drafts = .live(writer: DraftWriter(), home: home, origin: .cli)
         }
-        return LibraryUseCases(ports: .live(location: location, drafts: drafts,
-                                            batches: .live(url: DraftLocations(home: location.draftHome).reflection)))
+        var ports = LibraryPorts.live(location: location, drafts: drafts, batches: .live(url: DraftLocations(home: location.draftHome).reflection))
+        // `djc draft`·XML 가져오기가 곡별 초안 파일에 쓰는 초안도 CLI 출처다
+        ports.draftFiles = .live(home: location.draftHome, origin: .cli)
+        return LibraryUseCases(ports: ports)
     }
 
     /// 곡 파트 분석(`djc analyze`): 사본을 주지 않으면 위치 값의 스냅샷 폴더에서 최신 스냅샷을 읽는다

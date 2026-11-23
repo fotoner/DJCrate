@@ -191,6 +191,11 @@ public final class DraftWriter: Sendable {
     public func flush() {
         queue.sync {}
     }
+    /// 저장 큐에서 차례로 일한다: 앞서 걸린 저장이 모두 끝난 뒤 `body`를 하고, 그동안 이 큐의 저장은 기다린다.
+    /// 쓴 판 지정 삭제(R22)가 같은 파일(게인 초안 하나)을 읽고 고치는 저장과 겹치지 않게 한다. 큐 안에서 부르지 않는다
+    public func serialized<T>(_ body: () throws -> T) rethrows -> T {
+        try queue.sync(execute: body)
+    }
     public func save(_ draft: GridDraft, directory: URL,
                      write: @escaping @Sendable (GridDraft, URL) throws -> Void = { try GridDraftStore.save($0, directory: $1) },
                      completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
@@ -214,12 +219,13 @@ public final class DraftWriter: Sendable {
             return DamagedDrafts.take(home: home)
         }
     }
-    public func save(_ drafts: [TagDraft], directory: URL) {
+    public func save(_ drafts: [TagDraft], directory: URL,
+                     write: @escaping @Sendable (TagDraft, URL) throws -> Void = { try TagDraftStore.save($0, directory: $1) }) {
         let key = directory.resolvingSymlinksInPath().standardizedFileURL.path
         queue.async {
             for draft in drafts {
                 do {
-                    try TagDraftStore.save(draft, directory: directory)
+                    try write(draft, directory)
                     _ = self.tagFailures.withLock { $0[key]?.remove(draft.trackUUID) }
                 } catch {
                     _ = self.tagFailures.withLock { $0[key, default: []].insert(draft.trackUUID) }

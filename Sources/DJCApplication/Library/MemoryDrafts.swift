@@ -76,14 +76,9 @@ public final class MemoryDrafts: Sendable {
 
     public init() {}
 
-    /// 그림 초안의 해시 재료(초안과 그림 바이트)
-    private struct ArtworkContent: Encodable {
-        var draft: ArtworkDraft
-        var image: Data?
-    }
-
     static func hash(_ value: some Encodable) -> DraftContentHash? { try? DraftContentHash(of: value) }
-    static func hash(_ edit: ArtworkEdit) -> DraftContentHash? { hash(ArtworkContent(draft: edit.draft, image: edit.image)) }
+    /// 그림 초안의 해시: 실제 저장소와 같은 함수(`DraftContentHash(artwork:)`, 그림 바이트는 넣지 않는다)
+    static func hash(_ edit: ArtworkEdit) -> DraftContentHash? { try? DraftContentHash(artwork: edit) }
 
     public func cue(_ uuid: String) -> CueDraft? { state.withLock { $0.cues[uuid] } }
     public func grid(_ uuid: String) -> GridDraft? { state.withLock { $0.grids[uuid] } }

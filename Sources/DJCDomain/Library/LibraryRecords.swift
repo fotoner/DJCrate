@@ -219,8 +219,14 @@ public enum LibraryRecords {
         public let contentID: String?
         public let title: String?
         public let kinds: [String]
-        public init(trackUUID: String, contentID: String?, title: String?, kinds: [String]) {
+        /// 종류(`kinds`의 값)별로 그 초안에 손댄 출처(`DraftOrigin` 원시값, 적는 차례). 도장이 없는 초안은 `["unknown"]`(R5)
+        public let origins: [String: [String]]
+        /// 종류별 제안 사유(`DraftSuggestion` 원시값). 없는 종류는 자동 저장 대상이다(사람 편집만 들고 내용이 도장과 같다)
+        public let suggestions: [String: String]
+        public init(trackUUID: String, contentID: String?, title: String?, kinds: [String],
+                    origins: [String: [String]] = [:], suggestions: [String: String] = [:]) {
             self.trackUUID = trackUUID; self.contentID = contentID; self.title = title; self.kinds = kinds
+            self.origins = origins; self.suggestions = suggestions
         }
     }
 
