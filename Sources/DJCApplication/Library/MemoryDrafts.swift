@@ -7,7 +7,7 @@ import Synchronization
 /// 같은 규칙인지는 DJCAdaptersTests의 계약 시험이 실제 구현과 함께 본다.
 ///
 /// 초안마다 도장(출처·판·해시, R5·R22)을 적는다. 판은 이 저장소 전체에서 늘어나는 번호이고, 출처는 저장한 포트의 출처를 모은다.
-/// 바깥에서 고친 초안은 `editOutside`로 흉내 낸다(도장은 그대로, 내용만 바뀐다).
+/// 바깥에서 고친 초안은 `editOutside`·`editPlaylistOutside`로 흉내 낸다(도장은 그대로, 내용만 바뀐다).
 public final class MemoryDrafts: Sendable {
     private struct State {
         var cues: [String: CueDraft] = [:]
@@ -22,6 +22,9 @@ public final class MemoryDrafts: Sendable {
         var playlistStamps: [DraftStamp] = []
         /// 마지막으로 준 판(저장소 전체에서 늘어난다)
         var lastDraftRevision: UInt64 = 0
+        /// 남긴 재생 목록 단계 사본(사본 자리 → 사본)
+        var playlistCopies: [URL: PlaylistStepCopy] = [:]
+        var failsPlaylistCopies = false
 
         /// 저장한 초안의 도장을 새 판으로 바꾼다(내용이 nil이면 초안이 없어져 도장도 지운다)
         mutating func restamp(_ key: DraftKey, hash: DraftContentHash?, origin: DraftOrigin) {
@@ -144,13 +147,18 @@ public final class MemoryDrafts: Sendable {
         }
     }
 
+    /// 재생 목록 단계의 해시(단계와 그 단계가 기대는 base, 실제 저장소와 같은 함수)
+    static func stepHash(_ step: PlaylistDraft.Step, in draft: PlaylistDraft) -> DraftContentHash {
+        (try? DraftContentHash(step: step, in: draft)) ?? DraftContentHash(hex: "")
+    }
+
     /// 재생 목록 초안을 통째로 저장한다: 앞 도장 가운데 내용이 같은 단계의 도장을 차례로 이어 쓰고, 나머지 단계만 새 판을 받는다
     private func savePlaylist(_ draft: PlaylistDraft, origin: DraftOrigin) {
         state.withLock { state in
             var previous = state.playlistStamps
             var stamps: [DraftStamp] = []
             for step in draft.steps {
-                let hash = Self.hash(step) ?? DraftContentHash(hex: "")
+                let hash = Self.stepHash(step, in: draft)
                 if let index = previous.firstIndex(where: { $0.contentHash == hash }) {
                     stamps.append(previous.remove(at: index))
                 } else {
@@ -161,6 +169,19 @@ public final class MemoryDrafts: Sendable {
             state.playlistStamps = stamps
         }
     }
+
+    /// 바깥(다른 프로세스)이 재생 목록 초안 파일만 고친 것처럼 한다: 단계 수가 같으면 도장은 그대로 두고 내용만 바꾼다
+    public func editPlaylistOutside(_ draft: PlaylistDraft) {
+        state.withLock { state in
+            precondition(draft.steps.count == state.playlistStamps.count, "바깥 수정 흉내는 단계 수를 바꾸지 않는다")
+            state.playlist = draft
+        }
+    }
+
+    /// 남긴 재생 목록 단계 사본(사본 자리 → 사본). 실제 구현은 백업 폴더의 파일이다
+    public var playlistCopies: [URL: PlaylistStepCopy] { state.withLock { $0.playlistCopies } }
+    /// 재생 목록 단계 사본 남기기를 실패하게 한다(R22 실패 주입)
+    public func failPlaylistCopies(_ fails: Bool = true) { state.withLock { $0.failsPlaylistCopies = fails } }
 
     /// 판 지정 삭제(`DraftStore.removeWritten`의 규칙)
     public func removeWritten(_ written: [WrittenDraft]) -> DraftRemoval {
@@ -182,14 +203,43 @@ public final class MemoryDrafts: Sendable {
         }
     }
 
-    /// 쓴 재생 목록 단계를 판으로 찾아 뺀다. 연결 ID 옮기기는 하지 않는다(규칙은 W2-G2의 `PlaylistDraft`가 정한다)
-    public func removeWrittenSteps(_ revisions: Set<DraftRevision>) -> Set<DraftRevision> {
+    /// 쓴 재생 목록 단계 정리(`DraftStore.removeWrittenSteps`의 규칙). 연결 ID 옮기기는 하지 않는다(규칙은 W2-G2의 `PlaylistDraft`가 정한다)
+    public func removeWrittenSteps(_ cleanup: PlaylistStepCleanup) -> PlaylistStepRemoval {
         state.withLock { state in
-            let offsets = state.playlistStamps.indices.filter { revisions.contains(state.playlistStamps[$0].revision) }
-            let removed = Set(offsets.map { state.playlistStamps[$0].revision })
-            state.playlist.removeSteps(at: offsets)
-            state.playlistStamps = state.playlistStamps.enumerated().filter { !offsets.contains($0.offset) }.map(\.element)
-            return removed
+            var result = PlaylistStepRemoval()
+            var offsets: [Int] = []
+            for written in cleanup.written {
+                guard let offset = state.playlistStamps.firstIndex(where: { $0.revision == written.revision }) else {
+                    result.notFound.insert(written.revision)
+                    continue
+                }
+                let step = state.playlist.steps[offset]
+                let current = Self.stepHash(step, in: state.playlist)
+                if current != written.contentHash {
+                    // 바깥에서 고친 단계: 사본을 남긴 뒤에만 뺀다
+                    guard !state.failsPlaylistCopies else {
+                        result.copyFailed.insert(written.revision)
+                        continue
+                    }
+                    let playlistID: String? = switch step.edit.playlist {
+                    case let .id(id): id
+                    case .new: cleanup.newPlaylistIDs[step.edit.playlist.description]
+                    case .root: nil
+                    }
+                    let depends = Set(step.depends)
+                    let url = PlaylistStepCopy.url(folder: cleanup.copyFolder, revision: written.revision)
+                    state.playlistCopies[url] = PlaylistStepCopy(revision: written.revision, playlistID: playlistID, step: step,
+                                                                 base: state.playlist.base.filter { depends.contains($0.key) },
+                                                                 writtenHash: written.contentHash, currentHash: current)
+                    result.copied[written.revision] = url
+                }
+                offsets.append(offset)
+                result.removed.insert(written.revision)
+            }
+            let removing = Set(offsets)
+            state.playlist.removeSteps(at: offsets.sorted())
+            state.playlistStamps = state.playlistStamps.enumerated().filter { !removing.contains($0.offset) }.map(\.element)
+            return result
         }
     }
 
@@ -241,7 +291,7 @@ public final class MemoryDrafts: Sendable {
         store.stamp = { self.stamp($0) }
         store.playlistStamps = { self.playlistStamps }
         store.removeWritten = { self.removeWritten($0) }
-        store.removeWrittenSteps = { revisions, _ in self.removeWrittenSteps(revisions) }
+        store.removeWrittenSteps = { self.removeWrittenSteps($0) }
         return store
     }
 }

@@ -49,6 +49,28 @@ struct DraftProvenanceTests {
         #expect(try DraftContentHash(of: ["a", "b"]) != DraftContentHash(of: ["b", "a"]))
     }
 
+    /// 재생 목록 단계의 해시는 그 단계가 기대는 base까지 본다: 편집이 같아도 base만 바뀌면 다르다(S7). 기대지 않는 목록의 base는 보지 않는다
+    @Test func 재생_목록_단계_해시는_기대는_base를_넣는다() throws {
+        func draft(entries: [String], other: String) throws -> PlaylistDraft {
+            let rekordbox = PlaylistLayout([
+                (PlaylistLayout.Item(id: "A", name: "가", entries: entries.enumerated().map { PlaylistEntry(trackNo: $0.offset + 1, contentID: $0.element) }), 1),
+                (PlaylistLayout.Item(id: "C", name: other), 2),
+            ])
+            var draft = PlaylistDraft()
+            try draft.append(.addTracks(playlist: .id("A"), contentIDs: ["9"]), rekordbox: rekordbox)
+            try draft.append(.rename(playlist: .id("C"), name: "새"), rekordbox: rekordbox)
+            return draft
+        }
+        let one = try draft(entries: ["1"], other: "다"), changedBase = try draft(entries: ["2"], other: "다")
+        #expect(one.steps[0] == changedBase.steps[0] && one.base != changedBase.base)
+        #expect(try DraftContentHash(step: one.steps[0], in: one) != DraftContentHash(step: changedBase.steps[0], in: changedBase))
+        #expect(try DraftContentHash(step: one.steps[0], in: one) == DraftContentHash(step: one.steps[0], in: one))
+        // 다른 목록(C)의 base만 바뀌면 A 단계의 해시는 그대로다
+        let otherBase = try draft(entries: ["1"], other: "라")
+        #expect(try DraftContentHash(step: one.steps[0], in: one) == DraftContentHash(step: otherBase.steps[0], in: otherBase))
+        #expect(try DraftContentHash(step: one.steps[1], in: one) != DraftContentHash(step: otherBase.steps[1], in: otherBase))
+    }
+
     /// 해시의 정규 형식: 키를 정렬한 JSON(빈칸 없음, `/` 그대로)의 SHA-256, 소문자 16진 64자. 바꾸면 앱·CLI가 남긴 해시가 모두 어긋난다.
     @Test func 정규_형식은_키를_정렬한_JSON의_SHA256이다() throws {
         #expect(try DraftContentHash(of: ["a": 1]).hex == "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862")

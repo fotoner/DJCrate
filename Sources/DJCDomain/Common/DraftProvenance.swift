@@ -72,6 +72,19 @@ public struct DraftContentHash: Hashable, Codable, Sendable, CustomStringConvert
     }
 }
 
+extension DraftContentHash {
+    /// 재생 목록 단계 하나의 해시: 단계(편집·기대는 목록·다시 적용한 기준)와 그 단계가 기대는 목록의 처음 상태(`base`)를 함께 넣는다.
+    /// 편집이 같아도 기대는 base가 바뀌면 다른 해시다. 메모리 구현과 실제 저장소가 이 함수 하나를 쓴다
+    public init(step: PlaylistDraft.Step, in draft: PlaylistDraft) throws {
+        struct Content: Encodable {
+            var step: PlaylistDraft.Step
+            var base: [String: PlaylistDraft.Base]
+        }
+        let depends = Set(step.depends)
+        try self.init(of: Content(step: step, base: draft.base.filter { depends.contains($0.key) }))
+    }
+}
+
 /// 곡 초안 하나를 가리킨다: (종류, 곡 UUID). 합치기 초안은 합치기 초안 ID로 가리킨다. 재생 목록 단계는 판으로 가리킨다.
 public struct DraftKey: Hashable, Comparable, Codable, Sendable, CustomStringConvertible {
     public enum Kind: String, Codable, CaseIterable, Sendable {
@@ -128,7 +141,8 @@ public struct DraftStamp: Hashable, Codable, Sendable {
     }
 }
 
-/// 쓰기에 든 곡 초안 하나: 어느 초안의 어느 판(그때의 해시)을 썼는지. 쓰기 기록·미정리 목록·판 지정 삭제가 같은 값을 쓴다.
+/// 쓰기에 든 곡 초안 하나: 어느 초안의 어느 판을 어떤 내용으로 썼는지. 쓰기 기록·미정리 목록·판 지정 삭제가 같은 값을 쓴다.
+/// 해시는 쓰기 묶음에 실제로 읽어 넣은 내용의 해시다(도장의 저장 때 해시가 아니다).
 /// 정리는 판과 해시가 모두 같은 초안만 지운다. 판이 같고 해시가 다르면 지우지 않고 제안으로 남긴다(R22).
 public struct WrittenDraft: Hashable, Codable, Sendable {
     public var key: DraftKey

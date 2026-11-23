@@ -89,14 +89,15 @@ final class SettingsStore: @unchecked Sendable {
         }
     }
 
-    /// 곡 UUID 모음(무시한 제안 등). 자가 테스트 중에도 읽기·쓰기는 한다(화면 상태라서).
+    /// 곡 UUID 모음(무시한 제안 등). 자가 테스트 중에도 읽기·쓰기는 한다(화면 상태라서). 설정을 저장하지 않는 실행(`persist` 꺼짐)에서는
+    /// 이 실행 안에서만 기억하고 사용자 환경설정에는 쓰지 않는다(자동 저장 자가 테스트 전후로 환경설정이 같아야 한다, R18).
     func strings(_ name: String) -> Set<String> { Set(storedValue(name) as? [String] ?? []) }
 
     func setStrings(_ name: String, _ value: Set<String>) {
         lock.withLock {
             let strings = Array(value)
             writtenValues[name] = strings
-            defaults.set(strings, forKey: name)
+            if persist { defaults.set(strings, forKey: name) }
         }
     }
 

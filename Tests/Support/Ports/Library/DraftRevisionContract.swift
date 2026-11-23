@@ -47,3 +47,51 @@ public func draftRevisionContract(_ human: DraftStore, cli: DraftStore, editOuts
     #expect(try human.removeWritten([outside]) == DraftRemoval(suggested: [outside]))
     #expect(human.cueDraft("b") != nil)
 }
+
+/// 재생 목록 단계의 판 계약(R22): 단계마다 판과 `DraftContentHash(step:in:)` 해시를 적는다. 쓴 단계는 판으로 찾아 빼고,
+/// 지금 해시가 쓴 해시와 다르면(바깥에서 고침) 실제 목록 ID와 함께 사본을 남긴 뒤에만 뺀다. 사본을 남기지 못하면 그 단계를 남긴다.
+/// 막힌 단계(쓰지 않은 단계)는 남는다. 판을 모르는 단계는 `notFound`다.
+/// `editOutside`는 바깥이 단계 수를 바꾸지 않고 초안 파일 내용만 고치는 일, `failCopies`는 사본 쓰기 실패를 흉내 낸다.
+@MainActor
+public func playlistStepRevisionContract(_ store: DraftStore, copyFolder: URL, editOutside: (PlaylistDraft) throws -> Void,
+                                         failCopies: (Bool) -> Void, readCopy: (URL) throws -> PlaylistStepCopy?) throws {
+    let rekordbox = PlaylistLayout([(PlaylistLayout.Item(id: "A", name: "가"), 1), (PlaylistLayout.Item(id: "B", name: "나"), 2),
+                                    (PlaylistLayout.Item(id: "C", name: "다"), 3)])
+    func draft(renameB: String) throws -> PlaylistDraft {
+        var draft = PlaylistDraft()
+        try draft.append(.addTracks(playlist: .id("A"), contentIDs: ["9"]), rekordbox: rekordbox)
+        try draft.append(.rename(playlist: .id("B"), name: renameB), rekordbox: rekordbox)
+        try draft.append(.addTracks(playlist: .id("C"), contentIDs: ["8"]), rekordbox: rekordbox)
+        return draft
+    }
+    let saved = try draft(renameB: "x")
+    try store.savePlaylistDraft(saved)
+    let stamps = store.playlistStamps()
+    #expect(stamps.count == 3 && Set(stamps.map(\.revision)).count == 3)
+    for (stamp, step) in zip(stamps, saved.steps) { #expect(stamp.contentHash == (try DraftContentHash(step: step, in: saved))) }
+    let written = stamps.prefix(2).map { WrittenPlaylistStep(revision: $0.revision, contentHash: $0.contentHash) }
+
+    // 쓴 둘 가운데 둘째만 바깥에서 고쳤다: 둘 다 빼되 둘째는 사본(실제 목록 ID B)을 남긴다. 쓰지 않은 셋째는 남는다
+    try editOutside(try draft(renameB: "y"))
+    let stray = DraftRevision(stamps.map(\.revision.value).max()! + 100)
+    let removal = try store.removeWrittenSteps(PlaylistStepCleanup(written: written + [WrittenPlaylistStep(revision: stray, contentHash: stamps[0].contentHash)],
+                                                                   newPlaylistIDs: [:], copyFolder: copyFolder))
+    #expect(removal.removed == Set(written.map(\.revision)) && removal.copyFailed.isEmpty && removal.notFound == [stray])
+    let copyURL = try #require(removal.copied[written[1].revision])
+    #expect(copyURL == PlaylistStepCopy.url(folder: copyFolder, revision: written[1].revision))
+    let copy = try #require(try readCopy(copyURL))
+    #expect(copy.playlistID == "B" && copy.writtenHash == written[1].contentHash && copy.currentHash != copy.writtenHash)
+    #expect(store.playlistDraft().edits == [.addTracks(playlist: .id("C"), contentIDs: ["8"])])
+    #expect(store.playlistStamps().map(\.revision) == [stamps[2].revision])
+
+    // 사본을 남기지 못하면 바깥에서 고친 단계는 남는다
+    try store.savePlaylistDraft(try draft(renameB: "x"))
+    let again = store.playlistStamps()
+    try editOutside(try draft(renameB: "z"))
+    failCopies(true)
+    defer { failCopies(false) }
+    let failed = try store.removeWrittenSteps(PlaylistStepCleanup(written: [WrittenPlaylistStep(revision: again[1].revision, contentHash: again[1].contentHash)],
+                                                                  newPlaylistIDs: [:], copyFolder: copyFolder))
+    #expect(failed.copyFailed == [again[1].revision] && failed.removed.isEmpty)
+    #expect(store.playlistDraft().edits.count == 3)
+}

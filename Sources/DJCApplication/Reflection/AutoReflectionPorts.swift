@@ -87,9 +87,10 @@ public struct LibraryQuietStamps: Equatable, Sendable {
 
 /// 프로세스 사이 쓰기 잠금(R9). 같은 라이브러리에 쓰는 모든 입구가 같은 잠금을 잡는다. 키는 `RekordboxWriteLockKey`다.
 /// 잠금은 다시 들어갈 수 없다: 같은 프로세스라도 쥔 키를 또 잡으면 기다리고(`lock`), 시도는 nil이다(`tryLock`).
-/// 쓰기 관문의 입구는 스스로 잠그므로 이 포트로 쥔 채 관문을 부르지 않는다. 엔진은 시도로 비었는지 보고 풀어 준 뒤 관문을 부르고,
-/// 시점 스냅샷·기록 판정처럼 관문 밖에서 대상을 다루는 일은 이 포트로 쥔 채 한다.
-/// 실제 구현은 쓰기 입구와 같은 잠금 파일(`flock`)을 쓴다(DJCAdapters, W1-A).
+/// - 쓰기 관문의 쓰기·복원 입구는 스스로 잠근다. 그래서 이 포트로 쥔 채 그 입구를 부르지 않는다. 엔진은 시도로 비었는지 보고 푼 뒤 부른다.
+/// - 기록 판정은 쥔 잠금을 넘겨 그 아래에서 한다(`RekordboxWriteGate.journal`의 `hold`). 시점 스냅샷도 쥔 채 뜬다(R13):
+///   잡기 → 기록 판정 → 스냅샷 → 풀기.
+/// 실제 구현은 쓰기 입구와 같은 잠금 파일(`flock`)과 같은 링크 풀기(realpath)를 쓴다(DJCAdapters, W1-A).
 public struct RekordboxWriteLock: Sendable {
     /// 쥔 잠금. `release`로 푼다(한 번만)
     public struct Hold: Sendable {
@@ -102,15 +103,19 @@ public struct RekordboxWriteLock: Sendable {
         }
     }
 
-    /// 대상 master.db의 잠금 키(링크를 푼 부모 폴더의 장치·inode). 폴더를 읽지 못하면 던진다
+    /// master.db의 링크를 푼 경로(파일·폴더 링크와 시스템 볼륨 별칭을 푼다). 잠금 키·쓰기 기록 자리
+    /// (`RekordboxWriteJournal.url(resolvedDatabase:)`)·준비 폴더가 이 경로를 쓴다. 읽지 못하면 던진다
+    public var resolve: @Sendable (_ database: URL) throws -> URL
+    /// 대상 master.db의 잠금 키: `resolve`한 경로의 부모 폴더의 장치·inode. 폴더를 읽지 못하면 던진다
     public var key: @Sendable (_ database: URL) throws -> RekordboxWriteLockKey
     /// 잡을 때까지 기다린다(메인 액터 밖에서 부른다)
     public var lock: @Sendable (RekordboxWriteLockKey) throws -> Hold
     /// 비차단 시도. 누가 쥐고 있으면 nil
     public var tryLock: @Sendable (RekordboxWriteLockKey) throws -> Hold?
 
-    public init(key: @escaping @Sendable (URL) throws -> RekordboxWriteLockKey, lock: @escaping @Sendable (RekordboxWriteLockKey) throws -> Hold,
-                tryLock: @escaping @Sendable (RekordboxWriteLockKey) throws -> Hold?) {
+    public init(resolve: @escaping @Sendable (URL) throws -> URL, key: @escaping @Sendable (URL) throws -> RekordboxWriteLockKey,
+                lock: @escaping @Sendable (RekordboxWriteLockKey) throws -> Hold, tryLock: @escaping @Sendable (RekordboxWriteLockKey) throws -> Hold?) {
+        self.resolve = resolve
         self.key = key
         self.lock = lock
         self.tryLock = tryLock
@@ -200,7 +205,8 @@ public struct AutoReflectionPorts {
     public var quietStamps: @Sendable (RekordboxWriteTarget) -> LibraryQuietStamps
     public var writeLock: RekordboxWriteLock
     public var records: AutoReflectionRecords
-    /// 오늘 뜰 차례면 자동 시점 스냅샷을 뜬다(대상의 쓰기 잠금을 잡고 중단 기록이 없을 때만)
+    /// 오늘 뜰 차례면 자동 시점 스냅샷을 뜬다. 한 잠금 아래에서 한다: `writeLock.tryLock`(못 잡으면 `.held(.lockBusy)`) →
+    /// `gate.journal(target, hold)`(중단이면 `.held(.interrupted)`) → 스냅샷 → 풀기(R13)
     public var pointSnapshot: @MainActor () async -> AutoSnapshotGate
     /// 앱 쪽 보류 사유(USB 작업·LINK 서버·라이브러리 읽기·막힌 초안 비교 창·가져오기 시트·로그아웃)
     public var appHolds: @MainActor () -> Set<ReflectionHold>

@@ -22,9 +22,11 @@ public struct RekordboxWriteJournal: Codable, Equatable, Sendable {
     /// master.db 이름 뒤에 붙는 이름. SQLite(`-journal`·`-wal`·`-shm`)와 rekordbox(`master.backup*`)가 쓰는 이름과 겹치지 않는다
     public static let fileSuffix = ".djc-write"
 
-    /// 대상 master.db의 쓰기 기록 자리(같은 폴더)
-    public static func url(database: URL) -> URL {
-        database.deletingLastPathComponent().appending(path: database.lastPathComponent + fileSuffix, directoryHint: .notDirectory)
+    /// 대상의 쓰기 기록 자리: 링크를 푼 master.db 옆. 링크를 푸는 일(realpath)은 입출력이라 부르는 쪽이 한다
+    /// (잠금 키와 같은 정규화: 쓰기 잠금 포트의 `resolve`, 쓰기 입구의 같은 함수). 그래야 파일·폴더 링크와 원본이 같은 기록을 본다
+    public static func url(resolvedDatabase: URL) -> URL {
+        resolvedDatabase.deletingLastPathComponent()
+            .appending(path: resolvedDatabase.lastPathComponent + fileSuffix, directoryHint: .notDirectory)
     }
 
     /// 쓰기의 종류

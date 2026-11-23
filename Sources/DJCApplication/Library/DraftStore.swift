@@ -100,13 +100,19 @@ public struct DraftStore: Sendable {
     public var stamp: @Sendable (DraftKey) -> DraftStamp? = { _ in nil }
     /// 재생 목록 초안 단계의 도장(`playlistDraft().steps`와 같은 차례). 모르면 빈 배열
     public var playlistStamps: @Sendable () -> [DraftStamp] = { [] }
-    /// 판 지정 삭제(쓴 뒤 정리): 판과 내용 해시가 모두 쓴 것과 같은 초안만 지운다. 판이 같고 지금 해시가 다르면 지우지 않고 제안으로 남긴다.
-    /// 판이 다르면(쓰는 동안 새로 저장) 그대로 둔다. 비교와 삭제는 앱·CLI가 같은 초안 잠금 안에서 한다. 앞서 걸린 저장 뒤에 한다
+    /// 곡 초안의 판 지정 삭제(쓴 뒤 정리, R22). 견주는 해시는 `WrittenDraft.contentHash`(묶음에 실제로 읽어 넣은 내용)다.
+    /// - 판과 지금 내용의 해시가 모두 쓴 것과 같으면 지운다(`removed`).
+    /// - 판이 같고 지금 해시가 다르면(바깥에서 고침) 지우지 않고 제안으로 남긴다(`suggested`).
+    /// - 판이 다르거나 초안이 없으면(쓰는 동안 새로 저장, 이미 지움) 그대로 둔다(`kept`).
+    /// 비교와 삭제는 앱·CLI가 같은 초안 잠금 안에서 한다. 앞서 걸린 저장 뒤에 한다
     public var removeWritten: @Sendable ([WrittenDraft]) throws -> DraftRemoval = { DraftRemoval(kept: $0) }
-    /// 쓴 재생 목록 단계를 판으로 찾아 뺀다. 새 목록의 연결 ID(`new:키` → 실제 ID)는 남은 단계의 대상·목적지에 옮긴다
-    /// (옮기는 규칙은 `PlaylistDraft`가 정한다, W2-G2). 막힌 단계와 쓰는 동안 더한 단계는 남는다. 뺀 단계의 판을 돌려준다
-    public var removeWrittenSteps: @Sendable (_ revisions: Set<DraftRevision>, _ newPlaylistIDs: [String: String]) throws -> Set<DraftRevision> =
-        { _, _ in [] }
+    /// 쓴 재생 목록 단계의 정리(R22). 판으로 찾은 쓴 단계는 해시가 달라도 뺀다. 다만 지금 해시가 쓴 해시와 다르면 바깥에서 고친 지금 내용을
+    /// 실제 목록 ID와 함께 `PlaylistStepCopy`로 `copyFolder`에 남긴 뒤에만 뺀다. 사본을 남기지 못하면 그 단계를 남긴다(`copyFailed`:
+    /// 부르는 쪽은 미정리 목록을 지우지 않고 그 대상의 다음 쓰기를 보류한 채 다음 정리 때 다시 한다).
+    /// 새 목록의 연결 ID(`new:키` → 실제 ID)는 남은 단계의 대상·목적지에 옮긴다(옮기는 규칙은 `PlaylistDraft`, W2-G2).
+    /// 막힌 단계와 쓰는 동안 더한 단계는 남는다. 같은 초안 잠금 안에서 한다
+    public var removeWrittenSteps: @Sendable (PlaylistStepCleanup) throws -> PlaylistStepRemoval =
+        { PlaylistStepRemoval(notFound: Set($0.written.map(\.revision))) }
 
     public init(flush: @escaping @Sendable () -> Void,
                 saveRevision: @escaping @Sendable () -> UInt64,
@@ -225,7 +231,55 @@ extension DraftStore {
     public func saveGain(_ gain: Double?, trackUUID: String) { saveGain(gain, trackUUID, { _ in }) }
 }
 
-/// 판 지정 삭제의 결과(R22)
+/// 쓴 재생 목록 단계 하나(R22)
+public struct WrittenPlaylistStep: Hashable, Sendable {
+    public var revision: DraftRevision
+    /// 묶음에 실제로 읽어 넣은(쓴) 단계의 해시(`DraftContentHash(step:in:)`)
+    public var contentHash: DraftContentHash
+
+    public init(revision: DraftRevision, contentHash: DraftContentHash) {
+        self.revision = revision
+        self.contentHash = contentHash
+    }
+}
+
+/// 쓴 재생 목록 단계 정리 요청(R22)
+public struct PlaylistStepCleanup: Equatable, Sendable {
+    /// 쓴 단계(결과가 `written`인 단계만)
+    public var written: [WrittenPlaylistStep]
+    /// 새 목록의 연결 ID(`new:키` → 실제 ID)
+    public var newPlaylistIDs: [String: String]
+    /// 바깥에서 고친 단계의 사본을 남길 폴더(그 쓰기의 백업 폴더). 사본 자리는 `PlaylistStepCopy.url(folder:revision:)`
+    public var copyFolder: URL
+
+    public init(written: [WrittenPlaylistStep], newPlaylistIDs: [String: String], copyFolder: URL) {
+        self.written = written
+        self.newPlaylistIDs = newPlaylistIDs
+        self.copyFolder = copyFolder
+    }
+}
+
+/// 쓴 재생 목록 단계 정리의 결과(R22)
+public struct PlaylistStepRemoval: Equatable, Sendable {
+    /// 뺀 단계(해시가 같았거나, 사본을 남긴 뒤 뺐다)
+    public var removed: Set<DraftRevision>
+    /// 해시가 달라 사본을 남기고 뺀 단계 → 사본 파일
+    public var copied: [DraftRevision: URL]
+    /// 해시가 달랐는데 사본을 남기지 못해 남긴 단계
+    public var copyFailed: Set<DraftRevision>
+    /// 판을 찾지 못한 단계(이미 빠졌다). 그대로 둔다
+    public var notFound: Set<DraftRevision>
+
+    public init(removed: Set<DraftRevision> = [], copied: [DraftRevision: URL] = [:], copyFailed: Set<DraftRevision> = [],
+                notFound: Set<DraftRevision> = []) {
+        self.removed = removed
+        self.copied = copied
+        self.copyFailed = copyFailed
+        self.notFound = notFound
+    }
+}
+
+/// 곡 초안 판 지정 삭제의 결과(R22)
 public struct DraftRemoval: Equatable, Sendable {
     /// 판과 해시가 같아 지운 초안
     public var removed: [WrittenDraft]

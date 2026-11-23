@@ -25,6 +25,7 @@ public struct GateScript: Sendable {
     /// 쓰기 기록 판정(R11). 기본은 지금 동작과 같은 "기록 없음"
     public var journal = RekordboxJournalVerdict.none
     public var journalRestore = RekordboxJournalRestore.nothing
+    public var journalKeep = RekordboxJournalKeep.nothing
     public var journalError: (any Error)?
     /// 미정리 목록(R22)
     public var cleanupLists: [DraftCleanupList] = []
@@ -50,6 +51,10 @@ public final class GateCalls: Sendable {
         public var points: [URL] = []
         public var playlistWrites: [[PlaylistEdit]] = []
         public var iTunesTargets: [RekordboxWriteTarget] = []
+        /// 기록 판정에 넘긴 잠금의 키(관문이 잡게 했으면 nil)
+        public var journalHolds: [RekordboxWriteLockKey?] = []
+        /// 기록으로 복원·"이대로 둔다"에 넘긴 요청
+        public var journalRequests: [RekordboxJournalRequest] = []
         /// "이대로 둔다"로 지운 기록의 작업 ID
         public var keptJournals: [String] = []
         /// 지운 미정리 목록의 작업 ID
@@ -146,21 +151,27 @@ extension RekordboxWriteGate {
                 calls.record { $0.iTunesTargets.append(target) }
                 return script.syncData
             })
-        gate.journal = { _ in
+        gate.journal = { _, hold in
             expectBlockingOffPool()
-            calls.record { $0.order.append("journal") }
+            calls.record { $0.journalHolds.append(hold?.key); $0.order.append("journal") }
             if let error = script.journalError { throw error }
             return script.journal
         }
-        gate.restoreJournal = { _ in
+        gate.restoreJournal = { _, request in
             expectBlockingOffPool()
-            calls.record { $0.order.append("restore journal") }
+            calls.record { $0.journalRequests.append(request); $0.order.append("restore journal") }
             if let error = script.journalError { throw error }
             return script.journalRestore
         }
-        gate.keepJournal = { _, operationID in
+        gate.keepJournal = { _, request in
             expectBlockingOffPool()
-            calls.record { $0.keptJournals.append(operationID); $0.order.append("keep journal") }
+            calls.record {
+                $0.journalRequests.append(request)
+                if script.journalKeep == .kept { $0.keptJournals.append(request.operationID) }
+                $0.order.append("keep journal")
+            }
+            if let error = script.journalError { throw error }
+            return script.journalKeep
         }
         gate.cleanupLists = { _, _ in
             expectBlockingOffPool()

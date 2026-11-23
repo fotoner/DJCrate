@@ -39,11 +39,13 @@ public struct DraftWriteBatch: Sendable, Equatable {
     public var revisions: DraftBatchRevisions
     /// 정리 할 일을 적을 자리(앱의 쓰기). nil이면 미정리 목록을 적지 않는다(CLI·시험, 지금 동작)
     public var operation: DraftWriteOperation?
+    /// 쓰기를 마치는 방식. 여러 곡 역편집은 `.allOrNothing`(R12). 미리 보기에서 관문까지 그대로 나른다
+    public var commitPolicy: DraftCommitPolicy
 
     public init(drafts: [CueDraft] = [], grids: [GridDraft] = [], gains: [String: Double] = [:], tags: [TagDraft] = [],
                 artworks: [ArtworkEdit] = [], playlists: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [],
                 histories: [HistoryImport] = [], revisions: DraftBatchRevisions = DraftBatchRevisions(),
-                operation: DraftWriteOperation? = nil) {
+                operation: DraftWriteOperation? = nil, commitPolicy: DraftCommitPolicy = .writable) {
         self.drafts = drafts
         self.grids = grids
         self.gains = gains
@@ -54,6 +56,7 @@ public struct DraftWriteBatch: Sendable, Equatable {
         self.histories = histories
         self.revisions = revisions
         self.operation = operation
+        self.commitPolicy = commitPolicy
     }
 
     /// 묶음이 건드리는 곡(합치기는 묶인 곡 모두)
@@ -84,6 +87,7 @@ public struct WritePreview: Sendable {
     }
 
     /// 미리 보기에서 쓸 수 있다고 나온 것만(분석을 붙이는 곡도 그리드 초안으로 쓴다). 재생 목록은 쓰는 편집이 있으면 초안 전체를 넘긴다.
+    /// 판·작업 정보·쓰기 방식은 그대로 나른다(`.allOrNothing`이면 하나라도 막혔을 때 쓰지 않는 일은 세션·관문이 한다).
     /// 재생 기록도 곡 초안처럼 미리 보기에서 쓸 수 있던 기록만 넘긴다(막힌 기록은 쓰기 대기에 남는다).
     public var writableBatch: DraftWriteBatch {
         let cues = Set(report.written.map(\.trackUUID)), grids = Set((report.gridWritten + report.analysisWritten).map(\.trackUUID))
@@ -97,7 +101,7 @@ public struct WritePreview: Sendable {
                                        playlists: report.playlistWritten.isEmpty ? nil : batch.playlists,
                                        merges: batch.merges.filter { draft in report.mergeWritten.contains { $0.trackUUID == draft.id } },
                                        histories: batch.histories.filter { histories.contains($0.id) },
-                                       operation: batch.operation)
+                                       operation: batch.operation, commitPolicy: batch.commitPolicy)
         // 판은 남긴 초안의 것만 나른다(재생 목록 단계는 초안 전체를 넘기므로 그대로)
         writable.revisions = batch.revisions.restricted(to: writable.draftKeys)
         if writable.playlists == nil { writable.revisions.playlistSteps = [] }
@@ -190,12 +194,23 @@ public struct TrackAddBatch: Sendable {
     public var analyses: [String: RekordboxTrackAnalysis]
     public var cues: [String: [EditableCue]]
     public var keys: [String: String]
+    /// 경로 → 추가 목록 UUID(옛 UUID). 미정리 목록이 옛·새 UUID를 잇는다(R22). 비어 있으면 모른다(지금 동작)
+    public var stagedUUIDs: [String: String]
+    /// 넣기에 실은 초안(키의 곡은 옛 UUID, 큐·그리드·태그). 정리는 이 판만 백업으로 옮기고 지운다.
+    /// 넣는 동안 생긴 새 판은 새 곡으로 옮겨 제안으로 둔다(R22)
+    public var revisions: DraftBatchRevisions
+    /// 정리 할 일을 적을 자리(앱의 곡 넣기). nil이면 미정리 목록을 적지 않는다(CLI·시험, 지금 동작)
+    public var operation: DraftWriteOperation?
 
     public init(plans: [TrackAddPlan], analyses: [String: RekordboxTrackAnalysis] = [:], cues: [String: [EditableCue]] = [:],
-                keys: [String: String] = [:]) {
+                keys: [String: String] = [:], stagedUUIDs: [String: String] = [:], revisions: DraftBatchRevisions = DraftBatchRevisions(),
+                operation: DraftWriteOperation? = nil) {
         self.plans = plans
         self.analyses = analyses
         self.cues = cues
         self.keys = keys
+        self.stagedUUIDs = stagedUUIDs
+        self.revisions = revisions
+        self.operation = operation
     }
 }

@@ -96,44 +96,82 @@ struct AutoReflectionContractTests {
                                       restorePointSnapshot: { _, _, _, _, _ in fail() }, writePlaylists: { _, _, _ in fail() },
                                       syncITunes: { _, _ in fail() })
         let target = RekordboxWriteTarget.copy(database: URL(filePath: "/copy/master.db"), shareRoot: nil)
-        #expect(try gate.journal(target) == .none)
-        #expect(try gate.restoreJournal(target) == .nothing)
-        try gate.keepJournal(target, "op")
+        let request = RekordboxJournalRequest(operationID: "op", database: nil)
+        #expect(try gate.journal(target, nil) == .none)
+        #expect(try gate.restoreJournal(target, request) == .nothing)
+        #expect(try gate.keepJournal(target, request) == .nothing)
         #expect(try gate.cleanupLists(target, URL(filePath: "/drafts")).isEmpty)
         try gate.removeCleanupList(DraftCleanupList(operationID: "op", target: RekordboxWriteLockKey(device: 1, inode: 2), draftHome: "/drafts"), target)
         let backups = MemoryBackups().port
         #expect(backups.autoSaveCondition(URL(filePath: "/backups"), target.database) == .unknown)
     }
 
-    /// 가짜 관문은 정한 판정을 돌려주고 부른 차례를 남긴다(엔진·세션 시험의 재료)
+    /// 가짜 관문은 정한 판정을 돌려주고 부른 차례·넘긴 잠금·요청을 남긴다(엔진·세션 시험의 재료).
+    /// 판정이 찾은 기록과 그때 본 DB 크기·시각이 그대로 요청이 된다(S3: 사용자가 확인한 기록만 복원·"이대로 둔다")
     @Test func 가짜_관문의_기록_판정() throws {
         var script = GateScript()
         let journal = RekordboxWriteJournal(operationID: "op-1", kind: .counter, entry: .drafts)
-        script.journal = .interrupted(journal, changedSince: true)
+        let finding = RekordboxJournalFinding(journal: journal, changedSince: true, database: RekordboxFileStamp(size: 10, modifiedNanoseconds: 7))
+        script.journal = .interrupted(finding)
+        script.journalKeep = .kept
         let calls = GateCalls()
         let gate = RekordboxWriteGate.scripted(script, calls: calls)
         let target = RekordboxWriteTarget.copy(database: URL(filePath: "/copy/master.db"), shareRoot: nil)
-        #expect(try gate.journal(target) == .interrupted(journal, changedSince: true))
-        try gate.keepJournal(target, "op-1")
+        let locks = MemoryWriteLocks()
+        let hold = try #require(try locks.port.tryLock(MemoryWriteLocks.key(for: target.database)))
+        #expect(try gate.journal(target, hold) == .interrupted(finding))
+        hold.release()
+        #expect(finding.request == RekordboxJournalRequest(operationID: "op-1", database: RekordboxFileStamp(size: 10, modifiedNanoseconds: 7)))
+        #expect(try gate.keepJournal(target, finding.request) == .kept)
+        #expect(calls.value.journalHolds == [MemoryWriteLocks.key(for: target.database)] && calls.value.journalRequests == [finding.request])
         #expect(calls.value.keptJournals == ["op-1"] && calls.value.order == ["journal", "keep journal"])
     }
 
-    /// 묶음은 초안마다 판을 나르고, 쓸 수 있는 묶음은 남긴 초안의 판만 나른다
+    /// 묶음은 초안마다 판과 읽어 넣은 내용의 해시를 나르고, 쓸 수 있는 묶음은 남긴 초안의 판만 나른다.
+    /// 쓴 초안의 해시는 읽어 넣은 내용의 해시다(도장의 저장 때 해시가 아니다, S6)
     @Test func 묶음은_초안마다_판을_나른다() {
-        let hash = DraftContentHash(hex: String(repeating: "b", count: 64))
-        let stamp = { (revision: UInt64) in DraftStamp(revision: DraftRevision(revision), origins: [.human], contentHash: hash) }
+        let saved = DraftContentHash(hex: String(repeating: "a", count: 64)), read = DraftContentHash(hex: String(repeating: "b", count: 64))
+        let entry = { (revision: UInt64) in
+            DraftBatchEntry(stamp: DraftStamp(revision: DraftRevision(revision), origins: [.human], contentHash: saved), contentHash: read)
+        }
         let batch = DraftWriteBatch(drafts: [ReflectionHarness.cue("a"), ReflectionHarness.cue("b")], gains: ["c": -1],
-                                    revisions: DraftBatchRevisions(tracks: [DraftKey(.cue, "a"): stamp(1), DraftKey(.cue, "b"): stamp(2),
-                                                                            DraftKey(.gain, "c"): stamp(3)]),
-                                    operation: DraftWriteOperation(id: "op", draftHome: URL(filePath: "/drafts")))
+                                    revisions: DraftBatchRevisions(tracks: [DraftKey(.cue, "a"): entry(1), DraftKey(.cue, "b"): entry(2),
+                                                                            DraftKey(.gain, "c"): entry(3)],
+                                                                   playlistSteps: [entry(4), entry(5)]),
+                                    operation: DraftWriteOperation(id: "op", draftHome: URL(filePath: "/drafts")), commitPolicy: .allOrNothing)
         #expect(batch.draftKeys == [DraftKey(.cue, "a"), DraftKey(.cue, "b"), DraftKey(.gain, "c")])
         let report = ReflectionHarness.report(cues: [ReflectionHarness.outcome("a", .written)])
         let writable = WritePreview(report: report, batch: batch).writableBatch
         #expect(writable.revisions.tracks.keys.sorted() == [DraftKey(.cue, "a")])
-        #expect(writable.operation == batch.operation && writable.revisions.playlistSteps.isEmpty)
+        #expect(writable.operation == batch.operation && writable.revisions.playlistSteps.isEmpty && writable.commitPolicy == .allOrNothing)
         #expect(batch.revisions.written([DraftKey(.gain, "c"), DraftKey(.cue, "a"), DraftKey(.tag, "x")])
-            == [WrittenDraft(key: DraftKey(.cue, "a"), revision: DraftRevision(1), contentHash: hash),
-                WrittenDraft(key: DraftKey(.gain, "c"), revision: DraftRevision(3), contentHash: hash)])
+            == [WrittenDraft(key: DraftKey(.cue, "a"), revision: DraftRevision(1), contentHash: read),
+                WrittenDraft(key: DraftKey(.gain, "c"), revision: DraftRevision(3), contentHash: read)])
+        #expect(batch.revisions.writtenSteps(at: [1, 7]) == [WrittenPlaylistStep(revision: DraftRevision(5), contentHash: read)])
+        #expect(DraftWriteBatch().commitPolicy == .writable)
+    }
+
+    /// 쓰기 방식(S8)·판·작업 정보는 세션이 미리 보기와 관문 쓰기까지 버리지 않고 나른다
+    @Test func 쓰기_방식은_관문까지_그대로_간다() async throws {
+        let harness = ReflectionHarness()
+        let batch = DraftWriteBatch(drafts: [ReflectionHarness.cue("a")], operation: DraftWriteOperation(id: "op", draftHome: URL(filePath: "/drafts")),
+                                    commitPolicy: .allOrNothing)
+        _ = try await harness.session.writeDrafts(batch, to: harness.session.target, dryRun: true)
+        let gate = harness.session.ports.gate, target = harness.session.target
+        _ = try await gate.preview(batch, [:], target) {}
+        let calls = harness.gateCalls.value
+        #expect(calls.writes.map(\.commitPolicy) == [.allOrNothing] && calls.writes.map(\.operation) == [batch.operation])
+        #expect(calls.previews.map(\.commitPolicy) == [.allOrNothing])
+    }
+
+    /// 곡 넣기 묶음도 옛 UUID별 초안 판과 작업 정보를 나른다(S2). 기본값은 지금 동작(모름·nil)이다
+    @Test func 곡_넣기_묶음의_판과_작업_정보() {
+        #expect(TrackAddBatch(plans: []).stagedUUIDs.isEmpty && TrackAddBatch(plans: []).revisions.isEmpty && TrackAddBatch(plans: []).operation == nil)
+        let entry = DraftBatchEntry(stamp: DraftStamp(revision: DraftRevision(1), origins: [.human], contentHash: DraftContentHash(hex: "c")),
+                                    contentHash: DraftContentHash(hex: "c"))
+        let batch = TrackAddBatch(plans: [], stagedUUIDs: ["/a.mp3": "s1"], revisions: DraftBatchRevisions(tracks: [DraftKey(.cue, "s1"): entry]),
+                                  operation: DraftWriteOperation(id: "op", draftHome: URL(filePath: "/drafts")))
+        #expect(batch.revisions.written([DraftKey(.cue, "s1")]).map(\.key.id) == ["s1"] && batch.operation?.id == "op")
     }
 
     /// 초안 포트의 출처: 정하지 않은 포트는 모름, 출처만 바꾼 포트는 같은 저장소를 쓴다

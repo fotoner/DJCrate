@@ -37,4 +37,19 @@ struct AutoReflectSelfTestRunTests {
         #expect(defaults.object(forKey: key.name) == nil)
         #expect(defaults.dictionaryRepresentation().keys.filter { $0 == key.name }.isEmpty)
     }
+
+    /// 곡 UUID 모음(무시한 제안·AI 도구 폴더)도 이 실행 안에서만 기억하고 사용자 환경설정에는 쓰지 않는다(S1)
+    @Test func 인자가_있으면_곡_모음도_환경설정에_쓰지_않는다() {
+        let defaults = TestDefaults.make("auto-reflect-selftest-strings")
+        let settings = SettingsStore(defaults: defaults, persist: SettingsStore.persists(arguments: ["djcrate", "--auto-reflect-selftest=save"]))
+        for name in [SettingKeys.dismissedGridSuggestions, SettingKeys.dismissedKeySuggestions, SettingKeys.dismissedGainSuggestions] {
+            settings.setStrings(name, ["t1", "t2"])
+            #expect(settings.strings(name) == ["t1", "t2"])
+            #expect(defaults.object(forKey: name) == nil)
+        }
+        // 저장하는 실행은 지금처럼 환경설정에 쓴다
+        let saving = SettingsStore(defaults: defaults, persist: true)
+        saving.setStrings(SettingKeys.dismissedGridSuggestions, ["t3"])
+        #expect(defaults.stringArray(forKey: SettingKeys.dismissedGridSuggestions) == ["t3"])
+    }
 }

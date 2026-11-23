@@ -26,9 +26,10 @@ struct RekordboxWriteJournalTests {
         return journal
     }
 
-    @Test func 쓰기_기록은_master_db_옆의_이름이다() {
+    /// 기록은 링크를 푼 master.db 옆이다(링크 풀기는 부르는 쪽이 한다. 링크와 원본이 같은 자리를 보는지는 쓰기 잠금 계약이 본다)
+    @Test func 쓰기_기록은_링크를_푼_master_db_옆의_이름이다() {
         let database = URL(filePath: "/r/master.db")
-        #expect(RekordboxWriteJournal.url(database: database).path == "/r/master.db.djc-write")
+        #expect(RekordboxWriteJournal.url(resolvedDatabase: database).path == "/r/master.db.djc-write")
     }
 
     @Test func 쓰기_기록은_왕복이_같다() throws {
@@ -62,7 +63,8 @@ struct RekordboxWriteJournalTests {
         list.newPlaylistIDs = ["new:a": "123"]
         list.trackAdds = [.init(stagedUUID: "s1", trackUUID: "t9",
                                 written: [WrittenDraft(key: DraftKey(.cue, "s1"), revision: DraftRevision(2), contentHash: Self.hash)],
-                                values: .init(cues: [EditableCue(kind: .hot(0), time: 1)], musicalKey: "8A", tags: nil),
+                                values: .init(cues: [EditableCue(kind: .hot(0), time: 1)],
+                                              grid: [GridSegment(start: 0.1, bpm: 128, firstBeatNumber: 1)], musicalKey: "8A", tags: nil),
                                 blockedFields: ["musicalKey"])]
         let data = try DraftCleanupList.encoder.encode(list)
         #expect(try DraftCleanupList.decode(data) == list)
@@ -71,6 +73,22 @@ struct RekordboxWriteJournalTests {
         #expect(throws: (any Error).self) { try DraftCleanupList.decode(JSONSerialization.data(withJSONObject: object)) }
         let url = DraftCleanupList.url(backups: URL(filePath: "/b"), operationID: "op-1")
         #expect(url.path == "/b/draft-cleanup/op-1.json")
+    }
+
+    /// 바깥에서 고친 재생 목록 단계의 사본(R22): 왕복이 같고 백업 폴더 안 판 이름 자리다
+    @Test func 재생_목록_단계_사본은_왕복이_같다() throws {
+        var draft = PlaylistDraft()
+        let rekordbox = PlaylistLayout([(PlaylistLayout.Item(id: "B", name: "나"), 1)])
+        try draft.append(.rename(playlist: .id("B"), name: "새 이름"), rekordbox: rekordbox)
+        let step = try #require(draft.steps.first)
+        let copy = PlaylistStepCopy(revision: DraftRevision(12), playlistID: "B", step: step, base: draft.base,
+                                    writtenHash: Self.hash, currentHash: try DraftContentHash(step: step, in: draft))
+        let data = try JSONEncoder.sorted.encode(copy)
+        #expect(try JSONDecoder().decode(PlaylistStepCopy.self, from: data) == copy)
+        var object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["version"] = 2
+        #expect(throws: (any Error).self) { try JSONDecoder().decode(PlaylistStepCopy.self, from: JSONSerialization.data(withJSONObject: object)) }
+        #expect(PlaylistStepCopy.url(folder: URL(filePath: "/b/w1"), revision: DraftRevision(12)).path == "/b/w1/playlist-step-copies/12.json")
     }
 
     /// 실제 실행의 훅은 아무것도 하지 않는다(재확인은 실제 확인을 쓴다)

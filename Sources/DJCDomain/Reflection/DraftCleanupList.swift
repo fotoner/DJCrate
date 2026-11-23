@@ -37,14 +37,17 @@ public struct DraftCleanupList: Codable, Equatable, Sendable {
         }
     }
 
-    /// 곡 넣기가 쓴 값(새 곡으로 옮긴 초안의 기준이 된다)
+    /// 곡 넣기가 쓴 값(새 곡으로 옮긴 초안의 기준이 된다). 쓰지 않은 종류는 nil
     public struct TrackAddValues: Codable, Equatable, Sendable {
         public var cues: [EditableCue]?
+        /// 분석과 함께 붙인 그리드
+        public var grid: [GridSegment]?
         public var musicalKey: String?
         public var tags: TagFields?
 
-        public init(cues: [EditableCue]? = nil, musicalKey: String? = nil, tags: TagFields? = nil) {
+        public init(cues: [EditableCue]? = nil, grid: [GridSegment]? = nil, musicalKey: String? = nil, tags: TagFields? = nil) {
             self.cues = cues
+            self.grid = grid
             self.musicalKey = musicalKey
             self.tags = tags
         }
@@ -60,7 +63,7 @@ public struct DraftCleanupList: Codable, Equatable, Sendable {
         public var written: [WrittenDraft]
         /// 넣기로 쓴 값
         public var values: TrackAddValues
-        /// 넣기에서 막혀 쓰지 못한 칸(새 판의 값을 그대로 옮긴다)
+        /// 넣기에서 막혀 쓰지 못한 칸(새 판의 값을 그대로 옮긴다). 태그 칸은 `TagFields.Key` 원시값, 그 밖은 `cues`·`grid`
         public var blockedFields: [String]
 
         public init(stagedUUID: String, trackUUID: String, written: [WrittenDraft], values: TrackAddValues, blockedFields: [String]) {

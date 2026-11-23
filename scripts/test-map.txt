@@ -222,6 +222,7 @@ when Sources/DJCDomain/Rekordbox/RekordboxWriteJournal.swift
 when Sources/DJCDomain/Rekordbox/RekordboxWriteLockKey.swift
 when Sources/DJCDomain/Rekordbox/RekordboxWriteHooks.swift
 when Sources/DJCDomain/Reflection/DraftCleanupList.swift
+when Sources/DJCDomain/Reflection/PlaylistStepCopy.swift
 when Sources/DJCApplication/Reflection/AutoReflection*.swift
 when Sources/DJCApplication/Reflection/ReflectionHold.swift
 when Sources/DJCApplication/Reflection/RekordboxJournalValues.swift

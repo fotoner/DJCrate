@@ -22,9 +22,12 @@ public final class MemoryWriteLocks: Sendable {
 
     public init() {}
 
-    /// 대상 master.db의 키: 부모 폴더 경로마다 고정된 값(실제 구현은 링크를 푼 부모 폴더의 장치·inode)
+    /// 링크를 푼 경로: 있는 경로는 실제로 링크를 풀고(시험의 임시 파일), 없는 경로(가짜 경로)는 표기만 맞춘다
+    public static func resolve(_ database: URL) -> URL { database.standardizedFileURL.resolvingSymlinksInPath() }
+
+    /// 대상 master.db의 키: 링크를 푼 부모 폴더 경로마다 고정된 값(실제 구현은 링크를 푼 부모 폴더의 장치·inode)
     public static func key(for database: URL) -> RekordboxWriteLockKey {
-        let folder = database.deletingLastPathComponent().standardizedFileURL.path
+        let folder = resolve(database).deletingLastPathComponent().path
         return RekordboxWriteLockKey(device: 1, inode: UInt64(truncatingIfNeeded: folder.utf8.reduce(5381) { ($0 &* 33) &+ UInt64($1) }))
     }
 
@@ -54,6 +57,10 @@ public final class MemoryWriteLocks: Sendable {
 
     public var port: RekordboxWriteLock {
         RekordboxWriteLock(
+            resolve: { database in
+                expectBlockingOffPool()
+                return Self.resolve(database)
+            },
             key: { [self] database in
                 expectBlockingOffPool()
                 state.withLock { $0.keyed.append(database) }
@@ -72,10 +79,17 @@ public final class MemoryWriteLocks: Sendable {
 }
 
 /// 쓰기 잠금 포트의 계약: 같은 master.db는 같은 키, 쥔 키는 다시 들어갈 수 없다(시도는 nil), 풀면 다시 잡힌다, 다른 대상은 따로 잡힌다.
-/// 다른 폴더 둘(`database`·`other`)을 준다. 실제 구현의 별칭·링크 규칙은 어댑터 시험이 따로 본다
-public func rekordboxWriteLockContract(_ lock: RekordboxWriteLock, database: URL, other: URL) throws {
+/// 다른 폴더 둘(`database`·`other`)을 준다. `links`(그 master.db를 가리키는 파일·폴더 링크)를 주면 링크를 푼 경로·키·쓰기 기록 자리가
+/// 원본과 같은지도 본다(R9·R11: 링크로 가리켜도 같은 잠금, 같은 기록)
+public func rekordboxWriteLockContract(_ lock: RekordboxWriteLock, database: URL, other: URL, links: [URL] = []) throws {
     let key = try lock.key(database)
     #expect(try lock.key(database) == key)
+    let resolved = try lock.resolve(database)
+    for link in links {
+        #expect(try lock.resolve(link) == resolved, "링크를 푼 경로가 원본과 같다: \(link.path)")
+        #expect(try lock.key(link) == key)
+        #expect(RekordboxWriteJournal.url(resolvedDatabase: try lock.resolve(link)) == RekordboxWriteJournal.url(resolvedDatabase: resolved))
+    }
     let otherKey = try lock.key(other)
     #expect(otherKey != key)
     let hold = try #require(try lock.tryLock(key))
