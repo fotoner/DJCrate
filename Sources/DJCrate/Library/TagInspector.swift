@@ -77,8 +77,10 @@ struct TagInspector: View {
     private func field(_ key: TagFields.Key, rows: [TrackRow], axis: Axis = .horizontal) -> some View {
         let current = model.field(key, rows: rows)
         return VStack(alignment: .leading, spacing: 4) {
-            CommitTextField(label: key.label, value: current.value, mixed: current.mixed, edited: current.edited, axis: axis) { text in
-                model.setText(key, text, rows: rows)
+            // 입력을 시작할 때 대상 곡을 고정하고(`begin`), 확정할 때 그 대상 가운데 아직 편집할 수 있는 곡에만 넣는다(S9)
+            CommitTextField(label: key.label, value: current.value, mixed: current.mixed, edited: current.edited, axis: axis,
+                            begin: { model.beginInput(key, rows: rows) }, cancel: { model.endInput(key) }) { text in
+                model.commitText(key, text, rows: rows)
             }
             .id(model.fieldID(key))
             .disabled(model.isTextLocked(rows))
@@ -96,6 +98,10 @@ private struct CommitTextField: View {
     let mixed: Bool
     let edited: Bool
     let axis: Axis
+    /// 입력을 시작했다(칸의 글자가 값과 달라졌다)
+    let begin: () -> Void
+    /// 입력을 확정하지 않고 거뒀다(글자가 다시 값과 같아졌다)
+    let cancel: () -> Void
     let commit: (String) -> Void
     @State private var text = ""
     @State private var dirty = false
@@ -119,7 +125,11 @@ private struct CommitTextField: View {
             .foregroundStyle(edited ? UIColors.draft.color : .primary)
             .onAppear { text = value }
             .onChange(of: value) { if !focused { text = value } }
-            .onChange(of: text) { dirty = text != value }
+            .onChange(of: text) {
+                let wasDirty = dirty
+                dirty = text != value
+                if dirty, !wasDirty { begin() } else if !dirty, wasDirty { cancel() }
+            }
             .onSubmit(apply)
             .onChange(of: focused) { if !focused { apply() } }
     }

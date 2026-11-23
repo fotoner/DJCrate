@@ -442,12 +442,15 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
     - 덱의 큐·그리드·게인 편집이 읽는다.
     - 태그·그림 편집, 목록 칸과 태그 시트 편집, 곡 편집 창 열기도 읽는다.
     - 덱은 저장한 곡의 새 초안·기준값을 적용하는 동안(`writeRefreshing`)에도 그 곡의 편집을 막는다. 쓰기 잠금이 먼저 풀려도 늦은 읽기가 편집을 덮지 않게 한다.
+    - 다시 읽기가 실패하면 저장한 곡을 `writePending`이 잡아 둔다. 다음 읽기가 성공하면 새 기준값을 적용하고 푼다.
+    - 덱의 곡 내용 적용에는 세대(`contentGeneration`)가 있다. 덱이 저장 뒤 갱신을 시작하면 먼저 시작한 최초 불러오기는 옛 큐·기준값을 적용하지 않는다.
   - 덱은 사본 `DeckModel.editsFrozen`과 `DeckModel.lockedTracks`를 든다. `LibraryStore.connectWriteLocks`가 잇는다.
     - 덱의 편집 가드는 `isEditLocked`다.
     - iTunes 동기화는 덱을 잠그지 않아 저장소 값과 다를 수 있다.
   - `showsWriteOverlay`는 진행 카드로 창을 덮을지다. 곡 단위로 쓰는 동안은 거짓이다. 종료를 기다리는 안내는 따로 뜬다.
-  - `showsWriteProgressChip`은 곡 단위로 쓰는 동안 취소할 수 있는 단계에 작은 진행·취소 자리(`WritingProgressChip`)를 보일지다. Esc도 이 자리가 받는다.
-  - 곡 단위로 쓴 뒤 읽기는 ⌘Z 기록을 통째로 지우지 않는다. 저장한 곡과 기준값이 옮겨진 곡의 태그 단계만 건너뛴다(`tagUndoGeneration`).
+  - `showsWriteProgressChip`은 곡 단위로 쓰는 동안 취소할 수 있는 단계에 작은 진행·취소 자리(`WritingProgressChip`)를 보일지다. 목록 아래 왼쪽 모서리에 놓는다. Esc도 이 자리가 받는다.
+  - 초안 쓰기 뒤 읽기(`isDraftWrite`)는 ⌘Z 기록을 통째로 지우지 않는다. 저장한 곡과 기준값을 옮긴 곡의 태그 단계만 `tagUndoGeneration`으로 건너뛴다.
+  - 태그 인스펙터의 글자 칸은 입력을 시작할 때 대상 곡을 고정한다(`beginInput`). 확정할 때 그 가운데 아직 편집할 수 있는 곡에만 넣는다.
   - `quitBlocked`는 앱 종료와 업데이트 설치 판단이다. `writeActivity`의 rekordbox 단계가 이 값을 읽는다(#300).
   - 사이드바와 상세 안쪽 조작은 각자 가드를 든다. 새 조작을 더하면 가드를 함께 둔다.
     - 라이브러리 읽기·쓰기 조작은 `libraryBusy`를 읽는다. USB 조작도 같다.

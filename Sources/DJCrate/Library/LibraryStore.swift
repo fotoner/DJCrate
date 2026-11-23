@@ -420,6 +420,7 @@ final class LibraryStore {
     func connectWriteLocks(to deck: DeckModel) {
         onWriteLock = { [weak deck] in deck?.editsFrozen = $0 }
         onLockedTracks = { [weak deck] in deck?.lockedTracks = $0 }
+        onWrittenAwaitingReload = { [weak deck] in deck?.writePending = $0 }
         onRekordboxWritten = { [weak deck, weak self] uuids in
             // 처음부터 다시 불러오지 않고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다(소리·파형은 그대로).
             guard let deck, let uuid = deck.row?.track.uuid, uuids.contains(uuid) else { return }
@@ -447,7 +448,11 @@ final class LibraryStore {
     /// 라이브러리를 읽을 때마다(성공) 라이브러리 곡·추가한 곡의 음원 경로를 받는다. 앱은 조립 지점이 캐시 정리를 붙인다(시험은 없다).
     @ObservationIgnored var onLibraryLoaded: ((Set<String>) -> Void)?
     /// rekordbox에 쓰거나 되돌렸지만 아직 새 스냅샷으로 다시 읽지 못한 곡. 다음 읽기가 성공하면 덱에 알린다.
-    @ObservationIgnored var writtenAwaitingReload: Set<String> = []
+    /// 덱은 이 집합의 곡을 새 스냅샷을 받아 새 기준값을 적용할 때까지 편집하지 못한다(다시 읽기에 실패해도 다음 성공한 읽기까지, `onWrittenAwaitingReload`).
+    @ObservationIgnored var writtenAwaitingReload: Set<String> = [] {
+        didSet { if writtenAwaitingReload != oldValue { onWrittenAwaitingReload?(writtenAwaitingReload) } }
+    }
+    @ObservationIgnored var onWrittenAwaitingReload: ((Set<String>) -> Void)?
     /// 종료를 기다리느라 쓴 뒤 다시 읽기를 미뤘다(#305). 종료를 취소하면 한 번 이어서 읽는다. 읽은 뒤 알릴 곡·쌓을 편집은 위 값들이 들고 있다.
     @ObservationIgnored var reloadPostponedForQuit = false
     /// 마지막 쓰기·복원은 끝났지만 뒤따른 일(초안 정리·다시 읽기·복원 충돌)에 남은 경고. 쓰기 결과와 나눠 알린다.

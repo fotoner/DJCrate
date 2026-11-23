@@ -81,6 +81,16 @@ struct ContentView: View {
                     }
                 }
                 .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.35), value: store.toast?.id)
+                // 곡 단위로 쓰는 동안 취소할 수 있는 단계에는 덮개 대신 작은 진행·취소 자리를 둔다(R21). 목록 아래 왼쪽 모서리, 상태 줄 바로 위라서
+                // 덱 컨트롤·큐 목록 필터·목록 머리 줄과 겹치지 않는다. 알림(아래 가운데)과도 자리가 다르다
+                .overlay(alignment: .bottomLeading) {
+                    if store.showsWriteProgressChip, let stage = store.writeStage {
+                        WritingProgressChip(stage: stage, onCancel: { store.cancelWritePreparation() })
+                            .padding(.bottom, 24 + StatusBar.height)
+                            .padding(.leading, 16)
+                            .transition(.opacity)
+                    }
+                }
         }
         // 통째로 잠그는 rekordbox 쓰기(복원·곡 넣기·빼기)와 USB 쓰기는 창 전체를 덮어 다른 조작을 막는다.
         // 곡 단위로 쓰는 동안(R21)은 덮지 않는다: 진행 단계는 `writeStage`가 들고, 종료를 기다리는 안내만 아래 갈래에서 뜬다.
@@ -92,14 +102,6 @@ struct ContentView: View {
                 UsbWritingOverlay(model: UsbWriteProgressModel(write), onCancel: { store.usb?.cancelWrite() }).transition(.opacity)
             } else if let wait = store.quitWait.current {
                 QuitWaitOverlay(wait: wait, onCancel: { store.quitWait.cancel() }).transition(.opacity)
-            }
-        }
-        // 곡 단위로 쓰는 동안 취소할 수 있는 단계에는 덮개 대신 작은 진행·취소 자리를 모서리에 둔다(R21). 목록·덱을 가리지 않는다
-        .overlay(alignment: .topTrailing) {
-            if store.showsWriteProgressChip, let stage = store.writeStage {
-                WritingProgressChip(stage: stage, onCancel: { store.cancelWritePreparation() })
-                    .padding(.top, 8).padding(.trailing, 12)
-                    .transition(.opacity)
             }
         }
         .sheet(item: Binding(get: { store.usb?.syncSheet }, set: { store.usb?.syncSheet = $0 })) { request in

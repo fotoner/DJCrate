@@ -82,6 +82,8 @@ extension DeckModel {
     /// 같은 곡·같은 파일인데 내용(큐·그리드·게인·메타데이터)만 바뀌었을 때.
     func softReload(_ newRow: TrackRow, writeRefreshToken token: Int? = nil) {
         clearDraftUndo()
+        // 이 갱신이 더 새롭다: 먼저 시작해 아직 끝나지 않은 최초 불러오기의 내용(옛 곡 행의 큐·기준값)은 적용하지 않는다
+        contentGeneration += 1
         replaceRow(newRow)
         // rekordbox 키가 바뀌었을 수 있다(장·단 기준과 키 제안을 새 값으로 맞춘다).
         refreshKeySegments()
@@ -102,6 +104,8 @@ extension DeckModel {
             self.applyAnalysisState(content.analysisState)
             self.refreshGrid()
             self.refreshSuggestionNote()
+            // 최초 불러오기의 내용을 건너뛰었으면 첫 메모리 큐 자리는 여기서 맞춘다
+            self.placeAtFirstMemoryCueIfNeeded(content.draft.cues)
             // 새 초안·기준값을 적용했다: 저장한 곡의 편집을 푼다
             if let token { self.finishWriteRefresh(uuid: request.uuid, token: token) }
             // 고른 큐·걸린 루프는 같은 자리·종류의 새 큐로 잇는다(반영하면 rekordbox 큐로 바뀌어 ID가 새로 생긴다).
@@ -164,6 +168,8 @@ extension DeckModel {
         guard let row else { return }
 
         let request = loadRequest(row), generation = loadGeneration, key = row.track.uuid, loader = loader, analyzer = analyzer
+        contentGeneration += 1
+        let contentGen = contentGeneration
         loadTask = Task {
             // 1) 음원을 열기 전에 필요한 값만 메인 밖에서 읽고, 음원은 바로 연다(초안·그리드를 기다리지 않고 재생할 수 있게).
             let prepared = await loader.prepareAudio(request)
@@ -173,7 +179,8 @@ extension DeckModel {
             // 2) 초안·그리드·그림은 백그라운드에서 읽고, 아직 이 곡일 때 한 번에 적용한다.
             let content = await loader.content(request, duration: self.duration)
             guard self.isCurrentLoad(generation) else { return }
-            self.apply(content)
+            // 읽는 사이 더 새로운 갱신(저장 뒤 갱신)이 시작됐으면 옛 곡 행의 큐·그리드·기준값은 적용하지 않는다. 이미 연 음원은 그대로다
+            if contentGen == self.contentGeneration { self.apply(content) }
             if self.artwork == nil, prepared.fileExists, self.runsAnalysis, let url = request.audioFile {
                 let embedded = await loader.embeddedArtwork(url)
                 guard self.isCurrentLoad(generation), self.artwork == nil else { return }
@@ -255,15 +262,18 @@ extension DeckModel {
         applyAnalysisState(content.analysisState)
         if let artwork = content.artwork { self.artwork = Self.image(artwork) }
         refreshGrid()
-        // CDJ처럼 첫 메모리 큐에서 대기한다. 그사이 사용자가 위치를 옮겼으면 건드리지 않는다.
-        if placeAtFirstMemoryCue {
-            placeAtFirstMemoryCue = false
-            if !isPlaying, playhead == cuePoint {
-                cuePoint = DeckCuePoint.onLoad(cues: content.draft.cues, duration: duration)
-                playhead = cuePoint
-                audio.seekWhilePaused(cuePoint)
-                updateGridBPM()
-            }
+        placeAtFirstMemoryCueIfNeeded(content.draft.cues)
+    }
+
+    /// CDJ처럼 첫 메모리 큐에서 대기한다. 그사이 사용자가 위치를 옮겼으면 건드리지 않는다.
+    func placeAtFirstMemoryCueIfNeeded(_ cues: [EditableCue]) {
+        guard placeAtFirstMemoryCue else { return }
+        placeAtFirstMemoryCue = false
+        if !isPlaying, playhead == cuePoint {
+            cuePoint = DeckCuePoint.onLoad(cues: cues, duration: duration)
+            playhead = cuePoint
+            audio.seekWhilePaused(cuePoint)
+            updateGridBPM()
         }
     }
 

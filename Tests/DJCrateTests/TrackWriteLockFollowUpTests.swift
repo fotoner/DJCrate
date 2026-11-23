@@ -29,6 +29,9 @@ struct TrackWriteLockFollowUpTests {
         var writingRow: TrackRow { store.rowsByUUID[writing.uuid]! }
         var otherRow: TrackRow { store.rowsByUUID[other.uuid]! }
 
+        /// 켜면 쓴 뒤 다시 읽기(스냅샷 뜨기)가 실패한다
+        let failingSnapshots = TestSwitch()
+
         init() async throws {
             fixture = try RekordboxFixture()
             var first = TrackSpec()
@@ -38,7 +41,7 @@ struct TrackWriteLockFollowUpTests {
             try fixture.add(first)
             other = TrackSpec()
             try fixture.add(other)
-            let writer = writer
+            let writer = writer, failing = failingSnapshots
             store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("lock-round1"), persist: false),
                                       activityLog: ActivityLog(url: nil), feedback: AppFeedback(announce: { _ in }),
                                       backupDirectory: fixture.backups,
@@ -46,7 +49,10 @@ struct TrackWriteLockFollowUpTests {
                                       draftHome: fixture.root.appending(path: "drafts"),
                                       rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot,
                                       arguments: ["test"], environment: [:],
-                                      takeLiveSnapshot: { [database = fixture.database] _ in database }, writer: writer)
+                                      takeLiveSnapshot: { [database = fixture.database] _ in
+                                          if failing.isOn { throw DJCError.writeRefused("합성 읽기 실패") }
+                                          return database
+                                      }, writer: writer)
             await store.load(snapshot: fixture.database)
         }
 
@@ -109,11 +115,19 @@ struct TrackWriteLockFollowUpTests {
         private let entered = Mutex(false)
         private let resume = DispatchSemaphore(value: 0)
 
+        private let firstOnly = Mutex(false)
+
         func arm() { armed.withLock { $0 = true } }
+        /// 처음 한 번만 붙잡는다(뒤 읽기는 바로 지나간다)
+        func armFirstOnly() {
+            firstOnly.withLock { $0 = true }
+            armed.withLock { $0 = true }
+        }
         var hasEntered: Bool { entered.withLock { $0 } }
 
         func pass() {
             guard armed.withLock({ $0 }) else { return }
+            if firstOnly.withLock({ $0 }) { armed.withLock { $0 = false } }
             entered.withLock { $0 = true }
             resume.wait()
         }
@@ -181,6 +195,87 @@ struct TrackWriteLockFollowUpTests {
         #expect(deck.draft?.cues.count == 2)
     }
 
+    // MARK: - S2(2라운드) 저장은 됐는데 다시 읽기가 실패해도 다음 성공한 읽기까지 덱 편집을 막는다
+
+    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    func 저장은_됐는데_다시_읽기가_실패하면_다음_성공한_읽기까지_그_곡_덱_편집을_막는다() async throws {
+        let rig = try await Rig()
+        rig.addCueDraft()
+        let store = rig.store
+        let row = rig.writingRow
+        let h = try DeckHarness()
+        h.deck.load(row)
+        try await h.loaded()
+        store.connectWriteLocks(to: h.deck)
+        store.onLoadToDeck = { [weak deck = h.deck] in deck?.load($0) }
+        store.setDeckTrack(row)
+        #expect(h.deck.draft?.cues.isEmpty == true)
+
+        rig.failingSnapshots.set(true)
+        let outcome = await store.session.write(rows: [row], playlists: false)
+        guard case .written = outcome else { Issue.record("저장이 성공하지 못했다: \(outcome)"); return }
+        #expect(!store.libraryBusy && store.lockedTracks.isEmpty, "쓰기 잠금은 풀렸다")
+        #expect(store.writtenAwaitingReload == [row.track.uuid], "새 스냅샷을 받지 못해 알릴 곡이 남았다")
+        #expect(h.deck.isEditLocked, "새 기준값을 받지 못한 곡은 덱 편집을 막는다")
+        h.deck.addMemoryCue(at: 40.5)
+        #expect(h.deck.draft?.cues.isEmpty == true, "쓰기 전 기준값의 초안에는 편집이 들어가지 않는다")
+
+        // 다음 읽기가 성공하면 새 기준값을 적용하고 푼다
+        rig.failingSnapshots.set(false)
+        await store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(await waitForState(until: { !h.deck.isEditLocked }), "읽기가 성공해도 덱 편집이 풀리지 않았다")
+        #expect(store.writtenAwaitingReload.isEmpty)
+        #expect(h.deck.draft?.cues.count == 1 && h.deck.draft?.hasChanges == false, "쓴 큐가 rekordbox 값이 된 새 기준이다")
+        h.deck.addMemoryCue(at: 40.5)
+        #expect(h.deck.draft?.cues.count == 2)
+    }
+
+    // MARK: - S10 쓰는 도중 덱에 올린 곡의 최초 읽기가 저장 뒤 갱신보다 늦게 끝나도 옛 값을 적용하지 않는다
+
+    @Test func 최초_불러오기가_저장_뒤_갱신보다_늦게_끝나도_옛_큐와_기준값을_적용하지_않는다() async throws {
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
+        let audio = FakeDeckAudio()
+        let drafts = MemoryDrafts()
+        let storage = DeckStorage.memory(drafts)
+        var reader = TrackAssetReader.memory(storage)
+        let gate = ReloadGate()
+        let baseCueDraft = reader.cueDraft
+        reader.cueDraft = { uuid in
+            gate.pass()
+            return baseCueDraft(uuid)
+        }
+        let deck = DeckModel.test(audio: audio, storage: storage, reader: reader, runsAnalysis: false)
+        store.connectWriteLocks(to: deck)
+
+        // 쓰는 도중 그 곡을 덱에 올린다. 최초 읽기(큐 초안)가 쓰기 전 곡 행으로 시작해 붙잡힌다
+        let lock = store.reflection.session.ports.lock
+        lock.setTracks(["track-1"])
+        lock.setDraftWriting(true)
+        lock.set(true, false)
+        gate.armFirstOnly()
+        deck.load(Self.track(cues: []))
+        #expect(await waitForState(until: { gate.hasEntered }), "최초 읽기가 시작되지 않았다")
+
+        // 쓰기가 끝나고 새 스냅샷의 곡 행으로 저장 뒤 갱신이 먼저 적용된다
+        let written = Cue(id: "N1", contentID: "1", kind: 1, inMsec: 8000, name: "", colorTableIndex: 0)
+        let newRow = Self.track(cues: [written])
+        store.rowsByUUID["track-1"] = newRow
+        store.onRekordboxWritten?(["track-1"])
+        #expect(await waitForState(until: { deck.draft?.cues.count == 1 }), "저장 뒤 갱신이 적용되지 않았다")
+        lock.set(false, false)
+        lock.setDraftWriting(false)
+        lock.setTracks([])
+        #expect(await waitForState(until: { !deck.isEditLocked }))
+
+        // 늦게 끝난 최초 읽기는 옛 곡 행의 큐·기준값이라 적용하지 않는다
+        gate.open()
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(deck.draft?.cues.count == 1 && deck.row == newRow, "덱의 큐·기준값은 저장 뒤 값이다")
+        #expect(deck.canPlay, "이미 열린 음원은 그대로다")
+        deck.addMemoryCue(at: 40.5)
+        #expect(deck.draft?.cues.count == 2)
+    }
+
     // MARK: - S3 재생 목록만 쓰는 묶음(세션)은 TrackWriteLockTests와 ReflectionSession 시험이 본다
 
     // MARK: - S4 저장 중 다른 곡의 ⌘Z는 저장 뒤에도 된다
@@ -210,6 +305,43 @@ struct TrackWriteLockFollowUpTests {
         #expect(store.tagDrafts[other.track.uuid]?.hasChanges != true, "⌘Z로 되돌려진다")
     }
 
+    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    func 재생_목록만_저장하는_동안_고친_다른_곡_태그_되돌리기는_저장_뒤에도_된다() async throws {
+        let rig = try await Rig()
+        let store = rig.store
+        let undo = UndoManager()
+        store.undoManager = undo
+        let other = rig.otherRow
+        // 재생 목록·재생 기록만 쓰는 묶음: 곡이 없고 쓴 곡 집합도 비어 있다(초안 쓰기 표시만 있다)
+        let lock = store.reflection.session.ports.lock
+        lock.setTracks([])
+        lock.setDraftWriting(true)
+        lock.set(true, false)
+        store.tags.setTag(.title, "저장 중에 고친 제목", rows: [other])
+        #expect(store.tagDrafts[other.track.uuid]?.hasChanges == true && undo.canUndo)
+        // 쓴 뒤 다시 읽기(세션이 쓰는 동안 부른다)
+        let reloaded = await store.reloadAfterWrite(written: [], playlistEdits: [])
+        #expect(reloaded)
+        lock.set(false, false)
+        lock.setDraftWriting(false)
+        lock.setTracks([])
+        #expect(undo.canUndo, "저장한 곡이 없어도 초안 쓰기 뒤 읽기는 다른 곡의 ⌘Z를 지우지 않는다")
+        undo.undo()
+        #expect(store.tagDrafts[other.track.uuid]?.hasChanges != true)
+    }
+
+    @Test(.enabled(if: LiveDraftHome.isIsolated))
+    func 초안_쓰기가_아닌_다시_읽기는_되돌리기_기록을_통째로_지운다() async throws {
+        let rig = try await Rig()
+        let store = rig.store
+        let undo = UndoManager()
+        store.undoManager = undo
+        store.tags.setTag(.title, "고친 제목", rows: [rig.otherRow])
+        #expect(undo.canUndo)
+        await store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(!undo.canUndo, "일반 읽기(동기화)는 옛 기준의 ⌘Z 기록을 지운다")
+    }
+
     // MARK: - S5 잠긴 곡과 잠기지 않은 곡을 함께 고르면
 
     @Test func 잠긴_곡과_잠기지_않은_곡을_함께_고르면_잠기지_않은_곡만_편집_대상이다() {
@@ -233,6 +365,46 @@ struct TrackWriteLockFollowUpTests {
         lock.setDraftWriting(false)
         lock.setTracks([])
         #expect(model.writableRows([locked, open]).count == 2)
+    }
+
+    // MARK: - S9 입력을 시작할 때 대상 곡을 고정한다
+
+    @Test func 입력을_시작할_때_대상을_고정해_잠금이_풀린_뒤_확정해도_처음_대상에만_들어간다() {
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
+        let model = TagInspectorModel(store: store)
+        let a = TagInspectorModelTests.row("a"), b = TagInspectorModelTests.row("b")
+        let lock = store.reflection.session.ports.lock
+        lock.setTracks([a.track.uuid])
+        lock.setDraftWriting(true)
+        lock.set(true, false)
+        // A·B를 골랐는데 A가 쓰는 곡이다: B의 제목을 입력하기 시작한다
+        model.beginInput(.title, rows: [a, b])
+        // 입력하는 사이 A의 쓰기가 끝나 잠금이 풀린다
+        lock.set(false, false)
+        lock.setDraftWriting(false)
+        lock.setTracks([])
+        // Return을 누르면 화면은 이제 둘 다 편집 대상으로 보지만, 입력을 시작할 때의 대상(B)에만 들어간다
+        model.commitText(.title, "B만 바꾼 제목", rows: [a, b])
+        #expect(Set(store.tagDrafts.keys) == [b.track.uuid], "입력 중에 풀린 A에는 들어가지 않는다")
+        // 확정하면 고정은 풀린다: 다음 입력은 그때의 대상을 쓴다
+        model.commitText(.title, "둘 다", rows: [a, b])
+        #expect(Set(store.tagDrafts.keys) == [a.track.uuid, b.track.uuid])
+    }
+
+    @Test func 입력을_시작할_때_대상이던_곡이_확정_전에_잠기면_그_곡은_빠진다() {
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
+        let model = TagInspectorModel(store: store)
+        let a = TagInspectorModelTests.row("a"), b = TagInspectorModelTests.row("b")
+        model.beginInput(.title, rows: [a, b])
+        let lock = store.reflection.session.ports.lock
+        lock.setTracks([a.track.uuid])
+        lock.setDraftWriting(true)
+        lock.set(true, false)
+        model.commitText(.title, "새 제목", rows: [a, b])
+        #expect(Set(store.tagDrafts.keys) == [b.track.uuid], "확정할 때 아직 편집할 수 있는 곡에만 들어간다")
+        lock.set(false, false)
+        lock.setDraftWriting(false)
+        lock.setTracks([])
     }
 
     // MARK: - S7 곡 단위 쓰기에는 덮개 대신 작은 진행·취소 자리가 있다

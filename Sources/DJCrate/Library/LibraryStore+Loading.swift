@@ -129,9 +129,10 @@ extension LibraryStore {
                            started: ContinuousClock.Instant) {
         let opened = read.opened, loaded = read.opened.loaded
         let snapshot = read.snapshot, generation = read.generation, synchronizingDrafts = read.synchronizingDrafts
-        // 곡 단위로 쓴 뒤 읽기는 저장한 곡과 기준값이 옮겨진 곡의 태그 ⌘Z 단계만 무효로 한다(아래). 다른 곡을 저장 중에 고친 ⌘Z는 남긴다.
-        // 그 밖의 읽기는 ⌘Z 기록을 통째로 지운다: 쓰는 동안 바뀐 것은 태그뿐이다(재생 목록·재생 기록·합치기는 `libraryBusy`로 막혀 쓰기 시작 때 이미 지웠다)
-        let keepsUndo = !synchronizingDrafts && !writtenAwaitingReload.isEmpty && playlists.playlistEditsAwaitingReload.isEmpty
+        // 초안 쓰기 뒤 읽기(쓰는 곡이 없는 재생 목록·재생 기록만 쓰는 묶음 포함)는 저장한 곡과 기준값이 옮겨진 곡의 태그 ⌘Z 단계만 무효로 한다(아래).
+        // 다른 곡을 저장 중에 고친 ⌘Z는 남긴다. 그 밖의 읽기는 ⌘Z 기록을 통째로 지운다: 쓰는 동안 바뀐 것은 태그뿐이다
+        // (재생 목록·재생 기록·합치기는 `libraryBusy`로 막혀 쓰기 시작 때 이미 지웠다)
+        let keepsUndo = !synchronizingDrafts && isDraftWrite && playlists.playlistEditsAwaitingReload.isEmpty
         if !keepsUndo { undoManager?.removeAllActions(withTarget: self) }
         applyLoadedRows(from: loaded)
         let previousTags = tagDrafts, previousPlaylist = playlists.playlistDraft
