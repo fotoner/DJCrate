@@ -27,6 +27,10 @@ public struct DraftFiles: Sendable {
     public var isPlainPath: @Sendable (_ kind: XMLImportDrafts.Kind, _ trackUUID: String) -> Bool
     /// 초안에 새로 들이는 큐의 ID(`DraftStore.newCueID`와 같은 규칙)
     public var newCueID: @Sendable () -> UUID
+    /// 이 포트로 저장하는 초안의 출처(R5, CLI는 CLI·AI·스킬은 agent). 정하지 않으면 모름이다. 실제 구현은 W1-B(#400)
+    public var origin: DraftOrigin = .unknown
+    /// 곡 초안의 도장(출처·판·저장한 때의 해시). 없거나 모르면 nil(기본값: 모름)
+    public var stamp: @Sendable (DraftKey) -> DraftStamp? = { _ in nil }
 
     public init(exists: @escaping @Sendable (_ kind: XMLImportDrafts.Kind, _ trackUUID: String) -> Bool,
                 saveCue: @escaping @Sendable (CueDraft) throws -> Void,

@@ -59,6 +59,11 @@ public struct WriteLock {
     public var set: @MainActor (_ locked: Bool, _ deck: Bool) -> Void
     /// 쓰기 단계 안내(nil이면 지운다)
     public var stage: @MainActor @Sendable (WriteStage?) -> Void
+    /// 곡 단위 편집 잠금(R21): 쓰는 묶음에 든 곡의 편집만 막는다(빈 집합이면 푼다). 덱 재생·사이드바·목록·다른 곡 편집은 그대로다.
+    /// 기본값은 아무것도 하지 않는다(지금은 `set`이 통째로 잠근다). 동작은 W1-G(#401)가 붙인다
+    public var setTracks: @MainActor (Set<String>) -> Void = { _ in }
+    /// 지금 편집을 막은 곡
+    public var lockedTracks: @MainActor () -> Set<String> = { [] }
 
     public init(isLocked: @escaping @MainActor () -> Bool, set: @escaping @MainActor (Bool, Bool) -> Void,
                 stage: @escaping @MainActor @Sendable (WriteStage?) -> Void) {
@@ -189,6 +194,13 @@ public struct RekordboxBackups: Sendable {
     public var saveDraft: @Sendable (RekordboxBackupDraft, _ backup: URL) throws -> Void
     /// 백업에 남은 참고 경고(경로가 예상과 달라 남긴 분석 파일, 복원 결과에 적는다). 없으면 nil
     public var fileWarning: @Sendable (_ backup: URL) -> String?
+    /// 자동 저장의 백업 조건(R13): 백업 폴더가 대상 master.db와 같은 볼륨이라 클론이 되는지, 여유 공간이
+    /// `RekordboxBackupCondition.requiredFreeSpace` 이상인지. 기본값은 모름(자동 저장은 보류한다). 실제 판정은 W1-A가 붙인다
+    public var autoSaveCondition: @Sendable (_ backups: URL, _ database: URL) -> RekordboxBackupCondition = { _, _ in .unknown }
+    /// 백업 솎기에서 뺄 백업 폴더(백업 루트 기준 상대 경로, R22·R11). 그 백업 루트에 남은 미정리 목록이 가리키는 폴더
+    /// (`DraftCleanupList.protectedBackupFolders`)다: 다시 켠 뒤 정리가 바깥에서 고친 재생 목록 단계의 사본을 그 폴더에 남기기 때문이다.
+    /// 솎기(쓰기 입구의 `prune`, W1-A)가 지우기 전에 묻고, 목록이 지워질 때까지 그 폴더를 남긴다. 기본값은 빈 집합(지금 동작)이다
+    public var protectedFolders: @Sendable (_ backups: URL) throws -> Set<String> = { _ in [] }
 
     public init(list: @escaping @Sendable (URL) -> [RekordboxWriteBackup], laterCount: @escaping @Sendable (URL, URL) -> Int,
                 pointRestoreRefusal: @escaping @Sendable (URL, URL) -> String?, drafts: @escaping @Sendable (URL) -> RekordboxBackupDrafts,

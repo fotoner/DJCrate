@@ -89,6 +89,38 @@ public struct DraftStore: Sendable {
     /// 초안 저장소에서 받는다(실제 구현은 무작위 UUID, 메모리 구현은 프로세스 안에서 겹치지 않는 차례 번호)
     public var newCueID: @Sendable () -> UUID
 
+    // MARK: 출처·판(R5·R22). 기본값은 지금 동작이다(도장을 적지 않고, 판 지정 삭제는 아무것도 지우지 않는다). 실제 구현은 W1-B(#400)
+
+    /// 이 포트로 저장하는 초안의 출처. 조립 지점이 정한다(앱 편집 포트는 사람 편집, CLI는 CLI, LINK는 LINK).
+    /// 정하지 않은 포트는 모름이라 그 초안은 제안이다(자동 저장하지 않는다)
+    public var origin: DraftOrigin = .unknown
+    /// 같은 저장 큐·파일을 쓰되 출처만 다른 포트를 만든다(복원이 되살린 초안·LINK). nil이면 `origin`만 바꾼 같은 포트다
+    public var originVariant: (@Sendable (DraftOrigin) -> DraftStore)?
+    /// 곡 초안의 도장(출처·판·저장한 때의 해시). 초안이 없거나 도장을 모르면 nil. 파일을 읽지 않는다
+    public var stamp: @Sendable (DraftKey) -> DraftStamp? = { _ in nil }
+    /// 재생 목록 초안 단계의 도장(`playlistDraft().steps`와 같은 차례). 모르면 빈 배열
+    public var playlistStamps: @Sendable () -> [DraftStamp] = { [] }
+    /// 곡 초안의 판 지정 삭제(쓴 뒤 정리, R22). 견주는 해시는 `WrittenDraft.contentHash`(묶음에 실제로 읽어 넣은 내용)다.
+    /// - 판과 지금 내용의 해시가 모두 쓴 것과 같으면 지운다(`removed`).
+    /// - 판이 같고 지금 해시가 다르면(바깥에서 고침) 지우지 않고 제안으로 남긴다(`suggested`). 같은 잠금 안에서 그 초안에 새 판을 주고
+    ///   출처에 모름(`.unknown`)을 더해 기록한다. 그래서 나중에 파일이 저장 당시(쓴) 내용으로 돌아와도 제안이고, 같은 미정리 목록으로
+    ///   정리를 다시 해도(다시 켠 뒤) 판이 달라 지우지 않는다.
+    /// - 판이 다르거나 초안이 없으면(쓰는 동안 새로 저장, 이미 지움) 그대로 둔다(`kept`).
+    /// 비교와 삭제는 앱·CLI가 같은 초안 잠금 안에서 한다. 앞서 걸린 저장 뒤에 한다
+    public var removeWritten: @Sendable ([WrittenDraft]) throws -> DraftRemoval = { DraftRemoval(kept: $0) }
+    /// 그 판의 초안을 제안으로 바꾼다("이대로 둔다", R11): 판이 같은 곡 초안과 재생 목록 단계에 새 판을 주고 출처에 모름(`.unknown`)을 더한다.
+    /// 지우지 않는다. 새 판이라 미정리 목록을 지우기 전에 멈춰 다시 정리해도 그 초안을 쓴 것으로 보고 지우지 않는다.
+    /// 판이 다른 초안(쓰는 동안 새로 저장)은 그대로 둔다. 바꾼 초안의 옛 판 → 새 판을 돌려준다. 같은 초안 잠금 안에서 한다
+    public var markSuggestions: @Sendable (_ drafts: [WrittenDraft], _ playlistSteps: Set<DraftRevision>) throws -> [DraftRevision: DraftRevision] =
+        { _, _ in [:] }
+    /// 쓴 재생 목록 단계의 정리(R22). 판으로 찾은 쓴 단계는 해시가 달라도 뺀다. 다만 지금 해시가 쓴 해시와 다르면 바깥에서 고친 지금 내용을
+    /// 실제 목록 ID와 함께 `PlaylistStepCopy`로 `copyFolder`에 남긴 뒤에만 뺀다. 사본을 남기지 못하면 그 단계를 남긴다(`copyFailed`:
+    /// 부르는 쪽은 미정리 목록을 지우지 않고 그 대상의 다음 쓰기를 보류한 채 다음 정리 때 다시 한다).
+    /// 새 목록의 연결 ID(`new:키` → 실제 ID)는 남은 단계의 대상·목적지에 옮긴다(옮기는 규칙은 `PlaylistDraft`, W2-G2).
+    /// 막힌 단계와 쓰는 동안 더한 단계는 남는다. 같은 초안 잠금 안에서 한다
+    public var removeWrittenSteps: @Sendable (PlaylistStepCleanup) throws -> PlaylistStepRemoval =
+        { PlaylistStepRemoval(notFound: Set($0.written.map(\.revision))) }
+
     public init(flush: @escaping @Sendable () -> Void,
                 saveRevision: @escaping @Sendable () -> UInt64,
                 failures: @escaping @Sendable () -> [DraftSaveFailure],
@@ -167,6 +199,16 @@ public struct DraftStore: Sendable {
 }
 
 extension DraftStore {
+    /// 같은 저장소를 다른 출처로 저장하는 포트. 구현이 출처 포트를 새로 만들므로(`originVariant`) 이 포트에 바꿔 넣은 클로저
+    /// (시험의 실패 주입 등)는 따라가지 않는다: 실패를 주입하려면 출처 포트를 만든 뒤 그 포트에 바꿔 넣는다.
+    /// `originVariant`가 없는 포트(손으로 만든 포트)는 `origin` 표시만 바뀌고 도장은 그 구현을 따른다
+    public func with(origin: DraftOrigin) -> DraftStore {
+        if let originVariant { return originVariant(origin) }
+        var copy = self
+        copy.origin = origin
+        return copy
+    }
+
     /// 지금의 큐 초안: 저장하지 못한 입력이 디스크보다 최신이다(지우기였으면 nil)
     public func currentCue(_ uuid: String) -> CueDraft? {
         if let pending = pendingCue(uuid) { return pending.hasChanges ? pending : nil }
@@ -194,6 +236,83 @@ extension DraftStore {
     public func saveCue(_ draft: CueDraft) { saveCue(draft, { _ in }) }
     public func saveGrid(_ draft: GridDraft) { saveGrid(draft, { _ in }) }
     public func saveGain(_ gain: Double?, trackUUID: String) { saveGain(gain, trackUUID, { _ in }) }
+}
+
+/// 쓴 재생 목록 단계 하나(R22)
+public struct WrittenPlaylistStep: Hashable, Sendable {
+    public var revision: DraftRevision
+    /// 묶음에 실제로 읽어 넣은(쓴) 단계의 해시(`DraftContentHash(step:in:)`)
+    public var contentHash: DraftContentHash
+
+    public init(revision: DraftRevision, contentHash: DraftContentHash) {
+        self.revision = revision
+        self.contentHash = contentHash
+    }
+}
+
+/// 쓴 재생 목록 단계 정리 요청(R22)
+public struct PlaylistStepCleanup: Equatable, Sendable {
+    /// 쓴 단계(결과가 `written`인 단계만)
+    public var written: [WrittenPlaylistStep]
+    /// 새 목록의 연결 ID(`new:키` → 실제 ID)
+    public var newPlaylistIDs: [String: String]
+    /// 백업 루트(대상의 백업 폴더)
+    public var backups: URL
+    /// 그 쓰기의 백업 폴더(백업 루트 기준 상대 경로, 미정리 목록의 `backupFolder`). 다시 켠 뒤 정리도 같은 폴더를 찾는다
+    public var backupFolder: String
+
+    public init(written: [WrittenPlaylistStep], newPlaylistIDs: [String: String], backups: URL, backupFolder: String) {
+        self.written = written
+        self.newPlaylistIDs = newPlaylistIDs
+        self.backups = backups
+        self.backupFolder = backupFolder
+    }
+
+    /// 미정리 목록으로 다시 하는 정리(다시 켠 뒤): 쓴 단계·연결 ID·백업 폴더를 목록에서 읽는다
+    public init(list: DraftCleanupList, backups: URL) {
+        self.init(written: list.playlistSteps.filter { $0.outcome == .written }
+                    .map { WrittenPlaylistStep(revision: $0.revision, contentHash: $0.contentHash) },
+                  newPlaylistIDs: list.newPlaylistIDs, backups: backups, backupFolder: list.backupFolder)
+    }
+
+    /// 바깥에서 고친 단계의 사본을 남길 폴더(그 쓰기의 백업 폴더). 사본 자리는 `PlaylistStepCopy.url(folder:revision:)`
+    public var copyFolder: URL { backups.appending(path: backupFolder, directoryHint: .isDirectory) }
+}
+
+/// 쓴 재생 목록 단계 정리의 결과(R22)
+public struct PlaylistStepRemoval: Equatable, Sendable {
+    /// 뺀 단계(해시가 같았거나, 사본을 남긴 뒤 뺐다)
+    public var removed: Set<DraftRevision>
+    /// 해시가 달라 사본을 남기고 뺀 단계 → 사본 파일
+    public var copied: [DraftRevision: URL]
+    /// 해시가 달랐는데 사본을 남기지 못해 남긴 단계
+    public var copyFailed: Set<DraftRevision>
+    /// 판을 찾지 못한 단계(이미 빠졌다). 그대로 둔다
+    public var notFound: Set<DraftRevision>
+
+    public init(removed: Set<DraftRevision> = [], copied: [DraftRevision: URL] = [:], copyFailed: Set<DraftRevision> = [],
+                notFound: Set<DraftRevision> = []) {
+        self.removed = removed
+        self.copied = copied
+        self.copyFailed = copyFailed
+        self.notFound = notFound
+    }
+}
+
+/// 곡 초안 판 지정 삭제의 결과(R22)
+public struct DraftRemoval: Equatable, Sendable {
+    /// 판과 해시가 같아 지운 초안
+    public var removed: [WrittenDraft]
+    /// 판은 같은데 지금 해시가 달라(바깥에서 고침) 지우지 않고 제안으로 남긴 초안
+    public var suggested: [WrittenDraft]
+    /// 판이 달라(쓰는 동안 새로 저장했거나 이미 없음) 그대로 둔 초안
+    public var kept: [WrittenDraft]
+
+    public init(removed: [WrittenDraft] = [], suggested: [WrittenDraft] = [], kept: [WrittenDraft] = []) {
+        self.removed = removed
+        self.suggested = suggested
+        self.kept = kept
+    }
 }
 
 /// 저장을 맡았지만 아직 디스크에 없는 입력(저장 중이거나 실패). 디스크보다 최신이라 표시는 이것을 따른다.

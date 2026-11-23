@@ -25,6 +25,39 @@ struct PortContractTests {
 
     @Test func 반영_묶음_저장() throws { try reflectionBatchStoreContract(MemoryReflectionBatches().port) }
 
+    @Test func 쓰기_잠금() throws {
+        try rekordboxWriteLockContract(MemoryWriteLocks().port, database: URL(filePath: "/a/master.db"), other: URL(filePath: "/b/master.db"))
+    }
+
+    /// 파일 링크·폴더 링크로 가리켜도 링크를 푼 경로·잠금 키·쓰기 기록 자리가 원본과 같다(S9). 시험 파일은 임시 폴더 안이다
+    @Test func 쓰기_잠금_링크() throws {
+        let folder = try TemporaryFolder(prefix: "djc-write-lock")
+        let library = folder.url.appending(path: "library"), other = folder.url.appending(path: "other")
+        for directory in [library, other] { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
+        let database = library.appending(path: "master.db")
+        try Data().write(to: database)
+        try Data().write(to: other.appending(path: "master.db"))
+        let fileLink = folder.url.appending(path: "linked.db")
+        try FileManager.default.createSymbolicLink(at: fileLink, withDestinationURL: database)
+        let folderLink = folder.url.appending(path: "library-link")
+        try FileManager.default.createSymbolicLink(at: folderLink, withDestinationURL: library)
+        try rekordboxWriteLockContract(MemoryWriteLocks().port, database: database, other: other.appending(path: "master.db"),
+                                       links: [fileLink, folderLink.appending(path: "master.db")])
+    }
+
+    @Test func 자동_저장_기록() throws { try autoReflectionRecordsContract(MemoryAutoReflectionRecords().port) }
+
+    @Test func 초안_출처와_판() throws {
+        let drafts = MemoryDrafts()
+        try draftRevisionContract(drafts.store(origin: .human), cli: drafts.store(origin: .cli), editOutside: { drafts.editOutside($0) })
+    }
+
+    @Test func 재생_목록_단계의_판() throws {
+        let drafts = MemoryDrafts()
+        try playlistStepRevisionContract(drafts.store, backups: URL(filePath: "/backups"), editOutside: { drafts.editPlaylistOutside($0) },
+                                         failCopies: { drafts.failPlaylistCopies($0) }, readCopy: { drafts.playlistCopies[$0] })
+    }
+
     @Test func 시점_스냅샷() throws {
         try pointSnapshotFilesContract(MemoryPointSnapshotFiles().port, database: URL(filePath: "/copy/master.db"), shareRoot: nil,
                                        directory: URL(filePath: "/points"), now: Date(timeIntervalSince1970: 1_790_337_600))
