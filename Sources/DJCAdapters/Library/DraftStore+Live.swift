@@ -80,7 +80,9 @@ extension DraftStore {
                 (try? StampedDrafts.identifiedPlaylist(home: home))
                     ?? StampedDrafts.withEphemeralIdentifiers(PlaylistDraftStore.load(url: places.playlist))
             },
-            readPlaylistDraft: { try StampedDrafts.identifiedPlaylist(home: home) },
+            readPlaylistDraft: {
+                do { return try StampedDrafts.identifiedPlaylist(home: home) } catch let error as PlaylistDraftUnreadable { throw error.underlying }
+            },
             savePlaylistDraft: { try StampedDrafts.savePlaylist($0, url: places.playlist, origin: origin) },
             mergeDrafts: { DuplicateMergeDraftStore.load(url: places.merge) },
             saveMergeDrafts: { try StampedDrafts.saveMerges($0, url: places.merge, origin: origin) },

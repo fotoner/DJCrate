@@ -809,8 +809,9 @@ struct DraftStampLiveTests {
 
     /// 도장 사이드카 쓰기를 실패시킨다: 도장 폴더의 `playlist.json` 자리를 폴더로 막는다(판 번호 파일은 쓸 수 있다)
     static func blockPlaylistStampWrites(home: URL) throws {
-        try FileManager.default.createDirectory(at: DraftStampStore.folder(home: home).appending(path: "playlist.json"),
-                                                withIntermediateDirectories: true)
+        let url = DraftStampStore.folder(home: home).appending(path: "playlist.json")
+        try? FileManager.default.removeItem(at: url)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
 
     static func unblockPlaylistStampWrites(home: URL) throws {
@@ -864,5 +865,114 @@ struct DraftStampLiveTests {
         let stamps = app.playlistStamps()
         #expect(stamps.count == 2 && stamps[0].origins.contains(.unknown) && stamps[1].origins == [.human])
         #expect(app.playlistSuggestions()[0] == .unknownOrigin)
+    }
+
+    // MARK: 리뷰 5라운드(S10·S11)
+
+    /// S11(재생 목록): 도장을 먼저 쓴다. 바깥이 재생 목록 초안에 단계를 더한 뒤 도장 쓰기가 막힌 채 앱이 옛 메모리 초안으로 저장하면
+    /// 오류이고 디스크 초안에는 바깥 단계가 그대로다
+    @Test func 도장_쓰기가_막힌_채_옛_메모리로_저장하면_오류이고_바깥에서_더한_단계가_남는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let cli = DraftFiles.live(home: folder.url).with(origin: .cli)
+        try app.savePlaylistDraft(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])]))
+        let memory = app.playlistDraft()
+        // 바깥(CLI)이 단계를 더했다
+        var outside = try cli.readPlaylist()
+        try outside.append(.rename(playlist: .id("B"), name: "x"), rekordbox: Self.rekordbox)
+        try cli.savePlaylist(outside)
+        let disk = try Data(contentsOf: places.playlist)
+        try Self.blockPlaylistStampWrites(home: folder.url)
+        #expect(throws: (any Error).self) { try app.savePlaylistDraft(memory) }
+        #expect(try Data(contentsOf: places.playlist) == disk && PlaylistDraftStore.load(url: places.playlist).steps.count == 2)
+    }
+
+    /// S11(곡 초안): 같은 순서다. 도장 기록이 실패하면 큐·게인·합치기 파일은 바뀌지 않고 저장 실패로 알린다
+    @Test func 도장_쓰기가_막히면_곡_초안_파일도_바뀌지_않고_저장_실패로_알린다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let merge = DuplicateMergeDraft(keeping: .init(contentID: "1", trackUUID: "m", title: "가", duration: 60, offset: 0, cues: []),
+                                        removing: [], base: "b")
+        app.saveCue(Self.cue("a", at: 1))
+        app.saveGain(-3, trackUUID: "g")
+        try app.saveMergeDrafts([merge])
+        app.flush()
+        // 바깥이 세 파일을 고쳤다
+        try CueDraftStore.save(Self.cue("a", at: 9), directory: places.cue)
+        try GainDraftStore.save(-8, trackUUID: "g", url: places.gain)
+        var outsideMerge = merge
+        outsideMerge.base = "바깥"
+        try DuplicateMergeDraftStore.save([outsideMerge], url: places.merge)
+        let files = [places.cue.appending(path: "a.json"), places.gain, places.merge]
+        let before = try files.map { try Data(contentsOf: $0) }
+        // 도장 쓰기를 막는다(큐는 종류 폴더 자리, 게인·합치기는 묶음 파일 자리를 막는다)
+        let stamps = DraftStampStore.folder(home: folder.url)
+        try FileManager.default.removeItem(at: stamps.appending(path: "cue"))
+        try Data("막음".utf8).write(to: stamps.appending(path: "cue"))
+        for name in ["gain.json", "merge.json"] {
+            try? FileManager.default.removeItem(at: stamps.appending(path: name))
+            try FileManager.default.createDirectory(at: stamps.appending(path: name), withIntermediateDirectories: true)
+        }
+        let failures = Mutex<[String]>([])
+        app.saveCue(Self.cue("a", at: 2)) { failure in if failure != nil { failures.withLock { $0.append("cue") } } }
+        app.saveGain(-4, "g") { failure in if failure != nil { failures.withLock { $0.append("gain") } } }
+        app.flush()
+        #expect(throws: (any Error).self) { try app.saveMergeDrafts([merge]) }
+        #expect(failures.withLock { $0.sorted() } == ["cue", "gain"])
+        #expect(try files.map { try Data(contentsOf: $0) } == before)
+    }
+
+    /// S11(안전한 쪽): 도장을 쓴 뒤 초안 파일 쓰기가 실패해도 재생 목록은 제안 쪽으로만 틀어진다
+    @Test func 재생_목록_도장을_쓴_뒤_초안_파일_쓰기가_실패하면_그_단계는_제안이다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        let app = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        try app.savePlaylistDraft(try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["9"])]))
+        #expect(app.playlistSuggestions() == [nil])
+        var edited = app.playlistDraft()
+        try edited.append(.rename(playlist: .id("B"), name: "새"), rekordbox: Self.rekordbox)
+        let disk = try Data(contentsOf: places.playlist)
+        // 초안 폴더를 쓰기 금지로 바꿔 초안 파일 쓰기만 실패시킨다(도장 폴더는 쓸 수 있다)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.url.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.url.path) }
+        #expect(throws: (any Error).self) { try app.savePlaylistDraft(edited) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.url.path)
+        #expect(try Data(contentsOf: places.playlist) == disk)
+        // 파일은 옛 단계 하나뿐이다. 사이드카에 남은 새 줄은 파일에 없는 단계라 무시되고, 파일의 단계는 옛 도장 그대로다
+        #expect(PlaylistDraftStore.load(url: places.playlist).steps.count == 1 && app.playlistStamps().count == 1)
+        #expect(app.playlistSuggestions().allSatisfy { $0 == nil })
+        // 내용이 바뀐 단계가 있었다면(같은 식별자의 단계를 고친 저장) 도장의 해시가 파일과 달라 제안이다
+        var changed = try Self.playlist([.addTracks(playlist: .id("A"), contentIDs: ["7"])])
+        changed.setStepIDs(app.playlistDraft().stepIDs)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.url.path)
+        #expect(throws: (any Error).self) { try app.savePlaylistDraft(changed) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.url.path)
+        #expect(app.playlistSuggestions() == [.contentChanged])
+    }
+
+    /// S10: 기존 초안 파일을 읽는 단계의 오류(손상뿐 아니라 권한 같은 읽기 오류)는 미리 보기와 저장이 같은 `invalid_draft`다.
+    /// 잠금·식별자·도장 기록 오류는 `draft_io_failed`다
+    @Test func 읽기_오류는_미리_보기와_저장이_같은_코드이고_기록_오류와_다르다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try PlaylistDraftStore.save(try Self.playlist([.rename(playlist: .id("A"), name: "x")]), url: places.playlist)
+        let edits = EditDraftFiles(files: DraftFiles.live(home: folder.url).with(origin: .cli))
+        let request = PlaylistEditRequest.create(name: "새 목록", isFolder: false, parent: .ref(.root), position: nil, alias: nil, tracks: [])
+        func code(dryRun: Bool) -> String? {
+            do { _ = try edits.stackPlaylistEdits([request], rekordbox: Self.rekordbox, contentIDs: ["9"], allOrNothing: false, dryRun: dryRun) }
+            catch let failure as ReadFailure { return failure.code }
+            catch { return "other" }
+            return nil
+        }
+        // 읽기 권한이 없다(권한 오류)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: places.playlist.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: places.playlist.path) }
+        #expect(code(dryRun: true) == "invalid_draft" && code(dryRun: false) == "invalid_draft")
+        // JSON 손상
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: places.playlist.path)
+        try Data("깨짐".utf8).write(to: places.playlist)
+        #expect(code(dryRun: true) == "invalid_draft" && code(dryRun: false) == "invalid_draft")
+        // 읽을 수 있는 파일에서 도장 기록이 막히면 저장만 `draft_io_failed`다(미리 보기는 기록하지 않는다)
+        try PlaylistDraftStore.save(try Self.playlist([.rename(playlist: .id("A"), name: "x")]), url: places.playlist)
+        try Self.blockPlaylistStampWrites(home: folder.url)
+        #expect(code(dryRun: true) == nil && code(dryRun: false) == "draft_io_failed")
     }
 }

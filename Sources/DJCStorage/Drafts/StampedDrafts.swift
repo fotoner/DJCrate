@@ -33,22 +33,48 @@ public struct PlaylistStepRemovalResult: Equatable, Sendable {
 /// 초안을 저장하면서 도장(출처·새 판·해시)을 적고, 쓴 판만 지운다(자동 저장 R5·R22). 앱의 저장 큐·CLI 초안 파일·시험이 같은 함수를 쓴다.
 /// 초안 파일을 쓴 뒤 도장을 적고(`DraftStampStore` 설명), 모두 초안 잠금 안에서 한다. 해시는 디스크에서 다시 읽은 값의 해시다:
 /// 쓰기 묶음이 읽어 넣는 값과 같은 함수·같은 내용이라야 정리가 판과 해시를 견줄 수 있다.
+/// 재생 목록 초안 파일을 읽지 못했다(JSON 손상뿐 아니라 권한 같은 읽기 오류). 잠금·식별자·도장 기록 오류와 구분한다.
+/// CLI는 이것을 `invalid_draft`로, 기록 오류를 `draft_io_failed`로 알린다
+public struct PlaylistDraftUnreadable: Error {
+    public var underlying: any Error
+}
+
 public enum StampedDrafts {
     // MARK: 곡 초안 저장
 
-    /// 파일이 있었는지 보고, 쓰고, 읽은 값의 해시로 도장을 적는다. 덮어쓰기 전에 지금 파일 내용의 해시를 저장된 도장의 해시와 견준다:
-    /// 다르면(바깥에서 고쳤다) 새 도장의 출처에 모름을 더한다. 읽지 못해도 같다. 파일은 없는데 도장이 남아 있어도 같다
+    /// 초안 파일을 쓰기 전에 지금 파일 내용의 해시를 저장된 도장의 해시와 견준다: 다르면(바깥에서 고쳤다) 새 도장의 출처에 모름을 더한다.
+    /// 읽지 못해도 같고, 파일은 없는데 도장이 남아 있어도 같다.
+    /// 저장은 도장을 초안 파일보다 먼저 쓴다(`written`: 파일에 쓸 값이 읽혀 돌아올 때의 해시). 도장 기록에 실패하면 초안 파일은 한 바이트도
+    /// 바뀌지 않고 오류를 던진다. 도장을 쓴 뒤 파일 쓰기에 실패해도 도장의 해시가 파일과 달라 제안 쪽으로만 틀어진다.
+    /// 지우기(`written`이 nil)는 파일을 먼저 지우고 도장을 지운다(지우기 실패는 도장도 그대로 둔다)
     private static func stamped(_ key: DraftKey, home: URL, file: URL, origin: DraftOrigin, write: () throws -> Void,
-                                hash: () -> DraftContentHash?) throws {
+                                hash: () -> DraftContentHash?, written: () -> DraftContentHash?) throws {
         try DraftStampStore.withLock(home: home) {
             let present = FileManager.default.fileExists(atPath: file.path)
             let old = DraftStampStore.read(key, home: home)
             // 파일은 없는데 그 키의 도장이 남아 있다(손상 파일을 복구가 옮겼거나 바깥이 지웠다): 기존 출처를 잇고 모름을 더한다
             let stale = !present && old != nil
             let outside = stale || (present ? old.map { hash() != $0.contentHash } ?? false : false)
-            try write()
-            try DraftStampStore.restamp(key, home: home, existed: present || stale, origin: origin, hash: hash(), outside: outside)
+            if let next = written() {
+                try DraftStampStore.restamp(key, home: home, existed: present || stale, origin: origin, hash: next, outside: outside)
+                try write()
+            } else {
+                try write()
+                try DraftStampStore.restamp(key, home: home, existed: present || stale, origin: origin, hash: nil, outside: outside)
+            }
         }
+    }
+
+    /// 그림 초안의 해시: 파일에는 초안(`ArtworkDraft`)을 쓰고 그림은 사본 파일에 둔다. 해시는 초안만 본다(`DraftContentHash(artwork:)`)
+    private static func writtenArtworkHash(_ edit: ArtworkEdit) -> DraftContentHash? {
+        guard let data = try? JSONEncoder().encode(edit.draft), let decoded = try? JSONDecoder().decode(ArtworkDraft.self, from: data) else { return nil }
+        return try? DraftContentHash(artwork: ArtworkEdit(draft: decoded, image: nil))
+    }
+
+    /// 파일에 쓴 값을 읽으면 돌아오는 값의 해시(쓰기 전에 도장의 해시를 정한다)
+    private static func writtenHash<T: Codable>(_ value: T) -> DraftContentHash? {
+        guard let data = try? JSONEncoder().encode(value), let decoded = try? JSONDecoder().decode(T.self, from: data) else { return nil }
+        return try? DraftContentHash(of: decoded)
     }
 
     private static func hash(_ value: (some Encodable)?) -> DraftContentHash? { value.flatMap { try? DraftContentHash(of: $0) } }
@@ -57,34 +83,37 @@ public enum StampedDrafts {
         try stamped(DraftKey(.cue, draft.trackUUID), home: directory.deletingLastPathComponent(),
                     file: directory.appending(path: "\(draft.trackUUID).json"), origin: origin,
                     write: { try CueDraftStore.save(draft, directory: directory) },
-                    hash: { hash(CueDraftStore.load(trackUUID: draft.trackUUID, directory: directory)) })
+                    hash: { hash(CueDraftStore.load(trackUUID: draft.trackUUID, directory: directory)) },
+                    written: { draft.hasChanges ? writtenHash(draft) : nil })
     }
 
     public static func saveGrid(_ draft: GridDraft, directory: URL, origin: DraftOrigin) throws {
         try stamped(DraftKey(.grid, draft.trackUUID), home: directory.deletingLastPathComponent(),
                     file: directory.appending(path: "\(draft.trackUUID).json"), origin: origin,
                     write: { try GridDraftStore.save(draft, directory: directory) },
-                    hash: { hash(GridDraftStore.load(trackUUID: draft.trackUUID, directory: directory)) })
+                    hash: { hash(GridDraftStore.load(trackUUID: draft.trackUUID, directory: directory)) },
+                    written: { draft.hasChanges ? writtenHash(draft) : nil })
     }
 
     public static func saveTag(_ draft: TagDraft, directory: URL, origin: DraftOrigin) throws {
         try stamped(DraftKey(.tag, draft.trackUUID), home: directory.deletingLastPathComponent(),
                     file: directory.appending(path: "\(draft.trackUUID).json"), origin: origin,
                     write: { try TagDraftStore.save(draft, directory: directory) },
-                    hash: { hash(TagDraftStore.load(trackUUID: draft.trackUUID, directory: directory)) })
+                    hash: { hash(TagDraftStore.load(trackUUID: draft.trackUUID, directory: directory)) },
+                    written: { draft.hasChanges ? writtenHash(draft) : nil })
     }
 
     /// CLI·초안 파일 포트의 큐 초안 지우기(손상된 파일은 옮겨 보관한다)
     public static func removeCue(trackUUID: String, directory: URL) throws {
         try stamped(DraftKey(.cue, trackUUID), home: directory.deletingLastPathComponent(),
                     file: directory.appending(path: "\(trackUUID).json"), origin: .unknown,
-                    write: { try CueDraftStore.remove(trackUUID: trackUUID, directory: directory) }, hash: { nil })
+                    write: { try CueDraftStore.remove(trackUUID: trackUUID, directory: directory) }, hash: { nil }, written: { nil })
     }
 
     public static func removeTag(trackUUID: String, directory: URL) throws {
         try stamped(DraftKey(.tag, trackUUID), home: directory.deletingLastPathComponent(),
                     file: directory.appending(path: "\(trackUUID).json"), origin: .unknown,
-                    write: { try TagDraftStore.remove(trackUUID: trackUUID, directory: directory) }, hash: { nil })
+                    write: { try TagDraftStore.remove(trackUUID: trackUUID, directory: directory) }, hash: { nil }, written: { nil })
     }
 
     /// 게인 초안(nil이면 지우기). 모든 곡이 한 파일이라 곡별 도장은 `gain.json` 사전에 적는다.
@@ -101,9 +130,14 @@ public enum StampedDrafts {
             let stale = current == nil && old != nil
             let existed = current != nil || stale
             let outside = unreadable || stale || (current != nil && old.map { hash(current) != $0.contentHash } ?? false)
-            try GainDraftStore.save(gain, trackUUID: trackUUID, url: url)
-            let saved = (try? GainDraftStore.read(url: url))?[trackUUID]
-            try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: hash(saved), outside: outside)
+            // 저장은 도장을 먼저 쓴다(도장 기록에 실패하면 게인 파일은 바뀌지 않는다). 지우기는 파일을 먼저 고친다
+            if let gain {
+                try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: hash(gain), outside: outside)
+                try GainDraftStore.save(gain, trackUUID: trackUUID, url: url)
+            } else {
+                try GainDraftStore.save(nil, trackUUID: trackUUID, url: url)
+                try DraftStampStore.restamp(key, home: home, existed: existed, origin: origin, hash: nil, outside: outside)
+            }
         }
     }
 
@@ -112,13 +146,14 @@ public enum StampedDrafts {
         try stamped(DraftKey(.artwork, edit.trackUUID), home: directory.deletingLastPathComponent(),
                     file: directory.appending(path: "\(edit.trackUUID).json"), origin: origin,
                     write: { try ArtworkDraftStore.save(edit, directory: directory) },
-                    hash: { (try? ArtworkDraftStore.load(trackUUID: edit.trackUUID, directory: directory)).flatMap { try? DraftContentHash(artwork: $0) } })
+                    hash: { (try? ArtworkDraftStore.load(trackUUID: edit.trackUUID, directory: directory)).flatMap { try? DraftContentHash(artwork: $0) } },
+                    written: { writtenArtworkHash(edit) })
     }
 
     public static func removeArtwork(trackUUID: String, directory: URL) throws {
         try stamped(DraftKey(.artwork, trackUUID), home: directory.deletingLastPathComponent(),
                     file: directory.appending(path: "\(trackUUID).json"), origin: .unknown,
-                    write: { try ArtworkDraftStore.remove(trackUUID: trackUUID, directory: directory) }, hash: { nil })
+                    write: { try ArtworkDraftStore.remove(trackUUID: trackUUID, directory: directory) }, hash: { nil }, written: { nil })
     }
 
     /// 합치기 초안 목록을 통째로 저장한다: 내용이 같은 초안은 도장을 그대로 두고, 바뀌거나 새로 든 초안만 새 판을 받는다.
@@ -134,8 +169,10 @@ public enum StampedDrafts {
             } catch {
                 unreadable = true
             }
-            try DuplicateMergeDraftStore.save(drafts, url: url)
-            let saved = DuplicateMergeDraftStore.load(url: url)
+            // 파일에 쓸 목록을 읽으면 돌아오는 값으로 도장을 정하고, 도장을 먼저 쓴다(도장 기록에 실패하면 합치기 파일은 바뀌지 않는다)
+            let saved = drafts.compactMap { draft in
+                (try? JSONEncoder().encode(draft)).flatMap { try? JSONDecoder().decode(DuplicateMergeDraft.self, from: $0) }
+            }
             let stampURL = DraftStampStore.folder(home: home).appending(path: "\(DraftKey.Kind.merge.rawValue).json")
             let old = (try? Data(contentsOf: stampURL)).flatMap { try? JSONDecoder().decode([String: DraftStamp].self, from: $0) } ?? [:]
             var stamps: [String: DraftStamp] = [:]
@@ -155,6 +192,7 @@ public enum StampedDrafts {
                 stamps[item.draft.id] = DraftStamp(revision: revision, origins: origins, contentHash: item.hash)
             }
             try DraftStampStore.writeAggregate(stamps, to: stampURL)
+            try DuplicateMergeDraftStore.save(drafts, url: url)
         }
     }
 
@@ -165,6 +203,11 @@ public enum StampedDrafts {
 
     private static func playlistStampURL(home: URL) -> URL {
         DraftStampStore.folder(home: home).appending(path: "playlist.json")
+    }
+
+    /// 재생 목록 초안 파일을 읽는다. 읽기 오류는 `PlaylistDraftUnreadable`로 감싼다(기록 오류와 구분)
+    private static func readPlaylistFile(url: URL) throws -> PlaylistDraft {
+        do { return try PlaylistDraftStore.read(url: url) } catch { throw PlaylistDraftUnreadable(underlying: error) }
     }
 
     private static func readPlaylistEntries(home: URL) -> [PlaylistStampEntry] {
@@ -187,7 +230,7 @@ public enum StampedDrafts {
     /// 초안 파일을 읽지 못하면 던진다(손상된 파일 때문에 도장을 지우지 않게)
     private static func adoptedPlaylist(home: URL) throws -> PlaylistStepStamping.Result {
         let url = DraftLocations(home: home).playlist
-        let draft = try PlaylistDraftStore.read(url: url)
+        let draft = try readPlaylistFile(url: url)
         let result = try PlaylistStepStamping.adopt(draft, entries: readPlaylistEntries(home: home), newID: { UUID() },
                                                     newRevision: { try DraftStampStore.nextRevisions(1, home: home)[0] })
         if result.changed {
@@ -215,7 +258,7 @@ public enum StampedDrafts {
     /// 이번 출처 하나로 적히기 때문이다). 식별자나 도장을 적지 못하면(잠금·판 번호·저장 오류) 식별자 없는 초안을 돌려주지 않고 던진다.
     /// 파일을 읽지 못하면 `DraftFileDamaged`를 던진다
     public static func identifiedPlaylist(home: URL) throws -> PlaylistDraft {
-        let draft = try PlaylistDraftStore.read(url: DraftLocations(home: home).playlist)
+        let draft = try readPlaylistFile(url: DraftLocations(home: home).playlist)
         let ids = draft.stepIDs
         if ids.allSatisfy({ $0 != nil }), Set(ids.compactMap { $0 }).count == ids.count { return draft }
         return try DraftStampStore.withLock(home: home) { try adoptedPlaylist(home: home).draft }
@@ -248,7 +291,7 @@ public enum StampedDrafts {
             var current = PlaylistDraft()
             var unreadable = false
             if let expecting {
-                current = try PlaylistDraftStore.read(url: url)
+                current = try readPlaylistFile(url: url)
                 // 단계 식별자도 견준다: 같은 내용으로 다시 만든 단계는 다른 단계다
                 if current != expecting || current.stepIDs != expecting.stepIDs { return false }
             } else if let read = try? PlaylistDraftStore.read(url: url) {
@@ -259,15 +302,16 @@ public enum StampedDrafts {
             let result = try PlaylistStepStamping.save(draft, previous: current, entries: readPlaylistEntries(home: home), origin: origin,
                                                        previousUnreadable: unreadable, newID: { UUID() },
                                                        newRevision: { try DraftStampStore.nextRevisions(1, home: home)[0] })
-            try PlaylistDraftStore.save(result.draft, url: url)
-            // 도장의 해시는 파일에서 다시 읽은 단계의 해시다(쓰기 묶음이 읽어 넣는 값과 같다)
-            let saved = try PlaylistDraftStore.read(url: url)
-            let entries = zip(saved.steps, result.entries).map { step, entry -> PlaylistStampEntry in
-                var entry = entry
-                entry.stamp.contentHash = PlaylistStepStamping.hash(step, in: saved)
-                return entry
+            // 도장을 초안 파일보다 먼저 쓴다: 도장 기록에 실패하면 초안 파일은 한 바이트도 바뀌지 않고 오류를 던진다(앱이 옛 메모리로 저장해
+            // 아직 받지 않은 바깥 편집을 지우는 일이 없다). 도장을 쓴 뒤 파일 쓰기 전에 멈추면 도장의 해시가 파일과 달라 제안 쪽으로만 틀어진다.
+            // 도장의 해시는 파일을 읽으면 돌아오는 단계의 해시다(쓰기 묶음이 읽어 넣는 값과 같다)
+            let written = (try? JSONDecoder().decode(PlaylistDraft.self, from: JSONEncoder().encode(result.draft))) ?? result.draft
+            var entries = result.entries
+            if written.steps.count == entries.count {
+                for index in entries.indices { entries[index].stamp.contentHash = PlaylistStepStamping.hash(written.steps[index], in: written) }
             }
-            try writePlaylistEntries(saved.steps.count == entries.count ? entries : result.entries, home: home)
+            try writePlaylistEntries(entries, home: home)
+            try PlaylistDraftStore.save(result.draft, url: url)
             return true
         }
     }

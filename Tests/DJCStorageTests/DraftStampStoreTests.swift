@@ -138,20 +138,40 @@ struct DraftStampStoreTests {
         #expect(DraftSuggestion.judge(stamp: stamp, currentHash: current) == .contentChanged)
     }
 
-    @Test func 도장은_초안을_쓴_뒤에_적어_중간에_멈추면_제안_쪽으로만_틀어진다() throws {
+    /// S11: 도장을 초안 파일보다 먼저 쓴다. 도장 기록이 실패하면 초안 파일은 한 바이트도 바뀌지 않고 오류를 던진다
+    @Test func 도장_기록이_실패하면_초안_파일은_바뀌지_않고_오류를_던진다() throws {
         let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
         try StampedDrafts.saveCue(Self.cue("a", at: 1), directory: places.cue, origin: .human)
-        let before = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
-        // 도장 폴더 자리를 일반 파일로 막아 도장 쓰기를 실패시킨다. 초안은 이미 쓰였다(저장은 실패로 알린다)
+        let before = try Data(contentsOf: places.cue.appending(path: "a.json"))
+        let stamp = DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url)
+        // 도장 폴더 자리를 일반 파일로 막아 도장 쓰기를 실패시킨다
         let stamps = DraftStampStore.folder(home: folder.url)
         try FileManager.default.moveItem(at: stamps, to: folder.url.appending(path: "옮긴-도장"))
         try Data("막음".utf8).write(to: stamps)
         #expect(throws: (any Error).self) { try StampedDrafts.saveCue(Self.cue("a", at: 2), directory: places.cue, origin: .cli) }
-        let current = try Self.hash(#require(CueDraftStore.load(trackUUID: "a", directory: places.cue)))
-        #expect(current != before.contentHash)
-        // 그 사이 옛 도장(사람 편집)은 못 읽어 모름이거나, 읽었어도 해시가 어긋난다: 어느 쪽이든 제안이다
-        let stale = DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url)
-        #expect(DraftSuggestion.judge(stamp: stale, currentHash: current) != nil)
+        #expect(try Data(contentsOf: places.cue.appending(path: "a.json")) == before)
+        // 도장을 못 읽어도 지금 파일은 옛 내용 그대로다
+        try FileManager.default.removeItem(at: stamps)
+        try FileManager.default.moveItem(at: folder.url.appending(path: "옮긴-도장"), to: stamps)
+        #expect(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url) == stamp)
+    }
+
+    /// S11: 도장을 쓴 뒤 초안 파일을 쓰기 전에 멈추면(파일 쓰기 실패) 안전한 쪽으로만 틀어진다: 새 도장의 해시가 파일과 달라 제안이다
+    @Test func 도장을_쓴_뒤_초안_파일_쓰기가_실패하면_제안_쪽으로만_틀어진다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveCue(Self.cue("a", at: 1), directory: places.cue, origin: .human)
+        let first = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        // 초안 폴더를 쓰기 금지로 바꿔 파일 쓰기만 실패시킨다(도장 폴더는 쓸 수 있다)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: places.cue.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: places.cue.path) }
+        #expect(throws: (any Error).self) { try StampedDrafts.saveCue(Self.cue("a", at: 2), directory: places.cue, origin: .cli) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: places.cue.path)
+        // 파일은 옛 내용이고 도장만 새 판이다: 해시가 어긋나 사람 편집만 든 도장이어도 자동 저장 대상이 아니다
+        let file = try Self.hash(#require(CueDraftStore.load(trackUUID: "a", directory: places.cue)))
+        #expect(file == first.contentHash)
+        let stamp = try #require(DraftStampStore.stamp(DraftKey(.cue, "a"), home: folder.url))
+        #expect(stamp.revision > first.revision && stamp.contentHash != file)
+        #expect(DraftSuggestion.judge(stamp: stamp, currentHash: file) != nil)
     }
 
     @Test func 도장_자리는_초안_폴더_밖_이름을_받지_않는다() throws {
