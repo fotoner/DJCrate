@@ -174,6 +174,11 @@ public struct ReflectionSession {
 // MARK: - 문구
 
 extension ReflectionSession {
+    /// 디스크 재생 목록 초안을 읽지 못해(`ReflectionLibraryState.playlistDraftNeedsSync`) 이번 저장·복원이 재생 목록을 건드리지 않았다는 이유
+    public static var playlistSyncHeldText: String {
+        String(ui: "재생 목록 편집을 읽지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요.")
+    }
+
     public static var playlistSaveFailureText: String {
         String(ui: "재생 목록 편집을 보관하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 저장을 다시 시도하세요.")
     }

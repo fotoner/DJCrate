@@ -144,11 +144,14 @@ public struct EditPlaylists: Sendable {
     /// `new:키`를 받은 rekordbox ID로 바꿔 남은 단계의 대상·목적지와 연결 기록에 옮겨 저장한다(R22).
     /// 판으로 찾는 쓴 단계는 해시가 달라도 빼고, 달랐던 단계는 바깥에서 고친 내용을 실제 목록 ID와 함께 `backups/backupFolder`에 사본으로 남긴
     /// 뒤에만 뺀다(`DraftStore.removeWrittenSteps`). 사본을 남기지 못한 단계는 그 만들기와 함께 `new:키`로 남기고 `isComplete`가 false다.
-    /// 쓰는 동안 더한 편집은 메모리·디스크 모두 남는다. 판으로 정리한 디스크 초안을 늘 기준으로 삼는다: 쓰는 동안 디스크에서 바뀐 단계(바깥이 고친
-    /// 막힌 단계 등)를 메모리 값으로 덮지 않는다. 저장하지 못한 편집이 메모리에만 있으면(`memoryUnsaved`) 그 가운데 디스크에 없는 단계만 뒤에 합친다.
+    /// 쓰는 동안 더한 편집은 메모리·디스크 모두 남는다. 기준은 정리한 디스크 초안이다. 다만 저장하지 못한 편집이 메모리에 있으면(`memoryUnsaved`)
+    /// 메모리 초안이 정본이다: 쓰는 동안 앱은 초안 파일 잠금(#260)을 들어 바깥(CLI)이 초안을 고치지 못하고, 쓰기를 시작할 때 저장하지 못한 메모리가
+    /// 있으면 쓰기가 막히므로(`ensurePlaylistDraftSaved`) 그때 메모리 = 디스크 + 저장하지 못한 편집이다. 그 메모리에서 이번에 쓴 단계(식별자로)만 빼고
+    /// 연결 ID를 옮겨 저장한다. 바깥 수정·사본 실패는 재시작 정리(`resumeCleanup`, 메모리 없음)에서만 생긴다.
     /// 사본을 남기지 못한 단계가 하나라도 있으면 연결 ID를 옮기지 않는다(옮기는 저장이 남은 단계에 새 판을 주어 다시 할 때 찾지 못하게 된다).
+    /// 메모리가 정본일 때 그런 단계가 있으면 메모리를 합치지도 저장하지도 않는다(`draft`가 nil: 앱 메모리와 저장하지 못한 표시는 그대로다).
     /// - Parameters:
-    ///   - current: 지금 메모리 초안(저장하지 못한 편집을 가려내는 데만 쓴다)
+    ///   - current: 지금 메모리 초안(`memoryUnsaved`일 때만 쓴다)
     ///   - memoryUnsaved: 메모리 초안에 저장하지 못한 편집이 있다(`PlaylistEditStore.playlistDraftUnsaved`)
     ///   - entries: 묶음에 읽어 넣은 단계의 판·해시(`written.steps`와 같은 차례, 쓰기 묶음의 `revisions.playlistSteps`).
     ///     비어 있으면 판을 모르는 묶음이라 지금 동작(쓰는 동안 바뀌지 않았을 때 자리로 뺀다)이다
@@ -158,11 +161,13 @@ public struct EditPlaylists: Sendable {
                             entries: [DraftBatchEntry] = [], backups: URL? = nil, backupFolder: String = "",
                             memoryUnsaved: Bool = false) -> WriteCleanup {
         if let backups, !entries.isEmpty, entries.count == written.steps.count {
+            let attempts = Self.attempts(written, outcomes: outcomes, entries: entries)
             let cleanup = PlaylistStepCleanup(
-                written: Self.attempts(written, outcomes: outcomes, entries: entries).filter { $0.outcome == .written }
-                    .map { WrittenPlaylistStep(revision: $0.revision, contentHash: $0.contentHash) },
+                written: attempts.filter { $0.outcome == .written }.map { WrittenPlaylistStep(revision: $0.revision, contentHash: $0.contentHash) },
                 newPlaylistIDs: Self.newPlaylistIDs(written, outcomes: outcomes), backups: backups, backupFolder: backupFolder)
-            return cleanUp(cleanup, memory: memoryUnsaved ? current : nil, imports: imports, importsLoadFailed: importsLoadFailed)
+            // 이번에 쓴 단계의 식별자: 메모리 초안에서 이 단계만 뺀다
+            let writtenIDs = Set(zip(written.steps, attempts).filter { $0.1.outcome == .written }.compactMap(\.0.id))
+            return cleanUp(cleanup, memory: memoryUnsaved ? (current, writtenIDs) : nil, imports: imports, importsLoadFailed: importsLoadFailed)
         }
         var finished = Self.afterWrite(written, outcomes: outcomes, current: current)
         // 쓰는 동안(또는 1초 바깥 변경 확인 전에) CLI가 디스크 초안 뒤에 더한 편집은 남긴다(#260). 메모리 초안으로 저장하면 사라진다
@@ -193,14 +198,14 @@ public struct EditPlaylists: Sendable {
         cleanUp(PlaylistStepCleanup(list: list, backups: backups), memory: nil, imports: imports, importsLoadFailed: importsLoadFailed)
     }
 
-    /// 쓴 뒤 정리와 재시작 정리가 같이 쓰는 한 길: 판으로 쓴 단계를 빼고 → 디스크 초안을 읽어 연결 ID를 남은 단계에 옮겨 저장하고 → 연결 기록에 옮겨 저장한다.
+    /// 쓴 뒤 정리와 재시작 정리가 같이 쓰는 한 길: 판으로 쓴 단계를 빼고 → 연결 ID를 남은 단계에 옮겨 저장하고 → 연결 기록에 옮겨 저장한다.
     /// 저장 순서는 초안 → 연결 기록이다. 초안을 저장한 뒤 멈춰도 다시 하면 쓴 단계는 이미 없고(찾지 못함) 연결 ID는 다시 옮겨져 같은 결과다.
-    /// - Parameter unsaved: 저장하지 못한 편집이 있는 메모리 초안. 그 가운데 디스크에 없는 단계(식별자가 없거나 디스크에 없는 식별자)만 합친다
+    /// - Parameter memory: 저장하지 못한 편집이 있는 메모리 초안과 이번에 쓴 단계의 식별자. 있으면 메모리가 정본이다(`finishWrite`)
     @MainActor
-    private func cleanUp(_ cleanup: PlaylistStepCleanup, memory unsaved: PlaylistDraft?, imports: PlaylistImports,
+    private func cleanUp(_ cleanup: PlaylistStepCleanup, memory: (current: PlaylistDraft, writtenIDs: Set<UUID>)?, imports: PlaylistImports,
                          importsLoadFailed: Bool) -> WriteCleanup {
         var result = WriteCleanup()
-        let before = try? drafts.readPlaylistDraft()
+        // 디스크 정리가 먼저다: 판으로 쓴 단계를 빼고(사본이 필요하면 남긴 뒤에) 사본을 남기지 못한 단계는 남긴다
         let removal: PlaylistStepRemoval
         do { removal = try drafts.removeWrittenSteps(cleanup) } catch {
             result.draftError = error
@@ -208,34 +213,38 @@ public struct EditPlaylists: Sendable {
         }
         result.copied = removal.copied
         result.copyFailed = removal.copyFailed
+        // 사본을 남기지 못한 단계가 있으면 연결 ID를 옮기지 않는다: 옮기는 저장은 남은 단계(사본을 남기지 못한 단계 포함)에 새 판을 주어
+        // 다음 정리가 옛 판으로 그 단계를 찾지 못한다. 메모리가 정본이어도 같다: 메모리를 저장하면 그 단계에 새 판이 간다
+        if memory != nil, !removal.copyFailed.isEmpty { return result }
         let disk: PlaylistDraft
         do { disk = try drafts.readPlaylistDraft() } catch {
             result.draftError = error
             return result
         }
-        // 사본을 남기지 못한 단계가 있으면 연결 ID를 옮기지 않는다: 옮기는 저장은 남은 단계(사본을 남기지 못한 단계 포함)에 새 판을 주어
-        // 다음 정리가 옛 판으로 그 단계를 찾지 못한다. 만든 단계가 남아 있는 키도 아직 `new:키`다(옮기면 목록을 다시 만든다)
+        // 만든 단계가 남아 있는 키도 아직 `new:키`다(옮기면 목록을 다시 만든다)
         let creating = Set(disk.steps.compactMap { step -> String? in
             if case let .create(key, _, _, _) = step.edit { PlaylistRef.new(key).layoutID } else { nil }
         })
         let movable = removal.copyFailed.isEmpty ? cleanup.newPlaylistIDs.filter { !creating.contains($0.key) } : [:]
         result.ids = movable
-        var next = disk.remapped(movable)
-        // 저장하지 못한 메모리 편집: 읽기 전 디스크 초안에 없던 단계만 뒤에 합친다. 디스크에 있는 단계는 내용이 달라도 디스크가 이긴다.
-        // 읽기 전 디스크 초안을 모르면 어느 단계가 메모리에만 있는지 가릴 수 없어 합치지 않는다
-        if let unsaved, let before {
-            let known = Set(before.stepIDs.compactMap { $0 })
-            let pending = unsaved.steps.filter { $0.id.map { !known.contains($0) } ?? true }
-            next = next.appending(unsaved: pending, basedOn: unsaved).remapped(movable)
+        if let memory {
+            // 메모리가 정본: 저장하지 못한 편집이 있는 메모리에서 이번에 쓴 단계만 식별자로 빼고 저장한다. 디스크에서 이미 없어진 쓴 단계도 같다
+            var kept = memory.current
+            kept.removeSteps(at: kept.steps.indices.filter { kept.steps[$0].id.map(memory.writtenIDs.contains) ?? false })
+            kept = kept.remapped(movable)
+            result.draft = kept
+            do { try saveDraft(kept) } catch { result.draftError = error }
+        } else {
+            var next = disk.remapped(movable)
+            if next != disk {
+                do {
+                    try saveDraft(next)
+                    // 저장이 바뀐 단계에 새 판을 주므로 다시 읽어 식별자를 받는다
+                    next = (try? drafts.readPlaylistDraft()) ?? next
+                } catch { result.draftError = error }
+            }
+            result.draft = next
         }
-        if next != disk {
-            do {
-                try saveDraft(next)
-                // 저장이 바뀐 단계에 새 판을 주므로 다시 읽어 식별자를 받는다
-                next = (try? drafts.readPlaylistDraft()) ?? next
-            } catch { result.draftError = error }
-        }
-        result.draft = next
         if !movable.isEmpty {
             var remapped = imports
             remapped.remapTargets(movable)

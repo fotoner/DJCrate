@@ -41045,6 +41045,22 @@
         }
       }
     },
+    "재생 목록 편집을 읽지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't read the playlist edits, so the playlists were left untouched this time. Please try again in a moment."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリスト編集を読み込めなかったため、今回はプレイリストに触れませんでした。しばらくしてからもう一度お試しください。"
+          }
+        }
+      }
+    },
     "재생 목록 폴더 행의 칸 값" : {
       "localizations" : {
         "en" : {

@@ -15,6 +15,9 @@ public struct ReflectionLibraryState: Sendable {
     public var playlistDraft: PlaylistDraft
     /// 재생 목록 초안 저장에 실패해 메모리 초안이 디스크보다 최신이다(#174)
     public var playlistDraftUnsaved: Bool
+    /// 디스크 재생 목록 초안을 읽지 못해 메모리 초안이 디스크와 같은지 모른다. 새 쓰기 묶음은 재생 목록 초안을 넣지 않고,
+    /// 곡 추가 복원은 재생 목록 초안·연결 기록을 건드리지 않는다(옛 메모리로 디스크 초안을 덮지 않게)
+    public var playlistDraftNeedsSync: Bool
     /// 스냅샷에서 읽은 rekordbox 재생 목록(초안을 얹기 전)
     public var rekordboxPlaylists: PlaylistLayout
     /// 재생 목록 연결 기록(메모리)과 그 파일을 읽지 못했는지(그러면 저장하지 않는다)
@@ -38,7 +41,7 @@ public struct ReflectionLibraryState: Sendable {
 
     public init(rows: [String: TrackRow] = [:], cueDraftUUIDs: Set<String> = [], gridDraftUUIDs: Set<String> = [], gainDraftUUIDs: Set<String> = [],
                 tagDrafts: [String: TagDraft] = [:], artworkDrafts: [String: ArtworkDraft] = [:], mergeDrafts: [DuplicateMergeDraft] = [],
-                playlistDraft: PlaylistDraft = PlaylistDraft(), playlistDraftUnsaved: Bool = false,
+                playlistDraft: PlaylistDraft = PlaylistDraft(), playlistDraftUnsaved: Bool = false, playlistDraftNeedsSync: Bool = false,
                 rekordboxPlaylists: PlaylistLayout = PlaylistLayout(), playlistImports: PlaylistImports = PlaylistImports(),
                 playlistImportsLoadFailed: Bool = false, unreadableDraftKinds: [String: Set<WritePart>] = [:], failedTagSaves: Set<String> = [], staged: [StagedTrack] = [],
                 estimatingGrids: Bool = false, iTunesSelection: Bool = false, deckStagedUUID: String? = nil, lastError: String? = nil,
@@ -52,6 +55,7 @@ public struct ReflectionLibraryState: Sendable {
         self.mergeDrafts = mergeDrafts
         self.playlistDraft = playlistDraft
         self.playlistDraftUnsaved = playlistDraftUnsaved
+        self.playlistDraftNeedsSync = playlistDraftNeedsSync
         self.rekordboxPlaylists = rekordboxPlaylists
         self.playlistImports = playlistImports
         self.playlistImportsLoadFailed = playlistImportsLoadFailed

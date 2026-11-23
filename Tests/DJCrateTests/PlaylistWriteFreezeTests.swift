@@ -97,7 +97,8 @@ struct PlaylistWriteFreezeTests {
         #expect(playlists.playlistDraft == draft, "읽지 못해 편집하지 않았다")
         #expect(playlists.playlistDraftNeedsSync)
         #expect(!playlists.savePlaylistDraft(), "디스크 초안을 받을 때까지 저장하지 않는다")
-        #expect(store.reflectionState().playlistDraft.isEmpty, "그동안 재생 목록은 rekordbox에 쓰지 않는다(다른 종류 초안은 쓴다: 쓰기 묶음에서만 뺀다)")
+        let state = store.reflectionState()
+        #expect(state.playlistDraftNeedsSync && state.playlistDraft == draft, "공용 상태는 실제 메모리 초안과 동기화 실패 표시를 함께 준다(쓰기 묶음에서 빼는 것은 세션이 한다)")
         #expect(try Data(contentsOf: file) == Data("깨진 파일".utf8), "깨진 파일을 메모리로 덮지 않았다")
 
         // 디스크 초안이 다시 읽히면(바깥이 고쳤다) 받고 이어 간다
@@ -234,7 +235,8 @@ struct PlaylistWriteFreezeTests {
         // 쓰기 잠금을 거는 순간의 동기화가 디스크 초안을 읽지 못한다
         beginDraftWrite()
         #expect(playlists.playlistDraftNeedsSync)
-        #expect(store.reflectionState().playlistDraft.isEmpty, "옛 메모리 재생 목록 편집은 쓰기 묶음에 들지 않는다(⌘S·자동 저장 모두 이 상태를 본다)")
+        #expect(store.reflectionState().playlistDraftNeedsSync && store.reflectionState().playlistDraft == draft,
+                "⌘S·자동 저장이 이 표시를 보고 재생 목록을 쓰기 묶음에서 뺀다. 실제 초안은 그대로 둔다(곡 추가 복원이 빈 초안을 저장하지 않게)")
         #expect(playlists.ensurePlaylistDraftSaved(), "다른 종류 초안을 쓰는 것은 막지 않는다")
         #expect(playlists.syncExternal() != .current, "쓰기 잠금 때문에 읽지 않은 것을 맞춘 것으로 보지 않는다")
         #expect(playlists.playlistDraft == draft)
@@ -243,7 +245,7 @@ struct PlaylistWriteFreezeTests {
         // 디스크 초안을 다시 읽으면 재생 목록도 쓰기 묶음에 든다
         try PlaylistDraftStore.save(draft, url: file)
         #expect(playlists.syncExternal() == .current && !playlists.playlistDraftNeedsSync)
-        #expect(store.reflectionState().playlistDraft == draft)
+        #expect(!store.reflectionState().playlistDraftNeedsSync && store.reflectionState().playlistDraft == draft)
     }
 
     @Test func S7_동기화_실패_동안은_가져온_곡의_재생_목록_연결과_연결_기록_저장을_미룬다() throws {

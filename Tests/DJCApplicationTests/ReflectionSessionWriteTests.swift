@@ -204,6 +204,29 @@ struct ReflectionSessionWriteTests {
         #expect(h.gateCalls.value.previews.first?.playlists == nil && h.gateCalls.value.writes.first?.playlists == nil)
     }
 
+    static let playlistHeldText = "재생 목록 편집을 읽지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요."
+
+    @Test func S10_재생_목록만_있는데_동기화_실패_표시가_남았으면_저장할_편집이_없다고_하지_않고_이유를_알린다() async {
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftNeedsSync = true
+        let outcome = await h.session.write(rows: [])
+        #expect(outcome.notice?.title == "rekordbox에 저장하지 않았습니다")
+        #expect(outcome.notice?.text == Self.playlistHeldText)
+        #expect(h.gateCalls.value.writes.isEmpty && h.locks.isEmpty)
+    }
+
+    @Test func S10_곡_편집도_있으면_곡은_쓰고_결과에_재생_목록을_뺀_이유를_담는다() async {
+        pendingCue("a")
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftNeedsSync = true
+        h.script.preview = H.report(cues: [H.outcome("a", .written)])
+        let outcome = await h.session.write(rows: [H.row("a")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(followUp.contains(Self.playlistHeldText))
+        #expect(h.gateCalls.value.previews.first?.playlists == nil && h.gateCalls.value.writes.first?.playlists == nil, "재생 목록은 쓰기 묶음에서 빠진다")
+        #expect(h.gateCalls.value.writes.first?.drafts.map(\.trackUUID) == ["a"])
+    }
+
     @Test func 재생_목록_편집이_모두_막히면_쓰지_않는다() async {
         h.state.playlistDraft = playlistDraft()
         h.script.preview = playlistReport([PlaylistOutcome(edit: .rename(playlist: .id("9"), name: "x"), playlistID: nil, name: "스마트",

@@ -235,6 +235,29 @@ struct ReflectionSessionRestoreTests {
         #expect(h.importsSaved.last?.pendingCount == 1, "되돌린 곡은 다시 기다리는 연결이 된다")
     }
 
+    @Test func S9_재생_목록_동기화_실패_중_곡_넣기를_되돌려도_재생_목록_초안과_연결_기록을_건드리지_않고_이유를_알린다() async throws {
+        stageBackup()
+        let rekordbox = PlaylistLayout(rekordbox: [RekordboxPlaylist(id: "P", name: "목록", parentID: "root", seq: 1, isFolder: false,
+                                                                    trackIDs: [])])
+        var draft = PlaylistDraft()
+        _ = try draft.append(.addTracks(playlist: PlaylistRef("P"), contentIDs: ["id-/music/a.mp3", "other"]), rekordbox: rekordbox)
+        try h.memory.store.savePlaylistDraft(draft)
+        h.state.rekordboxPlaylists = rekordbox
+        h.state.playlistDraft = draft
+        var imports = PlaylistImports()
+        imports.addFiles(["/music/a.mp3"], to: PlaylistRef("P"))
+        h.state.playlistImports = imports
+        // 디스크 재생 목록 초안을 읽지 못해 화면은 메모리 초안을 믿을 수 없다(`PlaylistEditStore.playlistDraftNeedsSync`)
+        h.state.playlistDraftNeedsSync = true
+
+        _ = try await h.session.restoreBackup(addBackup(), to: .copy)
+
+        #expect(h.memory.store.playlistDraft() == draft, "디스크 재생 목록 초안은 그대로다")
+        #expect(h.importsSaved.isEmpty && !h.changeNames.contains { $0.hasPrefix("imports reset") }, "초안도 연결 기록도 건드리지 않는다")
+        #expect(h.followUp == ["재생 목록 편집을 읽지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요."])
+        #expect(h.state.staged.map(\.uuid) == ["a", "b", "k"], "추가 목록 복원은 그대로 한다")
+    }
+
     @Test func 곡_넣기를_되돌려도_넣은_뒤_새_곡에_만든_초안은_지우지_않고_알린다() async throws {
         stageBackup()
         h.memory.save(H.cue("new-a", at: 99))

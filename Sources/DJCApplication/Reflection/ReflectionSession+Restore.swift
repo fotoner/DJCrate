@@ -185,7 +185,8 @@ extension ReflectionSession {
         let restaged = restoreStaged(from: backup)
         apply(.lastWriteBackup(nil))
         return finishFollowUp([saveWarning, artworkWarning, keptWarning,
-                               Self.keptNewTrackDraftsText(restaged.keptDrafts, kinds: restaged.keptKinds)],
+                               Self.keptNewTrackDraftsText(restaged.keptDrafts, kinds: restaged.keptKinds),
+                               restaged.playlistHeld ? Self.playlistSyncHeldText : nil],
                               reloaded: reloaded, restoring: true)
     }
 
@@ -197,6 +198,8 @@ extension ReflectionSession {
         var keptDrafts = 0
         /// 남긴 초안의 종류(곡 수 알림 문구에 쓴다)
         var keptKinds: [AddedTrackDrafts.Kind] = []
+        /// 디스크 재생 목록 초안을 읽지 못해 그 곡의 재생 목록 연결·초안 정리를 하지 않았다(`playlistDraftNeedsSync`)
+        var playlistHeld = false
     }
 
     /// 곡 추가를 되돌렸으면 그 곡들을 추가 목록에 다시 넣고, 새 곡으로 옮겼던 초안을 지운다.
@@ -205,11 +208,16 @@ extension ReflectionSession {
     @discardableResult
     func restoreStaged(from backup: RekordboxWriteBackup) -> RestoredStaged {
         let contentIDs = Set(backup.trackReport?.added.filter(\.written).compactMap(\.contentID) ?? [])
+        var playlistHeld = false
         if !contentIDs.isEmpty {
             let state = ports.library.state()
-            apply(.playlistImportsReset(playlistEdits.resetImports(contentIDs: contentIDs, draft: state.playlistDraft,
-                                                                   rekordbox: state.rekordboxPlaylists, imports: state.playlistImports,
-                                                                   importsLoadFailed: state.playlistImportsLoadFailed)))
+            // 디스크 재생 목록 초안을 읽지 못했으면 옛 메모리 초안으로 저장하지 않는다(초안·연결 기록을 건드리지 않는다)
+            playlistHeld = state.playlistDraftNeedsSync
+            if !playlistHeld {
+                apply(.playlistImportsReset(playlistEdits.resetImports(contentIDs: contentIDs, draft: state.playlistDraft,
+                                                                       rekordbox: state.rekordboxPlaylists, imports: state.playlistImports,
+                                                                       importsLoadFailed: state.playlistImportsLoadFailed)))
+            }
         }
         let files = ports.drafts
         files.flush()
@@ -222,6 +230,7 @@ extension ReflectionSession {
         let savedGrids = Dictionary(saved.grids.map { ($0.trackUUID, $0) }, uniquingKeysWith: { first, _ in first })
         let state = ports.library.state()
         var result = RestoredStaged()
+        result.playlistHeld = playlistHeld
         var cleared: [TagDraft] = []
         var keptKinds: Set<AddedTrackDrafts.Kind> = []
         for outcome in outcomes {

@@ -303,26 +303,72 @@ struct EditPlaylistsCleanupTests {
         #expect(cleanup.draft?.edits == memory.store.playlistDraft().edits)
     }
 
-    @Test func S1_저장하지_못한_메모리_편집은_디스크에_없는_단계만_합치고_디스크의_단계는_디스크가_이긴다() throws {
-        let staged = try stage([.create(key: "k", name: "새 목록", isFolder: false, parent: .root), .rename(playlist: .id("P"), name: "막힐 이름")])
-        let outcomes = Self.outcomes(staged.draft, [.written, .blocked], ids: [0: "900"])
-        // 쓰는 동안 저장하지 못한 편집이 메모리에만 생겼고(식별자 없음), 바깥이 디스크의 막힌 단계를 고쳤다
-        var current = staged.draft
-        try current.append(.addTracks(playlist: .new("k"), contentIDs: ["c1"]), rekordbox: Self.rekordbox,
-                           frozen: Set(staged.draft.stepIDs.compactMap { $0 }))
-        var outside = PlaylistDraft()
-        try outside.append(.create(key: "k", name: "새 목록", isFolder: false, parent: .root), rekordbox: Self.rekordbox)
-        try outside.append(.rename(playlist: .id("P"), name: "바깥에서 고친 이름"), rekordbox: Self.rekordbox)
-        outside.setStepIDs(staged.draft.stepIDs)
-        memory.editPlaylistOutside(outside)
+    @Test func S1_쓰는_동안_이름을_저장한_뒤_같은_이름을_다시_고친_저장이_실패해도_정리_뒤_최신_이름이_남는다() throws {
+        let staged = try stage([.create(key: "k", name: "새 목록", isFolder: false, parent: .root)])
+        let outcomes = Self.outcomes(staged.draft, [.written], ids: [0: "900"])
+        let frozen = Set(staged.draft.stepIDs.compactMap { $0 })
+        // 쓰는 동안 다른 목록 이름 변경을 더해 저장했다
+        var disk = staged.draft
+        try disk.append(.rename(playlist: .id("P"), name: "중간 이름"), rekordbox: Self.rekordbox, frozen: frozen)
+        try memory.store.savePlaylistDraft(disk)
+        disk = reread().draft
+        // 같은 이름을 다시 고쳤다: fold가 앞 단계의 식별자를 이어 받고 이 저장은 실패했다(메모리에만 있다)
+        var current = disk
+        try current.append(.rename(playlist: .id("P"), name: "최신 이름"), rekordbox: Self.rekordbox, frozen: frozen)
+        #expect(current.stepIDs.last == disk.stepIDs.last, "합쳐진 단계가 식별자를 이어 받는다")
 
         let cleanup = playlists.finishWrite(staged.draft, outcomes: outcomes, current: current, imports: PlaylistImports(), importsLoadFailed: false,
                                             entries: staged.entries, backups: Self.backups, backupFolder: Self.folder, memoryUnsaved: true)
 
-        let expected: [PlaylistEdit] = [.rename(playlist: .id("P"), name: "바깥에서 고친 이름"), .addTracks(playlist: .id("900"), contentIDs: ["c1"])]
         #expect(cleanup.isComplete && cleanup.draftError == nil)
-        #expect(memory.store.playlistDraft().edits == expected, "쓴 만들기는 빠지고 메모리에만 있던 곡 넣기는 쓴 목록의 ID로 합쳐 저장한다")
-        #expect(cleanup.draft?.edits == expected)
+        #expect(cleanup.draft?.edits == [.rename(playlist: .id("P"), name: "최신 이름")], "메모리가 정본이라 최신 이름이 남고 쓴 만들기 단계만 빠진다")
+        #expect(memory.store.playlistDraft().edits == [.rename(playlist: .id("P"), name: "최신 이름")])
+    }
+
+    @Test func S8_쓰는_동안_디스크에서_쓴_만들기_단계가_이미_없어졌고_저장하지_못한_편집이_있어도_만들기_단계를_되살리지_않는다() throws {
+        let staged = try stage([.create(key: "k", name: "새 목록", isFolder: false, parent: .root)])
+        let outcomes = Self.outcomes(staged.draft, [.written], ids: [0: "900"])
+        // 메모리: 쓴 만들기 단계 + 저장하지 못한 다른 편집. 디스크에서는 쓴 만들기 단계가 이미 없다(찾지 못함)
+        var current = staged.draft
+        try current.append(.rename(playlist: .id("P"), name: "저장하지 못한 이름"), rekordbox: Self.rekordbox,
+                           frozen: Set(staged.draft.stepIDs.compactMap { $0 }))
+        memory.editPlaylistOutside(PlaylistDraft())
+
+        let cleanup = playlists.finishWrite(staged.draft, outcomes: outcomes, current: current, imports: PlaylistImports(), importsLoadFailed: false,
+                                            entries: staged.entries, backups: Self.backups, backupFolder: Self.folder, memoryUnsaved: true)
+
+        #expect(cleanup.draft?.edits == [.rename(playlist: .id("P"), name: "저장하지 못한 이름")], "쓴 만들기 단계가 새 편집으로 되살아나지 않는다")
+        #expect(memory.store.playlistDraft().edits == cleanup.draft?.edits)
+    }
+
+    @Test func S2_저장하지_못한_편집이_있어도_사본을_남기지_못한_단계가_있으면_메모리를_합치지도_저장하지도_않고_판을_보존한다() throws {
+        let staged = try stage([.create(key: "k", name: "새 목록", isFolder: false, parent: .root)])
+        let outcomes = Self.outcomes(staged.draft, [.written], ids: [0: "900"])
+        let list = list(staged.draft, outcomes, staged.entries)
+        var current = staged.draft
+        try current.append(.rename(playlist: .id("P"), name: "저장하지 못한 이름"), rekordbox: Self.rekordbox,
+                           frozen: Set(staged.draft.stepIDs.compactMap { $0 }))
+        // 쓴 만들기 단계를 바깥에서 고쳐 사본이 필요한데 남기지 못한다
+        var outside = PlaylistDraft()
+        try outside.append(.create(key: "k", name: "바깥에서 고친 이름", isFolder: false, parent: .root), rekordbox: Self.rekordbox)
+        outside.setStepIDs(staged.draft.stepIDs)
+        memory.editPlaylistOutside(outside)
+        memory.failPlaylistCopies()
+        let stamps = memory.store.playlistStamps()
+
+        let cleanup = playlists.finishWrite(staged.draft, outcomes: outcomes, current: current, imports: Self.pending("k"), importsLoadFailed: false,
+                                            entries: staged.entries, backups: Self.backups, backupFolder: Self.folder, memoryUnsaved: true)
+
+        #expect(!cleanup.isComplete && cleanup.copyFailed.count == 1)
+        #expect(cleanup.draft == nil, "앱 메모리와 저장하지 못한 표시는 그대로 둔다")
+        #expect(memory.store.playlistStamps() == stamps, "사본을 못 남긴 단계의 판이 그대로다")
+        #expect(cleanup.ids.isEmpty && cleanup.imports == nil)
+
+        // 사본을 남길 수 있게 되면 같은 판으로 찾아 정리한다
+        memory.failPlaylistCopies(false)
+        let retried = playlists.resumeCleanup(list, backups: Self.backups, imports: Self.pending("k"), importsLoadFailed: false)
+        #expect(retried.isComplete && retried.copied.count == 1)
+        #expect(memory.store.playlistDraft().isEmpty)
     }
 
     @Test func S3_쓰는_동안_같은_폴더_안_순서를_바꿔도_쓴_이름_바꾸기는_사본_없이_판으로_빠지고_순서_편집이_남는다() throws {

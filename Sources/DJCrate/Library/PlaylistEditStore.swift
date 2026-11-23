@@ -100,10 +100,6 @@ final class PlaylistEditStore {
     /// 얼린 단계(없으면 빈 집합)
     private var frozen: Set<UUID> { writeFreeze ?? [] }
 
-    /// 쓰기 묶음에 넣을 재생 목록 초안. 디스크 초안을 읽지 못해 메모리가 디스크와 같은지 모르면(`playlistDraftNeedsSync`) 비어 있다:
-    /// ⌘S·자동 저장 모두 옛 메모리로 재생 목록을 쓰지 않는다(디스크 초안을 받으면 다시 든다)
-    var writablePlaylistDraft: PlaylistDraft { playlistDraftNeedsSync ? PlaylistDraft() : playlistDraft }
-
     /// 쓸 수 없는 초안 편집 수(rekordbox에서 바뀐 목록 등)
     var blockedPlaylistEditCount: Int { playlistProjection.blocked.compactMap { $0 }.count }
 
@@ -542,8 +538,8 @@ final class PlaylistEditStore {
 
     /// 쓰기 전에: 저장하지 못한 재생 목록 초안은 다시 저장해 본다. 저장했거나 저장할 것이 없으면 true(아니면 쓰기가 막는다).
     func ensurePlaylistDraftSaved() -> Bool {
-        // 디스크 초안을 읽지 못한 채 쓰면 바깥에서 더한 단계를 놓친다: 다시 읽어 보고, 읽지 못했으면 재생 목록은 쓰기 묶음에서 빠진다
-        // (`writablePlaylistDraft`). 다른 종류 초안을 쓰는 것은 막지 않는다
+        // 디스크 초안을 읽지 못한 채 쓰면 바깥에서 더한 단계를 놓친다: 다시 읽어 보고, 읽지 못했으면 반영 세션이 재생 목록을 쓰기 묶음에서 뺀다
+        // (`ReflectionLibraryState.playlistDraftNeedsSync`). 다른 종류 초안을 쓰는 것은 막지 않는다
         if playlistDraftNeedsSync {
             _ = syncExternal()
             if playlistDraftNeedsSync { return true }

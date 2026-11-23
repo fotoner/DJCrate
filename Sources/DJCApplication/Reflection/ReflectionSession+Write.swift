@@ -12,9 +12,15 @@ extension ReflectionSession {
             return publish(.notice(title: String(ui: "rekordbox가 켜져 있어 저장하지 않았습니다"), text: ReflectionPrompts.quitRekordboxText, lines: []))
         }
         let chosen = writeTargets(rows)
-        let withPlaylists = playlists && !ports.library.state().playlistDraft.isEmpty
+        // 디스크 재생 목록 초안을 읽지 못했으면(동기화 실패) 이번 쓰기 묶음에서 재생 목록만 뺀다. 다른 종류 초안은 쓰고 결과에 이유를 담는다
+        let state = ports.library.state()
+        let playlistHeld = playlists && state.playlistDraftNeedsSync && !state.playlistDraft.isEmpty
+        let withPlaylists = playlists && !state.playlistDraft.isEmpty && !state.playlistDraftNeedsSync
         let withHistories = playlists && !ports.library.state().pendingHistories.isEmpty
         guard !chosen.isEmpty || withPlaylists || withHistories else {
+            if playlistHeld {
+                return publish(.notice(title: String(ui: "rekordbox에 저장하지 않았습니다"), text: Self.playlistSyncHeldText, lines: []))
+            }
             return publish(.notice(title: String(ui: "저장할 편집이 없습니다"), text: String(ui: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 편집이 없습니다."),
                                    lines: exclusions(for: rows, blockedOnly: false)))
         }
@@ -38,7 +44,8 @@ extension ReflectionSession {
             try Task.checkCancellation()
             // 분석을 붙이는 곡도 그리드 초안으로 쓴다(`writableBatch`). 쓰기 결과와 뒤따른 일의 경고는 나눠 알린다(#175).
             let written = try await writeDraftsFollowingUp(preview.writableBatch, to: target, dryRun: false)
-            return publish(.written(written.report, preview: preview.report, followUp: written.followUp))
+            return publish(.written(written.report, preview: preview.report,
+                                    followUp: written.followUp + (playlistHeld ? [Self.playlistSyncHeldText] : [])))
         } catch is CancellationError {
             stage(nil)
             return publish(.cancelled)
@@ -147,7 +154,7 @@ extension ReflectionSession {
                 throw DJCError.writeRefused(String(ui: "앨범아트 편집을 읽지 못했으니 그 곡의 앨범아트를 다시 고른 뒤 저장을 다시 시도하세요."))
             }
         }
-        let playlistDraft = playlists && !state.playlistDraft.isEmpty ? state.playlistDraft : nil
+        let playlistDraft = playlists && !state.playlistDraft.isEmpty && !state.playlistDraftNeedsSync ? state.playlistDraft : nil
         // 쓰기 대기 재생 기록(#43)도 재생 목록 초안처럼 곡을 고르지 않고 모두 본다. 관문이 막으면 막힘(이유)으로 돌아온다
         return DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges,
                                histories: playlists ? state.pendingHistories : [])

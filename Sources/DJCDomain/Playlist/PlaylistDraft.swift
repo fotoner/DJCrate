@@ -295,20 +295,6 @@ public struct PlaylistDraft: Codable, Hashable, Sendable {
         return draft
     }
 
-    /// 저장하지 못해 메모리에만 있던 편집의 단계를 뒤에 합친다(쓴 뒤 정리, R22). 그 단계가 기대던 기준(`memory`의 공유 기준)은 단계 안(`recoveryBase`)에 둔다:
-    /// 이 초안의 공유 기준과 섞지 않는다(같은 목록의 기준이 다르면 어느 쪽이 맞는지 모른 채 하나로 합치지 않는다)
-    public func appending(unsaved pending: [Step], basedOn memory: PlaylistDraft) -> PlaylistDraft {
-        guard !pending.isEmpty else { return self }
-        var draft = self
-        for var step in pending {
-            if step.recoveryBase == nil, !step.depends.isEmpty {
-                step.recoveryBase = Dictionary(step.depends.compactMap { id in memory.base[id].map { (id, $0) } }, uniquingKeysWith: { first, _ in first })
-            }
-            draft.steps.append(step)
-        }
-        return draft
-    }
-
     /// 곡 추가를 되돌리면 사라진 ContentID를 초안에서도 뺀다. 다른 목록의 base는 그대로 둔다.
     public mutating func forgetContentIDs(_ ids: Set<String>, rekordbox: PlaylistLayout) {
         var originalLayout = rekordbox
