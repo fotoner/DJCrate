@@ -22,6 +22,8 @@ import RekordboxKit
 /// - `quiet`: 조용함 대기 중 ⌘Q → 지금의 종료 대기 화면으로 기다린 뒤 대기 중인 편집을 저장하고 끈다
 /// - `grace`: 대량 유예 중 ⌘Q → 기다리지 않고 바로 끈다. 편집은 초안으로 남는다(다음 실행 때 R1대로)
 /// - `preview`: 자동 저장이 미리 보기 중일 때 ⌘Q → 미리 보기를 취소하지 않고 그 저장이 끝난 뒤 끈다
+/// - `instant`: 편집 직후 엔진이 편집 신호를 받기 전에 누른 ⌘Q → 엔진이 최신 초안으로 다시 판정해 저장한 뒤 끈다
+/// - `chunks`: K행을 넘는 대기열(묶음 둘)의 첫 묶음을 쓰는 중 ⌘Q → 다시 읽은 뒤 둘째 묶음까지 쓰고 끈다
 @MainActor
 enum QuitWaitSelfTest {
     private static let holdSeconds = 4.0
@@ -161,7 +163,9 @@ enum QuitWaitSelfTest {
     /// ⌘Q 저장(R17) 한 경우. 앱은 실제 종료 입구(`NSApp.terminate`)로 끝나고, 끝나기 직전(`willTerminate`)에 결과를 단정한다
     private static func runAutoSaveQuit(store: LibraryStore, engine: AutoReflection) {
         let mode = ProcessInfo.processInfo.environment["DJC_QUIT_WAIT_AUTOSAVE"] ?? ""
-        guard ["quiet", "grace", "preview"].contains(mode) else { log("DJC_QUIT_WAIT_AUTOSAVE=<quiet|grace|preview>를 주세요"); exit(2) }
+        guard ["quiet", "grace", "preview", "instant", "chunks"].contains(mode) else {
+            log("DJC_QUIT_WAIT_AUTOSAVE=<quiet|grace|preview|instant|chunks>를 주세요"); exit(2)
+        }
         AutoReflectAppSelfTest.stopSplitViewAutosave()
         let preferences = AutoReflectAppSelfTest.PreferencesProbe()
         let tally = Tally()
@@ -181,7 +185,7 @@ enum QuitWaitSelfTest {
             }
             let uuid = row.track.uuid
             var waited = false
-            /// 끝나기 직전에 단정한다. 실패면 종료 코드 1로 끝낸다(성공이면 앱이 0으로 끝난다)
+            /// 끝나기 직전에 단정하고 그 자리에서 끝낸다(성공 0, 실패 1). AppKit의 `exit` 정리와 뒤에서 도는 SQLCipher 열기가 겹치지 않게 `_exit`로 끝낸다
             @MainActor func onTerminate(_ judge: @escaping @MainActor () -> [(Bool, String)]) {
                 _ = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
                     MainActor.assumeIsolated {
@@ -189,7 +193,7 @@ enum QuitWaitSelfTest {
                         let changed = preferences.changedKeys()
                         tally.check(changed.isEmpty, "종료 직전: 자가 테스트 전후로 사용자 환경설정이 같다(바뀐 키 \(changed.count)개)")
                         log(tally.failures == 0 ? "⌘Q 저장 시험 통과(\(mode))" : "실패로 끝남(\(tally.failures)건)")
-                        if tally.failures > 0 { AutoReflectAppSelfTest.finish(1) }
+                        AutoReflectAppSelfTest.finish(tally.failures == 0 ? 0 : 1)
                     }
                 }
             }
@@ -208,7 +212,8 @@ enum QuitWaitSelfTest {
                 requestQuit()
                 waited = await until(5) { store.quitWait.isWaiting && store.quitWait.allowsAutoSave }
                 check(waited, "조용함 대기 중 ⌘Q → 종료 대기 화면으로 기다린다(앱은 끝나지 않았다)")
-                check(store.writeRefusal == nil, "기다리는 동안 자동 저장의 쓰기를 막지 않는다")
+                check(await until(5) { engine.status == .quitting }, "엔진이 종료 저장을 알린다(칩 \(engine.status))")
+                check(store.writeRefusal != nil && !store.quitWait.refusesWrites, "기다리는 동안 수동 입구는 거절하고 자동 저장만 세션 잠금을 지난다")
             case "grace":
                 let bulk = store.rows.filter { $0.title.hasPrefix("자동 저장 대량") }
                 guard bulk.count >= 50 else { log("대량 곡이 모자랍니다(\(bulk.count))"); exit(2) }
@@ -221,6 +226,34 @@ enum QuitWaitSelfTest {
                      (!store.quitWait.isWaiting, "기다리지 않고 바로 끈다")]
                 }
                 requestQuit()
+            case "instant":
+                // 조용함(10초)을 채운 뒤 편집하고, 엔진이 편집 신호를 받기 전(같은 메인 액터 차례)에 종료를 요청한다
+                await wait(12)
+                check(engine.status == .saved, "편집 전 저장할 것이 없다(칩 \(engine.status))")
+                let writes = engine.autoWrites
+                onTerminate {
+                    [(engine.autoWrites > writes, "엔진이 최신 초안으로 다시 판정해 저장했다(자동 저장 \(engine.autoWrites - writes)회)"),
+                     (store.tagDrafts[uuid] == nil, "저장한 편집이 초안에 남지 않았다")]
+                }
+                store.tags.setTag(.rating, "2", rows: [row])
+                NSApp.terminate(nil)
+            case "chunks":
+                // 재생 목록 넷(60곡씩, 240행)은 K(200행)를 넘어 묶음 둘로 쓴다. M곡 이상이라 30초 유예를 지난 뒤 첫 묶음을 쓰는 중에 ⌘Q
+                let bulk = store.rows.filter { $0.title.hasPrefix("자동 저장 대량") }
+                guard bulk.count >= 50 else { log("대량 곡이 모자랍니다(\(bulk.count))"); exit(2) }
+                for index in 1...4 {
+                    _ = store.playlists.createPlaylist(isFolder: false, in: PlaylistLayout.root, name: "⌘Q 묶음 \(index)", tracks: bulk)
+                }
+                check(await until(120) { engine.isWriting && engine.autoWrites == 0 }, "대량 유예 뒤 첫 묶음을 쓰기 시작했다(칩 \(engine.status))")
+                let writes = engine.autoWrites
+                onTerminate {
+                    [(engine.autoWrites >= writes + 2, "묶음 둘을 모두 썼다(자동 저장 \(engine.autoWrites - writes)회)"),
+                     (store.playlists.playlistDraft.isEmpty, "재생 목록 편집이 초안에 남지 않았다(남은 단계 \(store.playlists.playlistDraft.steps.count))"),
+                     (waited, "종료 대기 화면으로 기다렸다")]
+                }
+                requestQuit()
+                waited = await until(5) { store.quitWait.isWaiting }
+                check(waited, "묶음을 쓰는 중 ⌘Q → 종료 대기 화면으로 기다린다")
             default:
                 // 자동 저장의 미리 보기를 몇 초 붙잡는다(붙잡는 동안은 아직 아무것도 쓰지 않았다)
                 SelfTestWriteGate.holdPreviews(for: .seconds(holdSeconds))

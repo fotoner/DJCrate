@@ -14,6 +14,8 @@ struct DJCrateApp: App {
     /// 재생 기록 자가 테스트(`--history-selftest`)는 저장소를 만들기 전에 합성 사본·임시 폴더인지 본다(사용자 초안·라이브러리를 읽지 않게).
     /// 저장소는 아래 `app` 속성이 `init`보다 먼저 만들므로 속성으로 둔다.
     private let selfTestStartup: Void = DJCrateApp.checkHistorySelfTestStartup()
+    /// 자동 저장 자가 테스트(`--auto-reflect-selftest`)는 앱을 조립하기 전에 인자·사본·`DJC_HOME` 격리를 본다(조립이 사용자 폴더를 건드리지 않게)
+    private let autoReflectStartup: Void = DJCrateApp.checkAutoReflectSelfTestStartup()
     /// 옛 이름(anicue) 데이터·설정 옮기기. 목록·덱이 설정을 읽기 전에 돌아야 해서 첫 속성으로 둔다.
     private let migrated: Void = AppComposition.migrateLegacyData()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -70,6 +72,16 @@ struct DJCrateApp: App {
         if arguments.contains(where: { $0.hasPrefix("--resize-perf") }) || arguments.contains("--playlist-recovery-selftest")
             || DiagnosticRun.isAutoReflectSelfTest(arguments: arguments) { return .none }
         return DiagnosticRun.isActive(arguments: arguments) ? .restoreOnly : .restoreAndSave
+    }
+
+    private static func checkAutoReflectSelfTestStartup() {
+        #if DEBUG
+        let info = ProcessInfo.processInfo
+        if let refusal = AutoReflectAppSelfTest.startupRefusal(arguments: info.arguments, environment: info.environment) {
+            AutoReflectAppSelfTest.log(refusal + " · 종료 코드 2")
+            exit(2)
+        }
+        #endif
     }
 
     private static func checkHistorySelfTestStartup() {

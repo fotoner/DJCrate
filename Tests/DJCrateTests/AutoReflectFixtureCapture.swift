@@ -38,6 +38,11 @@ struct AutoReflectFixtureCapture {
             try fixture.add(track)
         }
         try fixture.execute("UPDATE djmdContent SET Rating = 0")
+        // 재생 목록 쓰기(⌘Q 저장 시험의 묶음 둘)가 고칠 rekordbox 모양의 빈 목록 XML
+        let xml = [#"<?xml version="1.0" encoding="UTF-8"?>"#, "", #"<MASTER_PLAYLIST Version="3.0.0" AutomaticSync="0">"#,
+                   #"  <PRODUCT Name="rekordbox" Version="7.2.18" Company="AlphaTheta"/>"#, "  <PLAYLISTS>", "  </PLAYLISTS>", "</MASTER_PLAYLIST>", ""]
+            .joined(separator: "\r\n")
+        try xml.write(to: fixture.root.appending(path: "masterPlaylists6.xml"), atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: fixture.root.appending(path: "share/PIONEER/USBANLZ"), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: fixture.root, to: root)
     }

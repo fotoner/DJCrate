@@ -38,6 +38,24 @@ enum AutoReflectAppSelfTest {
     static let pausedName = "auto-reflect-paused"
     static let resumeName = "auto-reflect-resume"
 
+    /// 앱을 조립하기 전에 거절할 이유(없으면 nil). 조립(활동 기록·설정·초안 저장소)이 사용자 폴더를 건드리기 전에 본다:
+    /// 인자의 경우를 알고, `DJC_REKORDBOX_DIR`·`DJC_HOME`을 함께 주고, 실행 조건 판정이 자가 테스트 실행이어야 한다(임시 폴더·겹침·링크, `--db` 없음)
+    static func startupRefusal(arguments: [String], environment: [String: String]) -> String? {
+        guard AutoReflectSelfTest.isRequested(arguments: arguments) else { return nil }
+        guard AutoReflectSelfTest.requested(arguments: arguments) != nil else {
+            return "경우를 모릅니다. save·two-process·kill-detect 가운데 하나를 주세요"
+        }
+        guard environment["DJC_REKORDBOX_DIR"]?.isEmpty == false, environment["DJC_HOME"]?.isEmpty == false else {
+            return "DJC_REKORDBOX_DIR(임시 사본)과 DJC_HOME(임시 폴더)을 함께 주세요"
+        }
+        let location = LibraryLocation.resolve(arguments: arguments, environment: environment)
+        guard case .selfTest = AutoReflectionRun.decide(AppComposition.autoReflectionFacts(arguments: arguments, environment: environment,
+                                                                                           location: location)) else {
+            return "쓰기 전 확인을 채우지 못했습니다. 사본과 DJC_HOME을 임시 폴더 아래에 두고, 분석 폴더는 링크 없이 복사하고, --db는 빼세요"
+        }
+        return nil
+    }
+
     static func runIfRequested(store: LibraryStore, deck: DeckModel, reflection: ReflectionCoordinator) {
         // ⌘Q 저장 자가 테스트(`--quit-wait-selftest`와 함께 준 실행)는 그 시험이 맡는다
         guard DiagnosticRun.isAutoReflectSelfTest(), !QuitWaitSelfTest.isRequested else { return }
@@ -57,7 +75,7 @@ enum AutoReflectAppSelfTest {
         Task {
             var code: Int32
             switch (test, role) {
-            case (_, .writer?): code = await runWriter(store: store, test: test)
+            case (_, .writer?): code = await runWriter(store: store, reflection: reflection, test: test)
             case (.killDetect, .detect?): code = await runDetect(store: store, engine: engine)
             case (.save, nil):
                 if let rounds = env[e1Key].flatMap(Int.init) {
@@ -106,7 +124,7 @@ enum AutoReflectAppSelfTest {
         deck.togglePlay()
         guard await until(10, { deck.isPlaying }) else { log("재생을 시작하지 못했습니다"); return 1 }
         await sleep(1)
-        probe.mark()
+        probe.mark(playhead: deck.currentTime)
         var stopped = 0, overlays = 0
         var rating = store.rowsByUUID[uuid]?.track.rating ?? 0
         let writesBefore = engine.autoWrites
@@ -125,16 +143,16 @@ enum AutoReflectAppSelfTest {
             check(saved, "\(index)번째 자동 저장: 다시 읽은 사본 DB 평점 \(store.rowsByUUID[uuid]?.track.rating ?? -1)(기대 \(expected)) · 자동 저장 \(engine.autoWrites - writesBefore)회 · 칩 \(engine.status)")
             if !saved { break }
         }
-        probe.mark()
+        probe.mark(playhead: deck.currentTime)
         deck.togglePlay()
         let result = probe.analyze()
         check(stopped == 0, "자동 저장하는 동안 덱 재생이 멈추지 않았다(멈춤을 본 횟수 \(stopped))")
         check(overlays == 0, "자동 저장하는 동안 창 덮개가 뜨지 않았다(본 횟수 \(overlays))")
-        log(String(format: "곡 믹서 출력: %.1f초 · 10ms 구간 %d개 · 중앙 RMS %.4f · 가장 긴 버퍼 간격 %.3f초 · 받은 프레임/시간 %.3f",
-                   result.seconds, result.windows, result.medianRMS, result.longestArrivalGap, result.coverage))
-        check(result.windows > 1000, "충분히 오래 들었다(10ms 구간 \(result.windows)개)")
-        check(result.gaps == 0, "곡 믹서 출력에서 신호가 끊긴 구간이 0이다(\(result.gaps)개)")
-        check(result.longestArrivalGap < 0.25 && abs(result.coverage - 1) < 0.05, "출력 버퍼가 끊기지 않고 시간만큼 왔다")
+        log(String(format: "곡 믹서 출력: %.1f초 · 10ms 구간 %d개 · 중앙 RMS %.4f · 끊긴 구간 %d개 · 가장 긴 버퍼 간격 %.3f초 · 받은 시간/벽시계 %.3f · 받은 시간/재생 위치 %.3f",
+                   result.seconds, result.windows, result.medianRMS, result.quietWindows, result.longestArrivalGap, result.wallCoverage,
+                   result.playheadCoverage))
+        let problems = result.problems
+        check(problems.isEmpty, "곡 믹서 출력에서 신호가 끊긴 구간이 0이다\(problems.isEmpty ? "" : "(\(problems.joined(separator: " · ")))")")
         return failures == 0 ? 0 : 1
     }
 
@@ -261,7 +279,9 @@ enum AutoReflectAppSelfTest {
 
     /// 이 프로세스의 엔진은 멈추고(쓰지 않게), 붙잡는 관문을 끼운 반영 세션으로 엔진과 같은 자동 쓰기 단계(`autoWrite`)를 한 번 한다.
     /// 커밋 직후(`after(.commit)`)에서 표시 파일을 만들고 멈춘다. 부모가 다시 가라는 파일을 두면 이어서 끝낸다(강제 종료 시험은 그 전에 죽는다)
-    private static func runWriter(store: LibraryStore, test: AutoReflectSelfTest) async -> Int32 {
+    private static func runWriter(store: LibraryStore, reflection: ReflectionCoordinator, test: AutoReflectSelfTest) async -> Int32 {
+        // 이 프로세스의 엔진이 훅 없는 관문으로 먼저 쓰지 않게 가장 먼저 멈춘다
+        reflection.engine?.stop()
         let env = ProcessInfo.processInfo.environment
         guard let uuid = env[trackKey], let rating = env[ratingKey], let homePath = env["DJC_HOME"] else { log("곡·평점을 받지 못했습니다"); return 2 }
         guard await loadLibrary(store), let row = store.rowsByUUID[uuid] else { log("곡을 찾지 못했습니다"); return 1 }
@@ -352,16 +372,28 @@ enum AutoReflectAppSelfTest {
             // 막힌 이유(곡 이름·경로 없이 이유 글만, 같은 이유는 한 번)
             let reasons = Set((report.blocked + report.gridBlocked).compactMap(\.reason)).sorted().prefix(6)
             log("E1 \(round)회 막힘: 큐 \(report.blocked.count)·그리드 \(report.gridBlocked.count)·쓰지 않은 판 \(unwritten.count) · 이유: \(reasons.joined(separator: " / "))")
-            let measured = timings.measure()
+            // 실제로 쓴 행: 큐·그리드를 쓴 곡과 다 쓴 재생 목록 단계의 행
+            let stepRows = inventory.steps.filter { step in step.revision.map { chunk.stepRevisions.contains($0) } ?? false }.reduce(0) { $0 + $1.rows }
+            let rows = report.written.count + report.gridWritten.count + (report.playlistWritten.count == chunk.playlistSteps ? stepRows : 0)
+            if let problem = E1Measurement.mixedBatchProblem(cues: report.written.count, grids: report.gridWritten.count,
+                                                             playlistStepsWritten: report.playlistWritten.count,
+                                                             playlistStepsPlanned: chunk.playlistSteps, rows: rows, rowLimit: rowLimit) {
+                log("E1 \(round)회 실패: \(problem)")
+                return 1
+            }
+            guard let measured = timings.measure() else {
+                log("E1 \(round)회 실패: 필수 측정 구간(커밋·파일 교체의 재확인 → 단계 끝 짝)이 없다")
+                return 1
+            }
             gateMax = max(gateMax, measured.gate)
             referenceMax = max(referenceMax, measured.reference)
             totalMax = max(totalMax, total)
             for (step, value) in measured.perStep { perStep[step] = max(perStep[step] ?? .zero, value) }
-            log("E1 \(round)회: 묶음 \(inventory.autoRows(rowLimit: rowLimit))행(큐 \(report.written.count)·그리드 \(report.gridWritten.count)/\(grids)·재생 목록 \(report.playlistWritten.count)건) · "
-                + "재확인→단계 끝 최댓값 \(seconds(measured.gate)) · 커밋→마지막 파일 단계 \(seconds(measured.reference)) · 쓰기 전체 \(seconds(total))")
+            log("E1 \(round)회: 쓴 묶음 \(rows)행(큐 \(report.written.count)·그리드 \(report.gridWritten.count)/\(grids)·재생 목록 \(report.playlistWritten.count)단계) · "
+                + "재확인→단계 끝 최댓값 \(seconds(measured.gate)) · 커밋 완료→마지막 파일 단계 완료 \(seconds(measured.reference)) · 쓰기 전체 \(seconds(total))")
             _ = await until(300) { !store.libraryBusy && !store.isLoading }
         }
-        log("E1 결과(\(rounds)회): 관문 값(재확인→단계 끝 최댓값) \(seconds(gateMax)) · 참고값(커밋→마지막 파일 단계 최댓값) \(seconds(referenceMax)) · 쓰기 전체 최댓값 \(seconds(totalMax))")
+        log("E1 결과(\(rounds)회): 관문 값(재확인→단계 끝 최댓값) \(seconds(gateMax)) · 참고값(커밋 완료→마지막 파일 단계 완료 최댓값) \(seconds(referenceMax)) · 쓰기 전체 최댓값 \(seconds(totalMax))")
         log("E1 단계별 최댓값: " + perStep.sorted { $0.key.rawValue < $1.key.rawValue }.map { "\($0.key.rawValue) \(seconds($0.value))" }.joined(separator: " · "))
         log("E1 관문(2×E1 < E2′ 최솟값 2.154초): \(gateMax * 2 < .milliseconds(2154) ? "통과" : "넘지 못함")")
         return 0
@@ -386,29 +418,47 @@ enum AutoReflectAppSelfTest {
         func add(_ moment: RekordboxWriteMoment, _ instant: ContinuousClock.Instant) { lock.withLock { events.append((moment, instant)) } }
         func reset() { lock.withLock { events = [] } }
 
-        /// 단계 끝마다 그 단계의 마지막 재확인부터 잰 값의 최댓값(관문 값), 마지막 커밋 재확인부터 마지막 파일 단계 끝까지(참고값), 단계별 최댓값
-        func measure() -> (gate: Duration, reference: Duration, perStep: [RekordboxWriteStep: Duration]) {
-            let events = lock.withLock { self.events }
+        func measure() -> E1Measurement? { E1Measurement.measure(lock.withLock { events }) }
+    }
+
+    /// 쓰기 한 번의 E1 값. 필수 구간(커밋과 파일 교체 하나 이상의 "재확인 → 그 단계 끝" 짝)이 없으면 만들지 않는다
+    struct E1Measurement: Equatable {
+        /// 관문 값: 단계 끝마다 그 단계의 마지막 재확인부터 잰 값의 최댓값
+        var gate: Duration
+        /// 참고값: 커밋 완료부터 마지막 파일 단계 완료까지
+        var reference: Duration
+        var perStep: [RekordboxWriteStep: Duration]
+
+        static func measure(_ events: [(RekordboxWriteMoment, ContinuousClock.Instant)]) -> Self? {
             var lastRecheck: [RekordboxWriteStep: ContinuousClock.Instant] = [:]
             var gate: Duration = .zero, perStep: [RekordboxWriteStep: Duration] = [:]
-            var commit: ContinuousClock.Instant?, lastFile: ContinuousClock.Instant?
+            var committed: ContinuousClock.Instant?, lastFile: ContinuousClock.Instant?
             for (moment, instant) in events {
                 switch moment {
                 case let .recheck(step):
                     lastRecheck[step] = instant
-                    if step == .commit { commit = instant }
                 case let .after(step):
                     if let start = lastRecheck[step] {
                         let window = instant - start
                         gate = max(gate, window)
                         perStep[step] = max(perStep[step] ?? .zero, window)
                     }
+                    if step == .commit { committed = instant }
                     if [.fileReplace, .sidecarRemove, .databaseReplace].contains(step) { lastFile = instant }
                 case .before: break
                 }
             }
-            let reference = commit.flatMap { start in lastFile.map { $0 - start } } ?? .zero
-            return (gate, reference, perStep)
+            guard perStep[.commit] != nil, perStep[.fileReplace] != nil, let committed, let lastFile, lastFile >= committed else { return nil }
+            return Self(gate: gate, reference: lastFile - committed, perStep: perStep)
+        }
+
+        /// 실제로 쓴 결과가 큐·그리드·재생 목록이 섞인 약 K행 묶음인지. 아니면 그 까닭
+        static func mixedBatchProblem(cues: Int, grids: Int, playlistStepsWritten: Int, playlistStepsPlanned: Int, rows: Int, rowLimit: Int) -> String? {
+            if cues == 0 || grids == 0 || playlistStepsPlanned == 0 || playlistStepsWritten != playlistStepsPlanned {
+                return "섞인 묶음이 아니다(큐 \(cues)·그리드 \(grids)·재생 목록 \(playlistStepsWritten)/\(playlistStepsPlanned)단계)"
+            }
+            if rows * 10 < rowLimit * 9 || rows > rowLimit { return "묶음이 약 K행이 아니다(\(rows)행, K \(rowLimit))" }
+            return nil
         }
     }
 
@@ -420,7 +470,7 @@ enum AutoReflectAppSelfTest {
         private var windows: [Float] = []
         private var arrivals: [(time: Double, window: Int)] = []
         private var rate = 0.0
-        private var marks: [(time: Double, window: Int)] = []
+        private var marks: [(time: Double, window: Int, playhead: Double)] = []
 
         nonisolated static func handler(_ probe: AudioGapProbe) -> @Sendable (AVReadOnlyAudioPCMBuffer) -> Void {
             { @Sendable buffer in probe.record(buffer) }
@@ -443,20 +493,55 @@ enum AutoReflectAppSelfTest {
             }
         }
 
-        /// 잴 구간의 시작·끝 표시
-        func mark() { lock.withLock { marks.append((ProcessInfo.processInfo.systemUptime, windows.count)) } }
+        /// 잴 구간의 시작·끝 표시. 덱의 재생 위치(초)도 함께 남겨, 받은 샘플이 재생이 나아간 만큼인지 대조한다
+        func mark(playhead: Double) {
+            lock.withLock { marks.append((ProcessInfo.processInfo.systemUptime, windows.count, playhead)) }
+        }
 
-        func analyze() -> (seconds: Double, windows: Int, medianRMS: Float, gaps: Int, longestArrivalGap: Double, coverage: Double) {
+        func analyze() -> AudioContinuity {
             lock.withLock {
-                guard marks.count >= 2, marks[1].window > marks[0].window, rate > 0 else { return (0, 0, 0, 0, .infinity, 0) }
-                let span = Array(windows[marks[0].window..<marks[1].window])
-                let median = span.sorted()[span.count / 2]
-                let gaps = span.filter { $0 < median * 0.3 }.count
+                guard marks.count >= 2, marks[1].window >= marks[0].window, rate > 0 else { return .measure(windows: [], arrivals: [], seconds: 0, playheadAdvance: 0) }
                 let times = arrivals.filter { $0.time >= marks[0].time && $0.time <= marks[1].time }.map(\.time)
-                let longest = zip(times, times.dropFirst()).map { $1 - $0 }.max() ?? .infinity
-                let seconds = marks[1].time - marks[0].time
-                return (seconds, span.count, median, gaps, longest, Double(span.count) / 100 / seconds)
+                return .measure(windows: Array(windows[marks[0].window..<marks[1].window]), arrivals: times, seconds: marks[1].time - marks[0].time,
+                                playheadAdvance: marks[1].playhead - marks[0].playhead)
             }
+        }
+    }
+
+    /// 곡 믹서 출력의 끊김 판정(연속 사인 곡, R21). 10ms 구간의 RMS로 본다
+    /// - 신호 세기: 중앙 RMS가 `minimumRMS`보다 작으면 무음이라 통과하지 않는다
+    /// - 끊긴 구간: RMS가 중앙값의 30%(그리고 최소 세기의 30%)보다 작은 구간
+    /// - 빠진 샘플: 받은 시간이 벽시계로 지난 시간과, 덱 재생 위치가 나아간 시간과 5% 넘게 다르면 끊긴 것이다. 버퍼가 0.25초 넘게 오지 않아도 같다
+    struct AudioContinuity: Equatable {
+        static let minimumRMS: Float = 0.05
+        var seconds: Double
+        var windows: Int
+        var medianRMS: Float
+        var quietWindows: Int
+        var longestArrivalGap: Double
+        var wallCoverage: Double
+        var playheadCoverage: Double
+
+        static func measure(windows: [Float], arrivals: [Double], seconds: Double, playheadAdvance: Double) -> Self {
+            let median = windows.isEmpty ? 0 : windows.sorted()[windows.count / 2]
+            let threshold = max(median, minimumRMS) * 0.3
+            let received = Double(windows.count) / 100
+            let longest = zip(arrivals, arrivals.dropFirst()).map { $1 - $0 }.max() ?? .infinity
+            return Self(seconds: seconds, windows: windows.count, medianRMS: median, quietWindows: windows.filter { $0 < threshold }.count,
+                        longestArrivalGap: longest, wallCoverage: seconds > 0 ? received / seconds : 0,
+                        playheadCoverage: playheadAdvance > 0 ? received / playheadAdvance : 0)
+        }
+
+        /// 통과하지 못한 까닭(없으면 통과)
+        var problems: [String] {
+            var problems: [String] = []
+            if windows < 1000 { problems.append("들은 시간이 짧다(10ms 구간 \(windows)개)") }
+            if medianRMS < Self.minimumRMS { problems.append(String(format: "신호가 약하다(중앙 RMS %.4f)", medianRMS)) }
+            if quietWindows > 0 { problems.append("끊긴 10ms 구간 \(quietWindows)개") }
+            if !(longestArrivalGap < 0.25) { problems.append(String(format: "출력 버퍼가 %.3f초 동안 오지 않았다", longestArrivalGap)) }
+            if abs(wallCoverage - 1) >= 0.05 { problems.append(String(format: "받은 시간/벽시계 %.3f", wallCoverage)) }
+            if abs(playheadCoverage - 1) >= 0.05 { problems.append(String(format: "받은 시간/재생 위치 %.3f(빠진 샘플)", playheadCoverage)) }
+            return problems
         }
     }
 
@@ -481,11 +566,7 @@ enum AutoReflectAppSelfTest {
 
     /// 창 안 분할 보기의 칸 크기 자동 저장을 끈다. 분할 보기가 늦게 만들어질 수 있어 처음 몇 초 동안 몇 번 더 본다
     static func stopSplitViewAutosave() {
-        func clear(_ view: NSView) {
-            if let split = view as? NSSplitView, split.autosaveName != nil { split.autosaveName = nil }
-            view.subviews.forEach(clear)
-        }
-        func pass() { NSApp.windows.compactMap(\.contentView).forEach(clear) }
+        func pass() { NSApp.windows.forEach { ViewPreferences.stopSplitViewAutosave(in: $0) } }
         pass()
         Task { @MainActor in
             for delay in [0.05, 0.2, 0.5, 1, 2, 4] {
