@@ -445,8 +445,8 @@ struct ReflectionSaveEntryTests {
         #expect(!cancelled, "엔진 차례를 기다리는 쓰기 작업이 다른 쓰기의 [취소]로 멈추면 안 된다")
     }
 
-    /// 자동 저장 [취소]는 엔진 전체(대기·감시)를 멈추지 않는다: 쓰기 하나만 멈추고 엔진은 계속 돈다
-    @Test func 자동_저장_취소가_엔진_루프를_멈추지_않는다() async throws {
+    /// 사용자가 자동 저장을 [취소]하면 엔진은 계속 돌아 남은 편집 줄로 알리고(다시 미리 보지 않는다), 저장 단추로는 그 판을 쓴다
+    @Test func 사용자가_자동_저장을_취소하면_엔진은_남은_편집으로_알리고_저장_단추로는_쓴다() async throws {
         let f = try await QueueFixture(blocking: [1], autoSave: true)
         defer { f.stop() }
         #expect(await f.waitForEvents(1), "\(f.events.all)")
@@ -454,8 +454,24 @@ struct ReflectionSaveEntryTests {
         f.store.cancelWritePreparation()
         f.latches[1]?.release()
         #expect(await waitForEvents(f, containing: "미리 보기 1 끝 취소됨"), "\(f.events.all)")
-        // 취소된 쓰기 뒤에도 엔진은 쓰는 중이 아니게 돌아와 다음 판정을 한다(루프가 살아 있다): 바로 다시 자동 저장이 미리 보기를 연다
-        #expect(await waitForEvents(f, containing: "미리 보기 2 시작"), "취소는 쓰기 하나만 멈춘다: \(f.events.all)")
+        // 엔진 루프는 살아 있어 곧바로 다시 판정하고, 취소한 판은 남은 편집으로 보인다(대량 유예 [취소]와 같은 8번 줄)
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.feed.status == .leftover(count: 1) }, "\(f.feed.status)")
+        #expect(f.events.all.count == 2, "취소한 판을 다시 미리 보지 않는다: \(f.events.all)")
+        // 저장 단추는 취소한 판도 쓴다
+        f.press()
+        #expect(await waitForEvents(f, containing: "미리 보기 2 시작"), "저장 단추로 쓴다: \(f.events.all)")
+    }
+
+    /// 앱 종료가 멈추는 자동 저장은 사용자가 거절한 것이 아니다: 판을 취소한 것으로 남기지 않아 다시 쓴다
+    @Test func 앱_종료가_멈춘_자동_저장은_취소한_판으로_남기지_않고_다시_미리_본다() async throws {
+        let f = try await QueueFixture(blocking: [1], autoSave: true)
+        defer { f.stop() }
+        #expect(await f.waitForEvents(1), "\(f.events.all)")
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.store.writeStage?.cancellable == true })
+        f.store.cancelWritePreparation(byUser: false)
+        f.latches[1]?.release()
+        #expect(await waitForEvents(f, containing: "미리 보기 1 끝 취소됨"), "\(f.events.all)")
+        #expect(await waitForEvents(f, containing: "미리 보기 2 시작"), "사용자가 거절한 것이 아니라 다시 본다: \(f.events.all)")
     }
 
     func waitForEvents(_ f: QueueFixture, containing text: String) async -> Bool {

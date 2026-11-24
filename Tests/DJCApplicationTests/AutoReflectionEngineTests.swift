@@ -498,6 +498,93 @@ struct AutoReflectionEngineTests {
         #expect(again.writes.count == 1 && again.writes.first?.drafts.map(\.trackUUID) == ["t000"])
     }
 
+    // MARK: - 자동 저장 미리 보기 [취소](#404 4b): 대량 유예 [취소]와 같게 다룬다
+
+    /// 자동 저장이 미리 보기에서 멈춘 상태로 만든다(시계 10초째: 쓸 때가 됐다)
+    private func previewing(_ w: AutoReflectionWorld) async throws {
+        w.h.previewHold.hold()
+        try await w.start()
+        try await w.advance(9)
+        w.fakes.clock.advance(.seconds(1))
+        for _ in 0..<2000 where !w.h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(w.h.previewHold.isWaiting)
+    }
+
+    @Test func 사용자가_자동_저장_미리_보기를_취소하면_시간이_지나도_다시_쓰지_않고_남은_편집으로_보인다() async throws {
+        let w = AutoReflectionWorld()
+        w.writable("a")
+        w.cue("a")
+        try await previewing(w)
+        #expect(w.engine.cancelAutoWrite(), "자동 저장이 쓰는 중이라 취소 대상이 있다")
+        w.h.previewHold.release()
+        try await w.settle()
+        try await w.advance(60)
+        #expect(w.writes.isEmpty && w.previews.count == 1, "취소한 판을 다시 미리 보거나 쓰지 않는다: 미리 보기 \(w.previews.count)번, 쓰기 \(w.writes.count)번")
+        #expect(w.engine.status == .leftover(count: 1), "상태 줄은 취소한 유예와 같은 남은 편집 줄이다: \(w.engine.status)")
+    }
+
+    @Test func 취소한_자동_저장은_다시_켜도_이어지고_새_편집_뒤에_다시_쓴다() async throws {
+        let fakes = AutoReflectionFakes()
+        let w = AutoReflectionWorld(fakes: fakes)
+        w.writable("a")
+        w.cue("a")
+        try await previewing(w)
+        #expect(w.engine.cancelAutoWrite())
+        w.h.previewHold.release()
+        try await w.settle()
+        await w.engine.recordSaved()
+        #expect(fakes.records.record.cancelledRevisions.count == 1, "취소한 판을 기록에 남긴다")
+        w.engine.stop()
+        let again = AutoReflectionWorld(fakes: fakes)
+        again.writable("a")
+        again.cue("a")
+        try await again.start()
+        try await again.advance(60)
+        #expect(again.writes.isEmpty, "다시 켜도 새 편집 전까지 자동으로 쓰지 않는다")
+        // 같은 곡을 다시 고치면(새 판) 자동으로 쓴다
+        again.cue("a", at: 40)
+        try await again.edited()
+        try await again.advance(3)
+        #expect(again.writes.count == 1 && again.writes.first?.drafts.map(\.trackUUID) == ["a"])
+    }
+
+    @Test func 취소한_자동_저장의_판도_저장_단추로는_쓰고_그_뒤_새_편집은_다시_자동으로_쓴다() async throws {
+        let fakes = AutoReflectionFakes()
+        let w = AutoReflectionWorld(fakes: fakes)
+        w.writable("a")
+        w.cue("a")
+        try await previewing(w)
+        #expect(w.engine.cancelAutoWrite())
+        w.h.previewHold.release()
+        try await w.settle()
+        // ⌘S·저장 단추는 취소한 판도 쓴다
+        _ = await w.engine.exclusive { [session = w.h.session] in await session.write(rows: [ReflectionHarness.row("a")]) }
+        try await w.settle()
+        await w.engine.recordSaved()
+        #expect(w.writes.count == 1, "저장 단추로 썼다")
+        #expect(fakes.records.record.cancelledRevisions.isEmpty, "쓴 판은 취소 기록에서 풀린다")
+        w.writable("a")
+        w.cue("a", at: 40)
+        try await w.edited()
+        try await w.advance(3)
+        #expect(w.writes.count == 2, "그 뒤 새 편집은 다시 자동으로 쓴다")
+    }
+
+    @Test func 사용자가_거절한_것이_아닌_취소는_판을_취소한_것으로_남기지_않고_다시_쓴다() async throws {
+        let fakes = AutoReflectionFakes()
+        let w = AutoReflectionWorld(fakes: fakes)
+        w.writable("a")
+        w.cue("a")
+        try await previewing(w)
+        #expect(w.engine.cancelAutoWrite(byUser: false), "앱 종료 같은 취소")
+        w.h.previewHold.release()
+        try await w.settle()
+        await w.engine.recordSaved()
+        #expect(fakes.records.record.cancelledRevisions.isEmpty)
+        try await w.advance(3)
+        #expect(w.writes.count == 1, "다음 판정에서 그대로 다시 쓴다")
+    }
+
     @Test func 여러_곡의_값을_지우는_편집도_유예한다() async throws {
         let w = AutoReflectionWorld()
         w.writable("a", "b")

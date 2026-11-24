@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quit = AppQuitController(
             model: store.quitWait,
             activity: { [weak store] in store?.writeActivity ?? .idle },
-            cancelPreparation: { [weak store] in store?.cancelWritePreparation() },
+            cancelPreparation: { [weak store] in store?.cancelWritePreparation(byUser: false) },
             flushDrafts: { [weak store] in store?.useCases.watch.flush() },
             reply: { [weak self] in self?.replyToTermination($0) },
             terminate: { [weak self] in self?.terminateApp() },

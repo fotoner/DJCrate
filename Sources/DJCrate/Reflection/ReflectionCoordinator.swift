@@ -267,7 +267,7 @@ final class ReflectionCoordinator {
     var engine: AutoReflection? {
         didSet {
             guard let engine else { return store.cancelAutoWrite = nil }
-            store.cancelAutoWrite = { [weak engine] () -> Bool in engine?.cancelAutoWrite() ?? false }
+            store.cancelAutoWrite = { [weak engine] (byUser: Bool) -> Bool in engine?.cancelAutoWrite(byUser: byUser) ?? false }
         }
     }
     /// 엔진이 알린 칩 상태와 조건(상태 줄 #404가 읽는다)

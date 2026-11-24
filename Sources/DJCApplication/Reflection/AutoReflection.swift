@@ -51,6 +51,8 @@ public final class AutoReflection {
     private var loop: Task<Void, Never>?
     /// 지금 도는 자동 저장 쓰기 하나(루프와 따로 도는 작업: 루프를 취소하면 자동 저장 전체가 멈추므로 [취소]는 이 작업에만 간다)
     private var autoWriting: Task<ReflectionSession.AutoWriteOutcome, Never>?
+    /// 지금 도는 자동 저장 쓰기를 사용자가 [취소]했다(쓰기마다 처음에 푼다)
+    private var userCancelledWrite = false
     private var sleeper: Task<Void, Never>?
     /// 판정 중에 신호가 왔다: 쉬지 않고 다시 판정한다
     private var dirty = false
@@ -154,9 +156,12 @@ public final class AutoReflection {
 
     /// 지금 도는 자동 저장 쓰기 하나만 취소한다(미리 보기 [취소]·Esc). 엔진 루프는 건드리지 않아 다음 판정이 이어진다.
     /// 자동 저장이 쓰는 중이 아니면(수동 쓰기·차례를 기다리는 쓰기·쉬는 중) 아무것도 하지 않고 false
+    /// - Parameter byUser: 사용자가 [취소]·Esc로 멈췄다. 그러면 대량 유예의 [취소]처럼(R14) 그 판들의 초안은 남고 새 편집이나 ⌘S 전까지
+    ///   자동 저장하지 않는다(기록에 남아 다시 켜도 이어진다). 앱 종료처럼 사용자가 거절한 것이 아닌 취소는 false로 부른다: 판을 남기지 않고 다시 본다
     @discardableResult
-    public func cancelAutoWrite() -> Bool {
+    public func cancelAutoWrite(byUser: Bool = true) -> Bool {
         guard let autoWriting else { return false }
+        if byUser { userCancelledWrite = true }
         autoWriting.cancel()
         return true
     }
@@ -546,6 +551,7 @@ public final class AutoReflection {
     private func write(_ chunk: AutoReflectionChunk) async -> Duration? {
         isWriting = true
         publish(status: .writing, conditions: conditions(writing: true))
+        userCancelledWrite = false
         let writing = Task { await session.autoWrite(chunk, mayWrite: { [unowned self] in mayStartWrite() }) }
         autoWriting = writing
         // 루프의 취소(앱 종료)는 그대로 쓰기에 전한다
@@ -580,8 +586,16 @@ public final class AutoReflection {
             held.holds.insert(.lockBusy)
             publish(status: .held(.lockBusy), conditions: held)
             return timing.pollInterval
-        case .busy, .cancelled:
+        case .busy:
             return timing.pollInterval
+        case .cancelled:
+            guard userCancelledWrite else { return timing.pollInterval }
+            // 사용자가 멈춘 쓰기: 지금 자동으로 쓸 판을 모두 취소한 판으로 남긴다(R14). 새 판을 받으면 저절로 풀리고 ⌘S로 쓰면 사라진다.
+            // 곧바로 다시 판정해 남은 편집 줄을 알린다
+            record.cancelledRevisions.formUnion(chunk.revisions)
+            if let inventory { record.cancelledRevisions.formUnion(inventory.autoRevisions(rowLimit: timing.rowLimit)) }
+            saveRecord()
+            return nil
         case .rekordboxRunning:
             quiet = nil
             return nil

@@ -52,16 +52,18 @@ final class LibraryStore {
     @ObservationIgnored var writeTask: Task<Void, Never>?
     /// 엔진의 차례를 받아 지금 쓰기를 실행하는 작업(미리 보기 포함). 차례를 기다리는 다른 쓰기 작업은 아니다
     @ObservationIgnored var previewingWriteTask: Task<Void, Never>?
-    /// 자동 저장이 지금 쓰는 쓰기 하나만 취소하고 true(자동 저장이 쓰는 중이 아니면 false). 엔진을 붙인 조립 지점이 건다
-    @ObservationIgnored var cancelAutoWrite: (@MainActor () -> Bool)?
+    /// 자동 저장이 지금 쓰는 쓰기 하나만 취소하고 true(자동 저장이 쓰는 중이 아니면 false). 엔진을 붙인 조립 지점이 건다.
+    /// 인자는 사용자가 [취소]·Esc로 멈췄는지(앱 종료는 false)
+    @ObservationIgnored var cancelAutoWrite: (@MainActor (_ byUser: Bool) -> Bool)?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
 
-    func cancelWritePreparation() {
+    /// - Parameter byUser: 사용자가 [취소]·Esc로 멈췄다(기본). 앱 종료가 멈추는 것은 false: 자동 저장 판을 취소한 것으로 남기지 않는다
+    func cancelWritePreparation(byUser: Bool = true) {
         guard writeStage?.cancellable == true else { return }
         // 지금 미리 보기를 실행하는 쓰기 하나에만 전달한다: 엔진의 차례를 받은 수동 쓰기 작업이거나, 자동 저장이 쓰는 쓰기다.
         // 엔진 차례를 기다리는 다른 쓰기 작업(보관한 저장·곡 메뉴의 바로 넣기 등)은 취소 대상으로 등록되지 않았으므로 건드리지 않는다
         if let task = previewingWriteTask { return task.cancel() }
-        _ = cancelAutoWrite?()
+        _ = cancelAutoWrite?(byUser)
     }
 
     @ObservationIgnored let settings: SettingsStore
