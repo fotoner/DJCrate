@@ -137,15 +137,20 @@ struct AutoReflectionJournalTests {
         #expect(w.engine.status == .interrupted(recoveryFailed: false))
     }
 
-    @Test func 잠금을_못_잡은_수동_저장은_정리_보류로_알리지_않는다() async throws {
+    /// 수동 쓰기는 잠금을 기다려 판정한다(G8). 그래도 판정하지 못하면(잠금·기록을 읽다 실패) 이전 보류로 판단해 정리 없이 쓰지 않고
+    /// 잠금 보류로 거절한다(3라운드 O17. 1라운드 O9의 "잠금은 쓰기 입구가 기다린다"를 바꾼다)
+    @Test func 잠금_아래_판정을_하지_못한_수동_저장은_정리_없이_쓰지_않고_잠금_보류로_알린다() async throws {
         let w = AutoReflectionWorld()
         w.run = .off(.debugBuild)
         try await w.start()
+        // 가짜 잠금은 기다리지 않고 던진다(판정 실패)
         w.fakes.locks.holdElsewhere(MemoryWriteLocks.key(for: w.h.session.target.database))
-        w.engine.recheckJournal()
-        var ran = false
-        let outcome = await w.engine.exclusive({ ran = true; return ReflectionOutcome.declined }, whenHeld: { _ in .busy })
-        #expect(ran && outcome.name == "declined", "잠금은 쓰기 입구가 기다린다: 정리 보류(R22) 문구로 거절하지 않는다")
+        var ran = false, held: Set<ReflectionHold> = []
+        let outcome = await w.engine.exclusive({ ran = true; return ReflectionOutcome.declined }, whenHeld: { holds in
+            held = holds
+            return .busy
+        })
+        #expect(!ran && outcome.name == "busy" && held == [.lockBusy])
     }
 
     // MARK: - S2
@@ -191,5 +196,32 @@ struct AutoReflectionJournalTests {
         let outcome = await saving.value
         #expect(outcome.name == "declined")
         #expect(!draftAtWork.value && w.h.gateCalls.value.removedCleanupLists == ["op-1"], "잠금을 기다려 정리를 마친 뒤 쓴다(쓴 초안을 다시 쓰지 않게)")
+    }
+
+    // MARK: - 3라운드 O16
+
+    @Test func 라이브러리를_다시_읽으면_미룬_곡_넣기_정리를_다시_한다() async throws {
+        let w = AutoReflectionWorld()
+        w.run = .off(.debugBuild)
+        // 넣기는 핫큐를 썼고 CLI가 새 판을 남겼다. 새 곡 행을 아직 읽지 못해 정리를 미룬다
+        var written = CueDraft(trackUUID: "s")
+        written.place(EditableCue(id: UUID(), kind: .hot(0), time: 12))
+        w.h.memory.save(written)
+        let stamp = try #require(w.h.memory.stamp(DraftKey(.cue, "s")))
+        var later = written
+        later.place(EditableCue(id: UUID(), kind: .hot(1), time: 30))
+        w.h.memory.save(later, origin: .cli)
+        let add = DraftCleanupList.TrackAdd(stagedUUID: "s", trackUUID: "new-s",
+                                            written: [WrittenDraft(key: DraftKey(.cue, "s"), revision: stamp.revision,
+                                                                   contentHash: try DraftContentHash(of: written))],
+                                            values: .init(cues: written.cues), blockedFields: [])
+        w.h.script.cleanupLists = [DraftCleanupList(operationID: "op-add", target: MemoryWriteLocks.key(for: w.h.session.target.database),
+                                                    draftHome: "/drafts", backupFolder: "add-1", trackAdds: [add])]
+        try await w.start()
+        #expect(w.h.gateCalls.value.removedCleanupLists.isEmpty)
+        // 다시 읽기에 성공했는데 새 곡이 없다(그 사이 rekordbox에서 뺐다)
+        w.engine.libraryReloaded()
+        try await w.settle()
+        #expect(w.h.gateCalls.value.removedCleanupLists == ["op-add"] && w.h.memory.cue("s") != nil)
     }
 }

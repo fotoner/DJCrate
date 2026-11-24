@@ -86,16 +86,17 @@ extension ReflectionSession {
     /// (저장 대기에서 사라지지 않게, 그동안 엔진은 재생 목록 판을 솎지 않는다)
     nonisolated static func playlistSteps(state: ReflectionLibraryState, files: DraftStore,
                                           judge: (DraftRevision) -> ReflectionLeftover?) -> (steps: [AutoReflectionInventory.Step], undetermined: Bool) {
-        // 화면 목록이 비었어도 디스크를 본다(다시 켠 뒤 첫 읽기가 실패해 화면만 빈 경우): 디스크에 초안이 있으면 판정할 수 없다
-        let disk = files.playlistDraft()
-        guard !state.playlistDraft.isEmpty || !disk.isEmpty else { return ([], false) }
+        // 화면 목록이 비었어도 디스크를 본다(다시 켠 뒤 첫 읽기가 실패해 화면만 빈 경우): 디스크에 초안이 있으면 판정할 수 없다.
+        // 디스크 초안을 읽지 못한 것은 빈 초안과 다르다(판정할 수 없다: 그동안 판을 솎지 않는다)
+        let disk = try? files.readPlaylistDraft()
         func undetermined() -> (steps: [AutoReflectionInventory.Step], undetermined: Bool) {
-            let steps = state.playlistDraft.isEmpty ? disk.steps : state.playlistDraft.steps
+            let steps = state.playlistDraft.isEmpty ? (disk?.steps ?? []) : state.playlistDraft.steps
             return (steps.map { AutoReflectionInventory.Step(playlist: $0.edit.playlist.layoutID, rows: 1, revision: nil,
                                                              leftover: .needsConfirmation) }, true)
         }
-        guard !state.playlistDraftNeedsSync, !state.playlistDraftUnsaved else { return undetermined() }
-        guard disk == state.playlistDraft else { return undetermined() }
+        guard let disk, !state.playlistDraftNeedsSync else { return undetermined() }
+        guard !state.playlistDraft.isEmpty || !disk.isEmpty else { return ([], false) }
+        guard !state.playlistDraftUnsaved, disk == state.playlistDraft else { return undetermined() }
         let stamps = files.playlistStamps(), suggestions = files.playlistSuggestions()
         let projection = disk.project(onto: state.rekordboxPlaylists, contentIDs: Set(state.rows.values.map(\.track.id)))
         let blocked = projection.blocked
@@ -335,8 +336,11 @@ extension ReflectionSession {
 
     /// 대상의 쓰기 잠금을 잡고, 쥔 채 쓰기 기록을 판정한다. 기록이 없을 때만 같은 잠금을 쥔 채 미정리 목록을 정리한 뒤 푼다(R9·R11·R22).
     /// 잠금 밖에서 정리하면 그 사이 다른 실행이 남긴 중단 기록의 초안을 지울 수 있다. 앱(시작·자동·수동)과 CLI가 모두 이 길로 정리한다.
-    /// - Parameter waits: 잠금을 기다린다(CLI). 아니면 비차단 시도로, 못 잡으면 `.busy`다(앱)
-    public func judgeAndResumeCleanups(lock: RekordboxWriteLock, waits: Bool = false, for target: RekordboxWriteTarget? = nil) async -> JournalCleanup {
+    /// - Parameters:
+    ///   - waits: 잠금을 기다린다(CLI·수동 쓰기). 아니면 비차단 시도로, 못 잡으면 `.busy`다(자동 저장 판정)
+    ///   - libraryFresh: 앱이 라이브러리를 방금 다시 읽었다(곡 넣기 정리가 새 곡 행을 찾지 못하면 기다리지 않고 끝낸다, `resumeCleanups`)
+    public func judgeAndResumeCleanups(lock: RekordboxWriteLock, waits: Bool = false, for target: RekordboxWriteTarget? = nil,
+                                       libraryFresh: Bool = false) async -> JournalCleanup {
         let gate = ports.gate, target = target ?? self.target
         let judged = try? await BlockingWork.run { () throws -> (verdict: RekordboxJournalVerdict, hold: RekordboxWriteLock.Hold?) in
             let key = try lock.key(target.database)
@@ -359,7 +363,7 @@ extension ReflectionSession {
         case let .interrupted(finding): return .interrupted(finding)
         case .none:
             defer { judged.hold?.release() }
-            return .cleaned(await resumeCleanups(for: target))
+            return .cleaned(await resumeCleanups(for: target, libraryFresh: libraryFresh))
         }
     }
 
@@ -369,8 +373,11 @@ extension ReflectionSession {
     /// 곡 초안은 목록에 적힌 판과 해시가 지금과 같을 때만 지우고(다시 해도 결과가 같다), 곡 넣기 몫은 `cleanUpTrackAdd`, 재생 목록은
     /// `EditPlaylists.resumeCleanup`이 한다. 끝나지 않은 목록(사본 실패·저장 실패)은 지우지 않고 남겨 그 대상의 다음 쓰기를 보류한다.
     /// 목록을 읽지 못하면 정리와 다음 쓰기를 보류한다
-    /// - Parameter target: 정리할 대상(기본은 이 세션의 대상). CLI는 명령이 고른 대상을 준다
-    public func resumeCleanups(for target: RekordboxWriteTarget? = nil) async -> CleanupResume {
+    /// - Parameters:
+    ///   - target: 정리할 대상(기본은 이 세션의 대상). CLI는 명령이 고른 대상을 준다
+    ///   - libraryFresh: 앱이 라이브러리를 방금 다시 읽었다. 곡 넣기 정리가 새 곡 행을 찾지 못하면(그 사이 rekordbox에서 뺐다) 미루지 않고
+    ///     옛 초안을 연결 안 된 초안으로 남긴 채 끝낸다(CLI가 그 목록 때문에 계속 거절하지 않게)
+    public func resumeCleanups(for target: RekordboxWriteTarget? = nil, libraryFresh: Bool = false) async -> CleanupResume {
         let gate = ports.gate, target = target ?? self.target, home = location.draftHome, files = ports.drafts
         let lists: [DraftCleanupList]
         do { lists = try await BlockingWork.run { try gate.cleanupLists(target, home) } } catch {
@@ -391,7 +398,7 @@ extension ReflectionSession {
                 }
             }
             for add in list.trackAdds {
-                switch await cleanUpTrackAdd(add, unchanged: nil) {
+                switch await cleanUpTrackAdd(add, unchanged: nil, libraryFresh: libraryFresh) {
                 case .done: break
                 case .deferred: deferred = true
                 case .failed: complete = false

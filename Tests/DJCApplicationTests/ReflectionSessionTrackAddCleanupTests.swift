@@ -351,4 +351,85 @@ struct ReflectionSessionTrackAddCleanupTests {
         await #expect(throws: DJCError.self) { try await h.session.cleanUpBeforeWrite(to: h.session.target, lock: MemoryWriteLocks().port) }
         #expect(h.gateCalls.value.removedCleanupLists.isEmpty)
     }
+
+    // MARK: - 3라운드 G11
+
+    @Test func 넣기_계획과_태그_판은_같은_태그_초안에서_잡는다() async throws {
+        let track = H.staged("s")
+        h.state.staged = [track]
+        // 앱 메모리는 A, 디스크는 CLI가 저장한 B(앱이 아직 받지 않았다)
+        var memoryTag = TagDraft(trackUUID: "s", base: TagFields())
+        memoryTag.fields.title = "A"
+        var diskTag = memoryTag
+        diskTag.fields.title = "B"
+        h.memory.save(diskTag, origin: .cli)
+        h.state.tagDrafts["s"] = memoryTag
+        h.script.addPreview.added = [H.track(track.path)]
+        var report = RekordboxTrackWriteReport(dryRun: false)
+        report.added = [H.track(track.path, uuid: "new-s")]
+        report.backup = "/backups/add-1"
+        h.script.add = report
+        let outcome = await h.session.addTracks(rows: [H.row("djc-s", path: track.path)])
+        guard case .added = outcome else { Issue.record("넣었다: \(outcome)"); return }
+        #expect(h.gateCalls.value.adds.last?.revisions.tracks[DraftKey(.tag, "s")]?.contentHash == (try DraftContentHash(of: memoryTag)),
+                "계획에 쓴 메모리 초안의 해시를 싣는다")
+        #expect(h.memory.tag("s")?.fields.title == "B" || h.memory.tag("new-s")?.fields.title == "B", "디스크의 B를 넣기에 쓴 판으로 오인해 지우지 않는다")
+    }
+
+    // MARK: - 3라운드 S23 + S18
+
+    enum TagMove: CaseIterable { case albumArtistNotInDraft, estimatedKey, revertedTitle }
+
+    @Test(arguments: TagMove.allCases)
+    func 태그_옮기기는_사용자가_바꾼_칸과_계획에_실린_칸과_막힌_칸만_옮긴다(_ scenario: TagMove) {
+        var base = TagFields(), written = TagFields()
+        let current: TagDraft, hadDraft: Bool, expected: [TagFields.Key: String]
+        switch scenario {
+        case .albumArtistNotInDraft:
+            // 태그 초안 없이 넣었다: 음원의 앨범 아티스트 X가 쓰였고 추가 목록 행에는 없다. 넣는 동안 코멘트만 고쳤다
+            base.title = "곡"
+            written.title = "곡"
+            written.albumArtist = "X"
+            var draft = TagDraft(trackUUID: "s", base: base)
+            draft.fields.comment = "새 코멘트"
+            current = draft
+            hadDraft = false
+            expected = [.comment: "새 코멘트"]
+        case .estimatedKey:
+            // 추정 키 8A(고르지 않았다: base = fields)는 쓰지 않았다. 넣는 동안 제목만 고쳤다
+            base.title = "곡"
+            base.musicalKey = "8A"
+            written.title = "곡"
+            var draft = TagDraft(trackUUID: "s", base: base)
+            draft.fields.title = "새 제목"
+            current = draft
+            hadDraft = true
+            expected = [.title: "새 제목"]
+        case .revertedTitle:
+            // 넣기는 제목 B를 썼고, 넣는 동안 제목을 파일 값 A로 되돌리고 키를 골랐다
+            base.title = "A"
+            written.title = "B"
+            var draft = TagDraft(trackUUID: "s", base: base)
+            draft.fields.musicalKey = "8A"
+            current = draft
+            hadDraft = true
+            expected = [.title: "A", .musicalKey: "8A"]
+        }
+        let moved = AddedTrackDrafts.movedTagDraft(current, written: written, blocked: [], hadDraft: hadDraft, to: "new-s")
+        #expect(moved.base == written)
+        #expect(Set(moved.changedKeys) == Set(expected.keys), "\(scenario): \(moved.changedKeys)")
+        for (key, value) in expected { #expect(moved.fields[key] == value) }
+    }
+
+    // MARK: - 3라운드 O16
+
+    @Test func 다시_읽은_라이브러리에_새_곡이_없으면_옛_초안을_연결_안_된_초안으로_두고_정리를_끝낸다() async throws {
+        try writtenCueThenLater()
+        h.state.rows["new-s"] = nil
+        let deferred = await h.session.resumeCleanups()
+        #expect(deferred.deferred == 1 && deferred.finished == 0)
+        let resumed = await h.session.resumeCleanups(libraryFresh: true)
+        #expect(resumed.finished == 1 && h.gateCalls.value.removedCleanupLists == ["op-add"])
+        #expect(h.memory.cue("s") != nil && h.memory.cue("new-s") == nil)
+    }
 }

@@ -95,6 +95,10 @@ public final class AutoReflection {
     private var journalStale = false
     /// 쓰기 잠금을 잡지 못해 기록 판정·정리를 미뤘다. 잡을 때까지 판정마다(대기 초안·실행 조건과 상관없이) 다시 한다(R11)
     private var journalPending = false
+    /// 마지막 정리에서 새 곡 행을 기다려 미룬 곡 넣기 정리가 있다(라이브러리를 다시 읽으면 다시 한다)
+    private var cleanupDeferred = false
+    /// 다음 정리는 방금 다시 읽은 라이브러리로 한다(`libraryReloaded`)
+    private var libraryFresh = false
     /// 마지막으로 쓰기 기록을 판정한 때(중단 상태는 가끔 다시 본다: CLI·다른 프로세스가 기록을 정리했을 수 있다)
     private var lastJudged: Date?
     /// 첫 읽기 뒤 시작 정리를 기다리는 수동 쓰기
@@ -179,6 +183,14 @@ public final class AutoReflection {
         recheckJournal()
     }
 
+    /// 앱이 라이브러리를 다시 읽었다(성공). 새 곡 행을 기다려 미룬 곡 넣기 정리가 있으면 다음 판정에서 잠금 아래 다시 한다.
+    /// 이번 정리는 방금 읽은 라이브러리를 믿는다: 새 곡이 없으면(그 사이 뺐다) 옛 초안을 연결 안 된 초안으로 남기고 끝낸다(R22)
+    public func libraryReloaded() {
+        guard cleanupDeferred else { return }
+        libraryFresh = true
+        recheckJournal()
+    }
+
     /// 쓰기 기록이 바뀌었을 수 있다("이대로 둔다"·기록으로 복원 뒤): 다음 판정에서 잠금 아래 기록을 다시 판정하고 미정리 목록을 정리한다(R11·R22)
     public func recheckJournal() {
         journalStale = true
@@ -215,7 +227,9 @@ public final class AutoReflection {
             // 늘 쓰기 잠금 아래에서 기록을 판정하고 기록이 없을 때만 정리한다(R11·R22: 그 사이 다른 실행이 남긴 중단의 초안을 지우지 않게).
             // 수동 쓰기는 잠금을 기다려(메인 액터 밖) 판정·정리를 마친 뒤 쓴다: 정리하지 않은 채 쓰면 쓴 단계를 또 쓴다
             journalStale = false
-            await judgeAndClean(waits: true)
+            let judged = await judgeAndClean(waits: true)
+            // 잠금 아래 판정을 하지 못했으면(잠금·기록을 읽다 실패) 이전 보류로 판단해 정리 없이 쓰지 않는다
+            if case .busy = judged, let whenHeld { return whenHeld([.lockBusy]) }
             // 정리를 마치지 못한 목록이 있으면 쓰지 않는다
             if interrupted == nil, !cleanupHolds.isEmpty, let whenHeld { return whenHeld(cleanupHolds) }
         }
@@ -267,7 +281,8 @@ public final class AutoReflection {
     @discardableResult
     private func judgeAndClean(waits: Bool = false) async -> ReflectionSession.JournalCleanup {
         lastJudged = ports.clock.now()
-        let judged = await session.judgeAndResumeCleanups(lock: ports.writeLock, waits: waits)
+        let fresh = libraryFresh
+        let judged = await session.judgeAndResumeCleanups(lock: ports.writeLock, waits: waits, libraryFresh: fresh)
         switch judged {
         case .busy:
             journalPending = true
@@ -278,6 +293,8 @@ public final class AutoReflection {
             interrupted = nil
             journalPending = false
             cleanupHolds = resumed.holds
+            cleanupDeferred = resumed.deferred > 0
+            if fresh { libraryFresh = false }
         }
         return judged
     }

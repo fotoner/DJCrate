@@ -19,6 +19,8 @@ final class ReflectionHarness {
     var journal: ScriptedJournal?
     /// 다른 곳(CLI)이 재생 목록 초안 파일 잠금을 쥐었다
     let playlistLockHeld = LockedFlag()
+    /// 디스크 재생 목록 초안을 읽지 못한다(던지는 읽기는 던지고, 접는 읽기는 빈 초안)
+    let playlistReadFails = LockedFlag()
     /// 켜면 재생 목록 초안 파일 잠금을 기다리는 사이 앱의 재생 목록 저장이 실패한다(잡은 뒤 화면 상태가 저장하지 못함이 된다)
     let playlistSaveFailsDuringLock = LockedFlag()
     private let playlistUnsavedByLock = LockedFlag()
@@ -227,6 +229,12 @@ final class ReflectionHarness {
             log.record("playlist lock")
             return { log.record("playlist unlock") }
         }
+        let readFails = playlistReadFails, readPlaylist = store.readPlaylistDraft, loadPlaylist = store.playlistDraft
+        store.readPlaylistDraft = {
+            if readFails.value { throw FixtureFailure() }
+            return try readPlaylist()
+        }
+        store.playlistDraft = { readFails.value ? PlaylistDraft() : loadPlaylist() }
         let savePlaylist = store.savePlaylistDraft
         store.savePlaylistDraft = { draft in
             log.record("playlist save")

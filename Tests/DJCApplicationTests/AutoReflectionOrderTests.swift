@@ -163,6 +163,38 @@ struct AutoReflectionOrderTests {
         #expect(w.previews.count == 1, "판이 그대로인 단계는 확인 필요로 남는다")
     }
 
+    enum DiskUnknown: CaseIterable { case readFails, needsSync }
+
+    @Test(arguments: DiskUnknown.allCases)
+    func 디스크_재생_목록_초안을_읽지_못하면_화면_목록이_비어도_판을_솎지_않는다(_ unknown: DiskUnknown) async throws {
+        let w = AutoReflectionWorld()
+        var draft = PlaylistDraft()
+        _ = try draft.append(.rename(playlist: .id("B"), name: "새 나"), rekordbox: Self.layout)
+        try w.h.memory.store.savePlaylistDraft(draft)
+        w.h.state.rekordboxPlaylists = Self.layout
+        w.h.state.playlistDraft = w.h.memory.store.playlistDraft()
+        w.h.script.preview.playlistOutcomes = [PlaylistOutcome(edit: draft.steps[0].edit, playlistID: "B", name: "새 나", status: .blocked,
+                                                               reason: "바뀜")]
+        try await w.start()
+        try await w.advance(12)
+        #expect(w.previews.count == 1)
+        // 다시 켠 뒤 첫 읽기가 실패해 화면 목록이 비었고, 디스크 초안도 읽지 못한다(읽기 실패를 빈 초안으로 접는다)
+        w.h.state.playlistDraft = PlaylistDraft()
+        switch unknown {
+        case .readFails: w.h.playlistReadFails.value = true
+        case .needsSync:
+            w.h.playlistReadFails.value = true
+            w.h.state.playlistDraftNeedsSync = true
+        }
+        try await w.edited()
+        w.h.playlistReadFails.value = false
+        w.h.state.playlistDraftNeedsSync = false
+        w.h.state.playlistDraft = w.h.memory.store.playlistDraft()
+        try await w.edited()
+        try await w.advance(15)
+        #expect(w.previews.count == 1, "판이 그대로인 단계는 확인 필요로 남는다")
+    }
+
     // MARK: - G7
 
     @Test func 일부만_쓴_수동_저장은_다른_곡의_취소를_풀지_않는다() async throws {

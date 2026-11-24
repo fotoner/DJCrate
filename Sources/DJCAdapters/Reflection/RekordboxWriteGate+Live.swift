@@ -137,7 +137,8 @@ extension RekordboxWriteGate {
             return try body(guarded)
         } catch {
             let backedUp = seen.backedUp.load(ordering: .relaxed)
-            if !backedUp, seen.contended.load(ordering: .relaxed) { throw RekordboxWriteGate.LockBusy() }
+            // 잠금 바쁨은 기다리지 않는 자동 저장에서만 생긴다(수동 쓰기는 기다려 잡은 뒤의 실패를 그 이유 그대로 알린다)
+            if kind == .auto, !backedUp, seen.contended.load(ordering: .relaxed) { throw RekordboxWriteGate.LockBusy() }
             guard backedUp, !(error is RekordboxWriteStop) else { throw error }
             switch error as? DJCError {
             case .rekordboxRunning?, .writeAheadLogPresent?, .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?, .pointRestoreFailed?:

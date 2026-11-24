@@ -92,8 +92,9 @@ extension ReflectionSession {
     func addCandidate(_ track: StagedTrackRequest) async throws -> TrackAddCandidate {
         let url = URL(filePath: track.path)
         var tags = try await ports.audio.tags(url)
-        let state = ports.library.state()
-        if let fields = state.tagDrafts[track.uuid]?.fields { AddedTrackDrafts.apply(fields, to: &tags) }
+        // 계획·키·태그 판은 같은 태그 초안 하나(앱 메모리 초안)에서 잡는다: 디스크가 다르면(바깥에서 고침) 정리 때 해시가 맞지 않아 남는다
+        let tagDraft = ports.library.state().tagDrafts[track.uuid], estimating = ports.library.state().estimatingGrids
+        if let fields = tagDraft?.fields { AddedTrackDrafts.apply(fields, to: &tags) }
         var candidate = TrackAddCandidate(plan: try ports.audio.addPlan(url, tags))
         let files = ports.drafts
         // 읽는 초안의 판과 읽은 내용의 해시를 함께 잡는다(쓰기 직전 디스크를 다시 읽으면 그사이 생긴 새 판을 쓴 판으로 오인한다, R22)
@@ -101,15 +102,15 @@ extension ReflectionSession {
             let key = DraftKey(kind, track.uuid)
             if let hash, let stamp = files.stamp(key) { candidate.revisions[key] = DraftBatchEntry(stamp: stamp, contentHash: hash) }
         }
-        let cueDraft = files.cueDraft(track.uuid)
+        let cueDraft = files.cueDraft(track.uuid), gridDraft = files.gridDraft(track.uuid)
         capture(.cue, cueDraft.flatMap { try? DraftContentHash(of: $0) })
-        capture(.grid, files.gridDraft(track.uuid).flatMap { try? DraftContentHash(of: $0) })
-        capture(.tag, files.tagDraft(track.uuid).flatMap { try? DraftContentHash(of: $0) })
+        capture(.grid, gridDraft.flatMap { try? DraftContentHash(of: $0) })
+        capture(.tag, tagDraft.flatMap { try? DraftContentHash(of: $0) })
         if let draft = cueDraft, !draft.cues.isEmpty { candidate.cues = draft.cues }
         // 고른 키는 곡을 넣은 뒤 같은 쓰기에서 쓴다(넣을 때 `KeyID` '0' → 키 저장). 음원 파일의 키 태그는 그대로다.
-        candidate.key = AddedTrackDrafts.confirmedKey(state.tagDrafts[track.uuid])
-        if ports.drafts.gridDraft(track.uuid)?.segments.first.map({ $0.bpm > 0 }) != true {
-            candidate.withoutAnalysis = state.estimatingGrids ? String(ui: "그리드를 아직 추정하는 중") : String(ui: "그리드가 없음")
+        candidate.key = AddedTrackDrafts.confirmedKey(tagDraft)
+        if gridDraft?.segments.first.map({ $0.bpm > 0 }) != true {
+            candidate.withoutAnalysis = estimating ? String(ui: "그리드를 아직 추정하는 중") : String(ui: "그리드가 없음")
         } else if let reason = ports.audio.unsupported(url) {
             candidate.withoutAnalysis = reason
         }

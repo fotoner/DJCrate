@@ -32,11 +32,12 @@ public struct AutoReflectionInventory: Equatable, Sendable {
             case .removeTracks:
                 // 쓰기는 지운 행과 남은 행 전부(자리가 그대로인 곡까지)의 번호를 다시 적는다(RekordboxWriter+Playlist)
                 return max(before.count, 1)
-            case let .moveTracks(_, entries, _):
-                // 쓰기는 자리가 바뀐 곡만 다시 적는다. 같은 곡이 여러 번 든 목록도 놓치지 않게 처음·끝으로 달라진 자리 사이를 모두 센다
-                let differs = before.indices.filter { $0 >= after.count || before[$0] != after[$0] }
-                guard let first = differs.first, let last = differs.last else { return max(entries.count, 1) }
-                return max(last - first + 1, entries.count, 1)
+            case let .moveTracks(_, entries, to):
+                // 쓰기처럼 고른 곡의 원래 번호로 순서를 다시 만들고, 원래 번호와 새 자리가 다른 줄을 센다(같은 곡이 여러 번 든 목록도 줄로 가린다)
+                let picked = Set(entries.map(\.trackNo))
+                var order = before.filter { !picked.contains($0.trackNo) }
+                order.insert(contentsOf: before.filter { picked.contains($0.trackNo) }, at: min(max(to - 1, 0), order.count))
+                return max(order.indices.filter { order[$0].trackNo != $0 + 1 }.count, 1)
             case .create, .rename, .move, .reorder, .delete: return 1
             }
         }

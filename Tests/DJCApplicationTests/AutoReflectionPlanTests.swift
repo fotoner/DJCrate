@@ -216,4 +216,14 @@ struct AutoReflectionPlanTests {
         #expect(AutoReflectionInventory.Step.rows(of: .moveTracks(playlist: .id("A"), entries: [ten[8]], to: 2), before: ten,
                                                   after: renumbered) == 8)
     }
+
+    // MARK: - 3라운드 S9
+
+    @Test func 같은_곡이_여러_번_든_목록의_옮기기도_쓰기처럼_원래_번호로_센다() {
+        // 같은 곡이 201번 든 목록에서 마지막 줄을 맨 앞으로: 쓰기는 원래 번호가 바뀐 줄을 모두 다시 적는다(201행)
+        let entries = (1...201).map { PlaylistEntry(trackNo: $0, contentID: "1") }
+        let after = (1...201).map { PlaylistEntry(trackNo: $0, contentID: "1") }
+        #expect(AutoReflectionInventory.Step.rows(of: .moveTracks(playlist: .id("A"), entries: [entries[200]], to: 1), before: entries,
+                                                  after: after) == 201)
+    }
 }

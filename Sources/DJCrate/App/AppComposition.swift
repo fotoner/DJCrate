@@ -510,7 +510,11 @@ final class AppComposition {
         // CLI가 앱의 시점 스냅샷 보관 일수를 따르게 공유 파일에 맞춘다
         settings.syncShared()
         // 프로세스 전체의 캐시·임시 파일 정리는 앱만 한다(화면 모델·시험 저장소가 공용 음량 캐시를 자기 곡으로 잘라내지 않게).
-        store.onLibraryLoaded = { paths in Self.maintainCaches(keeping: paths) }
+        store.onLibraryLoaded = { [weak self] paths in
+            Self.maintainCaches(keeping: paths)
+            // 다시 읽은 라이브러리로 미룬 곡 넣기 정리를 다시 한다(R22)
+            self?.autoReflection?.libraryReloaded()
+        }
         // 옛 AI 에이전트 설치본 알림(#262)은 읽기를 기다리지 않는다. 다른 알림을 덮지 않는다
         if agentNoticeEnabled, let agentTools {
             Task { [store] in

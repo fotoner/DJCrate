@@ -171,6 +171,27 @@ struct RekordboxWriteJournalLiveTests {
         withExtendedLifetime(folder) {}
     }
 
+    @Test func 잠금을_기다린_수동_쓰기가_백업_전에_실패하면_원래_오류를_알린다() async throws {
+        let fixture = try RekordboxFixture()
+        let batch = DraftWriteBatch(drafts: [try cueDraft(fixture)], operation: DraftWriteOperation(id: "op-수동", draftHome: fixture.root))
+        let folder = try TemporaryFolder(prefix: "djc-manual-lock")
+        let contended = Mutex(false)
+        let locks = RekordboxWriteLocks(folder: folder.url.appending(path: "djc-locks"), contended: { _ in contended.withLock { $0 = true } })
+        let gate = RekordboxWriteGate.live(guard: Self.copyGuard(locks: locks))
+        // 백업 폴더 자리에 파일이 있어 백업을 뜨지 못한다(백업 전 실패)
+        let blocker = folder.url.appending(path: "backups")
+        try Data().write(to: blocker)
+        let target = RekordboxWriteTarget(database: fixture.database, shareRoot: fixture.shareRoot, backups: blocker)
+        let other = try #require(try locks.tryLock(try RekordboxWriteLocks.key(fixture.database)))
+        let writing = Task.detached { Result { try gate.write(batch, [:], target, false) } }
+        for _ in 0..<4000 where !contended.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(5)) }
+        other.release()
+        let result = await writing.value
+        guard case let .failure(error) = result else { Issue.record("실패해야 한다"); return }
+        #expect(!(error is RekordboxWriteGate.LockBusy), "수동 쓰기는 기다렸으니 잠금 바쁨이 아니라 원래 이유를 알린다: \(error)")
+        withExtendedLifetime(folder) {}
+    }
+
     @Test(arguments: [true, false])
     func 백업을_뜬_뒤_커밋_전에_실패한_자동_저장은_백업_뒤_실패로_알린다(auto: Bool) throws {
         let fixture = try RekordboxFixture()

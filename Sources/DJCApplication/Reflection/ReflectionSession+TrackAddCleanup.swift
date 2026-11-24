@@ -23,7 +23,8 @@ extension ReflectionSession {
     /// 다시 해도 결과가 같다(옮긴 뒤 옛 초안이 없으면 할 일이 없다).
     /// - Parameter unchanged: 넣은 뒤 처리가 넘긴 판정(넣기 묶음의 판 그대로인 초안은 그 처리가 이미 옮기거나 백업에 남기고 지웠다).
     ///   nil이면 재시작 정리라 남은 초안을 모두 본다
-    func cleanUpTrackAdd(_ add: DraftCleanupList.TrackAdd, unchanged: ((DraftKey) -> Bool)?) async -> TrackAddCleanup {
+    /// - Parameter libraryFresh: 앱이 라이브러리를 방금 다시 읽었다(새 곡 행이 없으면 미루지 않고 옛 초안을 연결 안 된 초안으로 남긴다)
+    func cleanUpTrackAdd(_ add: DraftCleanupList.TrackAdd, unchanged: ((DraftKey) -> Bool)?, libraryFresh: Bool = false) async -> TrackAddCleanup {
         let files = ports.drafts
         await BlockingWork.run { files.flush() }
         var result = TrackAddCleanup.done
@@ -48,7 +49,7 @@ extension ReflectionSession {
                     continue
                 }
             }
-            merge(await moveToNewTrack(key, add: add))
+            merge(await moveToNewTrack(key, add: add, libraryFresh: libraryFresh))
         }
         await BlockingWork.run { files.flush() }
         return result
@@ -64,8 +65,10 @@ extension ReflectionSession {
     }
 
     /// 옛 UUID에 남은 초안 하나를 새 곡의 제안으로 옮기고, 새 곡에 저장된 것을 본 뒤 옛 초안을 지운다
-    private func moveToNewTrack(_ key: DraftKey, add: DraftCleanupList.TrackAdd) async -> TrackAddCleanup {
+    private func moveToNewTrack(_ key: DraftKey, add: DraftCleanupList.TrackAdd, libraryFresh: Bool) async -> TrackAddCleanup {
         let files = ports.drafts, new = add.trackUUID, state = ports.library.state()
+        // 새 곡 행을 기다려야 하는데 방금 다시 읽은 라이브러리에도 없으면(그 사이 뺐다) 옮기지 않고 끝낸다
+        let missingRow: TrackAddCleanup = libraryFresh ? .done : .deferred
         let newKey = DraftKey(key.kind, new)
         guard let stamp = files.stamp(key), let hash = files.currentHash(key) else { return .done }
         // 새 곡에 그 종류 초안이 이미 있다(다시 읽은 뒤 사용자가 고쳤다): 덮지 않고 옛 초안은 연결되지 않은 초안으로 남긴다
@@ -80,7 +83,7 @@ extension ReflectionSession {
             let moved: CueDraft
             if let written = add.values.cues, !add.blockedFields.contains("cues") {
                 // 넣기로 쓴 큐가 rekordbox에 있다: 다시 읽은 새 곡의 큐(원본 ID)를 기준으로 삼아야 쓸 때 기준 어긋남으로 막히지 않는다
-                guard let row = state.rows[new] else { return .deferred }
+                guard let row = state.rows[new] else { return missingRow }
                 // 같은 종류·시각의 큐가 여럿이면 어느 rekordbox 큐에 이어야 할지 모른다: 다른 큐를 고치지 않게 옮기지 않는다
                 guard !AddedTrackDrafts.cueMatchIsAmbiguous(written, onto: row.cues) else { return .done }
                 moved = AddedTrackDrafts.movedCueDraft(current, written: written, onto: row.cues, to: new, newID: files.newCueID)
@@ -102,8 +105,10 @@ extension ReflectionSession {
             }
         case .tag:
             guard let current = files.tagDraft(key.id) else { return .done }
-            guard let base = add.values.tags ?? state.rows[new]?.tagFields else { return .deferred }
-            let moved = AddedTrackDrafts.movedTagDraft(current, written: base, blocked: Set(add.blockedFields), to: new)
+            guard let base = add.values.tags ?? state.rows[new]?.tagFields else { return missingRow }
+            // 넣기 때 태그 초안이 있었는지(있었으면 그 판이 넣기 묶음에 실렸다): 넣기 계획에 실린 칸을 가린다
+            let hadDraft = add.written.contains { $0.key == DraftKey(.tag, add.stagedUUID) }
+            let moved = AddedTrackDrafts.movedTagDraft(current, written: base, blocked: Set(add.blockedFields), hadDraft: hadDraft, to: new)
             if moved.hasChanges {
                 port.saveTags([moved])
                 apply(.tagDrafts([moved]))
@@ -156,13 +161,21 @@ extension AddedTrackDrafts {
         return moved
     }
 
-    /// 넣는 동안 생긴 태그 초안 새 판을 새 곡으로 옮긴 모양(R22): 기준은 넣기로 쓴 값이다. 새 판이 쓴 값과 다르게 둔 칸(파일 값으로 되돌린 칸 포함)과
-    /// 넣기에서 막힌 칸은 새 판의 값을 얹는다. 쓴 값과 같은 칸은 그대로다
-    public static func movedTagDraft(_ current: TagDraft, written: TagFields, blocked: Set<String>, to uuid: String) -> TagDraft {
+    /// 넣기 계획에 태그 초안에서 싣는 칸(`apply(_:to:)`가 음원 태그 위에 얹는 칸)
+    static let plannedTagKeys: [TagFields.Key] = [.title, .artist, .album, .albumArtist, .genre, .composer, .year, .trackNumber, .comment]
+
+    /// 넣는 동안 생긴 태그 초안 새 판을 새 곡으로 옮긴 모양(R22): 기준은 넣기로 쓴 값이다. 그 위에 새 판의 값을 얹는 칸은
+    /// - 새 판에서 사용자가 바꾼 칸(`changedKeys`: 기준과 다른 칸)
+    /// - 넣기 때 태그 초안이 있었으면 그 계획에 실린 칸 가운데 쓴 값과 새 판이 다른 칸(파일 값으로 되돌린 칸 포함)
+    /// - 넣기에서 막힌 칸
+    /// 이다. 넣기 때 태그 초안이 없었으면 계획은 음원 태그를 썼으니 바꾸지 않은 칸을 쓴 값과 견주지 않는다(추가 목록 곡 행에 없던 칸을 지우지 않게).
+    /// 쓰지 않은 미확정 키(추정·파일 키: 쓴 키가 비었고 새 판이 키를 바꾸지 않았다)는 옮기지 않는다
+    public static func movedTagDraft(_ current: TagDraft, written: TagFields, blocked: Set<String>, hadDraft: Bool = true, to uuid: String) -> TagDraft {
+        var keys = Set(current.changedKeys).union(TagFields.Key.allCases.filter { blocked.contains($0.rawValue) })
+        if hadDraft { keys.formUnion(plannedTagKeys.filter { current.fields[$0] != written[$0] }) }
+        if written.musicalKey.isEmpty, current.base.musicalKey == current.fields.musicalKey { keys.remove(.musicalKey) }
         var moved = TagDraft(trackUUID: uuid, base: written)
-        for key in TagFields.Key.allCases where current.fields[key] != written[key] || blocked.contains(key.rawValue) {
-            moved.fields[key] = current.fields[key]
-        }
+        for key in keys { moved.fields[key] = current.fields[key] }
         return moved
     }
 
