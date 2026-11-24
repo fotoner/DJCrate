@@ -110,6 +110,35 @@ struct AutoReflectSelfTestJudgeTests {
         #expect(result.problems.contains { $0.contains("누적") }, "\(result.problems)")
     }
 
+    /// 측정 끝 직전에 끊겨 그 뒤 버퍼 없이 측정이 닫혀도 끊김이다: 마지막 버퍼부터 끝 표식까지도 본다(컨실 3라운드 R)
+    @Test(arguments: [0.15, 2.0])
+    func 마지막_버퍼부터_측정_끝까지_빈_시간도_끊김으로_센다(_ silent: Double) throws {
+        let arrivals = Self.arrivals(seconds: 58)
+        let last = try #require(arrivals.last)
+        let end = last.time + 1024.0 / 44_100 + silent
+        let result = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Array(repeating: 0.2, count: Int(last.received * 100)), arrivals: arrivals,
+                                                                    seconds: end, playheadAdvance: last.received)
+        #expect(!result.problems.isEmpty, "\(silent)초")
+    }
+
+    @Test func 측정_시작부터_첫_버퍼까지_빈_시간도_끊김으로_센다() throws {
+        let arrivals = Self.arrivals(seconds: 58).map { Arrival(time: $0.time + 0.15, received: $0.received) }
+        let last = try #require(arrivals.last)
+        let result = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Array(repeating: 0.2, count: Int(last.received * 100)), arrivals: arrivals,
+                                                                    seconds: last.time + 1024.0 / 44_100, playheadAdvance: last.received)
+        #expect(!result.problems.isEmpty)
+    }
+
+    /// 누적 부족분은 버퍼의 렌더 시각으로 잰다: 콜백이 늦게 도착한 지터(120ms)는 소리가 빠진 것이 아니다(컨실 3라운드 O15)
+    @Test func 렌더_시각이_있으면_누적_부족분을_렌더_시각으로_잰다() {
+        let arrivals = Self.arrivals(seconds: 60).enumerated().map { index, arrival in
+            Arrival(time: arrival.time + (index % 40 == 20 ? 0.12 : 0), received: arrival.received, rendered: 1_000 + arrival.time)
+        }
+        let result = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Self.continuous(seconds: 60), arrivals: arrivals, seconds: 60,
+                                                                    playheadAdvance: 60)
+        #expect(result.problems.isEmpty, "\(result.problems)")
+    }
+
     /// 버퍼 하나 안의 도착 지터(앞뒤로 20ms)는 끊김이 아니다
     @Test func 버퍼_하나_안의_도착_지터는_끊김이_아니다() {
         let arrivals = Self.arrivals(seconds: 60).enumerated().map { index, arrival in
@@ -156,6 +185,17 @@ struct AutoReflectSelfTestJudgeTests {
                 "시작한 파일 교체의 완료가 없다")
         #expect(AutoReflectAppSelfTest.E1Measurement.measure(base + [(.before(.fileReplace), at(300)), (.after(.fileReplace), at(330))]) == nil,
                 "재확인 없이 시작한 파일 교체다")
+    }
+
+    /// 측정 끝에 시작으로 이어지지 않은 파일 교체 재확인이 남으면 그 회를 받지 않는다. 쓰기 기록 직전처럼 다음 재확인으로 이어지는 재확인은 괜찮다(컨실 3라운드 S)
+    @Test func 시작으로_이어지지_않은_재확인이_끝에_남으면_그_회를_받지_않는다() {
+        let t0 = ContinuousClock.now
+        func at(_ ms: Int) -> ContinuousClock.Instant { t0 + .milliseconds(ms) }
+        let base: [Event] = [(.recheck(.commit), at(0)), (.after(.commit), at(100)),
+                             (.recheck(.fileReplace), at(150)), (.recheck(.fileReplace), at(200)), (.before(.fileReplace), at(201)),
+                             (.after(.fileReplace), at(230))]
+        #expect(AutoReflectAppSelfTest.E1Measurement.measure(base) != nil, "쓰기 기록 직전 재확인은 다음 시작으로 이어진다")
+        #expect(AutoReflectAppSelfTest.E1Measurement.measure(base + [(.recheck(.fileReplace), at(300))]) == nil, "다음 교체의 재확인만 남았다")
     }
 
     /// E1 관문(2×E1 < E2′ 최솟값 2.154초)을 넘지 못하면 자가 테스트는 종료 코드 1이다(컨실 2라운드 N)

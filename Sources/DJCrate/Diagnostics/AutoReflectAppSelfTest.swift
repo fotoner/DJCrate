@@ -126,7 +126,7 @@ enum AutoReflectAppSelfTest {
         // 곡 믹서 출력(속도 변환 전)을 받는다. 스피커는 음소거된다
         deck.volume = 1
         let probe = AudioGapProbe()
-        audio.debugCaptureTrack(AudioGapProbe.handler(probe))
+        audio.debugCaptureTrackTimed(AudioGapProbe.handler(probe))
         deck.togglePlay()
         guard await until(10, { deck.isPlaying }) else { log("재생을 시작하지 못했습니다"); return 1 }
         await sleep(1)
@@ -154,9 +154,9 @@ enum AutoReflectAppSelfTest {
         let result = probe.analyze()
         check(stopped == 0, "자동 저장하는 동안 덱 재생이 멈추지 않았다(멈춤을 본 횟수 \(stopped))")
         check(overlays == 0, "자동 저장하는 동안 창 덮개가 뜨지 않았다(본 횟수 \(overlays))")
-        log(String(format: "곡 믹서 출력: %.1f초 · 10ms 구간 %d개 · 중앙 RMS %.4f · 끊긴 구간 %d개 · 가장 긴 버퍼 간격 %.3f초 · 받은 시간/벽시계 %.3f · 받은 시간/재생 위치 %.3f · 누적 부족분 범위 %.3f초",
+        log(String(format: "곡 믹서 출력: %.1f초 · 10ms 구간 %d개 · 중앙 RMS %.4f · 끊긴 구간 %d개 · 가장 긴 버퍼 간격 %.3f초 · 받은 시간/벽시계 %.3f · 받은 시간/재생 위치 %.3f · 누적 부족분 범위 %.3f초 · 경계 간격 %.3f초",
                    result.seconds, result.windows, result.medianRMS, result.quietWindows, result.longestArrivalGap, result.wallCoverage,
-                   result.playheadCoverage, result.deficitRange))
+                   result.playheadCoverage, result.deficitRange, result.boundaryGap))
         let problems = result.problems
         check(problems.isEmpty, "곡 믹서 출력에서 신호가 끊긴 구간이 0이다\(problems.isEmpty ? "" : "(\(problems.joined(separator: " · ")))")")
         return failures == 0 ? 0 : 1
@@ -469,7 +469,8 @@ enum AutoReflectAppSelfTest {
                 case .before: break
                 }
             }
-            guard !unpaired, !replaceOpen else { return nil }
+            // 끝에 시작으로 이어지지 않은 재확인이 남아도 받지 않는다(다음 교체의 재확인만 기록됐다, 컨실 3라운드 S)
+            guard !unpaired, !replaceOpen, !replaceRechecked else { return nil }
             guard perStep[.commit] != nil, perStep[.fileReplace] != nil, let committed, let lastFile, lastFile >= committed else { return nil }
             return Self(gate: gate, reference: lastFile - committed, perStep: perStep)
         }
@@ -493,17 +494,19 @@ enum AutoReflectAppSelfTest {
         private let lock = NSLock()
         private var pending: [Float] = []
         private var windows: [Float] = []
-        private var arrivals: [(time: Double, window: Int)] = []
+        private var arrivals: [(time: Double, rendered: Double?, window: Int)] = []
         private var rate = 0.0
         private var marks: [(time: Double, window: Int, playhead: Double)] = []
 
-        nonisolated static func handler(_ probe: AudioGapProbe) -> @Sendable (AVReadOnlyAudioPCMBuffer) -> Void {
-            { @Sendable buffer in probe.record(buffer) }
+        nonisolated static func handler(_ probe: AudioGapProbe) -> @Sendable (AVReadOnlyAudioPCMBuffer, AVAudioTime) -> Void {
+            { @Sendable buffer, when in probe.record(buffer, when: when) }
         }
 
-        nonisolated func record(_ buffer: AVReadOnlyAudioPCMBuffer) {
+        /// 버퍼가 온 시각(콜백)과 렌더 시각(호스트 시각이 있으면)을 함께 남긴다: 누적 부족분은 콜백 도착 지터 없이 렌더 시각으로 잰다(컨실 3라운드 O15)
+        nonisolated func record(_ buffer: AVReadOnlyAudioPCMBuffer, when: AVAudioTime) {
             guard case let .float(samples) = buffer.channelData(0) else { return }
             let count = Int(buffer.frameLength), now = ProcessInfo.processInfo.systemUptime
+            let rendered: Double? = when.isHostTimeValid ? AVAudioTime.seconds(forHostTime: when.hostTime) : nil
             lock.withLock {
                 rate = buffer.format.sampleRate
                 let size = max(1, Int(rate / 100))
@@ -514,7 +517,7 @@ enum AutoReflectAppSelfTest {
                     windows.append((sum / Float(size)).squareRoot())
                     pending.removeFirst(size)
                 }
-                arrivals.append((now, windows.count))
+                arrivals.append((now, rendered, windows.count))
             }
         }
 
@@ -526,9 +529,10 @@ enum AutoReflectAppSelfTest {
         func analyze() -> AudioContinuity {
             lock.withLock {
                 guard marks.count >= 2, marks[1].window >= marks[0].window, rate > 0 else { return .measure(windows: [], arrivals: [], seconds: 0, playheadAdvance: 0) }
-                let start = marks[0].window
+                // 시각은 측정 시작 표식에서 잰다(표식과 첫·마지막 버퍼 사이 간격도 본다, 컨실 3라운드 R)
+                let start = marks[0].window, begin = marks[0].time
                 let inside = arrivals.filter { $0.time >= marks[0].time && $0.time <= marks[1].time }
-                    .map { AudioContinuity.Arrival(time: $0.time, received: Double($0.window - start) / 100) }
+                    .map { AudioContinuity.Arrival(time: $0.time - begin, received: Double($0.window - start) / 100, rendered: $0.rendered) }
                 return .measure(windows: Array(windows[marks[0].window..<marks[1].window]), arrivals: inside, seconds: marks[1].time - marks[0].time,
                                 playheadAdvance: marks[1].playhead - marks[0].playhead)
             }
@@ -539,8 +543,10 @@ enum AutoReflectAppSelfTest {
     /// - 신호 세기: 중앙 RMS가 `minimumRMS`보다 작으면 무음이라 통과하지 않는다
     /// - 끊긴 구간: RMS가 중앙값의 30%(그리고 최소 세기의 30%)보다 작은 구간
     /// - 빠진 샘플: 받은 시간이 벽시계로 지난 시간과, 덱 재생 위치가 나아간 시간과 5% 넘게 다르면 끊긴 것이다. 버퍼가 0.25초 넘게 오지 않아도 같다
-    /// - 누적 부족분: 버퍼가 올 때마다 "벽시계로 지난 시간 − 받은 소리"를 구한다. 그 범위가 0.1초(버퍼 하나 + 지터)를 넘으면 끊긴 것이다.
-    ///   짧은 멈춤이 여러 번 쌓여 위 두 기준을 지나는 경우를 잡는다(컨실 2라운드 L)
+    /// - 누적 부족분: 버퍼가 올 때마다 "지난 시간 − 받은 소리"를 구한다. 그 범위가 0.1초(버퍼 하나 + 지터)를 넘으면 끊긴 것이다.
+    ///   짧은 멈춤이 여러 번 쌓여 위 두 기준을 지나는 경우를 잡는다(컨실 2라운드 L). 지난 시간은 버퍼의 렌더 시각으로 잰다(콜백 도착 지터를 빼다, 3라운드 O15)
+    /// - 경계: 측정 시작 표식부터 첫 버퍼, 마지막 버퍼부터 끝 표식까지도 버퍼 간격으로 본다. 0.1초를 넘으면 끊긴 것이다
+    ///   (끝 직전에 끊겨 그 뒤 버퍼 없이 측정이 닫힌 경우, 3라운드 R). 시각은 시작 표식에서 잰 초다
     struct AudioContinuity: Equatable {
         static let minimumRMS: Float = 0.05
         static let maximumDeficitRange = 0.1
@@ -551,13 +557,17 @@ enum AutoReflectAppSelfTest {
         var longestArrivalGap: Double
         var wallCoverage: Double
         var playheadCoverage: Double
-        /// 누적 부족분(벽시계로 지난 시간 − 받은 소리)의 범위(초)
+        /// 누적 부족분(지난 시간 − 받은 소리)의 범위(초)
         var deficitRange: Double
+        /// 측정 시작 표식 → 첫 버퍼, 마지막 버퍼 → 끝 표식 가운데 긴 쪽(초)
+        var boundaryGap: Double
 
         /// 출력 버퍼 하나가 온 때(벽시계 초)와 그때까지 받은 소리(초)
         struct Arrival: Equatable, Sendable {
             var time: Double
             var received: Double
+            /// 버퍼의 렌더 시각(초, 호스트 시각). 없으면 누적 부족분도 `time`으로 잰다
+            var rendered: Double? = nil
         }
 
         static func measure(windows: [Float], arrivals: [Arrival], seconds: Double, playheadAdvance: Double) -> Self {
@@ -565,12 +575,14 @@ enum AutoReflectAppSelfTest {
             let threshold = max(median, minimumRMS) * 0.3
             let received = Double(windows.count) / 100
             let times = arrivals.map(\.time)
-            let longest = zip(times, times.dropFirst()).map { $1 - $0 }.max() ?? .infinity
-            let deficits = arrivals.map { ($0.time - (arrivals.first?.time ?? 0)) - ($0.received - (arrivals.first?.received ?? 0)) }
+            let boundary = max(times.first ?? .infinity, seconds - (times.last ?? 0))
+            let longest = (zip(times, times.dropFirst()).map { $1 - $0 } + [boundary]).max() ?? .infinity
+            let clock = arrivals.map { $0.rendered ?? $0.time }
+            let deficits = zip(clock, arrivals).map { ($0 - (clock.first ?? 0)) - ($1.received - (arrivals.first?.received ?? 0)) }
             return Self(seconds: seconds, windows: windows.count, medianRMS: median, quietWindows: windows.filter { $0 < threshold }.count,
                         longestArrivalGap: longest, wallCoverage: seconds > 0 ? received / seconds : 0,
                         playheadCoverage: playheadAdvance > 0 ? received / playheadAdvance : 0,
-                        deficitRange: (deficits.max() ?? 0) - (deficits.min() ?? 0))
+                        deficitRange: (deficits.max() ?? 0) - (deficits.min() ?? 0), boundaryGap: boundary)
         }
 
         /// 통과하지 못한 까닭(없으면 통과)
@@ -584,6 +596,9 @@ enum AutoReflectAppSelfTest {
             if abs(playheadCoverage - 1) >= 0.05 { problems.append(String(format: "받은 시간/재생 위치 %.3f(빠진 샘플)", playheadCoverage)) }
             if !(deficitRange <= Self.maximumDeficitRange) {
                 problems.append(String(format: "받은 소리가 벽시계보다 누적 %.3f초 모자랐다(짧은 끊김이 쌓임)", deficitRange))
+            }
+            if !(boundaryGap <= Self.maximumDeficitRange) {
+                problems.append(String(format: "측정 경계에서 %.3f초 동안 버퍼가 없었다(측정 끝 직전·시작 직후 끊김)", boundaryGap))
             }
             return problems
         }

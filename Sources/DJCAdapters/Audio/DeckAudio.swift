@@ -344,10 +344,16 @@ public final class DeckAudio {
 
     /// 진단: 곡 믹서 출력(속도 변환 전)을 받아 본다. 스피커는 음소거한다(개발용 자가 테스트).
     public func debugCaptureTrack(_ handler: @escaping @Sendable (AVReadOnlyAudioPCMBuffer) -> Void) {
+        debugCaptureTrackTimed(Self.captureTap(handler))
+    }
+
+    /// 진단: 곡 믹서 출력과 그 버퍼의 렌더 시각을 받아 본다(자동 저장 자가 테스트의 끊김 판정). 스피커는 음소거한다.
+    /// 탭은 메인 액터 밖에서 만든 것을 받는다(AUD-10)
+    public func debugCaptureTrackTimed(_ handler: @escaping @Sendable (AVReadOnlyAudioPCMBuffer, AVAudioTime) -> Void) {
         guard let graph else { return }
         graph.engine.mainMixerNode.outputVolume = 0
         graph.trackMixer.removeTap(onBus: 0)
-        try! graph.trackMixer.installAudioTap(onBus: 0, bufferSize: 1024, format: nil, tapProvider: Self.captureTap(handler))
+        try! graph.trackMixer.installAudioTap(onBus: 0, bufferSize: 1024, format: nil, tapProvider: handler)
     }
 
     /// 오디오 스레드에서 불리므로 메인 액터 밖에서 만든다.
