@@ -580,11 +580,21 @@ final class AppComposition {
                 }
             }
         }
+        if first, let autoReflection {
+            // 업데이트 전 곡 초안 이관(#295 E1): 자동 저장하는 실행만, 첫 라이브러리 읽기보다 먼저 한 번(읽은 저장 대기에 출처가 실리게)
+            let adopted = await autoReflection.adoptLegacyDrafts()
+            if adopted > 0 { store.activityLog.record(.notice(Self.legacyAdoptedText(adopted), nil, kind: .success), shown: false) }
+        }
         await store.loadInitial()
         if first, let autoReflection {
             autoReflection.start()
             observeDrafts(for: autoReflection)
         }
+    }
+
+    /// 업데이트 전 곡 초안을 이관한 활동 기록(#295 E1)
+    static func legacyAdoptedText(_ count: Int) -> String {
+        String(ui: "업데이트 전부터 있던 저장 대기 \(count)건도 자동으로 저장합니다")
     }
 
     /// 앱 수명 동안 도는 일을 시작한다(창의 `.task`가 아니라 조립 지점이 든다: 창을 닫았다 열어도 멈추거나 겹치지 않는다)

@@ -146,6 +146,16 @@ public final class AutoReflection {
         loop = Task { [weak self] in await self?.runLoop() }
     }
 
+    /// 업데이트 전 곡 초안 이관(#295 E1): 자동 저장하는 실행(`.live`)만 첫 라이브러리 읽기 전에 부른다. 도장 없는 큐·그리드·태그·게인 초안에
+    /// 사람 편집 출처를 한 번 붙인다(표지가 이미 끝났으면 하지 않는다). `--db`·디버그·진단·사본 자가 테스트 실행은 하지 않는다(제안으로 남는다).
+    /// 게인은 base가 없으면 이관해도 자동으로 쓰지 않는다(R23). 이관하지 못하면(표지를 못 적음 등) 0이다: 그 초안은 제안으로 남는다
+    /// - Returns: 이관한 초안 수(활동 기록에 한 번 남긴다)
+    public func adoptLegacyDrafts() async -> Int {
+        guard run == .live else { return 0 }
+        let files = session.ports.drafts
+        return (try? await BlockingWork.run(qos: .userInitiated) { try files.adoptLegacyDrafts() }) ?? 0
+    }
+
     /// 앱을 끌 때 대기와 감시를 멈춘다(쓰는 중인 저장은 끝까지 간다)
     public func stop() {
         stopped = true

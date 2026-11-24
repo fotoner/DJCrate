@@ -240,11 +240,13 @@ when Sources/DJCApplication/Library/DraftStore+Suggestions.swift
 when Sources/DJCDomain/Library/DraftSuggestion.swift
 when Sources/DJCStorage/Drafts/DraftStampStore.swift
 when Sources/DJCStorage/Drafts/StampedDrafts.swift
+when Sources/DJCStorage/Drafts/LegacyDraftAdoption.swift
 when Sources/DJCrate/Diagnostics/DiagnosticRun.swift
 when Sources/DJCrate/Settings/SettingsStore.swift
 suite DJCDomainTests.DraftProvenanceTests
 suite DJCDomainTests.DraftSuggestionTests
 suite DJCStorageTests.DraftStampStoreTests
+suite DJCStorageTests.LegacyDraftAdoptionTests
 suite DJCAdaptersTests.DraftStampLiveTests
 suite DJCApplicationTests.DraftFilesOriginTests
 suite DJCDomainTests.RekordboxWriteJournalTests

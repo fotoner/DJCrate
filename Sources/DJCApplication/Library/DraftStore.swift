@@ -129,6 +129,10 @@ public struct DraftStore: Sendable {
     /// 막힌 단계와 쓰는 동안 더한 단계는 남는다. 같은 초안 잠금 안에서 한다
     public var removeWrittenSteps: @Sendable (PlaylistStepCleanup) throws -> PlaylistStepRemoval =
         { PlaylistStepRemoval(notFound: Set($0.written.map(\.revision))) }
+    /// 업데이트 전 곡 초안 이관(#295 E1): 도장 없는 큐·그리드·태그·게인 초안에 사람 편집 출처를 한 번 붙이고 그 수를 돌려준다.
+    /// 표지를 먼저 적고(못 적으면 던지고 아무것도 바꾸지 않는다) 도장을 붙인 뒤 완료를 적는다. 이미 마쳤으면 0. 같은 초안 잠금 안에서 한다.
+    /// 자동 저장하는 실행만 첫 라이브러리 읽기 전에 부른다(`AutoReflection.adoptLegacyDrafts`)
+    public var adoptLegacyDrafts: @Sendable () throws -> Int = { 0 }
 
     public init(flush: @escaping @Sendable () -> Void,
                 saveRevision: @escaping @Sendable () -> UInt64,

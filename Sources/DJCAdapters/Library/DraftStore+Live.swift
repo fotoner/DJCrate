@@ -107,6 +107,7 @@ extension DraftStore {
         store.markSuggestions = { drafts, steps in
             try writer.serialized { try StampedDrafts.markSuggestions(drafts, playlistSteps: steps, home: home) }
         }
+        store.adoptLegacyDrafts = { try writer.serialized { try LegacyDraftAdoption.adopt(home: home) } }
         store.removeWrittenSteps = { cleanup in
             let result = try writer.serialized {
                 try StampedDrafts.removeWrittenSteps(cleanup.written.map { ($0.revision, $0.contentHash) }, newPlaylistIDs: cleanup.newPlaylistIDs,

@@ -21,6 +21,8 @@ public final class MemoryDrafts: Sendable {
         var merges: [DuplicateMergeDraft] = []
         var revision: UInt64 = 0
         var stamps: [DraftKey: DraftStamp] = [:]
+        /// 업데이트 전 곡 초안 이관을 마쳤다(#295 E1)
+        var adoptedLegacy = false
         /// 재생 목록 단계 도장 줄(실제 저장소의 사이드카와 같다: 단계 식별자별)
         var playlistEntries: [PlaylistStampEntry] = []
         /// 마지막으로 준 판(저장소 전체에서 늘어난다)
@@ -297,6 +299,24 @@ public final class MemoryDrafts: Sendable {
         }
     }
 
+    /// 업데이트 전 곡 초안 이관(#295 E1)의 메모리 구현: 도장 없는 큐·그리드·태그·게인 초안에 사람 편집 도장을 한 번 붙인다
+    /// (표지·완료 기록의 세부 규칙은 실제 구현 `LegacyDraftAdoption`이 DJCStorageTests에서 본다). 두 번째부터는 0
+    public func adoptLegacyDrafts() -> Int {
+        state.withLock { state in
+            guard !state.adoptedLegacy else { return 0 }
+            state.adoptedLegacy = true
+            let keys = state.cues.keys.map { DraftKey(.cue, $0) } + state.grids.keys.map { DraftKey(.grid, $0) }
+                + state.tags.keys.map { DraftKey(.tag, $0) } + state.gains.keys.map { DraftKey(.gain, $0) }
+            var adopted = 0
+            for key in keys.sorted() where state.stamps[key] == nil {
+                guard let hash = state.currentHash(key) else { continue }
+                state.stamps[key] = state.newStamp(origins: [.human], hash: hash)
+                adopted += 1
+            }
+            return adopted
+        }
+    }
+
     /// 이 메모리 초안을 사람 편집으로 읽고 쓰는 포트(앱의 편집 포트와 같다)
     public var store: DraftStore { store(origin: .human) }
 
@@ -350,6 +370,7 @@ public final class MemoryDrafts: Sendable {
         store.removeWritten = { self.removeWritten($0) }
         store.removeWrittenSteps = { self.removeWrittenSteps($0) }
         store.markSuggestions = { self.markSuggestions($0, playlistSteps: $1) }
+        store.adoptLegacyDrafts = { self.adoptLegacyDrafts() }
         return store
     }
 }

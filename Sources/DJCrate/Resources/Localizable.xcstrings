@@ -35561,6 +35561,34 @@
         }
       }
     },
+    "업데이트 전부터 있던 저장 대기 %lld건도 자동으로 저장합니다" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld pending edit from before the update will also be saved automatically"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld pending edits from before the update will also be saved automatically"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップデート前からの保存待ち%lld件も自動で保存します"
+          }
+        }
+      }
+    },
     "업데이트 확인…" : {
       "localizations" : {
         "en" : {

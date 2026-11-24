@@ -567,6 +567,52 @@ struct AutoReflectionEngineTests {
         #expect(w.fakes.records.record.stop == nil)
     }
 
+    // MARK: - R5 업데이트 전 곡 초안 이관(E1)
+
+    /// 도장 기능 전 빌드가 남긴 도장 없는 곡 초안(메모리에 도장 없이 둔다)
+    static func legacyCue(_ w: AutoReflectionWorld, _ uuid: String) {
+        w.h.state.rows[uuid] = ReflectionHarness.row(uuid)
+        w.h.state.cueDraftUUIDs.insert(uuid)
+        w.h.memory.editOutside(ReflectionHarness.cue(uuid))
+    }
+
+    /// 자동 저장하는 실행은 첫 읽기 전에 도장 없는 곡 초안을 한 번 사람 편집으로 이관하고, 다음 판정이 자동으로 쓴다.
+    /// base가 지금 rekordbox와 다르면 관문이 막아 확인 필요로 남는다. 두 번째 실행은 이관하지 않는다
+    @Test(arguments: [RekordboxWriteOutcome.Status.written, .blocked])
+    func 업데이트_전_곡_초안은_한_번_이관해_자동으로_쓴다(_ status: RekordboxWriteOutcome.Status) async throws {
+        let w = AutoReflectionWorld()
+        w.writable("a", status: status)
+        Self.legacyCue(w, "a")
+        // CLI가 만든 초안과 가져오기·곡 넣기 정리가 남긴 모름 초안은 의도한 제안이라 이관하지 않는다
+        w.cue("c", origin: .cli)
+        w.cue("u", origin: .unknown)
+        #expect(w.h.memory.stamp(DraftKey(.cue, "a")) == nil)
+        // 앱은 엔진을 만든 뒤 첫 읽기 전에 부른다(엔진 시작 전)
+        let engine = AutoReflection(session: w.h.session, ports: w.fakes.ports(), run: .live, timing: w.timing)
+        #expect(await engine.adoptLegacyDrafts() == 1)
+        #expect(await engine.adoptLegacyDrafts() == 0, "두 번째는 이관하지 않는다")
+        #expect(w.h.memory.stamp(DraftKey(.cue, "a"))?.origins == [.human])
+        #expect(w.h.memory.stamp(DraftKey(.cue, "c"))?.origins == [.cli] && w.h.memory.stamp(DraftKey(.cue, "u"))?.origins == [.unknown])
+        try await w.start()
+        try await w.advance(11)
+        if status == .written {
+            #expect(w.writes.count == 1 && w.writes.first?.drafts.map(\.trackUUID) == ["a"], "이관한 초안만 자동으로 쓴다")
+            #expect(w.engine.conditions.leftovers.contains(.suggestion), "CLI·모름 초안은 제안으로 남는다")
+        } else {
+            #expect(w.writes.isEmpty && w.engine.conditions.leftovers.contains(.needsConfirmation), "base가 다르면 확인 필요로 남는다")
+        }
+    }
+
+    /// `--db`·디버그·진단·사본 자가 테스트 실행은 이관하지 않는다(그 초안은 제안으로 남는다)
+    @Test(arguments: [AutoReflectionRun.off(.explicitCopy), .off(.debugBuild), .off(.diagnostic), .off(.unsafeSelfTest), .selfTest(.save)])
+    func 자동_저장하지_않는_실행은_이관하지_않는다(_ run: AutoReflectionRun) async throws {
+        let w = AutoReflectionWorld()
+        Self.legacyCue(w, "a")
+        let engine = AutoReflection(session: w.h.session, ports: w.fakes.ports(), run: run, timing: w.timing)
+        #expect(await engine.adoptLegacyDrafts() == 0)
+        #expect(w.h.memory.stamp(DraftKey(.cue, "a")) == nil)
+    }
+
     // MARK: - R8 복원 뒤(E2: 사용자가 한 복원은 멈추지 않는다)
 
     /// 저장 알림(confirmed)·메뉴의 「저장 전으로 복원」 뒤 자동 저장은 멈추지 않는다. 되살린 초안은 제안으로 남고, 새 사람 편집은
