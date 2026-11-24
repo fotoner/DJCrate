@@ -61,11 +61,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.quitAutoSave.shutdown(true)
             }
         }
+        // 업데이트 다시 켜기·시스템 종료로 엔진을 멈췄는데 그 종료가 취소된 것도 알림이 없다: 종료를 기다리는 중이 아니면 함께 다시 연다(컨실 2라운드 H)
         activation.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.store?.isPoweringOff == true else { return }
-                self.store?.isPoweringOff = false
-                self.quitAutoSave.shutdown(false)
+                guard let self, self.store?.quitWait.isWaiting != true else { return }
+                let poweringOff = self.store?.isPoweringOff == true
+                if poweringOff { self.store?.isPoweringOff = false }
+                if let quit = self.quit {
+                    quit.reopenAutoSaveAfterCancelledShutdown(poweringOffCancelled: poweringOff)
+                } else if poweringOff {
+                    self.quitAutoSave.shutdown(false)
+                }
             }
         }
     }

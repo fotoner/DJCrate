@@ -171,12 +171,19 @@ final class AppComposition {
         libraryWindow.fieldEditing.revalidate()
         let app = NSApplication.shared
         let composing = (app.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
-        // 종료를 기다리는 동안의 마우스 누름([종료 취소]를 누르거나 메뉴로 종료를 고름)은 편집이 아니다(R17)
-        let pointer = NSEvent.pressedMouseButtons != 0 && !store.quitWait.isWaiting
+        let pointer = NSEvent.pressedMouseButtons != 0
         let editor = windows.trackEdit.window?.isVisible == true || app.keyWindow?.attachedSheet != nil
         let deckEditing = deck.hasUncommittedCueEdits || deck.cueDragBase != nil || deck.gridDragBase != nil
-        if composing || pointer || editor || deckEditing { holds.insert(.editing) }
+        if Self.isEditingHold(composing: composing, pointer: pointer, editor: editor, deckEditing: deckEditing, quitWaiting: store.quitWait.isWaiting) {
+            holds.insert(.editing)
+        }
         return holds
+    }
+
+    /// 편집 중 보류인지. 종료를 기다리는 동안의 입력기 조합·마우스 누름([종료 취소]를 누르거나 메뉴로 종료를 고름)은 순간 신호라 편집이 아니다
+    /// (R17, 컨실 2라운드 I: ⌘Q가 입력 칸을 확정한다). 곡 편집 창·시트와 덱 편집은 종료 대기 중에도 편집이다
+    static func isEditingHold(composing: Bool, pointer: Bool, editor: Bool, deckEditing: Bool, quitWaiting: Bool) -> Bool {
+        (composing || pointer) && !quitWaiting || editor || deckEditing
     }
 
     /// 자동 저장 실행 조건(R18)에 넣는 값: 빌드·인자·명시한 사본·진단 실행, 자가 테스트면 쓰기 전 확인 자리(링크를 푼 경로)

@@ -82,10 +82,14 @@ final class AppQuitController {
     private var savesFirst = false
     /// 도는 엔진의 ⌘Q 저장
     private var preparing: Task<Void, Never>?
+    /// 지금 종료 대기의 저장 준비 표식(컨실 2라운드 D). 대기가 끝나거나 바뀌면 비운다: 그 뒤 돌아온 옛 준비는 엔진에 넘기지 않고 결과도 버린다
+    private var preparingTicket: UUID?
     /// 끝난 엔진의 ⌘Q 저장 결과(이 대기의 끝을 정할 때 쓴다)
     private var prepared: QuitPreparation?
     /// 새 자동 저장을 막아 두었다(시스템 종료·업데이트). 그 종료가 취소되면 다시 연다
     private var autoSaveStopped = false
+    /// ⌘Q 저장을 기다리는 중 시스템 종료·업데이트 다시 켜기가 합류했다: 대기를 마치고 다시 한 요청은 시트 없이 끈다(컨실 2라운드 G)
+    private var systemJoined = false
     /// 대기를 마치고 다시 요청한 종료 한 번(`terminate()` 안에서 곧바로 들어온다): 다시 저장하지 않고, 시트는 이 값대로 판정한다
     private var reentry: Reentry?
     private enum Reentry {
@@ -150,7 +154,9 @@ final class AppQuitController {
         let system = nested || cause == .systemShutdown || cause == .updateRelaunch
         if model.isWaiting {
             if system, mode == .deferred {
-                // ⌘Q로 기다리는 중 Mac을 끄는 요청·업데이트가 오면 그 일은 취소하지 않는다. 새 자동 저장은 막고 곧바로 다시 판정한다
+                // ⌘Q로 기다리는 중 Mac을 끄는 요청·업데이트가 오면 그 일은 취소하지 않는다. 새 자동 저장은 막고 곧바로 다시 판정한다.
+                // 다시 한 요청은 사용자 종료로 들어와도 그 사유를 잃지 않는다(시트가 업데이트·로그아웃을 막지 않게)
+                systemJoined = true
                 stopSavingFirst()
                 if nested { mode = .nested }
                 Task { @MainActor [weak self] in self?.activityChanged() }
@@ -171,8 +177,10 @@ final class AppQuitController {
             return .terminateCancel
         }
         if system { stopAutoSave() }
-        // 다시 요청한 종료(저장을 마쳤거나 시트·기록 저장을 거침)와 시스템 종료는 먼저 저장하지 않는다
-        let saving: QuitAutoSave = system || entered != nil || !autoSave.autoSaves() ? .off : (autoSave.autoWriting() ? .autoWriting : .saveFirst)
+        // 다시 요청한 종료(저장을 마쳤거나 시트·기록 저장을 거침)와 사용자가 고르지 않은 종료(시스템 종료·업데이트·알 수 없는 사유)는
+        // 먼저 저장하지 않는다(시트 판정과 같다)
+        let userChosen = !system && cause.isUserChosen
+        let saving: QuitAutoSave = !userChosen || entered != nil || !autoSave.autoSaves() ? .off : (autoSave.autoWriting() ? .autoWriting : .saveFirst)
         let decision = AppQuitPolicy.decision(for: current, autoSave: saving)
         switch decision {
         case .terminateNow:
@@ -212,20 +220,38 @@ final class AppQuitController {
         mode = nested ? .nested : .deferred
     }
 
-    /// 엔진의 ⌘Q 저장: 입력 칸을 확정하고(⌘S와 같다) 초안 저장 큐를 비운 뒤 엔진이 최신 초안으로 다시 판정해 쓰기를 기다린다
+    /// 엔진의 ⌘Q 저장: 입력 칸을 확정하고(⌘S와 같다) 초안 저장 큐를 비운 뒤 엔진이 최신 초안으로 다시 판정해 쓰기를 기다린다.
+    /// 입력 확정 직후와 엔진이 돌아온 직후에 같은 종료 대기인지 표식으로 본다(컨실 2라운드 D): 그사이 [종료 취소]·두 번째 ⌘Q·시스템 종료로
+    /// 대기가 끝났거나 바뀌었으면 엔진에 넘기지 않고(엔진이 T_edit를 건너뛴 종료 대기에 들지 않게), 돌아온 옛 결과로 새 대기를 끝내지 않는다
     private func startPreparing() {
         guard preparing == nil, prepared == nil else { return }
+        let ticket = UUID()
+        preparingTicket = ticket
         preparing = Task { @MainActor [weak self] in
             guard let self else { return }
             await autoSave.commitInput()
+            guard isCurrent(ticket) else { return }
             flushDrafts()
             let result = await autoSave.prepare()
+            guard isCurrent(ticket) else { return }
             preparing = nil
-            // 그사이 종료를 취소했거나 시스템 종료로 바뀌었으면 이 결과로 끝내지 않는다
-            guard model.isWaiting, savesFirst else { return }
+            preparingTicket = nil
             prepared = result
             activityChanged()
         }
+    }
+
+    /// 이 표식의 저장 준비가 지금 종료 대기의 것인지(대기 중이고 엔진의 ⌘Q 저장을 기다린다)
+    private func isCurrent(_ ticket: UUID) -> Bool {
+        preparingTicket == ticket && model.isWaiting && savesFirst
+    }
+
+    /// 엔진의 ⌘Q 저장 준비를 끝낸다. 아직 돌아오지 않았으면 엔진의 종료 대기를 풀고, 그 준비가 늦게 돌아와도 버린다
+    private func stopPreparing() {
+        if savesFirst, prepared == nil { autoSave.cancel() }
+        preparing = nil
+        preparingTicket = nil
+        prepared = nil
     }
 
     /// 새 자동 저장을 막는다(엔진이 이미 시작한 쓰기만 마친다)
@@ -237,11 +263,18 @@ final class AppQuitController {
 
     /// 기다리던 ⌘Q 저장을 풀고 새 자동 저장을 막는다(시스템 종료·업데이트로 바뀜)
     private func stopSavingFirst() {
-        if savesFirst { autoSave.cancel() }
+        stopPreparing()
         savesFirst = false
-        prepared = nil
         model.stopAllowingAutoSave()
         stopAutoSave()
+    }
+
+    /// 시스템 종료·업데이트 다시 켜기로 새 자동 저장을 막았는데 그 종료가 취소돼 앱이 살아 있다(앱이 다시 활성화됨, 컨실 2라운드 H).
+    /// 종료를 기다리는 중이 아니면 막아 둔 자동 저장을 다시 연다. Mac을 끄는 중 표시를 풀었으면(`poweringOffCancelled`) 그 알림이 막은 것도 연다
+    func reopenAutoSaveAfterCancelledShutdown(poweringOffCancelled: Bool) {
+        guard !model.isWaiting, autoSaveStopped || poweringOffCancelled else { return }
+        autoSaveStopped = false
+        autoSave.shutdown(false)
     }
 
     /// 종료를 취소로 끝냈다: 막아 둔 자동 저장을 다시 연다
@@ -333,28 +366,31 @@ final class AppQuitController {
         }
     }
 
-    /// 엔진의 ⌘Q 저장이 본 실행 상태가 있으면 그 값으로 시트를 판정한다: 켜짐으로 쓰지 못했거나, 대상 밖 편집만 남아 다 썼다고 돌아와도 같다(S6·J)
+    /// 대기를 마치고 다시 한 요청의 시트 판정. 시스템 종료·업데이트가 합류했으면 묻지 않는다(G).
+    /// 엔진의 ⌘Q 저장이 본 실행 상태가 있으면 그 값으로 판정한다: 켜짐으로 쓰지 못했거나, 대상 밖 편집만 남아 다 썼다고 돌아와도 같다(S6·J)
     private func reentryAfterSaving() -> Reentry {
+        if systemJoined { return .skipConfirmation }
         switch prepared {
-        case .unwritten(.rekordboxRunning)?: .confirm(.running)
-        case .unwritten(.agentRunning)?: .confirm(.agentOnly)
-        case let .finished(run?)?: .confirm(run)
-        default: .confirmNormally
+        case .unwritten(.rekordboxRunning)?: return .confirm(.running)
+        case .unwritten(.agentRunning)?: return .confirm(.agentOnly)
+        case let .finished(run?)?: return .confirm(run)
+        default: return .confirmNormally
         }
     }
 
     /// [종료 취소]나 두 번째 종료 요청. 종료만 취소하고 쓰기는 그대로 끝까지 간다. 엔진의 종료 대기도 푼다
     func cancelWaiting() {
         guard model.isWaiting else { return }
-        if savesFirst { autoSave.cancel() }
         finish(terminating: false)
     }
 
+    /// 종료 대기를 끝낸다. 어느 갈래로 끝나든(종료·[종료 취소]·두 번째 ⌘Q·확인 경고창·USB 거절) 엔진의 종료 대기를 풀고 저장 준비 표식을 비운다
     private func finish(terminating: Bool, reentry next: Reentry = .confirmNormally) {
+        stopPreparing()
         model.finish()
         recordWait = nil
         savesFirst = false
-        prepared = nil
+        systemJoined = false
         let finished = mode
         mode = nil
         switch finished {

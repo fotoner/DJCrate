@@ -136,6 +136,17 @@ struct AutoReflectionAppTests {
         withExtendedLifetime((coordinator, home)) {}
     }
 
+    /// 종료 대기 중에는 입력기 조합도 마우스 누름처럼 순간 신호라 편집 중 보류로 넣지 않는다. 편집 창·덱 편집은 그대로 보류한다(컨실 2라운드 I)
+    @Test func 종료_대기_중에는_입력기_조합을_편집_중으로_보지_않는다() {
+        let hold = AppComposition.isEditingHold
+        #expect(hold(true, false, false, false, false), "평소 입력기 조합은 편집 중이다")
+        #expect(!hold(true, false, false, false, true), "종료 대기 중 입력기 조합은 편집 중이 아니다")
+        #expect(!hold(false, true, false, false, true), "종료 대기 중 마우스 누름도 같다")
+        #expect(hold(false, false, true, false, true), "편집 창은 종료 대기 중에도 편집 중이다")
+        #expect(hold(false, false, false, true, true), "덱 편집도 같다")
+        #expect(!hold(false, false, false, false, false))
+    }
+
     @Test func 백업_뒤_실패_표시가_실린_오류도_원래_오류의_문구를_보인다() {
         for error in [DJCError.queryFailed(sql: "COMMIT", message: "주입") as any Error, CocoaError(.fileWriteNoPermission), DJCError.writeRefused("이유")] {
             #expect(AppErrorMessage.message(for: RekordboxWriteGate.AfterBackupFailure(error)) == AppErrorMessage.message(for: error))
