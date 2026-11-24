@@ -89,6 +89,12 @@ public struct LoadLibrary: Sendable {
             ? location.liveDatabase : nil
     }
 
+    /// 읽은 사본이 쓰기 대상 라이브 DB에서 뜬 것이고 그 뒤 라이브 DB가 바뀌지 않았는지(메인 밖에서 부른다).
+    /// 명시한 사본(`--db`)·다른 폴더의 사본·라이브 DB가 바뀐 뒤의 옛 사본(다시 켠 뒤의 옛 캐시, 쓰기 전에 시작한 읽기)은 아니다
+    public func isLatest(_ snapshot: URL, location: LibraryLocation) -> Bool {
+        sourceDatabase(of: snapshot, location: location) != nil && !source.changed(snapshot, location.liveDatabase)
+    }
+
     /// 새 사본을 뜨기 전에 붙들 지금 목록(같은 초에 사본 이름을 다시 써도 마지막 정상 iTunes 사본을 잃지 않게 먼저 읽는다)
     public func previousMusic(current snapshot: URL?, snapshotDirectory: URL, location: LibraryLocation,
                               refreshMusic: Bool) -> LoadedLibrary.ITunesFallback? {

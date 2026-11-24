@@ -62,6 +62,7 @@ public struct WriteLock {
     /// 곡 단위 편집 잠금(R21): 쓰는 묶음에 든 곡의 편집만 막는다(빈 집합이면 푼다). 덱 재생·사이드바·목록·다른 곡 편집은 그대로다.
     /// 기본값은 아무것도 하지 않는다. 초안을 쓸 때는 곡을 먼저 정하고(`setTracks`) `setDraftWriting(true)` 뒤 `set(true, false)`로 쓰는 중을 켠다.
     /// 풀 때는 `set(false, false)`, `setDraftWriting(false)`, `setTracks([])` 순서다(사이에 통째 잠금이 한 틱도 켜지지 않게).
+    /// 곡 단위 자동 저장도 이 순서를 따른다: 세션의 `lockDraftWrite(tracks:)`·`unlockDraftWrite()`를 쓴다. 곡 집합이 비고 초안 쓰기 표시도 없으면 통째 잠금이다.
     public var setTracks: @MainActor (Set<String>) -> Void = { _ in }
     /// 지금 편집을 막은 곡
     public var lockedTracks: @MainActor () -> Set<String> = { [] }
@@ -157,6 +158,9 @@ public struct ReflectionLibrary {
     /// 보존본의 저장은 USB 가져오기와 한 줄로 서야 해서(같은 파일을 겹쳐 쓰지 않게) 보존본을 든 화면 쪽이 그 줄에 세운다.
     /// 표시를 저장하지 못하면 알릴 문장을 돌려준다(rekordbox 쓰기는 끝났다)
     public var recordHistories: @MainActor ([RekordboxHistoryOutcome]) async -> String?
+    /// 읽은 사본이 쓰기 대상 라이브 DB와 같은지(메인 밖에서 부른다, `LoadLibrary.isLatest`). 같을 때만 곡 넣기 정리가 새 곡이 없다고 확정한다.
+    /// 모르는 곳(CLI·시험)은 거짓이다
+    public var readIsLatest: @Sendable (URL) -> Bool = { _ in false }
 
     public init(state: @escaping @MainActor () -> ReflectionLibraryState, apply: @escaping @MainActor (ReflectionLibraryChange) -> Void,
                 retryTagSaves: @escaping @MainActor () -> Void, preserveDamagedDrafts: @escaping @MainActor () -> [DamagedDraftFile],

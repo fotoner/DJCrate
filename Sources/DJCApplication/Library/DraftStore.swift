@@ -116,7 +116,7 @@ public struct DraftStore: Sendable {
     /// 쓴 재생 목록 단계의 정리(R22). 판으로 찾은 쓴 단계는 해시가 달라도 뺀다. 다만 지금 해시가 쓴 해시와 다르면 바깥에서 고친 지금 내용을
     /// 실제 목록 ID와 함께 `PlaylistStepCopy`로 `copyFolder`에 남긴 뒤에만 뺀다. 사본을 남기지 못하면 그 단계를 남긴다(`copyFailed`:
     /// 부르는 쪽은 미정리 목록을 지우지 않고 그 대상의 다음 쓰기를 보류한 채 다음 정리 때 다시 한다).
-    /// 새 목록의 연결 ID(`new:키` → 실제 ID)는 남은 단계의 대상·목적지에 옮긴다(옮기는 규칙은 `PlaylistDraft`, W2-G2).
+    /// 새 목록의 연결 ID(`new:키` → 실제 ID)는 이 함수가 옮기지 않는다: 쓴 뒤 정리(`EditPlaylists`)가 남은 단계의 대상·목적지에 옮긴다.
     /// 막힌 단계와 쓰는 동안 더한 단계는 남는다. 같은 초안 잠금 안에서 한다
     public var removeWrittenSteps: @Sendable (PlaylistStepCleanup) throws -> PlaylistStepRemoval =
         { PlaylistStepRemoval(notFound: Set($0.written.map(\.revision))) }

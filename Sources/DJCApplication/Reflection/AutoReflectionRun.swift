@@ -55,6 +55,10 @@ public enum AutoReflectionRun: Equatable, Sendable {
     public struct SelfTestPlaces: Equatable, Sendable {
         /// 쓰기 대상 rekordbox 폴더(사본)
         public var target: URL
+        /// 쓰기 대상 master.db(파일 링크까지 푼 경로)
+        public var database: URL
+        /// 쓰기 대상 분석 루트(share, 링크를 푼 경로)
+        public var analysisRoot: URL
         /// `DJC_HOME`
         public var home: URL
         /// 임시 폴더(대상과 `DJC_HOME`이 이 아래에 있어야 한다)
@@ -63,17 +67,48 @@ public enum AutoReflectionRun: Equatable, Sendable {
         public var liveRekordbox: URL
         /// DJCrate 사용자 폴더(`DJC_HOME`과 겹치면 안 된다)
         public var userData: URL
-        /// 사본 안 `share/PIONEER/USBANLZ`가 링크인지(SAFE-8)
+        /// 사본 안 `share`·`share/PIONEER`·`share/PIONEER/USBANLZ` 가운데 링크이거나 확인하지 못한(없는) 단계가 있는지(SAFE-8)
         public var analysisIsLink: Bool
+        /// 모든 자리의 링크를 풀었다(풀지 못한 자리가 있으면 쓰지 않는다)
+        public var resolved = true
 
-        public init(target: URL, home: URL, temporaryRoot: URL, liveRekordbox: URL, userData: URL, analysisIsLink: Bool) {
+        public init(target: URL, database: URL, analysisRoot: URL, home: URL, temporaryRoot: URL, liveRekordbox: URL, userData: URL,
+                    analysisIsLink: Bool, resolved: Bool = true) {
             self.target = target
+            self.database = database
+            self.analysisRoot = analysisRoot
+            self.resolved = resolved
             self.home = home
             self.temporaryRoot = temporaryRoot
             self.liveRekordbox = liveRekordbox
             self.userData = userData
             self.analysisIsLink = analysisIsLink
         }
+
+        /// 자가 테스트가 써도 되는 자리인지: 대상과 `DJC_HOME`이 임시 폴더 아래, 대상이 실제 rekordbox 폴더와 겹치지 않음,
+        /// 사본 안 분석 폴더가 링크가 아님(SAFE-8), `DJC_HOME`이 DJCrate 사용자 폴더와 겹치지 않음
+        public var allowsWriting: Bool {
+            // 대상 폴더·DB 파일·분석 루트·DJC_HOME을 하나씩(링크를 푼 경로로) 본다: 파일 링크·상위 폴더 링크가 실제 자리를 가리키면 거른다
+            let places = [target, database, analysisRoot, home]
+            return resolved && !analysisIsLink && places.allSatisfy { Self.isInside($0, temporaryRoot) }
+                && !places.contains { Self.overlaps($0, liveRekordbox) } && !Self.overlaps(home, userData)
+        }
+
+        /// `child`가 `parent` 아래(같은 폴더는 아래가 아니다). 링크를 푼 경로의 조각으로 견준다(`/tmp/a`와 `/tmp/ab`를 섞지 않게).
+        /// Foundation 정규화는 `/private`를 떼어 어긋나므로 쓰지 않는다(조립 지점이 realpath로 푼 경로를 준다)
+        static func isInside(_ child: URL, _ parent: URL) -> Bool {
+            let child = components(child), parent = components(parent)
+            return child.count > parent.count && Array(child.prefix(parent.count)) == parent
+        }
+
+        /// 한쪽이 다른 쪽과 같거나 그 아래다(대소문자를 가리지 않는다: 기본 볼륨은 대소문자를 가리지 않는다)
+        static func overlaps(_ lhs: URL, _ rhs: URL) -> Bool {
+            let left = components(lhs).map { $0.lowercased() }, right = components(rhs).map { $0.lowercased() }
+            let shorter = min(left.count, right.count)
+            return Array(left.prefix(shorter)) == Array(right.prefix(shorter))
+        }
+
+        static func components(_ url: URL) -> [String] { url.path.split(separator: "/").map(String.init) }
     }
 
     /// 판정에 넣는 값(실행 인자·환경은 조립 지점이 읽어 넣는다)
@@ -97,10 +132,20 @@ public enum AutoReflectionRun: Equatable, Sendable {
         }
     }
 
-    /// 실행 조건 판정(R18).
-    /// 몸체는 W2-D(#403)가 채운다. 그 전에는 어느 실행도 자동 저장하지 않는다(지금 동작).
+    /// 실행 조건 판정(R18). 릴리스 빌드의 라이브 라이브러리만 자동 저장한다. 예외는 디버그 빌드의 사본 자가 테스트 하나다.
+    /// - 자가 테스트 인자가 있으면(빈 값·모르는 값 포함) 릴리스 빌드는 진단 실행이고, 디버그 빌드는 경우를 알고 확인 자리를 모두 채울 때만 자가 테스트다.
+    ///   명시한 사본(`--db`)과 함께 주면 쓰기 대상이 사본이 아니라서(RBW-15) 자가 테스트로 보지 않는다.
+    /// - 그 밖의 진단 실행(측정·캡처·다른 자가 테스트), 명시한 사본, 디버그 빌드 일반 실행은 자동 저장하지 않는다.
     public static func decide(_ facts: Facts) -> Self {
-        .off(facts.isReleaseBuild ? .diagnostic : .debugBuild)
+        if AutoReflectSelfTest.isRequested(arguments: facts.arguments) {
+            guard !facts.isReleaseBuild else { return .off(.diagnostic) }
+            guard let test = AutoReflectSelfTest.requested(arguments: facts.arguments), !facts.opensExplicitCopy,
+                  let places = facts.selfTestPlaces, places.allowsWriting else { return .off(.unsafeSelfTest) }
+            return .selfTest(test)
+        }
+        if facts.isDiagnosticRun { return .off(.diagnostic) }
+        if facts.opensExplicitCopy { return .off(.explicitCopy) }
+        return facts.isReleaseBuild ? .live : .off(.debugBuild)
     }
 
     /// 자동 저장하는 실행인지

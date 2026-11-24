@@ -107,3 +107,25 @@ public final class AutoPointSnapshotRunner {
         }
     }
 }
+
+extension AutoPointSnapshotRunner {
+    /// 자동 저장 앞의 시점 스냅샷(R13, D24): 대상의 쓰기 잠금을 비차단으로 잡고 → 그 아래에서 쓰기 기록을 판정하고 → 오늘 뜰 차례면 뜨고 → 푼다.
+    /// 잠금을 못 잡았으면 `.lockBusy`, 중단 기록이 있으면 `.interrupted`로 보류한다(뜨지 않는다). 오늘 이미 떴거나 바뀐 것이 없거나
+    /// 클론이 안 되거나 뜨기에 실패했거나 설정이 꺼져 있으면 채운 것으로 본다(쓰기 백업 24시간 보존이 남는다). 켜짐·남은 -wal이면 그 이유로 보류한다
+    public func gate(lock: RekordboxWriteLock, journal: @escaping @Sendable (RekordboxWriteTarget, RekordboxWriteLock.Hold?) throws -> RekordboxJournalVerdict,
+                     target: RekordboxWriteTarget) async -> AutoSnapshotGate {
+        let taken = try? await BlockingWork.run { try lock.tryLock(try lock.key(target.database)) }
+        guard let hold = taken.flatMap({ $0 }) else { return .held(.lockBusy) }
+        defer { hold.release() }
+        switch try? await BlockingWork.run({ try journal(target, hold) }) {
+        case let .interrupted(finding)?: return .held(.interrupted(recoveryFailed: finding.journal.marks.contains(.recoveryFailed)))
+        case .inProgress?, nil: return .held(.lockBusy)
+        case .none?: break
+        }
+        switch await runIfDue() {
+        case .skipped(.rekordboxRunning)?: return .held(.rekordboxRunning)
+        case .skipped(.walPending)?: return .held(.walRemains)
+        default: return .satisfied
+        }
+    }
+}

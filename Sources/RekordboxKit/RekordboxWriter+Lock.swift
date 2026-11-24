@@ -18,6 +18,8 @@ public struct RekordboxWriteLocks: Sendable {
     public var folder: URL
     /// 다른 쪽이 쥐고 있어 기다리기 시작할 때 부른다(시험이 잠금 경합을 본다)
     public var contended: @Sendable (RekordboxWriteLockKey) -> Void
+    /// false면 `lock`이 기다리지 않고 경합을 알린 뒤 던진다(자동 저장, R9)
+    public var waits = true
 
     public init(folder: URL? = nil, contended: @escaping @Sendable (RekordboxWriteLockKey) -> Void = { _ in }) {
         self.folder = folder ?? Self.defaultFolder
@@ -88,6 +90,7 @@ public struct RekordboxWriteLocks: Sendable {
         if flock(fd, LOCK_EX | LOCK_NB) == 0 { return RekordboxWriteLockHold(key: key, fd: fd) }
         guard errno == EWOULDBLOCK else { try fail(fd) }
         contended(key)
+        guard waits else { try fail(fd) }
         while flock(fd, LOCK_EX) != 0 {
             guard errno == EINTR else { try fail(fd) }
         }

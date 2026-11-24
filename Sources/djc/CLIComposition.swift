@@ -100,18 +100,23 @@ struct CLIComposition: Sendable {
         return home
     }
 
+    /// 쓰기 입구와 같은 쓰기 잠금(R9). 쓰기 전 정리가 이 잠금 아래에서 기록을 판정한다(`cleanUpBeforeWrite`)
+    var writeLock: RekordboxWriteLock { .live() }
+
     /// 라이브 판정(`RekordboxWriteGuard`)을 바꿔 시험하는 명령의 관문(시점 스냅샷 복원)
     func writeGate(guard writeGuard: RekordboxWriteGuard) -> RekordboxWriteGate { .live(guard: writeGuard) }
 
     /// rekordbox 쓰기 명령의 반영 세션: 앱과 같은 유스케이스, 같은 관문·백업 폴더·초안 저장소. CLI는 화면이 없어 잠금·다시 읽기·결과 알리기가 없고,
     /// 확인은 플래그가 곧 동의다. 쓴 초안 정리·복원 때 되살리기는 하지 않는다(`liveCLI`, 앱과 다름, 사용자 결정 2026-10-10).
+    /// 다만 앱이 남긴 미정리 목록은 쓰기 전에 마저 정리한다(R22, `cleanUpBeforeWrite`). 그 정리가 새 목록의 연결 ID를 옮기므로 연결 기록은 데이터 폴더의 파일이다
     /// - Parameter gate: 라이브 판정을 바꿔 시험하는 명령만 준다(시점 스냅샷 복원)
     @MainActor
     func reflection(gate: RekordboxWriteGate? = nil) -> ReflectionSession {
         ReflectionSession(location: location,
                           ports: ReflectionPorts(gate: gate ?? writeGate, backups: .live(), drafts: drafts, snapshots: .live(location), audio: .measuring,
                                                  library: .none, reload: .none, lock: .none, confirmation: .agreeing, results: .none,
-                                                 runningApps: .live, playlistImports: .none),
+                                                 runningApps: .live,
+                                                 playlistImports: .live(url: DraftLocations(home: location.draftHome).playlistImports)),
                           options: .liveCLI)
     }
 }

@@ -133,9 +133,21 @@ struct ReflectionSessionTrackTests {
             TrackAddPlan(path: path(uuid), fileName: "\(uuid).mp3", title: uuid, comment: "", year: 0, trackNumber: 0, discNumber: 0, isrc: "",
                          lyricist: "", fileType: 1, fileSize: 1, fileID: uuid, length: 180, duration: 180, dateCreated: "", stockDate: "")
         }
-        return TrackAddPreview(report: report, plans: plans, stagedUUIDs: [path("a"): "a", path("b"): "b", path("c"): "c"],
-                               withoutAnalysis: [path("b"): "ALAC"], cues: [path("a"): H.cue("a").cues, path("b"): H.cue("b").cues],
-                               keys: [path("b"): "8A"], unreadable: [])
+        var preview = TrackAddPreview(report: report, plans: plans, stagedUUIDs: [path("a"): "a", path("b"): "b", path("c"): "c"],
+                                      withoutAnalysis: [path("b"): "ALAC"], cues: [path("a"): H.cue("a").cues, path("b"): H.cue("b").cues],
+                                      keys: [path("b"): "8A"], unreadable: [])
+        // 미리 볼 때(`previewAdd`) 읽은 초안의 판과 내용 해시를 싣는다
+        for uuid in ["a", "b", "c"] {
+            let contents: [(DraftKey, DraftContentHash?)] = [
+                (DraftKey(.cue, uuid), h.memory.cue(uuid).flatMap { try? DraftContentHash(of: $0) }),
+                (DraftKey(.grid, uuid), h.memory.grid(uuid).flatMap { try? DraftContentHash(of: $0) }),
+                (DraftKey(.tag, uuid), h.memory.tag(uuid).flatMap { try? DraftContentHash(of: $0) }),
+            ]
+            for case let (key, hash?) in contents {
+                if let stamp = h.memory.stamp(key) { preview.revisions[key] = DraftBatchEntry(stamp: stamp, contentHash: hash) }
+            }
+        }
+        return preview
     }
 
     @Test func 넣기는_받아들인_곡만_분석까지_붙여_넣는다() async throws {

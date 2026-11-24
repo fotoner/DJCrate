@@ -147,10 +147,7 @@ struct ContentView: View {
             deck.undoManager = undoManager
             store.undoManager = undoManager
         }
-        // CLI·다른 앱이 바꾼 초안 파일을 1초마다 다시 읽는다
-        .task { await app.watchExternalDrafts() }
-        // 하루 한 번 자동 시점 스냅샷(#228): rekordbox가 꺼져 있고 라이브러리가 바뀌었으면 뒤에서 조용히 남긴다
-        .task { await app.runAutoPointSnapshots() }
+        // 바깥 초안 감시·자동 시점 스냅샷·자동 저장은 앱 수명 동안 조립 지점이 돌린다(`AppComposition.start`)
         // Pro DJ Link 장치 알림을 받기만 한다(#272). 화면 시험·자가 테스트 조립에는 없다
         .task { await app.link?.watch() }
         // rekordbox에서 곡을 지우거나 고치고 돌아오면 새로 읽는다(옛 목록에 지워진 곡이 남지 않게)

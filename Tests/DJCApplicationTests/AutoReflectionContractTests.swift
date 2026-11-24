@@ -27,13 +27,12 @@ struct AutoReflectionContractTests {
         #expect(!AutoReflectSelfTest.isRequested(arguments: ["djcrate", "--write-selftest"]))
     }
 
-    /// 몸체(W2-D) 전에는 어느 실행도 자동 저장하지 않는다(지금 동작)
-    @Test func 실행_조건은_아직_늘_꺼짐이다() {
-        for release in [true, false] {
-            let run = AutoReflectionRun.decide(.init(isReleaseBuild: release, arguments: ["djcrate"], opensExplicitCopy: false, isDiagnosticRun: false))
-            #expect(!run.autoSaves)
-        }
+    /// 판정 표는 `AutoReflectionPlanTests`가 본다(W2-D가 몸체를 채웠다). 여기는 자동 저장 여부만 본다
+    @Test func 자동_저장하는_실행은_라이브와_자가_테스트뿐이다() {
         #expect(AutoReflectionRun.live.autoSaves && AutoReflectionRun.selfTest(.save).autoSaves)
+        for reason in [AutoReflectionRun.Off.debugBuild, .explicitCopy, .diagnostic, .unsafeSelfTest] {
+            #expect(!AutoReflectionRun.off(reason).autoSaves)
+        }
     }
 
     /// R3 표의 "저장 단추"·"⌘S" 칸
@@ -64,17 +63,15 @@ struct AutoReflectionContractTests {
         #expect(RekordboxBackupCondition.requiredFreeSpace(databaseSize: .max) == .max)
     }
 
-    /// 빈 엔진: 신호와 요청을 받아도 잠금·기록·관문을 건드리지 않고 상태가 그대로다
-    @Test func 빈_엔진은_아무것도_하지_않는다() async {
+    /// 시작하기 전의 엔진: 편집·활동·유예 신호를 받아도 잠금·기록·관문을 건드리지 않고 상태가 그대로다(판정은 `start` 뒤에 돈다)
+    @Test func 시작하기_전의_엔진은_아무것도_하지_않는다() async {
         let harness = ReflectionHarness()
         let fakes = AutoReflectionFakes()
         let engine = AutoReflection(session: harness.session, ports: fakes.ports(), run: .live,
                                     timing: AutoReflectionTiming(editDelay: .zero, quietDelay: .zero, bulkDelay: .zero, bulkTracks: 1,
                                                                  rowLimit: 1, successToasts: 0))
-        engine.start()
         engine.edited()
         engine.setActivity([.fieldEditing, .composing])
-        engine.enqueue(.saveNow)
         engine.enqueue(.undo(ReflectionUndoEdit(id: "u", batch: DraftWriteBatch(), rowCount: 1)))
         engine.cancelGrace()
         await engine.prepareToQuit()

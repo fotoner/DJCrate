@@ -252,6 +252,42 @@ suite DJCApplicationTests.AutoReflectionContractTests
 suite DJCApplicationTests.PortContractTests
 suite DJCrateTests.AutoReflectSelfTestRunTests
 
+# 자동 저장 엔진(#403, R1~R22 호출부): 엔진 판정·세션의 자동 쓰기·판 지정 정리·재시작 정리와 앱 연결(수명·보류 사유·쓰기 차례).
+# 엔진은 조립 지점·조정자·저장소 상태를 클로저로 받아 기호 grep이 놓칠 수 있어 경로로 고른다.
+group autosave-engine
+when Sources/DJCApplication/Reflection/AutoReflection*.swift
+when Sources/DJCApplication/Reflection/ReflectionSession*.swift
+when Sources/DJCApplication/Reflection/AutoPointSnapshotRunner.swift
+when Sources/DJCApplication/Reflection/RestoredDrafts.swift
+when Sources/DJCApplication/Reflection/WriteConfirmPolicy.swift
+when Sources/DJCApplication/Reflection/ReflectionPrompts.swift
+when Sources/DJCAdapters/Reflection/AutoReflectionPorts+Live.swift
+when Sources/DJCrate/App/AppComposition.swift
+when Sources/DJCrate/App/ContentView.swift
+when Sources/DJCrate/Reflection/ReflectionCoordinator.swift
+when Sources/DJCrate/Library/PlaylistEditStore.swift
+when Sources/djc/CLIComposition.swift
+when Sources/djc/Commands/MainCommands.swift
+when Sources/djc/Commands/PointSnapshotCommand.swift
+suite DJCApplicationTests.AutoReflectionEngineTests
+suite DJCApplicationTests.AutoReflectionJournalTests
+suite DJCApplicationTests.AutoReflectionBatchTests
+suite DJCApplicationTests.AutoReflectionOrderTests
+suite DJCApplicationTests.AutoReflectionRecordTests
+suite DJCApplicationTests.AutoReflectionStopTests
+suite DJCApplicationTests.ReflectionSessionResumeCleanupTests
+suite DJCApplicationTests.ReflectionSessionTrackAddCleanupTests
+suite djcTests.CLICleanupBeforeWriteTests
+suite DJCApplicationTests.AutoReflectionPlanTests
+suite DJCApplicationTests.ReflectionSessionRevisionTests
+suite DJCApplicationTests.ReflectionSessionWriteTests
+suite DJCApplicationTests.ReflectionSessionTrackTests
+suite DJCApplicationTests.ReflectionSessionRestoreTests
+suite DJCApplicationTests.ReflectionSessionConfirmTests
+suite DJCAdaptersTests.AutoReflectionPortsLiveTests
+suite DJCrateTests.AutoReflectionAppTests
+suite DJCrateTests.PlaylistWriteFreezeTests
+
 # 쓰는 곡만 잠그기(#401, R21): 초안을 쓰는 동안 덱 재생·창 덮개·편집 잠금이 쓰기 종류별로 갈린다. 잠금 값이 여러 파일에 걸쳐 기호 grep이 놓칠 수 있어 경로로 고른다.
 group track-write-lock
 when Sources/DJCrate/Library/LibraryStore.swift

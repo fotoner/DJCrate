@@ -65,6 +65,22 @@ extension LibraryStore {
             drafts.readPlaylistDraft = { try saved.value ?? read() }
         }
         if let mergeDraftSaver { drafts.saveMergeDrafts = { try mergeDraftSaver($0) } }
+        // 출처 포트(복원이 되살린 초안, `DraftStore.with(origin:)`)도 같은 가짜 저장을 쓴다. 실제 구현은 출처 포트를 새로 만들어
+        // 이 포트에 바꿔 넣은 클로저를 따라가지 않기 때문이다(도장은 출처 포트의 것을 쓴다)
+        let tags = saveTagDrafts != nil, playlists = playlistDraftSaver != nil, merges = mergeDraftSaver != nil
+        if tags || playlists || merges {
+            let injected = drafts, variant = drafts.originVariant
+            drafts.originVariant = { origin in
+                var port = variant?(origin) ?? injected
+                if tags { port.saveTags = injected.saveTags }
+                if playlists {
+                    port.savePlaylistDraft = injected.savePlaylistDraft
+                    port.readPlaylistDraft = injected.readPlaylistDraft
+                }
+                if merges { port.saveMergeDrafts = injected.saveMergeDrafts }
+                return port
+            }
+        }
         let places = DraftLocations(home: home)
         // 라이브러리 포트는 조립 지점과 같은 실제 구현이다. 시험이 `ports`로 일부(라이브러리 읽기·Music 등)를 바꾼다.
         var libraryPorts = LibraryPorts.live(location: location, drafts: drafts,

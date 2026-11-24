@@ -41,6 +41,8 @@ public struct ReflectionLibraryState: Sendable {
     public var lastError: String?
     /// rekordbox 쓰기 대기에 오른 USB 재생 기록의 쓰기 입력(#43, 가져온 차례). 곡을 고르지 않아도 쓸 것이 있다
     public var pendingHistories: [HistoryImport]
+    /// 지금 목록을 읽은 사본(없으면 nil). 곡 넣기 정리가 새 곡이 없다고 확정해도 되는지 본다(`ReflectionLibrary.readIsLatest`)
+    public var readSnapshot: URL?
 
     public init(rows: [String: TrackRow] = [:], cueDraftUUIDs: Set<String> = [], gridDraftUUIDs: Set<String> = [], gainDraftUUIDs: Set<String> = [],
                 tagDrafts: [String: TagDraft] = [:], artworkDrafts: [String: ArtworkDraft] = [:], mergeDrafts: [DuplicateMergeDraft] = [],
@@ -97,6 +99,9 @@ public enum ReflectionLibraryChange: Sendable {
     case mergeDrafts([DuplicateMergeDraft], failure: (any Error)?, moved: [DamagedDraftFile])
     /// 쓴 재생 목록 편집을 초안에서 빼 저장했고(막힌 편집은 남긴다), 새로 만든 목록의 새 rekordbox ID를 연결 기록에 이어 저장했다
     case playlistWritten(EditPlaylists.WriteCleanup)
+    /// 쓰기 묶음을 만들었다(R21): 묶음의 재생 목록 단계와 재생 기록(보존 기록 ID)을 얼려 쓰는 동안 들어온 재생 목록 편집을 뒤에 쌓게 한다.
+    /// 쓰기 잠금을 풀 때 화면이 푼다
+    case playlistWriteFrozen(PlaylistDraft, histories: Set<String>)
     /// 쓴 곡의 앨범아트 초안 파일을 지웠다(`failed`곡은 지우지 못했다): 메모리 초안을 지우고 그 곡의 그림을 새로 읽게 한다
     case artworkCleared([String], failed: Int)
     /// 백업의 앨범아트 초안을 되살렸다(파일은 세션이 저장했다). `touched`는 그 백업이 그림을 쓴 곡(새로 읽게 한다)
@@ -138,6 +143,8 @@ public enum ReflectionOutcome: Sendable {
     /// 미리 보기 단계에서 취소했다(아무것도 쓰지 않았다)
     case cancelled
     case written(RekordboxWriteReport, preview: RekordboxWriteReport, followUp: [String])
+    /// 자동 저장이 썼다(#403). 확인 창 없이 쓴 결과라 화면은 활동 기록에 남긴다(토스트는 처음 몇 번만, R15)
+    case autoWritten(RekordboxWriteReport, followUp: [String])
     /// 미리 보니 쓸 것이 없다(막혔거나 제외). 고른 곡(`targets`)의 막힌 초안은 화면이 복구 시트로 고치게 한다(#232)
     case nothingWritable(WritePreview, targets: [TrackRow])
     case added(RekordboxTrackWriteReport, preview: TrackAddPreview, followUp: [String])

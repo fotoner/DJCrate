@@ -579,8 +579,9 @@ final class PlaylistEditStore {
     @discardableResult
     func restorePlaylistEdits(_ edits: [PlaylistEdit]) -> Int {
         guard !edits.isEmpty else { return 0 }
-        let restored = library.useCases.playlists.restore(edits, onto: playlistDraft, rekordbox: rekordboxPlaylists, imports: playlistImports,
-                                                          importsLoadFailed: playlistImportsLoadFailed)
+        // 복원이 되살린 단계의 출처는 "복원이 되살림"이다: 자동 저장하지 않는 제안이 된다(R8). 그대로 둔 단계는 제 출처를 지킨다
+        let restored = library.useCases.restoredPlaylists.restore(edits, onto: playlistDraft, rekordbox: rekordboxPlaylists, imports: playlistImports,
+                                                                  importsLoadFailed: playlistImportsLoadFailed)
         playlistDraft = restored.draft
         applyPlaylistSave(restored.draftError)
         if restored.draftError == nil { adoptSavedIdentifiers() }

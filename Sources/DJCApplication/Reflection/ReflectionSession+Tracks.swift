@@ -53,12 +53,17 @@ extension ReflectionSession {
         let staged = ports.library.state().staged
         let tracks = ReflectionTargets.add(rows).compactMap { row in staged.first { $0.id == row.id } }
             .map { StagedTrackRequest(uuid: $0.uuid, path: $0.path, title: $0.title) }
-        // 저장에 실패한 큐·그리드 초안이 있으면 디스크의 옛 초안을 넣지 않는다(#170).
+        // 저장에 실패한 큐·그리드 초안이 있으면 디스크의 옛 초안을 넣지 않는다(#170). 태그 초안은 다시 저장해 보고, 안 되면 넣지 않는다
+        // (넣기 계획은 메모리 초안을 쓰고 정리는 디스크 판으로 견주므로, 저장하지 못한 채 넣으면 디스크의 옛 값이 되돌리는 제안으로 남는다)
         try requireDraftSaves(for: Set(tracks.map(\.uuid)))
+        ports.library.retryTagSaves()
+        guard ports.library.state().failedTagSaves.isDisjoint(with: tracks.map(\.uuid)) else {
+            throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage)
+        }
         // 미리 보기는 라이브에서 스냅샷을 뜬다: 명시한 사본으로 연 창은 사용자 스냅샷 폴더를 바꾸지 않게 막는다
         guard location.allowsSnapshot else { throw DJCError.writeRefused(Self.snapshotRefusedMessage) }
         var plans: [TrackAddPlan] = [], uuids: [String: String] = [:], without: [String: String] = [:], unreadable: [String] = []
-        var cues: [String: [EditableCue]] = [:], keys: [String: String] = [:]
+        var cues: [String: [EditableCue]] = [:], keys: [String: String] = [:], revisions: [DraftKey: DraftBatchEntry] = [:]
         for (index, track) in tracks.enumerated() {
             try Task.checkCancellation()
             stage(WriteStage(String(ui: "넣을 곡을 확인하는 중…"), completed: index, total: tracks.count, cancellable: true))
@@ -70,6 +75,7 @@ extension ReflectionSession {
                 if let trackCues = candidate.cues { cues[path] = trackCues }
                 if let key = candidate.key { keys[path] = key }
                 if let reason = candidate.withoutAnalysis { without[path] = reason }
+                revisions.merge(candidate.revisions) { _, new in new }
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -81,22 +87,35 @@ extension ReflectionSession {
         let report = try await onSnapshotCopy { [plans, cues, keys] copy in
             try gate.addTracks(TrackAddBatch(plans: plans, cues: cues, keys: keys), copy, true)
         }
-        return TrackAddPreview(report: report, plans: plans, stagedUUIDs: uuids, withoutAnalysis: without, cues: cues, keys: keys,
-                               unreadable: unreadable)
+        var preview = TrackAddPreview(report: report, plans: plans, stagedUUIDs: uuids, withoutAnalysis: without, cues: cues, keys: keys,
+                                      unreadable: unreadable)
+        preview.revisions = revisions
+        return preview
     }
 
     /// 추가한 곡 하나의 넣기 계획. 음원을 읽지 못하면 던진다(그 곡만 빠진다).
     func addCandidate(_ track: StagedTrackRequest) async throws -> TrackAddCandidate {
         let url = URL(filePath: track.path)
         var tags = try await ports.audio.tags(url)
-        let state = ports.library.state()
-        if let fields = state.tagDrafts[track.uuid]?.fields { AddedTrackDrafts.apply(fields, to: &tags) }
+        // 계획·키·태그 판은 같은 태그 초안 하나(앱 메모리 초안)에서 잡는다: 디스크가 다르면(바깥에서 고침) 정리 때 해시가 맞지 않아 남는다
+        let tagDraft = ports.library.state().tagDrafts[track.uuid], estimating = ports.library.state().estimatingGrids
+        if let fields = tagDraft?.fields { AddedTrackDrafts.apply(fields, to: &tags) }
         var candidate = TrackAddCandidate(plan: try ports.audio.addPlan(url, tags))
-        if let draft = ports.drafts.cueDraft(track.uuid), !draft.cues.isEmpty { candidate.cues = draft.cues }
+        let files = ports.drafts
+        // 읽는 초안의 판과 읽은 내용의 해시를 함께 잡는다(쓰기 직전 디스크를 다시 읽으면 그사이 생긴 새 판을 쓴 판으로 오인한다, R22)
+        func capture(_ kind: DraftKey.Kind, _ hash: DraftContentHash?) {
+            let key = DraftKey(kind, track.uuid)
+            if let hash, let stamp = files.stamp(key) { candidate.revisions[key] = DraftBatchEntry(stamp: stamp, contentHash: hash) }
+        }
+        let cueDraft = files.cueDraft(track.uuid), gridDraft = files.gridDraft(track.uuid)
+        capture(.cue, cueDraft.flatMap { try? DraftContentHash(of: $0) })
+        capture(.grid, gridDraft.flatMap { try? DraftContentHash(of: $0) })
+        capture(.tag, tagDraft.flatMap { try? DraftContentHash(of: $0) })
+        if let draft = cueDraft, !draft.cues.isEmpty { candidate.cues = draft.cues }
         // 고른 키는 곡을 넣은 뒤 같은 쓰기에서 쓴다(넣을 때 `KeyID` '0' → 키 저장). 음원 파일의 키 태그는 그대로다.
-        candidate.key = AddedTrackDrafts.confirmedKey(state.tagDrafts[track.uuid])
-        if ports.drafts.gridDraft(track.uuid)?.segments.first.map({ $0.bpm > 0 }) != true {
-            candidate.withoutAnalysis = state.estimatingGrids ? String(ui: "그리드를 아직 추정하는 중") : String(ui: "그리드가 없음")
+        candidate.key = AddedTrackDrafts.confirmedKey(tagDraft)
+        if gridDraft?.segments.first.map({ $0.bpm > 0 }) != true {
+            candidate.withoutAnalysis = estimating ? String(ui: "그리드를 아직 추정하는 중") : String(ui: "그리드가 없음")
         } else if let reason = ports.audio.unsupported(url) {
             candidate.withoutAnalysis = reason
         }
@@ -117,23 +136,47 @@ extension ReflectionSession {
         let analysisPlans = plans.filter { preview.withoutAnalysis[$0.path] == nil }
         stage(WriteStage(String(ui: "음량을 재는 중…"), completed: 0, total: analysisPlans.count, cancellable: true))
         defer { stage(nil) }
-        var analyses: [String: RekordboxTrackAnalysis] = [:]
+        var analyses: [String: RekordboxTrackAnalysis] = [:], revisions = preview.revisions
         for (index, plan) in analysisPlans.enumerated() {
             try Task.checkCancellation()
             stage(WriteStage(String(ui: "음량을 재는 중…"), completed: index, total: analysisPlans.count, cancellable: true))
             guard let uuid = preview.stagedUUIDs[plan.path], let grid = ports.drafts.gridDraft(uuid) else { continue }
+            // 분석에 넣는 그리드는 지금 읽은 것이다: 판도 지금 읽은 내용으로 잡는다
+            let gridKey = DraftKey(.grid, uuid)
+            if let hash = try? DraftContentHash(of: grid), let stamp = ports.drafts.stamp(gridKey) {
+                revisions[gridKey] = DraftBatchEntry(stamp: stamp, contentHash: hash)
+            } else {
+                revisions[gridKey] = nil
+            }
             let measured = await ports.audio.loudness(URL(filePath: plan.path))
             try Task.checkCancellation()
             analyses[plan.path] = .init(segments: grid.segments, loudness: measured)
         }
         try Task.checkCancellation()
         stage(WriteStage(String(ui: "rekordbox에 곡과 분석 파일을 넣는 중…")))
-        let batch = TrackAddBatch(plans: plans, analyses: analyses, cues: preview.cues.filter { accepted.contains($0.key) },
-                                  keys: preview.keys.filter { accepted.contains($0.key) })
-        let gate = ports.gate
+        var stamped = TrackAddBatch(plans: plans, analyses: analyses, cues: preview.cues.filter { accepted.contains($0.key) },
+                                    keys: preview.keys.filter { accepted.contains($0.key) })
+        stampRevisions(&stamped, stagedUUIDs: preview.stagedUUIDs.filter { accepted.contains($0.key) }, captured: revisions)
+        let batch = stamped, gate = ports.gate
         let report = try await BlockingWork.run { try gate.addTracks(batch, target, false) }
         guard options.followsUp else { return (report, []) }
-        return (report, await finishAdd(report, preview: preview, analysed: Set(analyses.keys)))
+        let tracked = batch.operation != nil
+        let notes = await finishAdd(report, preview: preview, analysed: Set(analyses.keys), revisions: batch.revisions, tracked: tracked)
+        // 넣은 뒤 처리(초안 옮기기·백업에 사본 남기기·다시 읽기)를 마쳤으니 넣는 동안 생긴 새 판을 새 곡의 제안으로 옮기고 미정리 목록을 지운다(R22)
+        if let operation = batch.operation {
+            await finishTrackAddCleanup(operation: operation, target: target, unchanged: unchangedSinceAdd(batch.revisions, tracked: tracked))
+        }
+        return (report, notes)
+    }
+
+    /// 곡 넣기 묶음에 추가한 곡(옛 UUID)의 큐·그리드·태그 초안 판과 앱 쓰기의 작업을 싣는다(R11·R22). 관문이 쓰기 기록에 판을 적고 미정리 목록을 남긴다.
+    /// 재시작 정리는 넣기에 쓴 판만 지운다(넣는 동안 새로 저장한 판은 남는다).
+    /// - Parameter captured: 초안을 읽은 때 잡은 판과 내용 해시(미리 보기·그리드 읽기). 디스크를 다시 읽지 않는다
+    func stampRevisions(_ batch: inout TrackAddBatch, stagedUUIDs: [String: String], captured: [DraftKey: DraftBatchEntry]) {
+        let uuids = Set(stagedUUIDs.values)
+        batch.stagedUUIDs = stagedUUIDs
+        batch.revisions = DraftBatchRevisions(tracks: captured.filter { uuids.contains($0.key.id) })
+        if options.followsUp { batch.operation = DraftWriteOperation(id: newOperationID(), draftHome: location.draftHome) }
     }
 
     /// 음원 계획으로 바로 넣는다(단계, `djc track-add`: 추가 목록 없이 음원과 분석을 받는다)
@@ -144,20 +187,30 @@ extension ReflectionSession {
     /// 넣은 뒤: 초안 옮기기(큐가 막힌 곡은 새 곡의 반영 대기로, 그리드는 분석 파일에 들어갔으면 끝, 못 붙였으면 새 곡 초안으로),
     /// 추가 목록 정리와 백업에 사본 남기기, 다시 읽기. 넣은 곡의 옛 UUID 초안은 백업에 사본을 남긴 것만 정리한다(#202).
     /// - Returns: 넣기 결과와 나눠 알릴 경고(백업에 남기지 못한 것, #202)
-    func finishAdd(_ report: RekordboxTrackWriteReport, preview: TrackAddPreview, analysed: Set<String>) async -> [String] {
+    /// - Parameter revisions: 넣기 묶음에 실은 옛 UUID 초안의 판. 넣는 동안 새 판을 받은 초안은 옮기지도 지우지도 않는다
+    ///   (연결되지 않은 초안으로 남는다. 새 곡의 제안으로 옮기는 일은 아직 하지 않는다, R22). 비어 있으면 판을 모르는 넣기(지금 동작)다
+    /// - Parameter tracked: 앱의 추적 넣기(작업이 실린 묶음). 판을 모르는 옛 넣기만 모든 초안을 그대로로 본다
+    func finishAdd(_ report: RekordboxTrackWriteReport, preview: TrackAddPreview, analysed: Set<String>,
+                   revisions: DraftBatchRevisions = DraftBatchRevisions(), tracked: Bool = false) async -> [String] {
+        let unchanged = unchangedSinceAdd(revisions, tracked: tracked)
         var unstaged: Set<String> = []
         for outcome in report.added where outcome.written {
             guard let old = preview.stagedUUIDs[outcome.path], let new = outcome.uuid else { continue }
             unstaged.insert(old)
-            if outcome.cuesWritten == nil, let cues = ports.drafts.cueDraft(old), !cues.cues.isEmpty {
+            if outcome.cuesWritten == nil, unchanged(DraftKey(.cue, old)), let cues = ports.drafts.cueDraft(old), !cues.cues.isEmpty {
                 ports.drafts.saveCue(AddedTrackDrafts.movedCueDraft(from: cues, to: new))
             }
-            if !analysed.contains(outcome.path), let grid = ports.drafts.gridDraft(old) {
+            if !analysed.contains(outcome.path), unchanged(DraftKey(.grid, old)), let grid = ports.drafts.gridDraft(old) {
                 ports.drafts.saveGrid(AddedTrackDrafts.movedGridDraft(from: grid, to: new))
             }
         }
         // 키가 막힌 곡의 키도 같은 자리에서(다시 읽기 전에) 새 곡의 초안으로 옮긴다: 읽기가 실패해도 결과 창이 알린 "쓰기 대기"가 사실이 되게.
-        let movedKeys = AddedTrackDrafts.blockedKeyDrafts(report, keys: preview.keys)
+        // 넣는 동안 태그 초안이 새 판을 받았으면 옮기지 않는다: 곡 넣기 정리가 막힌 키와 새 판을 함께 새 곡의 제안으로 옮긴다
+        let changedTags = Set(report.added.compactMap { outcome -> String? in
+            guard let old = preview.stagedUUIDs[outcome.path], !unchanged(DraftKey(.tag, old)) else { return nil }
+            return outcome.uuid
+        })
+        let movedKeys = AddedTrackDrafts.blockedKeyDrafts(report, keys: preview.keys).filter { !changedTags.contains($0.trackUUID) }
         if !movedKeys.isEmpty { replaceTagDrafts(movedKeys) }
         ports.drafts.flush()
         let state = ports.library.state()
@@ -172,7 +225,7 @@ extension ReflectionSession {
         var notes: [String] = []
         if let backup = report.backup.map({ URL(filePath: $0) }) {
             if !removed.isEmpty, (try? ports.backups.saveStagedTracks(removed, backup)) == nil { notes.append(Self.stagedBackupFailureText) }
-            let unsaved = saveStagedDrafts(uuids: unstaged, in: backup)
+            let unsaved = saveStagedDrafts(uuids: unstaged, in: backup, unchanged: unchanged)
             if !unsaved.isEmpty { notes.append(Self.stagedDraftsBackupFailureText(unsaved.count)) }
         }
         _ = await reloadLibrary(during: WriteStage(String(ui: "넣은 곡을 읽는 중…"), readsBack: true), written: [])
@@ -187,26 +240,38 @@ extension ReflectionSession {
     /// 이 초안도 되살린다(#197). 그대로 두면 어느 곡에도 이어지지 않는 초안(#175)으로 쓰기 대기 목록에 남는다.
     /// 사본을 남기지 못한 초안은 되돌릴 때 이어질 유일한 사본이라 지우지 않는다(추가 목록에 돌아온 곡의 초안으로 이어진다).
     /// - Returns: 사본을 남기지 못해 초안을 지우지 않은 곡 UUID
-    func saveStagedDrafts(uuids: Set<String>, in backup: URL) -> Set<String> {
+    /// 넣기에 실은 판 그대로인 초안인지(넣는 동안 새 판을 받지 않았고 파일도 그대로다): 판과 내용 해시를 함께 본다.
+    /// 판을 싣지 않은 초안은 지금도 도장이 없을 때만 그대로다(도장 없이 저장된 옛 초안. 넣는 동안 저장한 초안은 도장이 있어 새 곡의 제안으로 옮긴다).
+    /// 판을 모르는 옛 넣기(추적하지 않는 넣기, 판이 비었다)만 늘 참이다
+    func unchangedSinceAdd(_ revisions: DraftBatchRevisions, tracked: Bool = false) -> (DraftKey) -> Bool {
+        let files = ports.drafts
+        return { key in
+            guard tracked || !revisions.isEmpty else { return true }
+            guard let entry = revisions.tracks[key] else { return files.stamp(key) == nil }
+            return files.stamp(key)?.revision == entry.revision && files.currentHash(key) == entry.contentHash
+        }
+    }
+
+    func saveStagedDrafts(uuids: Set<String>, in backup: URL, unchanged: (DraftKey) -> Bool = { _ in true }) -> Set<String> {
         func put(_ draft: RekordboxBackupDraft) -> Bool { (try? ports.backups.saveDraft(draft, backup)) != nil }
         let tagDrafts = ports.library.state().tagDrafts
         var unsaved: Set<String> = []
         var clearedTags: [TagDraft] = []
         for uuid in uuids.sorted() {
-            // 변경이 없는 초안은 되살릴 것이 없어 사본 없이 정리한다.
-            if let draft = ports.drafts.cueDraft(uuid) {
+            // 변경이 없는 초안은 되살릴 것이 없어 사본 없이 정리한다. 넣는 동안 새 판을 받은 초안은 그대로 둔다(연결되지 않은 초안으로 남는다)
+            if unchanged(DraftKey(.cue, uuid)), let draft = ports.drafts.cueDraft(uuid) {
                 if !draft.hasChanges || put(.cue(draft)) {
                     ports.drafts.removeCue(uuid)
                     apply(.draftsCleared(.cue, [uuid], cueCounts: false))
                 } else { unsaved.insert(uuid) }
             }
-            if let grid = ports.drafts.gridDraft(uuid) {
+            if unchanged(DraftKey(.grid, uuid)), let grid = ports.drafts.gridDraft(uuid) {
                 if grid.segments.isEmpty || put(.grid(grid)) {
                     ports.drafts.removeGrid(uuid)
                     apply(.draftsCleared(.grid, [uuid], cueCounts: false))
                 } else { unsaved.insert(uuid) }
             }
-            if let tag = tagDrafts[uuid] {
+            if unchanged(DraftKey(.tag, uuid)), let tag = tagDrafts[uuid] {
                 if !tag.hasChanges || put(.tag(tag)) {
                     clearedTags.append(TagDraft(trackUUID: uuid, base: TagFields()))
                 } else { unsaved.insert(uuid) }

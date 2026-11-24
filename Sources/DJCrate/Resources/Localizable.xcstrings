@@ -5085,6 +5085,22 @@
         }
       }
     },
+    "DJCrate가 rekordbox에 넣은 곡의 편집을 아직 정리하지 못했으니 DJCrate를 켜 라이브러리를 다시 읽은 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate has not finished cleaning up the edits for tracks it added to rekordbox. Open DJCrate, reload the library, and try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrateがrekordboxに追加した曲の編集をまだ整理していません。DJCrateを起動してライブラリを再読み込みしてから、もう一度お試しください。"
+          }
+        }
+      }
+    },
     "DJCrate가 rekordbox에 저장하는 중이거나 다른 djc가 재생 목록 편집을 고치는 중이라 쌓지 않았습니다. 그 일이 끝난 뒤 같은 명령을 다시 실행하세요" : {
       "localizations" : {
         "en" : {

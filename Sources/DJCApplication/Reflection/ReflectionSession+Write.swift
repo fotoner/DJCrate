@@ -95,6 +95,19 @@ extension ReflectionSession {
         // 재생 목록 초안을 묶음에 넣을 때만 저장을 다시 시도한다(재생 기록만 넣는 묶음은 하지 않는다: 보류한 초안으로 바깥 편집을 덮지 않게)
         if playlists, withPlaylistDraft { try requirePlaylistDraftSaved() }
         let batch = try draftBatch(for: targets, playlists: playlists, withPlaylistDraft: withPlaylistDraft)
+        // 묶음을 만든 같은 메인 액터 구간에서 쓸 재생 목록 단계를 얼린다(R21): 쓰는 동안 들어온 재생 목록 편집은 뒤에 쌓인다
+        freezeWrite(batch)
+        return try await previewBatch(batch, uuids: uuids, exclusions: exclusions(for: rows, blockedOnly: true))
+    }
+
+    /// 쓸 재생 목록 단계와 재생 기록을 화면이 얼리게 한다(R21, `PlaylistEditStore.freezeWrite`). 곡 단위 초안 쓰기에서만 얼린다.
+    /// 곡 초안만 쓰는 묶음도 빈 단계로 얼린다: 그래야 쓰는 동안 재생 목록·재생 기록 편집을 통째로 막지 않고 받는다
+    func freezeWrite(_ batch: DraftWriteBatch) {
+        apply(.playlistWriteFrozen(batch.playlists ?? PlaylistDraft(), histories: Set(batch.histories.map(\.id))))
+    }
+
+    /// 만든 묶음을 미리 본다(사본 뜨기 → 사본에 써 보기). 최신 사본에 이미 있는 재생 기록은 보존본 연결만 갱신한다
+    func previewBatch(_ batch: DraftWriteBatch, uuids: Set<String>, exclusions: [String]) async throws -> WritePreview {
         // 미리 보기는 길이만 잰다(음량은 쓸 때 잰다. 막히는지 보는 데는 필요 없다).
         let inputs = try await analysisInputs(for: batch.grids, measuringLoudness: false)
         try requireDraftSaves(for: uuids)
@@ -109,7 +122,7 @@ extension ReflectionSession {
         if !present.isEmpty, let warning = await ports.library.recordHistories(present) {
             apply(.historyMarkFailed(warning))
         }
-        return WritePreview(report: report, batch: batch, exclusions: exclusions(for: rows, blockedOnly: true))
+        return WritePreview(report: report, batch: batch, exclusions: exclusions)
     }
 
     /// 초안 쓰기(단계): 쓰기 직전 확인 → 분석 입력(음량까지) → 쓰기 관문 → (켜져 있으면) 쓴 뒤 처리.
@@ -133,7 +146,7 @@ extension ReflectionSession {
         let gate = ports.gate
         let report = try await BlockingWork.run { try gate.write(batch, inputs, target, dryRun) }
         guard options.followsUp else { return (report, []) }
-        return (report, await finishWrite(report, batch: batch))
+        return (report, await finishWrite(report, batch: batch, target: target))
     }
 
     // MARK: - 미리 보기 전 확인·묶기
@@ -155,7 +168,10 @@ extension ReflectionSession {
         let uuids = Set(rows.map(\.track.uuid))
         let merges = state.mergeDrafts.filter { $0.members.contains { uuids.contains($0.trackUUID) } }
         // 자동 큐를 빼고 만든 옛 초안에는 곡의 자동 큐를 채운다(#145, 쓰기도 같은 일을 한다).
-        let cues = rows.compactMap { row in files.cueDraft(row.track.uuid)?.includingAutoCues(from: row.cues, newID: files.newCueID) }
+        // 판의 해시는 디스크에서 읽은 그대로의 초안으로 잰다(쓴 뒤 정리가 지금 내용의 해시와 견준다, R22)
+        let rawCues = Dictionary(rows.compactMap { row in files.cueDraft(row.track.uuid).map { (row.track.uuid, $0) } },
+                                 uniquingKeysWith: { first, _ in first })
+        let cues = rows.compactMap { row in rawCues[row.track.uuid]?.includingAutoCues(from: row.cues, newID: files.newCueID) }
             .filter(\.hasChanges)
         let grids = rows.compactMap { files.gridDraft($0.track.uuid) }.filter(\.hasChanges)
         let allGains: [String: Double]
@@ -174,9 +190,61 @@ extension ReflectionSession {
         }
         let playlistDraft = playlists && withPlaylistDraft && !state.playlistDraft.isEmpty && !state.playlistDraftNeedsSync ? state.playlistDraft : nil
         // 쓰기 대기 재생 기록(#43)도 재생 목록 초안처럼 곡을 고르지 않고 모두 본다. 관문이 막으면 막힘(이유)으로 돌아온다
-        return DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges,
-                               histories: playlists ? state.pendingHistories : [])
+        var batch = DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges,
+                                    histories: playlists ? state.pendingHistories : [])
+        stampRevisions(&batch, rawCues: rawCues)
+        return batch
     }
+
+    /// 묶음에 초안마다 판(도장과 읽어 넣은 내용의 해시)과 앱 쓰기의 작업을 싣는다(R11·R22). 그래야 관문이 쓰기 기록에 판을 적고 미정리 목록을 남기며,
+    /// 쓴 뒤 정리가 실제로 쓴 판만 지운다. 도장이 없는 초안(판을 모름)은 빠진다. CLI(`followsUp` 꺼짐)는 작업을 싣지 않는다(미정리 목록 없음).
+    /// 재생 목록은 디스크 초안이 묶음의 초안과 같을 때만 단계의 판을 싣고 디스크 초안(단계 식별자가 붙은)으로 바꿔 넣는다
+    /// - Parameter verified: 읽어 넣을 때 도장과 내용을 이미 맞춰 본 곡 초안의 판(자동 저장). 주면 도장을 다시 읽지 않고 이것을 싣는다
+    ///   (읽은 뒤 바뀐 도장을 읽은 내용에 붙이지 않게, R22)
+    /// - Parameter verifiedSteps: 읽어 넣을 때 맞춰 본 재생 목록 단계의 판(자동 저장, 묶음의 단계와 같은 차례). 주면 디스크를 다시 읽지 않는다
+    func stampRevisions(_ batch: inout DraftWriteBatch, rawCues: [String: CueDraft], verified: [DraftKey: DraftBatchEntry]? = nil,
+                        verifiedSteps: [DraftBatchEntry]? = nil) {
+        let files = ports.drafts
+        var tracks: [DraftKey: DraftBatchEntry] = [:]
+        func put(_ key: DraftKey, _ content: () throws -> DraftContentHash) {
+            guard let stamp = files.stamp(key), let hash = try? content() else { return }
+            tracks[key] = DraftBatchEntry(stamp: stamp, contentHash: hash)
+        }
+        if let verified {
+            let keys = batch.draftKeys
+            tracks = verified.filter { keys.contains($0.key) }
+        } else {
+            for draft in batch.drafts {
+                guard let raw = rawCues[draft.trackUUID] else { continue }
+                put(DraftKey(.cue, draft.trackUUID)) { try DraftContentHash(of: raw) }
+            }
+            for grid in batch.grids { put(DraftKey(.grid, grid.trackUUID)) { try DraftContentHash(of: grid) } }
+            for (uuid, gain) in batch.gains { put(DraftKey(.gain, uuid)) { try DraftContentHash(of: gain) } }
+            for tag in batch.tags { put(DraftKey(.tag, tag.trackUUID)) { try DraftContentHash(of: tag) } }
+            for artwork in batch.artworks { put(DraftKey(.artwork, artwork.trackUUID)) { try DraftContentHash(artwork: artwork) } }
+            for merge in batch.merges { put(DraftKey(.merge, merge.id)) { try DraftContentHash(of: merge) } }
+        }
+        var steps: [DraftBatchEntry] = []
+        if let verifiedSteps, let playlists = batch.playlists, verifiedSteps.count == playlists.steps.count {
+            steps = verifiedSteps
+        } else if let playlists = batch.playlists {
+            // 묶음의 초안은 디스크 초안 전체이거나 그 앞부분(자동 저장의 K행 나누기)이다. 해시는 디스크 초안 안에서 잰다(정리가 그 안에서 견준다)
+            let disk = files.playlistDraft(), stamps = files.playlistStamps(), count = playlists.steps.count
+            var source = disk
+            if count < disk.steps.count { source.removeSteps(at: count..<disk.steps.count) }
+            if count <= disk.steps.count, stamps.count == disk.steps.count, source == playlists {
+                steps = zip(disk.steps.prefix(count), stamps.prefix(count)).compactMap { step, stamp in
+                    (try? DraftContentHash(step: step, in: disk)).map { DraftBatchEntry(stamp: stamp, contentHash: $0) }
+                }
+                if steps.count == count { batch.playlists = source } else { steps = [] }
+            }
+        }
+        batch.revisions = DraftBatchRevisions(tracks: tracks, playlistSteps: steps)
+        if options.followsUp { batch.operation = DraftWriteOperation(id: newOperationID(), draftHome: location.draftHome) }
+    }
+
+    /// 앱 쓰기의 작업 ID. 핵심부는 ID를 스스로 만들지 않고 초안 저장소의 새 ID를 받는다(실제 구현은 무작위 UUID)
+    func newOperationID() -> String { ports.drafts.newCueID().uuidString.lowercased() }
 
     /// 분석 전 곡(분석 파일 없음)의 그리드 초안에 붙일 음원 길이·음량·내장 그림(곡 UUID별). 분석 붙이기가 닫혀 있으면 비운다.
     /// 길이는 곡 넣기와 같은 값(AVFoundation), 음량은 쓸 때만 잰다. 내장 그림이 있으면 쓰기 관문이 아트워크도 넣는다(#87).
@@ -209,43 +277,28 @@ extension ReflectionSession {
     /// 쓴 뒤: 쓴 초안을 정리하고(백업 폴더에 남는다) 새 스냅샷을 조용히 다시 읽어 덱에 알린다. 태그는 반영한 값이 새 base가 된다.
     /// 쓴 재생 기록(#43)은 다시 읽기 전에 보존본에 rekordbox 기록 ID를 남겨 쓰기 대기에서 뺀다(보존본은 지우지 않는다).
     /// - Returns: 쓰기 결과와 나눠 알릴 경고(#175)
-    func finishWrite(_ report: RekordboxWriteReport, batch: DraftWriteBatch) async -> [String] {
+    func finishWrite(_ report: RekordboxWriteReport, batch: DraftWriteBatch, target: RekordboxWriteTarget) async -> [String] {
         let uuids = batch.trackUUIDs
         // 스냅샷을 다시 읽으면 초안도 파일에서 다시 읽으므로 그 전에 쓴 편집을 뺀다.
         let merged = Set(report.mergeWritten.map(\.trackUUID))
         if !merged.isEmpty { replaceMergeDrafts(ports.library.state().mergeDrafts.filter { !merged.contains($0.id) }) }
+        // 재생 목록은 쓴 단계만 판으로 찾아 뺀다(R22). 판을 모르는 묶음은 지금 동작(쓰는 동안 바뀌지 않았을 때 자리로 뺀다)이다
+        var cleanupComplete = true
         if let playlists = batch.playlists {
             let state = ports.library.state()
-            apply(.playlistWritten(playlistEdits.finishWrite(playlists, outcomes: report.playlistOutcomes ?? [], current: state.playlistDraft,
-                                                             imports: state.playlistImports,
-                                                             importsLoadFailed: state.playlistImportsLoadFailed)))
+            let cleanup = playlistEdits.finishWrite(playlists, outcomes: report.playlistOutcomes ?? [], current: state.playlistDraft,
+                                                    imports: state.playlistImports, importsLoadFailed: state.playlistImportsLoadFailed,
+                                                    entries: batch.revisions.playlistSteps, backups: target.backups,
+                                                    backupFolder: report.backup.map { URL(filePath: $0).lastPathComponent } ?? "",
+                                                    memoryUnsaved: state.playlistDraftUnsaved)
+            cleanupComplete = cleanup.isComplete
+            apply(.playlistWritten(cleanup))
         }
-        // 저장 실패로 저장 큐에 남은 기록까지 같이 비우려고 파일을 직접 고치지 않는다(#174).
-        let gains = report.gainWritten.map(\.trackUUID)
-        gains.forEach(ports.drafts.removeGain)
-        if !gains.isEmpty { apply(.draftsCleared(.gain, gains, cueCounts: false)) }
-        let cues = report.written.map(\.trackUUID)
-        cues.forEach(ports.drafts.removeCue)
-        if !cues.isEmpty { apply(.draftsCleared(.cue, cues, cueCounts: true)) }
-        // 분석을 붙인 곡도 그리드 초안이 분석 파일에 들어갔다.
-        let grids = (report.gridWritten + report.analysisWritten).map(\.trackUUID)
-        grids.forEach { ports.drafts.removeGrid($0) }
-        if !grids.isEmpty { apply(.draftsCleared(.grid, grids, cueCounts: false)) }
+        let cleared = await removeWrittenDrafts(report, batch: batch)
         let tagWritten = Set(report.tagWritten.map(\.trackUUID))
-        let clearedTags = batch.tags.filter { tagWritten.contains($0.trackUUID) }.map { draft in
-            var cleared = draft
-            cleared.fields = cleared.base
-            return cleared
-        }
-        if !clearedTags.isEmpty { replaceTagDrafts(clearedTags) }
-        // 쓴 그림 초안을 지우고 목록·덱이 그 곡의 그림을 새로 읽게 한다(바꾸기는 ImagePath가 그대로라 캐시 열쇠를 바꾼다).
-        let artworks = report.artworkWritten.map(\.trackUUID)
-        if !artworks.isEmpty {
-            var failed = 0
-            for uuid in artworks {
-                do { try ports.drafts.removeArtwork(uuid) } catch { failed += 1 }
-            }
-            apply(.artworkCleared(artworks, failed: failed))
+        // 정리를 다 마쳤으면(초안과 연결 ID를 다 저장했다) 미정리 목록을 지운다. 끝나지 않았으면 남겨 다음 쓰기 전에 다시 한다(R22)
+        if cleanupComplete, cleared.complete, let operation = batch.operation {
+            await removeCleanupList(operation: operation, target: target)
         }
         // 다시 읽지 못해도 같은 기록을 또 쓰지 않게 다시 읽기 전에 남긴다.
         let historyWarning = (report.historyOutcomes ?? []).isEmpty ? nil : await ports.library.recordHistories(report.historyOutcomes ?? [])
@@ -255,12 +308,84 @@ extension ReflectionSession {
             ? String(ui: "rekordbox에는 저장했지만 재생 목록 편집을 정리하지 못했습니다.") + " " + Self.playlistSaveFailureText : nil
         // 화면을 처음부터 다시 불러오지 않고 뒤에서 조용히 다시 읽는다.
         // 덱은 새 스냅샷을 읽은 뒤에만 그 곡을 다시 읽는다(그리드만 바뀐 곡도 초안·그리드를 맞춘다). 읽지 못하면 다음 읽기까지 미룬다.
-        let written = Set(cues).union(report.gridWritten.map(\.trackUUID)).union(gains).union(report.analysisWritten.map(\.trackUUID))
-            .union(tagWritten).union(artworks)
+        let written = Set(report.written.map(\.trackUUID)).union(report.gridWritten.map(\.trackUUID)).union(report.gainWritten.map(\.trackUUID))
+            .union(report.analysisWritten.map(\.trackUUID)).union(tagWritten).union(report.artworkWritten.map(\.trackUUID))
             .union(batch.merges.filter { merged.contains($0.id) }.flatMap { $0.members.map(\.trackUUID) })
         let reloaded = await reloadLibrary(during: .reloadingLibrary, written: written)
         apply(.lastWriteBackup(report.backup.map { URL(filePath: $0) }))
         return finishFollowUp([saveWarning, playlistWarning, historyWarning] + (report.warnings ?? []), reloaded: reloaded, restoring: false)
+    }
+
+    /// 쓴 곡 초안을 정리한 결과
+    struct ClearedDrafts {
+        var cues: [String] = []
+        var grids: [String] = []
+        var gains: [String] = []
+        var tags: [String] = []
+        var artworks: [String] = []
+        /// 판 지정 정리를 마쳤다(저장소가 던지면 거짓: 미정리 목록을 남겨 다음 쓰기 전에 다시 한다)
+        var complete = true
+    }
+
+    /// 쓴 곡 초안을 지우고 화면 표시를 맞춘다(R22). 판을 아는 초안은 판과 읽어 넣은 내용의 해시가 지금과 같을 때만 지운다:
+    /// 쓰는 동안 같은 곡에 새로 저장한 초안(앱·CLI)은 판이 달라 남고, 판이 같은데 바깥에서 고친 초안은 제안으로 남는다.
+    /// 판을 모르는 초안(도장이 없는 옛 초안)은 지금 동작대로 지운다. 저장 실패로 저장 큐에 남은 기록까지 같이 비우려고 파일을 직접 고치지 않는다(#174).
+    func removeWrittenDrafts(_ report: RekordboxWriteReport, batch: DraftWriteBatch) async -> ClearedDrafts {
+        // 분석을 붙인 곡도 그리드 초안이 분석 파일에 들어갔다.
+        let keys = report.written.map { DraftKey(.cue, $0.trackUUID) } + (report.gridWritten + report.analysisWritten).map { DraftKey(.grid, $0.trackUUID) }
+            + report.gainWritten.map { DraftKey(.gain, $0.trackUUID) } + report.tagWritten.map { DraftKey(.tag, $0.trackUUID) }
+            + report.artworkWritten.map { DraftKey(.artwork, $0.trackUUID) }
+        let known = batch.revisions.tracks, files = ports.drafts
+        // 앱 쓰기 묶음(판·작업을 실음)에서 판을 모르던 초안(도장 없는 옛 초안)이라도 쓰는 동안 도장 있는 새 판이 저장됐으면(CLI 등) 지우지 않는다.
+        // 판도 작업도 싣지 않은 묶음(손으로 만든 묶음)은 지금 동작대로 쓴 초안을 지운다
+        let revised = !known.isEmpty || batch.operation != nil
+        var removed = Set(keys.filter { known[$0] == nil && !(revised && files.stamp($0) != nil) })
+        let legacy = removed
+        var result = ClearedDrafts()
+        let byRevision = batch.revisions.written(keys.filter { known[$0] != nil })
+        if !byRevision.isEmpty {
+            // 판 비교와 삭제는 초안 잠금(파일 잠금)을 기다릴 수 있어 메인 액터 밖에서 한다
+            do { removed.formUnion(try await BlockingWork.run { try files.removeWritten(byRevision) }.removed.map(\.key)) } catch { result.complete = false }
+        }
+        func ids(_ kind: DraftKey.Kind) -> [String] { keys.filter { $0.kind == kind && removed.contains($0) }.map(\.id) }
+        result.gains = ids(.gain)
+        result.cues = ids(.cue)
+        result.grids = ids(.grid)
+        result.tags = ids(.tag)
+        result.artworks = ids(.artwork)
+        for uuid in result.gains where legacy.contains(DraftKey(.gain, uuid)) { ports.drafts.removeGain(uuid) }
+        if !result.gains.isEmpty { apply(.draftsCleared(.gain, result.gains, cueCounts: false)) }
+        for uuid in result.cues where legacy.contains(DraftKey(.cue, uuid)) { ports.drafts.removeCue(uuid) }
+        if !result.cues.isEmpty { apply(.draftsCleared(.cue, result.cues, cueCounts: true)) }
+        for uuid in result.grids where legacy.contains(DraftKey(.grid, uuid)) { ports.drafts.removeGrid(uuid) }
+        if !result.grids.isEmpty { apply(.draftsCleared(.grid, result.grids, cueCounts: false)) }
+        let clearedTags = batch.tags.filter { result.tags.contains($0.trackUUID) }.map { draft in
+            var cleared = draft
+            cleared.fields = cleared.base
+            return cleared
+        }
+        // 판으로 지운 태그 초안은 파일이 이미 없다: 화면 메모리만 비운다. 판을 모르는 초안은 비운 초안으로 저장한다(파일째 지운다)
+        let legacyTags = clearedTags.filter { legacy.contains(DraftKey(.tag, $0.trackUUID)) }
+        if !legacyTags.isEmpty { replaceTagDrafts(legacyTags) }
+        let revisedTags = clearedTags.filter { !legacy.contains(DraftKey(.tag, $0.trackUUID)) }
+        if !revisedTags.isEmpty { apply(.tagDrafts(revisedTags)) }
+        // 쓴 그림 초안을 지우고 목록·덱이 그 곡의 그림을 새로 읽게 한다(바꾸기는 ImagePath가 그대로라 캐시 열쇠를 바꾼다).
+        if !result.artworks.isEmpty {
+            var failed = 0
+            for uuid in result.artworks where legacy.contains(DraftKey(.artwork, uuid)) {
+                do { try ports.drafts.removeArtwork(uuid) } catch { failed += 1 }
+            }
+            apply(.artworkCleared(result.artworks, failed: failed))
+        }
+        return result
+    }
+
+    /// 정리를 마친 미정리 목록을 지운다(R22). 지우지 못하면 남겨 다음 쓰기 전 재시작 정리가 다시 한다(정리는 다시 해도 결과가 같다)
+    func removeCleanupList(operation: DraftWriteOperation, target: RekordboxWriteTarget) async {
+        let list = DraftCleanupList(operationID: operation.id, target: RekordboxWriteLockKey(device: 0, inode: 0),
+                                    draftHome: operation.draftHome.path, backupFolder: "")
+        let gate = ports.gate
+        await BlockingWork.run { try? gate.removeCleanupList(list, target) }
     }
 
     // MARK: - 재생 목록 편집(CLI)

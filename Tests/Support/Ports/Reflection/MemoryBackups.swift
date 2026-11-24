@@ -17,6 +17,7 @@ public final class MemoryBackups: Sendable {
         var updateCount = 1
         var canWrite = true
         var fileWarning: String?
+        var condition = RekordboxBackupCondition.unknown
     }
     private let state = Mutex(State())
     /// 백업에 남길 때마다 한 줄("backup staged …"·"backup cue <UUID>" …)
@@ -63,8 +64,14 @@ public final class MemoryBackups: Sendable {
         set { state.withLock { $0.fileWarning = newValue } }
     }
 
+    /// 자동 저장의 백업 조건(R13). 기본은 모름(포트의 기본값과 같다)
+    public var condition: RekordboxBackupCondition {
+        get { state.withLock { $0.condition } }
+        set { state.withLock { $0.condition = newValue } }
+    }
+
     public var port: RekordboxBackups {
-        RekordboxBackups(
+        var port = RekordboxBackups(
             list: { _ in [] },
             laterCount: { _, _ in self.later },
             pointRestoreRefusal: { _, _ in self.refusal },
@@ -86,6 +93,8 @@ public final class MemoryBackups: Sendable {
                 }
             },
             fileWarning: { _ in self.fileWarning })
+        port.autoSaveCondition = { _, _ in self.condition }
+        return port
     }
 
     private func save(_ kind: String, line: String, backup: URL,

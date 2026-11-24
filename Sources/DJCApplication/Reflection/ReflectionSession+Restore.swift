@@ -152,19 +152,20 @@ extension ReflectionSession {
     /// - Returns: 복원 결과와 나눠 알릴 경고(#175)
     func reviveDrafts(from backup: RekordboxWriteBackup, keeping kept: [RestoreDraftConflict]) async -> [String] {
         func keeps(_ kind: RestoreDraftConflict.Kind, _ uuid: String) -> Bool { kept.contains(RestoreDraftConflict(kind: kind, uuid: uuid)) }
-        let saved = ports.backups.drafts(backup.url), files = ports.drafts
+        // 되살린 초안의 출처는 "복원이 되살림"이다: 사람 편집이 아니라 자동 저장하지 않고 ⌘S·저장 단추로 쓰는 제안이 된다(R8, R5)
+        let saved = ports.backups.drafts(backup.url), files = ports.drafts.with(origin: .restored)
         if !saved.merges.isEmpty {
             let current = ports.library.state().mergeDrafts
             let keptIDs = Set(current.filter { keeps(.merge, $0.id) }.flatMap { $0.members.map(\.trackUUID) })
             let revived = saved.merges.filter { Set($0.members.map(\.trackUUID)).isDisjoint(with: keptIDs) }
             let restoredIDs = Set(revived.flatMap { $0.members.map(\.trackUUID) })
-            replaceMergeDrafts(current.filter { Set($0.members.map(\.trackUUID)).isDisjoint(with: restoredIDs) } + revived)
+            replaceMergeDrafts(current.filter { Set($0.members.map(\.trackUUID)).isDisjoint(with: restoredIDs) } + revived, in: files)
         }
         for draft in saved.cues where !keeps(.cue, draft.trackUUID) { files.saveCue(draft) }
         for grid in saved.grids where !keeps(.grid, grid.trackUUID) { files.saveGrid(grid) }
         for (uuid, gain) in saved.gains where !keeps(.gain, uuid) { files.saveGain(gain, trackUUID: uuid) }
         let tags = saved.tags.filter { !keeps(.tag, $0.trackUUID) }
-        if !tags.isEmpty { replaceTagDrafts(tags) }
+        if !tags.isEmpty { replaceTagDrafts(tags, in: files) }
         // 그림 초안·사본도 되살리고, 옛 그림으로 돌아온 곡(되살린 초안·그 백업이 그림을 쓴 곡)은 목록·덱이 새로 읽게 한다.
         var artworks: [String: ArtworkDraft] = [:], artworkFailed = 0
         for edit in saved.artworks where !keeps(.artwork, edit.trackUUID) {

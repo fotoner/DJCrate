@@ -19,6 +19,10 @@ public struct AutoReflectionTiming: Equatable, Sendable {
     public var rowLimit: Int
     /// 처음 몇 번만 성공 토스트를 보인다(R15)
     public var successToasts: Int
+    /// 바깥 조건(rekordbox 실행·조용함·앱 보류·쓰기 잠금)을 다시 보는 간격. 저장 대기가 있고 그 조건을 기다릴 때만 본다
+    public var pollInterval: Duration = .seconds(1)
+    /// 기다릴 것이 없을 때 쉬는 길이(편집·요청 신호가 깨운다)
+    public var idleInterval: Duration = .seconds(3600)
 
     public init(editDelay: Duration, quietDelay: Duration, bulkDelay: Duration, bulkTracks: Int, rowLimit: Int, successToasts: Int) {
         self.editDelay = editDelay
