@@ -43,7 +43,7 @@ public struct GateScript: Sendable {
     /// 실제로 쓰는 동안(dryRun 아님, 라이브러리 변경을 마치기 전) 부른다: 오래 걸리는 쓰기(`WriteHold`)나 자기 쓰기가 바꾼 파일을 흉내 낸다
     public var duringWrite: (@Sendable () -> Void)?
     /// 실제 관문처럼 라이브러리 변경을 마친 자리(미정리 목록을 만드는 자리, 잠금 해제 전)에서 작업의 `afterChanges`를 부른다(#295 E4).
-    /// 끄면 그 자리를 지나지 않은 쓰기(바꾼 것이 없어 목록을 적지 않음)를 흉내 낸다
+    /// 실제 관문은 모두 막힌 쓰기도 그 자리를 지난다. 끄면 그 자리에 닿지 않고 돌아온 쓰기를 흉내 낸다
     public var callsAfterChanges = true
     /// `afterChanges` 뒤(쓰기 잠금을 푼 뒤에 해당) 부른다: 잠금이 풀린 틈의 바깥 변화를 흉내 낸다
     public var afterWriteUnlocked: (@Sendable () -> Void)?

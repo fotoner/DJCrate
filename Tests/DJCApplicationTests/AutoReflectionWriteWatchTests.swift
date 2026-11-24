@@ -116,13 +116,12 @@ struct AutoReflectionWriteWatchTests {
         try await Self.nextEditSavesAfterTEdit(w, "쓴 뒤 첫 관찰이 관문이 잡은 값과 같으면 잇는다")
     }
 
-    /// DB·XML을 바꾸지 않고 끝난 쓰기(모두 막혀 아무것도 안 씀: 관문이 라이브러리 변경 자리를 지나지 않음)는 쓰기 전 기준을 잇는다
+    /// DB·XML을 바꾸지 않고 끝난 쓰기(모두 막혀 아무것도 안 씀)는 관문이 잡은 값이 쓰기 전과 같아 조용함을 잇는다(실제 관문처럼 콜백을 지난다)
     @Test func 모두_막혀_아무것도_쓰지_않은_자동_쓰기_뒤에도_조용함을_잇는다() async throws {
         let w = AutoReflectionWorld()
         w.writable("a", "b")
         w.h.script.write = ReflectionHarness.report(cues: [ReflectionHarness.outcome("a", .blocked, reason: "바뀜"),
                                                            ReflectionHarness.outcome("b", .blocked, reason: "바뀜")], dryRun: false)
-        w.h.script.callsAfterChanges = false
         let hold = WriteHold()
         w.h.script.duringWrite = { hold.wait() }
         try await Self.ready(w)

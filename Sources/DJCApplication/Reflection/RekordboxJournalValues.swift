@@ -76,7 +76,7 @@ public struct DraftWriteOperation: Equatable, Sendable {
     /// 초안 저장소 위치(이 실행의 `DJC_HOME` 초안 폴더)
     public var draftHome: URL
     /// 라이브러리 변경을 모두 마친 자리(미정리 목록을 만드는 콜백, 쓰기 잠금을 풀기 전)에서 관문이 부르는 일(#295 E4).
-    /// 자동 저장 엔진이 이때의 파일 상태를 잡아 쓴 뒤 첫 관찰과 견준다. 바꾼 것이 없어 그 자리를 지나지 않은 쓰기는 부르지 않는다
+    /// 자동 저장 엔진이 이때의 파일 상태를 잡아 쓴 뒤 첫 관찰과 견준다. 백업 전 실패처럼 그 자리에 닿기 전에 끝난 쓰기는 부르지 않는다
     public var afterChanges: DraftWriteProbe?
 
     public init(id: String, draftHome: URL, afterChanges: DraftWriteProbe? = nil) {
