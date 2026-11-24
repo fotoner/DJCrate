@@ -39,6 +39,8 @@ extension PlaylistEditStore {
         try library.useCases.playlists.saveDraft(resolved, carrying: unsavedStepOrigins)
         unsavedStepOrigins = []
         playlistDraft = resolved
+        // 저장이 준 단계 식별자를 받는다: 받지 않으면 다음 저장(다음 복구 줄 등)이 식별자 없는 단계를 새 사람 단계로 다시 쓴다(#295 리뷰 F11)
+        adoptSavedIdentifiers()
         playlistDraftUnsaved = false
         rekordboxPlaylists = current.layout
         let projected = resolved.project(onto: current.layout, contentIDs: current.contentIDs).layout
@@ -50,8 +52,9 @@ extension PlaylistEditStore {
         refreshPlaylists()
     }
 
+    /// 디스크 초안을 읽지 못했으면(저장한 단계의 식별자를 다시 받지 못함 포함) 복구하지 않는다: 메모리 초안으로 디스크 초안을 덮지 않게(#295 리뷰 F11)
     private var playlistRecoveryAllowed: Bool {
-        !library.libraryBusy && !library.isLoading && (library.allowsLibrarySync?() ?? true)
+        !library.libraryBusy && !library.isLoading && !playlistDraftNeedsSync && (library.allowsLibrarySync?() ?? true)
     }
 
     private func playlistRecoveryChanged() -> DJCError { RecoverDrafts.changedError }

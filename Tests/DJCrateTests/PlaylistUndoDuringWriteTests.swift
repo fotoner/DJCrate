@@ -378,6 +378,68 @@ struct PlaylistUndoDuringWriteTests {
         #expect(playlists.unsavedStepOrigins.isEmpty, "저장에 성공하면 기억한 출처를 비운다")
     }
 
+    /// A·B·C 목록(복구 시험에서 막힌 목록 두 개를 만든다)
+    static let threeLists = PlaylistLayout([
+        (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
+        (PlaylistLayout.Item(id: "B", name: "나"), 2),
+        (PlaylistLayout.Item(id: "C", name: "다"), 3),
+    ])
+
+    /// 막힌 목록 두 개를 복구 시트처럼 차례로 복구해도(앞 목록을 저장한 뒤 다음 목록을 새로 비교) 저장하지 못한 되살린 CLI 단계는 제안이다(리뷰 F11).
+    /// 앞 복구가 저장한 단계의 식별자를 받지 않으면 다음 복구 저장이 그 단계를 새 사람 단계로 다시 쓴다
+    @Test func 막힌_목록_두_개를_차례로_복구해도_저장하지_못한_되살린_CLI_단계는_제안이다() async throws {
+        playlists.rekordboxPlaylists = Self.threeLists
+        playlists.refreshPlaylists()
+        let cli = try adoptCLIRename()
+        event { playlists.discardPlaylistDraft("A") }
+        let restore = try failingSaves()
+        undo.undo()
+        event { playlists.renamePlaylist("B", to: "사람 B") }
+        event { playlists.renamePlaylist("C", to: "사람 C") }
+        restore()
+        #expect(playlists.playlistDraftUnsaved && playlists.playlistDraft.steps.count == 3)
+        let changed = PlaylistLayout([
+            (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
+            (PlaylistLayout.Item(id: "B", name: "바깥 B"), 2),
+            (PlaylistLayout.Item(id: "C", name: "바깥 C"), 3),
+        ])
+        let current = PlaylistRecoveryCurrent(layout: changed, contentIDs: ["1"], titles: [:], rows: [:])
+        for id in ["B", "C"] {
+            let review = try RecoverDrafts.review(playlist: id, draft: playlists.playlistDraft, current: current)
+            try await playlists.applyPlaylistRecovery(review, reapply: false, latest: current)
+        }
+        #expect(playlists.playlistDraft.edits == cli.edits, "막힌 B·C 편집만 버렸다")
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+    }
+
+    /// 손상 초안 복구가 저장한 직후 곡 넣기 되돌리기(세션)가 저장해도 저장하지 못한 되살린 CLI 단계는 제안이다(리뷰 F11)
+    @Test func 손상_초안_복구_직후_곡_넣기_되돌리기가_저장해도_제안이다() throws {
+        _ = try revivedCLIStepUnsaved()
+        store.applyMovedDrafts([DamagedDraftFile(name: DraftFileNames.playlist, preserved: home.appending(path: "damaged"), trackUUID: nil)],
+                               reporting: false)
+        store.resetPlaylistImports(contentIDs: ["9"])
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+    }
+
+    /// 디스크 재생 목록 초안을 읽지 못한 동안은 막힌 편집 복구가 초안을 덮지 않는다(리뷰 F11: 저장한 단계의 식별자를 다시 받지 못한 경우)
+    @Test func 디스크_초안을_읽지_못한_동안은_막힌_편집을_복구하지_않는다() async throws {
+        event { playlists.renamePlaylist("B", to: "사람 이름") }
+        let edits = playlists.playlistDraft.edits
+        try Data("손상".utf8).write(to: file)
+        #expect(playlists.syncExternal() == .failed && playlists.playlistDraftNeedsSync)
+        let changed = PlaylistLayout([
+            (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
+            (PlaylistLayout.Item(id: "B", name: "바깥 이름"), 2),
+        ])
+        let current = PlaylistRecoveryCurrent(layout: changed, contentIDs: ["1"], titles: [:], rows: [:])
+        let review = try RecoverDrafts.review(playlist: "B", draft: playlists.playlistDraft, current: current)
+        await #expect(throws: DJCError.self) { try await playlists.applyPlaylistRecovery(review, reapply: false, latest: current) }
+        #expect(playlists.playlistDraft.edits == edits, "메모리 초안을 바꾸지 않는다")
+        #expect((try? Data(contentsOf: file)) == Data("손상".utf8), "디스크 초안을 덮지 않는다")
+    }
+
     /// 되살린 CLI 단계의 저장이 실패한 뒤 그 단계를 다시 버려 저장하고 ⌘Z하면, 되살린 단계는 그 ⌘Z 기록이 든 출처로 제안이다(리뷰 F10: S4).
     /// 디스크에 없는 식별자 없는 단계라 디스크 도장으로는 출처를 알 수 없다
     @Test func 저장하지_못한_되살린_CLI_단계를_다시_버린_뒤_실행_취소해도_제안이다() throws {

@@ -97,6 +97,8 @@ extension LibraryStore {
                 : useCases.playlists.carriedAfterFailure(playlist.draft, carrying: carried)
             playlists.playlistDraft = playlist.draft
             playlists.applyPlaylistSave(playlist.error)
+            // 저장이 준 단계 식별자를 받는다(다음 저장이 식별자 없는 단계를 새 사람 단계로 다시 쓰지 않게, #295 리뷰 F11)
+            if playlist.error == nil { playlists.adoptSavedIdentifiers() }
             playlists.refreshPlaylists()
         }
     }
