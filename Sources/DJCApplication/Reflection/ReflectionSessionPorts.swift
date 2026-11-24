@@ -158,6 +158,9 @@ public struct ReflectionLibrary {
     /// 보존본의 저장은 USB 가져오기와 한 줄로 서야 해서(같은 파일을 겹쳐 쓰지 않게) 보존본을 든 화면 쪽이 그 줄에 세운다.
     /// 표시를 저장하지 못하면 알릴 문장을 돌려준다(rekordbox 쓰기는 끝났다)
     public var recordHistories: @MainActor ([RekordboxHistoryOutcome]) async -> String?
+    /// 읽은 사본이 쓰기 대상 라이브 DB와 같은지(메인 밖에서 부른다, `LoadLibrary.isLatest`). 같을 때만 곡 넣기 정리가 새 곡이 없다고 확정한다.
+    /// 모르는 곳(CLI·시험)은 거짓이다
+    public var readIsLatest: @Sendable (URL) -> Bool = { _ in false }
 
     public init(state: @escaping @MainActor () -> ReflectionLibraryState, apply: @escaping @MainActor (ReflectionLibraryChange) -> Void,
                 retryTagSaves: @escaping @MainActor () -> Void, preserveDamagedDrafts: @escaping @MainActor () -> [DamagedDraftFile],

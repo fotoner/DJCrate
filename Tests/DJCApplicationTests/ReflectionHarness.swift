@@ -21,6 +21,8 @@ final class ReflectionHarness {
     let playlistLockHeld = LockedFlag()
     /// 디스크 재생 목록 초안을 읽지 못한다(던지는 읽기는 던지고, 접는 읽기는 빈 초안)
     let playlistReadFails = LockedFlag()
+    /// 화면이 읽은 사본이 쓰기 대상 라이브 DB와 같다(그 뒤 라이브 DB가 바뀌지 않았다)
+    let readIsLatest = LockedFlag()
     /// 켜면 재생 목록 초안 파일 잠금을 기다리는 사이 앱의 재생 목록 저장이 실패한다(잡은 뒤 화면 상태가 저장하지 못함이 된다)
     let playlistSaveFailsDuringLock = LockedFlag()
     private let playlistUnsavedByLock = LockedFlag()
@@ -127,7 +129,7 @@ final class ReflectionHarness {
                                                        self.log.record("record histories")
                                                        self.recordedHistories.append(outcomes)
                                                        return self.historyMarkWarning
-                                                   }),
+                                                   }).readingLatest { [readIsLatest] _ in readIsLatest.value },
                         reload: LibraryReloader(reload: { written, edits in
                             self.log.record("reload")
                             self.reloads.append((written, edits))
@@ -180,6 +182,7 @@ final class ReflectionHarness {
     private var libraryState: ReflectionLibraryState {
         var current = state
         if !reloadSucceeds { current.lastError = reloadError }
+        if current.readSnapshot == nil { current.readSnapshot = URL(filePath: "/snapshots/master-2026-11-24T000000.db") }
         if playlistUnsavedByLock.value { current.playlistDraftUnsaved = true }
         return current
     }
@@ -410,5 +413,14 @@ final class LockedFlag: Sendable {
     var value: Bool {
         get { state.withLock { $0 } }
         set { state.withLock { $0 = newValue } }
+    }
+}
+
+extension ReflectionLibrary {
+    /// 읽은 사본이 쓰기 대상 라이브 DB와 같은지 보는 판정을 바꾼 포트
+    func readingLatest(_ judge: @escaping @Sendable (URL) -> Bool) -> Self {
+        var library = self
+        library.readIsLatest = judge
+        return library
     }
 }

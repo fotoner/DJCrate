@@ -95,8 +95,6 @@ public final class AutoReflection {
     private var journalStale = false
     /// 쓰기 잠금을 잡지 못해 기록 판정·정리를 미뤘다. 잡을 때까지 판정마다(대기 초안·실행 조건과 상관없이) 다시 한다(R11)
     private var journalPending = false
-    /// 다음 정리는 방금 다시 읽은 라이브러리로 한다(`libraryReloaded`. 엔진 시작 전에 끝난 첫 읽기도 시작 정리에 쓴다)
-    private var libraryFresh = false
     /// 마지막으로 쓰기 기록을 판정한 때(중단 상태는 가끔 다시 본다: CLI·다른 프로세스가 기록을 정리했을 수 있다)
     private var lastJudged: Date?
     /// 첫 읽기 뒤 시작 정리를 기다리는 수동 쓰기
@@ -182,10 +180,9 @@ public final class AutoReflection {
     }
 
     /// 앱이 라이브러리를 다시 읽었다(성공). 다음 판정에서 잠금 아래 기록을 다시 판정하고 미정리 목록을 정리한다(엔진이 모르는 사이
-    /// 앱의 곡 넣기가 미룬 정리도 풀린다). 그 정리는 방금 읽은 라이브러리를 믿는다: 새 곡이 없으면(그 사이 뺐다) 옛 초안을 연결 안 된 초안으로
-    /// 남기고 끝낸다(R22). 엔진 시작 전에 온 첫 읽기는 기억해 두었다가 시작 정리에 쓴다
+    /// 앱의 곡 넣기가 미룬 정리도 풀린다). 새 곡이 없다는 확정은 그 정리가 읽은 사본이 라이브 DB와 같을 때만 한다(`ReflectionSession.resumeCleanups`).
+    /// 엔진 시작 전에 온 첫 읽기도 시작 정리가 같은 판정으로 다룬다
     public func libraryReloaded() {
-        libraryFresh = true
         recheckJournal()
     }
 
@@ -226,13 +223,21 @@ public final class AutoReflection {
             // 수동 쓰기는 잠금을 기다려(메인 액터 밖) 판정·정리를 마친 뒤 쓴다: 정리하지 않은 채 쓰면 쓴 단계를 또 쓴다
             journalStale = false
             let judged = await judgeAndClean(waits: true)
-            // 잠금 아래 판정을 하지 못했으면(잠금·기록을 읽다 실패) 이전 보류로 판단해 정리 없이 쓰지 않는다
-            if case .busy = judged, let whenHeld { return whenHeld([.lockBusy]) }
+            // 잠금 아래 판정을 하지 못했으면(rekordbox가 켜져 기록을 판정하지 못함·잠금·기록을 읽다 실패) 이전 보류로 판단해 정리 없이 쓰지 않는다.
+            // 알림이 이유를 고르게 실행 상태를 메인 액터 밖에서 보고 함께 넘긴다
+            if case .busy = judged, let whenHeld {
+                let runState = ports.runState
+                var holds: Set<ReflectionHold> = [.lockBusy]
+                switch await BlockingWork.run(qos: .userInitiated, { runState() }) {
+                case .running, .unknown: holds.insert(.rekordboxRunning)
+                case .agentOnly: holds.insert(.agentRunning)
+                case .stopped: break
+                }
+                return whenHeld(holds)
+            }
             // 정리를 마치지 못한 목록이 있으면 쓰지 않는다
             if interrupted == nil, !cleanupHolds.isEmpty, let whenHeld { return whenHeld(cleanupHolds) }
         }
-        // 이 쓰기 동안의 다시 읽기만 "방금 읽은 라이브러리"다(앞서 읽은 표시로 이 쓰기가 미룬 정리를 끝내지 않게)
-        libraryFresh = false
         let result: T
         do {
             result = try await work()
@@ -281,8 +286,7 @@ public final class AutoReflection {
     @discardableResult
     private func judgeAndClean(waits: Bool = false) async -> ReflectionSession.JournalCleanup {
         lastJudged = ports.clock.now()
-        let fresh = libraryFresh
-        let judged = await session.judgeAndResumeCleanups(lock: ports.writeLock, waits: waits, libraryFresh: fresh)
+        let judged = await session.judgeAndResumeCleanups(lock: ports.writeLock, waits: waits)
         switch judged {
         case .busy:
             journalPending = true
@@ -293,7 +297,6 @@ public final class AutoReflection {
             interrupted = nil
             journalPending = false
             cleanupHolds = resumed.holds
-            if fresh { libraryFresh = false }
         }
         return judged
     }

@@ -15,7 +15,7 @@ extension LibraryStore {
 
     /// 세션이 읽는 지금 상태(메모리 초안·표시·추가 목록)
     func reflectionState() -> ReflectionLibraryState {
-        ReflectionLibraryState(rows: rowsByUUID, cueDraftUUIDs: cueDraftUUIDs, gridDraftUUIDs: gridDraftUUIDs, gainDraftUUIDs: gainDraftUUIDs,
+        var state = ReflectionLibraryState(rows: rowsByUUID, cueDraftUUIDs: cueDraftUUIDs, gridDraftUUIDs: gridDraftUUIDs, gainDraftUUIDs: gainDraftUUIDs,
                                tagDrafts: tagDrafts, artworkDrafts: artworkDrafts, mergeDrafts: mergeDrafts, playlistDraft: playlists.playlistDraft,
                                playlistDraftUnsaved: playlists.playlistDraftUnsaved, playlistDraftNeedsSync: playlists.playlistDraftNeedsSync,
                                playlistDraftFileLocked: playlistDraftUnlock != nil, rekordboxPlaylists: playlists.rekordboxPlaylists,
@@ -23,6 +23,8 @@ extension LibraryStore {
                                staged: staging.staged, estimatingGrids: staging.gridJob != nil, iTunesSelection: isITunesSelection,
                                deckStagedUUID: deckTrackID.flatMap { rowsByID[$0] }.flatMap { $0.isStaged ? $0.track.uuid : nil },
                                lastError: lastError, pendingHistories: history.pendingHistoryImports)
+        state.readSnapshot = snapshotURL
+        return state
     }
 
     /// 세션이 알린 결과로 메모리 초안·표시를 맞춘다

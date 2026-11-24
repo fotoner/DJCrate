@@ -23,8 +23,8 @@ extension ReflectionSession {
     /// 다시 해도 결과가 같다(옮긴 뒤 옛 초안이 없으면 할 일이 없다).
     /// - Parameter unchanged: 넣은 뒤 처리가 넘긴 판정(넣기 묶음의 판 그대로인 초안은 그 처리가 이미 옮기거나 백업에 남기고 지웠다).
     ///   nil이면 재시작 정리라 남은 초안을 모두 본다
-    /// - Parameter libraryFresh: 앱이 라이브러리를 방금 다시 읽었다(새 곡 행이 없으면 미루지 않고 옛 초안을 연결 안 된 초안으로 남긴다)
-    func cleanUpTrackAdd(_ add: DraftCleanupList.TrackAdd, unchanged: ((DraftKey) -> Bool)?, libraryFresh: Bool = false) async -> TrackAddCleanup {
+    /// - Parameter readIsLatest: 지금 목록을 읽은 사본이 쓰기 대상 라이브 DB와 같다(새 곡 행이 없으면 미루지 않고 옛 초안을 연결 안 된 초안으로 남긴다)
+    func cleanUpTrackAdd(_ add: DraftCleanupList.TrackAdd, unchanged: ((DraftKey) -> Bool)?, readIsLatest: Bool = false) async -> TrackAddCleanup {
         let files = ports.drafts
         await BlockingWork.run { files.flush() }
         var result = TrackAddCleanup.done
@@ -49,7 +49,7 @@ extension ReflectionSession {
                     continue
                 }
             }
-            merge(await moveToNewTrack(key, add: add, libraryFresh: libraryFresh))
+            merge(await moveToNewTrack(key, add: add, readIsLatest: readIsLatest))
         }
         await BlockingWork.run { files.flush() }
         return result
@@ -65,10 +65,10 @@ extension ReflectionSession {
     }
 
     /// 옛 UUID에 남은 초안 하나를 새 곡의 제안으로 옮기고, 새 곡에 저장된 것을 본 뒤 옛 초안을 지운다
-    private func moveToNewTrack(_ key: DraftKey, add: DraftCleanupList.TrackAdd, libraryFresh: Bool) async -> TrackAddCleanup {
+    private func moveToNewTrack(_ key: DraftKey, add: DraftCleanupList.TrackAdd, readIsLatest: Bool) async -> TrackAddCleanup {
         let files = ports.drafts, new = add.trackUUID, state = ports.library.state()
-        // 새 곡 행을 기다려야 하는데 방금 다시 읽은 라이브러리에도 없으면(그 사이 뺐다) 옮기지 않고 끝낸다
-        let missingRow: TrackAddCleanup = libraryFresh ? .done : .deferred
+        // 새 곡 행을 기다려야 하는데 라이브 DB와 같은 사본으로 읽은 목록에도 없으면(그 사이 뺐다) 옮기지 않고 끝낸다
+        let missingRow: TrackAddCleanup = readIsLatest ? .done : .deferred
         let newKey = DraftKey(key.kind, new)
         guard let stamp = files.stamp(key), let hash = files.currentHash(key) else { return .done }
         // 새 곡에 그 종류 초안이 이미 있다(다시 읽은 뒤 사용자가 고쳤다): 덮지 않고 옛 초안은 연결되지 않은 초안으로 남긴다

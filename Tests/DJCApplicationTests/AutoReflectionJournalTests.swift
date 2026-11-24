@@ -219,7 +219,8 @@ struct AutoReflectionJournalTests {
                                                     draftHome: "/drafts", backupFolder: "add-1", trackAdds: [add])]
         try await w.start()
         #expect(w.h.gateCalls.value.removedCleanupLists.isEmpty)
-        // 다시 읽기에 성공했는데 새 곡이 없다(그 사이 rekordbox에서 뺐다)
+        // 다시 읽기에 성공했는데 새 곡이 없다(그 사이 rekordbox에서 뺐다). 그 사본은 쓰기 대상 라이브 DB와 같다
+        w.h.readIsLatest.value = true
         w.engine.libraryReloaded()
         try await w.settle()
         #expect(w.h.gateCalls.value.removedCleanupLists == ["op-add"] && w.h.memory.cue("s") != nil)
@@ -248,7 +249,8 @@ struct AutoReflectionJournalTests {
         let w = AutoReflectionWorld()
         w.run = .off(.debugBuild)
         w.h.script.cleanupLists = [try Self.deferredTrackAdd(w)]
-        // 다시 켰고, 첫 읽기(새 곡 없음)가 엔진 시작 전에 끝났다
+        // 다시 켰고, 첫 읽기(새 곡 없음)가 엔진 시작 전에 끝났다. 그 사본은 쓰기 대상 라이브 DB와 같다
+        w.h.readIsLatest.value = true
         w.beforeStart = { $0.libraryReloaded() }
         try await w.start()
         #expect(w.h.gateCalls.value.removedCleanupLists == ["op-add"] && w.h.memory.cue("s") != nil)
@@ -280,10 +282,25 @@ struct AutoReflectionJournalTests {
         _ = await engine.exclusive { [session = engine.session] in await session.addTracks(rows: [ReflectionHarness.row("djc-s", path: path)]) }
         try await w.settle()
         #expect(w.h.gateCalls.value.removedCleanupLists.isEmpty, "새 곡 행이 없어 정리를 미룬다")
-        // 사용자가 다시 읽었다(새 곡은 그 사이 rekordbox에서 뺐다)
+        // 사용자가 다시 읽었다(새 곡은 그 사이 rekordbox에서 뺐다). 그 사본은 쓰기 대상 라이브 DB와 같다
         w.h.reloadSucceeds = true
+        w.h.readIsLatest.value = true
         engine.libraryReloaded()
         try await w.settle()
         #expect(w.h.gateCalls.value.removedCleanupLists.count == 1 && w.h.memory.cue("s") != nil)
+    }
+
+    // MARK: - 5라운드 S28·O21·G15·G16
+
+    @Test func 다시_읽은_사본이_라이브_DB와_다르면_새_곡이_없어도_정리를_끝내지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        w.run = .off(.debugBuild)
+        w.h.script.cleanupLists = [try Self.deferredTrackAdd(w)]
+        try await w.start()
+        // 다시 읽기는 성공했지만 그 사본은 라이브 DB와 다르다(`--db` 사본·옛 캐시·쓰기 전에 시작한 읽기)
+        w.h.readIsLatest.value = false
+        w.engine.libraryReloaded()
+        try await w.settle()
+        #expect(w.h.gateCalls.value.removedCleanupLists.isEmpty, "새 곡이 없다고 확정하지 않는다")
     }
 }

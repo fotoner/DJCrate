@@ -345,4 +345,27 @@ struct LoadLibraryTests {
                                                       location: Self.location())
         #expect(synced.visible && synced.sameSource)
     }
+
+    // MARK: - 자동 저장 곡 넣기 정리의 부재 확정(#403 5라운드)
+
+    enum StaleRead: CaseIterable { case explicitCopy, oldCachedSnapshot, readBeforeWrite }
+
+    @Test func 읽은_사본이_쓰기_대상_라이브_DB와_같을_때만_최신으로_본다() {
+        let snapshot = Self.snapshots.appending(path: "master-2026-11-24T000000.db")
+        #expect(Self.loader([:]).isLatest(snapshot, location: Self.location()), "라이브에서 뜬 사본이고 그 뒤 라이브 DB가 바뀌지 않았다")
+    }
+
+    @Test(arguments: StaleRead.allCases)
+    func 명시한_사본이나_라이브_DB가_바뀐_뒤의_옛_사본은_최신으로_보지_않는다(_ stale: StaleRead) {
+        let snapshot = Self.snapshots.appending(path: "master-2026-11-24T000000.db")
+        switch stale {
+        case .explicitCopy:
+            // `--db`로 연 사본(쓰기 대상은 라이브 DB다)
+            let copy = URL(filePath: "/elsewhere/master.db")
+            #expect(!Self.loader([:]).isLatest(copy, location: Self.location(explicitCopy: copy)))
+        case .oldCachedSnapshot, .readBeforeWrite:
+            // 다시 켠 뒤 처음 읽은 옛 캐시 사본, 곡 넣기 전에 시작한 다시 읽기의 사본: 그 뒤 라이브 DB가 바뀌었다
+            #expect(!Self.loader([:], changed: true).isLatest(snapshot, location: Self.location()))
+        }
+    }
 }

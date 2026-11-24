@@ -41,6 +41,8 @@ public struct ReflectionLibraryState: Sendable {
     public var lastError: String?
     /// rekordbox 쓰기 대기에 오른 USB 재생 기록의 쓰기 입력(#43, 가져온 차례). 곡을 고르지 않아도 쓸 것이 있다
     public var pendingHistories: [HistoryImport]
+    /// 지금 목록을 읽은 사본(없으면 nil). 곡 넣기 정리가 새 곡이 없다고 확정해도 되는지 본다(`ReflectionLibrary.readIsLatest`)
+    public var readSnapshot: URL?
 
     public init(rows: [String: TrackRow] = [:], cueDraftUUIDs: Set<String> = [], gridDraftUUIDs: Set<String> = [], gainDraftUUIDs: Set<String> = [],
                 tagDrafts: [String: TagDraft] = [:], artworkDrafts: [String: ArtworkDraft] = [:], mergeDrafts: [DuplicateMergeDraft] = [],

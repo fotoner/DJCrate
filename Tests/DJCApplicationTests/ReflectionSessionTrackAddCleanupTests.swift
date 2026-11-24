@@ -428,7 +428,9 @@ struct ReflectionSessionTrackAddCleanupTests {
         h.state.rows["new-s"] = nil
         let deferred = await h.session.resumeCleanups()
         #expect(deferred.deferred == 1 && deferred.finished == 0)
-        let resumed = await h.session.resumeCleanups(libraryFresh: true)
+        // 다시 읽은 사본이 쓰기 대상 라이브 DB와 같다
+        h.readIsLatest.value = true
+        let resumed = await h.session.resumeCleanups()
         #expect(resumed.finished == 1 && h.gateCalls.value.removedCleanupLists == ["op-add"])
         #expect(h.memory.cue("s") != nil && h.memory.cue("new-s") == nil)
     }

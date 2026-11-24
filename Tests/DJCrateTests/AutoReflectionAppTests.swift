@@ -142,6 +142,27 @@ struct AutoReflectionAppTests {
         withExtendedLifetime((coordinator, home)) {}
     }
 
+    @Test func 저장_거절_문구는_엔진이_메인_밖에서_본_실행_상태로_고른다() async throws {
+        let store = store()
+        var gate = RekordboxWriteGate.restoringOnly
+        gate.journal = { _, _ in .inProgress }
+        // 화면 쪽 실행 확인(프로세스 목록)은 부르지 않는다: 꺼졌다고 답해도 엔진이 본 켜짐으로 고른다
+        let coordinator = ReflectionCoordinator.test(store: store, running: false, gate: gate)
+        let home = try TemporaryFolder(prefix: "djc-autosave-s29")
+        let ports = AutoReflectionPorts(clock: .live, runState: { .running },
+                                        quietStamps: { _ in LibraryQuietStamps(walSize: nil, shmExists: false, database: nil, playlistsXML: nil) },
+                                        writeLock: .live(RekordboxWriteLocks(folder: home.url.appending(path: "locks"))),
+                                        records: .live(home: home.url), pointSnapshot: { .satisfied }, appHolds: { [] })
+        let engine = AutoReflection(session: coordinator.session, ports: ports, run: .off(.debugBuild))
+        engine.start()
+        coordinator.engine = engine
+        for _ in 0..<2000 where !engine.isParked { try await Task.sleep(for: .milliseconds(5)) }
+        await coordinator.write(rows: [], playlists: true)
+        #expect(store.toast?.title == String(ui: "rekordbox가 켜져 있어 저장하지 않았습니다"), "\(String(describing: store.toast))")
+        engine.stop()
+        withExtendedLifetime((coordinator, home)) {}
+    }
+
     @Test func USB에_쓰는_동안_저장은_이유를_보이고_시작하지_않는다() {
         let store = store()
         let coordinator = ReflectionCoordinator.test(store: store, gate: .restoringOnly)

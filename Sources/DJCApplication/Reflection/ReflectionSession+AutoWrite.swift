@@ -336,11 +336,8 @@ extension ReflectionSession {
 
     /// 대상의 쓰기 잠금을 잡고, 쥔 채 쓰기 기록을 판정한다. 기록이 없을 때만 같은 잠금을 쥔 채 미정리 목록을 정리한 뒤 푼다(R9·R11·R22).
     /// 잠금 밖에서 정리하면 그 사이 다른 실행이 남긴 중단 기록의 초안을 지울 수 있다. 앱(시작·자동·수동)과 CLI가 모두 이 길로 정리한다.
-    /// - Parameters:
-    ///   - waits: 잠금을 기다린다(CLI·수동 쓰기). 아니면 비차단 시도로, 못 잡으면 `.busy`다(자동 저장 판정)
-    ///   - libraryFresh: 앱이 라이브러리를 방금 다시 읽었다(곡 넣기 정리가 새 곡 행을 찾지 못하면 기다리지 않고 끝낸다, `resumeCleanups`)
-    public func judgeAndResumeCleanups(lock: RekordboxWriteLock, waits: Bool = false, for target: RekordboxWriteTarget? = nil,
-                                       libraryFresh: Bool = false) async -> JournalCleanup {
+    /// - Parameter waits: 잠금을 기다린다(CLI·수동 쓰기). 아니면 비차단 시도로, 못 잡으면 `.busy`다(자동 저장 판정)
+    public func judgeAndResumeCleanups(lock: RekordboxWriteLock, waits: Bool = false, for target: RekordboxWriteTarget? = nil) async -> JournalCleanup {
         let gate = ports.gate, target = target ?? self.target
         let judged = try? await BlockingWork.run { () throws -> (verdict: RekordboxJournalVerdict, hold: RekordboxWriteLock.Hold?) in
             let key = try lock.key(target.database)
@@ -363,7 +360,7 @@ extension ReflectionSession {
         case let .interrupted(finding): return .interrupted(finding)
         case .none:
             defer { judged.hold?.release() }
-            return .cleaned(await resumeCleanups(for: target, libraryFresh: libraryFresh))
+            return .cleaned(await resumeCleanups(for: target))
         }
     }
 
@@ -373,17 +370,22 @@ extension ReflectionSession {
     /// 곡 초안은 목록에 적힌 판과 해시가 지금과 같을 때만 지우고(다시 해도 결과가 같다), 곡 넣기 몫은 `cleanUpTrackAdd`, 재생 목록은
     /// `EditPlaylists.resumeCleanup`이 한다. 끝나지 않은 목록(사본 실패·저장 실패)은 지우지 않고 남겨 그 대상의 다음 쓰기를 보류한다.
     /// 목록을 읽지 못하면 정리와 다음 쓰기를 보류한다
-    /// - Parameters:
-    ///   - target: 정리할 대상(기본은 이 세션의 대상). CLI는 명령이 고른 대상을 준다
-    ///   - libraryFresh: 앱이 라이브러리를 방금 다시 읽었다. 곡 넣기 정리가 새 곡 행을 찾지 못하면(그 사이 rekordbox에서 뺐다) 미루지 않고
-    ///     옛 초안을 연결 안 된 초안으로 남긴 채 끝낸다(CLI가 그 목록 때문에 계속 거절하지 않게)
-    public func resumeCleanups(for target: RekordboxWriteTarget? = nil, libraryFresh: Bool = false) async -> CleanupResume {
+    /// 곡 넣기 정리가 새 곡 행을 찾지 못하면, 지금 목록을 읽은 사본이 쓰기 대상 라이브 DB와 같을 때만(그 사이 rekordbox에서 뺐다) 미루지 않고
+    /// 옛 초안을 연결 안 된 초안으로 남긴 채 끝낸다(CLI가 그 목록 때문에 계속 거절하지 않게). 다르거나 모르면 미룬다
+    /// - Parameter target: 정리할 대상(기본은 이 세션의 대상). CLI는 명령이 고른 대상을 준다
+    public func resumeCleanups(for target: RekordboxWriteTarget? = nil) async -> CleanupResume {
         let gate = ports.gate, target = target ?? self.target, home = location.draftHome, files = ports.drafts
         let lists: [DraftCleanupList]
         do { lists = try await BlockingWork.run { try gate.cleanupLists(target, home) } } catch {
             return CleanupResume(holds: [.cleanupStoreMissing], storeError: error.localizedDescription)
         }
         var result = CleanupResume(found: lists.count)
+        // 곡 넣기 몫이 있을 때만 읽은 사본이 라이브 DB와 같은지 본다(파일 상태를 보는 일이라 메인 밖에서, 잠금 아래에서)
+        var readIsLatest = false
+        if lists.contains(where: { !$0.trackAdds.isEmpty }), let snapshot = ports.library.state().readSnapshot {
+            let judge = ports.library.readIsLatest
+            readIsLatest = await BlockingWork.run { judge(snapshot) }
+        }
         for list in lists.sorted(by: { $0.operationID < $1.operationID }) {
             var complete = true, deferred = false
             if !list.written.isEmpty {
@@ -398,7 +400,7 @@ extension ReflectionSession {
                 }
             }
             for add in list.trackAdds {
-                switch await cleanUpTrackAdd(add, unchanged: nil, libraryFresh: libraryFresh) {
+                switch await cleanUpTrackAdd(add, unchanged: nil, readIsLatest: readIsLatest) {
                 case .done: break
                 case .deferred: deferred = true
                 case .failed: complete = false

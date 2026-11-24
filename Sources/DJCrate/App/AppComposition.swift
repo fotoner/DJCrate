@@ -367,12 +367,15 @@ final class AppComposition {
                            prompter: any ReflectionPrompter = AlertPrompter(), runningApps: RunningApps = .live,
                            options: ReflectionSession.Options = .liveApp) -> ReflectionCoordinator {
         let presenter = ReflectionPresenter(store: store, prompter: prompter)
-        let library = ReflectionLibrary(state: { [weak store] in store?.reflectionState() ?? ReflectionLibraryState() },
+        var library = ReflectionLibrary(state: { [weak store] in store?.reflectionState() ?? ReflectionLibraryState() },
                                         apply: { [weak store] in store?.applyReflection($0) },
                                         retryTagSaves: { [weak store] in store?.retryFailedTagSaves() },
                                         preserveDamagedDrafts: { [weak store] in store?.preserveDamagedDraftFiles() ?? [] },
                                         savePlaylistDraft: { [weak store] in store?.playlists.ensurePlaylistDraftSaved() ?? true },
                                         recordHistories: { [weak store] in await store?.history.recordWrittenHistories($0) })
+        // 곡 넣기 정리가 새 곡이 없다고 확정해도 되는지: 읽은 사본이 쓰기 대상 라이브 DB와 같다(R22)
+        let load = store.useCases.load, location = store.location
+        library.readIsLatest = { snapshot in load.isLatest(snapshot, location: location) }
         // Mac을 끄는 중·종료를 기다리는 중에는 세션도 새 쓰기를 시작하지 않는다(바쁨으로 답한다, #300)
         var lock = WriteLock(isLocked: { [weak store] in store.map { $0.libraryBusy || $0.writeRefusal != nil } ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
