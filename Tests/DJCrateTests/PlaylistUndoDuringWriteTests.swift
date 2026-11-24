@@ -230,6 +230,43 @@ struct PlaylistUndoDuringWriteTests {
         #expect(store.testDrafts.playlistStamps().map(\.origins) == [[.cli]], "기록한 출처(CLI)를 잇는다")
     }
 
+    /// 도장 사이드카를 고칠 수 없게 해 초안 저장을 실패시킨다(`restore`로 되돌린다)
+    func failingSaves() throws -> () -> Void {
+        let stamps = DraftStampStore.folder(home: home)
+        try FileManager.default.createDirectory(at: stamps, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: stamps.path)
+        return { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stamps.path) }
+    }
+
+    /// ⌘Z가 되살린 CLI 단계의 저장이 실패한 뒤 다른 편집이 저장되면 그 단계는 CLI 제안으로 남는다(사람 출처로 바뀌지 않는다, 리뷰 F5)
+    @Test func 실행_취소가_되살린_CLI_단계를_저장하지_못한_뒤_다른_편집을_저장해도_CLI_제안으로_남는다() throws {
+        var cli = PlaylistDraft()
+        try cli.append(.rename(playlist: .id("A"), name: "CLI 이름"), rekordbox: Self.rekordbox)
+        _ = try StampedDrafts.savePlaylist(cli, url: file, origin: .cli)
+        #expect(playlists.syncExternal() == .adopted)
+        event { playlists.discardPlaylistDraft("A") }
+        let restore = try failingSaves()
+        undo.undo()
+        restore()
+        #expect(playlists.playlistDraftUnsaved && playlists.playlistDraft.edits == cli.edits, "되살렸지만 저장하지 못했다")
+        event { playlists.renamePlaylist("B", to: "사람 이름") }
+        #expect(!playlists.playlistDraftUnsaved)
+        let stamps = store.testDrafts.playlistStamps()
+        #expect(stamps.map(\.origins) == [[.cli], [.human]], "되살린 단계는 CLI 출처를 잇는다: \(stamps.map(\.origins))")
+    }
+
+    /// 복원이 되살린 재생 목록 단계의 저장이 실패한 뒤 다른 편집이 저장되면 그 단계는 복원 출처(제안)로 남는다(리뷰 F5)
+    @Test func 복원이_되살린_단계를_저장하지_못한_뒤_다른_편집을_저장해도_복원_출처로_남는다() throws {
+        let restore = try failingSaves()
+        let failed = playlists.restorePlaylistEdits([.rename(playlist: .id("A"), name: "되살린 이름")])
+        restore()
+        #expect(failed == 0 && playlists.playlistDraftUnsaved, "되살렸지만 저장하지 못했다")
+        event { playlists.renamePlaylist("B", to: "사람 이름") }
+        #expect(!playlists.playlistDraftUnsaved)
+        let stamps = store.testDrafts.playlistStamps()
+        #expect(stamps.map(\.origins) == [[.restored], [.human]], "되살린 단계는 복원 출처를 잇는다: \(stamps.map(\.origins))")
+    }
+
     // MARK: - 저장 전 경로·역편집
 
     @Test func 이름을_A에서_B_C로_바꾼_뒤_실행_취소하면_B다() throws {

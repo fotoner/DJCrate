@@ -105,6 +105,10 @@ final class PlaylistEditStore {
     /// ⌘Z가 그 편집의 단계가 쓰였는지 본다. ⌘Z 기록을 비우는 자리에서만 비운다(`forgetWrittenSteps`)
     @ObservationIgnored private(set) var writtenStepIDs: Set<UUID> = []
 
+    /// 저장하지 못해 식별자 없이 메모리에 남은 단계 가운데 이을 출처가 있는 단계(⌘Z·⇧⌘Z·복원이 되살린 단계, #295 리뷰 F5).
+    /// 다음 저장에 넘기고 저장에 성공하면 비운다: 그 사이 다른 편집이 사람 편집 포트로 저장해도 그 단계는 기록한 출처로 남는다
+    @ObservationIgnored private var unsavedStepOrigins: [(step: PlaylistDraft.Step, origins: Set<DraftOrigin>)] = []
+
     /// ⌘Z 기록을 비울 때 쓴 단계·연결 ID 기록도 비운다(#295 E6: ⌘Z 기록을 비우는 자리에서만)
     func forgetWrittenSteps() {
         writtenStepIDs = []
@@ -632,6 +636,7 @@ final class PlaylistEditStore {
         let changed = disk != playlistDraft
         guard changed || disk.stepIDs != playlistDraft.stepIDs else { return false }
         playlistDraft = disk
+        unsavedStepOrigins = []
         refreshPlaylists()
         if changed { library.clearLibraryUndo() }
         return changed
@@ -676,12 +681,22 @@ final class PlaylistEditStore {
     func savePlaylistDraft(freshOrigins: [Int: Set<DraftOrigin>] = [:]) -> Bool {
         // 디스크 초안을 읽지 못해 메모리가 디스크와 같은지 모르면 저장하지 않는다(옛 메모리로 바깥 편집을 덮지 않게). 디스크 초안을 받으면 푼다
         guard !playlistDraftNeedsSync else { return false }
+        // 앞서 저장하지 못한 되살린 단계는 그때 기록한 출처를 잇는다(같은 내용의 식별자 없는 단계에 하나씩)
+        var origins = freshOrigins, remembered = unsavedStepOrigins
+        for (index, step) in playlistDraft.steps.enumerated() where step.id == nil && origins[index] == nil {
+            if let match = remembered.firstIndex(where: { $0.step == step }) { origins[index] = remembered.remove(at: match).origins }
+        }
         do {
-            try library.useCases.playlists.saveDraft(playlistDraft, freshOrigins: freshOrigins)
+            try library.useCases.playlists.saveDraft(playlistDraft, freshOrigins: origins)
+            unsavedStepOrigins = []
             adoptSavedIdentifiers()
             applyPlaylistSave(nil)
             return true
         } catch {
+            let steps = playlistDraft.steps
+            unsavedStepOrigins = origins.sorted { $0.key < $1.key }.compactMap { index, origins in
+                steps.indices.contains(index) ? (steps[index], origins) : nil
+            }
             applyPlaylistSave(error)
             return false
         }
@@ -763,8 +778,13 @@ final class PlaylistEditStore {
     func restorePlaylistEdits(_ edits: [PlaylistEdit]) -> Int {
         guard !edits.isEmpty else { return 0 }
         // 복원이 되살린 단계의 출처는 "복원이 되살림"이다: 자동 저장하지 않는 제안이 된다(R8). 그대로 둔 단계는 제 출처를 지킨다
+        let previous = playlistDraft.steps
         let restored = library.useCases.restoredPlaylists.restore(edits, onto: playlistDraft, rekordbox: rekordboxPlaylists, imports: playlistImports,
                                                                   importsLoadFailed: playlistImportsLoadFailed)
+        if restored.draftError != nil {
+            // 저장하지 못했으면 되살린 단계(앞 초안에 없던 식별자 없는 단계)의 출처를 기억해 다음 저장에 넘긴다(#295 리뷰 F5)
+            unsavedStepOrigins += restored.draft.steps.filter { $0.id == nil && !previous.contains($0) }.map { ($0, [.restored]) }
+        }
         playlistDraft = restored.draft
         applyPlaylistSave(restored.draftError)
         if restored.draftError == nil { adoptSavedIdentifiers() }
