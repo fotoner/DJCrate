@@ -100,10 +100,47 @@ public enum ReflectionStatusRow: Int, CaseIterable, Comparable, Sendable {
         }
     }
 
-    /// 조건이 드는 줄 가운데 맨 위 줄.
-    /// 몸체는 W2-E(#404)가 채운다. 그 전에는 지금 동작(저장 대기가 있으면 단추가 보이는 수동 저장)과 같은 줄을 고른다.
+    /// 조건이 드는 줄 가운데 맨 위 줄(R3: 한 번에 여러 줄에 들면 위에 있는 줄을 따른다).
+    /// - 1~3번 줄은 저장 대기와 상관없이 사유 하나만으로 든다(칩이 늘 이유를 보인다).
+    /// - 4번 줄은 저장 대기가 없고 쓰는 중도 아닐 때다. 입력 중인 칸이 있어도 줄은 같고(⌘S가 확정한 뒤 5~9번 줄을 따른다, R19) 보류·멈춤 사유는 줄을 바꾸지 않는다.
+    /// - 6번 줄은 `autoSaves`가 거짓일 때다. 엔진이 없는 조립(화면 시험·진단)은 조건이 기본값이라 지금 동작(저장 대기가 있으면 저장 단추)과 같다.
     public static func first(_ conditions: ReflectionConditions) -> Self {
-        conditions.hasPending ? .manualRun : .nothingPending
+        let forced = conditions.holds.compactMap(\.statusRow).filter { $0 <= .busy }.min()
+        if let forced { return forced }
+        if conditions.writing { return .writing }
+        if !conditions.hasPending { return .nothingPending }
+        if !conditions.autoSaves { return .manualRun }
+        let holdRows = Set(conditions.holds.compactMap(\.statusRow))
+        if holdRows.contains(.stopped) { return .stopped }
+        if holdRows.contains(.leftover) || !conditions.leftovers.isEmpty { return .leftover }
+        return .waiting
+    }
+}
+
+extension ReflectionHold {
+    /// 이 사유가 R3 표에서 드는 줄. 줄은 `ReflectionStatusRow.first`가 고른다(경우를 더하면 여기서 줄을 정한다)
+    public var statusRow: ReflectionStatusRow? {
+        switch self {
+        case .interrupted:
+            .interrupted
+        // 관문이 거절하는 환경(하드링크 DB·준비 폴더를 둘 수 없음)도 쓸 수 없음이다
+        case .unwritable, .hardLinkedDatabase, .stagingUnavailable:
+            .unwritable
+        // 쓰지 않고 이유를 보인다: rekordbox·Agent 켜짐(-wal이 남은 비정상 종료 포함), 막힌 초안 비교 창·가져오기 시트, USB 쓰기,
+        // 정리를 마치지 못한 목록(쓴 재생 목록 단계를 다시 쓰지 않게 관문 앞에서 거절), 종료 중
+        case .rekordboxRunning, .agentRunning, .walRemains, .blockedDraftsOpen, .importSheetOpen, .usbBusy, .cleanupPending,
+             .cleanupStoreMissing, .playlistCopyFailed, .shuttingDown:
+            .busy
+        case .stoppedAfterFailure, .stoppedAfterRestore:
+            .stopped
+        case .backupNoClone, .lowDiskSpace, .preBackupFailure:
+            .leftover
+        case .notAutoRun:
+            .manualRun
+        // 기다리면 저절로 풀린다(자동 저장 대기·조용함·LINK·시점 스냅샷·라이브러리 읽기·다른 프로세스 쓰기 잠금·시작·편집 중)
+        case .quietWaiting, .shmRemains, .baseRecheck, .linkServer, .libraryReading, .pointSnapshot, .lockBusy, .starting, .editing:
+            .waiting
+        }
     }
 }
 

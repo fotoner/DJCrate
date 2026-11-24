@@ -85,6 +85,11 @@ final class AppComposition {
         playlistSidebar = PlaylistSidebarModel(playlists: store.playlists)
         listActionBar = ListActionBarModel(store: store)
         libraryWindow = LibraryWindowModel(store: store)
+        // 엔진이 있는 실제 앱만: ⌘S·상태 줄이 엔진 상태를 R3 표의 줄로 읽고(#404), 입력 중인 칸을 지켜본다(R19)
+        if autoReflection != nil {
+            libraryWindow.autoFeed = reflection.autoFeed
+            libraryWindow.fieldEditing = FieldEditingState.live()
+        }
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
         // 칩의 이유(켜짐·꺼짐)는 감지 서비스를 읽는 연결을 여기서 한다. 화면 시험의 조립(`.none`)은 늘 모름이라 칩이 바뀌지 않는다
         let run = self.rekordboxRun

@@ -367,3 +367,24 @@ none
 # djcTests는 .build/debug/djc 프로세스를 띄운다. --changed는 소스 타깃 전체(제품 포함)를 먼저 빌드하므로 따로 빌드하지 않지만,
 # 고른 범위에 제품을 적어 둔다.
 needs djcTests djc
+
+# 상태 줄·⌘S·중단 알림·조용한 성공(#404, R3·R11·R15·R19): 엔진 상태(조건)를 R3 표의 줄로 읽어 칩·저장 단추·⌘S가 달라지는 연결이다.
+# 줄 고르기는 DJCApplication의 `ReflectionStatusRow`, 글·단추는 앱의 `ReflectionStatusModel`·`LibraryMenuAction`이 읽으므로 경로로 고른다.
+group status-bar-autosave
+when Sources/DJCrate/App/ReflectionStatusModel.swift
+when Sources/DJCrate/App/ReflectionStatusLine.swift
+when Sources/DJCrate/App/StatusBar.swift
+when Sources/DJCrate/App/LibraryMenuAction.swift
+when Sources/DJCrate/App/FieldEditingState.swift
+when Sources/DJCrate/App/LibraryWindowModel.swift
+when Sources/DJCrate/Reflection/ReflectionCoordinator*.swift
+when Sources/DJCApplication/Reflection/AutoReflectionStatus.swift
+when Sources/DJCDomain/Settings/SettingKeys.swift
+suite DJCApplicationTests.ReflectionStatusRowTests
+suite DJCApplicationTests.AutoReflectionContractTests
+suite DJCrateTests.ReflectionStatusRowsModelTests
+suite DJCrateTests.ReflectionSaveCommandTests
+suite DJCrateTests.ReflectionAutoWriteToastTests
+suite DJCrateTests.ReflectionJournalActionTests
+suite DJCrateTests.AutoSaveHasNoSwitchTests
+suite DJCrateTests.ReflectionStatusModelTests

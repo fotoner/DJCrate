@@ -138,9 +138,10 @@ struct ActivityPopoverRow: View {
     }
 }
 
-/// rekordbox 쓰기 상태 구역(#324): 보조 글(마지막 쓰기) + 상태 칩 + 쓰기 대기가 있을 때 [쓰기] 단추. 칩을 누르면 상태 팝오버가 열린다.
-/// rekordbox가 켜져 있는지·꺼졌는지(#326)는 칩 글자에 이유로 붙고, 꺼진 것을 확인하면 [쓰기]가 [지금 쓰기]로 강조된다(같은 명령).
-/// 쓸 수 없는 라이브러리(#327)는 칩이 「rekordbox에 쓸 수 없음」이고 이유를 칩 툴팁과 팝오버 맨 위에 보인다. 그때는 [쓰기]를 보이지 않는다.
+/// rekordbox 쓰기 상태 구역(#324, #404): 보조 글(마지막 쓰기) + 상태 칩 + 줄에 따라 붙는 단추. 칩을 누르면 상태 팝오버가 열린다.
+/// 칩 글자와 단추는 엔진 상태를 R3 표의 줄 순서대로 읽은 것이다(`ReflectionStatusModel`). 엔진이 없는 조립은 지금처럼 저장 대기가 있으면 [저장]이다.
+/// 단추: 자동 저장이 멈췄거나 스스로 저장하지 않을 편집이 남았을 때만 [저장], 대량 유예 중에는 「N초 뒤 저장」 옆 [취소],
+/// 쓰다가 끊긴 기록이 남았을 때는 [기록으로 복원…]·[이대로 두기…]. rekordbox가 꺼진 것을 확인해 강조하던 [지금 저장](#326)은 엔진이 없을 때만 남는다.
 /// 이 구역만 쓰기 상태를 읽는다. 값과 클로저만 잎 뷰에 넘긴다.
 struct WriteStatusSection: View {
     @Bindable var model: ReflectionStatusModel
@@ -156,15 +157,34 @@ struct WriteStatusSection: View {
                 }
                 .layoutPriority(-1)
             }
-            WriteStatusChip(chip: model.chip, help: model.chip.blockReason, action: { model.isPresented.toggle() })
+            WriteStatusChip(line: model.line, action: { model.isPresented.toggle() })
                 .popover(isPresented: $model.isPresented, arrowEdge: .top) {
-                    WriteStatusPopover(title: model.chip.title, lines: model.popoverLines, items: model.items, perform: { model.perform($0) })
+                    WriteStatusPopover(title: model.popoverTitle, lines: model.popoverLines, items: model.items, perform: { model.perform($0) })
                 }
+            if model.graceSecondsLeft != nil {
+                WriteStatusActionButton(title: String(ui: "취소"), frameKey: "statusBarGraceCancel", action: { model.cancelGrace() })
+            }
+            ForEach(model.journalActions, id: \.self) { action in
+                WriteStatusActionButton(title: action.title, frameKey: "statusBarJournal", action: { model.perform(action) })
+            }
             if model.showsWriteButton {
                 WriteStatusButton(title: model.writeButtonTitle, isEmphasized: model.emphasizesWrite, isEnabled: model.canWrite,
                                   disabledReason: model.writeDisabledReason, action: { model.perform(.reflect) })
             }
         }
+    }
+}
+
+/// 칩 옆 작은 단추 하나(대량 유예의 [취소], 중단 알림의 [기록으로 복원…]·[이대로 두기…])
+struct WriteStatusActionButton: View {
+    let title: String
+    let frameKey: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(title, action: action)
+            .controlSize(.small)
+            .selfTestFrame(frameKey)
     }
 }
 
@@ -191,23 +211,24 @@ struct WriteStatusButton: View {
     }
 }
 
-/// 쓰기 상태 칩: 모양과 글자로 상태를 알린다(쓰기 대기는 초안 표식과 같은 연필, 쓸 수 없음은 경고 삼각형, 쓰는 중은 진행 표시)
+/// 쓰기 상태 칩: 모양과 글자로 상태를 알린다(저장 대기는 초안 표식과 같은 연필, 쓸 수 없음·켜짐은 경고 삼각형, 멈춤은 일시정지, 중단은 경고 팔각형,
+/// 쓰는 중은 진행 표시, 저장 대기 없음은 체크). 색만으로 알리지 않는다: 글자가 늘 이유를 말한다
 struct WriteStatusChip: View {
-    let chip: ReflectionChip
-    /// 툴팁(쓸 수 없는 이유). 없으면 달지 않는다
-    let help: String?
+    let line: ReflectionStatusLine
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                switch chip {
-                case .clean: Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
+                switch line.symbol {
+                case .saved: Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
                 case .pending: Image(systemName: DraftMark.symbol).foregroundStyle(UIColors.draft.color)
-                case .blocked: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(AppToast.Kind.warning.tint)
+                case .warning: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(AppToast.Kind.warning.tint)
+                case .stopped: Image(systemName: "pause.circle.fill").foregroundStyle(AppToast.Kind.warning.tint)
+                case .interrupted: Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(AppToast.Kind.failure.tint)
                 case .writing: ProgressView().controlSize(.mini)
                 }
-                Text(chip.title).monospacedDigit()
+                Text(line.title).monospacedDigit()
             }
             .font(.callout)
             .padding(.horizontal, 6)
@@ -215,9 +236,9 @@ struct WriteStatusChip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
-        .help(help ?? "")
-        .accessibilityLabel(chip.title)
-        .accessibilityHint(help ?? "")
+        .help(line.help ?? "")
+        .accessibilityLabel(line.title)
+        .accessibilityHint(line.help ?? "")
         .selfTestFrame("statusBarWriteChip")
     }
 }

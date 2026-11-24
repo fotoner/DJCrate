@@ -123,8 +123,7 @@ final class ReflectionPresenter {
         case let .written(report, preview, followUp):
             publish(WriteResult.written(report, preview: preview).followedUp(followUp), undo: report.backup)
         case let .autoWritten(report, followUp):
-            // 자동 저장은 토스트 없이 활동 기록에만 남긴다(R15의 처음 몇 번 토스트는 상태 줄 #404 몫)
-            _ = store?.activityLog.record(WriteResult.written(report, preview: report).followedUp(followUp))
+            publishAutoWritten(report, followUp: followUp)
         case let .nothingWritable(preview, _):
             // 창 대신 결과에 제외한 초안까지 남긴다(#230).
             var result = WriteResult.written(preview.report, preview: preview.report)
@@ -155,6 +154,36 @@ final class ReflectionPresenter {
             store?.activityLog.record(WriteResult(kind: .failure, title: title, text: text, backups: [backup.url]))
             acknowledge(ReflectionPrompt(title: title, text: text, critical: true))
         }
+    }
+
+    /// 처음 이만큼의 성공한 자동 저장만 「N곡을 저장했습니다 · [되돌리기]」 토스트를 보인다(R15, `AutoReflectionTiming.standard.successToasts`)
+    static let autoWriteToasts = AutoReflectionTiming.standard.successToasts
+
+    /// 성공한 자동 저장은 활동 기록에만 남긴다. 처음 몇 번만 토스트를 보이고 그 횟수는 설정에 남겨 다시 켜도 이어 센다.
+    /// 뒤처리에 남은 경고(`followUp`)가 있으면 횟수와 상관없이 경고로 알린다(조용한 성공이 아니다)
+    private func publishAutoWritten(_ report: RekordboxWriteReport, followUp: [String]) {
+        guard let store else { return }
+        let result = WriteResult.written(report, preview: report).followedUp(followUp)
+        let shown = Int(store.settings.value(SettingKeys.writeToastsShown))
+        guard !followUp.isEmpty || shown < Self.autoWriteToasts else {
+            _ = store.activityLog.record(result)
+            return
+        }
+        var toast = result.toast
+        if followUp.isEmpty {
+            let tracks = Self.writtenTracks(report)
+            if tracks > 0 { toast.title = String(ui: "\(tracks)곡을 저장했습니다") }
+            store.settings.set(SettingKeys.writeToastsShown, Double(shown + 1))
+        }
+        toast.undoBackup = report.backup.map { URL(filePath: $0) }
+        store.showToast(toast, for: result)
+    }
+
+    /// 쓴 곡 수(같은 곡의 큐·태그 등은 한 곡)
+    static func writtenTracks(_ report: RekordboxWriteReport) -> Int {
+        let groups: [[RekordboxWriteOutcome]] = [report.written, report.gridWritten, report.analysisWritten, report.gainWritten, report.tagWritten,
+                                                 report.artworkWritten, report.mergeWritten]
+        return Set(groups.flatMap { $0.map(\.trackUUID) }).count
     }
 
     /// 복원까지 실패한 경고창을 띄워 확인을 기다린다. 확인하기 전에는 앱을 끄지 않는다(#300).
@@ -227,6 +256,7 @@ final class ReflectionCoordinator {
         self.session = session
         self.store = store
         self.prompter = prompter
+        autoFeed.onInterrupted = { [weak self] in self?.loadFinding() }
     }
 
     // MARK: - 입구(버튼·메뉴): 시작할 수 있으면 작업 하나로 돌린다
@@ -249,7 +279,7 @@ final class ReflectionCoordinator {
         return !blocked && (!store.libraryBusy || autoWriting) && store.writeTask == nil
     }
 
-    private func start(_ work: @escaping @MainActor () async -> Void) {
+    func start(_ work: @escaping @MainActor () async -> Void) {
         let store = store
         store.writeTask = Task {
             defer { store.writeTask = nil }
@@ -258,7 +288,7 @@ final class ReflectionCoordinator {
     }
 
     /// 쓰기 하나를 엔진의 차례로 한다(엔진이 없으면 바로). 엔진은 결과로 멈춤을 풀거나(저장 성공) 멈춘다(복원)
-    private func serialized<T>(_ work: @MainActor () async throws -> T) async rethrows -> T {
+    func serialized<T>(_ work: @MainActor () async throws -> T) async rethrows -> T {
         guard let engine else { return try await work() }
         return try await engine.exclusive(work)
     }
@@ -388,10 +418,25 @@ final class ReflectionCoordinator {
 final class AutoReflectionFeed {
     private(set) var status: AutoReflectionStatus = .saved
     private(set) var conditions = ReflectionConditions()
+    /// 판정이 찾은 중단 기록(상태 줄이 복원 안내의 차례를 정한다: 백업 뒤 rekordbox에서 바뀌었으면 "이대로 두기"를 먼저). 중단이 아니면 nil.
+    /// 엔진은 이 값을 내보내지 않아 앱이 중단을 알게 된 때 직접 판정한다(`ReflectionCoordinator.loadFinding`)
+    private(set) var finding: RekordboxJournalFinding?
+    /// 중단이 새로 나타났다(조정자가 기록을 읽어 `setFinding`으로 넣는다)
+    @ObservationIgnored var onInterrupted: (@MainActor () -> Void)?
+    @ObservationIgnored private var wasInterrupted = false
 
     func update(_ status: AutoReflectionStatus, _ conditions: ReflectionConditions) {
         if self.status != status { self.status = status }
         if self.conditions != conditions { self.conditions = conditions }
+        let interrupted = conditions.holds.contains { $0.kind == .interrupted }
+        if !interrupted, finding != nil { finding = nil }
+        // 중단이 나타난 때 한 번만 찾는다(찾지 못하면 기본 차례로 보인다)
+        if interrupted, !wasInterrupted { onInterrupted?() }
+        wasInterrupted = interrupted
+    }
+
+    func setFinding(_ finding: RekordboxJournalFinding?) {
+        if self.finding != finding { self.finding = finding }
     }
 }
 

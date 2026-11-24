@@ -23,11 +23,23 @@ final class LibraryWindowModel {
     var unlinkedDrafts: UnlinkedDraftsModel?
     /// 켤 때 알림의 "모두 갱신"이 부르는 AI 에이전트 설치 모델(조립 지점이 붙인다. 시험은 nil)
     @ObservationIgnored var agentTools: AgentToolsSettingsModel?
+    /// 자동 저장 엔진이 알린 상태(엔진이 있는 조립만 붙인다). nil이면 ⌘S·상태 줄이 지금 동작 그대로다(저장 대기가 있으면 저장, #404)
+    @ObservationIgnored var autoFeed: AutoReflectionFeed?
+    /// 입력 중인 칸(Return 전)과 그 확정(R19). 조립 지점이 실제 것을 붙인다(화면 시험은 바꿔 끼운다)
+    @ObservationIgnored var fieldEditing = FieldEditingState()
 
     init(store: LibraryStore) {
         self.store = store
         xmlImport = XMLImportModel(store: store)
     }
+
+    // MARK: - 저장(R3 표)
+
+    /// R3 표에서 지금 드는 줄. 엔진이 없는 조립은 nil이다
+    var saveRow: ReflectionStatusRow? { autoFeed.map { ReflectionStatusRow.first($0.conditions) } }
+
+    /// 입력 중인 칸이 있다(R19): 칸에 글자를 치는 중이거나 엔진이 편집 중으로 알렸다
+    var isEditingInput: Bool { fieldEditing.isEditing || autoFeed?.conditions.editingField == true }
 
     // MARK: - 시트
 
