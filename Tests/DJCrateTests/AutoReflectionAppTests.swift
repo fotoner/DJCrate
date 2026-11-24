@@ -81,6 +81,40 @@ struct AutoReflectionAppTests {
         #expect(try store.useCases.playlists.loadDraft().steps.map(\.edit) == [.rename(playlist: .id("A"), name: "새 가")])
     }
 
+    @Test func iTunes_동기화_쓰기도_엔진의_차례를_받는다() async throws {
+        let store = store()
+        let calls = Mutex(0)
+        var gate = RekordboxWriteGate.restoringOnly
+        gate.syncITunes = { _, _ in
+            calls.withLock { $0 += 1 }
+            return Data()
+        }
+        let coordinator = ReflectionCoordinator.test(store: store, gate: gate)
+        let home = try TemporaryFolder(prefix: "djc-autosave-itunes")
+        let ports = AutoReflectionPorts(clock: .live, runState: { .stopped },
+                                        quietStamps: { _ in LibraryQuietStamps(walSize: nil, shmExists: false, database: nil, playlistsXML: nil) },
+                                        writeLock: .live(RekordboxWriteLocks(folder: home.url.appending(path: "locks"))),
+                                        records: .live(home: home.url), pointSnapshot: { .satisfied }, appHolds: { [] })
+        let engine = AutoReflection(session: coordinator.session, ports: ports, run: .off(.debugBuild))
+        coordinator.engine = engine
+        // 앞 쓰기(자동 저장·⌘S)가 쓰는 중이다
+        let latch = Latch()
+        let first = Task { await engine.exclusive { () async -> ReflectionOutcome in
+            await latch.wait()
+            return .declined
+        } }
+        for _ in 0..<2000 where !latch.arrived { try await Task.sleep(for: .milliseconds(5)) }
+        let write = try #require(store.music.write)
+        let sync = Task { try await write(ITunesSyncWrite(base: Data(), source: [], selection: ITunesSyncSelection(selectedIDs: []))) }
+        for _ in 0..<200 where calls.withLock({ $0 }) == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(calls.withLock { $0 } == 0, "앞 쓰기가 끝날 때까지 기다린다(쓰기 잠금·얼림을 겹쳐 풀지 않게)")
+        latch.release()
+        _ = await first.value
+        _ = try await sync.value
+        #expect(calls.withLock { $0 } == 1)
+        withExtendedLifetime((coordinator, home)) {}
+    }
+
     @Test func USB에_쓰는_동안_저장은_이유를_보이고_시작하지_않는다() {
         let store = store()
         let coordinator = ReflectionCoordinator.test(store: store, gate: .restoringOnly)
@@ -113,6 +147,50 @@ struct AutoReflectionAppTests {
         // 자가 테스트 인자는 DJC_HOME이 없으면 확인 자리가 없어 쓰지 않는다
         let selfTest = AppComposition.autoReflectionFacts(arguments: ["djcrate", "--auto-reflect-selftest=save"], environment: [:], location: location)
         #expect(selfTest.selfTestPlaces == nil && !AutoReflectionRun.decide(selfTest).autoSaves)
+    }
+
+    /// 자가 테스트 자리 확인(R18·SAFE-8·SAFE-9): 쓰기 대상 DB 파일·분석 루트·DJC_HOME을 파일 단위로, 없는 경로는 가장 가까운 존재 조상까지 링크를
+    /// 풀어 본다. 실제 자리 대신 임시 폴더의 "실제" 폴더를 준다(이 Mac의 라이브러리·사용자 폴더를 건드리지 않는다)
+    enum UnsafePlace: CaseIterable { case databaseLink, shareLink, pioneerLink, homeUnderLink, shareMissing }
+
+    @Test(arguments: [nil] + UnsafePlace.allCases.map(Optional.some))
+    func 자가_테스트_자리는_DB_파일_링크와_상위_폴더_링크와_없는_DJC_HOME_아래_링크를_거른다(_ unsafe: UnsafePlace?) throws {
+        let folder = try TemporaryFolder(prefix: "djc-selftest-places")
+        let root = folder.url, files = FileManager.default
+        let live = root.appending(path: "live/rekordbox"), userData = root.appending(path: "userdata")
+        let copy = root.appending(path: "copy/rekordbox")
+        for dir in [live.appending(path: "share/PIONEER/USBANLZ"), userData, copy] {
+            try files.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        try Data().write(to: live.appending(path: "master.db"))
+        var home = root.appending(path: "home")
+        try files.createDirectory(at: home, withIntermediateDirectories: true)
+        switch unsafe {
+        case .shareMissing: break
+        case .shareLink:
+            try files.createSymbolicLink(at: copy.appending(path: "share"), withDestinationURL: live.appending(path: "share"))
+        case .pioneerLink:
+            try files.createDirectory(at: copy.appending(path: "share"), withIntermediateDirectories: true)
+            try files.createSymbolicLink(at: copy.appending(path: "share/PIONEER"), withDestinationURL: live.appending(path: "share/PIONEER"))
+        default:
+            try files.createDirectory(at: copy.appending(path: "share/PIONEER/USBANLZ"), withIntermediateDirectories: true)
+        }
+        if unsafe == .databaseLink {
+            try files.createSymbolicLink(at: copy.appending(path: "master.db"), withDestinationURL: live.appending(path: "master.db"))
+        } else {
+            try Data().write(to: copy.appending(path: "master.db"))
+        }
+        if unsafe == .homeUnderLink {
+            // 아직 없는 DJC_HOME의 조상이 사용자 폴더를 가리키는 링크다
+            try files.createSymbolicLink(at: root.appending(path: "linked"), withDestinationURL: userData)
+            home = root.appending(path: "linked/sub/home")
+        }
+        let location = LibraryLocation(rekordboxDirectory: copy, rekordboxDirectoryOverridden: true, snapshotDirectory: root.appending(path: "snapshots"),
+                                       opensExplicitCopy: false, explicitCopy: nil, database: copy.appending(path: "master.db"), shareRoot: nil,
+                                       backupDirectory: home.appending(path: "rekordbox-backups"), draftHome: home, movesDamagedDrafts: false)
+        let places = try #require(AppComposition.selfTestPlaces(location: location, environment: ["DJC_HOME": home.path], live: live,
+                                                                userData: userData))
+        #expect(places.allowsWriting == (unsafe == nil), "\(String(describing: unsafe)): \(places)")
     }
 
     // MARK: - 곡 넣기 뒤 정리(R22, 합성 DB·실제 관문)

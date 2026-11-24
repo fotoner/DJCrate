@@ -15,6 +15,10 @@ final class ReflectionHarness {
     let previewHold = PreviewHold()
     let gateCalls = GateCalls()
     var script = GateScript()
+    /// 가짜 관문이 드는 쓰기 기록(주면 세션을 몇 번 만들어도 같은 기록을 본다. 시험이 바깥에서 기록을 남기는 경우를 흉내 낸다)
+    var journal: ScriptedJournal?
+    /// 다른 곳(CLI)이 재생 목록 초안 파일 잠금을 쥐었다
+    let playlistLockHeld = LockedFlag()
     /// 라이브러리 화면 상태(세션이 읽는다). `apply`가 받은 변경 가운데 상태에 남는 것(태그·합치기·추가 목록 등)은 여기에도 반영한다.
     var state = ReflectionLibraryState()
     var changes: [ReflectionLibraryChange] = []
@@ -62,6 +66,8 @@ final class ReflectionHarness {
     var updateCount: Int { get { backupsMemory.updateCount } set { backupsMemory.updateCount = newValue } }
     var preserved: [DamagedDraftFile] = []
     var playlistSaves = true
+    /// 재생 목록 초안을 다시 저장하면 저장하지 못한 표시(`playlistDraftUnsaved`)를 푼다
+    var playlistSaveClearsUnsaved = false
     var unsaved: Set<String> = []
     var saveFailures: [DraftSaveFailure] = []
     /// 관문이 쓴 뒤(초안을 정리할 때) 생기는 저장 실패
@@ -102,7 +108,12 @@ final class ReflectionHarness {
                         library: ReflectionLibrary(state: { self.libraryState }, apply: { self.apply($0) },
                                                    retryTagSaves: { self.log.record("retry tag saves") },
                                                    preserveDamagedDrafts: { self.log.record("preserve damaged"); return self.preserved },
-                                                   savePlaylistDraft: { self.log.record("save playlist"); return self.playlistSaves },
+                                                   savePlaylistDraft: {
+                                                       self.log.record("save playlist")
+                                                       // 켜면 다시 저장했을 때 저장하지 못한 표시가 풀린다(앱의 재생 목록 화면 모델과 같다)
+                                                       if self.playlistSaves, self.playlistSaveClearsUnsaved { self.state.playlistDraftUnsaved = false }
+                                                       return self.playlistSaves
+                                                   },
                                                    recordHistories: { outcomes in
                                                        self.log.record("record histories")
                                                        self.recordedHistories.append(outcomes)
@@ -200,6 +211,17 @@ final class ReflectionHarness {
             if failingMerge { throw FixtureFailure() }
             try saveMerges(merges)
         }
+        let lockHeld = playlistLockHeld, log = log
+        store.lockPlaylistDraft = { _ in
+            if lockHeld.value { return nil }
+            log.record("playlist lock")
+            return { log.record("playlist unlock") }
+        }
+        let savePlaylist = store.savePlaylistDraft
+        store.savePlaylistDraft = { draft in
+            log.record("playlist save")
+            try savePlaylist(draft)
+        }
         let removeWritten = store.removeWritten, removeFails = removeWrittenFails
         store.removeWritten = { written in
             if removeFails.value { throw FixtureFailure() }
@@ -208,7 +230,7 @@ final class ReflectionHarness {
         return store
     }
 
-    private var gate: RekordboxWriteGate { .scripted(script, calls: gateCalls, hold: previewHold) }
+    private var gate: RekordboxWriteGate { .scripted(script, calls: gateCalls, hold: previewHold, journal: journal) }
 
     private var backups: RekordboxBackups { backupsMemory.port }
 

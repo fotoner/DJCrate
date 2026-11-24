@@ -41,6 +41,9 @@ public struct DraftWriteBatch: Sendable, Equatable {
     public var operation: DraftWriteOperation?
     /// 쓰기를 마치는 방식. 여러 곡 역편집은 `.allOrNothing`(R12). 미리 보기에서 관문까지 그대로 나른다
     public var commitPolicy: DraftCommitPolicy
+    /// 자동 저장 묶음(#403). 관문은 쓰기 잠금을 기다리지 않고(잡지 못하면 `RekordboxWriteGate.LockBusy`, R9),
+    /// 백업을 뜬 뒤의 실패를 백업 뒤 실패(`writeRolledBack`)로 알린다(R7: 엔진이 멈춘다)
+    public var isAutoSave = false
 
     public init(drafts: [CueDraft] = [], grids: [GridDraft] = [], gains: [String: Double] = [:], tags: [TagDraft] = [],
                 artworks: [ArtworkEdit] = [], playlists: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [],

@@ -184,16 +184,18 @@ public final class ManualReflectionClock: Sendable {
     }
 }
 
-/// 자동 저장 기록(`AutoReflectionRecords`)의 가짜. `failsLoad`면 읽기가 던진다(엔진은 멈춤으로 본다)
+/// 자동 저장 기록(`AutoReflectionRecords`)의 가짜. `failsLoad`면 읽기가 던진다(엔진은 멈춤으로 본다). `failsSave`면 남기기가 던진다
 public final class MemoryAutoReflectionRecords: Sendable {
     public struct LoadFailure: Error {}
-    private let state = Mutex<(record: AutoReflectionRecord, saves: Int, failsLoad: Bool)>((AutoReflectionRecord(), 0, false))
+    public struct SaveFailure: Error {}
+    private let state = Mutex<(record: AutoReflectionRecord, saves: Int, failsLoad: Bool, failsSave: Bool)>((AutoReflectionRecord(), 0, false, false))
 
     public init(_ record: AutoReflectionRecord = AutoReflectionRecord()) { state.withLock { $0.record = record } }
 
     public var record: AutoReflectionRecord { state.withLock { $0.record } }
     public var saves: Int { state.withLock { $0.saves } }
     public func failLoading(_ fails: Bool = true) { state.withLock { $0.failsLoad = fails } }
+    public func failSaving(_ fails: Bool = true) { state.withLock { $0.failsSave = fails } }
 
     public var port: AutoReflectionRecords {
         AutoReflectionRecords(load: { [self] in
@@ -202,7 +204,11 @@ public final class MemoryAutoReflectionRecords: Sendable {
                 return state.record
             }
         }, save: { [self] record in
-            state.withLock { $0.record = record; $0.saves += 1 }
+            try state.withLock { state in
+                if state.failsSave { throw SaveFailure() }
+                state.record = record
+                state.saves += 1
+            }
         })
     }
 }

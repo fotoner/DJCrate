@@ -270,6 +270,11 @@ when Sources/djc/CLIComposition.swift
 when Sources/djc/Commands/MainCommands.swift
 when Sources/djc/Commands/PointSnapshotCommand.swift
 suite DJCApplicationTests.AutoReflectionEngineTests
+suite DJCApplicationTests.AutoReflectionJournalTests
+suite DJCApplicationTests.AutoReflectionBatchTests
+suite DJCApplicationTests.AutoReflectionOrderTests
+suite DJCApplicationTests.AutoReflectionRecordTests
+suite DJCApplicationTests.ReflectionSessionResumeCleanupTests
 suite DJCApplicationTests.ReflectionSessionTrackAddCleanupTests
 suite djcTests.CLICleanupBeforeWriteTests
 suite DJCApplicationTests.AutoReflectionPlanTests

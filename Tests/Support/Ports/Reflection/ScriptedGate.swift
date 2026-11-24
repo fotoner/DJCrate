@@ -34,6 +34,8 @@ public struct GateScript: Sendable {
     public var reportsBatchOnly = false
     /// 실제로 넣는 동안(dryRun 아님) 부른다: 넣는 동안 바깥(CLI)이 초안을 저장하는 경우를 흉내 낸다
     public var duringAdd: (@Sendable () -> Void)?
+    /// 미정리 목록을 읽을 때 부른다(그때 쓰기 잠금을 쥐었는지 시험이 본다)
+    public var onCleanupLists: (@Sendable () -> Void)?
 
     public init() {}
 }
@@ -216,6 +218,7 @@ extension RekordboxWriteGate {
         }
         gate.cleanupLists = { _, _ in
             expectBlockingOffPool()
+            script.onCleanupLists?()
             calls.record { $0.order.append("cleanup lists") }
             return lists.withLock { $0 }
         }
@@ -277,6 +280,8 @@ public final class ScriptedJournal: Sendable {
         return false
     }
     func clear() { state.withLock { $0 = .none } }
+    /// 바깥(다른 프로세스)이 기록을 남기거나 지웠다
+    public func set(_ verdict: RekordboxJournalVerdict) { state.withLock { $0 = verdict } }
 
     /// 작업 잠금을 기다린 적이 있는 호출 수(겹친 호출이 잠금 경합에 닿았는지 시험이 본다)
     public var contended: Int { waits.withLock { $0 } }

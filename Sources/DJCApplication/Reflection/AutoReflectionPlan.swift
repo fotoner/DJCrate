@@ -22,6 +22,22 @@ public struct AutoReflectionInventory: Equatable, Sendable {
             self.leftover = leftover
         }
 
+        /// 단계 하나가 실제로 갱신할 곡 행 수(K와 견준다, R14). 단계 직전·직후 그 목록의 곡 줄로 센다: 넣기는 넣는 곡(끝에 붙는다),
+        /// 빼기는 뺀 곡과 그 뒤 번호가 다시 매겨지는 남은 곡, 옮기기는 자리(번호)가 바뀐 곡, 그 밖(만들기·이름·옮기기·순서·지우기)은 목록 행 하나.
+        /// 직전·직후 목록을 모르면 편집만 보고 센다(`rows(of:playlistSize:)`)
+        public static func rows(of edit: PlaylistEdit, before: [PlaylistEntry]?, after: [PlaylistEntry]?) -> Int {
+            guard let before, let after else { return rows(of: edit, playlistSize: before?.count ?? 0) }
+            switch edit {
+            case let .addTracks(_, ids): return max(ids.count, 1)
+            case .removeTracks:
+                // 앞에서부터 그대로인 줄 뒤는 지워졌거나 번호가 바뀌었다
+                let kept = zip(before, after).prefix { $0 == $1 }.count
+                return max(before.count - kept, 1)
+            case .moveTracks: return max(zip(before, after).filter { $0 != $1 }.count, 1)
+            case .create, .rename, .move, .reorder, .delete: return 1
+            }
+        }
+
         /// 편집이 갱신할 곡 행 수(K와 견준다). 넣기는 넣는 곡 수(끝에 붙는다), 빼기·옮기기는 그 목록의 남은 곡 번호를 다시 매기므로
         /// 목록의 곡 수(`playlistSize`)와 빼거나 옮기는 곡 수 중 큰 쪽, 목록 만들기·이름·옮기기·순서·지우기는 목록 행 하나
         public static func rows(of edit: PlaylistEdit, playlistSize: Int = 0) -> Int {
@@ -45,6 +61,8 @@ public struct AutoReflectionInventory: Equatable, Sendable {
     public var histories = 0
     /// 판정에서 본 판 전부(자동으로 쓸 것과 남긴 것). 여기 없는 [취소]·확인 필요 판은 새 판을 받았거나 쓰여 저절로 풀린다
     public var known: Set<DraftRevision> = []
+    /// 재생 목록 초안을 판정하지 못했다(디스크와 아직 맞추지 못함·저장하지 못함). 단계는 확인 필요로 남고, 판이 사라졌는지 모르므로 솎지 않는다
+    public var playlistUndetermined = false
 
     public init(tracks: [String: [DraftKey: DraftRevision]] = [:], leftoverKeys: [DraftKey: ReflectionLeftover] = [:], steps: [Step] = [],
                 clearing: Set<String> = []) {

@@ -141,6 +141,56 @@ struct RekordboxWriteJournalLiveTests {
                                              secondContended: { contended.withLock { $0 } })
     }
 
+    // MARK: 자동 저장 묶음(R7·R9)
+
+    func cueDraft(_ fixture: RekordboxFixture) throws -> CueDraft {
+        let track = try fixture.add(TrackSpec())
+        var draft = CueDraft(trackUUID: track.uuid)
+        draft.place(EditableCue(kind: .memory, time: 30))
+        return draft
+    }
+
+    @Test func 자동_저장_묶음은_쓰기_잠금을_기다리지_않고_바쁨을_알린다() async throws {
+        let fixture = try RekordboxFixture()
+        var batch = DraftWriteBatch(drafts: [try cueDraft(fixture)])
+        batch.isAutoSave = true
+        let folder = try TemporaryFolder(prefix: "djc-auto-lock")
+        let contended = Mutex(false)
+        let locks = RekordboxWriteLocks(folder: folder.url.appending(path: "djc-locks"), contended: { _ in contended.withLock { $0 = true } })
+        let gate = RekordboxWriteGate.live(guard: Self.copyGuard(locks: locks))
+        // 다른 쪽이 잠금을 쥐었다
+        let other = try #require(try locks.tryLock(try RekordboxWriteLocks.key(fixture.database)))
+        let target = target(fixture)
+        let writing = Task.detached { Result { try gate.write(batch, [:], target, false) } }
+        // 입구가 잠금 경합에 닿을 때까지 본다. 기다리는 구현이면 여기서 풀어 시험이 멈추지 않게 한다
+        for _ in 0..<4000 where !contended.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(contended.withLock { $0 })
+        other.release()
+        let result = await writing.value
+        #expect(throws: RekordboxWriteGate.LockBusy.self) { try result.get() }
+        withExtendedLifetime(folder) {}
+    }
+
+    @Test(arguments: [true, false])
+    func 백업을_뜬_뒤_커밋_전에_실패한_자동_저장은_백업_뒤_실패로_알린다(auto: Bool) throws {
+        let fixture = try RekordboxFixture()
+        var batch = DraftWriteBatch(drafts: [try cueDraft(fixture)])
+        batch.isAutoSave = auto
+        let gate = RekordboxWriteGate.live(guard: Self.copyGuard(hooks: RekordboxWriteHooks(checkpoint: { moment in
+            if moment == .before(.commit) { throw DJCError.queryFailed(sql: "COMMIT", message: "주입한 실패") }
+        })))
+        do {
+            _ = try gate.write(batch, [:], target(fixture), false)
+            Issue.record("실패해야 한다")
+        } catch let error as DJCError {
+            if auto {
+                guard case .writeRolledBack = error else { Issue.record("백업 뒤 실패로 알린다: \(error)"); return }
+            } else {
+                guard case .queryFailed = error else { Issue.record("수동 저장은 그대로 알린다: \(error)"); return }
+            }
+        }
+    }
+
     // MARK: 미정리 목록(R22)
 
     @Test func 앱의_쓰기는_미정리_목록을_남기고_관문은_그_대상과_초안_저장소의_목록만_돌려준다() throws {

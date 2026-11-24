@@ -276,6 +276,12 @@ final class ReflectionCoordinator {
         })
     }
 
+    /// iTunes 동기화 쓰기(동기화 창). 다른 rekordbox 쓰기처럼 엔진의 차례로 한다(자동 저장과 겹쳐 쓰기 잠금·얼림을 풀지 않게)
+    func syncITunes(_ change: ITunesSyncWrite) async throws -> (target: URL, syncData: Data) {
+        let session = session
+        return try await serialized { try await session.syncITunes(change) }
+    }
+
     /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 false)
     func startWrite(rows: [TrackRow], playlists: Bool = true) {
         guard canStart() else { return }

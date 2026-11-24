@@ -100,9 +100,9 @@ extension ReflectionSession {
         return try await previewBatch(batch, uuids: uuids, exclusions: exclusions(for: rows, blockedOnly: true))
     }
 
-    /// 쓸 재생 목록 단계와 재생 기록을 화면이 얼리게 한다(R21, `PlaylistEditStore.freezeWrite`). 곡 단위 초안 쓰기에서만 얼린다
+    /// 쓸 재생 목록 단계와 재생 기록을 화면이 얼리게 한다(R21, `PlaylistEditStore.freezeWrite`). 곡 단위 초안 쓰기에서만 얼린다.
+    /// 곡 초안만 쓰는 묶음도 빈 단계로 얼린다: 그래야 쓰는 동안 재생 목록·재생 기록 편집을 통째로 막지 않고 받는다
     func freezeWrite(_ batch: DraftWriteBatch) {
-        guard batch.playlists != nil || !batch.histories.isEmpty else { return }
         apply(.playlistWriteFrozen(batch.playlists ?? PlaylistDraft(), histories: Set(batch.histories.map(\.id))))
     }
 
@@ -199,22 +199,29 @@ extension ReflectionSession {
     /// 묶음에 초안마다 판(도장과 읽어 넣은 내용의 해시)과 앱 쓰기의 작업을 싣는다(R11·R22). 그래야 관문이 쓰기 기록에 판을 적고 미정리 목록을 남기며,
     /// 쓴 뒤 정리가 실제로 쓴 판만 지운다. 도장이 없는 초안(판을 모름)은 빠진다. CLI(`followsUp` 꺼짐)는 작업을 싣지 않는다(미정리 목록 없음).
     /// 재생 목록은 디스크 초안이 묶음의 초안과 같을 때만 단계의 판을 싣고 디스크 초안(단계 식별자가 붙은)으로 바꿔 넣는다
-    func stampRevisions(_ batch: inout DraftWriteBatch, rawCues: [String: CueDraft]) {
+    /// - Parameter verified: 읽어 넣을 때 도장과 내용을 이미 맞춰 본 곡 초안의 판(자동 저장). 주면 도장을 다시 읽지 않고 이것을 싣는다
+    ///   (읽은 뒤 바뀐 도장을 읽은 내용에 붙이지 않게, R22)
+    func stampRevisions(_ batch: inout DraftWriteBatch, rawCues: [String: CueDraft], verified: [DraftKey: DraftBatchEntry]? = nil) {
         let files = ports.drafts
         var tracks: [DraftKey: DraftBatchEntry] = [:]
         func put(_ key: DraftKey, _ content: () throws -> DraftContentHash) {
             guard let stamp = files.stamp(key), let hash = try? content() else { return }
             tracks[key] = DraftBatchEntry(stamp: stamp, contentHash: hash)
         }
-        for draft in batch.drafts {
-            guard let raw = rawCues[draft.trackUUID] else { continue }
-            put(DraftKey(.cue, draft.trackUUID)) { try DraftContentHash(of: raw) }
+        if let verified {
+            let keys = batch.draftKeys
+            tracks = verified.filter { keys.contains($0.key) }
+        } else {
+            for draft in batch.drafts {
+                guard let raw = rawCues[draft.trackUUID] else { continue }
+                put(DraftKey(.cue, draft.trackUUID)) { try DraftContentHash(of: raw) }
+            }
+            for grid in batch.grids { put(DraftKey(.grid, grid.trackUUID)) { try DraftContentHash(of: grid) } }
+            for (uuid, gain) in batch.gains { put(DraftKey(.gain, uuid)) { try DraftContentHash(of: gain) } }
+            for tag in batch.tags { put(DraftKey(.tag, tag.trackUUID)) { try DraftContentHash(of: tag) } }
+            for artwork in batch.artworks { put(DraftKey(.artwork, artwork.trackUUID)) { try DraftContentHash(artwork: artwork) } }
+            for merge in batch.merges { put(DraftKey(.merge, merge.id)) { try DraftContentHash(of: merge) } }
         }
-        for grid in batch.grids { put(DraftKey(.grid, grid.trackUUID)) { try DraftContentHash(of: grid) } }
-        for (uuid, gain) in batch.gains { put(DraftKey(.gain, uuid)) { try DraftContentHash(of: gain) } }
-        for tag in batch.tags { put(DraftKey(.tag, tag.trackUUID)) { try DraftContentHash(of: tag) } }
-        for artwork in batch.artworks { put(DraftKey(.artwork, artwork.trackUUID)) { try DraftContentHash(artwork: artwork) } }
-        for merge in batch.merges { put(DraftKey(.merge, merge.id)) { try DraftContentHash(of: merge) } }
         var steps: [DraftBatchEntry] = []
         if let playlists = batch.playlists {
             // 묶음의 초안은 디스크 초안 전체이거나 그 앞부분(자동 저장의 K행 나누기)이다. 해시는 디스크 초안 안에서 잰다(정리가 그 안에서 견준다)

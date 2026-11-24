@@ -146,7 +146,7 @@ struct ReflectionSessionTrackAddCleanupTests {
                                                   draftHome: "/drafts", backupFolder: "w1",
                                                   written: [WrittenDraft(key: DraftKey(.cue, "a"), revision: stamp.revision,
                                                                          contentHash: try DraftContentHash(of: written))])]
-        try await h.session.cleanUpBeforeWrite(to: h.session.target)
+        try await h.session.cleanUpBeforeWrite(to: h.session.target, lock: MemoryWriteLocks().port)
         #expect(h.memory.cue("a") == nil && h.gateCalls.value.removedCleanupLists == ["op-1"])
     }
 
@@ -161,7 +161,7 @@ struct ReflectionSessionTrackAddCleanupTests {
                                                   written: [WrittenDraft(key: DraftKey(.cue, "a"), revision: stamp.revision,
                                                                          contentHash: try DraftContentHash(of: written))])]
         h.failingRemoveWritten = true
-        await #expect(throws: DJCError.self) { try await h.session.cleanUpBeforeWrite(to: h.session.target) }
+        await #expect(throws: DJCError.self) { try await h.session.cleanUpBeforeWrite(to: h.session.target, lock: MemoryWriteLocks().port) }
         #expect(h.gateCalls.value.removedCleanupLists.isEmpty)
     }
 }

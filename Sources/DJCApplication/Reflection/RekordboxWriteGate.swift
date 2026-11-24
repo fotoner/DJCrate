@@ -5,6 +5,11 @@ import Foundation
 /// 관문의 사전 확인·백업·트랜잭션·검증·복원은 그대로다. 반영 세션이 메인 스레드 밖에서 부른다.
 /// 실제 구현(`.live`)은 DJCAdapters가 주고 조립 지점이 고른다. 시험은 가짜를 넣는다.
 public struct RekordboxWriteGate: Sendable {
+    /// 자동 저장 묶음(`DraftWriteBatch.isAutoSave`)을 쓰려는데 다른 쪽이 쓰기 잠금을 쥐고 있었다(기다리지 않았다, R9)
+    public struct LockBusy: Error, Equatable, Sendable {
+        public init() {}
+    }
+
     /// 초안을 쓴다(`dryRun`이면 끝까지 해 보고 되돌린다)
     public var write: @Sendable (DraftWriteBatch, [String: RekordboxAnalysisInput], RekordboxWriteTarget, Bool) throws -> RekordboxWriteReport
     /// 원본의 DB·분석 파일 사본을 떠서 그 사본에 써 보고 사본을 지운다. 사본을 만든 뒤 `copied`를 부른다.

@@ -100,6 +100,9 @@ struct CLIComposition: Sendable {
         return home
     }
 
+    /// 쓰기 입구와 같은 쓰기 잠금(R9). 쓰기 전 정리가 이 잠금 아래에서 기록을 판정한다(`cleanUpBeforeWrite`)
+    var writeLock: RekordboxWriteLock { .live() }
+
     /// 라이브 판정(`RekordboxWriteGuard`)을 바꿔 시험하는 명령의 관문(시점 스냅샷 복원)
     func writeGate(guard writeGuard: RekordboxWriteGuard) -> RekordboxWriteGate { .live(guard: writeGuard) }
 

@@ -331,6 +331,8 @@ struct AutoReflectionEngineTests {
         #expect(w.writes.count == 2 && w.engine.status == .held(.preBackupFailure))
         try await w.advance(30)
         #expect(w.writes.count == 2)
+        // 새 편집(사람 편집의 새 판)
+        w.cue("a", at: 30)
         try await w.edited()
         try await w.advance(3)
         #expect(w.writes.count == 3)

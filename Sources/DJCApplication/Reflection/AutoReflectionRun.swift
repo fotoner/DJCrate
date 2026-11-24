@@ -55,6 +55,10 @@ public enum AutoReflectionRun: Equatable, Sendable {
     public struct SelfTestPlaces: Equatable, Sendable {
         /// 쓰기 대상 rekordbox 폴더(사본)
         public var target: URL
+        /// 쓰기 대상 master.db(파일 링크까지 푼 경로)
+        public var database: URL
+        /// 쓰기 대상 분석 루트(share, 링크를 푼 경로)
+        public var analysisRoot: URL
         /// `DJC_HOME`
         public var home: URL
         /// 임시 폴더(대상과 `DJC_HOME`이 이 아래에 있어야 한다)
@@ -63,11 +67,17 @@ public enum AutoReflectionRun: Equatable, Sendable {
         public var liveRekordbox: URL
         /// DJCrate 사용자 폴더(`DJC_HOME`과 겹치면 안 된다)
         public var userData: URL
-        /// 사본 안 `share/PIONEER/USBANLZ`가 링크인지(SAFE-8)
+        /// 사본 안 `share`·`share/PIONEER`·`share/PIONEER/USBANLZ` 가운데 링크이거나 확인하지 못한(없는) 단계가 있는지(SAFE-8)
         public var analysisIsLink: Bool
+        /// 모든 자리의 링크를 풀었다(풀지 못한 자리가 있으면 쓰지 않는다)
+        public var resolved = true
 
-        public init(target: URL, home: URL, temporaryRoot: URL, liveRekordbox: URL, userData: URL, analysisIsLink: Bool) {
+        public init(target: URL, database: URL, analysisRoot: URL, home: URL, temporaryRoot: URL, liveRekordbox: URL, userData: URL,
+                    analysisIsLink: Bool, resolved: Bool = true) {
             self.target = target
+            self.database = database
+            self.analysisRoot = analysisRoot
+            self.resolved = resolved
             self.home = home
             self.temporaryRoot = temporaryRoot
             self.liveRekordbox = liveRekordbox
@@ -78,8 +88,10 @@ public enum AutoReflectionRun: Equatable, Sendable {
         /// 자가 테스트가 써도 되는 자리인지: 대상과 `DJC_HOME`이 임시 폴더 아래, 대상이 실제 rekordbox 폴더와 겹치지 않음,
         /// 사본 안 분석 폴더가 링크가 아님(SAFE-8), `DJC_HOME`이 DJCrate 사용자 폴더와 겹치지 않음
         public var allowsWriting: Bool {
-            Self.isInside(target, temporaryRoot) && Self.isInside(home, temporaryRoot) && !Self.overlaps(target, liveRekordbox)
-                && !analysisIsLink && !Self.overlaps(home, userData)
+            // 대상 폴더·DB 파일·분석 루트·DJC_HOME을 하나씩(링크를 푼 경로로) 본다: 파일 링크·상위 폴더 링크가 실제 자리를 가리키면 거른다
+            let places = [target, database, analysisRoot, home]
+            return resolved && !analysisIsLink && places.allSatisfy { Self.isInside($0, temporaryRoot) }
+                && !places.contains { Self.overlaps($0, liveRekordbox) } && !Self.overlaps(home, userData)
         }
 
         /// `child`가 `parent` 아래(같은 폴더는 아래가 아니다). 링크를 푼 경로의 조각으로 견준다(`/tmp/a`와 `/tmp/ab`를 섞지 않게).

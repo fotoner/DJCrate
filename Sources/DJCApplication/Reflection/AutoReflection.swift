@@ -18,10 +18,8 @@ public struct ReflectionUndoEdit: Equatable, Sendable {
     }
 }
 
-/// 자동 저장 대기열에 넣는 요청
+/// 자동 저장 대기열에 넣는 요청. ⌘S·저장 단추는 여기로 오지 않고 조정자의 저장(`ReflectionCoordinator.startWrite`)이 엔진의 차례(`exclusive`)로 한다
 public enum AutoReflectionRequest: Equatable, Sendable {
-    /// ⌘S·저장 단추: 대기 중인 자동 저장을 기다리지 않고 지금 저장한다. 쓰는 중이면 대기열 맨 앞에 넣는다(R3)
-    case saveNow
     /// 저장 뒤 ⌘Z의 역편집(R12)
     case undo(ReflectionUndoEdit)
 }
@@ -64,8 +62,12 @@ public final class AutoReflection {
     /// 영속 기록(멈춤·[취소]한 판·백업 전 실패). 읽지 못하면 멈춤으로 본다(R7)
     private var record = AutoReflectionRecord()
     private var recordUnreadable = false
-    /// 같은 원인으로 두 번 난 백업 전 실패의 보류를 새 편집 뒤 한 번 풀어 다시 시도한다(R7)
+    /// 마지막 기록 남기기가 실패했다: 멈춤·[취소]가 디스크에 없어 다시 켜면 풀릴 수 있으니 남길 때까지 자동 저장을 보류하고 판정마다 다시 남겨 본다
+    private var recordSaveFailed = false
+    /// 같은 원인으로 두 번 난 백업 전 실패의 보류를 사람 편집의 새 판이 생긴 뒤 한 번 풀어 다시 시도한다(R7)
     private var preBackupRetry = false
+    /// 백업 전 실패로 보류할 때 저장 대기에 있던 판(여기 없는 판이 생기면 다시 시도한다)
+    private var preBackupSeen: Set<DraftRevision>?
     /// 미리 보기에서 막혀 뺀 판(R6). 새 편집(새 판)이 생길 때만 다시 본다
     private var needsConfirmation: Set<DraftRevision> = []
     /// rekordbox·Agent가 둘 다 꺼진 것을 처음 본 때, 그때부터 바뀌지 않은 파일 상태, 마지막으로 본 때(R2 조건 1·4).
@@ -91,6 +93,8 @@ public final class AutoReflection {
     private var cleanupHolds: Set<ReflectionHold> = []
     /// 다음 판정에서 쓰기 기록을 다시 판정한다
     private var journalStale = false
+    /// 쓰기 잠금을 잡지 못해 기록 판정·정리를 미뤘다. 잡을 때까지 판정마다(대기 초안·실행 조건과 상관없이) 다시 한다(R11)
+    private var journalPending = false
     /// 마지막으로 쓰기 기록을 판정한 때(중단 상태는 가끔 다시 본다: CLI·다른 프로세스가 기록을 정리했을 수 있다)
     private var lastJudged: Date?
     /// 첫 읽기 뒤 시작 정리를 기다리는 수동 쓰기
@@ -124,11 +128,10 @@ public final class AutoReflection {
     }
 
     /// 대상 편집이 생겼다(저장 대기가 바뀔 때마다). 마지막 편집 뒤 T_edit를 다시 센다. 대량 유예는 처음부터 다시 센다.
-    /// 같은 원인으로 두 번 난 백업 전 실패의 보류도 새 편집이면 다시 시도한다(R7)
+    /// 같은 원인으로 두 번 난 백업 전 실패의 보류는 다시 나눈 저장 대기에 사람 편집의 새 판이 있을 때만 다시 시도한다(R7)
     public func edited() {
         lastEdit = ports.clock.now()
         grace = nil
-        preBackupRetry = true
         wake()
     }
 
@@ -139,14 +142,9 @@ public final class AutoReflection {
         wake()
     }
 
-    /// 대기열에 넣는다. ⌘S는 수동 저장(`exclusive`)으로 지금 저장한다. 역편집(R12)은 W3-F(#405)가 잇는다
+    /// 대기열에 넣는다. 역편집(R12)은 W3-F(#405)가 잇는다
     public func enqueue(_ request: AutoReflectionRequest) {
         switch request {
-        case .saveNow:
-            Task { [weak self] in
-                guard let self else { return }
-                _ = await exclusive({ [session] in await session.write(rows: Array(session.ports.library.state().rows.values)) }, whenHeld: { _ in .busy })
-            }
         case .undo:
             wake()
         }
@@ -211,15 +209,23 @@ public final class AutoReflection {
             wake()
         }
         if startupDone {
-            if interrupted != nil || journalStale {
-                journalStale = false
-                await judgeAndClean()
-            } else {
-                cleanupHolds = await session.resumeCleanups().holds
-            }
+            // 저장하지 못한 재생 목록 초안은 먼저 저장해 본다(그대로면 재시작 정리가 재생 목록 몫을 미룬다, R22)
+            let library = session.ports.library
+            if library.state().playlistDraftUnsaved { _ = library.savePlaylistDraft() }
+            // 늘 쓰기 잠금 아래에서 기록을 판정하고 기록이 없을 때만 정리한다(R11·R22: 그 사이 다른 실행이 남긴 중단의 초안을 지우지 않게)
+            journalStale = false
+            await judgeAndClean()
+            // 정리를 마치지 못한 목록만 보류한다. 잠금을 잡지 못한 것은 쓰기 입구가 기다린다
             if interrupted == nil, !cleanupHolds.isEmpty, let whenHeld { return whenHeld(cleanupHolds) }
         }
-        let result = try await work()
+        let result: T
+        do {
+            result = try await work()
+        } catch {
+            // 실패한 쓰기·복원이 기록을 남겼을 수 있다: 다음 판정에서 다시 본다
+            journalStale = true
+            throw error
+        }
         if let outcome = result as? ReflectionOutcome {
             wrote = outcome.changedLibrary
             await noteManual(outcome)
@@ -254,22 +260,27 @@ public final class AutoReflection {
         waiters.forEach { $0.resume() }
     }
 
-    /// 대상의 쓰기 기록을 잠금 아래에서 판정하고, 중단이 아니면 미정리 목록을 정리한다(R11·R22).
-    /// 다른 프로세스가 잠금을 쥐었으면 판정·정리를 미루고 보류한다
-    private func judgeAndClean() async {
+    /// 대상의 쓰기 잠금을 쥔 채 기록을 판정하고, 기록이 없으면 같은 잠금 아래에서 미정리 목록을 정리한다(R11·R22).
+    /// 다른 프로세스가 잠금을 쥐었으면 판정·정리를 미루고 잡을 때까지 판정마다 다시 한다
+    @discardableResult
+    private func judgeAndClean() async -> ReflectionSession.JournalCleanup {
         lastJudged = ports.clock.now()
-        switch await judgeJournal() {
+        let judged = await session.judgeAndResumeCleanups(lock: ports.writeLock)
+        switch judged {
+        case .busy:
+            journalPending = true
         case let .interrupted(finding):
             interrupted = finding
-        case .inProgress:
-            cleanupHolds = [.lockBusy]
-        case .none:
+            journalPending = false
+        case let .cleaned(resumed):
             interrupted = nil
-            cleanupHolds = await session.resumeCleanups().holds
+            journalPending = false
+            cleanupHolds = resumed.holds
         }
+        return judged
     }
 
-    /// 쓰기 잠금을 비차단으로 잡고 그 아래에서 기록을 판정한다. 잡지 못하면 진행 중이다
+    /// 쓰기 잠금을 비차단으로 잡고 그 아래에서 기록만 판정한다(실패 분류). 잡지 못하면 진행 중이다
     private func judgeJournal() async -> RekordboxJournalVerdict {
         let lock = ports.writeLock, gate = session.ports.gate, target = session.target
         return (try? await BlockingWork.run { () throws -> RekordboxJournalVerdict in
@@ -283,14 +294,15 @@ public final class AutoReflection {
     /// 자동 저장하는 실행이면 저장 대기가 없어도 rekordbox 실행·파일 상태를 짧은 간격으로 지켜본다(조용함이 끊기지 않게, R2)
     private func step() async -> Duration? {
         guard manualWaiting == 0, !isWriting else { return timing.idleInterval }
+        let rowLimit = timing.rowLimit, idle = timing.idleInterval, poll = timing.pollInterval
         if inventoryStale || inventory == nil {
             inventoryStale = false
             let next = await session.autoInventory(cancelled: record.cancelledRevisions, needsConfirmation: needsConfirmation)
             inventory = next
             prune(next)
+            notePreBackupRetry(next.autoRevisions(rowLimit: rowLimit))
         }
         guard let inventory, !dirty else { return nil }
-        let rowLimit = timing.rowLimit, idle = timing.idleInterval, poll = timing.pollInterval
         let hasAuto = inventory.hasAuto(rowLimit: rowLimit), leftoverCount = inventory.leftoverCount(rowLimit: rowLimit)
         var base = ReflectionConditions(leftovers: inventory.leftovers(rowLimit: rowLimit), hasPending: hasAuto || leftoverCount > 0,
                                         editingField: activity.contains(.fieldEditing), autoSaves: run.autoSaves)
@@ -300,20 +312,50 @@ public final class AutoReflection {
             publish(status: status ?? (reason.kind == .stop ? .stopped(reason) : .held(reason)), conditions: base)
             return pause
         }
-        if startupDone, journalStale || (interrupted != nil && lastJudged.map { ports.clock.now().timeIntervalSince($0) >= 60 } ?? true) {
+        // 미룬 판정(잠금을 못 잡음)·다시 보라는 요청·가끔 다시 보는 중단은 대기 초안·실행 조건과 상관없이 판정한다
+        if startupDone, journalStale || journalPending || (interrupted != nil && lastJudged.map { ports.clock.now().timeIntervalSince($0) >= 60 } ?? true) {
             journalStale = false
             await judgeAndClean()
         }
+        // 지금 걸린 사유를 모두 조건에 모은다(상태 줄이 R3 표의 겹친 줄을 가린다). 칩은 아래 갈래가 고른 첫 사유만 보인다
+        let appHolds = ports.appHolds()
+        let editing = activity.isEditing || appHolds.contains(.editing)
+        let preBackupHeld = record.preBackupFailure.map { $0.count >= 2 } == true && !preBackupRetry
+        base.holds.formUnion(appHolds)
+        if editing { base.holds.insert(.editing) }
+        if journalPending { base.holds.insert(.lockBusy) }
+        if let interrupted { base.holds.insert(.interrupted(recoveryFailed: interrupted.journal.marks.contains(.recoveryFailed))) }
+        if recordUnreadable || recordSaveFailed || record.stop == .afterFailure { base.holds.insert(.stoppedAfterFailure) }
+        if record.stop == .afterRestore { base.holds.insert(.stoppedAfterRestore) }
+        if shuttingDown { base.holds.insert(.shuttingDown) }
+        if case let .off(reason) = run { base.holds.insert(.notAutoRun(reason)) }
+        if preBackupHeld { base.holds.insert(.preBackupFailure) }
+        func interruptedHold(_ finding: RekordboxJournalFinding) -> Duration? {
+            let failed = finding.journal.marks.contains(.recoveryFailed)
+            return hold(.interrupted(recoveryFailed: failed), status: .interrupted(recoveryFailed: failed), waiting: false, pause: poll)
+        }
+        // 확인한 중단은 실행 조건보다 먼저 알린다(자동 저장하지 않는 실행도 복원 안내를 띄운다)
+        if case .off = run, let interrupted { return interruptedHold(interrupted) }
         if case let .off(reason) = run {
-            return hold(.notAutoRun(reason), status: base.hasPending ? .held(.notAutoRun(reason)) : .saved, waiting: false, pause: idle)
+            return hold(.notAutoRun(reason), status: base.hasPending ? .held(.notAutoRun(reason)) : .saved, waiting: false,
+                        pause: journalPending || interrupted != nil ? poll : idle)
         }
         guard startupDone else { return hold(.starting, pause: poll) }
         // 멈춤·중단 동안에도 지켜본다: ⌘S·복원으로 풀리면 조용함을 처음부터 다시 세지 않는다
         let watch = await observeLibrary()
         guard !dirty else { return nil }
-        if let interrupted {
-            let failed = interrupted.journal.marks.contains(.recoveryFailed)
-            return hold(.interrupted(recoveryFailed: failed), status: .interrupted(recoveryFailed: failed), waiting: false, pause: poll)
+        switch watch.run {
+        case .running, .unknown: base.holds.insert(.rekordboxRunning)
+        case .agentOnly: base.holds.insert(.agentRunning)
+        case .stopped: break
+        }
+        if let wal = watch.stamps.walSize, wal > 0 { base.holds.insert(.walRemains) }
+        if watch.stamps.shmExists { base.holds.insert(.shmRemains) }
+        if let interrupted { return interruptedHold(interrupted) }
+        if recordSaveFailed {
+            // 남기지 못한 기록을 다시 남겨 본다(되면 깨워 이어 간다)
+            saveRecord()
+            return hold(.stoppedAfterFailure, waiting: false, pause: poll)
         }
         if recordUnreadable || record.stop == .afterFailure { return hold(.stoppedAfterFailure, waiting: false, pause: poll) }
         if record.stop == .afterRestore { return hold(.stoppedAfterRestore, waiting: false, pause: poll) }
@@ -323,19 +365,32 @@ public final class AutoReflection {
             publish(status: leftoverCount > 0 ? .leftover(count: leftoverCount) : .saved, conditions: base)
             return poll
         }
-        if record.preBackupFailure.map({ $0.count >= 2 }) == true, !preBackupRetry {
-            return hold(.preBackupFailure, waiting: false, pause: poll)
-        }
+        if preBackupHeld { return hold(.preBackupFailure, waiting: false, pause: poll) }
         let now = ports.clock.now()
-        let appHolds = ports.appHolds()
-        if activity.isEditing || appHolds.contains(.editing) {
+        if editing {
             lastEdit = now
+            grace = nil
             return hold(.editing, status: .pending, pause: poll)
         }
         if let lastEdit, now < lastEdit + Self.seconds(timing.editDelay) {
             base.waiting = true
             publish(status: .pending, conditions: base)
             return .seconds(min((lastEdit + Self.seconds(timing.editDelay)).timeIntervalSince(now), Self.seconds(poll)))
+        }
+        // 앱 보류 사유·rekordbox 켜짐은 대량 유예보다 먼저 본다. 그동안은 유예를 세지 않는다(풀린 뒤 처음부터 다시 센다, R14·R16)
+        if let reason = Self.firstHold(appHolds.subtracting([.editing])) {
+            grace = nil
+            return hold(reason, pause: poll)
+        }
+        // rekordbox·Agent가 둘 다 꺼진 뒤 조용함 다섯 조건(R2). 5번(새로 읽은 사본으로 base 확인)은 쓰기의 미리 보기가 한다
+        switch watch.run {
+        case .running, .unknown:
+            grace = nil
+            return hold(.rekordboxRunning, status: .rekordboxRunning(agentOnly: false), pause: poll)
+        case .agentOnly:
+            grace = nil
+            return hold(.agentRunning, status: .rekordboxRunning(agentOnly: true), pause: poll)
+        case .stopped: break
         }
         // 대량 유예(R14): 유예 동안 「N초 뒤 저장 · [취소]」. ⌘Q·창 전환으로 앞당기지 않는다
         let autoRevisions = inventory.autoRevisions(rowLimit: rowLimit)
@@ -350,13 +405,6 @@ public final class AutoReflection {
             }
             graceAccepted = grace.revisions
             self.grace = nil
-        }
-        if let reason = Self.firstHold(appHolds.subtracting([.editing])) { return hold(reason, pause: poll) }
-        // rekordbox·Agent가 둘 다 꺼진 뒤 조용함 다섯 조건(R2). 5번(새로 읽은 사본으로 base 확인)은 쓰기의 미리 보기가 한다
-        switch watch.run {
-        case .running, .unknown: return hold(.rekordboxRunning, status: .rekordboxRunning(agentOnly: false), pause: poll)
-        case .agentOnly: return hold(.agentRunning, status: .rekordboxRunning(agentOnly: true), pause: poll)
-        case .stopped: break
         }
         if let wal = watch.stamps.walSize, wal > 0 { return hold(.walRemains, pause: poll) }
         if watch.stamps.shmExists { return hold(.shmRemains, pause: poll) }
@@ -373,23 +421,18 @@ public final class AutoReflection {
         case .noClone, .unknown: return hold(.backupNoClone, status: .leftover(count: max(leftoverCount, 1)), waiting: false, pause: poll)
         case .lowSpace: return hold(.lowDiskSpace, status: .leftover(count: max(leftoverCount, 1)), waiting: false, pause: poll)
         }
-        // 다른 프로세스가 쓰는 중이면(쓰기 잠금) 잡을 수 있을 때까지 보류하고, 잡으면 그 아래에서 기록을 판정한다(R9·R11)
-        switch await judgeJournal() {
-        case .inProgress: return hold(.lockBusy, pause: poll)
-        case let .interrupted(finding):
-            interrupted = finding
-            let failed = finding.journal.marks.contains(.recoveryFailed)
-            return hold(.interrupted(recoveryFailed: failed), status: .interrupted(recoveryFailed: failed), waiting: false, pause: poll)
-        case .none: break
-        }
-        // 쓰기마다 그 전에 남은 미정리 목록을 정리한다. 마치지 못한 목록이 있으면 그 대상의 다음 쓰기를 보류한다(R22: 쓴 단계를 다시 쓰지 않게)
-        let resumed = await session.resumeCleanups()
-        cleanupHolds = resumed.holds
-        if let reason = Self.firstHold(cleanupHolds) { return hold(reason, pause: poll) }
-        // 정리로 초안이 바뀌었으면 저장 대기를 다시 나눈다
-        if resumed.finished > 0 {
-            inventoryStale = true
-            return nil
+        // 다른 프로세스가 쓰는 중이면(쓰기 잠금) 잡을 수 있을 때까지 보류하고, 잡으면 그 아래에서 기록을 판정하고 남은 미정리 목록을 정리한다
+        // (R9·R11·R22). 마치지 못한 목록이 있으면 그 대상의 다음 쓰기를 보류한다(쓴 단계를 다시 쓰지 않게)
+        switch await judgeAndClean() {
+        case .busy: return hold(.lockBusy, pause: poll)
+        case let .interrupted(finding): return interruptedHold(finding)
+        case let .cleaned(resumed):
+            if let reason = Self.firstHold(cleanupHolds) { return hold(reason, pause: poll) }
+            // 정리로 초안이 바뀌었으면 저장 대기를 다시 나눈다
+            if resumed.finished > 0 {
+                inventoryStale = true
+                return nil
+            }
         }
         // 오늘 뜰 차례면 시점 스냅샷을 먼저 뜬다(R13). 잠금을 못 잡았거나 중단 기록이 있으면 뜨지 않고 보류한다
         base.waiting = true
@@ -403,6 +446,23 @@ public final class AutoReflection {
         guard !dirty, manualWaiting == 0, !isWriting else { return nil }
         guard let chunk = inventory.chunk(rowLimit: rowLimit) else { return poll }
         return await write(chunk)
+    }
+
+    /// 세션이 쓰기 잠금을 걸기 직전(같은 메인 액터 구간)에 다시 보는 조건(R1·R16): 준비하는 동안 편집을 시작했거나 앱 보류 사유가 생겼거나
+    /// 새 신호(편집·요청)가 왔으면 쓰지 않고 다시 판정한다
+    private func mayStartWrite() -> Bool {
+        !activity.isEditing && ports.appHolds().isEmpty && !shuttingDown && !stopped && !dirty && manualWaiting == 0
+    }
+
+    /// 같은 원인으로 두 번 난 백업 전 실패의 보류는 사람 편집의 새 판이 생겼을 때만 한 번 풀어 다시 시도한다(R7).
+    /// 다시 읽기처럼 판이 그대로인 변경으로는 풀지 않는다
+    private func notePreBackupRetry(_ revisions: Set<DraftRevision>) {
+        guard let failure = record.preBackupFailure, failure.count >= 2, !preBackupRetry else { return }
+        guard let seen = preBackupSeen else {
+            preBackupSeen = revisions
+            return
+        }
+        if !revisions.isSubset(of: seen) { preBackupRetry = true }
     }
 
     /// rekordbox·Agent 실행 여부와 대상 폴더의 파일 상태를 메인 액터 밖에서 보고 조용함을 센다(R2 조건 1·4).
@@ -432,9 +492,9 @@ public final class AutoReflection {
     }
 
     /// 이 엔진이 쓰는 동안은 관문이 rekordbox를 다시 본다: 쓴 뒤에는 조용함을 이어 가되 파일 상태는 새 기준으로 받는다
+    /// 마지막으로 지켜본 때는 그대로 둔다: 쓰고 다시 읽느라 지켜보지 못한 틈이 길면(3초 넘게) 다음 관찰이 조용함을 처음부터 다시 센다(R2)
     private func wroteLibrary() {
         guard quiet != nil else { return }
-        quiet?.checked = ports.clock.now()
         rebaselineQuiet = true
     }
 
@@ -442,7 +502,7 @@ public final class AutoReflection {
     private func write(_ chunk: AutoReflectionChunk) async -> Duration? {
         isWriting = true
         publish(status: .writing, conditions: conditions(writing: true))
-        let outcome = await session.autoWrite(chunk)
+        let outcome = await session.autoWrite(chunk, mayWrite: { [unowned self] in mayStartWrite() })
         isWriting = false
         inventoryStale = true
         defer {
@@ -454,13 +514,23 @@ public final class AutoReflection {
             wroteLibrary()
             needsConfirmation.formUnion(unwritten)
             grace = nil
+            preBackupSeen = nil
             if record.preBackupFailure != nil {
                 record.preBackupFailure = nil
                 saveRecord()
             }
             return nil
+        case .held:
+            // 준비하는 동안 보류 사유·편집·새 신호가 생겼다: 곧바로 다시 판정해 알린다
+            return nil
         case let .nothingWritten(unwritten):
             needsConfirmation.formUnion(unwritten)
+            return timing.pollInterval
+        case .lockBusy:
+            // 판정 뒤 쓰기 입구가 잡기 전에 다른 프로세스가 잠금을 잡았다: 기다리지 않고 잠금 보류로 알린 뒤 다시 본다(R9)
+            var held = conditions(writing: false)
+            held.holds.insert(.lockBusy)
+            publish(status: .held(.lockBusy), conditions: held)
             return timing.pollInterval
         case .busy, .cancelled:
             return timing.pollInterval
@@ -494,6 +564,8 @@ public final class AutoReflection {
             let count = record.preBackupFailure?.cause == cause ? (record.preBackupFailure?.count ?? 0) + 1 : 1
             record.preBackupFailure = .init(cause: cause, count: count)
             preBackupRetry = false
+            // 보류하면 지금 저장 대기의 판을 적어 둔다(사람 편집의 새 판이 생기면 다시 시도한다)
+            preBackupSeen = count >= 2 ? inventory?.autoRevisions(rowLimit: timing.rowLimit) : nil
             saveRecord()
             // 두 번째면 곧바로 다시 판정해 보류를 알린다
             return count < 2
@@ -504,9 +576,12 @@ public final class AutoReflection {
     private func noteManual(_ outcome: ReflectionOutcome) async {
         switch outcome {
         case .written:
+            // 멈춤·백업 전 실패 보류·읽지 못한 기록만 푼다. [취소]한 판은 실제로 사라졌을 때만 솎는다(일부만 쓴 저장이 다른 곡의 [취소]를 풀지 않게, R14)
             needsConfirmation = []
             recordUnreadable = false
-            record = AutoReflectionRecord()
+            record.stop = nil
+            record.preBackupFailure = nil
+            preBackupSeen = nil
             saveRecord()
         case .restored:
             record.stop = .afterRestore
@@ -530,8 +605,10 @@ public final class AutoReflection {
 
     // MARK: - 도움
 
-    /// 새 판을 받은(다음 편집) 초안의 [취소]·확인 필요는 저절로 풀린다
+    /// 새 판을 받은(다음 편집) 초안의 [취소]·확인 필요는 저절로 풀린다. 재생 목록 초안을 판정할 수 없는 동안(디스크 ≠ 메모리·저장 실패)은
+    /// 판이 사라졌는지 모르므로 솎지 않는다
     private func prune(_ inventory: AutoReflectionInventory) {
+        guard !inventory.playlistUndetermined else { return }
         let known = inventory.known
         needsConfirmation.formIntersection(known)
         let cancelled = record.cancelledRevisions.intersection(known)
@@ -572,13 +649,21 @@ public final class AutoReflection {
         ports.publish(status, conditions)
     }
 
-    /// 기록을 남긴다. 남기기는 메인 액터 밖에서 차례대로 한다(앞 남기기가 끝난 뒤 다음 것을 남겨 옛 기록이 새 기록을 덮지 않게)
+    /// 기록을 남긴다. 남기기는 메인 액터 밖에서 차례대로 한다(앞 남기기가 끝난 뒤 다음 것을 남겨 옛 기록이 새 기록을 덮지 않게).
+    /// 실패하면 남길 때까지 자동 저장을 보류한다(R7·R8·R14: 멈춤·[취소]를 남기지 못한 채 쓰지 않는다)
     private func saveRecord() {
         let records = ports.records, record = record, previous = recordSave
-        recordSave = Task {
+        recordSave = Task { [weak self] in
             await previous?.value
-            await BlockingWork.run(qos: .utility) { try? records.save(record) }
+            let saved = await BlockingWork.run(qos: .utility) { (try? records.save(record)) != nil }
+            self?.noteRecordSave(saved)
         }
+    }
+
+    private func noteRecordSave(_ saved: Bool) {
+        guard recordSaveFailed == saved else { return }
+        recordSaveFailed = !saved
+        wake()
     }
 
     /// 마지막으로 맡긴 기록 남기기(시험·자가 테스트가 기다린다)

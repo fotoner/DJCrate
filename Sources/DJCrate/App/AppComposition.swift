@@ -164,22 +164,55 @@ final class AppComposition {
 
     /// 자가 테스트가 쓰기 전에 확인하는 자리(R18). `DJC_HOME`이 없으면 nil(자가 테스트로 보지 않는다)
     static func selfTestPlaces(location: LibraryLocation, environment: [String: String]) -> AutoReflectionRun.SelfTestPlaces? {
+        selfTestPlaces(location: location, environment: environment, live: LibrarySnapshot.realRekordboxDirectory, userData: DJCIdentity.userSupportDirectory)
+    }
+
+    /// - Parameters:
+    ///   - live: 실제 rekordbox 폴더, `userData`: DJCrate 사용자 폴더(시험은 임시 폴더의 자리를 준다)
+    static func selfTestPlaces(location: LibraryLocation, environment: [String: String], live: URL, userData: URL) -> AutoReflectionRun.SelfTestPlaces? {
         guard let home = environment["DJC_HOME"], !home.isEmpty else { return nil }
+        var resolved = true
         func real(_ url: URL) -> URL {
-            guard let resolved = realpath(url.path, nil) else { return url.standardizedFileURL }
-            defer { free(resolved) }
-            return URL(filePath: String(cString: resolved), directoryHint: .isDirectory)
+            if let path = Self.resolvedPath(url) { return path }
+            resolved = false
+            return url.standardizedFileURL
         }
         let target = real(location.rekordboxDirectory)
         // 임시 폴더는 사용자 임시 영역($TMPDIR)과 /tmp 가운데 대상이 든 곳
         let roots = [real(FileManager.default.temporaryDirectory), real(URL(filePath: "/tmp"))]
         let temporary = roots.first { target.path.hasPrefix($0.path + "/") } ?? roots[0]
-        var info = stat()
-        let analysis = target.appending(path: "share/PIONEER/USBANLZ")
-        let analysisIsLink = lstat(analysis.path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFLNK
-        return AutoReflectionRun.SelfTestPlaces(target: target, home: real(URL(filePath: home)), temporaryRoot: temporary,
-                                                liveRekordbox: real(LibrarySnapshot.realRekordboxDirectory),
-                                                userData: real(DJCIdentity.userSupportDirectory), analysisIsLink: analysisIsLink)
+        // 분석 폴더 사슬(share → PIONEER → USBANLZ)은 단계마다 실제 폴더여야 한다(SAFE-8: 링크·없는 단계가 있으면 쓰지 않는다)
+        let share = location.shareRoot ?? location.rekordboxDirectory.appending(path: "share")
+        let shareParent = real(share.deletingLastPathComponent())
+        let chain = ["", "PIONEER", "PIONEER/USBANLZ"].map { shareParent.appending(path: share.lastPathComponent).appending(path: $0) }
+        let analysisIsLink = chain.contains { folder in
+            var info = stat()
+            return lstat(folder.path, &info) != 0 || (info.st_mode & S_IFMT) != S_IFDIR
+        }
+        return AutoReflectionRun.SelfTestPlaces(target: target, database: real(location.database), analysisRoot: real(share),
+                                                home: real(URL(filePath: home)), temporaryRoot: temporary,
+                                                liveRekordbox: real(live), userData: real(userData), analysisIsLink: analysisIsLink,
+                                                resolved: resolved)
+    }
+
+    /// 링크를 푼 경로. 아직 없는 경로는 가장 가까운 존재하는 조상까지 풀고 나머지를 붙인다(없는 DJC_HOME 아래로 링크가 이어지지 않게).
+    /// 건너뛴 단계가 있기는 한데 풀리지 않으면(끊긴 링크·읽기 실패) nil
+    static func resolvedPath(_ url: URL) -> URL? {
+        var path = url.standardizedFileURL.path
+        var rest: [String] = []
+        while true {
+            if let resolved = realpath(path, nil) {
+                defer { free(resolved) }
+                return rest.reduce(URL(filePath: String(cString: resolved))) { $0.appending(path: $1) }
+            }
+            var info = stat()
+            // 있는데 풀리지 않는 단계(끊긴 링크 등)는 그 너머를 모른다
+            guard lstat(path, &info) != 0, errno == ENOENT else { return nil }
+            let parent = (path as NSString).deletingLastPathComponent
+            guard parent != path, !parent.isEmpty else { return nil }
+            rest.insert((path as NSString).lastPathComponent, at: 0)
+            path = parent
+        }
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
@@ -362,8 +395,13 @@ final class AppComposition {
                                         choose: { [weak store] prompt in store?.whileAwaitingConfirmation { prompter.choose(prompt) } ?? prompter.choose(prompt) }),
                                     results: ReflectionResults { presenter.publish($0) }, runningApps: runningApps)
         let session = ReflectionSession(location: store.location, ports: ports, options: options)
-        store.music.write = { try await session.syncITunes($0) }
-        return ReflectionCoordinator(session: session, store: store, prompter: prompter)
+        let coordinator = ReflectionCoordinator(session: session, store: store, prompter: prompter)
+        // iTunes 동기화 쓰기도 조정자를 거쳐 엔진의 차례로 한다. 조정자를 약하게 잡는다(조정자가 저장소를 든다)
+        store.music.write = { [weak coordinator] change in
+            guard let coordinator else { return try await session.syncITunes(change) }
+            return try await coordinator.syncITunes(change)
+        }
+        return coordinator
     }
 
     /// 전에 잰 음량, 없으면 재서 캐시에 남긴다(재지 못하면 nil). 분석 붙이기와 곡 넣기가 같이 쓴다.

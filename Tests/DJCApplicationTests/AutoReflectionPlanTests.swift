@@ -14,6 +14,8 @@ struct AutoReflectionPlanTests {
     // MARK: - R18 실행 조건
 
     static let places = AutoReflectionRun.SelfTestPlaces(target: URL(filePath: "/private/var/tmp/run/rekordbox"),
+                                                         database: URL(filePath: "/private/var/tmp/run/rekordbox/master.db"),
+                                                         analysisRoot: URL(filePath: "/private/var/tmp/run/rekordbox/share"),
                                                          home: URL(filePath: "/private/var/tmp/run/home"),
                                                          temporaryRoot: URL(filePath: "/private/var/tmp"),
                                                          liveRekordbox: URL(filePath: "/Users/me/Library/Pioneer/rekordbox"),
@@ -66,6 +68,14 @@ struct AutoReflectionPlanTests {
         #expect(run { $0.liveRekordbox = URL(filePath: "/PRIVATE/var/tmp/run/rekordbox/sub") } == .off(.unsafeSelfTest), "대소문자를 가리지 않는다")
         // 사본 안 USBANLZ가 링크(SAFE-8)
         #expect(run { $0.analysisIsLink = true } == .off(.unsafeSelfTest))
+        // 쓰기 대상 DB 파일·분석 루트가 링크로 실제 rekordbox 폴더나 임시 폴더 밖을 가리킨다(파일 단위로 링크를 푼 경로)
+        #expect(run { $0.database = $0.liveRekordbox.appending(path: "master.db") } == .off(.unsafeSelfTest))
+        #expect(run { $0.analysisRoot = $0.liveRekordbox.appending(path: "share") } == .off(.unsafeSelfTest))
+        #expect(run { $0.database = URL(filePath: "/Users/me/copy/master.db") } == .off(.unsafeSelfTest))
+        // 링크를 풀지 못한 자리가 있다
+        #expect(run { $0.resolved = false } == .off(.unsafeSelfTest))
+        // DJC_HOME이 실제 rekordbox 폴더와 겹침
+        #expect(run { $0.liveRekordbox = $0.home } == .off(.unsafeSelfTest))
         // DJC_HOME이 사용자 폴더와 겹침
         #expect(run { $0.userData = URL(filePath: "/private/var/tmp/run") } == .off(.unsafeSelfTest))
     }

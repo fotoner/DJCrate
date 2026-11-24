@@ -15,6 +15,8 @@ final class AutoReflectionWorld {
     var snapshot: AutoSnapshotGate = .satisfied
     /// 시점 스냅샷 포트를 부른 때마다 그때까지 관문이 쓴 횟수
     var snapshotCalls: [Int] = []
+    /// 시점 스냅샷 포트를 부를 때 한다(준비하는 동안 바깥에서 생긴 일을 흉내 낸다)
+    var onSnapshot: (@MainActor () -> Void)?
     var run: AutoReflectionRun = .live
     var timing = AutoReflectionTiming(editDelay: .seconds(3), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50, rowLimit: 200,
                                       successToasts: 5)
@@ -45,8 +47,11 @@ final class AutoReflectionWorld {
     }
 
     func start() async throws {
-        let ports = fakes.ports(holds: { [unowned self] in appHolds }, pointSnapshot: { [unowned self] in
+        // 시험이 끝나 세계가 사라진 뒤에도 엔진은 마지막 신호로 한 번 더 판정할 수 있다: 그때는 보류해 아무것도 하지 않는다
+        let ports = fakes.ports(holds: { [weak self] in self?.appHolds ?? [.shuttingDown] }, pointSnapshot: { [weak self] in
+            guard let self else { return .held(.shuttingDown) }
             snapshotCalls.append(h.gateCalls.value.writes.count)
+            onSnapshot?()
             return snapshot
         })
         engine = AutoReflection(session: h.session, ports: ports, run: run, timing: timing)

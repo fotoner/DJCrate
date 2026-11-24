@@ -2,6 +2,7 @@ import DJCApplication
 import DJCDomain
 import Foundation
 import RekordboxKit
+import Synchronization
 
 extension RekordboxWriteGate {
     /// 실제 쓰기 관문. `writeGuard`는 시험이 시점 스냅샷 복원의 라이브 판정·단계 훅·잠금 폴더를 바꿀 때만 준다.
@@ -10,10 +11,12 @@ extension RekordboxWriteGate {
     public static func live(guard writeGuard: RekordboxWriteGuard = .system) -> Self {
         var gate = Self(
             write: { batch, inputs, target, dryRun in
-                try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags, artworks: batch.artworks,
-                                          analysisInputs: inputs, playlistDraft: batch.playlists, merges: batch.merges,
-                                          histories: batch.histories, to: target.database, dryRun: dryRun, backups: target.backups, shareRoot: target.shareRoot,
-                                          guard: writeGuard, record: dryRun ? nil : batch.draftRecord)
+                try autoSave(batch.isAutoSave && !dryRun, writeGuard) { writeGuard in
+                    try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags, artworks: batch.artworks,
+                                              analysisInputs: inputs, playlistDraft: batch.playlists, merges: batch.merges,
+                                              histories: batch.histories, to: target.database, dryRun: dryRun, backups: target.backups,
+                                              shareRoot: target.shareRoot, guard: writeGuard, record: dryRun ? nil : batch.draftRecord)
+                }
             },
             preview: { batch, inputs, source, copied in
                 try await WritePreviewSnapshot.withCopy(from: source.database, shareRoot: source.shareRoot ?? RekordboxShare.directory,
@@ -100,6 +103,45 @@ extension RekordboxWriteGate {
         }
         return gate
     }
+
+    /// 자동 저장 묶음의 쓰기(R7·R9). 입구의 단계는 그대로 두고 두 가지만 다르게 알린다:
+    /// - 쓰기 잠금을 기다리지 않는다. 다른 쪽이 쥐고 있으면 `LockBusy`(엔진은 잠금 보류로 보고 다음 판정에서 다시 본다)
+    /// - 백업을 뜬 뒤(쓰기 연결을 열기 직전의 재확인을 지난 뒤) 실패하면 백업 뒤 실패(`writeRolledBack`)로 알린다. 입구가 이미 켜짐·되돌림·
+    ///   검증 실패·복구 실패로 알린 것과 강제 종료 흉내는 그대로다(커밋 전 롤백을 백업 전 실패로 세지 않게, 엔진이 멈춘다)
+    static func autoSave<T>(_ enabled: Bool, _ writeGuard: RekordboxWriteGuard, _ body: (RekordboxWriteGuard) throws -> T) throws -> T {
+        guard enabled else { return try body(writeGuard) }
+        let seen = AutoSaveSteps()
+        var guarded = writeGuard
+        guarded.locks.waits = false
+        let contended = writeGuard.locks.contended, checkpoint = writeGuard.hooks.checkpoint
+        guarded.locks.contended = { key in
+            seen.contended.store(true, ordering: .relaxed)
+            contended(key)
+        }
+        guarded.hooks.checkpoint = { moment in
+            if moment == .recheck(.begin) { seen.backedUp.store(true, ordering: .relaxed) }
+            try checkpoint(moment)
+        }
+        do {
+            return try body(guarded)
+        } catch {
+            let backedUp = seen.backedUp.load(ordering: .relaxed)
+            if !backedUp, seen.contended.load(ordering: .relaxed) { throw RekordboxWriteGate.LockBusy() }
+            guard backedUp, !(error is RekordboxWriteStop) else { throw error }
+            switch error as? DJCError {
+            case .rekordboxRunning?, .writeAheadLogPresent?, .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?, .pointRestoreFailed?:
+                throw error
+            default:
+                throw DJCError.writeRolledBack(DJCError.reason(of: error))
+            }
+        }
+    }
+}
+
+/// 자동 저장 쓰기가 지난 자리(잠금 경합·백업 뒤)
+private final class AutoSaveSteps: Sendable {
+    let contended = Atomic(false)
+    let backedUp = Atomic(false)
 }
 
 extension DraftWriteBatch {

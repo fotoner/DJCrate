@@ -78,7 +78,7 @@ enum MainCommands {
         target.shareRoot = nil
         let composition = CLIComposition.live
         // 앱이 쓴 뒤 정리 전에 멈춰 남은 미정리 목록이 있으면 그 정리를 먼저 한다(R22: 앱이 이미 쓴 초안을 다시 쓰지 않게). 초안은 그 뒤에 읽는다
-        if !args.contains("--dry-run") { try await composition.reflection().cleanUpBeforeWrite(to: target) }
+        if !args.contains("--dry-run") { try await composition.reflection().cleanUpBeforeWrite(to: target, lock: composition.writeLock) }
         let uuids = value(after: "--uuid", in: args).map { $0.components(separatedBy: ",") } ?? composition.drafts.cueDraftUUIDs().sorted()
         let drafts = uuids.compactMap(composition.drafts.cueDraft)
         // 앱과 같은 반영 세션. 쓴 초안은 지우지 않는다(앱과 다름, 사용자 결정 2026-10-10: 세션 옵션 `liveCLI`가 끈다).
@@ -118,7 +118,7 @@ enum MainCommands {
             }
         }
         // 앱의 곡 넣기와 같은 반영 세션(추가 목록 없이 받은 계획으로 바로 넣는 단계). 쓰기 전에 그 대상의 미정리 목록을 먼저 정리한다(R22)
-        if !args.contains("--dry-run") { try await CLIComposition.live.reflection().cleanUpBeforeWrite(to: target) }
+        if !args.contains("--dry-run") { try await CLIComposition.live.reflection().cleanUpBeforeWrite(to: target, lock: CLIComposition.live.writeLock) }
         let report = try CLIComposition.live.reflection().addTracks(TrackAddBatch(plans: prepared.plans, analyses: prepared.analyses), to: target,
                                                                     dryRun: args.contains("--dry-run"))
         for o in report.added { print("\(o.written ? "✓" : "✗") \(o.title.prefix(40))\(o.contentID.map { " · ID \($0)" } ?? "")\(o.reason.map { " · \($0)" } ?? "")") }
@@ -131,7 +131,7 @@ enum MainCommands {
         guard let target = RekordboxWriteTarget.cli(args) else { throw UsageError() }
         let ids = operands(args, valued: ["--db", "--share"])
         guard !ids.isEmpty else { throw UsageError() }
-        if !args.contains("--dry-run") { try await CLIComposition.live.reflection().cleanUpBeforeWrite(to: target) }
+        if !args.contains("--dry-run") { try await CLIComposition.live.reflection().cleanUpBeforeWrite(to: target, lock: CLIComposition.live.writeLock) }
         let report = try CLIComposition.live.reflection().deleteTracks(ids, from: target, dryRun: args.contains("--dry-run"))
         for o in report.deleted { print("\(o.written ? "✓" : "✗") \(o.title.prefix(40)) · ID \(o.contentID ?? "")\(o.reason.map { " · \($0)" } ?? "")") }
         print(String(ui: "\(report.dryRun ? String(ui: "미리 보기(되돌림)") : String(ui: "뺌")) · \(report.deleted.filter(\.written).count)곡 · 지운 파일(분석·앨범아트) \(report.removedFiles.count)개 · 백업 \(report.backup ?? String(ui: "없음"))"))
@@ -171,7 +171,7 @@ enum MainCommands {
         // 앱과 같은 반영 세션. 초안은 되살리지 않는다(앱과 다름, 사용자 결정 2026-10-10: 세션 옵션 `liveCLI`가 끈다). 백업은 폴더만 안다.
         let backup = RekordboxWriteBackup(url: URL(filePath: folder), createdAt: .distantPast, isWrite: true)
         // 복원 전에도 남은 미정리 목록을 먼저 정리한다(R22). 복원은 고치는 쓰기라 정리를 마치지 못해도 막지 않는다
-        _ = await CLIComposition.live.reflection().resumeCleanups(for: target)
+        _ = await CLIComposition.live.reflection().judgeAndResumeCleanups(lock: CLIComposition.live.writeLock, waits: true, for: target)
         let saved = try await CLIComposition.live.reflection().restoreBackup(backup, to: target)
         print(String(ui: "되돌림 완료 · 되돌리기 전 상태 백업: \(saved.path)"))
     }
