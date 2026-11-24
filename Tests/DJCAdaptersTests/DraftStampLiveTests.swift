@@ -105,6 +105,39 @@ struct DraftStampLiveTests {
         #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.human, .link])
     }
 
+    nonisolated static func rated(_ uuid: String) -> TagDraft {
+        var draft = TagDraft(trackUUID: uuid, base: TagFields())
+        draft.fields.rating = "3"
+        return draft
+    }
+
+    /// 복원이 되살린 초안(`.restored`)의 저장이 실패한 뒤 덱·태그 재시도가 같은 내용을 사람 편집 포트로 다시 저장해도 되살린 출처를 잇는다(리뷰 F5):
+    /// 실패한 입력과 같은 내용을 다시 저장하면 그 입력의 출처로 저장한다. 내용이 다르면(사람이 고침) 그 포트의 출처다
+    @Test func 저장에_실패한_되살린_초안을_같은_내용으로_다시_저장하면_되살린_출처를_잇는다() throws {
+        let folder = try TemporaryFolder()
+        let human = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let restored = human.with(origin: .restored)
+        let stamps = DraftStampStore.folder(home: folder.url)
+        try FileManager.default.createDirectory(at: stamps, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: stamps.path)
+        let revived = Self.cue("a")
+        restored.saveCue(revived)
+        restored.saveTags([Self.rated("t")])
+        restored.flush()
+        #expect(human.stamp(DraftKey(.cue, "a")) == nil && human.failures().contains { $0.trackUUID == "a" }, "되살린 저장이 실패했다")
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stamps.path)
+        // 덱의 「다시 적용」·태그 재시도: 같은 내용을 사람 편집 포트로 다시 저장한다
+        human.saveCue(revived)
+        human.saveTags([Self.rated("t")])
+        human.flush()
+        #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.restored], "큐: 되살린 출처를 잇는다")
+        #expect(human.stamp(DraftKey(.tag, "t"))?.origins == [.restored], "태그: 되살린 출처를 잇는다")
+        // 사람이 내용을 고쳐 저장하면 그 편집은 사람 출처가 더해진다
+        human.saveCue(Self.cue("a", at: 5))
+        human.flush()
+        #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.restored, .human])
+    }
+
     // MARK: 제안 판정(앱·CLI)
 
     @Test func 앱_편집_포트가_저장한_초안은_모든_종류가_제안이_아니다() throws {

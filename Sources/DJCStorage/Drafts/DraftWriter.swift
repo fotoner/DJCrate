@@ -12,6 +12,8 @@ public final class DraftWriter: Sendable {
 
     private let queue = DispatchQueue(label: "djc.draft-writer", qos: .utility)
     private let tagFailures = Mutex<[String: Set<String>]>([:])
+    /// 저장에 실패한 태그 입력과 그 쓰기(출처가 든 쓰기 함수). 같은 내용을 다시 저장하면 이 쓰기로 한다(출처를 잇는다, #295 리뷰 F5)
+    private let failedTagWrites = Mutex<[String: [String: (draft: TagDraft, write: @Sendable (TagDraft, URL) throws -> Void)]]>([:])
     private let records = Mutex(Records())
 
     public init() {}
@@ -28,7 +30,7 @@ public final class DraftWriter: Sendable {
         var uuid: String
     }
 
-    private enum Input: Sendable {
+    private enum Input: Equatable, Sendable {
         /// 게인은 nil이 초안 지우기다.
         case cue(CueDraft), grid(GridDraft), gain(Double?)
     }
@@ -122,13 +124,17 @@ public final class DraftWriter: Sendable {
         }
     }
 
+    /// 저장에 실패해 아직 저장하지 못한 입력과 같은 내용을 다시 맡으면(덱의 「다시 적용」 등) 그 입력의 쓰기로 저장한다. 쓰기에는 맡긴 포트의
+    /// 출처가 들어 있어, 복원이 되살린 초안을 사람 편집 포트로 다시 저장해도 되살린 출처를 잇는다(#295 리뷰 F5). 내용이 다르면 새 쓰기다
     private func enqueue(_ input: Input, key: Key, write: @escaping @Sendable () throws -> Void,
                          completion: @escaping @Sendable (Failure?) -> Void) {
         records.withLock { records in
             records.revision += 1
+            let previous = records.values[key]
+            let retrying = previous.map { $0.state.failure != nil && $0.state.savedRevision != $0.state.revision && $0.input == input } ?? false
             let record = Record(input: input, state: SaveState(revision: records.revision,
-                                                              savedRevision: records.values[key]?.state.savedRevision,
-                                                              failure: records.values[key]?.state.failure), write: write)
+                                                              savedRevision: previous?.state.savedRevision,
+                                                              failure: previous?.state.failure), write: retrying ? previous!.write : write)
             records.values[key] = record
             queue.async { self.perform(record, key: key, completion: completion) }
         }
@@ -238,11 +244,16 @@ public final class DraftWriter: Sendable {
         let key = directory.resolvingSymlinksInPath().standardizedFileURL.path
         queue.async {
             for draft in drafts {
+                // 저장에 실패한 같은 내용을 다시 저장하면 그때의 쓰기(출처)로 한다(큐·그리드·게인의 `enqueue`와 같다)
+                let failed = self.failedTagWrites.withLock { $0[key]?[draft.trackUUID] }
+                let chosen = failed.flatMap { $0.draft == draft ? $0.write : nil } ?? write
                 do {
-                    try write(draft, directory)
+                    try chosen(draft, directory)
                     _ = self.tagFailures.withLock { $0[key]?.remove(draft.trackUUID) }
+                    _ = self.failedTagWrites.withLock { $0[key]?.removeValue(forKey: draft.trackUUID) }
                 } catch {
                     _ = self.tagFailures.withLock { $0[key, default: []].insert(draft.trackUUID) }
+                    self.failedTagWrites.withLock { $0[key, default: [:]][draft.trackUUID] = (draft, chosen) }
                 }
             }
         }
