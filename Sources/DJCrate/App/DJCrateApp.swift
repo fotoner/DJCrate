@@ -85,6 +85,8 @@ struct DJCrateApp: App {
                     let composition = app
                     appDelegate.rekordboxRunState = { composition.rekordboxRun.state }
                     appDelegate.consumeUpdateRelaunch = { composition.consumeUpdateRelaunch() }
+                    // ⌘Q 때 대기 중인 대상 편집을 저장하고 끈다(R17)
+                    appDelegate.quitAutoSave = { composition.quitAutoSave() }
                     #if DEBUG
                     // 쓰기 시험(`--write-selftest`)도 키 입력 없이 스토어로만 돌아 사용 중인 앱의 포커스를 가져오지 않는다
                     if !ResizePerfSelfTest.isRequested, !DiagnosticRun.isAutoReflectSelfTest(),

@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var rekordboxRunState: @MainActor () -> RekordboxRunState? = { nil }
     /// 지금 처리 중인 종료 요청의 이유(Apple 이벤트 `quit`의 「why?」). 이벤트가 없거나 이유가 없으면 nil(시험은 바꿔 끼운다)
     var quitReason: @MainActor () -> UInt32? = { AppDelegate.currentQuitReason() }
+    /// ⌘Q가 기다릴 자동 저장의 형편(R17). 조립 지점이 자동 저장 엔진에 잇는다(잇지 않았으면 자동 저장하지 않는 실행)
+    var quitAutoSave: @MainActor () -> QuitAutoSave = { .off }
     /// 업데이트 설치 뒤 다시 켜려는 종료인가. 읽으면 표시를 지운다(조립 지점이 업데이트 도구에 잇는다)
     var consumeUpdateRelaunch: @MainActor () -> Bool = { false }
     /// 켜진 채 종료 시트를 띄운다(시험은 가짜로 바꾼다)
@@ -99,7 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             runState: { [weak self] in self?.rekordboxRunState() },
             pending: { [weak store] in store?.pendingWriteSummary ?? PendingWriteCount(items: 0, playlistEdits: 0) },
             present: { [weak self] confirmation, answer in self?.presentQuitConfirmation(confirmation, answer) },
-            pendingRecordSave: { [weak store] in store?.pendingAutoRecordSave?() })
+            pendingRecordSave: { [weak store] in store?.pendingAutoRecordSave?() },
+            autoSave: { [weak self] in self?.quitAutoSave() ?? .off })
         watchWrites(of: store)
     }
 

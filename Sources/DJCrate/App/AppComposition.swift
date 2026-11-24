@@ -58,6 +58,8 @@ final class AppComposition {
     /// 입력 중인 칸(R19): 미확정 값이 있으면 자동 저장을 미룬다(엔진 편집 활동). 엔진이 있을 때만 둔다
     /// 앱 수명 동안 도는 일(바깥 초안 감시·자동 시점 스냅샷·자동 저장 판정). 창이 아니라 조립 지점이 수명을 든다(창을 닫았다 열어도 하나만 돈다)
     private var lifetimeTasks: [Task<Void, Never>] = []
+    /// 앱이 끝나기 직전 알림(수명 동안 도는 일을 멈춘다)
+    private var terminationObserver: (any NSObjectProtocol)?
     /// 자동 시점 스냅샷 실행기 하나(자동 저장 앞의 스냅샷과 하루 한 번 스냅샷이 같은 실행기를 써 겹쳐 뜨지 않는다)
     private lazy var snapshotRunner = autoPointSnapshots()
 
@@ -300,13 +302,21 @@ final class AppComposition {
         // 자동 저장(#403): 릴리스 빌드의 라이브 라이브러리만 자동 저장한다(R18). 그 밖의 실행도 엔진이 쓰기 차례·기록 판정·재시작 정리를 맡는다
         let run = AutoReflectionRun.decide(autoReflectionFacts(arguments: info.arguments, environment: info.environment, location: location))
         return AppComposition(
-            settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store),
+            settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store, gate: writeGate(arguments: info.arguments)),
             agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
             updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
                 : linkBar(store: store, deck: deck),
             persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments), dock: .live,
             rekordboxRun: RekordboxRunModel(source: .live(workspace: NSWorkspace.shared.notificationCenter)),
             autoReflection: (run, location.draftHome))
+    }
+
+    /// 앱의 쓰기 관문. 디버그 빌드의 자동 저장 자가 테스트 실행만 자가 테스트가 미리 보기를 붙잡을 수 있는 관문을 쓴다(⌘Q 저장 시험, R17)
+    static func writeGate(arguments: [String]) -> RekordboxWriteGate {
+        #if DEBUG
+        if DiagnosticRun.isAutoReflectSelfTest(arguments: arguments) { return SelfTestWriteGate.live() }
+        #endif
+        return .live()
     }
 
     /// 자가 테스트·측정·캡처 실행의 LINK 막대: 장치 찾기를 붙이지 않는다(LNK-6). LINK 캡처만 포트 없는 가상 장치를 보인다
@@ -572,12 +582,26 @@ final class AppComposition {
             Task { [weak self] in await self?.watchExternalDrafts() },
             Task { [weak self] in await self?.runAutoPointSnapshots() },
         ]
+        // 앱이 끝나기 직전에 멈춘다(끝나는 동안 새 판정·감시가 디스크 일을 시작하지 않게)
+        terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                                                     queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopLifetimeTasks() }
+        }
     }
 
-    /// 앱을 끌 때 수명 동안 도는 일과 자동 저장 판정을 멈춘다(쓰는 중인 저장은 끝까지 간다)
+    /// 앱을 끌 때 수명 동안 도는 일과 자동 저장 판정을 멈춘다. 앱이 실제로 끝나기 직전(`willTerminate`)에만 부른다:
+    /// 종료 판정이 그 전에 쓰던 자동 저장(미리 보기 포함)을 끝까지 기다리므로 진행 중인 저장을 취소하지 않는다(R17)
     func stopLifetimeTasks() {
         lifetimeTasks.forEach { $0.cancel() }
         autoReflection?.stop()
+    }
+
+    /// ⌘Q가 기다릴 자동 저장의 형편(R17). 엔진이 알린 칩 상태로 정한다(관찰할 수 있는 값이라 종료 대기가 지켜본다)
+    func quitAutoSave() -> QuitAutoSave {
+        guard let engine = autoReflection else { return .off }
+        let feed = reflection.autoFeed
+        return .outlook(status: feed.status, conditions: feed.conditions, autoSaves: engine.run.autoSaves,
+                        manualWriting: store.previewingWriteTask != nil)
     }
 
     /// 저장 대기(곡 초안 표시·태그·재생 목록 초안)가 바뀔 때마다 엔진에 알린다(마지막 편집 뒤 T_edit를 다시 센다, R1)
