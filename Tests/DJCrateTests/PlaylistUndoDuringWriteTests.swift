@@ -444,6 +444,27 @@ struct PlaylistUndoDuringWriteTests {
         #expect((try? Data(contentsOf: file)) == Data("손상".utf8), "디스크 초안을 덮지 않는다")
     }
 
+    /// 쓰는 동안 저장하지 못한 편집을 쓴 뒤 정리가 메모리 초안으로 저장하면 기억한 출처를 비운다(리뷰 F13)
+    @Test func 쓴_뒤_정리가_메모리_초안을_저장하면_기억한_출처를_비운다() throws {
+        event { playlists.renamePlaylist("B", to: "쓰는 이름") }
+        let batch = try staged()
+        beginDraftWrite()
+        #expect(playlists.freezeWrite(batch.draft))
+        let restore = try failingSaves()
+        event { playlists.renamePlaylist("A", to: "쓰는 중 이름") }
+        restore()
+        #expect(playlists.playlistDraftUnsaved && !playlists.unsavedStepOrigins.isEmpty, "쓰는 중 편집을 저장하지 못했다")
+        let outcomes = batch.draft.steps.map { PlaylistOutcome(edit: $0.edit, playlistID: nil, name: "", status: .written) }
+        let cleanup = store.useCases.playlists.finishWrite(batch.draft, outcomes: outcomes, current: playlists.playlistDraft,
+                                                            imports: playlists.playlistImports, importsLoadFailed: false, entries: batch.entries,
+                                                            backups: home.appending(path: "backups"), backupFolder: "w1", memoryUnsaved: true)
+        store.applyReflection(.playlistWritten(cleanup))
+        endDraftWrite()
+        #expect(cleanup.draftError == nil && !playlists.playlistDraftUnsaved, "쓴 뒤 정리가 메모리 초안을 저장했다")
+        #expect(playlists.playlistDraft.edits == [.rename(playlist: .id("A"), name: "쓰는 중 이름")])
+        #expect(playlists.unsavedStepOrigins.isEmpty)
+    }
+
     /// 되살린 CLI 단계의 저장이 실패한 뒤 그 단계를 다시 버려 저장하고 ⌘Z하면, 되살린 단계는 그 ⌘Z 기록이 든 출처로 제안이다(리뷰 F10: S4).
     /// 디스크에 없는 식별자 없는 단계라 디스크 도장으로는 출처를 알 수 없다
     @Test func 저장하지_못한_되살린_CLI_단계를_다시_버린_뒤_실행_취소해도_제안이다() throws {

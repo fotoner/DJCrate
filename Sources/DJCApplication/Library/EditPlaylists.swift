@@ -196,6 +196,7 @@ public struct EditPlaylists: Sendable {
     ///   - memoryUnsaved: 메모리 초안에 저장하지 못한 편집이 있다(`PlaylistEditStore.playlistDraftUnsaved`)
     ///   - entries: 묶음에 읽어 넣은 단계의 판·해시(`written.steps`와 같은 차례, 쓰기 묶음의 `revisions.playlistSteps`).
     ///     비어 있으면 판을 모르는 묶음이라 지금 동작(쓰는 동안 바뀌지 않았을 때 자리로 뺀다)이다
+    /// 이 정리의 저장은 화면이 기억한 출처(`carrying`)를 받지 않는다: 쓰기는 재생 목록 초안 저장에 성공해야 시작하고 쓰는 동안 ⌘Z는 미뤄져, 그새 저장하지 못한 단계의 출처는 사람뿐이다(#295 리뷰 F13)
     @MainActor
     public func finishWrite(_ written: PlaylistDraft, outcomes: [PlaylistOutcome], current: PlaylistDraft,
                             imports: PlaylistImports, importsLoadFailed: Bool,

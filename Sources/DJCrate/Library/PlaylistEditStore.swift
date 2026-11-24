@@ -760,6 +760,8 @@ final class PlaylistEditStore {
         thawWrite(refresh: false)
         if let draft = cleanup.draft {
             playlistDraft = draft
+            // 정리가 저장했으면 저장에 실패한 동안 기억한 출처를 비운다(#295 리뷰 F13)
+            if cleanup.draftError == nil { unsavedStepOrigins = [] }
             applyPlaylistSave(cleanup.draftError)
         } else if let error = cleanup.draftError {
             // 초안 파일을 읽지 못해 쓴 단계를 빼지 못했다: 메모리 초안은 그대로고 다음 정리 때 다시 한다
