@@ -44,28 +44,16 @@ public struct EditPlaylists: Sendable {
         try save(draft, freshOrigins)
     }
 
-    /// 재생 목록 초안을 저장하되 식별자가 없는 단계마다 그 자리의 출처(`freshOrigins`, 없으면 이 포트의 출처)에 `carried`를 더한다(#295 리뷰 F10).
-    /// `carried`는 화면이 저장에 실패한 동안 기억한 출처다: 저장에 실패한 뒤에는 출처를 줄이지 않는다(합집합). 단계 대응을 찾지 않고 식별자 없는 단계 모두에 더한다
+    /// 재생 목록 초안을 저장하되 식별자가 없는 단계마다 `carried`를 더한다(`DraftStore.savePlaylist(_:freshOrigins:carrying:)`, #295 리뷰 F10)
     @MainActor
     public func saveDraft(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>] = [:], carrying carried: Set<DraftOrigin>) throws {
-        try saveDraft(draft, freshOrigins: unidentifiedOrigins(draft, freshOrigins: freshOrigins, carrying: carried))
+        try drafts.savePlaylist(draft, freshOrigins: freshOrigins, carrying: carried)
     }
 
-    /// 식별자가 없는 단계마다 줄 출처(자리 → 출처). 이 포트의 출처 밖에 더할 출처가 없으면 `freshOrigins` 그대로다
-    /// (이 포트의 출처만 더하면 제안인지가 바뀌지 않는다: 보통 저장으로 둔다)
-    func unidentifiedOrigins(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>], carrying carried: Set<DraftOrigin>) -> [Int: Set<DraftOrigin>] {
-        guard !carried.subtracting([drafts.origin]).isEmpty else { return freshOrigins }
-        var origins = freshOrigins
-        for index in draft.steps.indices where draft.steps[index].id == nil {
-            origins[index] = (freshOrigins[index] ?? [drafts.origin]).union(carried)
-        }
-        return origins
-    }
-
-    /// 그 저장이 실패하면 화면이 기억할 출처: `carried`에 식별자 없는 단계가 받을 출처를 모두 더한다(`saveDraft(_:freshOrigins:carrying:)`)
+    /// 그 저장이 실패하면 화면이 기억할 출처(`DraftStore.playlistOriginsAfterFailure`)
     public func carriedAfterFailure(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>] = [:],
                                     carrying carried: Set<DraftOrigin>) -> Set<DraftOrigin> {
-        draft.steps.indices.filter { draft.steps[$0].id == nil }.reduce(carried) { $0.union(freshOrigins[$1] ?? [drafts.origin]) }
+        drafts.playlistOriginsAfterFailure(draft, freshOrigins: freshOrigins, carrying: carried)
     }
 
     /// 디스크 초안의 단계 출처(식별자 → 출처, #295 E6). ⌘Z 단계가 편집 전·뒤 단계의 출처를 기록한다. 읽지 못하면 빈 사전.

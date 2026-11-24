@@ -343,6 +343,41 @@ struct PlaylistUndoDuringWriteTests {
         #expect(origins == [[.cli, .human]], "\(origins)")
     }
 
+    /// 손상된 재생 목록 초안 파일을 옮긴 뒤 메모리 초안을 다시 저장해도 저장하지 못한 되살린 CLI 단계는 제안이다(F10과 같은 원칙, `WatchDrafts.recoverMoved`)
+    @Test func 손상_파일을_옮긴_뒤_다시_저장해도_저장하지_못한_되살린_CLI_단계는_제안이다() throws {
+        _ = try revivedCLIStepUnsaved()
+        store.applyMovedDrafts([DamagedDraftFile(name: DraftFileNames.playlist, preserved: home.appending(path: "damaged"), trackUUID: nil)],
+                               reporting: false)
+        #expect(!playlists.playlistDraftUnsaved, "메모리 초안을 다시 저장했다")
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+        #expect(playlists.unsavedStepOrigins.isEmpty, "저장에 성공하면 기억한 출처를 비운다")
+    }
+
+    /// 막힌 편집 복구 시트가 초안을 저장해도 저장하지 못한 되살린 CLI 단계는 제안이다(F10과 같은 원칙, `applyPlaylistRecovery`)
+    @Test func 막힌_편집_복구가_저장해도_저장하지_못한_되살린_CLI_단계는_제안이다() async throws {
+        let cli = try adoptCLIRename()
+        event { playlists.discardPlaylistDraft("A") }
+        let restore = try failingSaves()
+        undo.undo()
+        // 저장하지 못하는 동안 B 이름도 바꾼다(rekordbox에서 B 이름이 바뀌어 그 편집은 막힌다)
+        event { playlists.renamePlaylist("B", to: "사람 이름") }
+        restore()
+        let rename = PlaylistEdit.rename(playlist: .id("B"), name: "사람 이름")
+        #expect(playlists.playlistDraftUnsaved && playlists.playlistDraft.edits == cli.edits + [rename])
+        let changed = PlaylistLayout([
+            (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
+            (PlaylistLayout.Item(id: "B", name: "바깥 이름"), 2),
+        ])
+        let current = PlaylistRecoveryCurrent(layout: changed, contentIDs: ["1"], titles: [:], rows: [:])
+        let review = try RecoverDrafts.review(playlist: "B", draft: playlists.playlistDraft, current: current)
+        try await playlists.applyPlaylistRecovery(review, reapply: false, latest: current)
+        #expect(playlists.playlistDraft.edits == cli.edits, "막힌 B 편집만 버렸다")
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+        #expect(playlists.unsavedStepOrigins.isEmpty, "저장에 성공하면 기억한 출처를 비운다")
+    }
+
     /// 되살린 CLI 단계의 저장이 실패한 뒤 그 단계를 다시 버려 저장하고 ⌘Z하면, 되살린 단계는 그 ⌘Z 기록이 든 출처로 제안이다(리뷰 F10: S4).
     /// 디스크에 없는 식별자 없는 단계라 디스크 도장으로는 출처를 알 수 없다
     @Test func 저장하지_못한_되살린_CLI_단계를_다시_버린_뒤_실행_취소해도_제안이다() throws {

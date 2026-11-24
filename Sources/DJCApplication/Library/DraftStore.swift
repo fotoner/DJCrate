@@ -214,6 +214,27 @@ public struct DraftStore: Sendable {
 }
 
 extension DraftStore {
+    /// 재생 목록 초안을 저장하되 식별자가 없는 단계마다 그 자리의 출처(`freshOrigins`, 없으면 이 포트의 출처)에 `carried`를 더한다(#295 리뷰 F10).
+    /// `carried`는 화면이 저장에 실패한 동안 기억한 출처다: 저장에 실패한 뒤에는 출처를 줄이지 않는다(합집합). 단계 대응을 찾지 않고 식별자 없는 단계 모두에 더한다.
+    /// 이 포트의 출처 밖에 더할 출처가 없으면 더하지 않는다(제안인지가 바뀌지 않는다). 이을 자리가 없거나 출처를 잇는 저장을 모르는 포트면 보통 저장이다
+    @MainActor
+    public func savePlaylist(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>] = [:], carrying carried: Set<DraftOrigin>) throws {
+        var origins = freshOrigins
+        if !carried.subtracting([origin]).isEmpty {
+            for index in draft.steps.indices where draft.steps[index].id == nil {
+                origins[index] = (freshOrigins[index] ?? [origin]).union(carried)
+            }
+        }
+        guard !origins.isEmpty, let save = savePlaylistDraftOrigins else { return try savePlaylistDraft(draft) }
+        try save(draft, origins)
+    }
+
+    /// 그 저장(`savePlaylist(_:freshOrigins:carrying:)`)이 실패하면 화면이 기억할 출처: `carried`에 식별자 없는 단계가 받을 출처를 모두 더한다
+    public func playlistOriginsAfterFailure(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>] = [:],
+                                            carrying carried: Set<DraftOrigin>) -> Set<DraftOrigin> {
+        draft.steps.indices.filter { draft.steps[$0].id == nil }.reduce(carried) { $0.union(freshOrigins[$1] ?? [origin]) }
+    }
+
     /// 같은 저장소를 다른 출처로 저장하는 포트. 구현이 출처 포트를 새로 만들므로(`originVariant`) 이 포트에 바꿔 넣은 클로저
     /// (시험의 실패 주입 등)는 따라가지 않는다: 실패를 주입하려면 출처 포트를 만든 뒤 그 포트에 바꿔 넣는다.
     /// `originVariant`가 없는 포트(손으로 만든 포트)는 `origin` 표시만 바뀌고 도장은 그 구현을 따른다

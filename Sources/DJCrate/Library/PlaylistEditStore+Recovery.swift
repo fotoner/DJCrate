@@ -35,7 +35,9 @@ extension PlaylistEditStore {
         guard playlistRecoveryAllowed, playlistDraft == review.original else { throw playlistRecoveryChanged() }
         let resolved = try RecoverDrafts.resolvePlaylist(review, reapply: reapply, latest: current)
         // 새 기준을 저장하지 못했으면 메모리에도 적용하지 않아 다음 쓰기에서 조용히 풀리지 않는다.
-        try library.useCases.playlists.saveDraft(resolved)
+        // 저장에 실패한 동안 기억한 출처를 식별자 없는 단계에 더하고, 저장하면 비운다(#295 리뷰 F10)
+        try library.useCases.playlists.saveDraft(resolved, carrying: unsavedStepOrigins)
+        unsavedStepOrigins = []
         playlistDraft = resolved
         playlistDraftUnsaved = false
         rekordboxPlaylists = current.layout

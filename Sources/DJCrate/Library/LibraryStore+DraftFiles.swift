@@ -71,7 +71,9 @@ extension LibraryStore {
                           previousPlaylist: PlaylistDraft? = nil, reporting: Bool = true) {
         guard !moved.isEmpty else { return }
         if reporting { reportDamagedDrafts(moved) }
-        let recovery = useCases.watch.recoverMoved(moved, memoryTags: previousTags ?? tagDrafts, memoryPlaylist: previousPlaylist ?? playlists.playlistDraft)
+        let carried = playlists.unsavedStepOrigins
+        let recovery = useCases.watch.recoverMoved(moved, memoryTags: previousTags ?? tagDrafts, memoryPlaylist: previousPlaylist ?? playlists.playlistDraft,
+                                                   carrying: carried)
         for step in recovery.steps {
             switch step {
             case let .keepTag(draft): tagDrafts[draft.trackUUID] = draft
@@ -90,6 +92,9 @@ extension LibraryStore {
         }
         if let gains = recovery.gainDraftUUIDs { applyGainDraftUUIDs(gains) }
         if let playlist = recovery.playlist {
+            // 저장에 실패한 동안 기억한 출처를 더해 저장했다: 성공하면 비우고, 실패하면 계속 기억한다(#295 리뷰 F10)
+            playlists.unsavedStepOrigins = playlist.error == nil ? []
+                : useCases.playlists.carriedAfterFailure(playlist.draft, carrying: carried)
             playlists.playlistDraft = playlist.draft
             playlists.applyPlaylistSave(playlist.error)
             playlists.refreshPlaylists()
