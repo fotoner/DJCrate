@@ -670,6 +670,16 @@ struct AutoReflectionEngineTests {
         }
     }
 
+    /// 이관 건수(활동 기록)에서 게인은 뺀다: 게인은 이관해도 base가 없어 자동으로 쓰지 않는다(리뷰 F8)
+    @Test func 이관_건수에서_게인은_뺀다() async throws {
+        let w = AutoReflectionWorld()
+        Self.legacyCue(w, "a")
+        w.h.memory.editOutside(gain: -2, "g")
+        let engine = AutoReflection(session: w.h.session, ports: w.fakes.ports(), run: .live, timing: w.timing)
+        #expect(await engine.adoptLegacyDrafts() == 1, "큐 한 건만 센다")
+        #expect(w.h.memory.stamp(DraftKey(.gain, "g"))?.origins == [.human], "게인도 이관은 한다")
+    }
+
     /// `--db`·디버그·진단·사본 자가 테스트 실행은 이관하지 않는다(그 초안은 제안으로 남는다)
     @Test(arguments: [AutoReflectionRun.off(.explicitCopy), .off(.debugBuild), .off(.diagnostic), .off(.unsafeSelfTest), .selfTest(.save)])
     func 자동_저장하지_않는_실행은_이관하지_않는다(_ run: AutoReflectionRun) async throws {

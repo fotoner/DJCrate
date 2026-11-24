@@ -159,6 +159,7 @@ public final class MemoryDrafts: Sendable {
     public func editOutside(_ draft: CueDraft) { state.withLock { $0.cues[draft.trackUUID] = draft } }
     public func editOutside(_ draft: GridDraft) { state.withLock { $0.grids[draft.trackUUID] = draft } }
     public func editOutside(_ draft: TagDraft) { state.withLock { $0.tags[draft.trackUUID] = draft } }
+    public func editOutside(gain: Double, _ uuid: String) { state.withLock { $0.gains[uuid] = gain } }
 
     private func saveArtwork(_ edit: ArtworkEdit, origin: DraftOrigin) {
         state.withLock {
@@ -301,18 +302,18 @@ public final class MemoryDrafts: Sendable {
     }
 
     /// 업데이트 전 곡 초안 이관(#295 E1)의 메모리 구현: 도장 없는 큐·그리드·태그·게인 초안에 사람 편집 도장을 한 번 붙인다
-    /// (표지·완료 기록의 세부 규칙은 실제 구현 `LegacyDraftAdoption`이 DJCStorageTests에서 본다). 두 번째부터는 0
-    public func adoptLegacyDrafts() -> Int {
+    /// (표지·완료 기록의 세부 규칙은 실제 구현 `LegacyDraftAdoption`이 DJCStorageTests에서 본다). 두 번째부터는 빈 배열
+    public func adoptLegacyDrafts() -> [DraftKey] {
         state.withLock { state in
-            guard !state.adoptedLegacy else { return 0 }
+            guard !state.adoptedLegacy else { return [] }
             state.adoptedLegacy = true
             let keys = state.cues.keys.map { DraftKey(.cue, $0) } + state.grids.keys.map { DraftKey(.grid, $0) }
                 + state.tags.keys.map { DraftKey(.tag, $0) } + state.gains.keys.map { DraftKey(.gain, $0) }
-            var adopted = 0
+            var adopted: [DraftKey] = []
             for key in keys.sorted() where state.stamps[key] == nil {
                 guard let hash = state.currentHash(key) else { continue }
                 state.stamps[key] = state.newStamp(origins: [.human], hash: hash)
-                adopted += 1
+                adopted.append(key)
             }
             return adopted
         }

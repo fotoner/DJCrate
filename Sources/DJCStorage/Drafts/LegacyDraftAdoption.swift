@@ -40,15 +40,21 @@ public enum LegacyDraftAdoption {
     ///   - beforeStamping: 시작 표지를 적은 뒤 도장을 붙이기 직전(시험이 중간에 멈춘 실행을 흉내 낸다)
     public static func adopt(home: URL, saveMarker: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) },
                              beforeStamping: () throws -> Void = {}) throws -> Int {
+        try adoptKeys(home: home, saveMarker: saveMarker, beforeStamping: beforeStamping).count
+    }
+
+    /// 이관한 초안의 키(`adopt`와 같다). 앱은 게인을 빼고 센다(게인은 base가 없어 이관해도 자동으로 쓰지 않는다)
+    public static func adoptKeys(home: URL, saveMarker: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) },
+                                 beforeStamping: () throws -> Void = {}) throws -> [DraftKey] {
         try DraftStampStore.withLock(home: home) {
             let url = markerURL(home: home), places = DraftLocations(home: home)
             // 표지 파일이 있는데 읽거나 풀지 못하면 이관하지 않는다: 새로 모으면 표지 뒤에 생긴 도장 없는 초안까지 사람 편집이 된다
             var previous: Marker?
             if FileManager.default.fileExists(atPath: url.path) {
-                guard let data = try? Data(contentsOf: url), let marker = try? JSONDecoder().decode(Marker.self, from: data) else { return 0 }
+                guard let data = try? Data(contentsOf: url), let marker = try? JSONDecoder().decode(Marker.self, from: data) else { return [] }
                 previous = marker
             }
-            if previous?.completed == true { return 0 }
+            if previous?.completed == true { return [] }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             let entries: [Entry]
@@ -68,7 +74,7 @@ public enum LegacyDraftAdoption {
             }
             let done = Marker(entries: previous?.entries ?? entries, completed: true)
             if let data = try? encoder.encode(done) { try? saveMarker(data, url) }
-            return entries.count
+            return entries.map(\.key)
         }
     }
 

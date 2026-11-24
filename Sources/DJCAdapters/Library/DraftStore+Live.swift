@@ -107,7 +107,7 @@ extension DraftStore {
         store.markSuggestions = { drafts, steps in
             try writer.serialized { try StampedDrafts.markSuggestions(drafts, playlistSteps: steps, home: home) }
         }
-        store.adoptLegacyDrafts = { try writer.serialized { try LegacyDraftAdoption.adopt(home: home) } }
+        store.adoptLegacyDrafts = { try writer.serialized { try LegacyDraftAdoption.adoptKeys(home: home) } }
         store.savePlaylistDraftOrigins = { draft, origins in
             try StampedDrafts.savePlaylist(draft, url: places.playlist, origin: origin, freshOrigins: origins)
         }

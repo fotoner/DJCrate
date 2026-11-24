@@ -158,11 +158,12 @@ public final class AutoReflection {
     /// 업데이트 전 곡 초안 이관(#295 E1): 자동 저장하는 실행(`.live`)만 첫 라이브러리 읽기 전에 부른다. 도장 없는 큐·그리드·태그·게인 초안에
     /// 사람 편집 출처를 한 번 붙인다(표지가 이미 끝났으면 하지 않는다). `--db`·디버그·진단·사본 자가 테스트 실행은 하지 않는다(제안으로 남는다).
     /// 게인은 base가 없으면 이관해도 자동으로 쓰지 않는다(R23). 이관하지 못하면(표지를 못 적음 등) 0이다: 그 초안은 제안으로 남는다
-    /// - Returns: 이관한 초안 수(활동 기록에 한 번 남긴다)
+    /// - Returns: 이관해 자동으로 쓸 수 있게 된 초안 수(활동 기록에 한 번 남긴다). 게인은 base가 없어 자동으로 쓰지 않으므로 세지 않는다
     public func adoptLegacyDrafts() async -> Int {
         guard run == .live else { return 0 }
         let files = session.ports.drafts
-        return (try? await BlockingWork.run(qos: .userInitiated) { try files.adoptLegacyDrafts() }) ?? 0
+        let keys = (try? await BlockingWork.run(qos: .userInitiated) { try files.adoptLegacyDrafts() }) ?? []
+        return keys.filter { $0.kind != .gain }.count
     }
 
     /// 앱을 끌 때 대기와 감시를 멈춘다(쓰는 중인 저장은 끝까지 간다)
@@ -713,7 +714,7 @@ public final class AutoReflection {
 
     /// 자동 쓰기가 끝난 뒤 조용함을 정한다(#295 E4). 확인 지점이 거절했거나·관문이 켜짐을 봤거나·쓰는 동안 켜짐이나 틈을 봤으면 처음부터 센다
     /// (라이브러리를 바꿨을 수 있는 실패는 실패 분류 뒤 `write`가 지운다). 아니면 메인 밖 표본으로 관찰 시각을 잇고, 쓴 뒤 첫 관찰이 견줄
-    /// 기준을 둔다: 관문이 라이브러리 변경 자리에서 잡은 값, 그 자리를 지나지 않은 쓰기(DB·XML을 바꾸지 않음·백업 전 실패)는 쓰기 전 기준
+    /// 기준을 둔다: 관문이 라이브러리 변경 자리에서 잡은 값, 그 자리에 닿지 않은 쓰기(백업 전 실패·관문을 부르기 전에 끝남)는 쓰기 전 기준
     private func settleQuiet(after outcome: ReflectionSession.AutoWriteOutcome, judged: Quiet?, watch: AutoWriteWatch.State) {
         switch outcome {
         case .quietLost, .rekordboxRunning:
