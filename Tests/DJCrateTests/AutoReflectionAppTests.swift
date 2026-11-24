@@ -1,9 +1,12 @@
+import DJCAdapters
 import DJCApplication
 @testable import DJCrate
 import DJCDomain
 import DJCStorage
 import DJCTestKit
 import Foundation
+import RekordboxFixtures
+import RekordboxKit
 import Synchronization
 import Testing
 
@@ -110,5 +113,84 @@ struct AutoReflectionAppTests {
         // 자가 테스트 인자는 DJC_HOME이 없으면 확인 자리가 없어 쓰지 않는다
         let selfTest = AppComposition.autoReflectionFacts(arguments: ["djcrate", "--auto-reflect-selftest=save"], environment: [:], location: location)
         #expect(selfTest.selfTestPlaces == nil && !AutoReflectionRun.decide(selfTest).autoSaves)
+    }
+
+    // MARK: - 곡 넣기 뒤 정리(R22, 합성 DB·실제 관문)
+
+    /// 정리 전에 멈춤: 관문이 미정리 목록을 적고 쓰기 기록을 지운 직후 멈춘다(넣은 뒤 처리가 돌지 않는다). 다시 켜 첫 읽기 뒤 재시작 정리가 같은 결과를 낸다
+    @Test(arguments: [false, true])
+    func 넣는_동안_CLI가_더한_핫큐는_새_곡의_제안으로_남고_저장하면_A_하나와_B가_된다(stopsBeforeCleanup: Bool) async throws {
+        let fixture = try RekordboxFixture()
+        _ = try fixture.add(TrackSpec())   // 라이브러리 공통값을 가져올 기존 곡
+        let home = fixture.root.appending(path: "drafts", directoryHint: .isDirectory)
+        let staged = try JSONDecoder().decode(StagedTrack.self, from: Data("""
+            {"uuid":"\(UUID().uuidString)","path":"\(try TestResources.url("mp3-notag-cbr.mp3").path)","title":"합성 추가 곡","comment":"","duration":2,"addedOn":"2026-10-01"}
+            """.utf8))
+        let hotA = EditableCue(id: UUID(), kind: .hot(0), time: 0.5), hotB = EditableCue(id: UUID(), kind: .hot(1), time: 1.0)
+        var first = CueDraft(trackUUID: staged.uuid)
+        first.place(hotA)
+        var later = first
+        later.place(hotB)
+        // 넣는 동안(관문이 넣기 직전) CLI가 같은 초안 폴더에 B를 더한 새 판을 저장한다
+        let cli = DraftStore.live(writer: DraftWriter(), home: home, origin: .cli)
+        let stopped = Mutex(false)
+        var writeGuard = RekordboxWriteGuard.system
+        writeGuard.hooks = RekordboxWriteHooks(checkpoint: { moment in
+            guard stopsBeforeCleanup, moment == .after(.journalRemove), !stopped.withLock({ $0 }) else { return }
+            stopped.withLock { $0 = true }
+            throw RekordboxWriteStop()
+        })
+        var gate = RekordboxWriteGate.live(guard: writeGuard)
+        let realAdd = gate.addTracks
+        gate.addTracks = { [later] batch, target, dryRun in
+            if !dryRun {
+                cli.saveCue(later)
+                cli.flush()
+            }
+            return try realAdd(batch, target, dryRun)
+        }
+        let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("autosave-add"), persist: false),
+                                      activityLog: ActivityLog(url: nil), backupDirectory: fixture.backups, playlistDraftSaver: { _ in },
+                                      mergeDraftSaver: { _ in }, playlistImportURL: nil, stagingSaver: { _ in }, draftHome: home,
+                                      writeGate: gate, rekordboxDatabase: fixture.database, rekordboxShareRoot: fixture.shareRoot,
+                                      arguments: ["test"], environment: [:], takeLiveSnapshot: { [database = fixture.database] _ in database })
+        await store.load(snapshot: fixture.database)
+        store.staging.staged = [staged]
+        store.testDrafts.saveCue(first)
+        store.testDrafts.flush()
+        let preview = try await store.session.previewAdd(rows: [TrackRow(track: staged.track, cues: [], playCount: 0)])
+        let id: String, uuid: String
+        if stopsBeforeCleanup {
+            await #expect(throws: RekordboxWriteStop.self) {
+                try await store.session.addTracksToRekordbox(preview, to: fixture.database, shareRoot: fixture.shareRoot)
+            }
+            #expect(try RekordboxWriter.cleanupLists(in: fixture.backups).count == 1, "목록만 남고 정리하지 않았다")
+            // 다시 켠 뒤 첫 읽기와 재시작 정리
+            await store.load(snapshot: fixture.database)
+            let resumed = await store.session.resumeCleanups()
+            #expect(resumed.holds.isEmpty && resumed.finished == 1)
+            let row = try #require(try fixture.rows("SELECT ID, UUID FROM djmdContent WHERE FolderPath = ?", [.text(staged.path)]).first)
+            id = try #require(row["ID"])
+            uuid = try #require(row["UUID"])
+        } else {
+            let report = try await store.session.addTracksToRekordbox(preview, to: fixture.database, shareRoot: fixture.shareRoot)
+            let outcome = try #require(report.added.first)
+            id = try #require(outcome.contentID)
+            uuid = try #require(outcome.uuid)
+            #expect(outcome.cuesWritten == 1)
+        }
+        #expect(try fixture.rows("SELECT ID FROM djmdCue WHERE ContentID = ?", [.text(id)]).count == 1, "넣기는 A만 썼다")
+        // 새 판은 새 곡의 제안으로 남고 옛 UUID에는 남지 않는다
+        let moved = try #require(store.testDrafts.cueDraft(uuid))
+        #expect(moved.changes.count == 1 && store.testDrafts.suggestion(DraftKey(.cue, uuid)) != nil)
+        #expect(store.testDrafts.cueDraft(staged.uuid) == nil)
+        #expect(try RekordboxWriter.cleanupLists(in: fixture.backups).isEmpty, "정리를 마치고 미정리 목록을 지웠다")
+        // 새 곡에서 ⌘S: 제안도 함께 쓴다. A 하나와 B가 된다
+        await store.refreshExternalDrafts()
+        let row = try #require(store.rowsByUUID[uuid])
+        let written = await store.session.write(rows: [row])
+        guard case .written = written else { Issue.record("저장했다: \(written)"); return }
+        let cues = try fixture.rows("SELECT Kind FROM djmdCue WHERE ContentID = ? ORDER BY Kind", [.text(id)])
+        #expect(cues.map { $0["Kind"] } == ["1", "2"])
     }
 }

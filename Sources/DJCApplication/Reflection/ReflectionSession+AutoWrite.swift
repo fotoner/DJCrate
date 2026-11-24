@@ -251,39 +251,51 @@ extension ReflectionSession {
         public var found = 0
         /// 정리를 마치고 지운 목록 수
         public var finished = 0
-        /// 다음 쓰기를 보류할 이유(`cleanupPending`·`cleanupStoreMissing`·`playlistCopyFailed`). 비면 정리를 모두 마쳤다
+        /// 다음 쓰기를 보류할 이유(`cleanupPending`·`cleanupStoreMissing`·`playlistCopyFailed`). 비면 쓰기를 막을 것이 없다
         public var holds: Set<ReflectionHold> = []
+        /// 새 곡 행을 아직 읽지 못해 곡 넣기 몫만 미룬 목록 수(쓰기는 막지 않는다: 옛 UUID 초안은 rekordbox 곡에 닿지 않는다)
+        public var deferred = 0
 
-        public init(found: Int = 0, finished: Int = 0, holds: Set<ReflectionHold> = []) {
+        public init(found: Int = 0, finished: Int = 0, holds: Set<ReflectionHold> = [], deferred: Int = 0) {
             self.found = found
             self.finished = finished
             self.holds = holds
+            self.deferred = deferred
         }
     }
 
     /// 정리 전에 멈춘 쓰기의 미정리 목록으로 같은 정리를 다시 한다(R22). 이 초안 저장소·대상의 목록만 다룬다.
-    /// 앱은 첫 읽기 뒤 시작 저장보다 먼저, 그리고 쓰기마다 그 전에 부른다. 그 대상에 중단 기록이 없을 때만 부른다(기록으로 복원·"이대로 둔다"가 목록을 다룬다).
-    /// 곡 초안은 목록에 적힌 판과 해시가 지금과 같을 때만 지우고(다시 해도 결과가 같다), 재생 목록은 `EditPlaylists.resumeCleanup`이 한다.
-    /// 끝나지 않은 목록(사본 실패·저장 실패)은 지우지 않고 남겨 그 대상의 다음 쓰기를 보류한다. 목록을 읽지 못하면 정리와 다음 쓰기를 보류한다
-    public func resumeCleanups() async -> CleanupResume {
-        let gate = ports.gate, target = target, home = location.draftHome, files = ports.drafts
+    /// 앱은 첫 읽기 뒤 시작 저장보다 먼저, 그리고 쓰기마다 그 전에 부른다. CLI는 쓰기 명령 전에 부른다(`cleanUpBeforeWrite`).
+    /// 그 대상에 중단 기록이 없을 때만 부른다(기록으로 복원·"이대로 둔다"가 목록을 다룬다).
+    /// 곡 초안은 목록에 적힌 판과 해시가 지금과 같을 때만 지우고(다시 해도 결과가 같다), 곡 넣기 몫은 `cleanUpTrackAdd`, 재생 목록은
+    /// `EditPlaylists.resumeCleanup`이 한다. 끝나지 않은 목록(사본 실패·저장 실패)은 지우지 않고 남겨 그 대상의 다음 쓰기를 보류한다.
+    /// 목록을 읽지 못하면 정리와 다음 쓰기를 보류한다
+    /// - Parameter target: 정리할 대상(기본은 이 세션의 대상). CLI는 명령이 고른 대상을 준다
+    public func resumeCleanups(for target: RekordboxWriteTarget? = nil) async -> CleanupResume {
+        let gate = ports.gate, target = target ?? self.target, home = location.draftHome, files = ports.drafts
         let lists: [DraftCleanupList]
         do { lists = try await BlockingWork.run { try gate.cleanupLists(target, home) } } catch {
             return CleanupResume(holds: [.cleanupStoreMissing])
         }
         var result = CleanupResume(found: lists.count)
         for list in lists.sorted(by: { $0.operationID < $1.operationID }) {
-            var complete = true
-            let written = list.written + list.trackAdds.flatMap(\.written)
-            if !written.isEmpty {
+            var complete = true, deferred = false
+            if !list.written.isEmpty {
                 do {
                     let removal = try await BlockingWork.run {
                         files.flush()
-                        return try files.removeWritten(written)
+                        return try files.removeWritten(list.written)
                     }
                     clearRemovedDrafts(removal.removed.map(\.key))
                 } catch {
                     complete = false
+                }
+            }
+            for add in list.trackAdds {
+                switch await cleanUpTrackAdd(add, unchanged: nil) {
+                case .done: break
+                case .deferred: deferred = true
+                case .failed: complete = false
                 }
             }
             if !list.playlistSteps.isEmpty || !list.newPlaylistIDs.isEmpty {
@@ -292,20 +304,34 @@ extension ReflectionSession {
                     // 디스크 초안을 확인하지 못했다: 옛 메모리로 덮지 않게 다음에 다시 한다
                     complete = false
                 } else {
-                    let cleanup = playlistEdits.resumeCleanup(list, backups: target.backups, imports: state.playlistImports,
-                                                              importsLoadFailed: state.playlistImportsLoadFailed)
+                    // 연결 기록은 디스크에서 읽는다(CLI도 같은 파일을 옮긴다). 읽지 못하면 옮기지 않는다
+                    let imports = try? playlistEdits.loadImports()
+                    let cleanup = playlistEdits.resumeCleanup(list, backups: target.backups, imports: imports ?? PlaylistImports(),
+                                                              importsLoadFailed: imports == nil)
                     apply(.playlistWritten(cleanup))
                     if !cleanup.copyFailed.isEmpty { result.holds.insert(.playlistCopyFailed) }
                     complete = complete && cleanup.isComplete
                 }
             }
-            if complete, (try? await BlockingWork.run({ try gate.removeCleanupList(list, target) })) != nil {
+            if !complete {
+                result.holds.insert(.cleanupPending)
+            } else if deferred {
+                result.deferred += 1
+            } else if (try? await BlockingWork.run({ try gate.removeCleanupList(list, target) })) != nil {
                 result.finished += 1
             } else {
                 result.holds.insert(.cleanupPending)
             }
         }
         return result
+    }
+
+    /// CLI 쓰기 전 정리(R22): 그 대상에 남은 미정리 목록을 먼저 정리한다. 정리를 마치지 못한 목록이 있으면 쓰지 않는다
+    /// (쓴 초안·재생 목록 단계를 다시 쓰지 않게). 곡 넣기 몫만 미뤄진 것은 막지 않는다
+    public func cleanUpBeforeWrite(to target: RekordboxWriteTarget) async throws {
+        let resumed = await resumeCleanups(for: target)
+        // 목록을 읽지 못한 것(대상 폴더를 읽지 못함)은 막지 않는다: 그 쓰기는 관문이 같은 까닭으로 다시 거절한다
+        guard resumed.holds.subtracting([.cleanupStoreMissing]).isEmpty else { throw DJCError.writeRefused(Self.playlistSaveFailureText) }
     }
 
     /// 재시작 정리가 지운 곡 초안을 화면 표시에서도 지운다

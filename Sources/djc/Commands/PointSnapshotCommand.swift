@@ -61,6 +61,8 @@ enum PointSnapshotCommand {
         case "restore":
             // 플래그가 곧 동의다(CLI는 묻지 않는다). 복원 직전 상태는 시점 스냅샷으로 남는다. 앱과 같은 반영 세션으로 되돌린다.
             let entry = try entry(args, in: points)
+            // 복원 전에도 남은 미정리 목록을 먼저 정리한다(R22). 복원은 고치는 쓰기라 정리를 마치지 못해도 막지 않는다
+            _ = await composition.reflection(gate: gate).resumeCleanups(for: target.writeTarget)
             let report = try await composition.reflection(gate: gate)
                 .restorePointSnapshot(entry.url, snapshots: target.snapshots, autoDays: autoDays, now: now, changedTracks: [], to: target.writeTarget)
             return [String(ui: "‘\(entry.displayName)’ 시점으로 복원했습니다."),

@@ -135,8 +135,10 @@ extension ReflectionSession {
         let report = try await BlockingWork.run { try gate.addTracks(batch, target, false) }
         guard options.followsUp else { return (report, []) }
         let notes = await finishAdd(report, preview: preview, analysed: Set(analyses.keys), revisions: batch.revisions)
-        // 넣은 뒤 정리(초안 옮기기·백업에 사본 남기기)를 마쳤으니 미정리 목록을 지운다(R22)
-        if let operation = batch.operation { await removeCleanupList(operation: operation, target: target) }
+        // 넣은 뒤 처리(초안 옮기기·백업에 사본 남기기·다시 읽기)를 마쳤으니 넣는 동안 생긴 새 판을 새 곡의 제안으로 옮기고 미정리 목록을 지운다(R22)
+        if let operation = batch.operation {
+            await finishTrackAddCleanup(operation: operation, target: target, unchanged: unchangedSinceAdd(batch.revisions))
+        }
         return (report, notes)
     }
 

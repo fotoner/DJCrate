@@ -131,7 +131,9 @@ struct ReflectionSessionRevisionTests {
         #expect(h.memory.cue("a")?.cues.first?.time == 40)
     }
 
-    @Test func 곡을_넣는_동안_새로_저장한_초안은_옮기거나_지우지_않는다() async throws {
+    /// 큐가 막혀 쓰지 못한 넣기: 넣는 동안 저장한 새 판은 그 값 그대로 새 곡의 제안으로 옮긴다(R22 "막힌 칸은 새 판의 값을 그대로").
+    /// 사람 편집으로 옮기지 않는다(자동 저장하지 않는다)
+    @Test func 곡을_넣는_동안_새로_저장한_초안은_새_곡의_제안으로_옮긴다() async throws {
         let track = ReflectionHarness.staged("s")
         h.state.staged = [track]
         h.memory.save(ReflectionHarness.cue("s"))
@@ -147,7 +149,8 @@ struct ReflectionSessionRevisionTests {
         h.script.duringAdd = { [memory = h.memory] in memory.save(later, origin: .cli) }
         let result = await h.session.addTracks(rows: [ReflectionHarness.row("djc-s", path: track.path)])
         guard case .added = result else { Issue.record("넣었다: \(result)"); return }
-        #expect(h.memory.cue("s")?.cues.first?.time == 40, "연결되지 않은 초안으로 남는다")
-        #expect(h.memory.cue("new-s") == nil, "새 곡에 사람 편집으로 옮기지 않는다")
+        #expect(h.memory.cue("new-s")?.cues.map(\.time) == [40] && h.memory.cue("new-s")?.base.isEmpty == true)
+        #expect(h.session.ports.drafts.suggestion(DraftKey(.cue, "new-s")) != nil, "새 곡에 사람 편집으로 옮기지 않는다")
+        #expect(h.memory.cue("s") == nil)
     }
 }

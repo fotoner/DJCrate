@@ -142,6 +142,12 @@ extension RekordboxWriteGate {
                 if !dryRun { script.duringAdd?() }
                 var report = dryRun ? script.addPreview : script.add ?? script.addPreview
                 report.dryRun = dryRun
+                // 앱 곡 넣기(작업이 실린 묶음)는 실제 관문처럼 곡 넣기 몫의 미정리 목록을 남긴다(옛·새 UUID, 쓴 초안의 판, 쓴 값, 막힌 칸)
+                if !dryRun, let operation = batch.operation {
+                    lists.withLock { $0.append(DraftCleanupList(operationID: operation.id, target: RekordboxWriteLockKey(device: 0, inode: 0),
+                                                                draftHome: operation.draftHome.path, backupFolder: "add-1",
+                                                                trackAdds: Self.trackAdds(report, batch: batch))) }
+                }
                 return report
             },
             deleteTracks: { ids, target, dryRun in
@@ -219,6 +225,39 @@ extension RekordboxWriteGate {
             calls.record { $0.removedCleanupLists.append(list.operationID); $0.order.append("remove cleanup list") }
         }
         return gate
+    }
+}
+
+extension RekordboxWriteGate {
+    /// 곡 넣기 몫의 미정리 목록(실제 관문 `TrackAddBatch.draftRecord`와 같은 규칙. 태그 값은 넣은 곡의 키 기준값 위에 쓴 키를 얹는다)
+    static func trackAdds(_ report: RekordboxTrackWriteReport, batch: TrackAddBatch) -> [DraftCleanupList.TrackAdd] {
+        report.added.filter(\.written).compactMap { outcome -> DraftCleanupList.TrackAdd? in
+            guard let old = batch.stagedUUIDs[outcome.path], let new = outcome.uuid else { return nil }
+            var keys: [DraftKey] = [], blocked: [String] = []
+            var values = DraftCleanupList.TrackAddValues()
+            if outcome.cuesWritten != nil {
+                keys.append(DraftKey(.cue, old))
+                values.cues = batch.cues[outcome.path]
+            } else if outcome.cueReason != nil {
+                blocked.append("cues")
+            }
+            if let analysis = batch.analyses[outcome.path] {
+                keys.append(DraftKey(.grid, old))
+                values.grid = analysis.segments
+            }
+            if batch.revisions.tracks[DraftKey(.tag, old)] != nil || outcome.keyWritten != nil {
+                keys.append(DraftKey(.tag, old))
+                var tags = outcome.keyBase ?? TagFields()
+                tags.musicalKey = outcome.keyWritten ?? ""
+                values.tags = tags
+            }
+            if let key = outcome.keyWritten {
+                values.musicalKey = key
+            } else if outcome.keyReason != nil {
+                blocked.append(TagFields.Key.musicalKey.rawValue)
+            }
+            return DraftCleanupList.TrackAdd(stagedUUID: old, trackUUID: new, written: batch.revisions.written(keys), values: values, blockedFields: blocked)
+        }
     }
 }
 

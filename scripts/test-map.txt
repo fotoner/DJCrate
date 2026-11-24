@@ -266,7 +266,12 @@ when Sources/DJCrate/App/AppComposition.swift
 when Sources/DJCrate/App/ContentView.swift
 when Sources/DJCrate/Reflection/ReflectionCoordinator.swift
 when Sources/DJCrate/Library/PlaylistEditStore.swift
+when Sources/djc/CLIComposition.swift
+when Sources/djc/Commands/MainCommands.swift
+when Sources/djc/Commands/PointSnapshotCommand.swift
 suite DJCApplicationTests.AutoReflectionEngineTests
+suite DJCApplicationTests.ReflectionSessionTrackAddCleanupTests
+suite djcTests.CLICleanupBeforeWriteTests
 suite DJCApplicationTests.AutoReflectionPlanTests
 suite DJCApplicationTests.ReflectionSessionRevisionTests
 suite DJCApplicationTests.ReflectionSessionWriteTests
