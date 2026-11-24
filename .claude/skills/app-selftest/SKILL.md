@@ -98,7 +98,13 @@ grep "루프 시험" /tmp/djc-loop.log
 - `two-process`·`kill-detect`는 같은 실행 파일을 자식으로 띄운다. 자식은 `DJC_HOME` 아래 `child-…` 폴더를 쓴다. 강제 종료는 띄운 자식 PID만 한다.
 - 통과 줄은 "자동 저장 시험 통과(<경우>)"다. 끝은 `_exit`로 한다. 뒤에서 도는 SQLCipher 열기와 `exit` 정리가 겹치면 가끔 죽는다.
 - `save`에 `DJC_AUTO_REFLECT_E1=<회차>`를 주면 출시 관문 측정(E1)을 한다. 전체 사본은 사용자 스냅샷 폴더의 최신 `master-*.db`를 `/bin/cp -c`로 복제해 만든다. `djc snapshot`은 쓰지 않는다.
-- `--quit-wait-selftest`와 함께 주면 ⌘Q 저장(R17) 한 경우를 본다. `DJC_QUIT_WAIT_AUTOSAVE=<quiet|grace|preview>`로 고른다. 통과 줄은 "⌘Q 저장 시험 통과(<경우>)"다.
+- `--quit-wait-selftest`와 함께 주면 ⌘Q 저장(R17) 한 경우를 본다. `DJC_QUIT_WAIT_AUTOSAVE`로 고른다. 통과 줄은 "⌘Q 저장 시험 통과(<경우>)"다.
+  - `quiet`: 조용함 대기 중 ⌘Q
+  - `grace`: 대량 유예 중 ⌘Q
+  - `preview`: 자동 저장의 미리 보기 중 ⌘Q
+  - `instant`: 편집 직후 엔진이 신호를 받기 전 ⌘Q
+  - `chunks`: 묶음 둘이 필요한 대기열의 첫 묶음을 쓰는 중 ⌘Q
+- 조립 전에 인자·사본·`DJC_HOME` 격리를 본다. 못 채우면 종료 코드 2로 끝난다. 그때는 아무것도 건드리지 않는다.
 
 `--resize-perf=all`
 
