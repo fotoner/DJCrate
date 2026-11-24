@@ -16,7 +16,7 @@ struct ContentView: View {
     private var window: LibraryWindowModel { app.libraryWindow }
     /// 저장된 창 프레임을 적용했는지. 그 전의 기본 크기 폭으로는 사이드바를 접지 않는다(#119).
     var windowFrameRestored = true
-    @AppStorage(SettingKeys.showTagEditor.name) private var showTagEditor = SettingKeys.showTagEditor.defaultValue
+    @AppStorage(SettingKeys.showTagEditor.name, store: ViewPreferences.store) private var showTagEditor = SettingKeys.showTagEditor.defaultValue
     /// 이름에 점이 들어 `@AppStorage`로 두면 창 프레임 자동 저장 같은 다른 설정이 바뀔 때마다 본문을 다시 계산한다(#138).
     @State private var sidebarVisible = ObservedSetting(SettingKeys.sidebarVisible)
     /// 인스펙터 내용을 그릴지. 닫혀 있어도 SwiftUI가 내용을 계속 계산해, 곡을 고를 때마다 입력 칸을 새로 만들고

@@ -14,7 +14,8 @@ final class ObservedSetting<Value: Sendable & Equatable> {
     @ObservationIgnored private var observer: (any NSObjectProtocol)?
     private var current: Value
 
-    init(_ key: SettingKey<Value>, defaults: UserDefaults = .standard) {
+    /// - Parameter defaults: 저장소. 기본은 화면 설정 저장소(자동 저장 자가 테스트 실행은 임시 영역, `ViewPreferences`)
+    init(_ key: SettingKey<Value>, defaults: UserDefaults = ViewPreferences.defaults) {
         self.key = key
         self.defaults = defaults
         current = key.value(from: defaults.object(forKey: key.name))

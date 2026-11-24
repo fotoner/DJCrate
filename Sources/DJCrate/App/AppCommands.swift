@@ -56,7 +56,7 @@ struct AppCommands: Commands {
     @FocusedValue(\.appCommands) private var context
     @FocusedValue(\.waveformHeight) private var waveformHeight
     @Environment(\.openWindow) private var openWindow
-    @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
+    @AppStorage(SettingKeys.sheetMode.name, store: ViewPreferences.store) private var sheetMode = SettingKeys.sheetMode.defaultValue
     /// 도움말 › 연동 안내. 어느 창이 앞에 있든 연다(조립 지점이 준다)
     let openIntegrationGuide: () -> Void
 

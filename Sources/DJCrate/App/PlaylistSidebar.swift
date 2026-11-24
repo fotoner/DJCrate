@@ -34,7 +34,7 @@ struct PlaylistSection: View {
     /// 폴더 펼침·이름 바꾸기(조립 지점이 한 번 만든 화면 모델)
     let sidebar: PlaylistSidebarModel
     /// 펼침 설정은 사이드바 본문이 아니라 여기서 든다(`@AppStorage`를 든 뷰는 부모가 다시 계산될 때마다 본문이 새로 계산된다, #141).
-    @AppStorage(SettingKeys.sidebarPlaylistsExpanded.name) private var isExpanded = SettingKeys.sidebarPlaylistsExpanded.defaultValue
+    @AppStorage(SettingKeys.sidebarPlaylistsExpanded.name, store: ViewPreferences.store) private var isExpanded = SettingKeys.sidebarPlaylistsExpanded.defaultValue
 
     var body: some View {
         Section(isExpanded: $isExpanded) {
