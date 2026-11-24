@@ -28,6 +28,8 @@ public struct DraftWriteBatch: Sendable, Equatable {
     public var grids: [GridDraft]
     /// 곡 UUID → 오토게인 초안(dB)
     public var gains: [String: Double]
+    /// 곡 UUID → 게인 초안의 base(초안을 만들 때 본 rekordbox 오토게인 dB, R23). 있으면 관문이 지금 값과 같을 때만 쓴다. 옛 초안(base 없음)은 비어 있다
+    public var gainBases: [String: Double] = [:]
     public var tags: [TagDraft]
     public var artworks: [ArtworkEdit]
     /// 함께 쓸 재생 목록 초안(없으면 nil). 결과(`playlistOutcomes`)가 편집 순서와 같다.
@@ -123,6 +125,7 @@ public struct WritePreview: Sendable {
                                        merges: batch.merges.filter { draft in report.mergeWritten.contains { $0.trackUUID == draft.id } },
                                        histories: batch.histories.filter { histories.contains($0.id) },
                                        operation: batch.operation, commitPolicy: batch.commitPolicy)
+        writable.gainBases = batch.gainBases.filter { gains.contains($0.key) }
         // 판은 남긴 초안의 것만 나른다(재생 목록 단계는 초안 전체를 넘기므로 그대로)
         writable.revisions = batch.revisions.restricted(to: writable.draftKeys)
         if writable.playlists == nil { writable.revisions.playlistSteps = [] }

@@ -184,8 +184,32 @@ struct DraftUndoTests {
         #expect(h.deck.hotCue(slot: 0)?.loop == nil && h.audio.loop == nil)
         undo.redo()
         #expect(h.deck.draft == loop)
+        // 저장 뒤 다시 읽어도 ⌘Z 기록은 남는다(R12, #405: 예전에는 지웠다). 쓰지 않은 초안이 남았으니 지금처럼 편집 전 초안으로 되돌린다
         h.deck.refreshAfterWrite(h.deck.row)
-        #expect(!undo.canUndo && !undo.canRedo)
+        #expect(await waitForState(until: { !h.deck.isEditLocked }))
+        #expect(undo.canUndo && h.deck.draft == loop)
+        undo.undo()
+        #expect(h.deck.hotCue(slot: 0)?.loop == nil && h.audio.loop == nil)
+    }
+
+    /// R12(#405): 그 곡을 쓰는 동안 누른 ⌘Z는 되돌리지 않고 미뤄 두었다가, 잠금이 풀리면 꺼낸 차례를 지켜 다시 올린다
+    @Test func 쓰는_동안_누른_실행_취소는_차례를_지켜_잠금이_풀린_뒤로_미룬다() async throws {
+        let h = try DeckHarness()
+        try await h.loaded()
+        let undo = manager(h.deck)
+        h.deck.addMemoryCue(at: 10)
+        h.deck.addMemoryCue(at: 20)
+        let uuid = try #require(h.deck.row?.track.uuid)
+        h.deck.lockedTracks = [uuid]
+        undo.undo()
+        undo.undo()
+        #expect(h.deck.draft?.cues.count == 2, "쓰는 동안에는 되돌리지 않는다")
+        h.deck.lockedTracks = []
+        #expect(undo.canUndo)
+        undo.undo()
+        #expect(h.deck.draft?.cues.map(\.time) == [10], "더 새 편집부터 되돌린다")
+        undo.undo()
+        #expect(h.deck.draft?.cues.isEmpty == true)
     }
 
     @Test func 쓰기_중에는_새로운_초안도_만들지_않는다() async throws {

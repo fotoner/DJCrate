@@ -61,6 +61,26 @@ struct AutoReflectionAppTests {
         return store
     }
 
+    /// R12(#405): 재생 목록은 저장 뒤 역편집이 아직 없다. 저장하면 그 전 초안을 되살리는 ⌘Z를 꺼서 쓴 단계를 다시 쌓지 않는다.
+    /// 초안 쓰기가 시작될 때 라이브러리 ⌘Z를 통째로 지우지 않으므로(태그 ⌘Z는 남는다) 재생 목록만 따로 끈다
+    @Test func 재생_목록_편집을_저장하면_그_전_초안을_되살리는_실행_취소는_꺼진다() async throws {
+        let store = store()
+        let undo = UndoManager()
+        store.undoManager = undo
+        store.playlists.renamePlaylist("B", to: "새 이름")
+        let written = try #require(store.playlists.playlistDraft.steps.first?.edit)
+        #expect(undo.canUndo)
+        let latch = Latch()
+        latch.release()
+        let coordinator = ReflectionCoordinator.test(store: store, gate: Self.gate(latch: latch, written: written))
+        let writing = Task { await coordinator.write(rows: [], playlists: true) }
+        for _ in 0..<2000 where !latch.arrived { try await Task.sleep(for: .milliseconds(5)) }
+        latch.release()
+        await writing.value
+        #expect(store.playlists.playlistDraft.steps.isEmpty)
+        #expect(!undo.canUndo, "쓴 단계를 되살리는 ⌘Z는 남지 않는다")
+    }
+
     @Test func 쓰는_동안_재생_목록_편집은_얼린_단계_뒤에_쌓이고_쓴_뒤에도_남는다() async throws {
         let store = store()
         store.playlists.renamePlaylist("B", to: "새 이름")

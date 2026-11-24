@@ -55,6 +55,8 @@ final class AppComposition {
     private var connected = false
     /// 자동 저장 엔진(#403). 실제 앱만 둔다(화면 시험 조립은 nil이라 지금처럼 ⌘S로만 쓴다). 반영 조정자의 쓰기도 이 엔진의 차례를 받는다
     private(set) var autoReflection: AutoReflection?
+    /// 입력 중인 칸(R19): 미확정 값이 있으면 자동 저장을 미룬다(엔진 편집 활동). 엔진이 있을 때만 둔다
+    private var fieldEditing: FieldEditingMonitor?
     /// 앱 수명 동안 도는 일(바깥 초안 감시·자동 시점 스냅샷·자동 저장 판정). 창이 아니라 조립 지점이 수명을 든다(창을 닫았다 열어도 하나만 돈다)
     private var lifetimeTasks: [Task<Void, Never>] = []
     /// 자동 시점 스냅샷 실행기 하나(자동 저장 앞의 스냅샷과 하루 한 번 스냅샷이 같은 실행기를 써 겹쳐 뜨지 않는다)
@@ -113,6 +115,9 @@ final class AppComposition {
             let engine = makeAutoReflection(run: autoReflection.run, home: autoReflection.home)
             self.autoReflection = engine
             reflection.engine = engine
+            fieldEditing = FieldEditingMonitor { [weak engine] editing in engine?.setActivity(FieldEditingMonitor.activity(editing: editing)) }
+            // 저장 뒤 ⌘Z가 만든 여러 곡 역편집은 한 번에 전부 쓰거나 전부 쓰지 않는다(R12)
+            store.onUndoAfterSave = { [weak engine] edit in engine?.enqueue(.undo(edit)) }
         }
         // 저장 입구가 엔진 발행 뒤에 바뀐 시트·USB 쓰기를 지금 상태로 다시 본다(S3)
         libraryWindow.liveHolds = { [weak self] in self?.saveBlockingHolds() ?? [] }
@@ -157,7 +162,9 @@ final class AppComposition {
         if link?.isServing == true { holds.insert(.linkServer) }
         // 시점 스냅샷 창에서 뜨는 중(뜨는 동안 라이브러리가 바뀌면 그 스냅샷을 버린다, R16)
         if windows.pointSnapshots.isWorking { holds.insert(.pointSnapshot) }
-        // 편집 중: 입력기 조합·마우스 누름·끌기·덱 큐 끌기·곡 편집 창이나 시트가 열림(자동 저장은 입력을 확정하지 않고 미룬다)
+        // 편집 중: 입력기 조합·마우스 누름·끌기·덱 큐 끌기·곡 편집 창이나 시트가 열림(자동 저장은 입력을 확정하지 않고 미룬다).
+        // 미확정 칸(R19)은 엔진 편집 활동으로 따로 온다: 끝 알림 없이 사라진 칸은 여기서 솎는다
+        fieldEditing?.revalidate()
         let app = NSApplication.shared
         let composing = (app.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
         let pointer = NSEvent.pressedMouseButtons != 0

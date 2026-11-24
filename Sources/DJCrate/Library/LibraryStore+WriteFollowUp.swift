@@ -53,6 +53,7 @@ extension LibraryStore {
         let uuids = writtenAwaitingReload
         writtenAwaitingReload = []
         onRekordboxWritten?(uuids)
+        for uuid in uuids { writtenCueIDs[uuid] = nil }
         // 쓰거나 되돌린 곡은 새 rekordbox 큐를 LINK로 내어 준다(#281)
         publishLinkCues(uuids)
     }

@@ -91,6 +91,11 @@ public struct ReflectionLibraryState: Sendable {
 public enum ReflectionLibraryChange: Sendable {
     /// 큐·그리드·게인 초안을 지웠다(초안 파일은 세션이 지웠다): 표시를 끈다. `cueCounts`면 큐 개수 표시도 지운다
     case draftsCleared(DraftSaveKind, [String], cueCounts: Bool)
+    /// 큐를 쓴 곡마다 쓰기가 새로 넣은 큐: 초안 큐 ID(UUID 문자열) → 새 rekordbox 큐 ID(#405, R12). 덱이 다시 읽을 때 같은 큐에 같은 ID를 이어
+    /// 저장 뒤 ⌘Z가 쓴 큐를 찾는다. 다시 읽기 전에 알린다
+    case cueIDsWritten([String: [String: String]])
+    /// 태그를 rekordbox에 쓴 곡(#405, R12): 다시 읽은 뒤 그 곡의 태그 ⌘Z는 지금 rekordbox 값 위의 역편집이 된다. 다시 읽기 전에 알린다
+    case tagsWritten([String])
     /// 태그 초안을 통째로 바꿨다(쓴 뒤 비운 초안·되살린 초안, 세션이 저장했다). 변경이 없는 초안은 메모리에서 지운다.
     /// 저장 실패는 화면이 맡긴 저장으로 센다(`failedTagSaves`)
     case tagDrafts([TagDraft])

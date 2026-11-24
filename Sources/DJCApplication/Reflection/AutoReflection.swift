@@ -91,6 +91,8 @@ public final class AutoReflection {
     /// 마지막으로 나눈 저장 대기와, 다시 나눠야 하는지(편집·요청·쓰기 뒤)
     private var inventory: AutoReflectionInventory?
     private var inventoryStale = true
+    /// 여러 곡 역편집 묶음(R12, `enqueue(.undo)`)
+    private var undoGroups: [AutoReflectionUndoGroup] = []
     /// 대량 유예(R14): 끝나는 때와 그때 쓸 판
     private var grace: (until: Date, revisions: Set<DraftRevision>)?
     /// 유예를 마친(취소하지 않은) 판. K행으로 나눠 쓰는 다음 묶음은 다시 유예하지 않는다
@@ -150,10 +152,13 @@ public final class AutoReflection {
         wake()
     }
 
-    /// 대기열에 넣는다. 역편집(R12)은 W3-F(#405)가 잇는다
+    /// 대기열에 넣는다. 여러 곡 역편집(R12)은 한 묶음으로 보통 자동 저장과 따로, 전부 쓰거나 전부 쓰지 않는다. K행을 넘으면 ⌘S·저장 단추로 쓴다.
+    /// 묶음은 앱 수명 동안만 든다(항목별 되돌리기의 영속 기록은 범위 밖: 다시 켜면 그 초안은 보통 편집으로 쓴다)
     public func enqueue(_ request: AutoReflectionRequest) {
         switch request {
-        case .undo:
+        case let .undo(edit):
+            undoGroups.removeAll { $0.id == edit.id }
+            if edit.batch.draftKeys.count > 1 { undoGroups.append(AutoReflectionUndoGroup(edit)) }
             wake()
         }
     }
@@ -352,8 +357,11 @@ public final class AutoReflection {
             prune(next)
             notePreBackupRetry(next.autoRevisions(rowLimit: rowLimit))
         }
-        guard let inventory, !dirty else { return nil }
-        let hasAuto = inventory.hasAuto(rowLimit: rowLimit), leftoverCount = inventory.leftoverCount(rowLimit: rowLimit)
+        guard var inventory, !dirty else { return nil }
+        // 여러 곡 역편집 묶음은 보통 자동 저장에서 빼고 따로 전부 아니면 전무로 쓴다(R12)
+        let undo = inventory.applyingUndo(undoGroups, rowLimit: rowLimit)
+        undoGroups = undo.groups
+        let hasAuto = inventory.hasAuto(rowLimit: rowLimit) || undo.chunk != nil, leftoverCount = inventory.leftoverCount(rowLimit: rowLimit)
         var base = ReflectionConditions(leftovers: inventory.leftovers(rowLimit: rowLimit), hasPending: hasAuto || leftoverCount > 0,
                                         editingField: activity.contains(.fieldEditing), autoSaves: run.autoSaves)
         func hold(_ reason: ReflectionHold, status: AutoReflectionStatus? = nil, waiting: Bool = true, pause: Duration?) -> Duration? {
@@ -455,8 +463,10 @@ public final class AutoReflection {
         case .stopped: break
         }
         // 대량 유예(R14): 유예 동안 「N초 뒤 저장 · [취소]」. ⌘Q·창 전환으로 앞당기지 않는다
-        let autoRevisions = inventory.autoRevisions(rowLimit: rowLimit)
-        if inventory.isBulk(timing: timing), !autoRevisions.isSubset(of: graceAccepted) {
+        let autoRevisions = inventory.autoRevisions(rowLimit: rowLimit).union(undo.chunk?.revisions ?? [])
+        // 여러 곡 역편집도 M곡 이상이거나 여러 곡의 값을 지우면 대량 유예를 거친다(R14)
+        let undoBulk = undo.chunk.map { $0.rows >= timing.bulkTracks || inventory.clearing.intersection($0.tracks.keys).count >= 2 } ?? false
+        if inventory.isBulk(timing: timing) || undoBulk, !autoRevisions.isSubset(of: graceAccepted) {
             let grace = grace ?? (now + Self.seconds(timing.bulkDelay), autoRevisions)
             self.grace = grace
             if now < grace.until {
@@ -506,7 +516,7 @@ public final class AutoReflection {
         // 스냅샷을 뜨느라 지켜보지 못한 틈이 있으면 처음부터 다시 판정한다(조용함을 다시 본다)
         if ports.clock.now().timeIntervalSince(now) > Self.seconds(poll) { return nil }
         guard !dirty, manualWaiting == 0, !isWriting else { return nil }
-        guard let chunk = inventory.chunk(rowLimit: rowLimit) else { return poll }
+        guard let chunk = undo.chunk ?? inventory.chunk(rowLimit: rowLimit) else { return poll }
         return await write(chunk)
     }
 

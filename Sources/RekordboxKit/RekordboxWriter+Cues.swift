@@ -19,6 +19,8 @@ extension RekordboxWriter {
         var insertedIDs: Set<String>
         /// 새로 넣은 큐의 탐색 칸: InMpegFrame·InMpegAbs·OutMpegFrame·OutMpegAbs·InPointSeekInfo·OutPointSeekInfo(NULL은 "NULL")
         var insertedSeek: [String: [String]] = [:]
+        /// 새로 넣은 큐의 색 칸: Color·ColorTableIndex(NULL은 "NULL"). 옮긴 큐는 이어받은 색, 되살린 큐는 지우기 전 색(#405)
+        var insertedColors: [String: [String]] = [:]
         /// 건드리지 않은 JSON 객체 원문
         var untouchedJSON: [String: String]
         var cueUSN: Int
@@ -229,6 +231,9 @@ extension RekordboxWriter {
         var newObjects: [CueJSON.Object] = []
         var insertedIDs: Set<String> = []
         var insertedSeek: [String: [String]] = [:]
+        var insertedColors: [String: [String]] = [:]
+        /// 초안 큐 ID → 새 큐 ID(결과로 돌려준다, #405)
+        var cueIDs: [String: String] = [:]
         for (cue, replacing) in inserts.sorted(by: { $0.cue.time < $1.cue.time }) {
             let id = try newCueID(db)
             let uuid = UUID().uuidString.lowercased()
@@ -242,9 +247,15 @@ extension RekordboxWriter {
             var color = loop == nil ? -1 : 255
             var colorTableIndex: Int? = loop == nil ? nil : 0
             if let old = replacing, (old.kind == 0) == (kind == 0),
-               (old.color.map { $0 != -1 && $0 != 255 } ?? false) || (old.colorTableIndex ?? 0) > 0 {
+               EditableCue.ColorMark.isPicked(color: old.color, tableIndex: old.colorTableIndex) {
                 color = old.color ?? -1
                 colorTableIndex = old.colorTableIndex
+            } else if replacing == nil, cue.sourceID == nil, let mark = cue.color, mark.memory == (kind == 0),
+                      EditableCue.ColorMark.isPicked(color: mark.color, tableIndex: mark.tableIndex) {
+                // 지운 큐를 되살린 새 큐(저장 뒤 ⌘Z, #405)는 rekordbox가 적어 두었던 색을 그대로 쓴다(옮긴 큐와 같은 칸, 같은 갈래만).
+                // rekordbox ID가 있는 새 큐(합치기로 다른 곡에서 옮겨 온 큐)는 지금처럼 기본 색이다
+                color = mark.color ?? -1
+                colorTableIndex = mark.tableIndex
             }
             let comment: String? = cue.name.isEmpty ? (loop == nil ? nil : "") : cue.name
             let activeLoop: Int? = loop.map { $0.active ? 1 : 0 }
@@ -281,6 +292,8 @@ extension RekordboxWriter {
             ]))
             insertedIDs.insert(id)
             insertedSeek[id] = [mp.inFrame, mp.inAbs, mp.outFrame, mp.outAbs].map(String.init) + [inSeek ?? "NULL", outSeek ?? "NULL"]
+            insertedColors[id] = [String(color), colorTableIndex.map(String.init) ?? "NULL"]
+            cueIDs[cue.id.uuidString] = id
         }
         let kept = zip(objectIDs, objects).filter { !removedIDs.contains($0.0) }
         let json = CueJSON.serialize(kept.map(\.1) + newObjects)
@@ -318,9 +331,10 @@ extension RekordboxWriter {
             untouchedIDs: untouched,
             insertedIDs: insertedIDs,
             insertedSeek: insertedSeek,
+            insertedColors: insertedColors,
             untouchedJSON: Dictionary(uniqueKeysWithValues: kept.map { ($0.0, CueJSON.serialize([$0.1])) }),
             cueUSN: cueUSN, contentUSN: contentUSN)
         return (Outcome(trackUUID: draft.trackUUID, title: content.title, status: .written, reason: nil,
-                        removed: removals.count, added: inserts.count), content.id, expectation)
+                        removed: removals.count, added: inserts.count, cueIDs: cueIDs), content.id, expectation)
     }
 }

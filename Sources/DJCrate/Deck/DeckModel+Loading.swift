@@ -39,7 +39,8 @@ extension DeckModel {
     /// rekordbox에 쓰거나 되돌린 뒤: 소리·파형·분석은 그대로 두고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다.
     /// 음원 파일이 바뀌었으면 처음부터 다시 불러온다. 새 초안·기준값을 다 적용하기 전에는 그 곡의 편집을 막는다(`isEditLocked`):
     /// 쓰기 잠금이 풀린 뒤 도착하는 늦은 읽기가 그 사이 편집을 덮거나 편집이 쓰기 전 기준값으로 저장되지 않게 한다(R21).
-    func refreshAfterWrite(_ newRow: TrackRow?) {
+    /// - Parameter cueIDs: 이 곡에 새로 넣은 큐(초안 큐 ID → 새 rekordbox 큐 ID). 다시 읽은 큐에 같은 ID를 이어 ⌘Z가 쓴 큐를 찾는다(R12)
+    func refreshAfterWrite(_ newRow: TrackRow?, cueIDs: [String: String] = [:]) {
         guard let current = row else { return }
         let target = newRow ?? current
         guard target.id == current.id else { return }
@@ -51,7 +52,7 @@ extension DeckModel {
         let token = writeRefreshToken, uuid = target.track.uuid
         writeRefreshTokens[uuid] = token
         writeRefreshing.insert(uuid)
-        softReload(target, writeRefreshToken: token)
+        softReload(target, writeRefreshToken: token, cueIDs: cueIDs)
     }
 
     /// 새 값 적용을 끝냈다(읽기가 늦게 도착해 버려진 경우도 부른다). 그 사이 같은 곡의 갱신이 다시 시작됐으면 그쪽이 풀 때까지 둔다.
@@ -59,6 +60,7 @@ extension DeckModel {
         guard writeRefreshTokens[uuid] == token else { return }
         writeRefreshTokens[uuid] = nil
         writeRefreshing.remove(uuid)
+        restoreDeferredDraftUndo()
     }
 
     /// 백그라운드 읽기를 시작할 때의 곡이 아직 덱에 있는지(곡을 바꿀 때마다 `loadGeneration`이 오른다)
@@ -80,8 +82,10 @@ extension DeckModel {
     }
 
     /// 같은 곡·같은 파일인데 내용(큐·그리드·게인·메타데이터)만 바뀌었을 때.
-    func softReload(_ newRow: TrackRow, writeRefreshToken token: Int? = nil) {
-        clearDraftUndo()
+    /// 초안을 쓴 뒤 갱신(`token`이 있다)은 ⌘Z 기록을 남기고 쓴 큐에 같은 ID를 잇는다(R12). 그 밖의 다시 읽기는 기준이 바깥에서 바뀌어 기록을 지운다
+    func softReload(_ newRow: TrackRow, writeRefreshToken token: Int? = nil, cueIDs: [String: String] = [:]) {
+        let written = token == nil ? nil : draft
+        if token == nil { clearDraftUndo() }
         // 이 갱신이 더 새롭다: 먼저 시작해 아직 끝나지 않은 최초 불러오기의 내용(옛 곡 행의 큐·기준값)은 적용하지 않는다
         contentGeneration += 1
         replaceRow(newRow)
@@ -96,21 +100,31 @@ extension DeckModel {
                 if let token { self.finishWriteRefresh(uuid: request.uuid, token: token) }
                 return
             }
-            self.clearDraftUndo()
+            var fresh = content.draft
+            if token == nil {
+                self.clearDraftUndo()
+            } else if let kept = Self.keepingCueIdentity(fresh, written: written, cueIDs: cueIDs) {
+                fresh = kept
+            } else {
+                // 쓴 큐의 새 ID를 정할 수 없다: 그 ⌘Z는 끈다
+                self.clearDraftUndo()
+            }
             self.gainDraft = gainDraft
             self.applyGain()
-            self.draft = content.draft
+            self.draft = fresh
             self.applyGridGate(content.grid)
             self.applyAnalysisState(content.analysisState)
             self.refreshGrid()
             self.refreshSuggestionNote()
             // 최초 불러오기의 내용을 건너뛰었으면 첫 메모리 큐 자리는 여기서 맞춘다
-            self.placeAtFirstMemoryCueIfNeeded(content.draft.cues)
+            self.placeAtFirstMemoryCueIfNeeded(fresh.cues)
             // 새 초안·기준값을 적용했다: 저장한 곡의 편집을 푼다
             if let token { self.finishWriteRefresh(uuid: request.uuid, token: token) }
-            // 고른 큐·걸린 루프는 같은 자리·종류의 새 큐로 잇는다(반영하면 rekordbox 큐로 바뀌어 ID가 새로 생긴다).
+            // 고른 큐·걸린 루프는 같은 큐(이은 ID)로, 없으면 같은 자리·종류의 새 큐로 잇는다(반영하면 rekordbox 큐로 바뀌어 ID가 새로 생긴다).
             func match(_ old: EditableCue?) -> EditableCue.ID? {
-                old.flatMap { o in content.draft.cues.first { $0.kind == o.kind && abs($0.time - o.time) < 0.002 }?.id }
+                old.flatMap { o in
+                    fresh.cues.first { $0.id == o.id }?.id ?? fresh.cues.first { $0.kind == o.kind && abs($0.time - o.time) < 0.002 }?.id
+                }
             }
             self.selectedCueID = match(selected)
             if self.engagedLoopID != nil { self.engagedLoopID = match(engaged) }

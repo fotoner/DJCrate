@@ -30,8 +30,10 @@ extension DeckModel {
         storage.drafts.removeGrid(uuid, completion: draftSaveCompletion(.grid, uuid: uuid))
     }
 
+    /// 게인 초안에는 지금 덱이 본 rekordbox 오토게인을 base로 단다(R23: base가 있어야 자동 저장 대상이고, 쓸 때 rekordbox 값과 견준다)
     func persistGain(_ gain: Double?, uuid: String) {
-        storage.drafts.saveGain(gain, trackUUID: uuid, completion: draftSaveCompletion(.gain, uuid: uuid))
+        let base = row?.track.uuid == uuid ? rekordboxGainDB : nil
+        storage.drafts.saveGain(gain, base: base, trackUUID: uuid, completion: draftSaveCompletion(.gain, uuid: uuid))
     }
 
     func retryDraftSaves() {

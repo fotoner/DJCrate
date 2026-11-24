@@ -288,11 +288,12 @@ final class PlaylistEditStore {
         playlistDraft = draft
         savePlaylistDraft()
         refreshPlaylists()
-        // 쓰는 동안 한 편집은 실행 취소에 남기지 않는다: 되돌릴 초안이 쓰고 있는 단계를 담고 있어 쓴 뒤에는 맞지 않는다(저장 뒤 실행 취소는 W3-F)
+        // 쓰는 동안 한 편집은 실행 취소에 남기지 않는다: 되돌릴 초안이 쓰고 있는 단계를 담고 있어 쓴 뒤에는 맞지 않는다.
+        // 쓰면 이 대상의 단계를 지운다(`applyPlaylistWrite`): 옛 초안을 되살리면 쓴 단계를 다시 쓴다(저장 뒤 역편집은 아직 없다, R12)
         guard !library.libraryBusy, let undoManager = library.undoManager else { return }
-        undoManager.registerUndo(withTarget: library) { target in
-            guard !target.playlists.isEditBlocked else { return }
-            target.playlists.setPlaylistDraft(before, actionName: actionName)
+        undoManager.registerUndo(withTarget: library.playlistUndoTarget) { [weak library] _ in
+            guard let library, !library.playlists.isEditBlocked else { return }
+            library.playlists.setPlaylistDraft(before, actionName: actionName)
         }
         undoManager.setActionName(actionName)
     }
@@ -455,7 +456,7 @@ final class PlaylistEditStore {
         guard changed || disk.stepIDs != playlistDraft.stepIDs else { return false }
         playlistDraft = disk
         refreshPlaylists()
-        if changed { library.undoManager?.removeAllActions(withTarget: library) }
+        if changed { library.clearLibraryUndo() }
         return changed
     }
 
@@ -553,6 +554,8 @@ final class PlaylistEditStore {
     /// 쓴 뒤: 반영 세션이 쓴 편집을 뺀 초안(막힌 편집은 남겨 다음 반영에서 다시 본다)과 새 목록 ID를 이은 연결 기록을 저장했다.
     /// 메모리 초안·연결 기록을 맞추고, 새로 만든 목록의 `new:키`를 새 rekordbox ID로 바꿔 둔다(최근 목록·보고 있는 목록).
     func applyPlaylistWrite(_ cleanup: EditPlaylists.WriteCleanup) {
+        // 재생 목록 단계를 썼다: 그 전 초안을 되살리는 ⌘Z는 끈다(쓴 단계를 다시 쓰지 않게, R12)
+        library.undoManager?.removeAllActions(withTarget: library.playlistUndoTarget)
         let ids = cleanup.ids
         // 쓴 단계를 뺐으니 얼림을 푼다. 쓰기가 끝나 새 사본을 읽을 때까지(`libraryBusy`) 재생 목록 편집은 받지 않는다
         // (옛 사본 위에 더한 단계가 쓴 목록의 기준과 어긋나지 않게)

@@ -14,7 +14,20 @@ final class LibraryStore {
     }
 
     @ObservationIgnored weak var undoManager: UndoManager? {
-        didSet { if oldValue !== undoManager { oldValue?.removeAllActions(withTarget: self) } }
+        didSet { if oldValue !== undoManager { clearLibraryUndo(in: oldValue) } }
+    }
+    /// 저장 뒤에 되돌리지 않는 종류(합치기·재생 기록·재생 목록)의 ⌘Z 대상(R12). 그 종류를 쓰면 그 대상의 단계만 지워 ⌘Z가 꺼진다.
+    /// 재생 목록의 저장 뒤 역편집(이름·순서·곡 넣기)은 아직 없다: 쓰면 옛 초안을 되살려 쓴 단계를 다시 쓰지 않게 끈다
+    let mergeUndoTarget = UndoTarget(), historyUndoTarget = UndoTarget(), playlistUndoTarget = UndoTarget()
+    final class UndoTarget {}
+    /// 라이브러리 쪽 ⌘Z 기록을 모두 지운다(복원·곡 넣기처럼 통째로 잠그는 쓰기, 그 밖의 다시 읽기)
+    func clearLibraryUndo(in manager: UndoManager? = nil) {
+        let manager = manager ?? undoManager
+        manager?.removeAllActions(withTarget: self)
+        manager?.removeAllActions(withTarget: mergeUndoTarget)
+        manager?.removeAllActions(withTarget: historyUndoTarget)
+        manager?.removeAllActions(withTarget: playlistUndoTarget)
+        deferredTagUndo = []
     }
     /// rekordbox 라이브러리 위치(읽기 출처·쓰기 대상·스냅샷·백업·초안 폴더). 조립 지점이 실행 인자·환경을 한 번 풀어 준다.
     @ObservationIgnored let location: LibraryLocation
@@ -386,7 +399,8 @@ final class LibraryStore {
         didSet {
             // 시작 횟수와 끝난 뒤 백업 확인은 libraryBusy, ⌘Z 기록 비우기와 덱 내리기는 editsFrozen이 하는 일이다.
             if isWritingRekordbox, !oldValue { rekordboxWriteCount += 1 }
-            if isWritingRekordbox { undoManager?.removeAllActions(withTarget: self) }
+            // 통째로 잠그는 쓰기(복원·곡 넣기/빼기·iTunes 동기화)만 ⌘Z 기록을 지운다. 초안 쓰기 뒤 ⌘Z는 지금 rekordbox 값 위의 역편집이 된다(R12)
+            if isWritingRekordbox, !isTrackScopedWrite { clearLibraryUndo() }
             // 쓰기·되돌리기 실패 때도 백업이 남거나 정리될 수 있다.
             if oldValue && !isWritingRekordbox { refreshWriteBackups() }
             if oldValue && !isWritingRekordbox, unloadsDeckAfterWrite { unloadDeckForCDJ() }
@@ -409,7 +423,11 @@ final class LibraryStore {
     /// 쓰기 포트(`WriteLock.setTracks`)가 쓰기 시작 전에 정하고 쓰기가 끝나면 비운다. 비어 있지 않으면 곡 단위로 쓰는 중이라 창 덮개를 띄우지 않고 편집 잠금을 통째로 걸지 않는다.
     /// 복원·곡 넣기·빼기·iTunes 동기화는 비어 있어 통째로 잠근다. 재생 목록만 쓰는 묶음은 곡이 없어도 `isDraftWrite`라 곡 단위 쓰기다.
     private(set) var lockedTracks: Set<String> = [] {
-        didSet { if lockedTracks != oldValue { onLockedTracks?(lockedTracks) } }
+        didSet {
+            guard lockedTracks != oldValue else { return }
+            onLockedTracks?(lockedTracks)
+            restoreDeferredTagUndo()
+        }
     }
     /// 이 곡의 편집을 막는지: 통째 편집 잠금이거나 쓰는 묶음에 든다. 곡 편집(덱·태그·그림·목록 칸)이 읽는다.
     func isEditLocked(_ trackUUID: String) -> Bool { editsFrozen || lockedTracks.contains(trackUUID) }
@@ -425,6 +443,24 @@ final class LibraryStore {
     func invalidateTagUndo<S: Sequence>(_ uuids: S) where S.Element == String {
         for uuid in uuids { tagUndoGeneration[uuid, default: 0] += 1 }
     }
+    /// 태그를 rekordbox에 쓴 횟수(곡별, R12). 단계를 만든 뒤 늘었으면 그 곡의 ⌘Z는 지금 rekordbox 값 위의 역편집이 된다(`TagUndo`)
+    @ObservationIgnored var tagWriteGeneration: [String: Int] = [:]
+    func noteTagsWritten<S: Sequence>(_ uuids: S) where S.Element == String {
+        for uuid in uuids { tagWriteGeneration[uuid, default: 0] += 1 }
+    }
+    /// 그 곡을 쓰는 동안 눌러 미뤄 둔 태그 ⌘Z 단계(꺼낸 차례)와 만든 때의 세대. 잠금이 풀리면 다시 올린다
+    @ObservationIgnored var deferredTagUndo: [(change: DraftChange<[String: TagDraft]>, generations: [TagUndoGeneration])] = []
+    /// 미뤄 둔 태그 ⌘Z 단계를 모든 곡의 잠금이 풀리면 다시 올린다(먼저 꺼낸 더 새 단계가 맨 위에 오게 옛 단계부터)
+    func restoreDeferredTagUndo() {
+        guard !deferredTagUndo.isEmpty, !deferredTagUndo.contains(where: { $0.generations.contains { isEditLocked($0.uuid) } }) else { return }
+        let deferred = deferredTagUndo
+        deferredTagUndo = []
+        for item in deferred.reversed() { tags.registerUndo(item.change, generations: item.generations) }
+    }
+    /// 태그를 rekordbox에 썼지만 아직 새 사본으로 다시 읽지 못한 곡(다음 성공한 초안 쓰기 뒤 읽기가 쓴 횟수를 올린다)
+    @ObservationIgnored var tagsWrittenAwaitingReload: Set<String> = []
+    /// 저장 뒤 ⌘Z가 여러 곡의 역편집을 만들었다(R12): 자동 저장이 한 번에 전부 쓰거나 전부 쓰지 않게 대기열에 넣는다(조립 지점이 엔진에 잇는다)
+    @ObservationIgnored var onUndoAfterSave: ((ReflectionUndoEdit) -> Void)?
     /// 곡 단위 잠금이 바뀌었다(덱 쪽 복사본을 맞춘다, `connectWriteLocks`)
     var onLockedTracks: ((Set<String>) -> Void)?
     /// 쓰기 잠금을 덱에 잇는다: 통째 잠금은 재생도 멈추고(`editsFrozen`), 곡 단위 잠금은 그 곡의 편집만 막는다(`lockedTracks`).
@@ -435,8 +471,9 @@ final class LibraryStore {
         onWrittenAwaitingReload = { [weak deck] in deck?.writePending = $0 }
         onRekordboxWritten = { [weak deck, weak self] uuids in
             // 처음부터 다시 불러오지 않고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다(소리·파형은 그대로).
+            // 쓴 큐의 새 ID를 함께 넘겨 덱이 같은 큐에 같은 ID를 잇는다(저장 뒤 ⌘Z, R12)
             guard let deck, let uuid = deck.row?.track.uuid, uuids.contains(uuid) else { return }
-            deck.refreshAfterWrite(self?.rowsByUUID[uuid])
+            deck.refreshAfterWrite(self?.rowsByUUID[uuid], cueIDs: self?.writtenCueIDs[uuid] ?? [:])
         }
     }
     /// 종료 판단: 앱 끄기와 업데이트 설치를 미룬다(`writeActivity`의 rekordbox 단계, #300).
@@ -455,6 +492,8 @@ final class LibraryStore {
     let quitWait = QuitWaitModel()
     /// rekordbox에 쓰거나 되돌린 곡(UUID). 덱이 그 곡이면 다시 읽는다. 새 스냅샷을 읽은 뒤에만 부른다(#175).
     var onRekordboxWritten: ((Set<String>) -> Void)?
+    /// 쓴 큐의 새 rekordbox ID(곡 → 초안 큐 ID → 새 큐 ID, #405). 다시 읽은 뒤 덱에 넘기고 지운다
+    @ObservationIgnored var writtenCueIDs: [String: [String: String]] = [:]
     /// 성공한 라이브러리 읽기 수(쓰기 뒤 다시 읽기가 실제로 끝났는지 본다)
     @ObservationIgnored private(set) var completedLoadCount = 0
     /// 라이브러리를 읽을 때마다(성공) 라이브러리 곡·추가한 곡의 음원 경로를 받는다. 앱은 조립 지점이 캐시 정리를 붙인다(시험은 없다).

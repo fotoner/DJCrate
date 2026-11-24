@@ -192,6 +192,8 @@ extension ReflectionSession {
         // 쓰기 대기 재생 기록(#43)도 재생 목록 초안처럼 곡을 고르지 않고 모두 본다. 관문이 막으면 막힘(이유)으로 돌아온다
         var batch = DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges,
                                     histories: playlists ? state.pendingHistories : [])
+        // 게인 base(R23)가 있는 곡은 관문이 지금 rekordbox 값과 견준다(⌘S도 같다). base 없는 게인은 지금처럼 쓴다
+        if !gains.isEmpty { batch.gainBases = files.gainBases().filter { gains[$0.key] != nil } }
         stampRevisions(&batch, rawCues: rawCues)
         return batch
     }
@@ -311,6 +313,11 @@ extension ReflectionSession {
         let written = Set(report.written.map(\.trackUUID)).union(report.gridWritten.map(\.trackUUID)).union(report.gainWritten.map(\.trackUUID))
             .union(report.analysisWritten.map(\.trackUUID)).union(tagWritten).union(report.artworkWritten.map(\.trackUUID))
             .union(batch.merges.filter { merged.contains($0.id) }.flatMap { $0.members.map(\.trackUUID) })
+        // 쓴 큐의 새 ID(저장 뒤 ⌘Z가 같은 큐를 찾는다, R12)는 다시 읽기 전에 알린다
+        let cueIDs = Dictionary(report.written.compactMap { outcome in outcome.cueIDs.map { (outcome.trackUUID, $0) } },
+                                uniquingKeysWith: { $0.merging($1) { _, new in new } })
+        if !cueIDs.isEmpty { apply(.cueIDsWritten(cueIDs)) }
+        if !tagWritten.isEmpty { apply(.tagsWritten(tagWritten.sorted())) }
         let reloaded = await reloadLibrary(during: .reloadingLibrary, written: written)
         apply(.lastWriteBackup(report.backup.map { URL(filePath: $0) }))
         return finishFollowUp([saveWarning, playlistWarning, historyWarning] + (report.warnings ?? []), reloaded: reloaded, restoring: false)

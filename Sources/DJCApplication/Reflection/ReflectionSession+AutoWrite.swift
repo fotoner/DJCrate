@@ -21,11 +21,12 @@ extension ReflectionSession {
     /// 나누는 규칙(값만 본다)
     /// - 대상 편집: 사람이 한 큐·그리드(분석 붙이기 제외)·태그(평점·곡 색 포함)·재생 목록 편집(지우기 제외)
     /// - 대상 밖: 분석 붙이기·앨범아트·합치기·추가한 곡 넣기·재생 기록·재생 목록 지우기. 같은 곡의 대상 편집은 그대로 자동으로 쓴다(R4)
-    /// - base 없음: 게인(base가 없는 형식, R23)
+    /// - base 없음: base 없이 저장한 게인(옛 형식·CLI, R23). base를 단 게인(덱 편집)은 대상 편집이다
     /// - 제안: 사람 편집만이 아니거나 해시가 맞지 않는 초안(R5)
     nonisolated static func inventory(state: ReflectionLibraryState, files: DraftStore, needsAnalysis: @Sendable (String?) -> Bool,
                                       cancelled: Set<DraftRevision>, needsConfirmation: Set<DraftRevision>) -> AutoReflectionInventory {
         var inventory = AutoReflectionInventory()
+        let gainBases = files.gainBases()
         func judge(_ revision: DraftRevision) -> ReflectionLeftover? {
             if cancelled.contains(revision) { return .cancelled }
             if needsConfirmation.contains(revision) { return .needsConfirmation }
@@ -43,7 +44,11 @@ extension ReflectionSession {
                     keys.append(DraftKey(.grid, uuid))
                 }
             }
-            if state.gainDraftUUIDs.contains(uuid) { inventory.leftoverKeys[DraftKey(.gain, uuid)] = .noBase }
+            if state.gainDraftUUIDs.contains(uuid) {
+                let key = DraftKey(.gain, uuid)
+                // 화면 표시만 남고 디스크에 없는 초안(방금 썼다)은 저장 대기가 아니다
+                if gainBases[uuid] != nil { keys.append(key) } else if files.currentHash(key) != nil { inventory.leftoverKeys[key] = .noBase }
+            }
             if state.tagDrafts[uuid]?.hasChanges == true { keys.append(DraftKey(.tag, uuid)) }
             if state.artworkDrafts[uuid] != nil { inventory.leftoverKeys[DraftKey(.artwork, uuid)] = .outsideScope }
             for merge in state.mergeDrafts where merge.members.contains(where: { $0.trackUUID == uuid }) {
@@ -225,6 +230,9 @@ extension ReflectionSession {
         let files = ports.drafts, state = ports.library.state()
         var verified: [DraftKey: DraftBatchEntry] = [:]
         var cues: [CueDraft] = [], grids: [GridDraft] = [], tags: [TagDraft] = []
+        var gains: [String: Double] = [:], gainBases: [String: Double] = [:]
+        let allGains = chunk.tracks.keys.contains { chunk.tracks[$0]?[DraftKey(.gain, $0)] != nil } ? (try? files.gainDrafts()) ?? [:] : [:]
+        let bases = allGains.isEmpty ? [:] : files.gainBases()
         for row in rows {
             let uuid = row.track.uuid
             for (key, revision) in (chunk.tracks[uuid] ?? [:]).sorted(by: { $0.key < $1.key }) {
@@ -244,7 +252,13 @@ extension ReflectionSession {
                     if let grid = files.gridDraft(uuid), grid.hasChanges, matches(try? DraftContentHash(of: grid)) { grids.append(grid) }
                 case .tag:
                     if let tag = files.tagDraft(uuid), tag.hasChanges, matches(try? DraftContentHash(of: tag)) { tags.append(tag) }
-                case .gain, .artwork, .merge: continue
+                case .gain:
+                    // base를 단 게인만(R23). 관문이 base를 지금 rekordbox 값과 견준다
+                    if let gain = allGains[uuid], let base = bases[uuid], matches(try? DraftContentHash(of: gain)) {
+                        gains[uuid] = gain
+                        gainBases[uuid] = base
+                    }
+                case .artwork, .merge: continue
                 }
             }
         }
@@ -268,7 +282,9 @@ extension ReflectionSession {
                 }
             }
         }
-        var batch = DraftWriteBatch(drafts: cues, grids: grids, tags: tags, playlists: playlists)
+        var batch = DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, playlists: playlists,
+                                    commitPolicy: chunk.allOrNothing ? .allOrNothing : .writable)
+        batch.gainBases = gainBases
         stampRevisions(&batch, rawCues: [:], verified: verified, verifiedSteps: verifiedSteps)
         return batch
     }
@@ -483,6 +499,7 @@ extension DraftWriteBatch {
         batch.drafts.removeAll { uuids.contains($0.trackUUID) }
         batch.grids.removeAll { uuids.contains($0.trackUUID) }
         batch.gains = batch.gains.filter { !uuids.contains($0.key) }
+        batch.gainBases = batch.gainBases.filter { !uuids.contains($0.key) }
         batch.tags.removeAll { uuids.contains($0.trackUUID) }
         batch.artworks.removeAll { uuids.contains($0.trackUUID) }
         batch.revisions = batch.revisions.restricted(to: batch.draftKeys)

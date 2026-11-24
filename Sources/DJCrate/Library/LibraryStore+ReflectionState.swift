@@ -35,6 +35,8 @@ extension LibraryStore {
                 if cueCounts { draftCueCounts[uuid] = nil }
                 draftChanged(trackUUID: uuid, kind: DeckModel.DraftKind(kind), exists: false)
             }
+        case let .cueIDsWritten(ids): writtenCueIDs.merge(ids) { old, new in old.merging(new) { _, latest in latest } }
+        case let .tagsWritten(uuids): tagsWrittenAwaitingReload.formUnion(uuids)
         case let .tagDrafts(drafts): replaceTagDrafts(drafts)
         case let .mergeDrafts(drafts, failure, moved): applyMergeDraftsAfterWrite(drafts, failure: failure, moved: moved)
         case let .playlistWritten(cleanup): playlists.applyPlaylistWrite(cleanup)

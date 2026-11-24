@@ -113,7 +113,8 @@ final class TagEditStore {
     }
 
     /// 되돌리기 대상은 공유 핵심이다: 쓰기를 시작하거나 되돌리기 관리자가 바뀌면 핵심을 대상으로 한 단계를 모두 지운다(`LibraryStore`).
-    private func registerUndo(_ change: DraftChange<[String: TagDraft]>) {
+    /// - Parameter generations: 미뤄 둔 단계를 다시 올릴 때 그 단계를 만든 때의 세대(곡, 무효 세대, 쓴 횟수). 없으면 지금 세대
+    func registerUndo(_ change: DraftChange<[String: TagDraft]>, generations captured: [TagUndoGeneration]? = nil) {
         guard let undoManager = library.undoManager else { return }
         let grouping = !undoManager.isUndoing && !undoManager.isRedoing
         let groupsByEvent = undoManager.groupsByEvent
@@ -121,15 +122,41 @@ final class TagEditStore {
             undoManager.groupsByEvent = false
             undoManager.beginUndoGrouping()
         }
-        // 단계가 가리키는 곡의 기준 세대: 저장 뒤 읽기가 그 곡을 쓰거나 기준을 옮겼으면 그 곡은 되돌리지 않는다(`LibraryStore.invalidateTagUndo`)
-        let generations = Set(change.before.keys).union(change.after.keys).map { ($0, library.tagUndoGeneration[$0, default: 0]) }
+        // 단계가 가리키는 곡의 기준 세대: 저장 뒤 읽기가 그 곡의 기준을 옮겼거나 바깥이 초안을 바꿨으면 그 곡은 되돌리지 않는다(`LibraryStore.invalidateTagUndo`).
+        // 그 곡을 rekordbox에 썼으면(쓴 횟수가 늘었다) 지금 rekordbox 값 위의 역편집으로 되돌린다(R12, `TagUndo`)
+        let generations = captured ?? Set(change.before.keys).union(change.after.keys)
+            .map { TagUndoGeneration(uuid: $0, invalidated: library.tagUndoGeneration[$0, default: 0], written: library.tagWriteGeneration[$0, default: 0]) }
         undoManager.registerUndo(withTarget: library) { target in
-            // 쓰는 곡과 세대가 바뀐 곡은 빼고 나머지 곡만 되돌리며, 실제로 되돌린 곡만 ⇧⌘Z에 남긴다(쓰는 초안·새로 받은 초안을 덮지 않는다)
-            let valid = Set(generations.filter { !target.isEditLocked($0.0) && target.tagUndoGeneration[$0.0, default: 0] == $0.1 }.map(\.0))
-            guard let partial = DraftChange(before: change.before.filter { valid.contains($0.key) },
-                                            after: change.after.filter { valid.contains($0.key) }) else { return }
+            // 이 단계의 곡을 쓰는 중이면 되돌리지 않고 미뤄 두었다가 잠금이 풀리면 꺼낸 차례를 지켜 다시 올린다(`restoreDeferredTagUndo`)
+            if generations.contains(where: { target.isEditLocked($0.uuid) }) {
+                if target.undoManager?.isRedoing != true { target.deferredTagUndo.append((change, generations)) }
+                return
+            }
+            // 세대가 바뀐 곡은 빼고 나머지 곡만 되돌리며, 실제로 되돌린 곡만 ⇧⌘Z에 남긴다(새로 받은 초안을 덮지 않는다)
+            var before: [String: TagDraft] = [:], after: [String: TagDraft] = [:], reversed: [TagDraft] = []
+            for item in generations {
+                let (uuid, generation, writes) = (item.uuid, item.invalidated, item.written)
+                guard target.tagUndoGeneration[uuid, default: 0] == generation else { continue }
+                guard target.tagWriteGeneration[uuid, default: 0] != writes else {
+                    before[uuid] = change.before[uuid]
+                    after[uuid] = change.after[uuid]
+                    continue
+                }
+                guard let row = target.rowsByUUID[uuid] else { continue }
+                let current = target.tags.tagDraft(for: row)
+                guard let reverted = TagUndo.reverting(before: change.before[uuid], after: change.after[uuid], onto: current) else { continue }
+                before[uuid] = reverted
+                after[uuid] = current
+                reversed.append(reverted)
+            }
+            guard let partial = DraftChange(before: before, after: after) else { return }
             target.tags.show(partial.before)
             target.tags.registerUndo(partial.reversed)
+            // 여러 곡의 역편집은 자동 저장이 한 번에 전부 쓰거나 전부 쓰지 않는다(R12)
+            if reversed.count > 1 {
+                target.onUndoAfterSave?(ReflectionUndoEdit(id: UUID().uuidString, batch: DraftWriteBatch(tags: reversed, commitPolicy: .allOrNothing),
+                                                           rowCount: reversed.count))
+            }
         }
         undoManager.setActionName(String(ui: "태그 편집"))
         if grouping {
@@ -147,4 +174,11 @@ final class TagEditStore {
         edit.save(changed)
         library.tagRevision += 1
     }
+}
+
+/// 태그 ⌘Z 단계가 가리키는 곡의 세대(곡, 무효 세대 `tagUndoGeneration`, 쓴 횟수 `tagWriteGeneration`)
+struct TagUndoGeneration {
+    var uuid: String
+    var invalidated: Int
+    var written: Int
 }

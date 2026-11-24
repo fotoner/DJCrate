@@ -44,7 +44,7 @@ extension PlaylistEditStore {
         for id in visibleIDs {
             if let row = current.rows[id] { library.updateRecoveryRow(row) }
         }
-        library.undoManager?.removeAllActions(withTarget: library)
+        library.clearLibraryUndo()
         refreshPlaylists()
     }
 

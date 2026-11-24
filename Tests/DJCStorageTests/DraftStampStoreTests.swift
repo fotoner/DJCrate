@@ -327,6 +327,43 @@ struct DraftStampStoreTests {
         #expect(DraftStampStore.stamp(DraftKey(.gain, "old"), home: folder.url)?.origins == [.human, .unknown])
     }
 
+    /// 게인 초안의 base(R23, #405): 초안을 만들 때 본 rekordbox 오토게인을 옆 파일 `gain-draft-bases.json`에 둔다.
+    /// 게인 파일 모양은 그대로라 옛 앱도 읽는다. 값을 지우면(편집 버리기·쓴 뒤 정리) base도 지운다. 값만 바꾸면 base는 그대로다
+    @Test func 게인_초안의_base는_옆_파일에_두고_값을_지우면_함께_지운다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try GainDraftStore.saveBase(-3.5, trackUUID: "a", url: places.gain)
+        try StampedDrafts.saveGain(-1, trackUUID: "a", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(-4, trackUUID: "b", url: places.gain)
+        try StampedDrafts.saveGain(-2, trackUUID: "b", url: places.gain, origin: .human)
+        #expect(try GainDraftStore.read(url: places.gain) == ["a": -1, "b": -2])
+        #expect(GainDraftStore.bases(url: places.gain) == ["a": -3.5, "b": -4])
+        #expect(DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.isHumanOnly == true)
+        // 지우면 base도 지운다
+        try StampedDrafts.saveGain(nil, trackUUID: "a", url: places.gain, origin: .human)
+        #expect(GainDraftStore.bases(url: places.gain) == ["b": -4])
+        // 값만 바꾸면(CLI 등) base는 그대로다: 초안을 만들 때 본 rekordbox 값이다
+        try StampedDrafts.saveGain(-6, trackUUID: "b", url: places.gain, origin: .cli)
+        #expect(GainDraftStore.bases(url: places.gain) == ["b": -4])
+        #expect(try GainDraftStore.read(url: places.gain) == ["b": -6])
+        // 판 지정 삭제(쓴 뒤 정리)도 base를 함께 지운다
+        try GainDraftStore.saveBase(-2, trackUUID: "c", url: places.gain)
+        try StampedDrafts.saveGain(-7, trackUUID: "c", url: places.gain, origin: .human)
+        let c = try #require(DraftStampStore.stamp(DraftKey(.gain, "c"), home: folder.url))
+        _ = try StampedDrafts.removeWritten([WrittenDraft(key: DraftKey(.gain, "c"), revision: c.revision, contentHash: c.contentHash)],
+                                           home: folder.url)
+        #expect(GainDraftStore.bases(url: places.gain)["c"] == nil)
+    }
+
+    @Test func 옛_형식_게인_초안에는_base가_없다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try Data(#"{"old":-2.5}"#.utf8).write(to: places.gain)
+        #expect(GainDraftStore.bases(url: places.gain).isEmpty)
+        // 옆 파일이 손상돼도 base를 모를 뿐 게인 초안은 그대로 읽는다(자동으로 쓰지 않는다)
+        try Data("깨짐".utf8).write(to: GainDraftStore.basesURL(for: places.gain))
+        #expect(GainDraftStore.bases(url: places.gain).isEmpty)
+        #expect(try GainDraftStore.read(url: places.gain) == ["old": -2.5])
+    }
+
     @Test func 그림과_합치기_초안도_판_지정으로_지운다() throws {
         let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
         let artwork = ArtworkDraftStore.edit(trackUUID: "w", base: ArtworkBase(imagePath: ""), image: Data("그림".utf8), imageName: "a.png")

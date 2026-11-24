@@ -371,6 +371,8 @@ final class ReflectionHarness {
         changes.map { change in
             switch change {
             case let .draftsCleared(kind, uuids, counts): "cleared \(kind) \(uuids.sorted())\(counts ? " counts" : "")"
+            case let .cueIDsWritten(ids): "cue ids \(ids.keys.sorted())"
+            case let .tagsWritten(uuids): "tags written \(uuids)"
             case let .tagDrafts(drafts): "tags \(drafts.map(\.trackUUID).sorted())"
             case let .mergeDrafts(drafts, failure, _): "merges \(drafts.map(\.id))\(failure == nil ? "" : " failed")"
             case .playlistWritten: "playlist written"

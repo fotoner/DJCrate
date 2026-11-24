@@ -204,6 +204,103 @@ struct AutoReflectionEngineTests {
         #expect(w.engine.status == .leftover(count: 1) || w.engine.status == .leftover(count: 2))
     }
 
+    /// R23(#405): base를 단 게인 초안은 대상 편집이라 자동으로 쓰고, 관문에 base를 함께 넘긴다(지금 rekordbox 값과 다르면 관문이 막는다)
+    @Test func base가_있는_게인_초안은_자동으로_쓰고_base를_함께_넘긴다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.gainOutcomes = [ReflectionHarness.outcome("n", .written)]
+        w.h.state.rows["n"] = ReflectionHarness.row("n")
+        w.h.state.gainDraftUUIDs = ["n"]
+        w.h.memory.save(gain: -1, base: -3, "n")
+        try await w.start()
+        try await w.advance(10)
+        #expect(w.writes.count == 1)
+        #expect(w.writes.first?.gains == ["n": -1] && w.writes.first?.gainBases == ["n": -3])
+        #expect(!w.engine.conditions.leftovers.contains(.noBase))
+    }
+
+    // MARK: - 저장 뒤 ⌘Z의 역편집 묶음(R12, #405)
+
+    /// 여러 곡의 태그 역편집(저장 뒤 ⌘Z가 만든 사람 편집 초안)과 그 묶음
+    func undoGroup(_ w: AutoReflectionWorld, _ uuids: [String], rows: Int? = nil) -> ReflectionUndoEdit {
+        var tags: [TagDraft] = []
+        for uuid in uuids {
+            let tag = ReflectionHarness.tag(uuid, title: "되돌린 제목")
+            w.h.state.rows[uuid] = ReflectionHarness.row(uuid)
+            w.h.state.tagDrafts[uuid] = tag
+            w.h.memory.save(tag)
+            tags.append(tag)
+        }
+        return ReflectionUndoEdit(id: "undo-1", batch: DraftWriteBatch(tags: tags, commitPolicy: .allOrNothing), rowCount: rows ?? uuids.count)
+    }
+
+    @Test func 여러_곡_역편집은_한_묶음으로_전부_아니면_전무로_쓴다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.tagOutcomes = ["a", "b"].map { ReflectionHarness.outcome($0, .written) }
+        let edit = undoGroup(w, ["a", "b"])
+        w.writable("c")
+        w.cue("c")
+        try await w.start()
+        w.engine.enqueue(.undo(edit))
+        try await w.advance(10)
+        // 역편집 묶음을 먼저 따로 쓴다(다른 곡 편집과 섞지 않는다)
+        #expect(w.writes.count == 2)
+        #expect(w.writes.first?.commitPolicy == .allOrNothing && w.writes.first?.tags.map(\.trackUUID).sorted() == ["a", "b"])
+        #expect(w.writes.first?.drafts.isEmpty == true && w.writes.last?.commitPolicy == .writable)
+    }
+
+    @Test func 여러_곡_역편집_가운데_한_곡이라도_막히면_하나도_쓰지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.tagOutcomes = [ReflectionHarness.outcome("a", .written), ReflectionHarness.outcome("b", .blocked, reason: "바뀌었습니다")]
+        let edit = undoGroup(w, ["a", "b"])
+        try await w.start()
+        w.engine.enqueue(.undo(edit))
+        try await w.advance(10)
+        #expect(w.previews.first?.commitPolicy == .allOrNothing)
+        #expect(w.writes.isEmpty)
+        #expect(w.h.memory.tag("a") != nil && w.h.memory.tag("b") != nil)
+        // 쓰지 못한 결과는 다음 판정이 알린다
+        try await w.advance(2)
+        #expect(w.writes.isEmpty && w.previews.count == 1, "새 편집 전까지 다시 미리 보지 않는다")
+        #expect(w.engine.conditions.leftovers.contains(.needsConfirmation))
+    }
+
+    /// 여러 곡의 값을 지우는 역편집(채운 코멘트를 저장 뒤 ⌘Z)도 대량 유예를 거친다(R14)
+    @Test func 여러_곡의_값을_지우는_역편집은_대량_유예를_거친다() async throws {
+        let w = AutoReflectionWorld()
+        var tags: [TagDraft] = []
+        for uuid in ["a", "b"] {
+            var base = TagFields()
+            base.comment = "채운 코멘트"
+            let tag = TagDraft(trackUUID: uuid, base: base)
+            var cleared = tag
+            cleared.fields.comment = ""
+            w.h.state.rows[uuid] = ReflectionHarness.row(uuid)
+            w.h.state.tagDrafts[uuid] = cleared
+            w.h.memory.save(cleared)
+            tags.append(cleared)
+        }
+        w.h.script.preview.tagOutcomes = ["a", "b"].map { ReflectionHarness.outcome($0, .written) }
+        try await w.start()
+        w.engine.enqueue(.undo(ReflectionUndoEdit(id: "undo-clear", batch: DraftWriteBatch(tags: tags, commitPolicy: .allOrNothing), rowCount: 2)))
+        try await w.advance(15)
+        #expect(w.writes.isEmpty)
+        if case .grace = w.engine.status {} else { Issue.record("대량 유예가 아니다: \(w.engine.status)") }
+        try await w.advance(31)
+        #expect(w.writes.count == 1 && w.writes.first?.commitPolicy == .allOrNothing)
+    }
+
+    @Test func K행을_넘는_역편집은_자동으로_쓰지_않고_남긴다() async throws {
+        let w = AutoReflectionWorld()
+        w.timing.rowLimit = 1
+        w.h.script.preview.tagOutcomes = ["a", "b"].map { ReflectionHarness.outcome($0, .written) }
+        let edit = undoGroup(w, ["a", "b"])
+        try await w.start()
+        w.engine.enqueue(.undo(edit))
+        try await w.advance(10)
+        #expect(w.writes.isEmpty && w.previews.isEmpty)
+        #expect(w.engine.conditions.leftovers.contains(.undoOverRowLimit))
+    }
+
     @Test func 같은_곡에_큐와_앨범아트가_있으면_큐만_자동으로_쓰고_앨범아트는_남긴다() async throws {
         let w = AutoReflectionWorld()
         w.writable("a")

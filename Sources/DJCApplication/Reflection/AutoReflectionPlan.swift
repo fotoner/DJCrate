@@ -163,6 +163,60 @@ public struct AutoReflectionInventory: Equatable, Sendable {
     }
 }
 
+// MARK: - 저장 뒤 ⌘Z의 역편집 묶음(R12)
+
+/// 저장 뒤 ⌘Z가 대기열에 넣은 여러 곡 역편집(`ReflectionUndoEdit`의 초안 키). 한 번의 쓰기로 전부 쓰거나 전부 쓰지 않는다
+public struct AutoReflectionUndoGroup: Equatable, Sendable {
+    public var id: String
+    public var keys: Set<DraftKey>
+    /// 이 쓰기가 갱신할 곡 행 수(K와 견준다)
+    public var rows: Int
+    /// 처음 저장 대기에서 본 판. 그 뒤 판이 바뀌면(다시 고쳤다) 묶음을 풀어 보통 편집으로 쓴다
+    public var revisions: [DraftKey: DraftRevision] = [:]
+
+    public init(_ edit: ReflectionUndoEdit) {
+        id = edit.id
+        keys = edit.batch.draftKeys
+        rows = edit.rowCount
+    }
+}
+
+extension AutoReflectionInventory {
+    /// 역편집 묶음을 반영한다(R12): 묶음의 곡 초안은 보통 자동 저장에서 빼고, 모두 자동으로 쓸 수 있으면 그 묶음만 따로 전부 아니면 전무로 쓴다(한 번에 하나).
+    /// K행을 넘으면 `undoOverRowLimit`로, 한 곡이라도 자동으로 쓸 수 없으면(확인 필요 등) 나머지도 `needsConfirmation`으로 남긴다(⌘S·저장 단추로 쓴다).
+    /// 저장 대기에서 모두 사라진 묶음(썼다·버렸다)과 판이 바뀐 묶음(다시 고쳤다)은 버린다.
+    /// - Returns: 남길 묶음과 이번에 쓸 묶음(없으면 nil)
+    public mutating func applyingUndo(_ groups: [AutoReflectionUndoGroup], rowLimit: Int) -> (groups: [AutoReflectionUndoGroup], chunk: AutoReflectionChunk?) {
+        var auto: [DraftKey: DraftRevision] = [:]
+        for revisions in tracks.values { auto.merge(revisions) { first, _ in first } }
+        var kept: [AutoReflectionUndoGroup] = [], chunk: AutoReflectionChunk?
+        for var group in groups {
+            let present = group.keys.filter { auto[$0] != nil || leftoverKeys[$0] != nil }
+            guard !present.isEmpty else { continue }
+            if group.revisions.isEmpty {
+                group.revisions = auto.filter { group.keys.contains($0.key) }
+            } else if present.contains(where: { key in auto[key].map { $0 != (group.revisions[key] ?? $0) } ?? false }) {
+                continue
+            }
+            kept.append(group)
+            let members = present.filter { auto[$0] != nil }
+            for key in members {
+                tracks[key.id]?[key] = nil
+                if tracks[key.id]?.isEmpty == true { tracks[key.id] = nil }
+            }
+            let held: ReflectionLeftover? = members.count < present.count ? .needsConfirmation : group.rows > rowLimit ? .undoOverRowLimit : nil
+            if let held {
+                for key in members { leftoverKeys[key] = held }
+            } else if chunk == nil {
+                var chosen: [String: [DraftKey: DraftRevision]] = [:]
+                for key in members { chosen[key.id, default: [:]][key] = auto[key] }
+                chunk = AutoReflectionChunk(tracks: chosen, playlistSteps: 0, stepRevisions: [], rows: group.rows, allOrNothing: true)
+            }
+        }
+        return (kept, chunk)
+    }
+}
+
 /// 자동 저장 한 번에 쓸 것(K행까지)
 public struct AutoReflectionChunk: Equatable, Sendable {
     /// 쓸 곡 초안(곡 → 종류별 판). 같은 곡의 대상 밖 초안은 들지 않는다(R4)
@@ -173,12 +227,16 @@ public struct AutoReflectionChunk: Equatable, Sendable {
     public var stepRevisions: [DraftRevision]
     /// 갱신할 곡 행 수
     public var rows: Int
+    /// 여러 곡 역편집 묶음(R12): 한 곡이라도 막히면 아무것도 쓰지 않는다
+    public var allOrNothing: Bool
 
-    public init(tracks: [String: [DraftKey: DraftRevision]], playlistSteps: Int, stepRevisions: [DraftRevision], rows: Int) {
+    public init(tracks: [String: [DraftKey: DraftRevision]], playlistSteps: Int, stepRevisions: [DraftRevision], rows: Int,
+                allOrNothing: Bool = false) {
         self.tracks = tracks
         self.playlistSteps = playlistSteps
         self.stepRevisions = stepRevisions
         self.rows = rows
+        self.allOrNothing = allOrNothing
     }
 
     /// 묶음에 든 판 전부

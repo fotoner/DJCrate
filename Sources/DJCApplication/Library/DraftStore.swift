@@ -54,8 +54,12 @@ public struct DraftStore: Sendable {
     public var gainDrafts: @Sendable () throws -> [String: Double]
     /// 저장하지 못한 게인 입력(바깥 nil은 기록 없음, 안쪽 nil은 초안 지우기)
     public var pendingGain: @Sendable (String) -> Double??
-    /// 게인 초안(nil이면 지우기)
+    /// 게인 초안(nil이면 지우기: 그 곡의 base도 지운다)
     public var saveGain: @Sendable (Double?, String, @escaping @Sendable (DraftSaveFailure?) -> Void) -> Void
+    /// 게인 초안의 base(R23): 곡 UUID → 초안을 만들 때 본 rekordbox 오토게인(dB). base 없이 저장한 초안(옛 형식·CLI)은 없다
+    public var gainBases: @Sendable () -> [String: Double] = { [:] }
+    /// 게인 초안의 base를 둔다(nil이면 지운다). 저장 큐에서 뒤이어 맡기는 값 저장(`saveGain`)보다 먼저 적는다. 정하지 않은 구현은 두지 않는다
+    public var saveGainBase: @Sendable (Double?, String) -> Void = { _, _ in }
 
     // MARK: 태그·앨범아트
 
@@ -236,6 +240,12 @@ extension DraftStore {
     public func saveCue(_ draft: CueDraft) { saveCue(draft, { _ in }) }
     public func saveGrid(_ draft: GridDraft) { saveGrid(draft, { _ in }) }
     public func saveGain(_ gain: Double?, trackUUID: String) { saveGain(gain, trackUUID, { _ in }) }
+    /// base와 함께 게인 초안을 저장한다(R23): base를 먼저 두고 값을 같은 저장 큐에 맡긴다(값 저장 실패·다시 저장은 지금처럼 값만 다룬다)
+    public func saveGain(_ gain: Double?, base: Double?, trackUUID: String,
+                         completion: @escaping @Sendable (DraftSaveFailure?) -> Void = { _ in }) {
+        if gain != nil { saveGainBase(base, trackUUID) }
+        saveGain(gain, trackUUID, completion)
+    }
 }
 
 /// 쓴 재생 목록 단계 하나(R22)

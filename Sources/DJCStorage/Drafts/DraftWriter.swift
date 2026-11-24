@@ -211,6 +211,10 @@ public final class DraftWriter: Sendable {
         enqueue(.gain(gain), key: Self.key(.gain, trackUUID, url), write: { try write(gain, trackUUID, url) }, completion: completion)
     }
     public func removeGain(trackUUID: String, url: URL) { save(gain: nil, trackUUID: trackUUID, url: url) }
+    /// 게인 초안의 base(R23)를 같은 저장 큐에 맡긴다: 뒤이어 맡기는 값 저장보다 먼저 적는다. 실패해도 값 저장은 그대로다(base가 없으면 자동 저장하지 않을 뿐이다)
+    public func saveGainBase(_ base: Double?, trackUUID: String, url: URL) {
+        queue.async { try? GainDraftStore.saveBase(base, trackUUID: trackUUID, url: url) }
+    }
 
     /// 데이터 폴더의 손상된 초안 파일을 옮겨 보관하고 그 목록을 받는다(저장과 같은 큐에서, 막 쓴 파일을 옮기지 않게).
     public func preserveDamagedDrafts(home: URL) -> [DamagedDrafts.Entry] {

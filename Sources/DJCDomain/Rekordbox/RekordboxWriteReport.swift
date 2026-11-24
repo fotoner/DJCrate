@@ -22,9 +22,12 @@ public struct RekordboxWriteOutcome: Codable, Hashable, Sendable {
     public var fields: [String]? = nil
     /// 그림 쓰기에서 한 일(넣기·바꾸기·지우기). 다른 쓰기와 옛 보고서에는 없다.
     public var artwork: ArtworkWriteKind? = nil
+    /// 큐 쓰기에서 새로 넣은 큐: 초안 큐 ID(`EditableCue.id`의 UUID 문자열) → 새 `djmdCue.ID`(#405). 고친 큐도 지우고 새로 넣어 ID가 바뀐다.
+    /// 저장 뒤 ⌘Z의 역편집이 같은 큐를 찾는다. 건드리지 않은 큐는 ID가 그대로라 적지 않는다. 다른 쓰기와 옛 보고서에는 없다.
+    public var cueIDs: [String: String]? = nil
 
     public init(trackUUID: String, title: String, status: Status, reason: String? = nil, removed: Int, added: Int,
-                fields: [String]? = nil, artwork: ArtworkWriteKind? = nil) {
+                fields: [String]? = nil, artwork: ArtworkWriteKind? = nil, cueIDs: [String: String]? = nil) {
         self.trackUUID = trackUUID
         self.title = title
         self.status = status
@@ -33,6 +36,7 @@ public struct RekordboxWriteOutcome: Codable, Hashable, Sendable {
         self.added = added
         self.fields = fields
         self.artwork = artwork
+        self.cueIDs = cueIDs
     }
 }
 
