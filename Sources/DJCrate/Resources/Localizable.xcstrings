@@ -2851,6 +2851,34 @@
         }
       }
     },
+    "%lld곡을 저장했습니다" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Saved %lld track"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Saved %lld tracks"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld曲を保存しました"
+          }
+        }
+      }
+    },
     "%lld곡을 추가 목록에서 뺐습니다(파일은 그대로)." : {
       "localizations" : {
         "en" : {
@@ -3409,6 +3437,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld秒"
+          }
+        }
+      }
+    },
+    "%lld초 뒤 저장" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving in %lld s"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld秒後に保存"
           }
         }
       }
@@ -5245,6 +5289,22 @@
         }
       }
     },
+    "DJCrate가 확인하지 못한 파일 구성이라 저장하지 않습니다. rekordbox 폴더를 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrate hasn't verified this file layout, so nothing is saved. Check the rekordbox folder"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DJCrateが確認していないファイル構成のため保存しません。rekordboxフォルダを確認してください"
+          }
+        }
+      }
+    },
     "DJCrate를 응용 프로그램 폴더로 옮긴 뒤 다시 열고 하세요." : {
       "localizations" : {
         "en" : {
@@ -6015,6 +6075,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "LINK ポートを開けませんでした(%@)。そのポートを使っているアプリを終了してからもう一度オンにしてください"
+          }
+        }
+      }
+    },
+    "LINK가 켜져 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK is on"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKがオンです"
           }
         }
       }
@@ -13249,6 +13325,22 @@
         }
       }
     },
+    "rekordbox가 정상 종료되지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordbox didn't quit normally"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rekordboxが正常に終了していません"
+          }
+        }
+      }
+    },
     "rekordbox가 정상적으로 종료되지 않은 것 같습니다(WAL 파일이 남아 있음). rekordbox를 한 번 켰다가 종료한 뒤 다시 시도하세요" : {
       "localizations" : {
         "en" : {
@@ -15955,6 +16047,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取り込む"
+          }
+        }
+      }
+    },
+    "가져오기 창에서 적용하거나 닫은 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply or close the import window, then try again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込みウインドウで適用するか閉じてから、もう一度お試しください"
+          }
+        }
+      }
+    },
+    "가져오기 창이 열려 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The import window is open"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込みウインドウが開いています"
           }
         }
       }
@@ -19751,6 +19875,22 @@
         }
       }
     },
+    "그 사이 라이브러리가 바뀌어 처리하지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library changed in the meantime, so nothing was done"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その間にライブラリが変わったため処理しませんでした"
+          }
+        }
+      }
+    },
     "그 쓰기는 이미 되돌려져 있어 바꿀 것이 없습니다" : {
       "localizations" : {
         "en" : {
@@ -20769,6 +20909,54 @@
         }
       }
     },
+    "기록으로 복원" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore from Record"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録から復元"
+          }
+        }
+      }
+    },
+    "기록으로 복원…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore from Record…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録から復元…"
+          }
+        }
+      }
+    },
+    "기록으로 복원하지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't Restore from the Record"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録から復元できませんでした"
+          }
+        }
+      }
+    },
     "기록으로 복원한 라이브러리가 기록의 근거와 다릅니다" : {
       "localizations" : {
         "en" : {
@@ -20781,6 +20969,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "記録から復元したライブラリが記録の根拠と一致しません"
+          }
+        }
+      }
+    },
+    "기록으로 복원했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restored from the Record"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記録から復元しました"
           }
         }
       }
@@ -20979,6 +21183,22 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "기존 편집이 있어 건너뛴 것 %1$lld · 편집에 담지 못한 차이 %2$lld"
+          }
+        }
+      }
+    },
+    "기준 값이 없음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No base values"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基準値がありません"
           }
         }
       }
@@ -21187,6 +21407,70 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "途中で止まったUSBへの書き込みを元に戻しました"
+          }
+        }
+      }
+    },
+    "끊긴 iTunes 동기화가 바꾼 동기화 파일만 쓰기 전 상태로 되돌립니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restores only the sync file the interrupted iTunes sync changed to its state before writing."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まったiTunes同期が変更した同期ファイルだけを、書き込み前の状態に戻します。"
+          }
+        }
+      }
+    },
+    "끊긴 복원을 ‘%@’ 복원 시점으로 다시 끝냅니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finishes the interrupted restore again with the ‘%@’ restore point."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった復元を、復元ポイント「%@」でもう一度最後まで行います。"
+          }
+        }
+      }
+    },
+    "끊긴 복원을 이 기록의 같은 백업으로 다시 끝냅니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finishes the interrupted restore again with the same backup in this record."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった復元を、この記録と同じバックアップでもう一度最後まで行います。"
+          }
+        }
+      }
+    },
+    "끊긴 복원을 이 기록의 복원 시점으로 다시 끝냅니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finishes the interrupted restore again with the restore point in this record."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった復元を、この記録の復元ポイントでもう一度最後まで行います。"
           }
         }
       }
@@ -22217,6 +22501,38 @@
         }
       }
     },
+    "다른 곳에서 만든 편집" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edits made elsewhere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他で作成された編集"
+          }
+        }
+      }
+    },
+    "다른 데이터 폴더의 쓰기 기록이라 이대로 두지 않았습니다. 그 데이터 폴더로 DJCrate를 연 뒤 처리하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This write record belongs to another data folder, so it was not kept as is. Open DJCrate with that data folder, then handle it there."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のデータフォルダの書き込み記録のため、このままにしませんでした。そのデータフォルダでDJCrateを開いてから処理してください。"
+          }
+        }
+      }
+    },
     "다른 도구나 rekordbox가 만든 rekordbox XML을 골라 지금 라이브러리와의 차이를 봅니다." : {
       "localizations" : {
         "en" : {
@@ -22357,6 +22673,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "別のフォルダで探す…"
+          }
+        }
+      }
+    },
+    "다른 프로그램이 쓰는 중…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Another program is writing…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他のプログラムが書き込み中…"
           }
         }
       }
@@ -23841,6 +24173,22 @@
         }
       }
     },
+    "디스크 공간이 모자람" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not enough disk space"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ディスクの空き容量が足りません"
+          }
+        }
+      }
+    },
     "디스크 이미지" : {
       "localizations" : {
         "en" : {
@@ -24387,6 +24735,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ライブラリが変わりました。同期するプレイリストを更新してから再試行してください。"
+          }
+        }
+      }
+    },
+    "라이브러리는 지금 상태 그대로 두고 쓰기 기록만 지웁니다. 그 쓰기에 든 편집은 지우지 않고 제안으로 남습니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The library stays as it is now and only the write record is removed. Edits in that write are kept as suggestions."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ライブラリは今の状態のままにして、書き込み記録だけを消します。その書き込みに含まれる編集は消さず、提案として残ります。"
           }
         }
       }
@@ -26099,6 +26463,22 @@
         }
       }
     },
+    "막힌 편집 비교 창이 열려 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The blocked edit comparison is open"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブロックされた編集の比較が開いています"
+          }
+        }
+      }
+    },
     "막힌 편집 비교가 열려 있어 저장하지 않았습니다" : {
       "localizations" : {
         "en" : {
@@ -27573,6 +27953,22 @@
         }
       }
     },
+    "미정리 목록을 지우지 못해 기록을 남겼습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't remove the pending-cleanup list, so the record was kept. Check write permission on the DJCrate data folder, then try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未整理リストを削除できなかったため、記録を残しました。DJCrateのデータフォルダの書き込み権限を確認してから、もう一度お試しください。"
+          }
+        }
+      }
+    },
     "미지정" : {
       "localizations" : {
         "en" : {
@@ -28087,6 +28483,22 @@
         }
       }
     },
+    "백업 폴더가 다른 디스크임" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backup folder is on another disk"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックアップフォルダが別のディスクにあります"
+          }
+        }
+      }
+    },
     "백업 폴더를 읽지 못했습니다. 다른 백업 폴더를 --backup으로 주세요" : {
       "localizations" : {
         "en" : {
@@ -28163,6 +28575,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "バックアップから復元"
+          }
+        }
+      }
+    },
+    "백업을 만들지 못함" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't make a backup"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックアップを作成できません"
           }
         }
       }
@@ -28747,6 +29175,22 @@
         }
       }
     },
+    "복구하지 못한 쓰기가 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A write could not be recovered"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復旧できなかった書き込みがあります"
+          }
+        }
+      }
+    },
     "복구할 편집을 확인하지 못했으니 편집을 보관하고 곡을 다시 선택하세요." : {
       "localizations" : {
         "en" : {
@@ -29133,6 +29577,22 @@
         }
       }
     },
+    "복원 시점을 남기는 중…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creating a restore point…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元ポイントを作成中…"
+          }
+        }
+      }
+    },
     "복원 시점을 지웠습니다." : {
       "localizations" : {
         "en" : {
@@ -29369,6 +29829,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "復元する保存履歴がありません"
+          }
+        }
+      }
+    },
+    "복원해서 자동 저장이 멈췄습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-save stopped after a restore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元したため自動保存が止まりました"
           }
         }
       }
@@ -33359,6 +33835,70 @@
         }
       }
     },
+    "쓰다가 끊긴 저장을 이 기록으로 쓰기 전 상태로 되돌립니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Returns the interrupted save to its state before writing, using this record."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった保存を、この記録で書き込み前の状態に戻します。"
+          }
+        }
+      }
+    },
+    "쓰다가 중단된 기록이 있습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An interrupted write record remains"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった書き込みの記録があります"
+          }
+        }
+      }
+    },
+    "쓰다가 중단된 저장을 되돌릴까요?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Undo the Interrupted Save?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった保存を元に戻しますか？"
+          }
+        }
+      }
+    },
+    "쓰다가 중단된 저장을 이대로 둘까요?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep the Interrupted Save as Is?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった保存をこのままにしますか？"
+          }
+        }
+      }
+    },
     "쓴 USB 동기화 선택 파일을 읽지 못했습니다. USB를 새로고침해 결과를 확인하세요" : {
       "localizations" : {
         "en" : {
@@ -34937,6 +35477,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "略称 %@"
+          }
+        }
+      }
+    },
+    "양이 많아 자동 저장하지 않음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Too many to auto-save"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "量が多いため自動保存しません"
           }
         }
       }
@@ -38627,6 +39183,70 @@
         }
       }
     },
+    "이대로 두기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep as Is"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このままにする"
+          }
+        }
+      }
+    },
+    "이대로 두기…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep as Is…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このままにする…"
+          }
+        }
+      }
+    },
+    "이대로 두었습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kept as is"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このままにしました"
+          }
+        }
+      }
+    },
+    "이대로 두지 못했습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't Keep as Is"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このままにできませんでした"
+          }
+        }
+      }
+    },
     "이름" : {
       "localizations" : {
         "en" : {
@@ -39169,6 +39789,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "前の曲"
+          }
+        }
+      }
+    },
+    "이전 저장의 정리가 끝나지 않았습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cleanup of the previous save is unfinished"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前回の保存の後始末が終わっていません"
           }
         }
       }
@@ -39847,6 +40483,22 @@
         }
       }
     },
+    "입력 중인 칸을 확정하지 못해 저장하지 않았습니다. 칸의 값을 고치거나 Return을 누른 뒤 다시 저장하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The field being edited couldn't be committed, so nothing was saved. Fix the value or press Return, then save again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入力中の欄を確定できなかったため保存しませんでした。値を直すかReturnキーを押してから、もう一度保存してください。"
+          }
+        }
+      }
+    },
     "자동" : {
       "localizations" : {
         "en" : {
@@ -39907,6 +40559,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自動復元ポイントを作成できませんでした"
+          }
+        }
+      }
+    },
+    "자동 저장 대상이 아님" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not auto-saved"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動保存の対象外"
+          }
+        }
+      }
+    },
+    "자동 저장을 취소함" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-save canceled"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動保存を取り消しました"
           }
         }
       }
@@ -41933,22 +42617,6 @@
         }
       }
     },
-    "저장 대기 없음" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Pending Saves"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存待ちなし"
-          }
-        }
-      }
-    },
     "저장 대기 초안 보기" : {
       "localizations" : {
         "en" : {
@@ -42335,6 +43003,22 @@
         }
       }
     },
+    "저장됨" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済み"
+          }
+        }
+      }
+    },
     "저장하는 도중 rekordbox가 켜졌습니다" : {
       "localizations" : {
         "en" : {
@@ -42347,6 +43031,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存中にrekordboxが起動しました"
+          }
+        }
+      }
+    },
+    "저장하지 못해 자동 저장이 멈췄습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto-save stopped because a save failed"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存に失敗したため自動保存が止まりました"
           }
         }
       }
@@ -43483,6 +44183,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "終了中のため、rekordboxには保存しませんでした。終了をキャンセルしてからもう一度保存してください"
+          }
+        }
+      }
+    },
+    "종료하는 중입니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitting"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "終了しています"
           }
         }
       }
@@ -44625,6 +45341,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "見つかりません"
+          }
+        }
+      }
+    },
+    "처리할 쓰기 기록이 없습니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No write record to handle"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "処理する書き込み記録がありません"
           }
         }
       }
@@ -51089,6 +51821,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要確認"
+          }
+        }
+      }
+    },
+    "확인이 필요함" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Needs review"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "確認が必要"
           }
         }
       }

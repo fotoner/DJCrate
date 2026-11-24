@@ -27,6 +27,9 @@ final class ListActionBarModel {
     @ObservationIgnored let store: LibraryStore
     private var staging: TrackStagingStore { store.staging }
 
+    /// 저장 단추의 줄(R3 표)과 저장 입구를 가진 주 창 모델. 엔진이 있는 앱만 줄을 알려 주고(`saveRow`), 없으면 지금처럼 늘 보인다. 조립 지점이 잇는다
+    @ObservationIgnored weak var window: LibraryWindowModel?
+
     init(store: LibraryStore) {
         self.store = store
     }
@@ -148,11 +151,15 @@ final class ListActionBarModel {
                            canExportXML: canExportStaged, importedCount: importedStagedCount, locks: locks)
         case .pending:
             // 검색·필터로 목록을 좁혔는지(보이는 곡이 그 목록의 곡보다 적다)
-            return .pending(selected: !store.selectedRows.isEmpty, narrowed: store.displayRows.count < store.sortedBase.count,
-                            tracks: pendingTargets.count, playlistEdits: pendingPlaylistEdits,
+            // 엔진이 있으면 이 단추는 공통 저장 입구라 선택·필터와 무관하게 저장 대기 전체를 쓴다(R3 8번 줄). 단추 이름도 전체다
+            let engineRow = window?.saveRow
+            return .pending(selected: engineRow == nil && !store.selectedRows.isEmpty,
+                            narrowed: engineRow == nil && store.displayRows.count < store.sortedBase.count,
+                            tracks: engineRow == nil ? pendingTargets.count : window?.saveRows.count ?? 0, playlistEdits: pendingPlaylistEdits,
                             histories: pendingHistories.map { .init(id: $0.id, name: displayName($0)) },
                             unlinkedDrafts: store.unlinkedDraftUUIDs.count,
-                            restore: .init(isEnabled: store.hasWriteBackup, help: restoreHelp), locks: locks)
+                            restore: .init(isEnabled: store.hasWriteBackup, help: restoreHelp), locks: locks,
+                            showsWrite: engineRow?.showsSaveButton ?? true)
         case let .itunesPlaylist(id):
             return .music(unavailable: unavailableMusicTracks(id))
         case let .playlist(id):
@@ -189,7 +196,8 @@ final class ListActionBarModel {
         case .removeSelectedStaged: removeSelectedStaged()
         case .exportStagedXML: exportStagedXML()
         case .removeImportedStaged: removeImportedStaged()
-        case .writePending: reflection?.startWrite(rows: pendingTargets)
+        case .writePending:
+            if let window, window.saveRow != nil { window.requestSave(.all, reflection: reflection) } else { reflection?.startWrite(rows: pendingTargets) }
         case .exportPendingXML: exportPendingXML(pendingTargets)
         case .restoreLatest: reflection?.startRestoreLatest()
         case .discardPlaylistDrafts: discardPlaylistDrafts()

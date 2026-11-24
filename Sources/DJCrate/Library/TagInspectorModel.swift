@@ -73,6 +73,10 @@ final class TagInspectorModel {
     /// 입력을 끝낸다(확정 없이 지웠다)
     func endInput(_ key: TagFields.Key) { pinnedInputs[key] = nil }
 
+    /// 글자를 쳤지만 아직 확정하지 않은 칸이 있다(`beginInput`~`commitText`·`endInput` 사이). 포커스를 거둔 뒤 다음 갱신에서 확정하는 칸이라
+    /// ⌘S가 이 값이 비기를 기다린 뒤 저장할 곡을 센다(R19)
+    var hasPendingInput: Bool { !pinnedInputs.isEmpty }
+
     /// 입력을 확정한다: 시작할 때 고정한 곡 UUID의 최신 행 가운데 지금 편집할 수 있는 곡에 넣는다(고정이 없으면 `rows` 가운데 편집할 수 있는 곡).
     /// 최신 행은 라이브러리 목록에서 찾고, 없으면 화면이 넘긴 `rows`에서 찾는다.
     func commitText(_ key: TagFields.Key, _ text: String, rows: [TrackRow]) {

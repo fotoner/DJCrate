@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quit = AppQuitController(
             model: store.quitWait,
             activity: { [weak store] in store?.writeActivity ?? .idle },
-            cancelPreparation: { [weak store] in store?.cancelWritePreparation() },
+            cancelPreparation: { [weak store] in store?.cancelWritePreparation(byUser: false) },
             flushDrafts: { [weak store] in store?.useCases.watch.flush() },
             reply: { [weak self] in self?.replyToTermination($0) },
             terminate: { [weak self] in self?.terminateApp() },
@@ -98,7 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             bringForward: { NSApplication.shared.activate() },
             runState: { [weak self] in self?.rekordboxRunState() },
             pending: { [weak store] in store?.pendingWriteSummary ?? PendingWriteCount(items: 0, playlistEdits: 0) },
-            present: { [weak self] confirmation, answer in self?.presentQuitConfirmation(confirmation, answer) })
+            present: { [weak self] confirmation, answer in self?.presentQuitConfirmation(confirmation, answer) },
+            pendingRecordSave: { [weak store] in store?.pendingAutoRecordSave?() })
         watchWrites(of: store)
     }
 

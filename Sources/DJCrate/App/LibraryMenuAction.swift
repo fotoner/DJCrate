@@ -1,3 +1,4 @@
+import DJCApplication
 import DJCDomain
 import SwiftUI
 
@@ -63,6 +64,8 @@ enum LibraryMenuAction: CaseIterable {
     /// 메뉴 막대·툴바는 주 창 모델로 메뉴 항목을 보고 부른다. 판정은 공유 핵심의 값을, XML 가져오기는 주 창 모델이 든 가져오기를 본다
     @MainActor func isEnabled(in window: LibraryWindowModel) -> Bool {
         let store = window.store
+        // 엔진이 있으면 ⌘S는 R3 표의 줄이 정한다(쓰는 중·이유를 보이는 줄에서도 켜 둔다)
+        if self == .reflect, let row = window.saveRow { return Self.reflectEnabled(row, in: window) }
         guard !isLocked(by: store) else { return false }
         if writesLibrary, store.writesBlockedBySheet { return false }
         switch self {
@@ -93,6 +96,7 @@ enum LibraryMenuAction: CaseIterable {
     ///   - reflection: rekordbox 쓰기 항목(쓰기·복원·빼기·시점 스냅샷)이 부를 화면 쪽. 없으면(조립 지점 없이 띄운 화면) 그 항목은 아무것도 하지 않는다.
     @MainActor func perform(in window: LibraryWindowModel, windows: AppWindows? = nil, reflection: ReflectionCoordinator? = nil) {
         let store = window.store
+        if self == .reflect, window.saveRow != nil { window.requestSave(reflection: reflection); return }
         if writesLibrary, store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return }
         guard isEnabled(in: window) else {
             if let reason = disabledReason(in: window) { store.showToast(.notice(text: reason, kind: .warning)) }
@@ -118,6 +122,26 @@ enum LibraryMenuAction: CaseIterable {
         }
     }
 
+    // MARK: - ⌘S(R3 표)
+
+    static var noEditsReason: String { String(ui: "저장할 편집이 없으니 곡을 편집하거나 재생 목록 편집을 먼저 만드세요") }
+
+    /// 줄마다 ⌘S가 켜지는 때. 쓰지 않고 이유를 보이는 줄(1~3)은 눌러도 아무 일이 없으면 안 되니 켜 둔다.
+    /// 4번 줄은 입력 중인 칸이 있을 때만 켜진다(R19). 쓰는 중(5번 줄)은 대기열 맨 앞에 넣으므로 켜 둔다
+    @MainActor private static func reflectEnabled(_ row: ReflectionStatusRow, in window: LibraryWindowModel) -> Bool {
+        let store = window.store
+        switch row.saveCommand {
+        case .restoreOnly, .refuseWithReason: return true
+        case .commitFieldThenFollow: return window.isEditingInput
+        // 쓰는 중에 누른 저장은 요청 하나를 보관했다가 앞 쓰기가 끝난 뒤 한다(`requestSave`). 수동 저장이 도는 중에도 켜 둔다
+        case .queueFront: return true
+        case .saveNow, .saveAndResume, .saveAllLeftovers, .saveNowIfAllowed:
+            // 막힌 초안 비교 창이 열려 있으면 눌러서 이유를 본다(`perform`이 알린다)
+            if store.writesBlockedBySheet { return true }
+            return !store.libraryBusy && (store.hasSavableEdits || window.isEditingInput)
+        }
+    }
+
     @MainActor func disabledReason(in window: LibraryWindowModel) -> String? {
         guard !isEnabled(in: window) else { return nil }
         let store = window.store
@@ -130,7 +154,7 @@ enum LibraryMenuAction: CaseIterable {
         case .removeTracks:
             if store.isITunesSelection { return String(ui: "iTunes 동기화 목록에서는 곡을 뺄 수 없으니 rekordbox 컬렉션에서 곡을 고르세요") }
             return String(ui: "rekordbox 컬렉션에서 뺄 로컬 곡을 목록에서 고르세요")
-        case .reflect: return String(ui: "저장할 편집이 없으니 곡을 편집하거나 재생 목록 편집을 먼저 만드세요")
+        case .reflect: return Self.noEditsReason
         case .exportXML: return String(ui: "XML로 넘길 추가한 곡이나 큐·그리드 편집을 먼저 만드세요")
         case .exportLibraryXML:
             return store.staging.hasXMLExportJob ? String(ui: "라이브러리 XML 내보내기가 끝난 뒤 다시 시도하세요") : String(ui: "라이브러리를 먼저 불러온 뒤 내보내세요")

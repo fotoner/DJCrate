@@ -49,6 +49,14 @@ public final class AutoReflection {
     public private(set) var autoWrites = 0
 
     private var loop: Task<Void, Never>?
+    /// 지금 도는 자동 저장 쓰기 하나(루프와 따로 도는 작업: 루프를 취소하면 자동 저장 전체가 멈추므로 [취소]는 이 작업에만 간다)
+    private var autoWriting: Task<ReflectionSession.AutoWriteOutcome, Never>?
+    /// 지금 도는 자동 저장 쓰기를 사용자가 [취소]했다(쓰기마다 처음에 푼다)
+    private var userCancelledWrite = false
+    /// 지금 도는 자동 저장 쓰기가 다루는 판: 묶음의 판과, 사용자가 [취소]하면 함께 멈출 자동으로 쓸 판 전부
+    private var writingRevisions: Set<DraftRevision> = []
+    /// 아직 끝나지 않은 기록 저장 수
+    private var recordSaves = 0
     private var sleeper: Task<Void, Never>?
     /// 판정 중에 신호가 왔다: 쉬지 않고 다시 판정한다
     private var dirty = false
@@ -149,6 +157,27 @@ public final class AutoReflection {
             wake()
         }
     }
+
+    /// 지금 도는 자동 저장 쓰기 하나만 취소한다(미리 보기 [취소]·Esc). 엔진 루프는 건드리지 않아 다음 판정이 이어진다.
+    /// 자동 저장이 쓰는 중이 아니면(수동 쓰기·차례를 기다리는 쓰기·쉬는 중) 아무것도 하지 않고 false
+    /// - Parameter byUser: 사용자가 [취소]·Esc로 멈췄다. 그러면 대량 유예의 [취소]처럼(R14) 그 판들의 초안은 남고 새 편집이나 ⌘S 전까지
+    ///   자동 저장하지 않는다(기록에 남아 다시 켜도 이어진다). 앱 종료처럼 사용자가 거절한 것이 아닌 취소는 false로 부른다: 판을 남기지 않고 다시 본다
+    @discardableResult
+    public func cancelAutoWrite(byUser: Bool = true) -> Bool {
+        guard let autoWriting else { return false }
+        if byUser {
+            // 받은 순간 그 판들을 취소한 판으로 남기고 저장을 시작한다: 미리 보기가 어떤 결과로 돌아오든(오류 포함), 그전에 앱을 꺼도 이어진다.
+            // 오류 분류(멈춤·백업 전 실패)는 쓰기 결과를 받아 그대로 한다
+            userCancelledWrite = true
+            record.cancelledRevisions.formUnion(writingRevisions)
+            saveRecord()
+        }
+        autoWriting.cancel()
+        return true
+    }
+
+    /// 아직 디스크에 남기지 못한 기록 저장(없으면 nil). 앱을 끄는 길이 이 저장이 끝난 뒤에 끈다: 취소한 판이 메모리에만 있으면 다시 켠 뒤 같은 판을 자동으로 쓴다
+    public var pendingRecordSave: Task<Void, Never>? { recordSaves > 0 ? recordSave : nil }
 
     /// 대량 유예의 [취소](R14). 초안은 남고 그 판은 다음 편집이나 ⌘S까지 자동 저장하지 않는다(다시 켜도 이어진다)
     public func cancelGrace() {
@@ -345,7 +374,11 @@ public final class AutoReflection {
         base.holds.formUnion(appHolds)
         if editing { base.holds.insert(.editing) }
         if journalPending { base.holds.insert(.lockBusy) }
-        if let interrupted { base.holds.insert(.interrupted(recoveryFailed: interrupted.journal.marks.contains(.recoveryFailed))) }
+        if let interrupted {
+            base.holds.insert(.interrupted(recoveryFailed: interrupted.journal.marks.contains(.recoveryFailed)))
+            // 다시 판정할 때마다 실린다: 상태 줄이 [이대로 두기…]를 먼저 보일지 정한다(#404)
+            base.interruptedChangedSince = interrupted.changedSince
+        }
         if recordUnreadable || recordSaveFailed || record.stop == .afterFailure { base.holds.insert(.stoppedAfterFailure) }
         if record.stop == .afterRestore { base.holds.insert(.stoppedAfterRestore) }
         if shuttingDown { base.holds.insert(.shuttingDown) }
@@ -531,7 +564,14 @@ public final class AutoReflection {
     private func write(_ chunk: AutoReflectionChunk) async -> Duration? {
         isWriting = true
         publish(status: .writing, conditions: conditions(writing: true))
-        let outcome = await session.autoWrite(chunk, mayWrite: { [unowned self] in mayStartWrite() })
+        userCancelledWrite = false
+        writingRevisions = chunk.revisions.union(inventory?.autoRevisions(rowLimit: timing.rowLimit) ?? [])
+        let writing = Task { await session.autoWrite(chunk, mayWrite: { [unowned self] in mayStartWrite() }) }
+        autoWriting = writing
+        // 루프의 취소(앱 종료)는 그대로 쓰기에 전한다
+        let outcome = await withTaskCancellationHandler { await writing.value } onCancel: { writing.cancel() }
+        autoWriting = nil
+        writingRevisions = []
         isWriting = false
         inventoryStale = true
         defer {
@@ -561,8 +601,11 @@ public final class AutoReflection {
             held.holds.insert(.lockBusy)
             publish(status: .held(.lockBusy), conditions: held)
             return timing.pollInterval
-        case .busy, .cancelled:
+        case .busy:
             return timing.pollInterval
+        case .cancelled:
+            // 사용자가 멈춘 쓰기는 받은 순간 기록했다(`cancelAutoWrite`). 곧바로 다시 판정해 남은 편집 줄을 알린다
+            return userCancelledWrite ? nil : timing.pollInterval
         case .rekordboxRunning:
             quiet = nil
             return nil
@@ -690,6 +733,7 @@ public final class AutoReflection {
     /// 실패하면 남길 때까지 자동 저장을 보류한다(R7·R8·R14: 멈춤·[취소]를 남기지 못한 채 쓰지 않는다)
     private func saveRecord() {
         let records = ports.records, record = record, previous = recordSave
+        recordSaves += 1
         recordSave = Task { [weak self] in
             await previous?.value
             let saved = await BlockingWork.run(qos: .utility) { (try? records.save(record)) != nil }
@@ -698,6 +742,7 @@ public final class AutoReflection {
     }
 
     private func noteRecordSave(_ saved: Bool) {
+        recordSaves -= 1
         guard recordSaveFailed == saved else { return }
         recordSaveFailed = !saved
         wake()
