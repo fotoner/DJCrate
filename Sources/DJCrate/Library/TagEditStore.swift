@@ -192,13 +192,16 @@ final class TagEditStore {
 
     /// 곡별 초안 전체를 복원해 base와 여러 칸을 함께 보존한다.
     private func show(_ drafts: [String: TagDraft]) {
+        let previous = library.tagDrafts
         library.tagDrafts = TagEditRules.applying(drafts, to: library.tagDrafts)
         for uuid in drafts.keys { library.updateEdited(uuid) }
         let changed = Array(drafts.values)
         library.rememberTagSaves(changed)
         edit.save(changed)
         library.tagRevision += 1
-        library.onTagDraftsEdited?(Set(drafts.keys))
+        // 값이 실제로 바뀐 곡만 알린다: 여러 곡을 한 번에 고칠 때 값이 그대로인 덱 곡이 덱 편집(3초)으로 잡히지 않게(#295 리뷰 G9)
+        let edited = Set(drafts.keys.filter { previous[$0] != library.tagDrafts[$0] })
+        if !edited.isEmpty { library.onTagDraftsEdited?(edited) }
     }
 }
 
