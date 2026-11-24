@@ -678,18 +678,11 @@ public final class AutoReflection {
             record.stop = .afterRestore
             saveRecord()
             journalStale = true
-        case let .failed(_, error, _):
-            // 수동 저장도 백업을 뜬 뒤 실패했으면 자동 저장이 멈춘다(같은 묶음을 자동으로 다시 쓰지 않게, R7).
-            // 관문이 백업 뒤 표시(`AfterBackupFailure`)를 실은 오류와 쓰기·검증에 실패해 되돌린 오류다
-            switch error as? DJCError {
-            case .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?:
+        case .failed:
+            // 수동 저장도 백업을 뜬 뒤 실패했으면 자동 저장이 멈춘다(같은 묶음을 자동으로 다시 쓰지 않게, R7)
+            if outcome.failedAfterBackup {
                 record.stop = .afterFailure
                 saveRecord()
-            default:
-                if error is RekordboxWriteGate.AfterBackupFailure {
-                    record.stop = .afterFailure
-                    saveRecord()
-                }
             }
             await judgeAndClean()
         case .restoreFailed:
@@ -807,6 +800,15 @@ extension ReflectionOutcome {
         switch self {
         case .written, .autoWritten, .added, .deleted, .restored: true
         case .busy, .declined, .notice, .cancelled, .nothingWritable, .nothingAdded, .nothingDeleted, .failed, .restoreFailed: false
+        }
+    }
+
+    /// 백업을 뜬 뒤 실패했다(자동 저장이 멈춘다, R7): 관문이 백업 뒤 표시(`AfterBackupFailure`)를 실은 오류와 쓰기·검증에 실패해 되돌린 오류다
+    var failedAfterBackup: Bool {
+        guard case let .failed(_, error, _) = self else { return false }
+        switch error as? DJCError {
+        case .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?: return true
+        default: return error is RekordboxWriteGate.AfterBackupFailure
         }
     }
 }

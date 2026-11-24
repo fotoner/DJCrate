@@ -124,9 +124,11 @@ struct UndoGroupWriteTests {
         h.state.tagDrafts["c"] = H.tag("c")
         h.memory.save(H.tag("c"))
         h.onPublish = { [h] outcome in if case .written = outcome { h.state.failedTagSaves = ["c"] } }
-        _ = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
         #expect(h.published.contains { if case .written = $0 { true } else { false } }, "묶음 결과를 발행했다")
         #expect(h.published.contains { if case .failed = $0 { true } else { false } }, "나머지는 실패로 알린다")
+        // 백업 전 실패라 이번 ⌘S는 쓴 결과로 돌려준다(엔진이 멈춤을 풀고 자기 쓰기로 기준을 잡는다, 컨실 4라운드 H)
+        guard case .written = outcome else { Issue.record("쓴 결과를 돌려주지 않았다"); return }
     }
 
     /// 묶음을 쓴 뒤 나머지 쓰기의 준비 단계에서 취소해도 앞서 쓴 묶음 결과는 발행돼 남는다(컨실 3라운드 S20)
@@ -146,9 +148,11 @@ struct UndoGroupWriteTests {
         #expect(h.previewHold.isWaiting)
         task.cancel()
         h.previewHold.release()
-        _ = await task.value
+        let outcome = await task.value
         #expect(h.published.contains { if case .written = $0 { true } else { false } }, "묶음 결과를 발행했다")
-        #expect(h.published.contains { if case .cancelled = $0 { true } else { false } })
+        // 앞에서 쓴 것이 있으면 뒤 취소는 "아무것도 저장하지 않았습니다"를 띄우지 않고, 이번 ⌘S는 쓴 결과로 돌려준다(컨실 4라운드 H)
+        #expect(!h.published.contains { if case .cancelled = $0 { true } else { false } })
+        guard case .written = outcome else { Issue.record("쓴 결과를 돌려주지 않았다"); return }
     }
 
     /// 쓰지 못한 묶음의 제외 사유는 나머지 쓰기의 결과에 싣는다(일부만 저장해도 사유가 남는다, 컨실 3라운드 S22)
@@ -163,7 +167,91 @@ struct UndoGroupWriteTests {
         h.memory.save(H.cue("c", at: 12))
         let outcome = await h.session.write(rows: [H.row("a"), H.row("c")])
         guard case let .written(_, _, followUp) = outcome else { Issue.record("쓴 것으로 알리지 않았다"); return }
-        #expect(followUp.contains { $0.hasPrefix("• 곡 a:") && $0.contains("함께 되돌린 다른 곡") })
+        // 결과의 뒤따른 줄은 화면이 "• "를 붙인다: 제외 줄에 따로 붙이지 않는다(컨실 4라운드 G24)
+        #expect(followUp.contains { $0.hasPrefix("곡 a:") && $0.contains("함께 되돌린 다른 곡") })
+    }
+
+    // MARK: - ⌘S 한 번을 대표하는 결과(컨실 4라운드 H·I·O17)
+
+    func cue(_ h: ReflectionHarness, _ uuid: String) {
+        h.state.rows[uuid] = H.row(uuid)
+        h.state.cueDraftUUIDs.insert(uuid)
+        h.memory.save(H.cue(uuid, at: 12))
+    }
+
+    /// 묶음을 쓴 뒤 나머지가 막혀 쓸 것이 없어도 돌려주는 결과는 쓴 결과다(엔진이 멈춤을 풀고 자기 쓰기로 조용함 기준을 다시 잡는다, H)
+    @Test func 묶음을_쓴_뒤_나머지가_막혀도_돌려주는_결과는_쓴_결과다() async {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .blocked, reason: "바뀌었습니다")]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        cue(h, "c")
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        guard case .written = outcome else { Issue.record("쓴 결과를 돌려주지 않았다"); return }
+    }
+
+    /// 뒤 쓰기가 백업을 뜬 뒤 실패하면 앞에서 쓴 묶음이 있어도 그 실패를 돌려준다(엔진이 멈춘다, H)
+    @Test func 나머지가_백업_뒤_실패하면_그_실패를_돌려준다() async {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.script.writeErrorFor = { batch in
+            batch.drafts.contains { $0.trackUUID == "c" } ? RekordboxWriteGate.AfterBackupFailure(CocoaError(.fileWriteUnknown)) : nil
+        }
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        cue(h, "c")
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        #expect(h.published.contains { if case .written = $0 { true } else { false } }, "묶음 결과는 따로 발행했다")
+        guard case .failed = outcome else { Issue.record("백업 뒤 실패를 돌려주지 않았다"); return }
+    }
+
+    /// 막힌 묶음이 여럿이거나 묶음과 나머지가 함께 막히면 막힌 줄과 대상 곡을 모아 복구 시트 하나로 넘긴다(I)
+    @Test func 막힌_묶음들과_나머지를_모아_복구_시트_하나로_넘긴다() async {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = [H.outcome("a", .written), H.outcome("b", .blocked, reason: "바뀌었습니다"),
+                                        H.outcome("c", .written), H.outcome("d", .blocked, reason: "바뀌었습니다")]
+        h.script.preview.outcomes = [H.outcome("e", .blocked, reason: "바뀌었습니다")]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"], id: "1"))
+        h.session.ports.undoGroups.enqueue(group(h, ["c", "d"], id: "2"))
+        cue(h, "e")
+        let outcome = await h.session.write(rows: ["a", "b", "c", "d", "e"].map { H.row($0) })
+        guard case let .nothingWritable(preview, targets) = outcome else { Issue.record("막힌 결과를 돌려주지 않았다"); return }
+        #expect(Set(preview.report.tagBlocked.map(\.trackUUID)) == ["b", "d"] && preview.report.blocked.map(\.trackUUID) == ["e"])
+        #expect(Set(targets.map(\.track.uuid)).isSuperset(of: ["a", "b", "c", "d", "e"]))
+    }
+
+    /// 묶음이 막힌 뒤 나머지 확인 창에서 [취소]하면 복구 시트를 띄우지 않는다(O17)
+    @Test func 묶음이_막힌_뒤_나머지_확인_창을_취소하면_복구_시트를_띄우지_않는다() async {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = [H.outcome("a", .written), H.outcome("b", .blocked, reason: "바뀌었습니다")]
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        cue(h, "c")
+        h.canBackUp = false
+        h.answer = false
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        #expect(!h.prompts.isEmpty)
+        guard case .declined = outcome else { Issue.record("취소로 돌려주지 않았다"); return }
+    }
+
+    /// 묶음 구성원의 태그 초안을 보관하지 못했으면(다시 해도 실패) 구성원 없음 제외가 아니라 저장 실패로 막는다(G20)
+    @Test func 묶음_구성원의_태그_저장_실패는_구성원_없음이_아니라_저장_실패로_막는다() async {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        // b의 역편집은 보관하지 못했다(도장 없음)
+        h.memory.save(TagDraft(trackUUID: "b", base: TagFields()))
+        h.state.failedTagSaves = ["b"]
+        cue(h, "c")
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        #expect(h.gateCalls.value.writes.isEmpty, "묶음 밖 곡만 쓰지 않는다")
+        guard case .failed = outcome else { Issue.record("저장 실패로 막지 않았다"); return }
     }
 
     /// ⌘Z 직후 ⌘S: 보관 큐를 비우고 태그 저장을 다시 해 본 뒤 구성원 초안을 본다(보관 대기 중인 역편집을 빠진 것으로 보지 않는다, 컨실 3라운드 S21·G15)
