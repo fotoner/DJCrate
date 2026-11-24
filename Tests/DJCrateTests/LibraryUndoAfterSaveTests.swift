@@ -236,6 +236,19 @@ struct LibraryUndoAfterSaveTests {
         #expect(try rig.playlistValues() == original)
     }
 
+    /// 같은 목록을 같은 자리로 다시 옮겨 같은 순서 편집이 쌓여도 그 단계가 더한 편집으로 옮긴 목록을 찾는다(컨실 4라운드 G·G23):
+    /// [A,B]에서 B를 앞·뒤·다시 앞 → 저장 → ⌘Z가 A가 아니라 B를 옮긴다
+    @Test func 같은_목록을_다시_옮겨도_실행_취소는_그_목록을_옮긴다() async throws {
+        let rig = try await Rig(Self.tracks, playlists: [PlaylistSpec(id: "1001", name: "가", seq: 1), PlaylistSpec(id: "1002", name: "나", seq: 2)])
+        let playlists = rig.store.playlists
+        rig.event { playlists.movePlaylist("1002", into: PlaylistLayout.root, before: "1001") }
+        rig.event { playlists.movePlaylist("1002", into: PlaylistLayout.root) }
+        rig.event { playlists.movePlaylist("1002", into: PlaylistLayout.root, before: "1001") }
+        try await rig.autoSave()
+        rig.undo.undo()
+        #expect(playlists.playlistDraft.edits.last == .reorder(playlist: .id("1002"), index: 1))
+    }
+
     enum StuckKind: CaseIterable { case create, delete }
 
     /// 저장 뒤 되돌릴 수 없는 단계(목록 만들기·지우기)가 맨 위면 ⌘Z가 꺼지고 그 아래 다른 편집(태그)을 실행하지 않는다(S13·O8·G10)

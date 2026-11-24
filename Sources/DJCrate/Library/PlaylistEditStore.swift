@@ -343,10 +343,22 @@ final class PlaylistEditStore {
         isEditBlocked || writeFreeze != nil || library.draftWriteReadPending || !playlistEditsAwaitingReload.isEmpty
     }
 
+    /// 편집 한 번이 초안에 더한 편집: 편집 전 초안이 앞에 그대로 있으면 뒤에 붙은 것, 아니면(합침·정리) 편집 뒤에만 있는 것을 개수까지 센 차집합
+    static func addedEdits(before: [PlaylistEdit], after: [PlaylistEdit]) -> [PlaylistEdit] {
+        if after.starts(with: before) { return Array(after.dropFirst(before.count)) }
+        var remaining = Dictionary(before.map { ($0, 1) }, uniquingKeysWith: +)
+        return after.filter { edit in
+            guard let count = remaining[edit], count > 0 else { return true }
+            remaining[edit] = count - 1
+            return false
+        }
+    }
+
     /// 지금 초안에 그 편집을 거꾸로 하는 단계를 더한 초안. 되돌리지 않는 종류이거나 대상이 그 편집 뒤 모양이 아니면 nil
     private func reversedDraft(_ step: PlaylistUndoStep) -> PlaylistDraft? {
-        // 그 편집이 순서를 옮긴 목록(이 단계가 더한 reorder·move의 대상): 순서 역편집은 이 목록을 원래 자리로 옮긴다(컨실 3라운드 G)
-        let added = step.after.edits.filter { !step.before.edits.contains($0) }
+        // 그 편집이 순서를 옮긴 목록(이 단계가 더한 reorder·move의 대상): 순서 역편집은 이 목록을 원래 자리로 옮긴다(컨실 3라운드 G).
+        // 같은 목록을 같은 자리로 다시 옮겨 같은 편집이 쌓여도 이 단계가 더한 편집을 구한다: 앞이 같으면 뒤에 붙은 것, 아니면 멀티셋 차집합(4라운드 G23)
+        let added = Self.addedEdits(before: step.before.edits, after: step.after.edits)
         let moved = Set(added.compactMap { edit -> String? in
             switch edit {
             case let .reorder(ref, _), let .move(ref, _): ref.layoutID
