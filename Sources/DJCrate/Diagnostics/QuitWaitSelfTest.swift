@@ -15,15 +15,28 @@ import RekordboxKit
 /// `--quit-wait-poweroff`를 함께 주면 쓰는 도중에 Mac을 끄는 중이라고 알린 채(`isPoweringOff`) 같은 순서를 한다.
 /// 이때는 종료를 `terminateLater`로 미루고 `reply`로 답한다(요청은 모두 이벤트 처리 자리에서 한다).
 /// `--quit-wait-capture=<폴더>`를 주면 기다리는 동안의 창을 `waiting-card.jpg`로 남긴다. 결과는 표준 오류의 "[종료 대기 시험]" 줄이다.
+///
+/// ⌘Q 저장(R17): 자동 저장 자가 테스트 인자(`--auto-reflect-selftest=save`)를 함께 주면 앱의 자동 저장 엔진이 사본에 자동 저장하는 실행이 된다.
+/// 이때는 위 세 단계 대신 `DJC_QUIT_WAIT_AUTOSAVE=<quiet|grace|preview>` 한 경우를 실제 종료 입구로 확인하고, 앱이 스스로 끝난다(종료 코드 0).
+/// 픽스처는 `AutoReflectFixtureCapture`다(`--db`는 주지 않는다).
+/// - `quiet`: 조용함 대기 중 ⌘Q → 지금의 종료 대기 화면으로 기다린 뒤 대기 중인 편집을 저장하고 끈다
+/// - `grace`: 대량 유예 중 ⌘Q → 기다리지 않고 바로 끈다. 편집은 초안으로 남는다(다음 실행 때 R1대로)
+/// - `preview`: 자동 저장이 미리 보기 중일 때 ⌘Q → 미리 보기를 취소하지 않고 그 저장이 끝난 뒤 끈다
 @MainActor
 enum QuitWaitSelfTest {
     private static let holdSeconds = 4.0
 
     static var isRequested: Bool { ProcessInfo.processInfo.arguments.contains("--quit-wait-selftest") }
 
-    static func runIfRequested(store: LibraryStore) {
+    static func runIfRequested(store: LibraryStore, reflection: ReflectionCoordinator) {
         guard isRequested else { return }
         guard guardsPass() else { exit(2) }
+        if DiagnosticRun.isAutoReflectSelfTest() {
+            guard let engine = reflection.engine, engine.run.autoSaves else {
+                log("자동 저장하는 실행이 아닙니다(쓰기 전 확인을 채우지 못함). 임시 폴더 아래 사본을 DJC_REKORDBOX_DIR로 주고 --db는 빼세요"); exit(2)
+            }
+            return runAutoSaveQuit(store: store, engine: engine)
+        }
         let capture = ProcessInfo.processInfo.arguments.first { $0.hasPrefix("--quit-wait-capture=") }
             .map { String($0.dropFirst("--quit-wait-capture=".count)) }
         Task {
@@ -142,6 +155,102 @@ enum QuitWaitSelfTest {
             await wait(60)
             log("실패: 쓰기가 끝났는데도 앱이 종료되지 않았다")
             exit(1)
+        }
+    }
+
+    /// ⌘Q 저장(R17) 한 경우. 앱은 실제 종료 입구(`NSApp.terminate`)로 끝나고, 끝나기 직전(`willTerminate`)에 결과를 단정한다
+    private static func runAutoSaveQuit(store: LibraryStore, engine: AutoReflection) {
+        let mode = ProcessInfo.processInfo.environment["DJC_QUIT_WAIT_AUTOSAVE"] ?? ""
+        guard ["quiet", "grace", "preview"].contains(mode) else { log("DJC_QUIT_WAIT_AUTOSAVE=<quiet|grace|preview>를 주세요"); exit(2) }
+        AutoReflectAppSelfTest.stopSplitViewAutosave()
+        let preferences = AutoReflectAppSelfTest.PreferencesProbe()
+        let tally = Tally()
+        Task { @MainActor in
+            @MainActor func check(_ ok: Bool, _ text: String) { tally.check(ok, text) }
+            func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+            @MainActor func until(_ seconds: Double, _ condition: @MainActor () -> Bool) async -> Bool {
+                for _ in 0..<Int(seconds * 20) where !condition() { await wait(0.05) }
+                return condition()
+            }
+            @MainActor func loaded() -> Bool { if case .loaded = store.phase { !store.rows.isEmpty } else { false } }
+            for _ in 0..<50 { if loaded() || store.isLoading { break }; await wait(0.1) }
+            if !loaded(), !store.isLoading { await store.takeSnapshot() }
+            guard await until(60, { loaded() && !store.isLoading }) else { log("라이브러리를 읽지 못했습니다"); exit(1) }
+            guard let row = store.rows.first(where: { $0.title == "자동 저장 시험 둘" }) else {
+                log("픽스처 곡이 없습니다(AutoReflectFixtureCapture로 만든 사본을 주세요)"); exit(2)
+            }
+            let uuid = row.track.uuid
+            var waited = false
+            /// 끝나기 직전에 단정한다. 실패면 종료 코드 1로 끝낸다(성공이면 앱이 0으로 끝난다)
+            @MainActor func onTerminate(_ judge: @escaping @MainActor () -> [(Bool, String)]) {
+                _ = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+                    MainActor.assumeIsolated {
+                        for (ok, text) in judge() { tally.check(ok, "종료 직전: \(text)") }
+                        let changed = preferences.changedKeys()
+                        tally.check(changed.isEmpty, "종료 직전: 자가 테스트 전후로 사용자 환경설정이 같다(바뀐 키 \(changed.count)개)")
+                        log(tally.failures == 0 ? "⌘Q 저장 시험 통과(\(mode))" : "실패로 끝남(\(tally.failures)건)")
+                        if tally.failures > 0 { AutoReflectAppSelfTest.finish(1) }
+                    }
+                }
+            }
+            switch mode {
+            case "quiet":
+                // rekordbox를 막 끈 것처럼 조용함을 처음부터 세게 한다: 사본 master.db의 시각만 지금으로 바꾼다(사본만 건드린다)
+                try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: store.rekordboxDatabase.path)
+                store.tags.setTag(.rating, "4", rows: [row])
+                check(await until(30) { engine.status == .quietWaiting }, "편집 뒤 조용함을 기다린다(칩 \(engine.status))")
+                let writes = engine.autoWrites
+                onTerminate {
+                    [(engine.autoWrites > writes, "조용함 대기를 기다린 뒤 저장했다(자동 저장 \(engine.autoWrites - writes)회)"),
+                     (store.tagDrafts[uuid] == nil, "저장한 편집이 초안에 남지 않았다"),
+                     (waited, "종료 대기 화면으로 기다렸다")]
+                }
+                requestQuit()
+                waited = await until(5) { store.quitWait.isWaiting && store.quitWait.allowsAutoSave }
+                check(waited, "조용함 대기 중 ⌘Q → 종료 대기 화면으로 기다린다(앱은 끝나지 않았다)")
+                check(store.writeRefusal == nil, "기다리는 동안 자동 저장의 쓰기를 막지 않는다")
+            case "grace":
+                let bulk = store.rows.filter { $0.title.hasPrefix("자동 저장 대량") }
+                guard bulk.count >= 50 else { log("대량 곡이 모자랍니다(\(bulk.count))"); exit(2) }
+                store.tags.setTag(.rating, "3", rows: bulk)
+                check(await until(60) { if case .grace = engine.status { true } else { false } }, "M곡 이상 편집은 대량 유예를 기다린다(칩 \(engine.status))")
+                let writes = engine.autoWrites
+                onTerminate {
+                    [(engine.autoWrites == writes, "유예 중 편집은 쓰지 않았다(자동 저장 \(engine.autoWrites - writes)회)"),
+                     (bulk.allSatisfy { store.tagDrafts[$0.track.uuid] != nil }, "유예 중 편집이 초안으로 남았다(다음 실행 때 다룬다)"),
+                     (!store.quitWait.isWaiting, "기다리지 않고 바로 끈다")]
+                }
+                requestQuit()
+            default:
+                // 자동 저장의 미리 보기를 몇 초 붙잡는다(붙잡는 동안은 아직 아무것도 쓰지 않았다)
+                SelfTestWriteGate.holdPreviews(for: .seconds(holdSeconds))
+                store.tags.setTag(.rating, "5", rows: [row])
+                check(await until(60) { engine.isWriting && store.writeStage?.cancellable == true }, "자동 저장이 미리 보기 단계에 들어섰다")
+                let writes = engine.autoWrites
+                onTerminate {
+                    [(engine.autoWrites > writes, "미리 보기를 취소하지 않고 그 저장을 끝까지 했다(자동 저장 \(engine.autoWrites - writes)회)"),
+                     (store.tagDrafts[uuid] == nil, "저장한 편집이 초안에 남지 않았다"),
+                     (waited, "종료 대기 화면으로 기다렸다")]
+                }
+                requestQuit()
+                waited = await until(5) { store.quitWait.isWaiting }
+                check(waited, "미리 보기 중 ⌘Q → 종료 대기 화면으로 기다린다")
+                check(engine.isWriting, "미리 보기를 취소하지 않았다")
+            }
+            // 앱이 스스로 끝나면 이 아래는 돌지 않는다
+            await wait(90)
+            log("실패: ⌘Q 뒤 앱이 끝나지 않았다(칩 \(engine.status) · 기다림 \(store.quitWait.isWaiting))")
+            AutoReflectAppSelfTest.finish(1)
+        }
+    }
+
+    /// 실패 수(종료 직전 알림이 함께 읽는다)
+    @MainActor
+    private final class Tally {
+        var failures = 0
+        func check(_ ok: Bool, _ text: String) {
+            if !ok { failures += 1 }
+            log("\(ok ? "통과" : "실패"): \(text)")
         }
     }
 

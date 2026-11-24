@@ -186,41 +186,42 @@ struct TrackColumn {
     // MARK: - 저장된 칸 배치
 
     /// 저장된 칸 배치에 없던 새 칸을 한 번만 제자리로 옮긴다(그 뒤로는 사용자가 옮긴 대로). 칸을 만든 직후 부른다.
-    @MainActor static func placeNewColumns(in table: NSTableView) {
+    /// - Parameter remember: 옮겼다는 표시를 환경설정에 남길지(설정을 저장하지 않는 실행·측정은 남기지 않는다, R18)
+    @MainActor static func placeNewColumns(in table: NSTableView, remember: Bool = true) {
         // 저장된 칸 배치에는 새 "형식" 칸이 없어서 끝으로 밀린다. 한 번만 BPM 옆으로 옮긴다(그 뒤로는 사용자가 옮긴 대로).
         let indexKey = "djc.trackList.indexColumnPlaced"
         if !UserDefaults.standard.bool(forKey: indexKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "index" }) {
             table.moveColumn(from, toColumn: 0)
-            UserDefaults.standard.set(true, forKey: indexKey)
+            if remember { UserDefaults.standard.set(true, forKey: indexKey) }
         }
         let albumKey = "djc.trackList.albumColumnPlaced"
         if !UserDefaults.standard.bool(forKey: albumKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "album" }),
            let artist = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "artist" }) {
             table.moveColumn(from, toColumn: from > artist ? artist + 1 : artist)
-            UserDefaults.standard.set(true, forKey: albumKey)
+            if remember { UserDefaults.standard.set(true, forKey: albumKey) }
         }
         let tempoKey = "djc.trackList.tempoColumnPlaced"
         if !UserDefaults.standard.bool(forKey: tempoKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "tempo" }),
            let bpm = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "bpm" }) {
             table.moveColumn(from, toColumn: from > bpm ? bpm + 1 : bpm)
-            UserDefaults.standard.set(true, forKey: tempoKey)
+            if remember { UserDefaults.standard.set(true, forKey: tempoKey) }
         }
         let placedKey = "djc.trackList.formatColumnPlaced"
         if !UserDefaults.standard.bool(forKey: placedKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "format" }),
            let bpm = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "bpm" }) {
             table.moveColumn(from, toColumn: from > bpm ? bpm + 1 : bpm)
-            UserDefaults.standard.set(true, forKey: placedKey)
+            if remember { UserDefaults.standard.set(true, forKey: placedKey) }
         }
         let previewKey = "djc.trackList.previewColumnPlaced"
         if !UserDefaults.standard.bool(forKey: previewKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "preview" }),
            let title = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) {
             table.moveColumn(from, toColumn: from > title ? title + 1 : title)
-            if !PerfProbe.enabled { UserDefaults.standard.set(true, forKey: previewKey) }
+            if remember, !PerfProbe.enabled { UserDefaults.standard.set(true, forKey: previewKey) }
         }
         // 새 태그 칸(#88)도 저장된 배치에는 없어 끝으로 밀린다. 한 번만 앨범 옆으로 옮긴다(처음엔 숨김).
         let tagKey = "djc.trackList.tagColumnsPlaced"
@@ -233,7 +234,7 @@ struct TrackColumn {
                 }
                 anchor = id
             }
-            UserDefaults.standard.set(true, forKey: tagKey)
+            if remember { UserDefaults.standard.set(true, forKey: tagKey) }
         }
         // 평점·곡 색 칸(#65)도 저장된 배치에는 없어 끝으로 밀린다. 한 번만 키 칸 뒤로 옮긴다.
         let ratingKey = "djc.trackList.ratingColorColumnsPlaced"
@@ -246,7 +247,7 @@ struct TrackColumn {
                 }
                 anchor = id
             }
-            if !PerfProbe.enabled { UserDefaults.standard.set(true, forKey: ratingKey) }
+            if remember, !PerfProbe.enabled { UserDefaults.standard.set(true, forKey: ratingKey) }
         }
     }
 }

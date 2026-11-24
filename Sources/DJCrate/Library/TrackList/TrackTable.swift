@@ -119,12 +119,14 @@ private struct TrackListView<Source: TrackListSource>: NSViewRepresentable {
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.draggingDestinationFeedbackStyle = .gap
         table.autosaveName = "djc.trackList.v2"
-        table.autosaveTableColumns = !PerfProbe.enabled
+        // 자가 테스트·측정처럼 설정을 저장하지 않는 실행은 칸 배치도 사용자 환경설정에 남기지 않는다(R18)
+        let remembers = !PerfProbe.enabled && SettingsStore.persists(arguments: ProcessInfo.processInfo.arguments)
+        table.autosaveTableColumns = remembers
         // 머리글을 오른쪽 클릭하면 보일 칸을 고른다(숨김 상태도 자동 저장된다).
         table.headerView?.menu = context.coordinator.makeColumnMenu(table)
-        TrackColumn.placeNewColumns(in: table)
-        TrackColumn.migrateRatingWidth(in: table, remember: !PerfProbe.enabled)
-        TrackColumn.placeUsbSyncColumn(in: table, remember: !PerfProbe.enabled)
+        TrackColumn.placeNewColumns(in: table, remember: remembers)
+        TrackColumn.migrateRatingWidth(in: table, remember: remembers)
+        TrackColumn.placeUsbSyncColumn(in: table, remember: remembers)
         if let show = PerfProbe.previewColumnVisible {
             table.tableColumns.first(where: { $0.identifier.rawValue == "preview" })?.isHidden = !show
         }

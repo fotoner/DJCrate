@@ -43,6 +43,7 @@ grep "루프 시험" /tmp/djc-loop.log
 | `--itunes-selftest` | iTunes 목록 순서·읽기 전용 제한·덱 핫큐·태그 초안·DB 불변 | `ITunesFixtureCapture` 합성 사본을 `DJC_REKORDBOX_DIR`·`--db`로. 다시 돌릴 때는 사본을 새로 만든다. 앞 실행의 동기화가 사본을 바꾸기 때문이다 |
 | `--write-selftest` | 반영(미리 보기·쓰기·조용한 다시 읽기·되돌리기) 전 과정. 재생 목록 초안(새 폴더·목록, 있던 목록에 곡)도 만들어 함께 쓰고 되돌린다 | `DJC_REKORDBOX_DIR` 사본 필수. 합성 사본은 `PlaylistWriteFixtureCapture` |
 | `--quit-wait-selftest` | 쓰는 중 종료(#300): 쓰는 단계에서 종료를 요청해 [종료 취소]와 끝난 뒤 스스로 종료를 본다. 아래 자세히 | `PlaylistWriteFixtureCapture` 합성 사본을 `DJC_REKORDBOX_DIR`·`--db`로. 둘 다 임시 폴더 아래여야 한다(아니면 종료 코드 2) |
+| `--auto-reflect-selftest=<경우>` | 자동 저장(R18) 세 경우 `save`·`two-process`·`kill-detect`. 아래 자세히 | `AutoReflectFixtureCapture` 사본을 `DJC_REKORDBOX_DIR`로, 임시 `DJC_HOME`. `--db`는 주지 않는다(주면 종료 코드 2) |
 | `--history-selftest` | USB 보존 기록(#43)의 화면·쓰기 대기·미리 보기·쓰기·다시 읽기·복원 뒤 재대기("히스토리 시험 통과" 줄). `--history-capture=<임시 폴더>`로 대기·쓴 뒤·복원 뒤 창을 PNG로 남긴다 | `DJC_HISTORY_SELFTEST_FIXTURE=<없는 임시 폴더> swift test --filter HistorySelfTestFixtureCapture`로 만든 폴더를 `DJC_REKORDBOX_DIR`로, `--db <그 폴더>/history-snapshot.db`, 임시 `DJC_HOME`. 소리·실물 USB 없이 돈다 |
 | `--loop-selftest` | 활성 루프·즉석 루프·½·핫큐 저장·나가기 | `--select`로 활성 루프 있는 곡 |
 | `--loop-audio-selftest` | 루프 이음새가 샘플 단위로 맞는지(램프 WAV) | — |
@@ -86,6 +87,18 @@ grep "루프 시험" /tmp/djc-loop.log
 - `--quit-wait-poweroff`를 더하면 Mac을 끄는 중으로 알린 채 같은 순서를 한다. 이때는 종료를 `terminateLater`로 미룬다.
 - `--quit-wait-capture=<폴더>`는 기다리는 카드를 `waiting-card.jpg`로 남긴다.
 - 끝난 뒤 `djc lab db-diff <전 사본> <후 사본>`으로 마지막 평점 변경만 있는지 본다.
+
+`--auto-reflect-selftest=<경우>`
+
+- 앱의 자동 저장 엔진이 사본에만 자동 저장하는 실행이다. 쓰기 전 확인을 못 채우면 종료 코드 2다. 확인하는 것은 임시 폴더, 실제 폴더와의 겹침, 링크다.
+- `save`: 연속 사인 곡을 덱에서 트는 동안 자동 저장을 10번 한다. 사본 DB 값과 곡 믹서 출력의 끊김 0을 본다.
+- `two-process`: 자식이 쓰는 동안 이 앱의 자동 저장이 잠금 보류로 기다리는지 본다.
+- `kill-detect`: 자식을 쓰다가 강제 종료한다. 다시 켠 앱이 중단으로 판정하는지 본다. 그 앱이 기록으로 복원한 결과도 본다.
+- 세 경우 모두 사용자 환경설정이 전후로 같은지 본다.
+- `two-process`·`kill-detect`는 같은 실행 파일을 자식으로 띄운다. 자식은 `DJC_HOME` 아래 `child-…` 폴더를 쓴다. 강제 종료는 띄운 자식 PID만 한다.
+- 통과 줄은 "자동 저장 시험 통과(<경우>)"다. 끝은 `_exit`로 한다. 뒤에서 도는 SQLCipher 열기와 `exit` 정리가 겹치면 가끔 죽는다.
+- `save`에 `DJC_AUTO_REFLECT_E1=<회차>`를 주면 출시 관문 측정(E1)을 한다. 전체 사본은 사용자 스냅샷 폴더의 최신 `master-*.db`를 `/bin/cp -c`로 복제해 만든다. `djc snapshot`은 쓰지 않는다.
+- `--quit-wait-selftest`와 함께 주면 ⌘Q 저장(R17) 한 경우를 본다. `DJC_QUIT_WAIT_AUTOSAVE=<quiet|grace|preview>`로 고른다. 통과 줄은 "⌘Q 저장 시험 통과(<경우>)"다.
 
 `--resize-perf=all`
 
@@ -159,6 +172,7 @@ grep "루프 시험" /tmp/djc-loop.log
 ```bash
 W=$(mktemp -d); echo "픽스처 폴더: $W"
 DJC_EDIT_LAYOUT_FIXTURE=$W/edit scripts/check.sh --quick --filter EditLayoutFixtureCapture
+DJC_AUTO_REFLECT_FIXTURE=$W/auto scripts/check.sh --quick --filter AutoReflectFixtureCapture
 DJC_UI_PERF_FIXTURE=$W/perf scripts/check.sh --quick --filter UIPerfFixtureCapture
 DJC_PLAYLIST_FIXTURE=$W/playlist scripts/check.sh --quick --filter PlaylistWriteFixtureCapture
 DJC_ITUNES_FIXTURE=$W/itunes scripts/check.sh --quick --filter ITunesFixtureCapture
