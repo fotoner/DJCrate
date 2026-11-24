@@ -55,6 +55,8 @@ final class LibraryStore {
     /// 자동 저장이 지금 쓰는 쓰기 하나만 취소하고 true(자동 저장이 쓰는 중이 아니면 false). 엔진을 붙인 조립 지점이 건다.
     /// 인자는 사용자가 [취소]·Esc로 멈췄는지(앱 종료는 false)
     @ObservationIgnored var cancelAutoWrite: (@MainActor (_ byUser: Bool) -> Bool)?
+    /// 자동 저장 엔진이 아직 디스크에 남기지 못한 기록 저장(없으면 nil). 앱을 끄는 길이 끝나기를 기다린다. 엔진을 붙인 조립 지점이 건다
+    @ObservationIgnored var pendingAutoRecordSave: (@MainActor () -> Task<Void, Never>?)?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
 
     /// - Parameter byUser: 사용자가 [취소]·Esc로 멈췄다(기본). 앱 종료가 멈추는 것은 false: 자동 저장 판을 취소한 것으로 남기지 않는다

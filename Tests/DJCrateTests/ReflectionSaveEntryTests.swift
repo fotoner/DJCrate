@@ -452,6 +452,8 @@ struct ReflectionSaveEntryTests {
         #expect(await f.waitForEvents(1), "\(f.events.all)")
         #expect(await waitForState(safetyNet: .seconds(90)) { f.store.writeStage?.cancellable == true })
         f.store.cancelWritePreparation()
+        // 취소를 받은 순간 취소한 판의 기록 저장이 시작됐다: 앱을 끄는 길이 이 저장을 기다린다(미리 보기는 아직 멈춰 있다)
+        #expect(f.store.pendingAutoRecordSave?() != nil, "종료가 기다릴 기록 저장이 있다")
         f.latches[1]?.release()
         #expect(await waitForEvents(f, containing: "미리 보기 1 끝 취소됨"), "\(f.events.all)")
         // 엔진 루프는 살아 있어 곧바로 다시 판정하고, 취소한 판은 남은 편집으로 보인다(대량 유예 [취소]와 같은 8번 줄)

@@ -570,6 +570,40 @@ struct AutoReflectionEngineTests {
         #expect(w.writes.count == 2, "그 뒤 새 편집은 다시 자동으로 쓴다")
     }
 
+    // MARK: - 5라운드: 사용자 취소는 받은 순간 기록한다(S16·S15)
+
+    @Test func 사용자가_취소해도_미리_보기가_오류로_끝나면_그_취소를_기록하고_다시_쓰지_않는다() async throws {
+        let fakes = AutoReflectionFakes()
+        let w = AutoReflectionWorld(fakes: fakes)
+        w.writable("a")
+        w.cue("a")
+        // 취소했지만 미리 보기는 취소 오류가 아닌 입출력 오류로 끝난다(멈춘 미리 보기를 풀면 던진다)
+        w.h.script.previewError = CocoaError(.fileReadUnknown)
+        try await previewing(w)
+        #expect(w.engine.cancelAutoWrite())
+        w.h.previewHold.release()
+        try await w.settle()
+        await w.engine.recordSaved()
+        #expect(fakes.records.record.cancelledRevisions.count == 1, "미리 보기의 결과와 상관없이 사용자 취소를 기록한다")
+        try await w.advance(60)
+        #expect(w.writes.isEmpty && w.previews.count == 1, "취소한 판을 다시 미리 보거나 쓰지 않는다: 미리 보기 \(w.previews.count)번, 쓰기 \(w.writes.count)번")
+    }
+
+    @Test func 사용자_취소는_미리_보기가_돌아오기_전에_기록을_저장하기_시작한다() async throws {
+        let fakes = AutoReflectionFakes()
+        let w = AutoReflectionWorld(fakes: fakes)
+        w.writable("a")
+        w.cue("a")
+        try await previewing(w)
+        #expect(w.engine.cancelAutoWrite())
+        // 미리 보기는 아직 멈춰 있다(앱을 이때 끄면 이 기록이 디스크에 있어야 다시 켠 뒤 같은 판을 쓰지 않는다)
+        #expect(w.h.previewHold.isWaiting)
+        await w.engine.recordSaved()
+        #expect(fakes.records.record.cancelledRevisions.count == 1, "받은 순간 저장을 시작했다")
+        w.h.previewHold.release()
+        try await w.settle()
+    }
+
     @Test func 사용자가_거절한_것이_아닌_취소는_판을_취소한_것으로_남기지_않고_다시_쓴다() async throws {
         let fakes = AutoReflectionFakes()
         let w = AutoReflectionWorld(fakes: fakes)

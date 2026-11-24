@@ -33,7 +33,22 @@ struct AppQuitControllerTests {
         var terminateReenters = false
         /// 답하는 순간 초안 저장이 먼저 비워졌는지 보려고 남기는 순서
         var order: [String] = []
+        /// 자동 저장 엔진이 아직 디스크에 남기지 못한 기록 저장(사용자가 취소한 판). 시험이 끝낸다
+        var pendingRecord: Task<Void, Never>?
+        var finishRecord: (() -> Void)?
         let model = QuitWaitModel()
+
+        /// 끝내 주기 전까지 끝나지 않는 기록 저장을 건다
+        func holdRecordSave() {
+            pendingRecord = Task { @MainActor [unowned self] in
+                await withCheckedContinuation { continuation in
+                    finishRecord = { [unowned self] in
+                        pendingRecord = nil
+                        continuation.resume()
+                    }
+                }
+            }
+        }
 
         lazy var controller: AppQuitController = AppQuitController(
             model: model, activity: { [unowned self] in activity },
@@ -50,7 +65,7 @@ struct AppQuitControllerTests {
             bringForward: { [unowned self] in raised += 1 },
             runState: { [unowned self] in run }, pending: { [unowned self] in pendingCount },
             present: { [unowned self] confirmation, answer in presented.append(confirmation); answers.append(answer) },
-            now: { [unowned self] in now })
+            now: { [unowned self] in now }, pendingRecordSave: { [unowned self] in pendingRecord })
     }
 
     let w = World()
@@ -68,6 +83,39 @@ struct AppQuitControllerTests {
         #expect(w.cancelled == 1 && w.model.current == nil && w.replies.isEmpty)
         // 쓰지 않았으니 알림창도 없다
         #expect(w.informed.isEmpty)
+    }
+
+    // MARK: - 자동 저장 엔진의 기록 저장(#404 5라운드, S15)
+
+    @Test func 취소한_자동_저장의_기록을_저장하는_중이면_저장이_끝난_뒤_끈다() async {
+        // 사용자가 자동 저장을 [취소]한 기록이 디스크에 닿기 전에 끄면, 다시 켠 뒤 같은 판을 자동으로 쓴다
+        w.activity = AppWriteActivity(rekordbox: .cancellable, writingUsb: false)
+        w.holdRecordSave()
+        w.terminateReenters = true
+        #expect(w.controller.requestTermination() == .terminateCancel, "기록 저장이 끝나기 전에는 끄지 않는다")
+        #expect(w.terminated == 0 && w.cancelled == 1)
+        await Task.yield()
+        #expect(w.terminated == 0)
+        w.finishRecord?()
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 }, "저장이 끝난 뒤 종료를 다시 요청한다")
+        w.activity = .idle
+        #expect(w.reentrantReplies == [.terminateNow], "다시 요청한 종료는 바로 끈다")
+    }
+
+    @Test func 미루는_방식도_기록_저장이_끝난_뒤_종료한다() async {
+        w.activity = AppWriteActivity(rekordbox: .idle, writingUsb: false)
+        w.holdRecordSave()
+        #expect(w.controller.requestTermination(nested: true) == .terminateLater)
+        await Task.yield()
+        #expect(w.replies.isEmpty, "저장이 끝나기 전에는 답하지 않는다")
+        w.finishRecord?()
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.replies == [true] })
+    }
+
+    @Test func 저장_중인_기록이_없으면_기다리지_않고_바로_끈다() {
+        w.activity = AppWriteActivity(rekordbox: .idle, writingUsb: false)
+        #expect(w.pendingRecord == nil)
+        #expect(w.controller.requestTermination() == .terminateNow)
     }
 
     @Test func 확인_창이_떠_있으면_취소를_부르지_않고_바로_끈다() {

@@ -266,8 +266,13 @@ final class ReflectionCoordinator {
     /// 붙이면 미리 보기 [취소]·Esc가 자동 저장 쓰기 하나에도 닿는다(수동 쓰기는 `running`이 등록한다)
     var engine: AutoReflection? {
         didSet {
-            guard let engine else { return store.cancelAutoWrite = nil }
+            guard let engine else {
+                store.cancelAutoWrite = nil
+                store.pendingAutoRecordSave = nil
+                return
+            }
             store.cancelAutoWrite = { [weak engine] (byUser: Bool) -> Bool in engine?.cancelAutoWrite(byUser: byUser) ?? false }
+            store.pendingAutoRecordSave = { [weak engine] () -> Task<Void, Never>? in engine?.pendingRecordSave }
         }
     }
     /// 엔진이 알린 칩 상태와 조건(상태 줄 #404가 읽는다)

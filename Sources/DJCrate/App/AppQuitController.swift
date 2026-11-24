@@ -55,6 +55,7 @@ final class AppQuitController {
     private let pending: @MainActor () -> PendingWriteCount
     private let present: @MainActor (QuitConfirmation, @escaping @MainActor (Bool) -> Void) -> Void
     private let now: @MainActor () -> Date
+    private let pendingRecordSave: @MainActor () -> Task<Void, Never>?
     private var watching = false
     /// 켜진 채 종료 시트가 떠 있다(그동안 온 종료 요청은 시트를 더 띄우지 않는다)
     private var isAsking = false
@@ -76,6 +77,7 @@ final class AppQuitController {
     ///   - runState: rekordbox 실행 판정. 읽기 전·읽지 못함이면 시트를 띄우지 않는다(기본은 모름)
     ///   - pending: 아직 rekordbox에 쓰지 않은 편집 수. 상태 줄 칩과 같은 수다
     ///   - present: 켜진 채 종료 시트를 띄운다. 답은 true면 [그냥 종료], false면 [취소]다. 지금 이벤트 처리가 끝난 뒤에 불러야 한다
+    ///   - pendingRecordSave: 자동 저장 엔진이 아직 디스크에 남기지 못한 기록 저장(사용자가 취소한 판). 있으면 그 저장이 끝난 뒤 종료를 승인한다
     init(model: QuitWaitModel, activity: @escaping @MainActor () -> AppWriteActivity,
          cancelPreparation: @escaping @MainActor () -> Void, flushDrafts: @escaping @MainActor () -> Void,
          reply: @escaping @MainActor (Bool) -> Void, terminate: @escaping @MainActor () -> Void,
@@ -84,7 +86,8 @@ final class AppQuitController {
          runState: @escaping @MainActor () -> RekordboxRunState? = { nil },
          pending: @escaping @MainActor () -> PendingWriteCount = { PendingWriteCount(items: 0, playlistEdits: 0) },
          present: @escaping @MainActor (QuitConfirmation, @escaping @MainActor (Bool) -> Void) -> Void = { _, answer in answer(false) },
-         now: @escaping @MainActor () -> Date = { Date() }) {
+         now: @escaping @MainActor () -> Date = { Date() },
+         pendingRecordSave: @escaping @MainActor () -> Task<Void, Never>? = { nil }) {
         self.model = model
         self.activity = activity
         self.cancelPreparation = cancelPreparation
@@ -98,6 +101,7 @@ final class AppQuitController {
         self.pending = pending
         self.present = present
         self.now = now
+        self.pendingRecordSave = pendingRecordSave
     }
 
     /// - Parameters:
@@ -125,11 +129,11 @@ final class AppQuitController {
         switch AppQuitPolicy.decision(for: current) {
         case .terminateNow:
             flushAfterWrite(current)
-            return .terminateNow
+            return approveTermination(nested: nested)
         case .cancelPreparationThenTerminate:
             cancelPreparation()
             flushAfterWrite(current)
-            return .terminateNow
+            return approveTermination(nested: nested)
         case .waitForRekordboxWrite:
             model.begin(at: now()) { [weak self] in self?.cancelWaiting() }
             mode = nested ? .nested : .deferred
@@ -144,6 +148,25 @@ final class AppQuitController {
             terminationCancelled()
             return .terminateCancel
         }
+    }
+
+    /// 종료를 승인한다. 자동 저장 엔진이 사용자가 취소한 판의 기록을 아직 디스크에 남기지 못했으면 그 저장이 끝난 뒤에 승인한다:
+    /// 기록 없이 끄면 다시 켠 뒤 같은 판을 자동으로 쓴다. 미루는 방식(`nested`)은 미뤘다가 `reply`로, 아니면 취소로 답해 두고 다시 요청한다
+    private func approveTermination(nested: Bool) -> NSApplication.TerminateReply {
+        guard let saving = pendingRecordSave() else { return .terminateNow }
+        Task { @MainActor [weak self] in
+            await saving.value
+            guard let self else { return }
+            if nested {
+                reply(true)
+            } else {
+                // 이미 확인을 거친 종료다: 다시 요청해도 시트를 또 띄우지 않는다
+                skipsConfirmation = true
+                terminate()
+                skipsConfirmation = false
+            }
+        }
+        return nested ? .terminateLater : .terminateCancel
     }
 
     /// 켜진 채 종료 시트를 띄울 때만 내용을 돌려준다. [그냥 종료] 뒤 다시 한 요청 한 번은 묻지 않는다.
