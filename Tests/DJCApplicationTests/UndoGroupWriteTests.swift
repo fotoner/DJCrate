@@ -95,8 +95,9 @@ struct UndoGroupWriteTests {
         guard case .declined = outcome else { Issue.record("취소로 알리지 않았다"); return }
     }
 
-    /// 묶음 결과는 마지막 발행에 합친다: 쓴 묶음의 곡과 나머지 쓰기의 곡이 한 결과에 든다. 쓴 묶음은 대기열에서 지운다
-    @Test func 수동_저장은_묶음_결과를_마지막_발행에_합치고_쓴_묶음을_지운다() async throws {
+    /// 묶음 쓰기와 나머지 쓰기는 결과를 합치지 않고 쓰기마다 따로 발행한다(그 쓰기의 백업·[복원]·활동 기록이 따로 남는다, 컨실 3라운드 S19).
+    /// 쓴 묶음은 대기열에서 지운다
+    @Test func 수동_저장은_묶음과_나머지_결과를_쓰기마다_따로_발행하고_쓴_묶음을_지운다() async throws {
         let h = ReflectionHarness()
         h.script.reportsBatchOnly = true
         h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
@@ -105,10 +106,94 @@ struct UndoGroupWriteTests {
         h.state.rows["c"] = H.row("c")
         h.state.cueDraftUUIDs.insert("c")
         h.memory.save(H.cue("c", at: 12))
-        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
-        guard case let .written(report, _, _) = outcome else { Issue.record("쓴 것으로 알리지 않았다"); return }
-        #expect(Set((report.tagOutcomes ?? []).map(\.trackUUID)) == ["a", "b"] && report.outcomes.map(\.trackUUID) == ["c"])
+        _ = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        let written = h.published.compactMap { outcome -> RekordboxWriteReport? in if case let .written(report, _, _) = outcome { report } else { nil } }
+        #expect(written.count == 2)
+        #expect(Set((written.first?.tagOutcomes ?? []).map(\.trackUUID)) == ["a", "b"] && written.first?.outcomes.isEmpty == true, "묶음 결과")
+        #expect(written.last?.outcomes.map(\.trackUUID) == ["c"] && (written.last?.tagOutcomes ?? []).isEmpty, "나머지 결과")
         #expect(h.session.ports.undoGroups.groups.isEmpty, "쓴 묶음은 지운다")
+    }
+
+    /// 묶음을 쓴 뒤 나머지 쓰기가 실패해도 앞서 쓴 묶음 결과는 발행돼 남는다(컨실 3라운드 S20·O15)
+    @Test func 묶음을_쓴_뒤_나머지가_실패해도_묶음_결과를_발행한다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b", "c"].map { H.outcome($0, .written) }
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.state.rows["c"] = H.row("c")
+        h.state.tagDrafts["c"] = H.tag("c")
+        h.memory.save(H.tag("c"))
+        h.onPublish = { [h] outcome in if case .written = outcome { h.state.failedTagSaves = ["c"] } }
+        _ = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        #expect(h.published.contains { if case .written = $0 { true } else { false } }, "묶음 결과를 발행했다")
+        #expect(h.published.contains { if case .failed = $0 { true } else { false } }, "나머지는 실패로 알린다")
+    }
+
+    /// 묶음을 쓴 뒤 나머지 쓰기의 준비 단계에서 취소해도 앞서 쓴 묶음 결과는 발행돼 남는다(컨실 3라운드 S20)
+    @Test func 묶음을_쓴_뒤_나머지를_취소해도_묶음_결과를_발행한다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.state.rows["c"] = H.row("c")
+        h.state.cueDraftUUIDs.insert("c")
+        h.memory.save(H.cue("c", at: 12))
+        h.onPublish = { [h] outcome in if case .written = outcome { h.previewHold.hold() } }
+        let session = h.session
+        let task = Task { await session.write(rows: [H.row("a"), H.row("b"), H.row("c")]) }
+        for _ in 0..<4000 where !h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(h.previewHold.isWaiting)
+        task.cancel()
+        h.previewHold.release()
+        _ = await task.value
+        #expect(h.published.contains { if case .written = $0 { true } else { false } }, "묶음 결과를 발행했다")
+        #expect(h.published.contains { if case .cancelled = $0 { true } else { false } })
+    }
+
+    /// 쓰지 못한 묶음의 제외 사유는 나머지 쓰기의 결과에 싣는다(일부만 저장해도 사유가 남는다, 컨실 3라운드 S22)
+    @Test func 쓰지_못한_묶음의_제외_사유는_나머지_결과에_싣는다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.state.rows["c"] = H.row("c")
+        h.state.cueDraftUUIDs.insert("c")
+        h.memory.save(H.cue("c", at: 12))
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("c")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("쓴 것으로 알리지 않았다"); return }
+        #expect(followUp.contains { $0.hasPrefix("• 곡 a:") && $0.contains("함께 되돌린 다른 곡") })
+    }
+
+    /// ⌘Z 직후 ⌘S: 보관 큐를 비우고 태그 저장을 다시 해 본 뒤 구성원 초안을 본다(보관 대기 중인 역편집을 빠진 것으로 보지 않는다, 컨실 3라운드 S21·G15)
+    @Test func 수동_저장은_태그_저장을_다시_해_본_뒤_묶음_구성원을_본다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        let edit = group(h, ["a", "b"])
+        // b의 역편집은 아직 보관하지 못했다(다시 해 보면 보관된다)
+        h.memory.save(TagDraft(trackUUID: "b", base: TagFields()))
+        h.onRetryTagSaves = { [h] in h.memory.save(H.tag("b", title: "되돌린 제목")) }
+        h.session.ports.undoGroups.enqueue(edit)
+        _ = await h.session.write(rows: [H.row("a"), H.row("b")])
+        #expect(h.gateCalls.value.writes.contains { Set($0.tags.map(\.trackUUID)) == ["a", "b"] }, "묶음을 쓴다")
+    }
+
+    /// 손상 초안 확인은 고른 곡 전체로 한 번만 한다: 묶음 밖 곡의 초안 파일이 손상됐으면 묶음도 쓰지 않는다(컨실 3라운드 O13)
+    @Test func 수동_저장은_고른_곡_전체의_손상_초안을_묶음보다_먼저_본다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.state.rows["c"] = H.row("c")
+        h.state.cueDraftUUIDs.insert("c")
+        h.memory.save(H.cue("c", at: 12))
+        h.preserved = [DamagedDraftFile(name: "c.json", preserved: URL(filePath: "/tmp/damaged/c.json"), trackUUID: "c")]
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        #expect(h.gateCalls.value.writes.isEmpty)
+        guard case .failed = outcome else { Issue.record("막지 않았다"); return }
     }
 
     /// 묶음이 막히면(한 곡이라도) 그 미리 보기를 마지막 발행에 남긴다(복구 시트로 고친다). 묶음은 대기열에 남는다
