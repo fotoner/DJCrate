@@ -3,6 +3,7 @@ import DJCDomain
 import DJCTestKit
 import Foundation
 import PortTestKit
+import Synchronization
 import Testing
 
 /// ⌘Q 저장(R17): 엔진이 `prepareToQuit()`으로 대기 중인 대상 편집을 최신 초안으로 다시 판정해 쓰고 돌아온다.
@@ -234,5 +235,46 @@ struct AutoReflectionQuitTests {
         let quit = try await preparing(w)
         #expect(await quit.value == .finished(run: state))
         #expect(w.writes.isEmpty)
+    }
+
+    /// 첫 ⌘Q의 백업 조건 확인(공간 부족) 중 취소하고 다시 ⌘Q를 누르면, 새 요청은 옛 판정 결과를 받지 않고 새로 판정한다(컨실 3라운드 P)
+    @Test func 비동기_판정_중_종료_요청이_바뀌면_새_요청은_새_판정을_받는다() async throws {
+        let w = AutoReflectionWorld()
+        w.writable("a")
+        try await w.start()
+        try await w.advance(10)
+        w.h.backupsMemory.condition = .lowSpace(available: 1, required: 2)
+        let gate = HoldGate()
+        w.h.backupsMemory.onCondition = { gate.hold() }
+        w.cue("a")
+        let first = Task { await w.engine.prepareToQuit() }
+        for _ in 0..<4000 where !gate.arrived { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(gate.arrived, "첫 요청이 백업 조건을 확인하는 중이다")
+        w.engine.cancelQuit()
+        #expect(await first.value == .cancelled)
+        // 그사이 공간이 생겼다. 새 요청은 새로 판정해 쓴다
+        w.h.backupsMemory.onCondition = nil
+        w.h.backupsMemory.condition = .ready
+        let progress = QuitProgress()
+        let second = Task {
+            progress.started = true
+            return await w.engine.prepareToQuit()
+        }
+        for _ in 0..<4000 where !progress.started { try await Task.sleep(for: .milliseconds(5)) }
+        gate.release()
+        #expect(await second.value == .finished(run: .stopped))
+        #expect(w.writes.count == 1)
+    }
+
+    /// 메인 액터 밖의 확인을 시험이 풀 때까지 붙잡는다
+    final class HoldGate: Sendable {
+        private let state = Mutex(false)
+        private let semaphore = DispatchSemaphore(value: 0)
+        var arrived: Bool { state.withLock { $0 } }
+        func hold() {
+            state.withLock { $0 = true }
+            semaphore.wait()
+        }
+        func release() { semaphore.signal() }
     }
 }

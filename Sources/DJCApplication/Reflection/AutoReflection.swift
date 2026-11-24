@@ -76,6 +76,10 @@ public final class AutoReflection {
     /// ⌘Q 저장을 기다리는 쪽(R17). 있으면 T_edit와 순간 편집 신호를 건너뛰고, 더 쓸 것이 없거나 쓰지 못하면 돌려준다
     private var quitWaiters: [CheckedContinuation<QuitPreparation, Never>] = []
     private var quitting: Bool { !quitWaiters.isEmpty }
+    /// ⌘Q 저장 요청의 세대(컨실 3라운드 P): 기다리는 요청이 없을 때 새 요청이 오면 늘린다. 판정은 시작할 때의 세대(`judgedRequest`)를 들고,
+    /// 그사이 요청이 바뀌었으면(취소·다시 요청) 옛 판정 결과를 새 요청에 넘기지 않는다. 새 요청의 신호로 곧바로 다시 판정한다
+    private var quitRequest = 0
+    private var judgedRequest = 0
     /// 첫 읽기 뒤 기록 읽기·쓰기 기록 판정·재시작 정리를 마쳤다
     private var startupDone = false
     /// 마지막 대상 편집(또는 편집 활동이 끝난) 때. T_edit를 여기서 센다
@@ -218,6 +222,7 @@ public final class AutoReflection {
         guard loop != nil, !stopped else { return .unwritten(.starting) }
         if shuttingDown { return .unwritten(.shuttingDown) }
         return await withCheckedContinuation { continuation in
+            if quitWaiters.isEmpty { quitRequest += 1 }
             quitWaiters.append(continuation)
             wake()
         }
@@ -226,6 +231,12 @@ public final class AutoReflection {
     /// 종료 대기를 취소한다([종료 취소]·두 번째 ⌘Q·시스템 종료로 바뀜). 쓰는 중이던 쓰기는 끝까지 가고, 그 뒤 평소 판정으로 돌아간다
     public func cancelQuit() {
         finishQuit(.cancelled)
+    }
+
+    /// 이번 판정의 결과로 ⌘Q 저장을 끝낸다. 판정을 시작한 뒤 종료 요청이 바뀌었으면 넘기지 않는다(그 요청은 곧바로 다시 판정한다)
+    private func finishJudgedQuit(_ result: QuitPreparation) {
+        guard judgedRequest == quitRequest else { return }
+        finishQuit(result)
     }
 
     private func finishQuit(_ result: QuitPreparation) {
@@ -392,6 +403,7 @@ public final class AutoReflection {
     /// 판정 한 번. 때가 됐으면 쓰고 nil(곧 다시 판정)을, 기다릴 것이 있으면 쉴 길이를 돌려준다.
     /// 자동 저장하는 실행이면 저장 대기가 없어도 rekordbox 실행·파일 상태를 짧은 간격으로 지켜본다(조용함이 끊기지 않게, R2)
     private func step() async -> Duration? {
+        judgedRequest = quitRequest
         guard manualWaiting == 0, !isWriting else {
             // 수동 쓰기·확인 창 동안에도 rekordbox 실행 경계는 넘긴다(R23, 컨실 2라운드 K): 그동안 켜졌다 꺼진 게인 초안을 자동으로 쓰지 않게
             _ = await observeRun(qos: .utility)
@@ -417,7 +429,7 @@ public final class AutoReflection {
             base.waiting = waiting
             publish(status: status ?? (reason.kind == .stop ? .stopped(reason) : .held(reason)), conditions: base)
             // ⌘Q 저장(R17): 곧 풀리는 사유(시작·라이브러리 읽기·시점 스냅샷)만 기다리고, 그 밖은 쓰지 않고 돌려준다
-            if quitting, !Self.quitWaits(reason) { finishQuit(.unwritten(reason)) }
+            if quitting, !Self.quitWaits(reason) { finishJudgedQuit(.unwritten(reason)) }
             return pause
         }
         // 미룬 판정(잠금을 못 잡음)·다시 보라는 요청·가끔 다시 보는 중단은 대기 초안·실행 조건과 상관없이 판정한다
@@ -484,7 +496,7 @@ public final class AutoReflection {
             grace = nil
             publish(status: leftoverCount > 0 ? .leftover(count: leftoverCount) : .saved, conditions: base)
             // 대상 밖 편집만 남아도 이 판정에서 본 실행 상태를 함께 돌려준다: 종료 시트가 그 값을 쓴다(컨실 2라운드 J)
-            finishQuit(.finished(run: watch.run))
+            finishJudgedQuit(.finished(run: watch.run))
             return poll
         }
         if preBackupHeld { return hold(.preBackupFailure, waiting: false, pause: poll) }
@@ -523,7 +535,7 @@ public final class AutoReflection {
         if inventory.isBulk(timing: timing, undoRows: undo.pendingRows, undoTracks: undo.pendingTracks), !autoRevisions.isSubset(of: graceAccepted) {
             // ⌘Q로 앞당기지 않는다(R14·R17): 유예 대상은 쓰지 않고 초안으로 남긴다
             if quitting {
-                finishQuit(.unwritten(nil))
+                finishJudgedQuit(.unwritten(nil))
                 return poll
             }
             let grace = grace ?? (now + Self.seconds(timing.bulkDelay), autoRevisions)
@@ -686,7 +698,7 @@ public final class AutoReflection {
         case .playlistDraftBusy:
             // 재생 목록 초안 파일을 잡지 못해 쓸 묶음이 비었다: 평소에는 잠시 뒤 다시 본다. ⌘Q에서는 기다리지 않고 초안으로 남긴다
             // (다른 쪽이 잠금을 계속 쥐면 종료 대기가 끝나지 않는다, 컨실 2라운드 E)
-            if quitting { finishQuit(.unwritten(.lockBusy)) }
+            if quitting { finishJudgedQuit(.unwritten(.lockBusy)) }
             return timing.pollInterval
         case .cancelled:
             // 사용자가 멈춘 쓰기는 받은 순간 기록했다(`cancelAutoWrite`). 곧바로 다시 판정해 남은 편집 줄을 알린다
