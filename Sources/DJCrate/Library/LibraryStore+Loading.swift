@@ -192,6 +192,8 @@ extension LibraryStore {
         verifyReflection()
         refreshBase()
         markLoadSucceeded()
+        // 저장 뒤 다시 읽었다: 되돌릴 수 없게 된 태그·재생 목록 ⌘Z 단계를 기록에서 뺀다(메뉴가 꺼진다, R12)
+        if keepsUndo { pruneLibraryUndo() }
         refreshUnlinkedDrafts()
         warmPreviewWaveforms(loaded.rows)
         if failedTagSaves().isEmpty { clearLibraryError() } else { reportLibraryError(DraftSaveFailure.tagSaveMessage, kind: .failure) }

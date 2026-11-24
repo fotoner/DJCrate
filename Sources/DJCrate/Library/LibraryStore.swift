@@ -16,17 +16,27 @@ final class LibraryStore {
     @ObservationIgnored weak var undoManager: UndoManager? {
         didSet { if oldValue !== undoManager { clearLibraryUndo(in: oldValue) } }
     }
-    /// 저장 뒤에 되돌리지 않는 종류(합치기·재생 기록·재생 목록)의 ⌘Z 대상(R12). 그 종류를 쓰면 그 대상의 단계만 지워 ⌘Z가 꺼진다.
-    /// 재생 목록의 저장 뒤 역편집(이름·순서·곡 넣기)은 아직 없다: 쓰면 옛 초안을 되살려 쓴 단계를 다시 쓰지 않게 끈다
-    let mergeUndoTarget = UndoTarget(), historyUndoTarget = UndoTarget(), playlistUndoTarget = UndoTarget()
+    /// 저장 뒤에 되돌리지 않는 종류(합치기·재생 기록)의 ⌘Z 대상(R12). 그 종류를 쓰면 그 대상의 단계만 지워 ⌘Z가 꺼진다
+    let mergeUndoTarget = UndoTarget(), historyUndoTarget = UndoTarget()
     final class UndoTarget {}
+    /// 태그·재생 목록 ⌘Z 단계(단계마다 따로 대상: 저장 뒤 되돌릴 수 없게 되면 그 단계만 빼 메뉴가 꺼진다, R12)
+    let tagUndoSteps = UndoSteps(), playlistUndoSteps = UndoSteps()
+    /// 저장 뒤 다시 읽고 쓰기 잠금이 모두 풀린 때: 되돌릴 수 없게 된 태그·재생 목록 ⌘Z 단계를 기록에서 뺀다.
+    /// 쓰는 중이거나 쓴 뒤 다시 읽기가 끝나지 않았으면(rekordbox 값이 아직 옛 사본) 판정하지 않는다(멀쩡한 단계를 빼지 않게)
+    func pruneLibraryUndo() {
+        guard !libraryBusy, lockedTracks.isEmpty, writtenAwaitingReload.isEmpty, !draftWriteReadPending,
+              playlists.playlistEditsAwaitingReload.isEmpty else { return }
+        tagUndoSteps.prune(undoManager)
+        playlistUndoSteps.prune(undoManager)
+    }
     /// 라이브러리 쪽 ⌘Z 기록을 모두 지운다(복원·곡 넣기처럼 통째로 잠그는 쓰기, 그 밖의 다시 읽기)
     func clearLibraryUndo(in manager: UndoManager? = nil) {
         let manager = manager ?? undoManager
+        tagUndoSteps.removeAll(manager)
+        playlistUndoSteps.removeAll(manager)
         manager?.removeAllActions(withTarget: self)
         manager?.removeAllActions(withTarget: mergeUndoTarget)
         manager?.removeAllActions(withTarget: historyUndoTarget)
-        manager?.removeAllActions(withTarget: playlistUndoTarget)
         deferredTagUndo = []
     }
     /// rekordbox 라이브러리 위치(읽기 출처·쓰기 대상·스냅샷·백업·초안 폴더). 조립 지점이 실행 인자·환경을 한 번 풀어 준다.
@@ -427,6 +437,7 @@ final class LibraryStore {
             guard lockedTracks != oldValue else { return }
             onLockedTracks?(lockedTracks)
             restoreDeferredTagUndo()
+            pruneLibraryUndo()
         }
     }
     /// 이 곡의 편집을 막는지: 통째 편집 잠금이거나 쓰는 묶음에 든다. 곡 편집(덱·태그·그림·목록 칸)이 읽는다.

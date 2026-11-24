@@ -12,7 +12,7 @@ extension DeckModel {
     /// 곡·원본이 바뀌거나 복원·곡 넣기처럼 통째로 잠그는 쓰기를 시작하면 이전 기준의 초안을 되살리지 않는다.
     /// 초안을 쓴 뒤 다시 읽기(`refreshAfterWrite`)는 지우지 않는다: ⌘Z가 지금 rekordbox 값 위의 역편집이 된다(R12)
     func clearDraftUndo() {
-        undoManager?.removeAllActions(withTarget: self)
+        draftUndoSteps.removeAll(undoManager)
         deferredDraftUndo = []
         pendingDraftUndo = nil
         gridDragBase = nil
@@ -35,9 +35,10 @@ extension DeckModel {
             undoManager.groupsByEvent = false
             undoManager.beginUndoGrouping()
         }
-        undoManager.registerUndo(withTarget: self) { target in
-            guard !target.editsFrozen, target.row?.track.uuid == change.before.cue.trackUUID else { return }
-            target.undoDraft(change, name: name)
+        // 단계마다 따로 건다: 저장 뒤 되돌릴 수 없게 되면(분석 붙이기·큐를 정할 수 없음) 그 단계만 빼 ⌘Z가 꺼진다(`pruneDraftUndo`)
+        draftUndoSteps.register(undoManager, canUndo: { [weak self] in self?.canUndoDraft(change) ?? false }) { [weak self] in
+            guard let self, !editsFrozen, row?.track.uuid == change.before.cue.trackUUID else { return }
+            undoDraft(change, name: name)
         }
         undoManager.setActionName(name)
         if grouping {
@@ -59,6 +60,15 @@ extension DeckModel {
         // 되돌린 지금 상태에서 다시 실행할 단계(그사이 저장해도 같은 규칙으로 옮긴다)
         if let redo = DraftChange(before: current, after: applied) { registerDraftUndo(redo, name: name) }
     }
+
+    /// 그 단계를 지금 되돌릴 수 있는지: 지금 덱 곡의 단계이고, 저장했으면 지금 rekordbox 값 위로 옮길 수 있다(R12)
+    func canUndoDraft(_ change: DraftChange<DeckDraftSnapshot>) -> Bool {
+        guard row?.track.uuid == change.before.cue.trackUUID, let current = draftSnapshot else { return false }
+        return change.before.rebased(from: change.after, onto: current) != nil
+    }
+
+    /// 저장 뒤 되돌릴 수 없게 된 단계를 기록에서 뺀다(메뉴가 꺼진다). 쓴 뒤 새 값을 덱에 다 적용한 때 부른다
+    func pruneDraftUndo() { draftUndoSteps.prune(undoManager) }
 
     /// 쓰는 동안 눌러 미뤄 둔 ⌘Z 단계를 잠금이 풀리면 다시 올린다. 먼저 꺼낸 단계(더 새 편집)가 맨 위에 오게 옛 단계부터 올린다
     func restoreDeferredDraftUndo() {

@@ -11,8 +11,10 @@ final class DeckModel {
     enum DraftKind { case cue, grid, gain }
 
     @ObservationIgnored weak var undoManager: UndoManager? {
-        didSet { if oldValue !== undoManager { oldValue?.removeAllActions(withTarget: self) } }
+        didSet { if oldValue !== undoManager { draftUndoSteps.removeAll(oldValue) } }
     }
+    /// 덱 초안 ⌘Z 단계(단계마다 따로 대상, 저장 뒤 되돌릴 수 없게 되면 그 단계만 뺀다)
+    @ObservationIgnored let draftUndoSteps = UndoSteps()
     @ObservationIgnored var pendingDraftUndo: DeckDraftSnapshot?
     /// LINK로 CDJ가 실은 곡(rekordbox 곡 ID, #278). 덱에 올리지 않는다
     @ObservationIgnored var cdjLoadedTrackIDs: Set<String> = []

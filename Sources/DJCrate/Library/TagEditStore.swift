@@ -126,36 +126,24 @@ final class TagEditStore {
         // 그 곡을 rekordbox에 썼으면(쓴 횟수가 늘었다) 지금 rekordbox 값 위의 역편집으로 되돌린다(R12, `TagUndo`)
         let generations = captured ?? Set(change.before.keys).union(change.after.keys)
             .map { TagUndoGeneration(uuid: $0, invalidated: library.tagUndoGeneration[$0, default: 0], written: library.tagWriteGeneration[$0, default: 0]) }
-        undoManager.registerUndo(withTarget: library) { target in
+        // 단계마다 따로 건다: 저장 뒤 되돌릴 칸이 없게 되면(앨범·아티스트만 바꿈) 그 단계만 빼 ⌘Z가 꺼진다(`LibraryStore.pruneTagUndo`)
+        library.tagUndoSteps.register(undoManager, canUndo: { [weak library] in
+            guard let library else { return false }
+            return generations.contains { library.isEditLocked($0.uuid) } || library.tags.undoPlan(change, generations: generations) != nil
+        }) { [weak library] in
+            guard let target = library else { return }
             // 이 단계의 곡을 쓰는 중이면 되돌리지 않고 미뤄 두었다가 잠금이 풀리면 꺼낸 차례를 지켜 다시 올린다(`restoreDeferredTagUndo`)
             if generations.contains(where: { target.isEditLocked($0.uuid) }) {
                 if target.undoManager?.isRedoing != true { target.deferredTagUndo.append((change, generations)) }
                 return
             }
-            // 세대가 바뀐 곡은 빼고 나머지 곡만 되돌리며, 실제로 되돌린 곡만 ⇧⌘Z에 남긴다(새로 받은 초안을 덮지 않는다)
-            var before: [String: TagDraft] = [:], after: [String: TagDraft] = [:], reversed: [TagDraft] = []
-            for item in generations {
-                let (uuid, generation, writes) = (item.uuid, item.invalidated, item.written)
-                guard target.tagUndoGeneration[uuid, default: 0] == generation else { continue }
-                guard target.tagWriteGeneration[uuid, default: 0] != writes else {
-                    before[uuid] = change.before[uuid]
-                    after[uuid] = change.after[uuid]
-                    continue
-                }
-                guard let row = target.rowsByUUID[uuid] else { continue }
-                let current = target.tags.tagDraft(for: row)
-                guard let reverted = TagUndo.reverting(before: change.before[uuid], after: change.after[uuid], onto: current) else { continue }
-                before[uuid] = reverted
-                after[uuid] = current
-                reversed.append(reverted)
-            }
-            guard let partial = DraftChange(before: before, after: after) else { return }
-            target.tags.show(partial.before)
-            target.tags.registerUndo(partial.reversed)
+            guard let plan = target.tags.undoPlan(change, generations: generations) else { return }
+            target.tags.show(plan.change.before)
+            target.tags.registerUndo(plan.change.reversed)
             // 여러 곡의 역편집은 자동 저장이 한 번에 전부 쓰거나 전부 쓰지 않는다(R12)
-            if reversed.count > 1 {
-                target.onUndoAfterSave?(ReflectionUndoEdit(id: UUID().uuidString, batch: DraftWriteBatch(tags: reversed, commitPolicy: .allOrNothing),
-                                                           rowCount: reversed.count))
+            if plan.reversed.count > 1 {
+                target.onUndoAfterSave?(ReflectionUndoEdit(id: UUID().uuidString, batch: DraftWriteBatch(tags: plan.reversed, commitPolicy: .allOrNothing),
+                                                           rowCount: plan.reversed.count))
             }
         }
         undoManager.setActionName(String(ui: "태그 편집"))
@@ -163,6 +151,29 @@ final class TagEditStore {
             undoManager.endUndoGrouping()
             undoManager.groupsByEvent = groupsByEvent
         }
+    }
+
+    /// 태그 ⌘Z 한 단계를 지금 되돌릴 계획: 세대가 바뀐 곡(바깥 변경·기준 옮김)은 빼고, 아직 쓰지 않은 곡은 편집 전 초안으로, 쓴 곡은
+    /// 지금 rekordbox 값 위의 역편집으로(`TagUndo`) 되돌린다. 되돌릴 곡이 없으면 nil(그 ⌘Z는 꺼진다)
+    func undoPlan(_ change: DraftChange<[String: TagDraft]>, generations: [TagUndoGeneration])
+        -> (change: DraftChange<[String: TagDraft]>, reversed: [TagDraft])? {
+        var before: [String: TagDraft] = [:], after: [String: TagDraft] = [:], reversed: [TagDraft] = []
+        for item in generations {
+            let uuid = item.uuid
+            guard library.tagUndoGeneration[uuid, default: 0] == item.invalidated else { continue }
+            guard library.tagWriteGeneration[uuid, default: 0] != item.written else {
+                before[uuid] = change.before[uuid]
+                after[uuid] = change.after[uuid]
+                continue
+            }
+            guard let row = library.rowsByUUID[uuid] else { continue }
+            let current = tagDraft(for: row)
+            guard let reverted = TagUndo.reverting(before: change.before[uuid], after: change.after[uuid], onto: current) else { continue }
+            before[uuid] = reverted
+            after[uuid] = current
+            reversed.append(reverted)
+        }
+        return DraftChange(before: before, after: after).map { ($0, reversed) }
     }
 
     /// 곡별 초안 전체를 복원해 base와 여러 칸을 함께 보존한다.

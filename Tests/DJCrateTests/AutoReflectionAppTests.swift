@@ -61,9 +61,9 @@ struct AutoReflectionAppTests {
         return store
     }
 
-    /// R12(#405): 재생 목록은 저장 뒤 역편집이 아직 없다. 저장하면 그 전 초안을 되살리는 ⌘Z를 꺼서 쓴 단계를 다시 쌓지 않는다.
-    /// 초안 쓰기가 시작될 때 라이브러리 ⌘Z를 통째로 지우지 않으므로(태그 ⌘Z는 남는다) 재생 목록만 따로 끈다
-    @Test func 재생_목록_편집을_저장하면_그_전_초안을_되살리는_실행_취소는_꺼진다() async throws {
+    /// R12(#405): 저장한 재생 목록 편집의 ⌘Z는 그 전 초안을 되살리지 않는다(쓴 단계를 다시 쌓지 않는다). 지금 보이는 목록이 그 편집 뒤 모양일 때만
+    /// 거꾸로 하는 단계를 쌓는다. 여기서는 다시 읽기가 실패해 rekordbox 값이 옛 사본이라 거꾸로 할 모양이 아니다: 아무것도 쌓지 않는다
+    @Test func 재생_목록_편집을_저장한_뒤의_실행_취소는_쓴_단계를_다시_쌓지_않는다() async throws {
         let store = store()
         let undo = UndoManager()
         store.undoManager = undo
@@ -78,7 +78,8 @@ struct AutoReflectionAppTests {
         latch.release()
         await writing.value
         #expect(store.playlists.playlistDraft.steps.isEmpty)
-        #expect(!undo.canUndo, "쓴 단계를 되살리는 ⌘Z는 남지 않는다")
+        undo.undo()
+        #expect(store.playlists.playlistDraft.steps.isEmpty, "쓴 단계를 옛 초안으로 다시 쌓지 않는다")
     }
 
     @Test func 쓰는_동안_재생_목록_편집은_얼린_단계_뒤에_쌓이고_쓴_뒤에도_남는다() async throws {
