@@ -15,6 +15,31 @@ struct PlaylistUndoDuringWriteTests {
     let store: LibraryStore
     let undo = UndoManager()
     let home: URL
+    /// 재생 목록 초안을 저장한 직후 한 번 할 일(저장과 다시 읽기 사이에 바깥 편집을 끼운다)
+    let afterSave = AfterPlaylistSave()
+
+    @MainActor final class AfterPlaylistSave {
+        var once: (() -> Void)?
+        func run() {
+            let body = once
+            once = nil
+            body?()
+        }
+    }
+
+    /// 재생 목록 초안 저장(보통·출처 잇기) 뒤에 `hook`을 부른다
+    static func hookingSaves(_ drafts: inout DraftStore, hook: AfterPlaylistSave) {
+        let plain: @MainActor (PlaylistDraft) throws -> Void = drafts.savePlaylistDraft
+        drafts.savePlaylistDraft = { (draft: PlaylistDraft) throws in
+            try plain(draft)
+            hook.run()
+        }
+        guard let origins = drafts.savePlaylistDraftOrigins else { return }
+        drafts.savePlaylistDraftOrigins = { (draft: PlaylistDraft, fresh: [Int: Set<DraftOrigin>]) throws in
+            try origins(draft, fresh)
+            hook.run()
+        }
+    }
 
     static let rekordbox = PlaylistLayout([
         (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
@@ -24,8 +49,9 @@ struct PlaylistUndoDuringWriteTests {
     init() {
         home = FileManager.default.temporaryDirectory.appending(path: "djc-undo-writing-\(UUID().uuidString)")
         // 앱의 편집 포트처럼 사람 편집 출처로 저장한다(되살린 단계가 그 출처를 잇는지 본다)
+        let hook = afterSave
         store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, draftHome: home, movesDamagedDrafts: false,
-                                  draftOrigin: .human)
+                                  draftOrigin: .human, ports: { Self.hookingSaves(&$0.drafts, hook: hook) })
         store.undoManager = undo
         store.phase = .loaded
         store.playlists.rekordboxPlaylists = Self.rekordbox
@@ -442,6 +468,38 @@ struct PlaylistUndoDuringWriteTests {
         await #expect(throws: DJCError.self) { try await playlists.applyPlaylistRecovery(review, reapply: false, latest: current) }
         #expect(playlists.playlistDraft.edits == edits, "메모리 초안을 바꾸지 않는다")
         #expect((try? Data(contentsOf: file)) == Data("손상".utf8), "디스크 초안을 덮지 않는다")
+    }
+
+    /// B·C 이름이 rekordbox에서 바뀐 A·B·C 목록(그 목록의 이름 바꾸기가 막힌다)
+    static let threeListsChanged = PlaylistLayout([
+        (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
+        (PlaylistLayout.Item(id: "B", name: "바깥 B"), 2),
+        (PlaylistLayout.Item(id: "C", name: "바깥 C"), 3),
+    ])
+
+    /// 막힌 편집 복구가 저장한 뒤 다시 읽기 전에 CLI가 단계를 더하면(내용이 달라 식별자를 받지 못한다) 다시 읽기를 기다린다:
+    /// 다음 복구 줄이 그 초안을 덮지 않고, 다음 동기화가 바깥 초안을 받는다(리뷰 F14)
+    @Test func 복구_저장과_다시_읽기_사이에_CLI가_단계를_더하면_다음_복구가_덮지_않는다() async throws {
+        playlists.rekordboxPlaylists = Self.threeLists
+        playlists.refreshPlaylists()
+        event { playlists.renamePlaylist("B", to: "사람 B") }
+        event { playlists.renamePlaylist("C", to: "사람 C") }
+        let cliStep = PlaylistEdit.rename(playlist: .id("A"), name: "CLI 이름")
+        let url = file
+        afterSave.once = {
+            // CLI(`djc draft playlist`)가 디스크 초안에 단계를 더한다
+            var disk = PlaylistDraftStore.load(url: url)
+            try? disk.append(cliStep, rekordbox: Self.threeLists)
+            _ = try? StampedDrafts.savePlaylist(disk, url: url, origin: .cli)
+        }
+        let current = PlaylistRecoveryCurrent(layout: Self.threeListsChanged, contentIDs: ["1"], titles: [:], rows: [:])
+        let first = try RecoverDrafts.review(playlist: "B", draft: playlists.playlistDraft, current: current)
+        try await playlists.applyPlaylistRecovery(first, reapply: false, latest: current)
+        #expect(playlists.playlistDraftNeedsSync, "다시 읽은 초안이 메모리와 달라 식별자를 받지 못했다")
+        let second = try RecoverDrafts.review(playlist: "C", draft: playlists.playlistDraft, current: current)
+        await #expect(throws: DJCError.self) { try await playlists.applyPlaylistRecovery(second, reapply: false, latest: current) }
+        #expect(try store.useCases.playlists.loadDraft().edits.contains(cliStep), "CLI가 더한 단계가 디스크에 남는다")
+        #expect(playlists.syncExternal() == .adopted && playlists.playlistDraft.edits.contains(cliStep), "다음 동기화가 바깥 초안을 받는다")
     }
 
     /// 쓰는 동안 저장하지 못한 편집을 쓴 뒤 정리가 메모리 초안으로 저장하면 기억한 출처를 비운다(리뷰 F13)

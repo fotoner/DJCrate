@@ -710,7 +710,13 @@ final class PlaylistEditStore {
     func adoptSavedIdentifiers() {
         do {
             let disk = try library.useCases.playlists.loadDraft()
-            if disk == playlistDraft, disk.stepIDs != playlistDraft.stepIDs { playlistDraft = disk }
+            if disk == playlistDraft {
+                if disk.stepIDs != playlistDraft.stepIDs { playlistDraft = disk }
+            } else {
+                // 저장한 뒤 다시 읽기 전에 바깥(CLI)이 초안을 바꿔 식별자를 받지 못했다: 다음 저장·복구가 그 초안을 덮지 않게 디스크 초안을 받을 때까지
+                // 막는다(다음 동기화가 바깥 초안을 받는다, #295 리뷰 F14)
+                playlistDraftNeedsSync = true
+            }
         } catch {
             AppErrorMessage.log(error)
             playlistDraftNeedsSync = true
