@@ -56,6 +56,36 @@ struct TagUndoTests {
         #expect(TagUndo.reverting(before: nil, after: after, onto: TagDraft(trackUUID: "t", base: outside)) == nil)
     }
 
+    /// 연도·트랙 번호는 쓰기가 정수로 다듬어 적는다("02" → "2"): 편집 직후 값과 지금 값을 같은 규칙으로 견준다(컨실 2라운드 I·S17)
+    @Test func 쓰기가_다듬어_적는_숫자_칸도_편집_직후_값과_같다고_본다() throws {
+        var after = TagDraft(trackUUID: "t", base: Self.fields())
+        after.fields.trackNumber = "02"
+        after.fields.year = "0099"
+        var written = after.fields
+        written.trackNumber = "2"
+        written.year = "99"
+        let reverted = try #require(TagUndo.reverting(before: nil, after: after, onto: TagDraft(trackUUID: "t", base: written)))
+        #expect(reverted.fields.trackNumber == "" && reverted.fields.year == "")
+    }
+
+    /// 앨범 편집이 앨범 행을 바꿔 앨범 아티스트도 함께 바뀌었으면(앨범 비우기) 둘을 함께 되돌려야 하는데, 쓰기는 두 칸을 한 번에 바꾸지 않는다:
+    /// 정할 수 없다(⌘Z를 끈다). 앨범 아티스트가 그대로면 앨범만 되돌린다(컨실 2라운드 J·S18)
+    @Test func 앨범_편집이_앨범_아티스트까지_바꿨으면_정할_수_없다() throws {
+        var original = Self.fields()
+        original.album = "앨범"
+        original.albumArtist = "앨범 가수"
+        var cleared = TagDraft(trackUUID: "t", base: original)
+        cleared.fields.album = ""
+        var written = cleared.fields
+        written.albumArtist = ""
+        #expect(TagUndo.reverting(before: nil, after: cleared, onto: TagDraft(trackUUID: "t", base: written)) == nil)
+
+        var renamed = TagDraft(trackUUID: "t", base: original)
+        renamed.fields.album = "새 앨범"
+        let reverted = try #require(TagUndo.reverting(before: nil, after: renamed, onto: TagDraft(trackUUID: "t", base: renamed.fields)))
+        #expect(reverted.fields.album == "앨범" && reverted.changedKeys == [.album])
+    }
+
     @Test func 편집_전_초안이_있었으면_그_초안의_값으로_되돌린다() throws {
         let original = Self.fields()
         var before = TagDraft(trackUUID: "t", base: original)

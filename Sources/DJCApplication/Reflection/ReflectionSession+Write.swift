@@ -40,42 +40,57 @@ extension ReflectionSession {
         do {
             stage(WriteStage(String(ui: "바꿀 내용을 확인하는 중…"), completed: 0, total: chosen.count, cancellable: true))
             try Task.checkCancellation()
-            // 여러 곡 역편집 묶음은 묶음 밖 편집과 섞지 않고 따로 전부 아니면 전무로 먼저 쓴다(R12, 컨실 S1). 막히면 그 묶음은 쓰지 않고 남는다
+            // 여러 곡 역편집 묶음은 묶음 밖 편집과 섞지 않고 따로 전부 아니면 전무로 먼저 쓴다(R12, 컨실 S1). 묶음의 곡은 묶음으로만 쓴다:
+            // 쓰지 못한 묶음(고르지 않은 구성원·사라진 초안·막힘)의 곡도 나머지 쓰기에서 뺀다. 묶음 결과는 마지막 발행에 합친다(2라운드 B)
             let groups = ports.undoGroups.groups(touching: Set(chosen.map(\.track.uuid)))
             let groupKeys = Set(groups.flatMap(\.keys))
-            var groupReport: RekordboxWriteReport?
+            var done = UndoGroupResults()
             for group in groups {
-                if let report = try await writeUndoGroup(group, rows: chosen) { groupReport = report }
+                switch try await writeUndoGroup(group, rows: chosen) {
+                case let .written(report, preview, followUp):
+                    done.written.append(report)
+                    done.previews.append(preview)
+                    done.followUp += followUp
+                    ports.undoGroups.remove(group.id)
+                case let .notWritten(preview):
+                    done.previews.append(preview.report)
+                    done.exclusions += preview.exclusions
+                case .declined:
+                    stage(nil)
+                    return done.written.isEmpty ? .declined : publish(done.outcome(followUp: []))
+                }
                 try Task.checkCancellation()
             }
             let main = chosen.filter { row in !groupKeys.contains { $0.id == row.track.uuid } || (try? draftBatch(for: [row], playlists: false)
                 .removingKeys(groupKeys).isEmpty) == false }
-            if let groupReport, main.isEmpty, !withPlaylists, !withHistories {
+            if !groups.isEmpty, main.isEmpty, !withPlaylists, !withHistories {
                 stage(nil)
-                return publish(.written(groupReport, preview: groupReport, followUp: []))
+                guard done.written.isEmpty else { return publish(done.outcome(followUp: [])) }
+                return publish(.nothingWritable(done.preview(adding: nil), targets: chosen))
             }
-            let preview = try await previewWrite(rows: main, playlists: withPlaylists || withHistories, withPlaylistDraft: withPlaylists,
+            var preview = try await previewWrite(rows: main, playlists: withPlaylists || withHistories, withPlaylistDraft: withPlaylists,
                                                  excluding: groupKeys)
             try Task.checkCancellation()
             stage(nil)
             // 창 대신 결과에 제외한 초안까지 남긴다(#230). 막힌 초안은 화면이 복구 시트로 고치게 한다(#232).
             guard preview.hasWritable else {
                 // 곡이 막혀 쓸 것이 없어도 재생 목록을 건드리지 않은 이유를 "저장하지 않는 것"에 담는다
-                var preview = preview
                 if playlistHeld { preview.exclusions.append(Self.playlistSyncHeldText) }
-                return publish(.nothingWritable(preview, targets: chosen))
+                guard done.written.isEmpty else { return publish(done.outcome(adding: preview.report, followUp: [])) }
+                return publish(.nothingWritable(done.preview(adding: preview), targets: chosen))
             }
             // 막힘·제외·손실이 없으면 묻지 않고 쓴다. 결과 토스트와 메뉴의 "쓰기 전으로 복원…"으로 되돌린다(#210).
+            preview.exclusions += done.exclusions
             let canBackUp = ports.backups.canWrite(location.backupDirectory)
             if !WriteConfirmPolicy.reasons(preview.report, exclusions: preview.exclusions, canBackUp: canBackUp).isEmpty {
                 guard ports.confirmation.confirm(ReflectionPrompts.confirmation(preview.report, exclusions: preview.exclusions, canBackUp: canBackUp))
-                else { return .declined }
+                else { return done.written.isEmpty ? .declined : publish(done.outcome(followUp: [])) }
             }
             try Task.checkCancellation()
             // 분석을 붙이는 곡도 그리드 초안으로 쓴다(`writableBatch`). 쓰기 결과와 뒤따른 일의 경고는 나눠 알린다(#175).
             let written = try await writeDraftsFollowingUp(preview.writableBatch, to: target, dryRun: false)
-            return publish(.written(written.report, preview: preview.report,
-                                    followUp: written.followUp + (playlistHeld ? [Self.playlistSyncHeldText] : [])))
+            done.written.append(written.report)
+            return publish(done.outcome(adding: preview.report, followUp: written.followUp + (playlistHeld ? [Self.playlistSyncHeldText] : [])))
         } catch is CancellationError {
             stage(nil)
             return publish(.cancelled)
@@ -86,17 +101,73 @@ extension ReflectionSession {
         }
     }
 
-    /// 여러 곡 역편집 묶음 하나를 따로 전부 아니면 전무로 쓴다(⌘S, 컨실 S1). 한 곡이라도 막히면(미리 보기) 아무것도 쓰지 않고 nil
-    func writeUndoGroup(_ group: AutoReflectionUndoGroup, rows: [TrackRow]) async throws -> RekordboxWriteReport? {
-        let groupRows = rows.filter { row in group.keys.contains { $0.id == row.track.uuid } }
+    /// ⌘S가 쓴 여러 곡 역편집 묶음의 결과(마지막 발행에 합친다, 컨실 2라운드 B·O10)
+    struct UndoGroupResults {
+        var written: [RekordboxWriteReport] = []
+        var previews: [RekordboxWriteReport] = []
+        var followUp: [String] = []
+        var exclusions: [String] = []
+
+        /// 쓴 결과(묶음과 나머지 쓰기를 합친 보고). 미리 보기에는 쓰지 못한 묶음의 막힌 줄까지 든다
+        func outcome(adding preview: RekordboxWriteReport? = nil, followUp more: [String]) -> ReflectionOutcome {
+            let report = RekordboxWriteReport.combining(written)
+            return .written(report, preview: RekordboxWriteReport.combining(previews + (preview.map { [$0] } ?? [])), followUp: followUp + more)
+        }
+
+        /// 쓴 것이 없을 때의 미리 보기(쓰지 못한 묶음의 막힌 줄·제외 줄과 나머지 미리 보기를 합친다: 화면이 복구 시트로 고친다)
+        func preview(adding rest: WritePreview?) -> WritePreview {
+            let reports = previews + (rest.map { [$0.report] } ?? [])
+            return WritePreview(report: RekordboxWriteReport.combining(reports), batch: rest?.batch ?? DraftWriteBatch(),
+                                exclusions: exclusions + (rest?.exclusions ?? []))
+        }
+    }
+
+    /// ⌘S의 여러 곡 역편집 묶음 하나를 쓴 결과
+    enum UndoGroupWrite {
+        case written(RekordboxWriteReport, preview: RekordboxWriteReport, followUp: [String])
+        /// 쓰지 않았다(고르지 않은 구성원·사라진 초안은 제외 줄, 막힘은 미리 보기 보고에)
+        case notWritten(WritePreview)
+        /// 확인 창에서 취소했다
+        case declined
+    }
+
+    /// 여러 곡 역편집 묶음 하나를 따로 전부 아니면 전무로 쓴다(⌘S, 컨실 S1·2라운드 B). 보통 쓰기와 같은 사전 확인과 확인 창을 지난다.
+    /// 묶음의 곡을 모두 골랐고 구성원 초안이 모두 있을 때만 쓴다. 한 곡이라도 막히면(미리 보기) 아무것도 쓰지 않는다
+    func writeUndoGroup(_ group: AutoReflectionUndoGroup, rows: [TrackRow]) async throws -> UndoGroupWrite {
+        let members = Set(group.keys.map(\.id))
+        let groupRows = rows.filter { members.contains($0.track.uuid) }
+        func excluded(_ reason: String) -> UndoGroupWrite {
+            .notWritten(WritePreview(report: RekordboxWriteReport(outcomes: [], dryRun: true, createdAt: ""), batch: DraftWriteBatch(),
+                                     exclusions: groupRows.map { "• \($0.title): \(reason)" }))
+        }
+        let missingDraft = String(ui: "함께 되돌릴 다른 편집이 막혀 이 편집도 저장하지 않았으니 막힌 편집을 확인한 뒤 다시 저장하세요")
+        // 구성원 초안이 사라졌으면(버렸다) 그 곡은 저장 대기에도 없다: 고르지 않은 것과 가른다
+        guard group.keys.allSatisfy({ ports.drafts.stamp($0) != nil }) else { return excluded(missingDraft) }
+        guard members.isSubset(of: Set(groupRows.map(\.track.uuid))) else {
+            return excluded(String(ui: "함께 되돌린 다른 곡과 한 번에 저장하니 그 곡들도 골라 다시 저장하세요"))
+        }
+        // 보통 쓰기(`previewWrite`)와 같은 사전 확인
+        ports.drafts.flush()
+        ports.library.retryTagSaves()
+        try requireReadableDrafts(for: members, playlists: false)
+        try requireDraftSaves(for: members)
+        guard ports.library.state().failedTagSaves.isDisjoint(with: members) else { throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage) }
         var batch = try draftBatch(for: groupRows, playlists: false).restricted(to: group.keys)
-        guard !batch.isEmpty else { return nil }
+        guard batch.draftKeys == group.keys else { return excluded(missingDraft) }
         batch.commitPolicy = .allOrNothing
-        let preview = try await previewBatch(batch, uuids: Set(groupRows.map(\.track.uuid)), exclusions: [])
+        let preview = try await previewBatch(batch, uuids: members, exclusions: [])
         stage(nil)
-        guard let request = preview.writeRequest else { return nil }
+        guard let request = preview.writeRequest else { return .notWritten(preview) }
+        let canBackUp = ports.backups.canWrite(location.backupDirectory)
+        if !WriteConfirmPolicy.reasons(preview.report, exclusions: preview.exclusions, canBackUp: canBackUp).isEmpty {
+            guard ports.confirmation.confirm(ReflectionPrompts.confirmation(preview.report, exclusions: preview.exclusions, canBackUp: canBackUp))
+            else { return .declined }
+        }
         let written = try await writeDraftsFollowingUp(request, to: target, dryRun: false)
-        return Self.writtenRevisions(written.report, batch: request).isEmpty ? nil : written.report
+        guard !Self.writtenRevisions(written.report, batch: request).isEmpty else {
+            return .notWritten(WritePreview(report: written.report, batch: request))
+        }
+        return .written(written.report, preview: preview.report, followUp: written.followUp)
     }
 
     /// 쓰는 동안 편집을 막을 곡: 쓸 곡과, 그 곡이 든 합치기 초안으로 묶인 곡 모두(`DraftWriteBatch.trackUUIDs`와 같은 범위)
@@ -221,8 +292,11 @@ extension ReflectionSession {
         // 쓰기 대기 재생 기록(#43)도 재생 목록 초안처럼 곡을 고르지 않고 모두 본다. 관문이 막으면 막힘(이유)으로 돌아온다
         var batch = DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges,
                                     histories: playlists ? state.pendingHistories : [])
-        // 게인 base(R23)가 있는 곡은 관문이 지금 rekordbox 값과 견준다(⌘S도 같다). base 없는 게인은 지금처럼 쓴다
-        if !gains.isEmpty { batch.gainBases = files.gainBases().filter { gains[$0.key] != nil }.mapValues(\.db) }
+        // 게인 base(R23)가 있는 곡은 관문이 지금 rekordbox 값과 견준다(⌘S도 같다). 지금 값의 판에 묶인 base만 넘긴다(컨실 2라운드 L).
+        // base 없는 게인은 지금처럼 쓴다
+        if !gains.isEmpty {
+            batch.gainBases = Dictionary(uniqueKeysWithValues: gains.keys.compactMap { uuid in files.currentGainBase(uuid).map { (uuid, $0.db) } })
+        }
         stampRevisions(&batch, rawCues: rawCues)
         return batch
     }
@@ -429,5 +503,34 @@ extension ReflectionSession {
     /// 재생 목록 편집(JSON 배열)을 적힌 순서대로 쓴다(`djc playlist-write`, 사본만). 앱의 재생 목록 초안은 `write(rows:)`가 함께 쓴다.
     public func writePlaylistEdits(_ edits: [PlaylistEdit], to target: RekordboxWriteTarget, dryRun: Bool) throws -> RekordboxWriteReport {
         try ports.gate.writePlaylists(edits, target, dryRun)
+    }
+}
+
+extension RekordboxWriteReport {
+    /// 한 번의 ⌘S가 나눠 쓴 보고를 하나로 합친다(여러 곡 역편집 묶음과 나머지, 컨실 2라운드 B). 결과는 차례대로 잇는다.
+    /// 백업은 가장 앞 쓰기의 것("저장 전으로 복원"이 이 ⌘S 전체를 되돌린다), 변경 카운터·시각은 마지막 쓰기의 것이다
+    static func combining(_ reports: [RekordboxWriteReport]) -> RekordboxWriteReport {
+        guard var result = reports.first else { return RekordboxWriteReport(outcomes: [], dryRun: true, createdAt: "") }
+        func join<T>(_ a: [T]?, _ b: [T]?) -> [T]? { a == nil && b == nil ? nil : (a ?? []) + (b ?? []) }
+        for next in reports.dropFirst() {
+            result.outcomes += next.outcomes
+            result.backup = result.backup ?? next.backup
+            result.dryRun = result.dryRun && next.dryRun
+            result.createdAt = next.createdAt
+            result.finalUpdateCount = next.finalUpdateCount ?? result.finalUpdateCount
+            result.gridOutcomes = join(result.gridOutcomes, next.gridOutcomes)
+            result.gainOutcomes = join(result.gainOutcomes, next.gainOutcomes)
+            result.analysisOutcomes = join(result.analysisOutcomes, next.analysisOutcomes)
+            result.createdFiles = join(result.createdFiles, next.createdFiles)
+            result.playlistOutcomes = join(result.playlistOutcomes, next.playlistOutcomes)
+            result.artworkAdded = join(result.artworkAdded, next.artworkAdded)
+            result.tagOutcomes = join(result.tagOutcomes, next.tagOutcomes)
+            result.mergeOutcomes = join(result.mergeOutcomes, next.mergeOutcomes)
+            result.artworkOutcomes = join(result.artworkOutcomes, next.artworkOutcomes)
+            result.warnings = join(result.warnings, next.warnings)
+            result.iTunesSyncWritten = result.iTunesSyncWritten == true || next.iTunesSyncWritten == true ? true : result.iTunesSyncWritten ?? next.iTunesSyncWritten
+            result.historyOutcomes = join(result.historyOutcomes, next.historyOutcomes)
+        }
+        return result
     }
 }

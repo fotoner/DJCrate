@@ -257,9 +257,8 @@ public final class AutoReflection {
             // 잠금 아래 판정을 하지 못했으면(rekordbox가 켜져 기록을 판정하지 못함·잠금·기록을 읽다 실패) 이전 보류로 판단해 정리 없이 쓰지 않는다.
             // 알림이 이유를 고르게 실행 상태를 메인 액터 밖에서 보고 함께 넘긴다
             if case .busy = judged, let whenHeld {
-                let runState = ports.runState
                 var holds: Set<ReflectionHold> = [.lockBusy]
-                switch await BlockingWork.run(qos: .userInitiated, { runState() }) {
+                switch await observeRun(qos: .userInitiated) {
                 case .running, .unknown: holds.insert(.rekordboxRunning)
                 case .agentOnly: holds.insert(.agentRunning)
                 case .stopped: break
@@ -345,7 +344,11 @@ public final class AutoReflection {
     /// 판정 한 번. 때가 됐으면 쓰고 nil(곧 다시 판정)을, 기다릴 것이 있으면 쉴 길이를 돌려준다.
     /// 자동 저장하는 실행이면 저장 대기가 없어도 rekordbox 실행·파일 상태를 짧은 간격으로 지켜본다(조용함이 끊기지 않게, R2)
     private func step() async -> Duration? {
-        guard manualWaiting == 0, !isWriting else { return timing.idleInterval }
+        guard manualWaiting == 0, !isWriting else {
+            // 수동 쓰기·확인 창 동안에도 rekordbox 실행 경계는 넘긴다(R23, 컨실 2라운드 K): 그동안 켜졌다 꺼진 게인 초안을 자동으로 쓰지 않게
+            _ = await observeRun(qos: .utility)
+            return timing.pollInterval
+        }
         let rowLimit = timing.rowLimit, idle = timing.idleInterval, poll = timing.pollInterval
         if inventoryStale || inventory == nil {
             inventoryStale = false
@@ -397,8 +400,7 @@ public final class AutoReflection {
         if case .off = run, let interrupted { return interruptedHold(interrupted) }
         if case let .off(reason) = run {
             // 자동 저장하지 않는 실행도 rekordbox 켜짐을 조건에 싣는다(상태 줄 R3 3번 줄이 6번 줄보다 앞선다). 쓰지는 않는다
-            let runState = ports.runState
-            switch await BlockingWork.run(qos: .utility, { runState() }) {
+            switch await observeRun(qos: .utility) {
             case .running, .unknown: base.holds.insert(.rekordboxRunning)
             case .agentOnly: base.holds.insert(.agentRunning)
             case .stopped: break
@@ -462,9 +464,8 @@ public final class AutoReflection {
         // 대량 유예(R14): 유예 동안 「N초 뒤 저장 · [취소]」. ⌘Q·창 전환으로 앞당기지 않는다
         // 대기 중인 역편집 묶음 전체를 [취소] 판과 대량 유예 판정에 합산한다(컨실 G7)
         let autoRevisions = inventory.autoRevisions(rowLimit: rowLimit).union(undo.pendingRevisions)
-        // 여러 곡 역편집도 M곡 이상이거나 여러 곡의 값을 지우면 대량 유예를 거친다(R14)
-        let undoBulk = undo.pendingRows >= timing.bulkTracks || inventory.clearing.intersection(undo.pendingTracks).count >= 2
-        if inventory.isBulk(timing: timing) || undoBulk, !autoRevisions.isSubset(of: graceAccepted) {
+        // 일반 대기와 여러 곡 역편집을 합쳐 M곡 이상이거나 여러 곡의 값을 지우면 대량 유예를 거친다(R14, 컨실 2라운드 D)
+        if inventory.isBulk(timing: timing, undoRows: undo.pendingRows, undoTracks: undo.pendingTracks), !autoRevisions.isSubset(of: graceAccepted) {
             let grace = grace ?? (now + Self.seconds(timing.bulkDelay), autoRevisions)
             self.grace = grace
             if now < grace.until {
@@ -537,10 +538,18 @@ public final class AutoReflection {
 
     /// rekordbox·Agent 실행 여부와 대상 폴더의 파일 상태를 메인 액터 밖에서 보고 조용함을 센다(R2 조건 1·4).
     /// 켜져 있으면 조용함을 지운다. 지켜보지 못한 틈이 있었거나 master.db·masterPlaylists6.xml이 바뀌었으면 처음부터 다시 센다(자기 쓰기 뒤는 기준만 바꾼다)
+    /// rekordbox 실행 상태를 메인 액터 밖에서 보고 실행 경계를 넘긴다(R23): 실행 상태를 볼 때마다 경계를 맞춘다(컨실 2라운드 K)
+    private func observeRun(qos: DispatchQoS.QoSClass) async -> RekordboxRunState {
+        let runState = ports.runState
+        let run = await BlockingWork.run(qos: qos) { runState() }
+        session.ports.drafts.runEpoch?.observe(running: run != .stopped)
+        return run
+    }
+
     private func observeLibrary() async -> (run: RekordboxRunState, stamps: LibraryQuietStamps) {
         let runState = ports.runState, quietStamps = ports.quietStamps, target = session.target
         let seen = await BlockingWork.run(qos: .utility) { (run: runState(), stamps: quietStamps(target)) }
-        // rekordbox 실행 경계를 넘긴다(R23, 컨실 S7): 만든 뒤 켜짐·꺼짐을 건넌 게인 초안은 base 없는 초안이 된다
+        // rekordbox 실행 경계를 넘긴다(R23, 컨실 S7): 만든 뒤 켜짐을 건넌 게인 초안은 base 없는 초안이 된다
         session.ports.drafts.runEpoch?.observe(running: seen.run != .stopped)
         let now = ports.clock.now()
         guard seen.run == .stopped else {

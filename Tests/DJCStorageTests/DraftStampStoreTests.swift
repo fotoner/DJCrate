@@ -348,6 +348,30 @@ struct DraftStampStoreTests {
         #expect(GainDraftStore.bases(url: places.gain)["c"] == nil)
     }
 
+    /// 저장 큐는 값과 base를 한 차례에 쓴다: 값을 보관하지 못하면 base를 묶지 않고, 다시 보관하면 그때 묶는다(컨실 2라운드 L)
+    @Test func 값_저장이_실패하면_base를_묶지_않고_다시_보관하면_묶는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        final class Flag: @unchecked Sendable {
+            private let lock = NSLock()
+            private var on = true
+            var isOn: Bool { lock.withLock { on } }
+            func set(_ value: Bool) { lock.withLock { on = value } }
+        }
+        let writer = DraftWriter(), failing = Flag()
+        let write: @Sendable (Double?, String, URL) throws -> Void = { value, uuid, url in
+            if failing.isOn { throw CocoaError(.fileWriteNoPermission) }
+            try StampedDrafts.saveGain(value, trackUUID: uuid, url: url, origin: .human)
+        }
+        writer.save(gain: -1, base: GainDraftBase(db: -3, run: "E1"), trackUUID: "a", url: places.gain, write: write)
+        writer.flush()
+        #expect(GainDraftStore.bases(url: places.gain).isEmpty, "값을 보관하지 못했으면 base를 묶지 않는다")
+        failing.set(false)
+        writer.save(gain: -1, base: GainDraftBase(db: -3, run: "E1"), trackUUID: "a", url: places.gain, write: write)
+        writer.flush()
+        let revision = DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.revision
+        #expect(GainDraftStore.bases(url: places.gain)["a"] == GainDraftBase(db: -3, run: "E1", revision: revision))
+    }
+
     /// 값만 다시 저장하면(CLI 등) 판이 바뀌어 그 base는 이 값의 base가 아니다(컨실 S8: 예전 값에 새 base가 붙지 않는다)
     @Test func 값만_다시_저장하면_base는_새_값의_판에_묶이지_않는다() throws {
         let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)

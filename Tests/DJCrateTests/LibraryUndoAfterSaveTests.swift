@@ -66,6 +66,17 @@ struct LibraryUndoAfterSaveTests {
 
         func row(_ track: TrackSpec) throws -> TrackRow { try #require(store.rowsByUUID[track.uuid]) }
 
+        /// 사용자 동작 하나(앱에서는 이벤트가 끝나면 ⌘Z 묶음이 닫힌다): 한 시험 안의 두 동작이 한 묶음으로 합쳐지지 않게 따로 묶는다
+        func event(_ body: () -> Void) {
+            #expect(undo.groupingLevel == 0)
+            let byEvent = undo.groupsByEvent
+            undo.groupsByEvent = false
+            undo.beginUndoGrouping()
+            body()
+            undo.endUndoGrouping()
+            undo.groupsByEvent = byEvent
+        }
+
         /// 엔진이 고르는 길로 저장 대기를 자동으로 쓰고 다시 읽기까지 기다린다(`reloads`가 거짓이면 쓰기 잠금이 풀리기까지만)
         func autoSave(reloads: Bool = true) async throws {
             let session = store.session
@@ -77,6 +88,15 @@ struct LibraryUndoAfterSaveTests {
             }
             #expect(unwritten.isEmpty && report.tagBlocked.isEmpty && report.playlistBlocked.isEmpty, "\(report.tagBlocked)")
             #expect(await waitForState(until: { !self.store.libraryBusy && self.store.lockedTracks.isEmpty && (!reloads || self.store.writtenAwaitingReload.isEmpty) }))
+        }
+
+        /// ⌘S로 고른 곡의 편집과 재생 목록 편집을 쓰고 다시 읽기까지 기다린다(확인 창은 시험 기본 답으로 확인한다)
+        func save(_ rows: [TrackRow]) async throws {
+            guard case .written = await store.session.write(rows: rows) else {
+                Issue.record("⌘S가 쓰지 못했다")
+                return
+            }
+            #expect(await waitForState(until: { !self.store.libraryBusy && self.store.lockedTracks.isEmpty && self.store.writtenAwaitingReload.isEmpty }))
         }
 
         /// 재생 목록 행(이름·차례·폴더)과 든 곡(곡·번호). ID·UUID·변경 번호·시각은 빼고 견준다
@@ -177,6 +197,98 @@ struct LibraryUndoAfterSaveTests {
         try await rig.autoSave()
         #expect(try rig.fixture.rows("SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ?", [.text(made)]).isEmpty)
         #expect(!rig.undo.canUndo, "목록 만들기는 저장 뒤 되돌리지 않는다")
+    }
+
+    // MARK: - ⌘Z 단계 판정(컨실 2라운드 A): 맨 위 단계만 판정하고 아래 단계는 차례가 왔을 때 판정한다
+
+    /// 같은 칸을 두 번 고친 뒤 저장하면 ⌘Z 두 번이 차례대로 되돌린다(아래 단계를 저장 뒤 값으로 미리 판정해 빼지 않는다, O7·G11)
+    @Test func 평점을_두_번_고치고_저장하면_실행_취소_두_번이_차례대로_되돌린다() async throws {
+        let rig = try await Rig([TrackSpec(id: "500")])
+        let original = try rig.tagValues()
+        let row = try rig.row(rig.tracks[0])
+        rig.store.tags.applyTagEdits([(row, .rating, "3")])
+        rig.store.tags.applyTagEdits([(row, .rating, "5")])
+        try await rig.autoSave()
+        #expect(try rig.tagValues().first?["Rating"] == "5")
+        let uuid = rig.tracks[0].uuid
+        rig.undo.undo()
+        #expect(rig.store.tagDrafts[uuid]?.fields.rating == "3")
+        #expect(rig.undo.canUndo, "아래 단계(0 → 3)가 남는다")
+        rig.undo.undo()
+        #expect(rig.store.tagDrafts[uuid]?.fields.rating == "", "평점 없음(편집 전)")
+        try await rig.autoSave()
+        #expect(try rig.tagValues() == original)
+    }
+
+    @Test func 재생_목록_이름을_두_번_바꾸고_저장하면_실행_취소_두_번이_차례대로_되돌린다() async throws {
+        let rig = try await Rig(Self.tracks, playlists: Self.playlists)
+        let original = try rig.playlistValues()
+        let playlists = rig.store.playlists
+        // 두 번의 이름 바꾸기는 따로 일어난 사용자 동작이다(앱에서는 이벤트마다 묶음이 닫힌다)
+        rig.event { playlists.renamePlaylist("1001", to: "첫 이름") }
+        rig.event { playlists.renamePlaylist("1001", to: "둘째 이름") }
+        try await rig.autoSave()
+        rig.undo.undo()
+        #expect(rig.undo.canUndo, "아래 단계(가 → 첫 이름)가 남는다")
+        rig.undo.undo()
+        try await rig.autoSave()
+        #expect(try rig.playlistValues() == original)
+    }
+
+    enum StuckKind: CaseIterable { case create, delete }
+
+    /// 저장 뒤 되돌릴 수 없는 단계(목록 만들기·지우기)가 맨 위면 ⌘Z가 꺼지고 그 아래 다른 편집(태그)을 실행하지 않는다(S13·O8·G10)
+    @Test(arguments: StuckKind.allCases)
+    func 되돌릴_수_없는_맨_위_단계면_실행_취소가_꺼지고_아래_단계를_실행하지_않는다(_ kind: StuckKind) async throws {
+        let rig = try await Rig(Self.tracks, playlists: Self.playlists)
+        let row = try rig.row(Self.tracks[0])
+        rig.store.tags.applyTagEdits([(row, .title, "새 제목")])
+        let playlists = rig.store.playlists
+        switch kind {
+        case .create: _ = try #require(playlists.createPlaylist(isFolder: false, name: "새 목록"))
+        case .delete: playlists.deletePlaylist("1003")
+        }
+        // 목록 지우기는 자동 저장 범위 밖이라 ⌘S로 함께 쓴다
+        try await rig.save([row])
+        #expect(try rig.playlistValues().contains { $0["Name"] == "새 목록" } == (kind == .create))
+        #expect(!rig.undo.canUndo, "맨 위가 되돌릴 수 없으면 메뉴가 꺼진다")
+        if rig.undo.canUndo { rig.undo.undo() }
+        #expect(rig.store.tagDrafts[Self.tracks[0].uuid]?.hasChanges != true, "아래 태그 단계를 실행하지 않는다")
+        #expect(try rig.tagValues().first { $0["ID"] == "500" }?["Title"] == "새 제목")
+    }
+
+    /// 여러 곡 태그 단계는 쓴 곡 하나라도 역편집을 만들 수 없으면(바깥에서 바뀜) 단계 전체를 끈다: 남은 곡만 되돌려 따로 쓰지 않는다(컨실 2라운드 E·S16·G14)
+    @Test func 여러_곡_태그_단계는_한_곡이라도_되돌릴_수_없으면_실행_취소가_꺼진다() async throws {
+        let rig = try await Rig([TrackSpec(id: "500"), TrackSpec(id: "501"), TrackSpec(id: "502")])
+        let first = try rig.row(rig.tracks[0]), second = try rig.row(rig.tracks[1])
+        rig.store.tags.applyTagEdits([(first, .title, "새 제목 1"), (second, .title, "새 제목 2")])
+        try await rig.autoSave()
+        // rekordbox에서 501을 바꿨고, 다른 곡을 저장한 뒤 다시 읽기(⌘Z를 남기는 읽기)가 그 변경을 읽는다
+        try rig.fixture.execute("UPDATE djmdContent SET Title = '바깥 제목' WHERE ID = '501'")
+        rig.store.tags.applyTagEdits([(try rig.row(rig.tracks[2]), .title, "새 제목 3")])
+        try await rig.autoSave()
+        rig.undo.undo()
+        #expect(!rig.undo.canUndo, "두 곡 단계가 맨 위가 되면 판정해 메뉴를 끈다")
+        if rig.undo.canUndo { rig.undo.undo() }
+        #expect(rig.store.tagDrafts[rig.tracks[0].uuid]?.hasChanges != true, "한 곡만 되돌리지 않는다")
+    }
+
+    /// 재생 목록을 쓴 뒤 다시 읽기를 기다리는 동안 누른 ⌘Z는 옛 목록 위에서 실행해 버리지 않고 미뤘다가, 새 목록을 읽은 뒤 실행한다(컨실 2라운드 F·S14·G12)
+    @Test func 재생_목록을_쓴_뒤_다시_읽기를_기다리는_동안_누른_실행_취소는_읽은_뒤_실행한다() async throws {
+        let rig = try await Rig(Self.tracks, playlists: Self.playlists)
+        let original = try rig.playlistValues()
+        let playlists = rig.store.playlists
+        playlists.renamePlaylist("1001", to: "새 이름")
+        rig.failingSnapshots.set(true)
+        try await rig.autoSave(reloads: false)
+        #expect(rig.store.draftWriteReadPending)
+        rig.undo.undo()
+        #expect(playlists.playlistDraft.steps.isEmpty, "옛 목록 위에서 실행하지 않는다")
+        rig.failingSnapshots.set(false)
+        await rig.store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(!playlists.playlistDraft.steps.isEmpty, "새 목록을 읽은 뒤 실행한다")
+        try await rig.autoSave()
+        #expect(try rig.playlistValues() == original)
     }
 
     /// 쓴 뒤 rekordbox에서 그 목록을 바꿨으면 그 편집을 거꾸로 할 모양이 아니다: ⌘Z가 꺼진다

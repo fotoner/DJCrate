@@ -118,10 +118,10 @@ extension DeckModel {
             self.refreshSuggestionNote()
             // 최초 불러오기의 내용을 건너뛰었으면 첫 메모리 큐 자리는 여기서 맞춘다
             self.placeAtFirstMemoryCueIfNeeded(fresh.cues)
-            // 새 초안·기준값을 적용했다: 저장 뒤 되돌릴 수 없게 된 ⌘Z 단계를 빼고(메뉴가 꺼진다, R12) 저장한 곡의 편집을 푼다
+            // 새 초안·기준값을 적용했다: 저장한 곡의 편집을 풀고(미룬 ⌘Z를 실행한다) 맨 위 ⌘Z 단계가 되돌릴 수 없게 됐으면 메뉴를 끈다(R12)
             if let token {
-                self.pruneDraftUndo()
                 self.finishWriteRefresh(uuid: request.uuid, token: token)
+                self.settleDraftUndo()
             }
             // 고른 큐·걸린 루프는 같은 큐(이은 ID)로, 없으면 같은 자리·종류의 새 큐로 잇는다(반영하면 rekordbox 큐로 바뀌어 ID가 새로 생긴다).
             func match(_ old: EditableCue?) -> EditableCue.ID? {

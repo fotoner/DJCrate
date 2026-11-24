@@ -4,7 +4,9 @@ import Foundation
 /// 거꾸로 하는 단계를 만든다. 역편집은 초안 끝에 쌓아 자동 저장이 쓴다.
 /// - 범위: 이름 바꾸기, 같은 폴더 안 목록 순서, 곡 순서, 곡 넣기(넣은 곡을 뺀다)
 /// - 그 밖(만들기·지우기·다른 폴더로 옮기기·곡 빼기)은 되돌리지 않는다(`unsupported`: ⌘Z를 끈다)
-/// - 새로 만든 목록(`new:키`)은 쓰기 결과의 연결 ID(`ids`)로 지금 목록에서 찾는다
+/// - 새로 만든 목록(`new:키`)은 쓰기 결과의 연결 ID(`ids`)로 지금 목록에서 찾는다. 아직 쓰지 않았으면 새 목록 참조 그대로 둔다
+/// - 목록 순서는 옮긴 목록 하나를 원래 자리로 옮기는 단계 하나로만 되돌린다. 역편집은 한 목록에 닿는 단계로만 만든다
+///   (자동 저장이 한 단위로 쓰게, 컨실 2라운드 G). 그렇게 나타낼 수 없으면 되돌리지 않는다
 /// - 대상이 지금 그 편집 뒤 모양이 아니면(쓴 뒤 바깥에서 바뀜) 정할 수 없다(`changed`: ⌘Z를 끈다)
 public enum PlaylistUndo {
     public enum Result: Equatable, Sendable {
@@ -40,7 +42,7 @@ public enum PlaylistUndo {
             let nameChanged = old.name != new.name, tracksChanged = old.trackIDs != new.trackIDs
             guard nameChanged || tracksChanged else { continue }
             guard let now = working.item(real(id)) else { return .changed }
-            let ref = PlaylistRef.id(real(id))
+            let ref = PlaylistRef(real(id))
             if nameChanged {
                 guard now.name == new.name else { return .changed }
                 guard push(.rename(playlist: ref, name: old.name)) else { return .changed }
@@ -64,16 +66,23 @@ public enum PlaylistUndo {
                 return .unsupported
             }
         }
-        // 폴더마다: 목록 순서(같은 폴더 안)
+        // 폴더마다: 목록 순서(같은 폴더 안). 옮긴 목록 하나를 원래 자리로 옮긴다: 형제(옮길 수 없는 인텔리전트 목록 포함)를 건드리지 않는다
         for parent in Set(after.outline.map(\.parentID)).union([PlaylistLayout.root]).sorted() {
             let old = before.childIDs(of: parent), new = after.childIDs(of: parent)
             guard old != new else { continue }
             let realParent = real(parent)
             guard working.childIDs(of: realParent) == new.map(real) else { return .changed }
-            for (index, id) in old.enumerated() where working.childIDs(of: realParent).firstIndex(of: real(id)) != index {
-                guard push(.reorder(playlist: .id(real(id)), index: index)) else { return .changed }
+            func restoring(_ id: String) -> PlaylistEdit? {
+                guard let index = old.firstIndex(of: id), old.filter({ $0 != id }) == new.filter({ $0 != id }) else { return nil }
+                let edit = PlaylistEdit.reorder(playlist: PlaylistRef(real(id)), index: index)
+                var trial = working
+                guard (try? trial.apply(edit)) != nil, trial.childIDs(of: realParent) == old.map(real) else { return nil }
+                return edit
             }
+            guard let edit = old.lazy.compactMap(restoring).first, push(edit) else { return .unsupported }
         }
+        // 여러 목록에 걸친 역편집은 자동 저장이 단위를 나눠 일부만 쓸 수 있다: 만들지 않는다
+        guard Set(edits.map(\.playlist.layoutID)).count <= 1 else { return .unsupported }
         return edits.isEmpty ? .unsupported : .edits(edits)
     }
 }

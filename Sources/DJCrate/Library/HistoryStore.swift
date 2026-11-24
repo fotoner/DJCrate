@@ -292,8 +292,9 @@ final class HistoryStore {
             undoManager.groupsByEvent = false
             undoManager.beginUndoGrouping()
         }
-        // 재생 기록은 저장 뒤 되돌릴 수 없다(R12): 기록을 쓰면 이 대상의 단계를 지워 ⌘Z가 꺼진다(`recordWrittenHistories`)
-        undoManager.registerUndo(withTarget: library.historyUndoTarget) { [weak library] _ in
+        // 재생 기록은 저장 뒤 되돌릴 수 없다(R12): 기록을 쓰면 그 전 단계는 실행할 수 없어 맨 위가 되면 ⌘Z가 꺼진다(`recordWrittenHistories`)
+        let generation = library.historyWriteGeneration
+        library.undoSteps.register(undoManager, kind: .library, canUndo: { [weak library] in library?.historyWriteGeneration == generation }) { [weak library] in
             guard let library, !library.playlists.isEditBlocked else { return }
             library.history.setHistoriesExcluded(changedIDs, excluded: !excluded)
         }
@@ -309,7 +310,7 @@ final class HistoryStore {
     /// - Returns: 표시를 저장하지 못했을 때 알릴 문장(rekordbox 쓰기는 끝났다)
     func recordWrittenHistories(_ outcomes: [RekordboxHistoryOutcome]) async -> String? {
         // 기록을 썼다: 저장 대기 넣기·빼기 ⌘Z는 끈다(저장 뒤 되돌릴 수 없는 종류, R12)
-        if outcomes.contains(where: { $0.status == .written }) { library.undoManager?.removeAllActions(withTarget: library.historyUndoTarget) }
+        if outcomes.contains(where: { $0.status == .written }) { library.historyWriteGeneration += 1 }
         return await archive.markWritten(outcomes)
     }
 }

@@ -12,7 +12,7 @@ extension DeckModel {
     /// 곡·원본이 바뀌거나 복원·곡 넣기처럼 통째로 잠그는 쓰기를 시작하면 이전 기준의 초안을 되살리지 않는다.
     /// 초안을 쓴 뒤 다시 읽기(`refreshAfterWrite`)는 지우지 않는다: ⌘Z가 지금 rekordbox 값 위의 역편집이 된다(R12)
     func clearDraftUndo() {
-        draftUndoSteps.removeAll(undoManager)
+        undoSteps.removeAll(.deck, from: undoManager)
         pendingDraftUndo = nil
         gridDragBase = nil
         cueDragBase = nil
@@ -33,8 +33,8 @@ extension DeckModel {
             undoManager.groupsByEvent = false
             undoManager.beginUndoGrouping()
         }
-        // 단계마다 따로 건다: 저장 뒤 되돌릴 수 없게 되면(분석 붙이기·큐를 정할 수 없음) 그 단계만 빼 ⌘Z가 꺼진다(`pruneDraftUndo`)
-        draftUndoSteps.register(undoManager, canUndo: { [weak self] in self?.canUndoDraft(change) ?? false }) { [weak self] in
+        // 저장 뒤 되돌릴 수 없게 되면(분석 붙이기·큐를 정할 수 없음) 그 단계가 맨 위가 됐을 때 ⌘Z가 꺼진다(`UndoSteps`, 컨실 2라운드 A)
+        undoSteps.register(undoManager, kind: .deck, canUndo: { [weak self] in self?.canUndoDraft(change) ?? false }) { [weak self] in
             guard let self, !editsFrozen, row?.track.uuid == change.before.cue.trackUUID else { return }
             undoDraft(change, name: name)
         }
@@ -71,8 +71,11 @@ extension DeckModel {
         return change.before.rebased(from: change.after, onto: current) != nil
     }
 
-    /// 저장 뒤 되돌릴 수 없게 된 단계를 기록에서 뺀다(메뉴가 꺼진다). 쓴 뒤 새 값을 덱에 다 적용한 때 부른다
-    func pruneDraftUndo() { draftUndoSteps.prune(undoManager) }
+    /// 맨 위 ⌘Z 단계가 저장 뒤 되돌릴 수 없게 됐으면 기록을 비워 메뉴를 끈다. 쓴 뒤 새 값을 덱에 다 적용한 때 부른다
+    func settleDraftUndo() { undoSteps.settle(undoManager) }
+
+    /// ⌘Z 맨 위 단계를 판정해도 되는지: 이 곡을 쓰는 중·쓴 뒤 갱신 중이 아니고 미룬 ⌘Z가 없다
+    var undoSettled: Bool { !editsFrozen && !isEditLocked && pendingUndo.isEmpty }
 
     /// 쓴 뒤 다시 읽은 큐에 쓰기 전 덱 초안의 큐 ID를 잇는다(R12): 새로 넣은 큐는 쓰기가 돌려준 새 rekordbox ID로, 건드리지 않은 큐는 rekordbox ID로 찾는다.
     /// 그래야 ⌘Z의 편집 전후 스냅샷이 다시 읽은 큐를 같은 ID로 찾는다. 쓴 큐를 하나라도 찾지 못하면 nil(⌘Z를 끈다).

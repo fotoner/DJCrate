@@ -295,9 +295,9 @@ final class PlaylistEditStore {
         // 쓰는 동안 한 편집은 실행 취소에 남기지 않는다(#402: 되돌릴 초안이 쓰고 있는 단계를 담고 있다)
         guard registersUndo, !library.libraryBusy, let undoManager = library.undoManager else { return }
         // 편집 전후 초안과 그때 보이던 목록을 든다: 쓴 뒤에도 지금 목록 위에서 이 편집을 거꾸로 하는 단계를 만든다(R12, `PlaylistUndo`).
-        // 단계마다 따로 건다: 저장 뒤 되돌릴 수 없게 되면(만들기·지우기·곡 빼기·바깥에서 바뀜) 그 단계만 빼 ⌘Z가 꺼진다
+        // 저장 뒤 되돌릴 수 없게 되면(만들기·지우기·곡 빼기·바깥에서 바뀜) 그 단계가 맨 위가 됐을 때 ⌘Z가 꺼진다(`UndoSteps`, 컨실 2라운드 A)
         let step = PlaylistUndoStep(before: before, after: draft, beforeLayout: beforeLayout, afterLayout: playlistProjection.layout)
-        library.playlistUndoSteps.register(undoManager, canUndo: { [weak self] in self?.canUndo(step) ?? false }) { [weak self] in
+        library.undoSteps.register(undoManager, kind: .library, canUndo: { [weak self] in self?.canUndo(step) ?? false }) { [weak self] in
             self?.undo(step, actionName: actionName)
         }
         undoManager.setActionName(actionName)
@@ -317,9 +317,9 @@ final class PlaylistEditStore {
     /// 아직 쓰지 않았으면(초안이 그 편집 뒤 그대로) 지금처럼 편집 전 초안으로, 썼으면 지금 목록 위에서 그 편집을 거꾸로 하는 단계를 쌓는다(자동 저장이 쓴다)
     /// - Parameter registersRedo: 다시 실행(⇧⌘Z) 단계를 남긴다(미뤘다가 실행하는 요청은 남기지 않는다)
     private func undo(_ step: PlaylistUndoStep, actionName: String, registersRedo: Bool = true) {
-        if isEditBlocked {
+        if defersUndo {
             if library.undoManager?.isRedoing != true {
-                library.pendingUndo.append(ready: { [weak self] in self.map { !$0.isEditBlocked } ?? true }) { [weak self] in
+                library.pendingUndo.append(ready: { [weak self] in self.map { !$0.defersUndo } ?? true }) { [weak self] in
                     self?.undo(step, actionName: actionName, registersRedo: false)
                 }
             }
@@ -332,9 +332,15 @@ final class PlaylistEditStore {
         }
     }
 
-    /// 그 단계를 지금 되돌릴 수 있는지(쓰는 중이면 미루므로 참)
+    /// 그 단계를 지금 되돌릴 수 있는지(미루면 참)
     private func canUndo(_ step: PlaylistUndoStep) -> Bool {
-        isEditBlocked || playlistDraft == step.after || reversedDraft(step) != nil
+        defersUndo || playlistDraft == step.after || reversedDraft(step) != nil
+    }
+
+    /// 재생 목록 ⌘Z를 지금 실행하지 않고 누른 요청으로 미룰지: 쓰는 중이거나 쓰는 단계를 얼려 두었거나, 쓴 뒤·복원 뒤 새 목록을 아직 읽지 못했다
+    /// (옛 목록 위에서 거꾸로 할 단계를 만들거나 얼린 단계에 막혀 요청을 잃지 않게, 컨실 2라운드 F·S14·G12)
+    private var defersUndo: Bool {
+        isEditBlocked || writeFreeze != nil || library.draftWriteReadPending || !playlistEditsAwaitingReload.isEmpty
     }
 
     /// 지금 초안에 그 편집을 거꾸로 하는 단계를 더한 초안. 되돌리지 않는 종류이거나 대상이 그 편집 뒤 모양이 아니면 nil

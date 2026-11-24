@@ -50,6 +50,39 @@ struct PlaylistUndoTests {
         #expect(try Self.applying(edits, to: after).childIDs(of: PlaylistLayout.root) == ["A", "B", "C"])
     }
 
+    // MARK: - 컨실 2라운드 G·H
+
+    /// 목록 순서 역편집은 옮긴 목록 하나를 원래 자리로 옮기는 단계 하나다: 옮길 수 없는 형제(인텔리전트 목록)를 건드리지 않는다(G·S15)
+    @Test func 목록_순서_역편집은_옮긴_목록_하나만_원래_자리로_옮긴다() throws {
+        func layout(_ ids: [String]) -> PlaylistLayout {
+            PlaylistLayout(ids.enumerated().map { (PlaylistLayout.Item(id: $0.element, name: $0.element, isSmart: $0.element == "S"), $0.offset + 1) })
+        }
+        let before = layout(["A", "S", "B", "C"]), after = layout(["C", "A", "S", "B"])
+        let result = PlaylistUndo.reversing(before: before, after: after, current: after, ids: [:])
+        #expect(result == .edits([.reorder(playlist: .id("C"), index: 3)]))
+        if case let .edits(edits) = result { #expect(try Self.applying(edits, to: after).childIDs(of: PlaylistLayout.root) == ["A", "S", "B", "C"]) }
+    }
+
+    /// 목록 하나를 옮긴 것으로 나타낼 수 없는 순서 바꿈은 되돌리지 않는다(⌘Z를 끈다, G)
+    @Test func 한_단계로_되돌릴_수_없는_목록_순서는_되돌리지_않는다() {
+        let before = Self.layout([("A", "가", []), ("B", "나", []), ("C", "다", []), ("D", "라", [])])
+        let after = Self.layout([("B", "나", []), ("A", "가", []), ("D", "라", []), ("C", "다", [])])
+        #expect(PlaylistUndo.reversing(before: before, after: after, current: after, ids: [:]) == .unsupported)
+    }
+
+    /// 역편집은 한 목록에 닿는 단계로만 만든다: 여러 목록에 걸치면 자동 저장이 나눠 쓸 수 있어 되돌리지 않는다(G: 한 단위로 판정)
+    @Test func 여러_목록에_걸친_역편집은_만들지_않는다() {
+        let before = Self.layout([("A", "가", ["1"]), ("B", "나", ["1"])])
+        let after = Self.layout([("A", "가", ["1", "2"]), ("B", "나", ["1", "2"])])
+        #expect(PlaylistUndo.reversing(before: before, after: after, current: after, ids: [:]) == .unsupported)
+    }
+
+    /// 아직 쓰지 않은 새 목록(`new:키`)은 새 목록 참조 그대로 둔다(`.id("new:키")`가 아니다, H·G13)
+    @Test func 아직_쓰지_않은_새_목록은_새_목록_참조로_되돌린다() {
+        let before = Self.layout([("new:k", "가", [])]), after = Self.layout([("new:k", "나", [])])
+        #expect(PlaylistUndo.reversing(before: before, after: after, current: after, ids: [:]) == .edits([.rename(playlist: .new("k"), name: "가")]))
+    }
+
     @Test func 곡_순서를_바꾼_편집은_편집_전_곡_순서로_되돌린다() throws {
         let before = Self.layout([("A", "가", ["1", "2", "3", "2"])])
         let after = Self.layout([("A", "가", ["2", "1", "3", "2"])])

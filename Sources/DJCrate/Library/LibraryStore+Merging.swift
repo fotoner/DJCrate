@@ -21,8 +21,9 @@ extension LibraryStore {
         reportDraftFilesMovedBySave(moved)
         refreshBase()
         guard let undoManager else { return }
-        // 합치기는 저장 뒤 되돌릴 수 없다(R12): 쓰면 이 대상의 단계를 지워 ⌘Z가 꺼진다(`applyMergeDraftsAfterWrite`)
-        undoManager.registerUndo(withTarget: mergeUndoTarget) { [weak self] _ in
+        // 합치기는 저장 뒤 되돌릴 수 없다(R12): 쓰면 그 전 단계는 실행할 수 없어 맨 위가 되면 ⌘Z가 꺼진다(`applyMergeDraftsAfterWrite`)
+        let generation = mergeWriteGeneration
+        undoSteps.register(undoManager, kind: .library, canUndo: { [weak self] in self?.mergeWriteGeneration == generation }) { [weak self] in
             guard let self, !libraryBusy else { return }
             do { try setMergeDrafts(before) }
             catch { showToast(.notice(text: error.localizedDescription, kind: .warning)) }
@@ -33,8 +34,8 @@ extension LibraryStore {
     /// 쓴 뒤·복원 뒤: 반영 세션이 합치기 초안을 저장했다(`failure`면 저장하지 못했다). DB는 이미 반영·복원됐으니 저장 오류는 경고로만 알린다
     /// (쓰기 실패로 바꾸면 되돌리기 안내까지 잃는다).
     func applyMergeDraftsAfterWrite(_ drafts: [DuplicateMergeDraft], failure: (any Error)?, moved: [DamagedDraftFile]) {
-        // 합치기를 썼거나 되돌렸다: 그 ⌘Z는 끈다(저장 뒤 되돌릴 수 없는 종류, R12)
-        undoManager?.removeAllActions(withTarget: mergeUndoTarget)
+        // 합치기를 썼거나 되돌렸다: 그 전 단계는 실행할 수 없다(저장 뒤 되돌릴 수 없는 종류, R12). 맨 위가 되면 메뉴가 꺼진다
+        mergeWriteGeneration += 1
         mergeDrafts = drafts
         if failure == nil {
             reportDraftFilesMovedBySave(moved)

@@ -121,9 +121,10 @@ public struct AutoReflectionInventory: Equatable, Sendable {
         tracks.count + autoUnits(rowLimit: rowLimit).units.flatMap { Array($0) }.reduce(0) { $0 + steps[$1].rows }
     }
 
-    /// 대량 유예를 거칠지(R14): 자동으로 쓸 행이 M 이상이거나, 값을 지우는 편집이 여러 곡에 있다
-    public func isBulk(timing: AutoReflectionTiming) -> Bool {
-        autoRows(rowLimit: timing.rowLimit) >= timing.bulkTracks || clearing.intersection(tracks.keys).count >= 2
+    /// 대량 유예를 거칠지(R14): 자동으로 쓸 행이 M 이상이거나, 값을 지우는 편집이 여러 곡에 있다.
+    /// 대기 중인 여러 곡 역편집 묶음의 행·곡도 합산한다(따로 보면 둘 다 M 아래여도, 컨실 2라운드 D·G7)
+    public func isBulk(timing: AutoReflectionTiming, undoRows: Int = 0, undoTracks: Set<String> = []) -> Bool {
+        autoRows(rowLimit: timing.rowLimit) + undoRows >= timing.bulkTracks || clearing.intersection(Set(tracks.keys).union(undoTracks)).count >= 2
     }
 
     /// 자동으로 쓸 것이 있는지
@@ -209,6 +210,9 @@ public final class ReflectionUndoGroups {
     public func groups(touching uuids: Set<String>) -> [AutoReflectionUndoGroup] {
         groups.filter { group in group.keys.contains { uuids.contains($0.id) } }
     }
+
+    /// 쓴 묶음을 뺀다(⌘S, 컨실 2라운드 B)
+    public func remove(_ id: String) { groups.removeAll { $0.id == id } }
 }
 
 extension AutoReflectionInventory {
@@ -227,7 +231,9 @@ extension AutoReflectionInventory {
             guard !present.isEmpty else { continue }
             var changed = false
             if group.revisions.isEmpty {
-                group.revisions = auto.filter { group.keys.contains($0.key) }
+                // 처음 볼 때(합쳐 판을 비운 묶음 포함) 구성원이 모두 자동 저장 대기에 있을 때만 판을 잡는다: 빠진 구성원이 있으면
+                // 판을 잡지 않고 묶음 전체를 보류한다(남은 곡만 묶음으로 쓰지 않는다, 컨실 2라운드 C·O11)
+                if group.keys.allSatisfy({ auto[$0] != nil }) { group.revisions = auto.filter { group.keys.contains($0.key) } }
             } else {
                 // 묶었을 때와 판이 다르거나(다시 고침) 구성원이 빠졌다(따로 쓰거나 버림)
                 changed = group.revisions.contains { key, revision in auto[key].map { $0 != revision } ?? (leftoverKeys[key] == nil) }
@@ -238,7 +244,7 @@ extension AutoReflectionInventory {
                 tracks[key.id]?[key] = nil
                 if tracks[key.id]?.isEmpty == true { tracks[key.id] = nil }
             }
-            let held: ReflectionLeftover? = changed || members.count < present.count ? .needsConfirmation
+            let held: ReflectionLeftover? = changed || members.count < group.keys.count ? .needsConfirmation
                 : group.rows > rowLimit ? .undoOverRowLimit : nil
             if let held {
                 for key in members { leftoverKeys[key] = held }

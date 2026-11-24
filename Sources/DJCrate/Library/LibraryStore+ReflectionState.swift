@@ -87,7 +87,7 @@ extension LibraryStore {
         // 쓰는 동안 눌러 미뤄 둔 재생 목록 ⌘Z를 다시 올리고, 저장 뒤 되돌릴 수 없게 된 단계를 뺀다(R12)
         if !locked {
             pendingUndo.flush()
-            pruneLibraryUndo()
+            settleUndo()
         }
         // 종료를 기다리느라 미룬 다시 읽기는 종료를 취소했는데 쓰기 잠금이 아직 걸려 있었을 때 여기서 이어 한다(#305)
         if !locked { resumePostponedReload() }

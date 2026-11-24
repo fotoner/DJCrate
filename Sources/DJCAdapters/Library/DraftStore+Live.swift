@@ -93,6 +93,10 @@ extension DraftStore {
         // 게인 초안의 base(R23)는 값과 같은 저장 큐·같은 차례로 옆 파일에 둔다
         store.gainBases = { GainDraftStore.bases(url: places.gain) }
         store.saveGainBase = { base, uuid in writer.saveGainBase(base, trackUUID: uuid, url: places.gain) }
+        store.saveGainWithBase = { gain, base, uuid, completion in
+            writer.save(gain: gain, base: base, trackUUID: uuid, url: places.gain,
+                        write: { try StampedDrafts.saveGain($0, trackUUID: $1, url: $2, origin: origin) }, completion: completion)
+        }
         store.originVariant = { live(writer: writer, home: home, origin: $0) }
         store.stamp = { DraftStampStore.stamp($0, home: home) }
         store.playlistStamps = { StampedDrafts.playlistStamps(home: home) }

@@ -305,6 +305,21 @@ struct AutoReflectionEngineTests {
         if case .grace = w.engine.status {} else { Issue.record("대량 유예가 아니다: \(w.engine.status)") }
     }
 
+    /// 일반 저장 대기와 역편집 묶음을 합쳐 M곡 이상이면 대량 유예를 거친다(따로 보면 둘 다 M곡 아래, 컨실 2라운드 D·G7)
+    @Test func 일반_대기와_역편집_묶음을_합쳐_대량_유예를_판정한다() async throws {
+        let w = AutoReflectionWorld()
+        w.timing.bulkTracks = 3
+        w.writable("x")
+        w.cue("x")
+        w.h.script.preview.tagOutcomes = ["a", "b"].map { ReflectionHarness.outcome($0, .written) }
+        let edit = undoGroup(w, ["a", "b"])
+        try await w.start()
+        w.engine.enqueue(.undo(edit))
+        try await w.advance(15)
+        #expect(w.writes.isEmpty)
+        if case .grace = w.engine.status {} else { Issue.record("대량 유예가 아니다: \(w.engine.status)") }
+    }
+
     @Test func K행을_넘는_역편집은_자동으로_쓰지_않고_남긴다() async throws {
         let w = AutoReflectionWorld()
         w.timing.rowLimit = 1
@@ -328,6 +343,32 @@ struct AutoReflectionEngineTests {
         w.fakes.setRunState(.running)
         try await w.advance(2)
         w.fakes.setRunState(.stopped)
+        try await w.advance(25)
+        #expect(w.writes.isEmpty)
+        #expect(w.engine.conditions.leftovers.contains(.noBase))
+    }
+
+    /// 수동 쓰기(확인 창 포함) 동안에도 rekordbox 실행 경계를 넘긴다: 그동안 켜졌다 꺼졌으면 base 없는 초안이다(R23, 컨실 2라운드 K)
+    @Test func 수동_쓰기_동안_rekordbox가_켜졌다_꺼진_게인_초안은_자동으로_쓰지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.gainOutcomes = [ReflectionHarness.outcome("n", .written)]
+        w.h.state.rows["n"] = ReflectionHarness.row("n")
+        w.h.state.gainDraftUUIDs = ["n"]
+        w.h.memory.save(gain: -1, base: -3, "n")
+        w.appHolds = [.editing]
+        try await w.start()
+        var release: CheckedContinuation<Void, Never>?
+        let manual = Task { @MainActor in await w.engine.exclusive({ await withCheckedContinuation { release = $0 } }) }
+        while release == nil { await Task.yield() }
+        try await w.settle()
+        w.fakes.setRunState(.running)
+        try await w.advance(2)
+        w.fakes.setRunState(.stopped)
+        try await w.advance(2)
+        release?.resume()
+        await manual.value
+        w.appHolds = []
+        try await w.edited()
         try await w.advance(25)
         #expect(w.writes.isEmpty)
         #expect(w.engine.conditions.leftovers.contains(.noBase))

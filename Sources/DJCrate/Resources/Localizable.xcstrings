@@ -50893,6 +50893,22 @@
         }
       }
     },
+    "함께 되돌린 다른 곡과 한 번에 저장하니 그 곡들도 골라 다시 저장하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This edit is saved together with the other tracks undone with it. Select those tracks too, then save again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一緒に元に戻した他の曲とまとめて保存するため、それらの曲も選んでからもう一度保存してください"
+          }
+        }
+      }
+    },
     "함께 되돌릴 다른 편집이 막혀 이 편집도 저장하지 않았으니 막힌 편집을 확인한 뒤 다시 저장하세요" : {
       "localizations" : {
         "en" : {

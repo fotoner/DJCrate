@@ -241,6 +241,31 @@ struct AutoReflectionPlanTests {
         #expect(inventory.tracks.isEmpty && inventory.leftoverKeys[a] == .needsConfirmation && inventory.leftoverKeys[b] == .needsConfirmation)
     }
 
+    func undoGroup(_ uuids: [String]) -> AutoReflectionUndoGroup {
+        AutoReflectionUndoGroup(ReflectionUndoEdit(id: "u", batch: DraftWriteBatch(tags: uuids.map { TagDraft(trackUUID: $0, base: TagFields()) },
+                                                                                  commitPolicy: .allOrNothing), rowCount: uuids.count))
+    }
+
+    /// 처음 볼 때 구성원이 모두 저장 대기에 있지 않으면 판을 기록하지 않고 묶음 전체를 확인 필요로 남긴다(남은 곡만 쓰지 않는다, 컨실 2라운드 C·O11)
+    @Test func 처음_볼_때_구성원이_빠진_역편집_묶음은_판을_잡지_않고_전체를_보류한다() {
+        let a = DraftKey(.tag, "a")
+        var inventory = AutoReflectionInventory(tracks: ["a": [a: DraftRevision(1)]])
+        let result = inventory.applyingUndo([undoGroup(["a", "b"])], rowLimit: 200)
+        #expect(result.chunk == nil)
+        #expect(result.groups.first?.revisions.isEmpty == true)
+        #expect(inventory.leftoverKeys[a] == .needsConfirmation && inventory.tracks.isEmpty)
+    }
+
+    /// 판을 잡은 뒤에도 구성원 수가 묶음보다 적으면 보류한다(합쳐 판을 비운 묶음 포함, 컨실 2라운드 C·S2)
+    @Test func 합쳐_판을_비운_묶음도_구성원이_빠지면_보류한다() {
+        let a = DraftKey(.tag, "a"), c = DraftKey(.tag, "c")
+        var inventory = AutoReflectionInventory(tracks: ["a": [a: DraftRevision(1)], "c": [c: DraftRevision(3)]])
+        var merged = undoGroup(["a", "b", "c"])
+        merged.revisions = [:]
+        let result = inventory.applyingUndo([merged], rowLimit: 200)
+        #expect(result.chunk == nil && inventory.leftoverKeys[a] == .needsConfirmation && inventory.leftoverKeys[c] == .needsConfirmation)
+    }
+
     /// 대기 중인 역편집 묶음 전체의 행·판·곡을 함께 센다(대량 유예와 [취소] 판, 컨실 G7)
     @Test func 대기_중인_역편집_묶음_전체를_함께_센다() {
         func edit(_ id: String, _ uuids: [String]) -> ReflectionUndoEdit {

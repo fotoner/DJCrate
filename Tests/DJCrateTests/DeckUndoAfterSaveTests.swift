@@ -117,6 +117,25 @@ struct DeckUndoAfterSaveTests {
         #expect(try rig.cueRows().contains { $0["ID"] == track.cues[0].id })
     }
 
+    /// 같은 큐를 두 번 옮긴 뒤 저장하면 ⌘Z 두 번이 차례대로 되돌린다(아래 단계를 저장 뒤 값으로 미리 판정해 빼지 않는다, 컨실 2라운드 A·O7)
+    @Test func 큐를_두_번_옮기고_저장하면_실행_취소_두_번이_차례대로_되돌린다() async throws {
+        var track = TrackSpec()
+        track.cues = [CueSpec(kind: 0, inMsec: 10000), Self.coloredHot()]
+        let rig = try await Rig(track)
+        let original = try rig.cueValues()
+        let hot = try #require(rig.deck.draft?.cues.first { $0.kind == .hot(0) })
+        rig.deck.mutate(name: "큐 옮기기") { var moved = hot; moved.time = 25; $0.place(moved) }
+        rig.deck.mutate(name: "큐 옮기기") { var moved = hot; moved.time = 30; $0.place(moved) }
+        try await rig.autoSave()
+        rig.undo.undo()
+        #expect(rig.deck.draft?.cues.first { $0.id == hot.id }?.time == 25)
+        #expect(rig.undo.canUndo, "아래 단계(20 → 25)가 남는다")
+        rig.undo.undo()
+        #expect(rig.deck.draft?.cues.first { $0.id == hot.id }?.time == 20)
+        try await rig.autoSave()
+        #expect(try rig.cueValues() == original)
+    }
+
     @Test func 지운_큐를_되살리면_ID만_새로_받고_위치_종류_이름_색은_지우기_전과_같다() async throws {
         var track = TrackSpec()
         track.cues = [CueSpec(kind: 0, inMsec: 10000), Self.coloredHot()]

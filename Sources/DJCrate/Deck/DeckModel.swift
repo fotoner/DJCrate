@@ -11,10 +11,11 @@ final class DeckModel {
     enum DraftKind { case cue, grid, gain }
 
     @ObservationIgnored weak var undoManager: UndoManager? {
-        didSet { if oldValue !== undoManager { draftUndoSteps.removeAll(oldValue) } }
+        didSet { if oldValue !== undoManager { undoSteps.removeAll(.deck, from: oldValue) } }
     }
     /// 덱 초안 ⌘Z 단계(단계마다 따로 대상, 저장 뒤 되돌릴 수 없게 되면 그 단계만 뺀다)
-    @ObservationIgnored let draftUndoSteps = UndoSteps()
+    /// ⌘Z 단계 목록. 앱·시험 조립이 라이브러리와 같은 목록을 준다(`LibraryStore.connectWriteLocks`, 컨실 2라운드 A)
+    @ObservationIgnored var undoSteps = UndoSteps()
     @ObservationIgnored var pendingDraftUndo: DeckDraftSnapshot?
     /// LINK로 CDJ가 실은 곡(rekordbox 곡 ID, #278). 덱에 올리지 않는다
     @ObservationIgnored var cdjLoadedTrackIDs: Set<String> = []
@@ -387,6 +388,8 @@ final class DeckModel {
             // 이어 재생하지 못하고 멈췄다. 다음 재생은 새로 시작한 재생이다(Flip 기록에 점프로 남지 않는다).
             self.flipRecording?.breakLink()
         }
+        // 라이브러리와 잇기 전(덱만 쓰는 시험)에는 덱 상태만으로 ⌘Z 맨 위 단계를 판정한다
+        undoSteps.isSettled = { [weak self] in self?.undoSettled ?? false }
     }
 
     func setZoom(_ seconds: Double) {

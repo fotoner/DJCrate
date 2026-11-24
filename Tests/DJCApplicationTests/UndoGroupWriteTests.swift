@@ -41,6 +41,90 @@ struct UndoGroupWriteTests {
         #expect(calls.writes.contains { $0.drafts.map(\.trackUUID) == ["c"] && $0.tags.isEmpty }, "묶음 밖 편집은 따로 쓴다")
     }
 
+    // MARK: - ⌘S의 역편집 묶음(컨실 2라운드 B: S1·O9·O10)
+
+    /// 묶음의 곡을 다 고르지 않은 ⌘S는 그 묶음을 쓰지 않고(일부만 쓰지 않는다) 제외 줄에 이유를 남긴다
+    @Test func 수동_저장은_묶음_구성원을_모두_고르지_않으면_쓰지_않고_제외_줄에_남긴다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        let outcome = await h.session.write(rows: [H.row("a")])
+        #expect(!h.gateCalls.value.writes.contains { $0.tags.contains { $0.trackUUID == "a" } }, "묶음의 한 곡만 쓰지 않는다")
+        guard case let .nothingWritable(preview, _) = outcome else { Issue.record("쓸 것이 없다고 알리지 않았다"); return }
+        #expect(preview.exclusions.contains { $0.hasPrefix("• 곡 a:") && $0.contains("함께 되돌린 다른 곡") })
+    }
+
+    /// 묶음 구성원의 초안이 사라졌으면(바깥에서 버림) 남은 곡만 쓰지 않고 제외 줄에 이유를 남긴다
+    @Test func 수동_저장은_묶음_구성원의_초안이_없으면_쓰지_않고_제외_줄에_남긴다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.memory.save(TagDraft(trackUUID: "b", base: TagFields()))
+        h.state.tagDrafts["b"] = nil
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b")])
+        #expect(!h.gateCalls.value.writes.contains { $0.tags.contains { $0.trackUUID == "a" } })
+        guard case let .nothingWritable(preview, _) = outcome else { Issue.record("쓸 것이 없다고 알리지 않았다"); return }
+        #expect(preview.exclusions.contains { $0.hasPrefix("• 곡 a:") && $0.contains("함께 되돌릴 다른 편집") })
+    }
+
+    /// 묶음도 보통 쓰기와 같은 사전 확인을 지난다: 저장하지 못한 태그가 있으면 쓰지 않는다
+    @Test func 수동_저장의_묶음도_저장하지_못한_태그가_있으면_쓰지_않는다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.state.failedTagSaves = ["a"]
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b")])
+        #expect(h.gateCalls.value.writes.isEmpty)
+        guard case .failed = outcome else { Issue.record("막지 않았다"); return }
+    }
+
+    /// 묶음도 보통 쓰기와 같은 확인 창을 지난다(백업할 수 없음 등): 취소하면 쓰지 않는다
+    @Test func 수동_저장의_묶음도_확인_창에서_취소하면_쓰지_않는다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.canBackUp = false
+        h.answer = false
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b")])
+        #expect(!h.prompts.isEmpty, "확인 창을 띄운다")
+        #expect(h.gateCalls.value.writes.isEmpty)
+        guard case .declined = outcome else { Issue.record("취소로 알리지 않았다"); return }
+    }
+
+    /// 묶음 결과는 마지막 발행에 합친다: 쓴 묶음의 곡과 나머지 쓰기의 곡이 한 결과에 든다. 쓴 묶음은 대기열에서 지운다
+    @Test func 수동_저장은_묶음_결과를_마지막_발행에_합치고_쓴_묶음을_지운다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.state.rows["c"] = H.row("c")
+        h.state.cueDraftUUIDs.insert("c")
+        h.memory.save(H.cue("c", at: 12))
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        guard case let .written(report, _, _) = outcome else { Issue.record("쓴 것으로 알리지 않았다"); return }
+        #expect(Set((report.tagOutcomes ?? []).map(\.trackUUID)) == ["a", "b"] && report.outcomes.map(\.trackUUID) == ["c"])
+        #expect(h.session.ports.undoGroups.groups.isEmpty, "쓴 묶음은 지운다")
+    }
+
+    /// 묶음이 막히면(한 곡이라도) 그 미리 보기를 마지막 발행에 남긴다(복구 시트로 고친다). 묶음은 대기열에 남는다
+    @Test func 수동_저장의_묶음이_막히면_그_보고를_발행에_남긴다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = [H.outcome("a", .written), H.outcome("b", .blocked, reason: "바뀌었습니다")]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b")])
+        #expect(h.gateCalls.value.writes.isEmpty)
+        guard case let .nothingWritable(preview, targets) = outcome else { Issue.record("쓸 것이 없다고 알리지 않았다"); return }
+        #expect(preview.report.tagOutcomes?.contains { $0.trackUUID == "b" && $0.status == .blocked } == true)
+        #expect(Set(targets.map(\.track.uuid)) == ["a", "b"])
+        #expect(h.session.ports.undoGroups.groups.count == 1)
+    }
+
     @Test func 자동_저장_묶음의_구성원이나_판이_바뀌었으면_쓰지_않고_보류한다() async throws {
         let h = ReflectionHarness()
         h.script.reportsBatchOnly = true
