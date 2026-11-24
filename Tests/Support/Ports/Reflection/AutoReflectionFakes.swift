@@ -264,6 +264,9 @@ public final class AutoReflectionFakes: Sendable {
     public var runStateChecks: Int { runStateCalls.withLock { $0 } }
     /// 실행 상태 보기를 막거나 푼다(막힌 동안 부른 쪽은 기다린다, 60초 안전망)
     public func holdRunState(_ held: Bool = true) { runStateHeld.withLock { $0 = held } }
+    /// 다음에 조용함 조건의 파일 상태를 읽을 때 한 번 한다(읽는 동안 바깥에서 생긴 일을 흉내 낸다, 메인 밖에서 불린다)
+    public func onNextQuietStamps(_ body: @escaping @Sendable () -> Void) { nextQuietStamps.withLock { $0 = body } }
+    private let nextQuietStamps = Mutex<(@Sendable () -> Void)?>(nil)
     /// 엔진이 알린 칩 상태(차례대로)
     public var publishedStatuses: [AutoReflectionStatus] { published.withLock { $0 } }
 
@@ -275,7 +278,10 @@ public final class AutoReflectionFakes: Sendable {
                                 defer { runStateCalls.withLock { $0 += 1 } }
                                 return runState.withLock { $0 }
                             },
-                            quietStamps: { [self] _ in quiet.withLock { $0 } }, writeLock: locks.port, records: records.port,
+                            quietStamps: { [self] _ in
+                                nextQuietStamps.withLock { hook in defer { hook = nil }; return hook }?()
+                                return quiet.withLock { $0 }
+                            }, writeLock: locks.port, records: records.port,
                             pointSnapshot: pointSnapshot, appHolds: holds,
                             publish: { [self] status, _ in published.withLock { $0.append(status) } })
     }

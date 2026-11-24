@@ -180,6 +180,29 @@ struct AutoReflectionWriteWatchTests {
         #expect(w.writes.count == 1)
     }
 
+    /// 관문 직전 확인 지점이 파일 상태를 읽는 동안 rekordbox가 켜졌다 꺼지면(DB·XML은 그대로) 관문을 부르지 않는다: 판정은 읽고 돌아온 뒤의
+    /// 최신 표본·마지막 꺼짐 시각·조용함 세대로 한다(리뷰 F4)
+    @Test func 관문_직전_파일_상태를_읽는_동안_켜졌다_꺼지면_관문으로_가지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        w.writable("a")
+        w.h.previewHold.hold()
+        try await Self.ready(w)
+        try await w.advanceIntoWrite { w.h.previewHold.isWaiting }
+        let fakes = w.fakes
+        fakes.onNextQuietStamps {
+            for state in [RekordboxRunState.running, .stopped] {
+                fakes.setRunState(state)
+                for _ in 0..<5000 where fakes.clock.sleeping != 1 { usleep(1_000) }
+                let before = fakes.runStateChecks
+                fakes.clock.advance(.seconds(1))
+                for _ in 0..<5000 where !(fakes.runStateChecks > before && fakes.clock.sleeping == 1) { usleep(1_000) }
+            }
+        }
+        w.h.previewHold.release()
+        try await w.settle()
+        #expect(w.writes.isEmpty, "파일 상태를 읽는 동안 본 켜짐으로 관문을 부르지 않는다")
+    }
+
     /// 마지막 꺼짐 표본이 3초 넘게 오래되면 관문을 부르지 않는다
     @Test func 마지막_표본이_오래되면_관문을_부르지_않는다() async throws {
         let w = AutoReflectionWorld()

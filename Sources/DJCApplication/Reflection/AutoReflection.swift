@@ -696,13 +696,14 @@ public final class AutoReflection {
     /// 미리 보기·음량 분석 뒤 관문을 부르기 직전의 확인 지점(#295 E4). 판정 때의 조용함 세대가 그대로이고, T_quiet를 채웠고, 쓰는 동안
     /// 메인 밖 표본이 켜짐·틈 없이 이어져 마지막 꺼짐 표본이 3초 안이고, 파일 상태(DB·XML, -wal·-shm)가 판정 때의 조용함 기준과 같을 때만
     /// 관문으로 간다. 아니면 쓰지 않는다(쓰기 뒤 조용함을 처음부터 센다)
+    /// 판정은 파일 상태를 읽고 돌아온 뒤의 최신 표본·마지막 꺼짐 시각·조용함 세대로 한다(읽는 동안 켜졌다 꺼진 것을 놓치지 않게)
     private func mayCommit(_ judged: Quiet?, _ watch: AutoWriteWatch) async -> Bool {
+        let quietStamps = ports.quietStamps, target = session.target
+        let stamps = await BlockingWork.run(qos: .userInitiated) { quietStamps(target) }
         let now = ports.clock.now(), seen = watch.state, gap = Self.seconds(timing.pollInterval) * 3
         guard let judged, let current = quiet, current.generation == judged.generation, !seen.broken,
               let last = seen.lastStopped, now.timeIntervalSince(last) <= gap,
               now >= current.since + Self.seconds(timing.quietDelay) else { return false }
-        let quietStamps = ports.quietStamps, target = session.target
-        let stamps = await BlockingWork.run(qos: .userInitiated) { quietStamps(target) }
         return Self.sameLibrary(stamps, current.stamps) && (stamps.walSize ?? 0) == 0 && !stamps.shmExists
     }
 
