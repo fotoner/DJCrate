@@ -136,6 +136,62 @@ struct AutoReflectionAppTests {
         withExtendedLifetime((coordinator, home)) {}
     }
 
+    enum ManualWrite: CaseIterable, Sendable { case save, delete, sync }
+
+    /// 수동 쓰기가 엔진의 차례(앞 쓰기·기록 판정)를 기다리는 사이 ⌘Q가 엔진의 종료 저장을 기다리기 시작하면, 차례를 받은 직후 다시 보고 거절한다.
+    /// 그 동안 세션 잠금은 엔진의 자동 저장에 열려 있다(컨실 2라운드 F)
+    @Test(arguments: ManualWrite.allCases)
+    func 차례를_기다리는_사이_종료_대기가_시작되면_수동_쓰기를_거절한다(_ kind: ManualWrite) async throws {
+        let store = store()
+        let calls = Mutex(0)
+        var gate = RekordboxWriteGate.restoringOnly
+        gate.syncITunes = { _, _ in
+            calls.withLock { $0 += 1 }
+            return Data()
+        }
+        let coordinator = ReflectionCoordinator.test(store: store, gate: gate)
+        let home = try TemporaryFolder(prefix: "djc-autosave-quit-turn")
+        let ports = AutoReflectionPorts(clock: .live, runState: { .stopped },
+                                        quietStamps: { _ in LibraryQuietStamps(walSize: nil, shmExists: false, database: nil, playlistsXML: nil) },
+                                        writeLock: .live(RekordboxWriteLocks(folder: home.url.appending(path: "locks"))),
+                                        records: .live(home: home.url), pointSnapshot: { .satisfied }, appHolds: { [] })
+        let engine = AutoReflection(session: coordinator.session, ports: ports, run: .off(.debugBuild))
+        coordinator.engine = engine
+        let latch = Latch()
+        let first = Task { await engine.exclusive { () async -> ReflectionOutcome in
+            await latch.wait()
+            return .declined
+        } }
+        for _ in 0..<2000 where !latch.arrived { try await Task.sleep(for: .milliseconds(5)) }
+        let manual: Task<Bool, Never>
+        switch kind {
+        case .save: manual = Task { await coordinator.write(rows: []); return false }
+        case .delete: manual = Task { await coordinator.deleteTracks(rows: []); return false }
+        case .sync:
+            let write = try #require(store.music.write)
+            manual = Task {
+                do {
+                    _ = try await write(ITunesSyncWrite(base: Data(), source: [], selection: ITunesSyncSelection(selectedIDs: [])))
+                    return false
+                } catch { return true }
+            }
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        // ⌘Q가 엔진의 종료 저장을 기다리기 시작했다(세션 잠금은 그 자동 저장에 열려 있다)
+        store.quitWait.begin(at: Date(), allowsAutoSave: true, onCancel: {})
+        latch.release()
+        _ = await first.value
+        let threw = await manual.value
+        #expect(calls.withLock { $0 } == 0, "관문을 부르지 않는다")
+        if kind == .sync {
+            #expect(threw, "동기화 창이 이유를 받는다")
+        } else {
+            #expect(store.toast?.title == store.writeRefusal, "\(String(describing: store.toast?.title))")
+        }
+        store.quitWait.finish()
+        withExtendedLifetime((coordinator, home)) {}
+    }
+
     /// 종료 대기 중에는 입력기 조합도 마우스 누름처럼 순간 신호라 편집 중 보류로 넣지 않는다. 편집 창·덱 편집은 그대로 보류한다(컨실 2라운드 I)
     @Test func 종료_대기_중에는_입력기_조합을_편집_중으로_보지_않는다() {
         let hold = AppComposition.isEditingHold

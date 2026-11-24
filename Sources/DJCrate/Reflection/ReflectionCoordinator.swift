@@ -370,10 +370,27 @@ final class ReflectionCoordinator {
         return try await work()
     }
 
-    /// 쓰기 하나를 엔진의 차례로 한다(엔진이 없으면 바로). 엔진은 결과로 멈춤을 풀거나(저장 성공) 멈춘다(복원)
-    func serialized<T>(_ work: @MainActor () async throws -> T) async rethrows -> T {
+    /// 쓰기 하나를 엔진의 차례로 한다(엔진이 없으면 바로). 엔진은 결과로 멈춤을 풀거나(저장 성공) 멈춘다(복원).
+    /// 차례를 기다리는 사이(앞 쓰기·잠금 아래 기록 판정) Mac 끄기·종료 대기가 시작됐으면 쓰지 않고 `refused`로 답한다(컨실 2라운드 F):
+    /// ⌘Q가 기다리는 엔진의 자동 저장에는 세션 잠금이 열려 있어 세션이 막지 못한다
+    func serialized<T>(_ work: @MainActor () async throws -> T, refused: @MainActor (String) throws -> T) async rethrows -> T {
         guard let engine else { return try await running(work) }
-        return try await engine.exclusive { try await self.running(work) }
+        return try await engine.exclusive {
+            if let refusal = self.store.writeRefusal { return try refused(refusal) }
+            return try await self.running(work)
+        }
+    }
+
+    /// 차례를 받은 직후 거절한 수동 쓰기: 이유를 알리고 아무것도 하지 않았다고 답한다
+    func refusedOnTurn(_ reason: String) -> ReflectionOutcome {
+        store.showToast(.notice(reason, nil))
+        return .declined
+    }
+
+    /// 차례를 받은 직후 거절한 쓰기의 오류(동기화 창·시점 복원 창이 이유를 보인다)
+    struct WriteRefused: LocalizedError {
+        let reason: String
+        var errorDescription: String? { reason }
     }
 
     /// 초안을 쓰는 흐름(⌘S·저장 단추·곡 넣기)을 엔진의 차례로 한다. 앞 쓰기의 정리를 마치지 못했으면(미정리 목록이 남음) 쓰지 않고 알린다:
@@ -381,7 +398,11 @@ final class ReflectionCoordinator {
     private func serializedWrite(_ work: @MainActor () async -> ReflectionOutcome) async -> ReflectionOutcome {
         guard let engine else { return await running(work) }
         let session = session
-        return await engine.exclusive({ await self.running(work) }, whenHeld: { holds in
+        return await engine.exclusive({
+            // 차례를 기다리는 사이 Mac 끄기·종료 대기가 시작됐으면 쓰지 않는다(컨실 2라운드 F)
+            if let refusal = self.store.writeRefusal { return self.refusedOnTurn(refusal) }
+            return await self.running(work)
+        }, whenHeld: { holds in
             // 잠금 아래 판정을 하지 못했으면(rekordbox가 켜져 기록을 판정하지 못함·잠금·기록을 읽다 실패) rekordbox 종료나 디스크·권한을,
             // 정리를 마치지 못했으면 편집 보관을 확인하게 한다
             // 실행 상태는 엔진이 메인 액터 밖에서 보고 보류 사유로 넘긴다(여기서 프로세스 목록을 기다리지 않는다)
@@ -400,7 +421,7 @@ final class ReflectionCoordinator {
     /// iTunes 동기화 쓰기(동기화 창). 다른 rekordbox 쓰기처럼 엔진의 차례로 한다(자동 저장과 겹쳐 쓰기 잠금·얼림을 풀지 않게)
     func syncITunes(_ change: ITunesSyncWrite) async throws -> (target: URL, syncData: Data) {
         let session = session
-        return try await serialized { try await session.syncITunes(change) }
+        return try await serialized({ try await session.syncITunes(change) }, refused: { throw WriteRefused(reason: $0) })
     }
 
     /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 false)
@@ -490,22 +511,22 @@ final class ReflectionCoordinator {
 
     func deleteTracks(rows: [TrackRow]) async {
         let session = session
-        _ = await serialized { await session.deleteTracks(rows: rows) }
+        _ = await serialized({ await session.deleteTracks(rows: rows) }, refused: { self.refusedOnTurn($0) })
     }
 
     /// - Parameter confirmed: 쓰기 결과 토스트의 복원 단추로 불렀는지(그 백업을 보고 누른 것이라 확인으로 본다)
     func restore(_ backup: RekordboxWriteBackup, confirmed: Bool = false) async {
         let session = session
-        _ = await serialized { await session.restore(backup, confirmed: confirmed) }
+        _ = await serialized({ await session.restore(backup, confirmed: confirmed) }, refused: { self.refusedOnTurn($0) })
     }
 
     /// 시점 스냅샷 복원(#225): 대상은 쓰기와 같은 곳, 보관 일수는 설정. 복원하면 자동 저장이 멈춘다(R8)
     func restorePointSnapshot(_ entry: URL, snapshots: URL, changedTracks: Set<String>) async throws -> RekordboxPointRestoreReport {
         let session = session, days = Int(store.settings.value(SettingKeys.pointSnapshotAutoDays))
-        let report = try await serialized {
+        let report = try await serialized({
             try await session.restorePointSnapshot(entry, snapshots: snapshots, autoDays: days, now: .now, changedTracks: changedTracks,
                                                    to: session.target)
-        }
+        }, refused: { throw WriteRefused(reason: $0) })
         engine?.restored()
         return report
     }
