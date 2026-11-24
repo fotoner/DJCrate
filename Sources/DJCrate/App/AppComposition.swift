@@ -609,15 +609,7 @@ final class AppComposition {
             autoSaves: { engine.run.autoSaves },
             // 수동 쓰기는 엔진의 차례를 받아 "지금 미리 보기를 실행하는 작업"으로 등록된다. 등록되지 않은 엔진의 쓰기는 자동 저장이다
             autoWriting: { engine.isWriting && store.previewingWriteTask == nil },
-            commitInput: {
-                let input = window.fieldEditing
-                // 확정을 거절해도 종료는 막지 않는다(칸의 값만 남지 않는다). 포커스를 잃은 뒤 값을 넣는 칸은 한도 안에서 기다린다
-                if window.isEditingInput { _ = input.commit() }
-                let deadline = ContinuousClock.now + input.settleLimit
-                while input.isEditing || input.hasPendingCommit(), ContinuousClock.now < deadline {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
-            },
+            commitInput: { await window.commitInputBeforeQuit() },
             prepare: { await engine.prepareToQuit() },
             cancel: { engine.cancelQuit() },
             shutdown: { $0 ? engine.shutdown() : engine.cancelShutdown() })
