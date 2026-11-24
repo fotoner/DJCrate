@@ -51,9 +51,10 @@ public struct EditPlaylists: Sendable {
         try saveDraft(draft, freshOrigins: unidentifiedOrigins(draft, freshOrigins: freshOrigins, carrying: carried))
     }
 
-    /// 식별자가 없는 단계마다 줄 출처(자리 → 출처). 더할 출처가 없으면 `freshOrigins` 그대로다
+    /// 식별자가 없는 단계마다 줄 출처(자리 → 출처). 이 포트의 출처 밖에 더할 출처가 없으면 `freshOrigins` 그대로다
+    /// (이 포트의 출처만 더하면 제안인지가 바뀌지 않는다: 보통 저장으로 둔다)
     func unidentifiedOrigins(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>], carrying carried: Set<DraftOrigin>) -> [Int: Set<DraftOrigin>] {
-        guard !carried.isEmpty else { return freshOrigins }
+        guard !carried.subtracting([drafts.origin]).isEmpty else { return freshOrigins }
         var origins = freshOrigins
         for index in draft.steps.indices where draft.steps[index].id == nil {
             origins[index] = (freshOrigins[index] ?? [drafts.origin]).union(carried)
