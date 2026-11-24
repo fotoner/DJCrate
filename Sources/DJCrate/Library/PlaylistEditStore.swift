@@ -45,6 +45,14 @@ final class PlaylistEditStore {
     var recentPlaylistIDs: [String] = []
     /// 재생 목록 초안 저장에 실패해 메모리 초안이 디스크보다 최신이다(쓰기 전에 다시 저장한다, #174).
     var playlistDraftUnsaved = false
+    /// 디스크 초안을 읽지 못해 메모리 초안이 디스크와 같은지 모른다(도장 기록 실패로 읽기가 던졌다). 디스크 초안을 다시 받을 때까지
+    /// 재생 목록 편집과 저장을 하지 않는다(옛 메모리로 저장해 바깥(CLI)에서 더한 단계를 덮지 않게, #402)
+    private(set) var playlistDraftNeedsSync = false
+    /// 지금 rekordbox에 쓰고 있는 재생 목록 단계의 식별자(R21 얼리기). nil이면 얼리지 않았다. 얼려 둔 동안은 재생 목록·재생 기록 편집을
+    /// 받고(`isEditBlocked`), 쓰는 단계는 합치지도 지우지도 않으며 새 편집은 뒤에 쌓는다. `freezeWrite`로 얼리고 `thawWrite`로 푼다
+    private(set) var writeFreeze: Set<UUID>?
+    /// 쓰고 있는 재생 기록(보존 기록 ID). 얼려 둔 동안 이 기록은 저장 대기에서 빼지 못한다(이미 쓰고 있다)
+    private(set) var writingHistories: Set<String> = []
     /// 저장 실패를 알린 창 알림(넣기·빼기 결과가 실패를 함께 적었으면 그 알림). 다시 저장하면 거둔다
     @ObservationIgnored var saveFailureToast: AppToast.ID?
     /// 재생 목록 연결 기록(컬렉션에 들어간 뒤 만들 목록 연결, `PlaylistEditStore+Imports`)
@@ -62,6 +70,35 @@ final class PlaylistEditStore {
     @ObservationIgnored var onCreate: ((_ id: String, _ ancestors: [String]) -> Void)?
 
     var hasPlaylistDrafts: Bool { !playlistDraft.isEmpty }
+
+    /// 재생 목록·재생 기록 편집을 지금 받지 않는지. 라이브러리를 쓰는 동안은 받지 않는다. 다만 초안 쓰기가 재생 목록 단계를 얼려 두었으면
+    /// 받는다(R21): 쓰는 단계와 합치지 않고 뒤에 쌓는다. 복원·곡 넣기·빼기·iTunes 동기화·읽기는 얼리지 않아 늘 막는다. 합치기는 이 값을 읽지 않는다
+    var isEditBlocked: Bool { library.libraryBusy && !(writeFreeze != nil && library.isDraftWrite) }
+
+    /// 쓰고 있는 재생 목록 단계를 얼린다. 쓰기 묶음을 만든 자리(곡 단위 초안 쓰기)에서 묶음의 재생 목록 초안으로 부른다.
+    /// 단계 식별자가 없는 단계가 있으면 얼릴 수 없다(false): 그 단계는 합치기에서 뺄 수 없어 편집을 막은 채 둔다. 초안 쓰기가 아니면 얼리지 않는다
+    /// - Parameters:
+    ///   - written: 쓰기 묶음의 재생 목록 초안(메모리 초안의 단계와 같은 식별자)
+    ///   - histories: 쓰기 묶음의 재생 기록(보존 기록 ID)
+    @discardableResult
+    func freezeWrite(_ written: PlaylistDraft, histories: Set<String> = []) -> Bool {
+        guard library.isDraftWrite, written.stepIDs.allSatisfy({ $0 != nil }) else { return false }
+        writeFreeze = Set(written.stepIDs.compactMap { $0 })
+        writingHistories = histories
+        refreshPlaylists()
+        return true
+    }
+
+    /// 얼림을 푼다(쓴 뒤 정리를 맞춘 때, 쓰기를 마칠 때·취소할 때). 풀면 쓰는 중에는 다시 재생 목록 편집을 받지 않는다
+    func thawWrite(refresh: Bool = true) {
+        guard writeFreeze != nil || !writingHistories.isEmpty else { return }
+        writeFreeze = nil
+        writingHistories = []
+        if refresh { refreshPlaylists() }
+    }
+
+    /// 얼린 단계(없으면 빈 집합)
+    private var frozen: Set<UUID> { writeFreeze ?? [] }
 
     /// 쓸 수 없는 초안 편집 수(rekordbox에서 바뀐 목록 등)
     var blockedPlaylistEditCount: Int { playlistProjection.blocked.compactMap { $0 }.count }
@@ -109,7 +146,7 @@ final class PlaylistEditStore {
 
     /// 초안을 얹은 모양으로 사이드바 트리·곡 수·목록을 다시 만든다.
     func refreshPlaylists(refreshList: Bool = true) {
-        let projection = playlistDraft.project(onto: rekordboxPlaylists, contentIDs: Set(library.rowsByID.keys))
+        let projection = playlistDraft.project(onto: rekordboxPlaylists, contentIDs: Set(library.rowsByID.keys), frozen: frozen)
         playlistProjection = projection
         defer { onProjectionChanged?() }
         playlistTree = PlaylistOutlineNode.tree(projection)
@@ -174,9 +211,9 @@ final class PlaylistEditStore {
     /// (건너뛴 이유는 부른 쪽이 보인다). 묶음 하나는 ⌘Z 한 번에 되돌린다.
     @discardableResult
     func applyPlaylistRequests(_ requests: [PlaylistEditRequest], actionName: String, allOrNothing: Bool = true) -> EditPlaylists.Batch? {
-        guard !library.libraryBusy, !requests.isEmpty else { return nil }
-        // 바깥(CLI)에서 바뀐 초안이 있으면 먼저 받고 그 위에 쌓는다(덮지 않게)
-        syncExternalPlaylistDraft()
+        guard !isEditBlocked, !requests.isEmpty else { return nil }
+        // 바깥(CLI)에서 바뀐 초안이 있으면 먼저 받고 그 위에 쌓는다(덮지 않게). 읽지 못하면 옛 메모리 위에 쌓지 않는다
+        guard syncBeforeEdit() else { return nil }
         let batch = planPlaylistRequests(requests, allOrNothing: allOrNothing)
         if !allOrNothing {
             if batch.hasChanges { commitPlaylistDraft(batch.draft, actionName: actionName) }
@@ -193,7 +230,7 @@ final class PlaylistEditStore {
 
     /// 요청을 지금 초안에 얹어 계획만 한다(쌓지 않는다). 확인 창이 쌓을 것과 건너뛸 것을 미리 보인다
     func planPlaylistRequests(_ requests: [PlaylistEditRequest], allOrNothing: Bool = false) -> EditPlaylists.Batch {
-        EditPlaylists.planning(requests, onto: playlistDraft, rekordbox: rekordboxPlaylists, allOrNothing: allOrNothing) {
+        EditPlaylists.planning(requests, onto: playlistDraft, rekordbox: rekordboxPlaylists, allOrNothing: allOrNothing, frozen: frozen) {
             UUID().uuidString.lowercased()
         }
     }
@@ -201,13 +238,49 @@ final class PlaylistEditStore {
     /// 초안을 바꾸고 저장·화면 갱신·되돌리기(⌘Z)를 건다. 되돌리기 대상은 핵심이다(쓰기 잠금이 핵심 대상으로 지운다).
     /// 디스크 초안이 바깥(CLI)에서 바뀌었으면 그 초안을 받고 이 변경은 하지 않는다(옛 초안으로 만든 변경이 CLI 초안을 덮지 않게).
     func setPlaylistDraft(_ draft: PlaylistDraft, actionName: String) {
-        guard draft != playlistDraft else { return }
-        if syncExternalPlaylistDraft() {
+        guard draft != playlistDraft, !isEditBlocked else { return }
+        switch syncExternal() {
+        case .adopted:
             library.showToast(.notice(text: String(ui: "바깥에서 바뀐 재생 목록 편집을 다시 읽어 방금 변경은 하지 않았습니다. 다시 해 주세요."), kind: .warning))
             return
+        case .failed:
+            library.showToast(.notice(text: Self.syncFailureText, kind: .warning))
+            return
+        case .current, .held:
+            guard !playlistDraftNeedsSync else { return }
         }
+        // 쓰고 있는 단계는 바꾸지 않는다(되돌리기·다시 하기가 쓰는 단계를 되살리거나 지우지 않게)
+        guard preservesFrozen(draft) else { return }
         commitPlaylistDraft(draft, actionName: actionName)
     }
+
+    /// 쓰고 있는 단계가 그대로 든 초안인지(얼리지 않았으면 늘 true)
+    private func preservesFrozen(_ draft: PlaylistDraft) -> Bool {
+        guard let frozen = writeFreeze else { return true }
+        let next = Dictionary(draft.steps.compactMap { step in step.id.map { ($0, step) } }, uniquingKeysWith: { first, _ in first })
+        return playlistDraft.steps.allSatisfy { step in
+            guard let id = step.id, frozen.contains(id) else { return true }
+            return next[id] == step
+        }
+    }
+
+    /// 편집하기 전에 디스크 초안을 맞춘다. 읽지 못하면 알리고 false(옛 메모리 위에 쌓지 않는다)
+    private func syncBeforeEdit() -> Bool {
+        switch syncExternal() {
+        case .current, .adopted, .held:
+            // 쓰는 중이라 다시 읽지 못했는데 앞서 읽기가 실패했으면 디스크와 같은지 모른다: 쌓지 않는다
+            if playlistDraftNeedsSync {
+                library.showToast(.notice(text: Self.syncFailureText, kind: .warning))
+                return false
+            }
+            return true
+        case .failed:
+            library.showToast(.notice(text: Self.syncFailureText, kind: .warning))
+            return false
+        }
+    }
+
+    static var syncFailureText: String { String(ui: "재생 목록 편집을 읽지 못해 고치지 않았습니다. 잠시 뒤 다시 해 주세요.") }
 
     private func commitPlaylistDraft(_ draft: PlaylistDraft, actionName: String) {
         let before = playlistDraft
@@ -215,9 +288,10 @@ final class PlaylistEditStore {
         playlistDraft = draft
         savePlaylistDraft()
         refreshPlaylists()
-        guard let undoManager = library.undoManager else { return }
+        // 쓰는 동안 한 편집은 실행 취소에 남기지 않는다: 되돌릴 초안이 쓰고 있는 단계를 담고 있어 쓴 뒤에는 맞지 않는다(저장 뒤 실행 취소는 W3-F)
+        guard !library.libraryBusy, let undoManager = library.undoManager else { return }
         undoManager.registerUndo(withTarget: library) { target in
-            guard !target.libraryBusy else { return }
+            guard !target.playlists.isEditBlocked else { return }
             target.playlists.setPlaylistDraft(before, actionName: actionName)
         }
         undoManager.setActionName(actionName)
@@ -280,7 +354,7 @@ final class PlaylistEditStore {
     /// '재생 목록에 넣기…'(이름으로 찾기) 시트를 연다. 시트 모델은 여기서 한 번 만든다(본문이 다시 그려져도 같은 모델).
     func openPlaylistPicker(tracks: [TrackRow]? = nil) {
         let tracks = library.uniqueTracks(tracks ?? library.selectedRows).filter { !$0.isStaged }
-        guard !tracks.isEmpty, !library.libraryBusy else { return }
+        guard !tracks.isEmpty, !isEditBlocked else { return }
         playlistPicker = PlaylistPickerModel(playlists: self, tracks: tracks)
     }
 
@@ -345,18 +419,22 @@ final class PlaylistEditStore {
 
     /// 목록(폴더면 그 아래까지)의 초안을 버린다. nil이면 재생 목록 초안 모두.
     func discardPlaylistDraft(_ id: String? = nil) {
-        // 쓰는 동안은 재생 목록 초안을 바꾸지 않는다(재생 목록 얼리기는 W2-G2). 사이드바 메뉴는 통째 잠금일 때만 막혀 이 가드가 맡는다
-        guard !library.libraryBusy else { return }
+        // 쓰는 동안은 얼려 둔 때만 받고, 쓰고 있는 단계는 버리지 않는다
+        guard !isEditBlocked else { return }
         var draft = playlistDraft
-        if let id { draft.discard(playlist: id, rekordbox: rekordboxPlaylists) } else { draft = PlaylistDraft() }
+        if let id {
+            draft.discard(playlist: id, rekordbox: rekordboxPlaylists, frozen: frozen)
+        } else {
+            draft.removeSteps(at: draft.steps.indices.filter { index in !(draft.steps[index].id.map(frozen.contains) ?? false) })
+        }
         setPlaylistDraft(draft, actionName: String(ui: "재생 목록 편집 버리기"))
     }
 
     /// rekordbox에서 바뀌어 쓸 수 없는 편집만 버린다.
     func discardBlockedPlaylistEdits() {
-        guard !library.libraryBusy else { return }
+        guard !isEditBlocked else { return }
         var draft = playlistDraft
-        draft.discardBlocked(rekordbox: rekordboxPlaylists, contentIDs: Set(library.rowsByID.keys))
+        draft.discardBlocked(rekordbox: rekordboxPlaylists, contentIDs: Set(library.rowsByID.keys), frozen: frozen)
         setPlaylistDraft(draft, actionName: String(ui: "재생 목록 편집 버리기"))
     }
 
@@ -364,22 +442,52 @@ final class PlaylistEditStore {
 
     /// 바깥(CLI `djc draft playlist`)에서 바꾼 디스크 초안을 받는다. 받으면 그 앞의 라이브러리 ⌘Z 기록(태그·재생 목록)을 비운다
     /// (옛 초안으로 되돌리면 CLI 초안을 덮는다). 저장하지 못한 메모리 초안(디스크보다 최신), 복원 뒤 다시 쌓을 편집, 쓰는 중이면 받지 않는다.
-    /// - Returns: 받았으면 true
+    /// 내용은 같고 단계 식별자만 다른 디스크 초안은 조용히 받는다(되돌리기 기록은 그대로: 식별자 없는 메모리 단계는 저장마다 새 단계가 되어
+    /// 출처가 바뀐다). 읽기에 성공했고 메모리가 디스크와 같아지면 동기화 실패 표시를 푼다.
+    /// - Returns: 내용이 바뀐 디스크 초안을 받았으면 true
     @discardableResult
     func adoptExternalDraft(_ disk: PlaylistDraft?) -> Bool {
-        guard let disk, disk != playlistDraft, !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty,
-              !library.libraryBusy else { return false }
+        defer {
+            if let disk, disk == playlistDraft, disk.stepIDs == playlistDraft.stepIDs { playlistDraftNeedsSync = false }
+        }
+        guard let disk, !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty, !library.libraryBusy else { return false }
+        let changed = disk != playlistDraft
+        guard changed || disk.stepIDs != playlistDraft.stepIDs else { return false }
         playlistDraft = disk
         refreshPlaylists()
-        library.undoManager?.removeAllActions(withTarget: library)
-        return true
+        if changed { library.undoManager?.removeAllActions(withTarget: library) }
+        return changed
     }
 
     /// 편집하기 전에: 디스크 초안이 메모리와 다르면(바깥에서 바뀜) 받는다. 1초마다 하는 바깥 변경 확인보다 먼저 편집해도 CLI 초안을 덮지 않게 한다
     @discardableResult
-    func syncExternalPlaylistDraft() -> Bool {
-        guard !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty else { return false }
-        return adoptExternalDraft(try? library.useCases.playlists.loadDraft())
+    func syncExternalPlaylistDraft() -> Bool { syncExternal() == .adopted }
+
+    /// 디스크 초안을 맞춘 결과
+    enum ExternalSync: Equatable {
+        /// 맞출 것이 없다(디스크와 같거나, 저장하지 못한 편집·복원 뒤 편집이 있어 받지 않는다)
+        case current
+        /// 바뀐 디스크 초안을 받았다
+        case adopted
+        /// 쓰는 중이라 다시 읽지 않았다(초안 파일 잠금이 바깥 편집을 막고 있어 앞서 읽은 것과 같다고 본다). 앞서 읽기가 실패했으면 아직 모른다
+        case held
+        /// 디스크 초안을 읽지 못했다(도장 기록 실패·손상). 디스크 초안을 받을 때까지 재생 목록 저장을 막는다
+        case failed
+    }
+
+    /// 디스크 초안을 읽어 맞춘다. 읽지 못하면 `failed`로 알리고 디스크 초안을 받을 때까지 저장을 막는다(#402).
+    /// 쓰는 동안은 CLI가 초안 파일을 고치지 못하므로(초안 파일 잠금) 다시 읽지 않는다
+    func syncExternal() -> ExternalSync {
+        guard !playlistDraftUnsaved, playlistEditsAwaitingReload.isEmpty else { return .current }
+        guard !library.libraryBusy else { return .held }
+        do {
+            let adopted = adoptExternalDraft(try library.useCases.playlists.loadDraft())
+            return adopted ? .adopted : .current
+        } catch {
+            AppErrorMessage.log(error)
+            playlistDraftNeedsSync = true
+            return .failed
+        }
     }
 
     // MARK: - 초안 저장
@@ -387,13 +495,28 @@ final class PlaylistEditStore {
     /// 메모리 초안을 저장한다. 실패하면 메모리 초안을 그대로 두고 기록해, 쓰기 전에 다시 저장한다.
     @discardableResult
     func savePlaylistDraft() -> Bool {
+        // 디스크 초안을 읽지 못해 메모리가 디스크와 같은지 모르면 저장하지 않는다(옛 메모리로 바깥 편집을 덮지 않게). 디스크 초안을 받으면 푼다
+        guard !playlistDraftNeedsSync else { return false }
         do {
             try library.useCases.playlists.saveDraft(playlistDraft)
+            adoptSavedIdentifiers()
             applyPlaylistSave(nil)
             return true
         } catch {
             applyPlaylistSave(error)
             return false
+        }
+    }
+
+    /// 저장이 단계마다 식별자·판을 주었으니 디스크에서 다시 읽어 메모리 단계가 같은 식별자를 갖게 한다. 식별자 없는 메모리 단계는 저장마다
+    /// 새 단계·새 판이 되어 낡은 메모리가 기존 단계를 다시 저장하면 출처가 새로 적힌다(출처 세탁). 다시 읽지 못하면 디스크 초안을 받을 때까지 저장을 막는다
+    func adoptSavedIdentifiers() {
+        do {
+            let disk = try library.useCases.playlists.loadDraft()
+            if disk == playlistDraft, disk.stepIDs != playlistDraft.stepIDs { playlistDraft = disk }
+        } catch {
+            AppErrorMessage.log(error)
+            playlistDraftNeedsSync = true
         }
     }
 
@@ -415,6 +538,12 @@ final class PlaylistEditStore {
 
     /// 쓰기 전에: 저장하지 못한 재생 목록 초안은 다시 저장해 본다. 저장했거나 저장할 것이 없으면 true(아니면 쓰기가 막는다).
     func ensurePlaylistDraftSaved() -> Bool {
+        // 디스크 초안을 읽지 못한 채 쓰면 바깥에서 더한 단계를 놓친다: 다시 읽어 보고, 읽지 못했으면 반영 세션이 재생 목록을 쓰기 묶음에서 뺀다
+        // (`ReflectionLibraryState.playlistDraftNeedsSync`). 다른 종류 초안을 쓰는 것은 막지 않는다
+        if playlistDraftNeedsSync {
+            _ = syncExternal()
+            if playlistDraftNeedsSync { return true }
+        }
         guard playlistDraftUnsaved else { return true }
         return savePlaylistDraft()
     }
@@ -425,9 +554,18 @@ final class PlaylistEditStore {
     /// 메모리 초안·연결 기록을 맞추고, 새로 만든 목록의 `new:키`를 새 rekordbox ID로 바꿔 둔다(최근 목록·보고 있는 목록).
     func applyPlaylistWrite(_ cleanup: EditPlaylists.WriteCleanup) {
         let ids = cleanup.ids
+        // 쓴 단계를 뺐으니 얼림을 푼다. 쓰기가 끝나 새 사본을 읽을 때까지(`libraryBusy`) 재생 목록 편집은 받지 않는다
+        // (옛 사본 위에 더한 단계가 쓴 목록의 기준과 어긋나지 않게)
+        thawWrite(refresh: false)
         if let draft = cleanup.draft {
             playlistDraft = draft
             applyPlaylistSave(cleanup.draftError)
+        } else if let error = cleanup.draftError {
+            // 초안 파일을 읽지 못해 쓴 단계를 빼지 못했다: 메모리 초안은 그대로고 다음 정리 때 다시 한다
+            applyPlaylistSave(error)
+        }
+        if !cleanup.copied.isEmpty {
+            library.notify(.notice(text: String(ui: "바깥에서 고친 재생 목록 편집 \(cleanup.copied.count)건은 사본을 백업 폴더에 남기고 저장했습니다."), kind: .warning))
         }
         if !ids.isEmpty {
             if let imports = cleanup.imports { applyImportsChange(imports) }
@@ -445,6 +583,7 @@ final class PlaylistEditStore {
                                                           importsLoadFailed: playlistImportsLoadFailed)
         playlistDraft = restored.draft
         applyPlaylistSave(restored.draftError)
+        if restored.draftError == nil { adoptSavedIdentifiers() }
         refreshPlaylists()
         applyImportsChange(restored.imports)
         return restored.failed

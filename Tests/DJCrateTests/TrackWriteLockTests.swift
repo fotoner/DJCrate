@@ -190,7 +190,7 @@ struct TrackWriteLockTests {
         store.tags.setTag(.title, "새 제목", rows: [row])
         #expect(store.tagDrafts[row.track.uuid] != nil, "곡 태그 편집은 된다")
         store.playlists.openPlaylistPicker(tracks: [row])
-        #expect(store.playlists.playlistPicker == nil, "재생 목록 편집은 libraryBusy로 막는다(얼리기는 #402)")
+        #expect(store.playlists.playlistPicker == nil, "재생 목록 단계를 얼리지 않은 쓰기는 재생 목록 편집을 막는다(얼린 쓰기는 PlaylistWriteFreezeTests)")
         store.writeStage = nil
         endDraftWrite()
         #expect(!store.libraryBusy && !store.isEditLocked(row.track.uuid) && h.deck.isPlaying)
@@ -212,7 +212,7 @@ struct TrackWriteLockTests {
         lock.set(false, true)
     }
 
-    // MARK: - 재생 목록은 아직 쓰는 동안 통째로 막는다
+    // MARK: - 재생 목록은 얼리지 않은 쓰기 동안 막는다(얼린 쓰기는 PlaylistWriteFreezeTests)
 
     @Test func 곡_단위로_쓰는_동안에는_재생_목록_초안을_버리지_못한다() {
         let created = store.playlists.applyPlaylistRequests(
@@ -223,17 +223,17 @@ struct TrackWriteLockTests {
         beginDraftWrite(["uuid-a"])
         store.playlists.discardPlaylistDraft()
         store.playlists.discardBlockedPlaylistEdits()
-        #expect(store.playlists.playlistDraft == draft, "쓰는 동안 재생 목록 초안은 그대로다(사이드바 우클릭 메뉴가 막아 주던 길)")
+        #expect(store.playlists.playlistDraft == draft, "얼리지 않은 쓰기 동안 재생 목록 초안은 그대로다(사이드바 우클릭 메뉴가 막아 주던 길)")
         endDraftWrite()
         store.playlists.discardPlaylistDraft()
         #expect(store.playlists.playlistDraft.isEmpty)
     }
 
-    @Test func 곡_단위로_쓰는_동안에도_재생_목록_편집은_쓰는_중으로_막는다() {
+    @Test func 곡_단위로_쓰더라도_재생_목록_단계를_얼리지_않았으면_재생_목록_편집은_막는다() {
         let row = TagInspectorModelTests.row("b")
         beginDraftWrite(["uuid-a"])
         store.playlists.openPlaylistPicker(tracks: [row])
-        #expect(store.playlists.playlistPicker == nil, "재생 목록 얼리기는 W2-G2 몫이라 쓰는 동안에는 재생 목록을 편집하지 않는다")
+        #expect(store.playlists.playlistPicker == nil, "재생 목록 단계를 얼리지 않았으니 쓰는 동안에는 재생 목록을 편집하지 않는다")
         endDraftWrite()
         store.playlists.openPlaylistPicker(tracks: [row])
         #expect(store.playlists.playlistPicker != nil)

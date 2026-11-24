@@ -122,22 +122,53 @@ public struct EditPlaylists: Sendable {
 
     /// 쓴 뒤 정리한 결과
     public struct WriteCleanup: Sendable {
-        /// 쓴 편집을 뺀 초안(쓰는 동안 초안이 바뀌었으면 nil: 그대로 둔다)
+        /// 정리한 뒤 메모리가 이어 갈 초안(쓰는 동안 바뀌었거나 바깥에서 더한 편집을 담는다). 정리하지 못했으면 nil: 그대로 둔다
         public var draft: PlaylistDraft?
-        /// 그 초안을 저장하지 못한 이유(메모리 초안은 디스크보다 최신이 된다, #174)
+        /// 그 초안을 저장하지 못한 이유(메모리 초안은 디스크보다 최신이 된다, #174). 초안 파일을 읽지 못해 쓴 단계를 빼지 못한 이유이기도 하다
         public var draftError: (any Error)?
-        /// 새로 만든 목록의 `new:키` → 받은 rekordbox ID
+        /// 새로 만든 목록의 `new:키` → 받은 rekordbox ID. 만든 단계를 뺀 목록만이다(뺄 수 없었던 만들기는 아직 `new:키`다)
         public var ids: [String: String] = [:]
-        /// 새 ID를 이은 연결 기록과 그 저장 결과(새로 만든 목록이 없으면 nil)
+        /// 새 ID를 이은 연결 기록과 그 저장 결과(옮길 새 목록이 없으면 nil)
         public var imports: ImportsChange?
+        /// 바깥에서 고친 내용의 사본을 남기고 뺀 단계(판 → 사본 파일). 부르는 쪽이 상태 줄에 경고한다(R22)
+        public var copied: [DraftRevision: URL] = [:]
+        /// 사본을 남기지 못해 남긴 단계. 있으면 정리가 끝나지 않았다
+        public var copyFailed: Set<DraftRevision> = []
+
+        /// 정리가 모두 끝났다(쓴 단계를 빼고, 남은 단계와 연결 기록의 연결 ID를 옮겨 저장했다).
+        /// 끝나지 않았으면 부르는 쪽은 미정리 목록을 지우지 않고 그 대상의 다음 쓰기를 보류한 채 다음 정리 때 다시 한다(R22)
+        public var isComplete: Bool { copyFailed.isEmpty && draftError == nil && (imports?.stored ?? true) }
     }
 
-    /// 쓴 뒤: 쓴 편집을 초안에서 빼 저장하고(막힌 편집은 남겨 다음 쓰기에서 다시 본다), 새로 만든 목록의 `new:키`를 받은 rekordbox ID로 바꿔
-    /// 연결 기록에 이어 저장한다.
-    /// - Parameter current: 지금 초안. 쓰는 동안 바뀌었으면 그대로 둔다
+    /// 쓴 뒤: 쓴 단계를 판으로 찾아 초안에서 빼 저장하고(막힌 단계와 쓰는 동안 더한 단계는 남겨 다음 쓰기에서 다시 본다), 새로 만든 목록의
+    /// `new:키`를 받은 rekordbox ID로 바꿔 남은 단계의 대상·목적지와 연결 기록에 옮겨 저장한다(R22).
+    /// 판으로 찾는 쓴 단계는 해시가 달라도 빼고, 달랐던 단계는 바깥에서 고친 내용을 실제 목록 ID와 함께 `backups/backupFolder`에 사본으로 남긴
+    /// 뒤에만 뺀다(`DraftStore.removeWrittenSteps`). 사본을 남기지 못한 단계는 그 만들기와 함께 `new:키`로 남기고 `isComplete`가 false다.
+    /// 쓰는 동안 더한 편집은 메모리·디스크 모두 남는다. 기준은 정리한 디스크 초안이다. 다만 저장하지 못한 편집이 메모리에 있으면(`memoryUnsaved`)
+    /// 메모리 초안이 정본이다: 쓰는 동안 앱은 초안 파일 잠금(#260)을 들어 바깥(CLI)이 초안을 고치지 못하고, 쓰기를 시작할 때 저장하지 못한 메모리가
+    /// 있으면 쓰기가 막히므로(`ensurePlaylistDraftSaved`) 그때 메모리 = 디스크 + 저장하지 못한 편집이다. 그 메모리에서 이번에 쓴 단계(식별자로)만 빼고
+    /// 연결 ID를 옮겨 저장한다. 바깥 수정·사본 실패는 재시작 정리(`resumeCleanup`, 메모리 없음)에서만 생긴다.
+    /// 사본을 남기지 못한 단계가 하나라도 있으면 연결 ID를 옮기지 않는다(옮기는 저장이 남은 단계에 새 판을 주어 다시 할 때 찾지 못하게 된다).
+    /// 메모리가 정본일 때 그런 단계가 있으면 메모리를 합치지도 저장하지도 않는다(`draft`가 nil: 앱 메모리와 저장하지 못한 표시는 그대로다).
+    /// - Parameters:
+    ///   - current: 지금 메모리 초안(`memoryUnsaved`일 때만 쓴다)
+    ///   - memoryUnsaved: 메모리 초안에 저장하지 못한 편집이 있다(`PlaylistEditStore.playlistDraftUnsaved`)
+    ///   - entries: 묶음에 읽어 넣은 단계의 판·해시(`written.steps`와 같은 차례, 쓰기 묶음의 `revisions.playlistSteps`).
+    ///     비어 있으면 판을 모르는 묶음이라 지금 동작(쓰는 동안 바뀌지 않았을 때 자리로 뺀다)이다
     @MainActor
     public func finishWrite(_ written: PlaylistDraft, outcomes: [PlaylistOutcome], current: PlaylistDraft,
-                            imports: PlaylistImports, importsLoadFailed: Bool) -> WriteCleanup {
+                            imports: PlaylistImports, importsLoadFailed: Bool,
+                            entries: [DraftBatchEntry] = [], backups: URL? = nil, backupFolder: String = "",
+                            memoryUnsaved: Bool = false) -> WriteCleanup {
+        if let backups, !entries.isEmpty, entries.count == written.steps.count {
+            let attempts = Self.attempts(written, outcomes: outcomes, entries: entries)
+            let cleanup = PlaylistStepCleanup(
+                written: attempts.filter { $0.outcome == .written }.map { WrittenPlaylistStep(revision: $0.revision, contentHash: $0.contentHash) },
+                newPlaylistIDs: Self.newPlaylistIDs(written, outcomes: outcomes), backups: backups, backupFolder: backupFolder)
+            // 이번에 쓴 단계의 식별자: 메모리 초안에서 이 단계만 뺀다
+            let writtenIDs = Set(zip(written.steps, attempts).filter { $0.1.outcome == .written }.compactMap(\.0.id))
+            return cleanUp(cleanup, memory: memoryUnsaved ? (current, writtenIDs) : nil, imports: imports, importsLoadFailed: importsLoadFailed)
+        }
         var finished = Self.afterWrite(written, outcomes: outcomes, current: current)
         // 쓰는 동안(또는 1초 바깥 변경 확인 전에) CLI가 디스크 초안 뒤에 더한 편집은 남긴다(#260). 메모리 초안으로 저장하면 사라진다
         if finished.draft != nil, let disk = try? drafts.readPlaylistDraft(), disk != current,
@@ -154,6 +185,97 @@ public struct EditPlaylists: Sendable {
             cleanup.imports = saveImports(remapped, over: imports, loadFailed: importsLoadFailed)
         }
         return cleanup
+    }
+
+    /// 재시작 정리(R22): 정리 전에 멈춘 쓰기의 미정리 목록(재생 목록 몫)으로 같은 정리를 다시 한다. 앱은 첫 읽기 뒤 시작 저장보다 먼저 부른다.
+    /// 목록의 판으로 쓴 단계만 빼고(이미 빠졌으면 그대로), 남은 단계와 연결 기록의 연결 ID를 옮긴다. 다시 해도 결과가 같다.
+    /// 끝나지 않았으면(`isComplete`가 false) 목록을 지우지 않는다. 정리가 모두 끝나면 부르는 쪽이 목록을 지운다.
+    /// - Parameters:
+    ///   - backups: 백업 루트(목록의 `backupFolder`가 그 안의 폴더다. 바깥에서 고친 단계의 사본을 거기에 남긴다)
+    ///   - imports: 지금 연결 기록(디스크에서 읽은 것)
+    @MainActor
+    public func resumeCleanup(_ list: DraftCleanupList, backups: URL, imports: PlaylistImports, importsLoadFailed: Bool) -> WriteCleanup {
+        cleanUp(PlaylistStepCleanup(list: list, backups: backups), memory: nil, imports: imports, importsLoadFailed: importsLoadFailed)
+    }
+
+    /// 쓴 뒤 정리와 재시작 정리가 같이 쓰는 한 길: 판으로 쓴 단계를 빼고 → 연결 ID를 남은 단계에 옮겨 저장하고 → 연결 기록에 옮겨 저장한다.
+    /// 저장 순서는 초안 → 연결 기록이다. 초안을 저장한 뒤 멈춰도 다시 하면 쓴 단계는 이미 없고(찾지 못함) 연결 ID는 다시 옮겨져 같은 결과다.
+    /// - Parameter memory: 저장하지 못한 편집이 있는 메모리 초안과 이번에 쓴 단계의 식별자. 있으면 메모리가 정본이다(`finishWrite`)
+    @MainActor
+    private func cleanUp(_ cleanup: PlaylistStepCleanup, memory: (current: PlaylistDraft, writtenIDs: Set<UUID>)?, imports: PlaylistImports,
+                         importsLoadFailed: Bool) -> WriteCleanup {
+        var result = WriteCleanup()
+        // 디스크 정리가 먼저다: 판으로 쓴 단계를 빼고(사본이 필요하면 남긴 뒤에) 사본을 남기지 못한 단계는 남긴다
+        let removal: PlaylistStepRemoval
+        do { removal = try drafts.removeWrittenSteps(cleanup) } catch {
+            result.draftError = error
+            return result
+        }
+        result.copied = removal.copied
+        result.copyFailed = removal.copyFailed
+        // 사본을 남기지 못한 단계가 있으면 연결 ID를 옮기지 않는다: 옮기는 저장은 남은 단계(사본을 남기지 못한 단계 포함)에 새 판을 주어
+        // 다음 정리가 옛 판으로 그 단계를 찾지 못한다. 메모리가 정본이어도 같다: 메모리를 저장하면 그 단계에 새 판이 간다
+        if memory != nil, !removal.copyFailed.isEmpty { return result }
+        let disk: PlaylistDraft
+        do { disk = try drafts.readPlaylistDraft() } catch {
+            result.draftError = error
+            return result
+        }
+        // 만든 단계가 남아 있는 키도 아직 `new:키`다(옮기면 목록을 다시 만든다)
+        let creating = Set(disk.steps.compactMap { step -> String? in
+            if case let .create(key, _, _, _) = step.edit { PlaylistRef.new(key).layoutID } else { nil }
+        })
+        let movable = removal.copyFailed.isEmpty ? cleanup.newPlaylistIDs.filter { !creating.contains($0.key) } : [:]
+        result.ids = movable
+        if let memory {
+            // 메모리가 정본: 저장하지 못한 편집이 있는 메모리에서 이번에 쓴 단계만 식별자로 빼고 저장한다. 디스크에서 이미 없어진 쓴 단계도 같다
+            var kept = memory.current
+            kept.removeSteps(at: kept.steps.indices.filter { kept.steps[$0].id.map(memory.writtenIDs.contains) ?? false })
+            kept = kept.remapped(movable)
+            result.draft = kept
+            do { try saveDraft(kept) } catch { result.draftError = error }
+        } else {
+            var next = disk.remapped(movable)
+            if next != disk {
+                do {
+                    try saveDraft(next)
+                    // 저장이 바뀐 단계에 새 판을 주므로 다시 읽어 식별자를 받는다
+                    next = (try? drafts.readPlaylistDraft()) ?? next
+                } catch { result.draftError = error }
+            }
+            result.draft = next
+        }
+        if !movable.isEmpty {
+            var remapped = imports
+            remapped.remapTargets(movable)
+            result.imports = saveImports(remapped, over: imports, loadFailed: importsLoadFailed)
+        }
+        return result
+    }
+
+    /// 쓰기 묶음에서 시도한 재생 목록 단계(시도한 차례): 단계마다 판·읽어 넣은 해시·결과. 미정리 목록(`DraftCleanupList.playlistSteps`)에 적는다.
+    /// 막힌 단계는 막힘(이유), 결과가 없는 단계(앞 단계가 막힌 단위 등)는 시도하지 않음이다. 이미 그 모양이라 바꾸지 않은 단계도 쓴 것으로 본다
+    /// - Parameter entries: `written.steps`와 같은 차례(쓰기 묶음의 `revisions.playlistSteps`)
+    public static func attempts(_ written: PlaylistDraft, outcomes: [PlaylistOutcome], entries: [DraftBatchEntry]) -> [DraftCleanupList.PlaylistStep] {
+        entries.indices.map { index in
+            let outcome: DraftCleanupList.StepOutcome = switch index < outcomes.count ? outcomes[index].status : nil {
+            case .blocked?: .blocked(outcomes[index].reason ?? "")
+            case .written?, .unchanged?: .written
+            case nil: .notTried
+            }
+            return DraftCleanupList.PlaylistStep(revision: entries[index].revision, contentHash: entries[index].contentHash, outcome: outcome)
+        }
+    }
+
+    /// 쓴 만들기 단계가 받은 새 목록 ID(`new:키` → rekordbox ID). 미정리 목록(`DraftCleanupList.newPlaylistIDs`)에 적는다
+    public static func newPlaylistIDs(_ written: PlaylistDraft, outcomes: [PlaylistOutcome]) -> [String: String] {
+        var ids: [String: String] = [:]
+        for (step, outcome) in zip(written.steps, outcomes) {
+            if case let .create(key, _, _, _) = step.edit, outcome.status == .written, let id = outcome.playlistID {
+                ids[PlaylistRef.new(key).layoutID] = id
+            }
+        }
+        return ids
     }
 
     /// 되돌린 곡의 연결을 잊은 결과
@@ -279,28 +401,24 @@ public struct EditPlaylists: Sendable {
         return lines.isEmpty ? nil : (lines.joined(separator: " "), warning)
     }
 
-    /// 쓴 뒤: 쓴 편집을 초안에서 뺀다(막힌 편집은 남겨 다음 쓰기에서 다시 본다). 새로 만든 목록의 `new:키`가 받은 rekordbox ID를 돌려준다.
+    /// 판을 모르는 묶음의 쓴 뒤: 쓴 편집을 자리로 초안에서 뺀다(막힌 편집은 남겨 다음 쓰기에서 다시 본다). 새로 만든 목록의 `new:키`가 받은
+    /// rekordbox ID를 돌려주고, 남은 단계의 대상·목적지의 `new:키`도 그 ID로 옮긴다.
     /// - Parameter current: 지금 초안. 쓰는 동안 바뀌었으면 그대로 둔다(초안 nil)
     public static func afterWrite(_ written: PlaylistDraft, outcomes: [PlaylistOutcome], current: PlaylistDraft)
         -> (draft: PlaylistDraft?, ids: [String: String]) {
-        var ids: [String: String] = [:]
-        for (step, outcome) in zip(written.steps, outcomes) {
-            if case let .create(key, _, _, _) = step.edit, outcome.status == .written, let id = outcome.playlistID {
-                ids[PlaylistRef.new(key).layoutID] = id
-            }
-        }
+        let ids = newPlaylistIDs(written, outcomes: outcomes)
         guard current == written else { return (nil, ids) }
         var draft = written
         draft.removeSteps(at: outcomes.indices.filter { outcomes[$0].status != .blocked })
-        return (draft, ids)
+        return (draft.remapped(ids), ids)
     }
 
-    /// 쓴 뒤: 디스크 초안이 쓴 초안으로 시작하면(그 뒤에 바깥에서 편집을 더함) 쓴 편집만 뺀 디스크 초안. 아니면 nil(메모리 초안으로 정리한다)
+    /// 판을 모르는 묶음의 쓴 뒤: 디스크 초안이 쓴 초안으로 시작하면(그 뒤에 바깥에서 편집을 더함) 쓴 편집만 뺀 디스크 초안. 아니면 nil(메모리 초안으로 정리한다)
     public static func keepingExternal(_ disk: PlaylistDraft, written: PlaylistDraft, outcomes: [PlaylistOutcome]) -> PlaylistDraft? {
         guard disk.steps.count > written.steps.count, disk.steps.starts(with: written.steps) else { return nil }
         var draft = disk
         draft.removeSteps(at: outcomes.indices.filter { outcomes[$0].status != .blocked })
-        return draft
+        return draft.remapped(newPlaylistIDs(written, outcomes: outcomes))
     }
 
     /// 복원한 뒤: 그때 쓴 편집을 되돌린 rekordbox 상태에 다시 쌓고 그 뒤 쌓은 초안을 이어 붙인다. 다시 쌓지 못한 편집 수와 다시 만들 목록 열쇠도 준다

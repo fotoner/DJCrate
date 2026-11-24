@@ -277,6 +277,30 @@ suite DJCrateTests.ArtworkInspectorModelTests
 suite DJCrateTests.TagInspectorModelTests
 suite DJCApplicationTests.ReflectionSessionWriteTests
 
+# 재생 목록 얼리기·쓴 뒤 정리(#402, R21·R22): 쓰는 동안 재생 목록 편집은 쓰는 단계와 합치지 않고 뒤에 쌓고, 쓴 뒤에는 쓴 단계만 판으로 빼며 연결 ID를 옮긴다.
+# 얼림 값이 화면 가드(사이드바·메뉴·기록·머리 줄)에 걸쳐 기호 grep이 놓칠 수 있어 경로로 고른다.
+group playlist-write-freeze
+when Sources/DJCDomain/Playlist/**
+when Sources/DJCApplication/Library/EditPlaylists*.swift
+when Sources/DJCrate/Library/PlaylistEditStore*.swift
+when Sources/DJCrate/Library/HistoryStore.swift
+when Sources/DJCrate/App/PlaylistSidebar*.swift
+when Sources/DJCrate/App/PlaylistCommands.swift
+when Sources/DJCrate/App/ListActionBarModel.swift
+suite DJCDomainTests.PlaylistDraftTests
+suite DJCDomainTests.PlaylistDraftFreezeTests
+suite DJCApplicationTests.EditPlaylistsCleanupTests
+suite DJCApplicationTests.EditPlaylistsFlowTests
+suite DJCApplicationTests.EditPlaylistsExternalTests
+suite DJCApplicationTests.EditPlaylistsBatchTests
+suite DJCApplicationTests.EditPlaylistsTests
+suite DJCrateTests.PlaylistWriteFreezeTests
+suite DJCrateTests.PlaylistEditingTests
+suite DJCrateTests.ExternalPlaylistDraftTests
+suite DJCrateTests.PlaylistImportIntegrationTests
+suite DJCrateTests.PlaylistSidebarModelTests
+suite DJCrateTests.TrackWriteLockTests
+
 # 번역 카탈로그·화면 문구 검사 도구
 group localization
 when Sources/**/*.xcstrings

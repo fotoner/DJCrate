@@ -131,7 +131,7 @@ extension LibraryStore {
         let snapshot = read.snapshot, generation = read.generation, synchronizingDrafts = read.synchronizingDrafts
         // 초안 쓰기 뒤 읽기(쓰는 곡이 없는 재생 목록·재생 기록만 쓰는 묶음 포함)는 저장한 곡과 기준값이 옮겨진 곡의 태그 ⌘Z 단계만 무효로 한다(아래).
         // 다른 곡을 저장 중에 고친 ⌘Z는 남긴다. 그 밖의 읽기는 ⌘Z 기록을 통째로 지운다: 쓰는 동안 바뀐 것은 태그뿐이다
-        // (재생 목록·재생 기록·합치기는 `libraryBusy`로 막혀 쓰기 시작 때 이미 지웠다)
+        // (합치기는 `libraryBusy`로 막혀 쓰기 시작 때 이미 지웠다. 쓰는 동안 한 재생 목록 편집은 실행 취소에 남기지 않는다)
         // 쓰기 잠금이 먼저 꺼진 뒤에 성공한 읽기도 같다: 초안 쓰기 뒤 읽기 대기(`draftWriteReadPending`)가 읽기가 성공할 때까지 남는다.
         let keepsUndo = !synchronizingDrafts && (isDraftWrite || draftWriteReadPending) && playlists.playlistEditsAwaitingReload.isEmpty
         draftWriteReadPending = false

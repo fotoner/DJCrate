@@ -25,6 +25,8 @@ final class ReflectionHarness {
     var answer = true
     var choice: ReflectionChoice = .confirm
     var locked = false
+    /// 쓰기 잠금을 걸거나 풀 때마다 부른다(잠금 직후 상태가 바뀌는 경우를 흉내 낸다: 초안 파일 잠금 시도·동기화)
+    var onLock: (@MainActor (Bool) -> Void)?
     var lockedTrackSet: Set<String> = []
     /// 잠금을 건 차례: "true"·"false"(쓰는 중, 덱도 잠그면 접미 없음, 덱 빼면 " (덱 빼고)")와 "곡 a,b"(곡 단위 잠금, 비면 "곡 -")가 한 줄에 섞여 선후를 본다
     var locks: [String] = []
@@ -134,6 +136,7 @@ final class ReflectionHarness {
         var lock = WriteLock(isLocked: { self.locked }, set: { locked, deck in
             self.locked = locked
             self.locks.append("\(locked)\(deck ? "" : " (덱 빼고)")")
+            self.onLock?(locked)
         }, stage: {
             self.stages.append($0)
             self.onStage?($0)
