@@ -279,12 +279,13 @@ final class HistoryStore {
 
     /// 보존 기록을 rekordbox 쓰기 대기에서 빼거나 다시 넣는다(보존본은 그대로). 편집 › 실행 취소로 되돌린다.
     /// 화면 상태는 바로 바꾸고 파일 저장은 보존 줄에 세운다. 저장하지 못하면 유스케이스가 알린다(다시 켜면 옛 상태로 읽힌다)
-    func setHistoriesExcluded(_ ids: [String], excluded: Bool) {
+    /// - Parameter registersUndo: 실행 취소 단계를 건다. 쓰는 동안 눌러 미뤘다가 실행하는 ⌘Z는 걸지 않는다(그 뒤 ⇧⌘Z는 다시 하지 않는다)
+    func setHistoriesExcluded(_ ids: [String], excluded: Bool, registersUndo: Bool = true) {
         // 쓰는 동안은 재생 목록 얼리기가 켜져 있을 때만 받는다. 쓰고 있는 기록은 저장 대기에서 빼지 못한다(이미 쓰고 있다)
         guard !library.playlists.isEditBlocked else { return }
         let ids = excluded ? ids.filter { !library.playlists.writingHistories.contains($0) } : ids
         let changedIDs = archive.exclude(ids, excluded: excluded)
-        guard !changedIDs.isEmpty, let undoManager = library.undoManager else { return }
+        guard registersUndo, !changedIDs.isEmpty, let undoManager = library.undoManager else { return }
         // 한 이벤트 안에서 여러 번 바꿔도 각각 한 단계로 남긴다(태그·덱 초안과 같다)
         let grouping = !undoManager.isUndoing && !undoManager.isRedoing
         let groupsByEvent = undoManager.groupsByEvent
@@ -295,14 +296,30 @@ final class HistoryStore {
         // 재생 기록은 저장 뒤 되돌릴 수 없다(R12): 기록을 쓰면 그 전 단계는 실행할 수 없어 맨 위가 되면 ⌘Z가 꺼진다(`recordWrittenHistories`)
         let generation = library.historyWriteGeneration
         library.undoSteps.register(undoManager, kind: .library, canUndo: { [weak library] in library?.historyWriteGeneration == generation }) { [weak library] in
-            guard let library, !library.playlists.isEditBlocked else { return }
-            library.history.setHistoriesExcluded(changedIDs, excluded: !excluded)
+            library?.history.undoExclusion(changedIDs, excluded: !excluded, generation: generation)
         }
         undoManager.setActionName(excluded ? String(ui: "rekordbox 저장 대기에서 빼기") : String(ui: "rekordbox 저장 대기에 넣기"))
         if grouping {
             undoManager.endUndoGrouping()
             undoManager.groupsByEvent = groupsByEvent
         }
+    }
+
+    /// 재생 기록 저장 대기 넣기·빼기의 ⌘Z. 쓰는 중이면(편집을 받지 않거나 그 기록을 쓰는 중) 누른 요청으로 미뤘다가 쓰기 뒤 단계를 다시 걸지 않고
+    /// 실행한다. 꺼낼 때 쓰기 세대가 달라졌으면(그새 기록을 썼다) 실행하지 않고 ⌘Z 기록을 비우며 이유를 알린다(#295 E6)
+    private func undoExclusion(_ ids: [String], excluded: Bool, generation: Int, deferred: Bool = false) {
+        let blocked: @MainActor (LibraryStore) -> Bool = { library in
+            library.playlists.isEditBlocked || !library.playlists.writingHistories.isDisjoint(with: ids)
+        }
+        if blocked(library) {
+            guard !deferred, library.undoManager?.isRedoing != true else { return }
+            library.pendingUndo.append(ready: { [weak library] in library.map { !blocked($0) } ?? true }) { [weak library] in
+                library?.history.undoExclusion(ids, excluded: excluded, generation: generation, deferred: true)
+            }
+            return
+        }
+        guard library.historyWriteGeneration == generation else { return library.refuseUndo() }
+        setHistoriesExcluded(ids, excluded: excluded, registersUndo: !deferred)
     }
 
     /// rekordbox에 쓴(또는 최신 대상에 이미 있던) 보존 기록에 rekordbox 기록 ID를 남긴다(반영 세션이 쓴 뒤 다시 읽기 전에 부른다).

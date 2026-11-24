@@ -86,6 +86,8 @@ public struct DraftStore: Sendable {
     /// 디스크의 재생 목록 초안(없으면 빈 초안, 읽지 못하면 던진다). 바깥(CLI)에서 바꾼 초안을 받을 때 손상 파일을 빈 초안으로 받지 않게 한다
     public var readPlaylistDraft: @Sendable () throws -> PlaylistDraft
     public var savePlaylistDraft: @MainActor (PlaylistDraft) throws -> Void
+    /// 재생 목록 초안을 저장하되 식별자가 없는 단계 가운데 주어진 자리는 그 출처를 잇는다(⌘Z가 되살린 단계, #295 E6). nil이면 그 출처를 잇지 못한다
+    public var savePlaylistDraftOrigins: (@MainActor (PlaylistDraft, [Int: Set<DraftOrigin>]) throws -> Void)?
     /// 재생 목록 초안 파일 잠금(#260): 앱이 rekordbox에 쓰는 동안 들고 있어 CLI가 초안 파일을 고치지 못하게 한다.
     /// 잡으면 푸는 함수, 다른 실행이 `wait`초 넘게 들고 있으면 nil. 잠금이 없는 구현은 늘 잡는다
     public var lockPlaylistDraft: @Sendable (_ wait: TimeInterval) -> (@Sendable () -> Void)? = { _ in {} }

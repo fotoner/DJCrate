@@ -285,8 +285,10 @@ public enum StampedDrafts {
     /// 재생 목록 초안을 통째로 저장한다: 단계 식별자를 맞추고(`PlaylistStepStamping.save`) 도장을 갱신한다. 초안 잠금 안에서 한다.
     /// - Parameter expecting: 주면 지금 파일의 초안이 이것과 같을 때만 저장한다(CLI가 계획한 원본의 재확인과 저장을 한 잠금에서 한다).
     ///   다르면 저장하지 않고 false
+    /// - Parameter freshOrigins: 식별자가 없는 단계 가운데 이을 출처가 있는 단계(자리 → 출처, `PlaylistStepStamping.save`)
     @discardableResult
-    public static func savePlaylist(_ draft: PlaylistDraft, url: URL, origin: DraftOrigin, expecting: PlaylistDraft? = nil) throws -> Bool {
+    public static func savePlaylist(_ draft: PlaylistDraft, url: URL, origin: DraftOrigin, expecting: PlaylistDraft? = nil,
+                                    freshOrigins: [Int: Set<DraftOrigin>] = [:]) throws -> Bool {
         let home = url.deletingLastPathComponent()
         return try DraftStampStore.withLock(home: home) {
             // 저장만 하면 읽지 못하는 파일은 저장소가 옮겨 보관하고 새로 쓴다. 이때 빈 파일과 다르다(`previousUnreadable`): 기존 도장의 출처를 잇고
@@ -303,7 +305,7 @@ public enum StampedDrafts {
                 unreadable = true
             }
             let result = try PlaylistStepStamping.save(draft, previous: current, entries: readPlaylistEntries(home: home), origin: origin,
-                                                       previousUnreadable: unreadable, newID: { UUID() },
+                                                       previousUnreadable: unreadable, freshOrigins: freshOrigins, newID: { UUID() },
                                                        newRevision: { try DraftStampStore.nextRevisions(1, home: home)[0] })
             // 도장을 초안 파일보다 먼저 쓴다: 도장 기록에 실패하면 초안 파일은 한 바이트도 바뀌지 않고 오류를 던진다(앱이 옛 메모리로 저장해
             // 아직 받지 않은 바깥 편집을 지우는 일이 없다). 도장을 쓴 뒤 파일 쓰기 전에 멈추면 도장의 해시가 파일과 달라 제안 쪽으로만 틀어진다.

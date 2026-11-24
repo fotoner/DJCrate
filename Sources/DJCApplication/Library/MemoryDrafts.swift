@@ -213,11 +213,12 @@ public final class MemoryDrafts: Sendable {
     }
 
     /// 재생 목록 초안을 통째로 저장한다: 단계 식별자를 맞추고 도장을 갱신한다(실제 저장소와 같은 `PlaylistStepStamping.save`)
-    private func savePlaylist(_ draft: PlaylistDraft, origin: DraftOrigin) {
+    private func savePlaylist(_ draft: PlaylistDraft, origin: DraftOrigin, freshOrigins: [Int: Set<DraftOrigin>] = [:]) {
         state.withLock { state in
             var next = state.lastDraftRevision
             guard let result = try? PlaylistStepStamping.save(draft, previous: state.playlist, entries: state.playlistEntries, origin: origin,
-                                                              newID: { MemoryCueIDs.next() }, newRevision: { next += 1; return DraftRevision(next) }) else { return }
+                                                              freshOrigins: freshOrigins, newID: { MemoryCueIDs.next() },
+                                                              newRevision: { next += 1; return DraftRevision(next) }) else { return }
             state.lastDraftRevision = next
             state.playlist = result.draft
             state.playlistEntries = result.entries
@@ -371,6 +372,7 @@ public final class MemoryDrafts: Sendable {
         store.removeWrittenSteps = { self.removeWrittenSteps($0) }
         store.markSuggestions = { self.markSuggestions($0, playlistSteps: $1) }
         store.adoptLegacyDrafts = { self.adoptLegacyDrafts() }
+        store.savePlaylistDraftOrigins = { draft, origins in self.savePlaylist(draft, origin: origin, freshOrigins: origins) }
         return store
     }
 }

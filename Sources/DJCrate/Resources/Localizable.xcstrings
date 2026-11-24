@@ -43267,6 +43267,22 @@
         }
       }
     },
+    "저장한 뒤라 되돌릴 수 없는 편집이 있어 실행 취소 기록을 비웠으니 필요하면 다시 편집하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Undo history was cleared because an edit can no longer be undone after saving. Edit again if needed."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存後に取り消せない編集があるため取り消し履歴を消去しました。必要なら編集し直してください"
+          }
+        }
+      }
+    },
     "저장한 라이브러리를 다시 읽는 중…" : {
       "localizations" : {
         "en" : {

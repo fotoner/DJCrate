@@ -36,6 +36,26 @@ public struct EditPlaylists: Sendable {
     @MainActor
     public func saveDraft(_ draft: PlaylistDraft) throws { try drafts.savePlaylistDraft(draft) }
 
+    /// 재생 목록 초안을 저장하되 식별자가 없는 단계 가운데 주어진 자리는 그 출처를 잇는다(⌘Z가 되살린 단계, #295 E6).
+    /// 그 저장을 모르는 포트면 보통 저장이다(되살린 단계는 이 포트의 출처를 받는다)
+    @MainActor
+    public func saveDraft(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>]) throws {
+        guard !freshOrigins.isEmpty, let save = drafts.savePlaylistDraftOrigins else { return try saveDraft(draft) }
+        try save(draft, freshOrigins)
+    }
+
+    /// 디스크 초안의 단계 출처(식별자 → 출처, #295 E6). ⌘Z 단계가 편집 전·뒤 단계의 출처를 기록한다. 읽지 못하면 빈 사전
+    public func stepOrigins() -> [UUID: Set<DraftOrigin>] {
+        guard let disk = try? drafts.readPlaylistDraft() else { return [:] }
+        let stamps = drafts.playlistStamps()
+        guard stamps.count == disk.steps.count else { return [:] }
+        var origins: [UUID: Set<DraftOrigin>] = [:]
+        for (step, stamp) in zip(disk.steps, stamps) {
+            if let id = step.id { origins[id] = stamp.origins }
+        }
+        return origins
+    }
+
     /// 디스크의 재생 목록 초안을 읽는다(없으면 빈 초안, 읽지 못하면 던진다). 앱은 편집 전에 바깥(CLI)에서 바뀌었는지 본다(#260)
     public func loadDraft() throws -> PlaylistDraft { try drafts.readPlaylistDraft() }
 
@@ -134,6 +154,11 @@ public struct EditPlaylists: Sendable {
         public var copied: [DraftRevision: URL] = [:]
         /// 사본을 남기지 못해 남긴 단계. 있으면 정리가 끝나지 않았다
         public var copyFailed: Set<DraftRevision> = []
+        /// 이번 쓰기가 rekordbox에 쓴 단계의 식별자(이미 그 모양이라 바꾸지 않은 단계 포함). 정리·사본에 실패해 초안에 남은 단계도 든다.
+        /// 앱의 ⌘Z가 그 편집의 단계가 쓰였는지 본다(#295 E6)
+        public var writtenSteps: Set<UUID> = []
+        /// 이번 쓰기가 만든 목록의 `new:키` → 받은 rekordbox ID(정리하지 못해 아직 옮기지 않은 것 포함, #295 E6)
+        public var writtenIDs: [String: String] = [:]
 
         /// 정리가 모두 끝났다(쓴 단계를 빼고, 남은 단계와 연결 기록의 연결 ID를 옮겨 저장했다).
         /// 끝나지 않았으면 부르는 쪽은 미정리 목록을 지우지 않고 그 대상의 다음 쓰기를 보류한 채 다음 정리 때 다시 한다(R22)
@@ -167,7 +192,10 @@ public struct EditPlaylists: Sendable {
                 newPlaylistIDs: Self.newPlaylistIDs(written, outcomes: outcomes), backups: backups, backupFolder: backupFolder)
             // 이번에 쓴 단계의 식별자: 메모리 초안에서 이 단계만 뺀다
             let writtenIDs = Set(zip(written.steps, attempts).filter { $0.1.outcome == .written }.compactMap(\.0.id))
-            return cleanUp(cleanup, memory: memoryUnsaved ? (current, writtenIDs) : nil, imports: imports, importsLoadFailed: importsLoadFailed)
+            var result = cleanUp(cleanup, memory: memoryUnsaved ? (current, writtenIDs) : nil, imports: imports, importsLoadFailed: importsLoadFailed)
+            result.writtenSteps = writtenIDs
+            result.writtenIDs = cleanup.newPlaylistIDs
+            return result
         }
         var finished = Self.afterWrite(written, outcomes: outcomes, current: current)
         // 쓰는 동안(또는 1초 바깥 변경 확인 전에) CLI가 디스크 초안 뒤에 더한 편집은 남긴다(#260). 메모리 초안으로 저장하면 사라진다
@@ -176,6 +204,8 @@ public struct EditPlaylists: Sendable {
             finished.draft = kept
         }
         var cleanup = WriteCleanup(draft: finished.draft, ids: finished.ids)
+        cleanup.writtenSteps = Set(zip(written.steps, outcomes).filter { $0.1.status != .blocked }.compactMap(\.0.id))
+        cleanup.writtenIDs = finished.ids
         if let draft = finished.draft {
             do { try saveDraft(draft) } catch { cleanup.draftError = error }
         }
