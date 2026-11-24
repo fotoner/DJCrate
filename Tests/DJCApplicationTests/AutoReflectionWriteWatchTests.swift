@@ -138,6 +138,31 @@ struct AutoReflectionWriteWatchTests {
         #expect(w.writes.count == 2 && w.writes.last?.drafts.map(\.trackUUID) == ["b"], "쓰기 전 기준을 잇는다(관문은 다시 막는다)")
     }
 
+    /// 자동 쓰기가 끝나고 첫 관찰 전에 차례를 기다리던 수동 쓰기(⌘S)가 파일을 바꾸면 그 결과를 새 기준으로 받는다: 앞 자동 쓰기의 기대 기준으로
+    /// 견주어 조용함을 처음부터 세지 않는다(리뷰 F7)
+    @Test func 자동_쓰기_뒤_첫_관찰_전에_수동_쓰기가_쓰면_그_결과를_새_기준으로_받는다() async throws {
+        let w = AutoReflectionWorld()
+        w.writable("a", "b")
+        let hold = WriteHold()
+        w.h.script.duringWrite = { hold.wait() }
+        try await Self.ready(w)
+        hold.hold()
+        try await w.advanceIntoWrite { hold.isWaiting }
+        let engine = w.engine!, fakes = w.fakes
+        let manual = Task { @MainActor in
+            await engine.exclusive {
+                fakes.setQuietStamps(Self.otherDatabase)
+                return ReflectionOutcome.written(ReflectionHarness.report(), preview: ReflectionHarness.report(), followUp: [])
+            }
+        }
+        // 수동 쓰기가 차례를 기다리기 시작한다(첫 줄에서 기다림을 알린다)
+        for _ in 0..<5 { await Task.yield() }
+        hold.release()
+        _ = await manual.value
+        try await w.settle()
+        try await Self.nextEditSavesAfterTEdit(w, "수동 쓰기가 바꾼 파일을 새 기준으로 받아 조용함을 잇는다")
+    }
+
     // MARK: - 처음부터 센다
 
     /// 쓰는 동안 rekordbox가 켜졌다 꺼지면 조용함을 처음부터 센다. 실행 경계도 넘긴다(R23)

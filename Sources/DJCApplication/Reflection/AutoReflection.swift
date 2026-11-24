@@ -322,8 +322,12 @@ public final class AutoReflection {
         var wrote = false
         defer {
             isWriting = false
-            // 수동 쓰기 동안은 지켜보지 못했다: 쓴 것으로 바뀐 파일만 새 기준으로 받고, 틈이 길면 조용함을 처음부터 다시 센다
-            if wrote { rebaselineQuiet = true }
+            // 수동 쓰기 동안은 지켜보지 못했다: 쓴 것으로 바뀐 파일만 새 기준으로 받고, 틈이 길면 조용함을 처음부터 다시 센다.
+            // 앞 자동 쓰기의 기대 기준은 버린다(수동 쓰기가 바꾼 파일을 바깥 변경으로 보지 않게, #295 리뷰 F7)
+            if wrote {
+                rebaselineQuiet = true
+                expectAfterWrite = nil
+            }
             inventoryStale = true
             resumeTurn()
             wake()
