@@ -33,8 +33,8 @@ public struct AutoReflectionTiming: Equatable, Sendable {
         self.successToasts = successToasts
     }
 
-    /// 스펙 가정 절의 값: 3초·10초·30초·50곡·200행·5번
-    public static let standard = Self(editDelay: .seconds(3), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50,
+    /// 스펙 가정 절의 값: 1초·10초·30초·50곡·200행·5번(T_edit는 사용감 값이라 1초로 줄였다, #295 E3)
+    public static let standard = Self(editDelay: .seconds(1), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50,
                                       rowLimit: 200, successToasts: 5)
 }
 
