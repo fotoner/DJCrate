@@ -312,7 +312,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 
 DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HOME`으로 이 자리를 바꾼다. 시험 프로세스는 임시 폴더를 쓴다. 로그는 `~/Library/Logs/DJCrate/`에 있다. 환경 변수는 `docs/cli.md` "환경 변수"에 있다.
 
-- 초안: `cue-drafts/`, `grid-drafts/`, `gain-drafts.json`, `tag-drafts/`
+- 초안: `cue-drafts/`, `grid-drafts/`, `gain-drafts.json`(base는 `gain-draft-bases.json`), `tag-drafts/`
 - 앨범아트 초안: `artwork-drafts/`. 앨범아트 초안과 고른 앨범아트 사본이 있다.
 - 재생 목록 초안: `playlist-drafts.json`. 재생 목록 편집을 순서대로 적는다. 옆의 `playlist-drafts.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다.
 - 초안 도장: `draft-stamps/`. 초안마다 출처, 판, 내용 해시를 적는다.
