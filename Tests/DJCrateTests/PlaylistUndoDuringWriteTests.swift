@@ -319,6 +319,21 @@ struct PlaylistUndoDuringWriteTests {
         #expect(!undo.canRedo, "미룬 실행 취소는 실행 복귀를 남기지 않는다")
     }
 
+    /// 쓰는 중 ⌘Z 두 번: 앞 요청(합치기)이 무효라 ⌘Z 기록을 비우면 뒤 요청(재생 목록)도 실행하지 않는다(리뷰 F3)
+    @Test func 쓰는_중_누른_실행_취소_두_번은_앞이_무효면_뒤도_실행하지_않는다() throws {
+        event { playlists.renamePlaylist("B", to: "새 이름") }
+        event { try? store.setMergeDrafts([Self.merge("m1")]) }
+        beginDraftWrite()
+        undo.undo()
+        undo.undo()
+        store.mergeWriteGeneration += 1
+        endDraftWrite()
+        store.pendingUndo.flush()
+        #expect(store.activityLog.latest?.title == clearedText)
+        #expect(playlists.playlistDraft.edits == [.rename(playlist: .id("B"), name: "새 이름")], "뒤 요청을 실행하지 않았다")
+        #expect(store.pendingUndo.isEmpty)
+    }
+
     @Test func 쓰는_중_누른_합치기_실행_취소는_그새_저장되면_실행하지_않고_알린다() throws {
         event { try? store.setMergeDrafts([Self.merge("m1")]) }
         beginDraftWrite()

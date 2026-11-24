@@ -38,10 +38,11 @@ final class LibraryStore {
         pendingUndo.removeAll()
         playlists.forgetWrittenSteps()
     }
-    /// 실행할 수 없는 ⌘Z(맨 위 단계·미룬 ⌘Z): ⌘Z 기록을 모두 비우고(아래 다른 편집을 실행하지 않는다) 이유를 한 번 알린다(#295 E6).
+    /// 실행할 수 없는 ⌘Z(맨 위 단계·미룬 ⌘Z): ⌘Z 기록과 미뤄 둔 ⌘Z 요청을 모두 비우고(아래 다른 편집을 실행하지 않는다) 이유를 한 번 알린다(#295 E6).
     /// 저장 알림을 덮지 않는다(`notify`)
     func refuseUndo() {
         undoSteps.removeAll(from: undoManager)
+        pendingUndo.removeAll()
         playlists.forgetWrittenSteps()
         notifyUndoCleared()
     }
