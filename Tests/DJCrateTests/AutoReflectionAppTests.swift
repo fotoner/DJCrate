@@ -260,6 +260,28 @@ struct AutoReflectionAppTests {
         #expect(store.toast?.title == String(ui: "USB에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 시도하세요"))
     }
 
+    /// 덱에 올린 곡을 라이브러리에서 고치면(태그·평점·곡 색) 덱 편집으로 알린다: 1초 뒤 쓰기가 그 곡을 잠가 이어서 덱에서 고친 편집이 버려지지 않게
+    /// 3초를 기다린다(#295 리뷰 F6). 다른 곡의 태그 편집은 그대로 1초다
+    @Test func 덱에_올린_곡의_태그를_라이브러리에서_고치면_덱_편집으로_알린다() {
+        let store = store()
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false)
+        let app = AppComposition(store: store, deck: deck)
+        let row = ReflectionPresenterTests.row("deck-track")
+        deck.row = row
+        store.rowsByUUID[row.track.uuid] = row
+        var edited: [Set<String>] = []
+        let wired = store.onTagDraftsEdited
+        store.onTagDraftsEdited = { uuids in
+            edited.append(uuids)
+            wired?(uuids)
+        }
+        store.tags.applyTagEdits([(row, .title, "새 제목")])
+        #expect(!store.tagDrafts.isEmpty, "태그 편집이 확정됐다")
+        #expect(edited == [["deck-track"]], "태그 편집이 고친 곡을 알린다")
+        #expect(app.tagDraftsEdited(["deck-track"]), "덱 곡이면 덱 편집이다")
+        #expect(!app.tagDraftsEdited(["other-track"]), "다른 곡은 라이브러리 편집이다")
+    }
+
     @Test func 앱_상태를_자동_저장의_보류_사유로_옮긴다() {
         let store = store()
         let app = AppComposition(store: store, deck: DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false))

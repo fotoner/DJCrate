@@ -18,6 +18,8 @@ final class LibraryStore {
     }
     /// ⌘Z 단계 목록(덱·태그·재생 목록·합치기·재생 기록이 한 차례로 건다, 컨실 2라운드 A). 맨 위 단계만 판정한다(`UndoSteps`)
     let undoSteps = UndoSteps()
+    /// 태그 초안(평점·곡 색 포함)을 고친 곡을 알린다(덱에 올린 곡이면 자동 저장이 덱 편집으로 기다린다, #295 리뷰 F6)
+    @ObservationIgnored var onTagDraftsEdited: ((Set<String>) -> Void)?
     /// 합치기·재생 기록을 rekordbox에 쓴 횟수: 그 전에 건 그 종류의 ⌘Z 단계는 저장 뒤 되돌리지 않는다(R12, 맨 위가 되면 메뉴가 꺼진다)
     @ObservationIgnored var mergeWriteGeneration = 0
     @ObservationIgnored var historyWriteGeneration = 0

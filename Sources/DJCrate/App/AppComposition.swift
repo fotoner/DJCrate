@@ -125,6 +125,8 @@ final class AppComposition {
         }
         // 저장 입구가 엔진 발행 뒤에 바뀐 시트·USB 쓰기를 지금 상태로 다시 본다(S3)
         libraryWindow.liveHolds = { [weak self] in self?.saveBlockingHolds() ?? [] }
+        // 덱에 올린 곡의 태그를 라이브러리에서 고치면 덱 편집으로 기다린다(#295 리뷰 F6)
+        store.onTagDraftsEdited = { [weak self] uuids in self?.tagDraftsEdited(uuids) }
     }
 
     /// 자동 저장 엔진(#403)을 실제 포트로 만든다: 이 Mac의 시계·프로세스 목록·파일 상태·쓰기 잠금, `DJC_HOME`의 기록 파일,
@@ -592,6 +594,16 @@ final class AppComposition {
             autoReflection.start()
             observeDrafts(for: autoReflection)
         }
+    }
+
+    /// 덱에 올린 곡의 태그(평점·곡 색 포함)를 라이브러리에서 고쳤으면 덱 편집으로 알린다(#295 리뷰 F6): 1초 뒤 쓰기가 그 곡을 잠그면
+    /// 이어서 덱에서 고친 편집이 버려진다. 다른 곡의 태그 편집은 라이브러리 편집(T_edit)이다
+    /// - Returns: 덱 편집으로 알렸는지
+    @discardableResult
+    func tagDraftsEdited(_ uuids: Set<String>) -> Bool {
+        guard let deckUUID = deck.row?.track.uuid, uuids.contains(deckUUID) else { return false }
+        autoReflection?.edited(fromDeck: true)
+        return true
     }
 
     /// 업데이트 전 곡 초안을 이관한 활동 기록(#295 E1)

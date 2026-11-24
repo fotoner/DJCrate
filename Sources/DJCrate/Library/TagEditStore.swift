@@ -198,6 +198,7 @@ final class TagEditStore {
         library.rememberTagSaves(changed)
         edit.save(changed)
         library.tagRevision += 1
+        library.onTagDraftsEdited?(Set(drafts.keys))
     }
 }
 
