@@ -91,7 +91,7 @@ struct ReflectionJournalActionTests {
 
     func world(changedSince: Bool = false, draft: (key: DraftKey, revision: DraftRevision, hash: DraftContentHash)? = nil, home: URL? = nil,
                journalHome: URL? = nil, entry: RekordboxWriteJournal.Entry = .drafts, pointSnapshot: String? = nil,
-               store existing: LibraryStore? = nil, prompter customPrompter: (any ReflectionPrompter)? = nil) -> World {
+               store existing: LibraryStore? = nil, prompter customPrompter: (any ReflectionPrompter)? = nil, pointRestores: Bool = false) -> World {
         let folder = home ?? FileManager.default.temporaryDirectory.appending(path: "djc-journal-action-\(UUID().uuidString)")
         let store = existing ?? LibraryStore.test(activityLog: ActivityLog(), saveTagDrafts: { _ in }, draftHome: folder, movesDamagedDrafts: false,
                                                  takeLiveSnapshot: { _ in throw DJCError.snapshotNotFound })
@@ -105,6 +105,12 @@ struct ReflectionJournalActionTests {
         calls.pointSnapshot = pointSnapshot
         let finding = RekordboxJournalFinding(journal: journal, changedSince: changedSince, database: stamp)
         var gate = RekordboxWriteGate.restoringOnly
+        if pointRestores {
+            gate.restorePointSnapshot = { entry, _, _, _, _ in
+                let point = RekordboxPointSnapshotEntry(url: entry, metadata: RekordboxPointSnapshotMetadata(name: "", kind: .manual, createdAt: .now))
+                return RekordboxPointRestoreReport(restored: point, beforeRestore: point)
+            }
+        }
         // 판정마다 기록에 지금 적힌 시점을 싣는다(시점 복원은 재시도하며 목표가 바뀔 수 있다)
         gate.journal = { _, _ in
             guard calls.present else { return .none }
@@ -467,6 +473,30 @@ struct ReflectionJournalActionTests {
         await w.coordinator.restoreJournal()
         #expect(w.calls.restores.count == 1)
         #expect(await waitForState { feed.status == .stopped(.stoppedAfterRestore) }, "복원 뒤 자동 저장이 멈춘다(R8)")
+        engine.stop()
+        withExtendedLifetime((w, home)) {}
+    }
+
+    /// 사용자가 고른 시점 복원 뒤에는 자동 저장이 멈추지 않는다(E2). 기록으로 복원만 멈춘다(위 시험)
+    @Test func 시점_복원_뒤에는_자동_저장이_멈추지_않는다() async throws {
+        let w = world(pointRestores: true)
+        w.calls.cleared()
+        let home = try TemporaryFolder(prefix: "djc-point-engine")
+        let feed = w.coordinator.autoFeed
+        let records = AutoReflectionRecords.live(home: home.url)
+        let ports = AutoReflectionPorts(clock: .live, runState: { .stopped },
+                                        quietStamps: { _ in LibraryQuietStamps(walSize: nil, shmExists: false, database: nil, playlistsXML: nil) },
+                                        writeLock: .live(RekordboxWriteLocks(folder: home.url.appending(path: "locks"))),
+                                        records: records, pointSnapshot: { .satisfied }, appHolds: { [] },
+                                        publish: { feed.update($0, $1) })
+        let engine = AutoReflection(session: w.coordinator.session, ports: ports, run: .live)
+        w.coordinator.engine = engine
+        engine.start()
+        #expect(await waitForState { feed.status == .saved }, "시작 판정을 마친다")
+        _ = try await w.coordinator.restorePointSnapshot(home.url.appending(path: "point"), snapshots: home.url, changedTracks: [])
+        await engine.recordSaved()
+        #expect(try records.load().stop == nil, "시점 복원 뒤 멈춤을 남기지 않는다")
+        #expect(feed.status != .stopped(.stoppedAfterRestore))
         engine.stop()
         withExtendedLifetime((w, home)) {}
     }

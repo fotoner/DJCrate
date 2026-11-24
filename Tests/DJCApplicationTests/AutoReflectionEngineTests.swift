@@ -567,22 +567,75 @@ struct AutoReflectionEngineTests {
         #expect(w.fakes.records.record.stop == nil)
     }
 
-    // MARK: - R8 복원 뒤 멈춤
+    // MARK: - R8 복원 뒤(E2: 사용자가 한 복원은 멈추지 않는다)
 
-    @Test func 복원하면_멈추고_되살린_초안은_제안이다() async throws {
+    /// 저장 알림(confirmed)·메뉴의 「저장 전으로 복원」 뒤 자동 저장은 멈추지 않는다. 되살린 초안은 제안으로 남고, 새 사람 편집은
+    /// 조용함 조건을 채운 뒤 자동으로 쓴다(E2)
+    @Test(arguments: [true, false])
+    func 사용자가_한_복원_뒤에는_멈추지_않고_되살린_초안만_제안으로_남는다(_ fromToast: Bool) async throws {
         let w = AutoReflectionWorld()
-        w.writable("a")
+        w.writable("a", "b")
         w.h.backupDrafts = RekordboxBackupDrafts(cues: [ReflectionHarness.cue("a")])
         w.h.state.rows["a"] = ReflectionHarness.row("a")
         try await w.start()
-        let outcome = await w.engine.exclusive { [session = w.h.session] in await session.restore(ReflectionHarness.backup(), confirmed: true) }
+        try await w.advance(10)
+        let outcome = await w.engine.exclusive { [session = w.h.session] in await session.restore(ReflectionHarness.backup(), confirmed: fromToast) }
         guard case .restored = outcome else { Issue.record("복원했다: \(outcome)"); return }
         #expect(w.h.memory.stamp(DraftKey(.cue, "a"))?.origins == [.restored])
         w.h.state.cueDraftUUIDs = ["a"]
+        w.cue("b")
+        try await w.edited()
+        try await w.advance(3)
+        #expect(w.engine.status != .stopped(.stoppedAfterRestore) && w.fakes.records.record.stop == nil, "사용자가 한 복원 뒤 멈추지 않는다")
+        #expect(w.writes.count == 1 && w.writes.first?.drafts.map(\.trackUUID) == ["b"], "새 사람 편집만 자동으로 쓴다")
+        #expect(w.h.memory.cue("a") != nil && w.engine.conditions.leftovers.contains(.suggestion), "되살린 초안은 제안으로 남는다")
+    }
+
+    /// 기록으로 복원(R11)은 지금처럼 멈춘다(E2 범위 밖)
+    @Test func 기록으로_복원하면_지금처럼_멈춘다() async throws {
+        let w = AutoReflectionWorld()
+        w.writable("a")
+        try await w.start()
+        try await w.advance(10)
+        w.engine.restoredFromJournal()
+        try await w.settle()
+        w.cue("a")
         try await w.edited()
         try await w.advance(20)
         #expect(w.writes.isEmpty && w.engine.status == .stopped(.stoppedAfterRestore))
-        #expect(w.engine.conditions.leftovers.contains(.suggestion))
+        await w.engine.recordSaved()
+        #expect(w.fakes.records.record.stop == .afterRestore)
+    }
+
+    /// 「복원하고 지금 편집 남기기」로 남긴 초안은 자동 저장 대상이다: base가 복원 DB와 같으면 쓰이고, 다르면 관문이 막아 확인 필요로 남는다(E2)
+    @Test(arguments: [RekordboxWriteOutcome.Status.written, .blocked])
+    func 복원이_남긴_지금_초안은_base가_같을_때만_자동으로_쓴다(_ status: RekordboxWriteOutcome.Status) async throws {
+        let w = AutoReflectionWorld()
+        w.writable("a", status: status)
+        // 백업의 초안과 지금 초안이 달라 충돌이다: 「복원하고 지금 편집 남기기」(기본 고름)를 고른다
+        w.h.backupDrafts = RekordboxBackupDrafts(cues: [ReflectionHarness.cue("a", at: 12)])
+        w.cue("a", at: 30)
+        w.h.choice = .confirm
+        // 복원 전에 지금 초안이 저장되지 않게 편집 중으로 두고 복원한다
+        w.appHolds = [.editing]
+        try await w.start()
+        try await w.advance(10)
+        #expect(w.writes.isEmpty)
+        let outcome = await w.engine.exclusive { [session = w.h.session] in await session.restore(ReflectionHarness.backup(), confirmed: true) }
+        guard case .restored = outcome else { Issue.record("복원했다: \(outcome)"); return }
+        #expect(w.h.memory.stamp(DraftKey(.cue, "a"))?.origins == [.human], "남긴 지금 초안은 사람 편집 그대로다")
+        w.appHolds = []
+        try await w.edited()
+        try await w.advance(3)
+        #expect(w.engine.status != .stopped(.stoppedAfterRestore), "사용자가 한 복원 뒤 멈추지 않는다")
+        if status == .written {
+            #expect(w.writes.count == 1 && w.writes.first?.drafts.map(\.trackUUID) == ["a"])
+        } else {
+            // 막혀 뺀 판은 다음 판정이 확인 필요로 알린다
+            try await w.advance(1)
+            #expect(w.writes.isEmpty, "관문이 막아 쓰지 않는다")
+            #expect(w.engine.conditions.leftovers.contains(.needsConfirmation))
+        }
     }
 
     // MARK: - R13 시점 스냅샷·백업 조건

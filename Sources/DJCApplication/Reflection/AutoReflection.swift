@@ -261,9 +261,9 @@ public final class AutoReflection {
         wake()
     }
 
-    /// 쓰기 전 백업·복원 시점·중단 기록으로 복원했다(R8): 자동 저장이 멈춘다. ⌘S·저장 단추로 저장에 성공하면 다시 시작한다.
-    /// 중단 기록으로 복원했으면 기록이 지워졌으니 다음 판정에서 기록을 다시 본다
-    public func restored() {
+    /// 중단 기록으로 복원했다(R8·R11): 자동 저장이 멈춘다. ⌘S·저장 단추로 저장에 성공하면 다시 시작한다. 기록이 지워졌으니 다음 판정에서
+    /// 기록을 다시 본다. 사용자가 고른 쓰기 전 백업·복원 시점 복원은 멈추지 않는다(#295 E2): 되살린 초안은 출처(`.restored`)로 제안이 된다
+    public func restoredFromJournal() {
         record.stop = .afterRestore
         saveRecord()
         recheckJournal()
@@ -283,7 +283,7 @@ public final class AutoReflection {
     }
 
     /// 수동 쓰기(⌘S·저장 단추·복원·곡 넣기·빼기·시점 복원)를 엔진의 차례로 한다(직렬 큐). 쓰는 중이면 그 쓰기가 끝난 뒤 다음 자동 저장보다 먼저 한다.
-    /// 결과가 반영 결과면 그것을 보고 멈춤을 풀거나(저장 성공, R7) 멈춘다(복원, R8·백업 뒤 실패, R7).
+    /// 결과가 반영 결과면 그것을 보고 멈춤을 풀거나(저장 성공, R7) 멈춘다(백업 뒤 실패, R7).
     /// 쓰기 전에 시작 정리를 기다리고, 쓰기 기록을 (중단이었으면 다시) 판정하고, 미정리 목록을 정리한다(R11·R22).
     /// - Parameter whenHeld: 정리를 마치지 못해 그 대상의 다음 쓰기를 보류해야 할 때 `work` 대신 부른다(R22: 쓴 재생 목록 단계를 다시 쓰지 않게).
     ///   주지 않으면(복원 등 고치는 쓰기) 그대로 한다
@@ -741,7 +741,7 @@ public final class AutoReflection {
         }
     }
 
-    /// 수동 쓰기의 결과: 저장에 성공하면 멈춤·백업 전 실패 보류·[취소]·확인 필요를 푼다(R7·R14), 복원했으면 멈춘다(R8), 실패하면 기록을 다시 판정한다
+    /// 수동 쓰기의 결과: 저장에 성공하면 멈춤·백업 전 실패 보류·[취소]·확인 필요를 푼다(R7·R14), 복원했으면 기록을 다시 판정한다, 실패하면 기록을 다시 판정한다
     private func noteManual(_ outcome: ReflectionOutcome) async {
         switch outcome {
         case .written:
@@ -753,8 +753,8 @@ public final class AutoReflection {
             preBackupSeen = nil
             saveRecord()
         case .restored:
-            record.stop = .afterRestore
-            saveRecord()
+            // 사용자가 고른 복원(저장 알림·메뉴의 「저장 전으로 복원」)은 멈추지 않는다(#295 E2). 되살린 초안은 출처로 제안이 되고,
+            // 「복원하고 지금 편집 남기기」로 남긴 초안은 관문이 base를 복원한 DB와 견줘 쓴다
             journalStale = true
         case .failed:
             // 수동 저장도 백업을 뜬 뒤 실패했으면 자동 저장이 멈춘다(같은 묶음을 자동으로 다시 쓰지 않게, R7)

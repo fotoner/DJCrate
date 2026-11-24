@@ -134,7 +134,7 @@ public struct AutoReflectionRecord: Codable, Equatable, Sendable {
     public enum Stop: String, Codable, Sendable {
         /// 백업을 뜬 뒤 쓰기·검증에 실패해 복구를 마쳤다(R7)
         case afterFailure
-        /// 쓰기 전 백업·복원 시점·중단 기록으로 복원했다(R8)
+        /// 중단 기록으로 복원했다(R8). 사용자가 고른 쓰기 전 백업·복원 시점 복원은 멈추지 않는다(#295 E2)
         case afterRestore
     }
 
