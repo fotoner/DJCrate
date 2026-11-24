@@ -269,9 +269,15 @@ final class ReflectionCoordinator {
         guard let engine else { return await work() }
         let session = session
         return await engine.exclusive(work, whenHeld: { holds in
-            // 잠금 아래 판정을 하지 못했으면(잠금·기록을 읽다 실패) 디스크·권한을, 정리를 마치지 못했으면 편집 보관을 확인하게 한다
-            let text = holds == [.lockBusy] ? String(ui: "디스크 공간과 권한을 확인한 뒤 다시 시도하세요.") : ReflectionSession.playlistSaveFailureText
-            let outcome = ReflectionOutcome.notice(title: String(ui: "rekordbox에 저장하지 않았습니다"), text: text, lines: [])
+            // 잠금 아래 판정을 하지 못했으면(rekordbox가 켜져 기록을 판정하지 못함·잠금·기록을 읽다 실패) rekordbox 종료나 디스크·권한을,
+            // 정리를 마치지 못했으면 편집 보관을 확인하게 한다
+            let outcome: ReflectionOutcome
+            if holds == [.lockBusy], session.ports.runningApps.isRekordboxRunning() {
+                outcome = .notice(title: String(ui: "rekordbox가 켜져 있어 저장하지 않았습니다"), text: ReflectionPrompts.quitRekordboxText, lines: [])
+            } else {
+                let text = holds == [.lockBusy] ? String(ui: "디스크 공간과 권한을 확인한 뒤 다시 시도하세요.") : ReflectionSession.playlistSaveFailureText
+                outcome = .notice(title: String(ui: "rekordbox에 저장하지 않았습니다"), text: text, lines: [])
+            }
             session.ports.results.publish(outcome)
             return outcome
         })

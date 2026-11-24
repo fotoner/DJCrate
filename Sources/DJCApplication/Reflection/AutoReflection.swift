@@ -95,9 +95,7 @@ public final class AutoReflection {
     private var journalStale = false
     /// 쓰기 잠금을 잡지 못해 기록 판정·정리를 미뤘다. 잡을 때까지 판정마다(대기 초안·실행 조건과 상관없이) 다시 한다(R11)
     private var journalPending = false
-    /// 마지막 정리에서 새 곡 행을 기다려 미룬 곡 넣기 정리가 있다(라이브러리를 다시 읽으면 다시 한다)
-    private var cleanupDeferred = false
-    /// 다음 정리는 방금 다시 읽은 라이브러리로 한다(`libraryReloaded`)
+    /// 다음 정리는 방금 다시 읽은 라이브러리로 한다(`libraryReloaded`. 엔진 시작 전에 끝난 첫 읽기도 시작 정리에 쓴다)
     private var libraryFresh = false
     /// 마지막으로 쓰기 기록을 판정한 때(중단 상태는 가끔 다시 본다: CLI·다른 프로세스가 기록을 정리했을 수 있다)
     private var lastJudged: Date?
@@ -183,10 +181,10 @@ public final class AutoReflection {
         recheckJournal()
     }
 
-    /// 앱이 라이브러리를 다시 읽었다(성공). 새 곡 행을 기다려 미룬 곡 넣기 정리가 있으면 다음 판정에서 잠금 아래 다시 한다.
-    /// 이번 정리는 방금 읽은 라이브러리를 믿는다: 새 곡이 없으면(그 사이 뺐다) 옛 초안을 연결 안 된 초안으로 남기고 끝낸다(R22)
+    /// 앱이 라이브러리를 다시 읽었다(성공). 다음 판정에서 잠금 아래 기록을 다시 판정하고 미정리 목록을 정리한다(엔진이 모르는 사이
+    /// 앱의 곡 넣기가 미룬 정리도 풀린다). 그 정리는 방금 읽은 라이브러리를 믿는다: 새 곡이 없으면(그 사이 뺐다) 옛 초안을 연결 안 된 초안으로
+    /// 남기고 끝낸다(R22). 엔진 시작 전에 온 첫 읽기는 기억해 두었다가 시작 정리에 쓴다
     public func libraryReloaded() {
-        guard cleanupDeferred else { return }
         libraryFresh = true
         recheckJournal()
     }
@@ -233,6 +231,8 @@ public final class AutoReflection {
             // 정리를 마치지 못한 목록이 있으면 쓰지 않는다
             if interrupted == nil, !cleanupHolds.isEmpty, let whenHeld { return whenHeld(cleanupHolds) }
         }
+        // 이 쓰기 동안의 다시 읽기만 "방금 읽은 라이브러리"다(앞서 읽은 표시로 이 쓰기가 미룬 정리를 끝내지 않게)
+        libraryFresh = false
         let result: T
         do {
             result = try await work()
@@ -293,7 +293,6 @@ public final class AutoReflection {
             interrupted = nil
             journalPending = false
             cleanupHolds = resumed.holds
-            cleanupDeferred = resumed.deferred > 0
             if fresh { libraryFresh = false }
         }
         return judged
@@ -630,6 +629,9 @@ public final class AutoReflection {
             await judgeAndClean()
         case .restoreFailed:
             await judgeAndClean()
+        case .added:
+            // 곡 넣기는 앱이 정리를 미뤘을 수 있다(넣은 뒤 다시 읽기 실패): 다음 판정에서 잠금 아래 다시 본다
+            journalStale = true
         default:
             break
         }

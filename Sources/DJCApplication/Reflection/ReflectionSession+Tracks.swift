@@ -53,8 +53,13 @@ extension ReflectionSession {
         let staged = ports.library.state().staged
         let tracks = ReflectionTargets.add(rows).compactMap { row in staged.first { $0.id == row.id } }
             .map { StagedTrackRequest(uuid: $0.uuid, path: $0.path, title: $0.title) }
-        // 저장에 실패한 큐·그리드 초안이 있으면 디스크의 옛 초안을 넣지 않는다(#170).
+        // 저장에 실패한 큐·그리드 초안이 있으면 디스크의 옛 초안을 넣지 않는다(#170). 태그 초안은 다시 저장해 보고, 안 되면 넣지 않는다
+        // (넣기 계획은 메모리 초안을 쓰고 정리는 디스크 판으로 견주므로, 저장하지 못한 채 넣으면 디스크의 옛 값이 되돌리는 제안으로 남는다)
         try requireDraftSaves(for: Set(tracks.map(\.uuid)))
+        ports.library.retryTagSaves()
+        guard ports.library.state().failedTagSaves.isDisjoint(with: tracks.map(\.uuid)) else {
+            throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage)
+        }
         // 미리 보기는 라이브에서 스냅샷을 뜬다: 명시한 사본으로 연 창은 사용자 스냅샷 폴더를 바꾸지 않게 막는다
         guard location.allowsSnapshot else { throw DJCError.writeRefused(Self.snapshotRefusedMessage) }
         var plans: [TrackAddPlan] = [], uuids: [String: String] = [:], without: [String: String] = [:], unreadable: [String] = []

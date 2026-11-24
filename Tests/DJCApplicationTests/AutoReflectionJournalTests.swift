@@ -224,4 +224,66 @@ struct AutoReflectionJournalTests {
         try await w.settle()
         #expect(w.h.gateCalls.value.removedCleanupLists == ["op-add"] && w.h.memory.cue("s") != nil)
     }
+
+    // MARK: - 4라운드 O16
+
+    /// 미룬 곡 넣기 정리가 남은 목록(핫큐를 썼고 CLI가 새 판을 남겼다. 새 곡 행이 없다)
+    static func deferredTrackAdd(_ w: AutoReflectionWorld) throws -> DraftCleanupList {
+        var written = CueDraft(trackUUID: "s")
+        written.place(EditableCue(id: UUID(), kind: .hot(0), time: 12))
+        w.h.memory.save(written)
+        let stamp = try #require(w.h.memory.stamp(DraftKey(.cue, "s")))
+        var later = written
+        later.place(EditableCue(id: UUID(), kind: .hot(1), time: 30))
+        w.h.memory.save(later, origin: .cli)
+        let add = DraftCleanupList.TrackAdd(stagedUUID: "s", trackUUID: "new-s",
+                                            written: [WrittenDraft(key: DraftKey(.cue, "s"), revision: stamp.revision,
+                                                                   contentHash: try DraftContentHash(of: written))],
+                                            values: .init(cues: written.cues), blockedFields: [])
+        return DraftCleanupList(operationID: "op-add", target: MemoryWriteLocks.key(for: w.h.session.target.database), draftHome: "/drafts",
+                                backupFolder: "add-1", trackAdds: [add])
+    }
+
+    @Test func 엔진_시작보다_먼저_끝난_첫_읽기도_시작_정리에_쓴다() async throws {
+        let w = AutoReflectionWorld()
+        w.run = .off(.debugBuild)
+        w.h.script.cleanupLists = [try Self.deferredTrackAdd(w)]
+        // 다시 켰고, 첫 읽기(새 곡 없음)가 엔진 시작 전에 끝났다
+        w.beforeStart = { $0.libraryReloaded() }
+        try await w.start()
+        #expect(w.h.gateCalls.value.removedCleanupLists == ["op-add"] && w.h.memory.cue("s") != nil)
+    }
+
+    @Test func 넣은_직후_다시_읽기가_실패해_미룬_정리는_다음_다시_읽기에서_한다() async throws {
+        let w = AutoReflectionWorld()
+        w.run = .off(.debugBuild)
+        let track = ReflectionHarness.staged("s")
+        w.h.state.staged = [track]
+        var draft = CueDraft(trackUUID: "s")
+        draft.place(EditableCue(id: UUID(), kind: .hot(0), time: 12))
+        w.h.memory.save(draft)
+        w.h.script.addPreview.added = [ReflectionHarness.track(track.path)]
+        var outcome = ReflectionHarness.track(track.path, uuid: "new-s")
+        outcome.cuesWritten = 1
+        var report = RekordboxTrackWriteReport(dryRun: false)
+        report.added = [outcome]
+        report.backup = "/backups/add-1"
+        w.h.script.add = report
+        // 넣는 동안 CLI가 새 판을 남겼고(새 곡 행이 있어야 옮긴다), 넣은 뒤 다시 읽기는 실패한다
+        var later = draft
+        later.place(EditableCue(id: UUID(), kind: .hot(1), time: 30))
+        let snapshot = later
+        w.h.script.duringAdd = { [memory = w.h.memory] in memory.save(snapshot, origin: .cli) }
+        w.h.reloadSucceeds = false
+        try await w.start()
+        let engine = w.engine!, path = track.path
+        _ = await engine.exclusive { [session = engine.session] in await session.addTracks(rows: [ReflectionHarness.row("djc-s", path: path)]) }
+        try await w.settle()
+        #expect(w.h.gateCalls.value.removedCleanupLists.isEmpty, "새 곡 행이 없어 정리를 미룬다")
+        // 사용자가 다시 읽었다(새 곡은 그 사이 rekordbox에서 뺐다)
+        w.h.reloadSucceeds = true
+        engine.libraryReloaded()
+        try await w.settle()
+        #expect(w.h.gateCalls.value.removedCleanupLists.count == 1 && w.h.memory.cue("s") != nil)
+    }
 }

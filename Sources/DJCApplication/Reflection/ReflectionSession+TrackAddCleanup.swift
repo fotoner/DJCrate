@@ -108,7 +108,8 @@ extension ReflectionSession {
             guard let base = add.values.tags ?? state.rows[new]?.tagFields else { return missingRow }
             // 넣기 때 태그 초안이 있었는지(있었으면 그 판이 넣기 묶음에 실렸다): 넣기 계획에 실린 칸을 가린다
             let hadDraft = add.written.contains { $0.key == DraftKey(.tag, add.stagedUUID) }
-            let moved = AddedTrackDrafts.movedTagDraft(current, written: base, blocked: Set(add.blockedFields), hadDraft: hadDraft, to: new)
+            let moved = AddedTrackDrafts.movedTagDraft(current, written: base, blocked: Set(add.blockedFields), hadDraft: hadDraft,
+                                                       writtenKey: add.values.musicalKey, to: new)
             if moved.hasChanges {
                 port.saveTags([moved])
                 apply(.tagDrafts([moved]))
@@ -169,13 +170,23 @@ extension AddedTrackDrafts {
     /// - 넣기 때 태그 초안이 있었으면 그 계획에 실린 칸 가운데 쓴 값과 새 판이 다른 칸(파일 값으로 되돌린 칸 포함)
     /// - 넣기에서 막힌 칸
     /// 이다. 넣기 때 태그 초안이 없었으면 계획은 음원 태그를 썼으니 바꾸지 않은 칸을 쓴 값과 견주지 않는다(추가 목록 곡 행에 없던 칸을 지우지 않게).
-    /// 쓰지 않은 미확정 키(추정·파일 키: 쓴 키가 비었고 새 판이 키를 바꾸지 않았다)는 옮기지 않는다
-    public static func movedTagDraft(_ current: TagDraft, written: TagFields, blocked: Set<String>, hadDraft: Bool = true, to uuid: String) -> TagDraft {
+    /// 쓰지 않은 미확정 키(추정·파일 키: 쓴 키가 비었고 새 판이 키를 바꾸지 않았다)는 옮기지 않는다.
+    /// 넣기에서 키를 실제로 썼으면(`writtenKey`) 새 판의 확정 키(없으면 빈 키)가 그와 다를 때 그 값으로 옮긴다(원래 값으로 되돌린 키 포함)
+    public static func movedTagDraft(_ current: TagDraft, written: TagFields, blocked: Set<String>, hadDraft: Bool = true, writtenKey: String? = nil,
+                                     to uuid: String) -> TagDraft {
         var keys = Set(current.changedKeys).union(TagFields.Key.allCases.filter { blocked.contains($0.rawValue) })
         if hadDraft { keys.formUnion(plannedTagKeys.filter { current.fields[$0] != written[$0] }) }
         if written.musicalKey.isEmpty, current.base.musicalKey == current.fields.musicalKey { keys.remove(.musicalKey) }
+        var values: [TagFields.Key: String] = [:]
+        if let writtenKey, !writtenKey.isEmpty {
+            let confirmed = confirmedKey(current) ?? ""
+            if confirmed != writtenKey {
+                keys.insert(.musicalKey)
+                values[.musicalKey] = confirmed
+            }
+        }
         var moved = TagDraft(trackUUID: uuid, base: written)
-        for key in keys { moved.fields[key] = current.fields[key] }
+        for key in keys { moved.fields[key] = values[key] ?? current.fields[key] }
         return moved
     }
 

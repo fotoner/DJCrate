@@ -17,6 +17,8 @@ final class AutoReflectionWorld {
     var snapshotCalls: [Int] = []
     /// 시점 스냅샷 포트를 부를 때 한다(준비하는 동안 바깥에서 생긴 일을 흉내 낸다)
     var onSnapshot: (@MainActor () -> Void)?
+    /// 엔진을 만든 뒤 시작하기 전에 한다(앱의 첫 읽기가 엔진 시작보다 먼저 끝나는 경우)
+    var beforeStart: (@MainActor (AutoReflection) -> Void)?
     var run: AutoReflectionRun = .live
     var timing = AutoReflectionTiming(editDelay: .seconds(3), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50, rowLimit: 200,
                                       successToasts: 5)
@@ -55,6 +57,7 @@ final class AutoReflectionWorld {
             return snapshot
         })
         engine = AutoReflection(session: h.session, ports: ports, run: run, timing: timing)
+        beforeStart?(engine)
         engine.start()
         try await settle()
     }

@@ -432,4 +432,35 @@ struct ReflectionSessionTrackAddCleanupTests {
         #expect(resumed.finished == 1 && h.gateCalls.value.removedCleanupLists == ["op-add"])
         #expect(h.memory.cue("s") != nil && h.memory.cue("new-s") == nil)
     }
+
+    // MARK: - 4라운드 S24·G14
+
+    @Test func 넣기에서_쓴_키를_되돌린_새_판은_키_지우기도_새_곡으로_옮긴다() async throws {
+        var tag = TagDraft(trackUUID: "s", base: TagFields())
+        tag.fields.musicalKey = "8A"
+        h.memory.save(tag)
+        let stamp = try #require(h.memory.stamp(DraftKey(.tag, "s")))
+        // 넣는 동안 키를 비우고(원래 값) 코멘트를 고쳤다
+        var later = tag
+        later.fields.musicalKey = ""
+        later.fields.comment = "새 코멘트"
+        h.memory.save(later, origin: .cli)
+        var written = TagFields()
+        written.musicalKey = "8A"
+        trackAddList(written: [WrittenDraft(key: DraftKey(.tag, "s"), revision: stamp.revision, contentHash: try DraftContentHash(of: tag))],
+                     values: .init(musicalKey: "8A", tags: written))
+        _ = await h.session.resumeCleanups()
+        let moved = try #require(h.memory.tag("new-s"))
+        #expect(moved.base.musicalKey == "8A" && moved.fields.musicalKey.isEmpty && moved.fields.comment == "새 코멘트")
+    }
+
+    // MARK: - 4라운드 O20
+
+    @Test func 저장하지_못한_태그_초안이_있으면_다시_저장해_보고_안_되면_넣지_않는다() async throws {
+        let track = H.staged("s")
+        h.state.staged = [track]
+        h.state.failedTagSaves = ["s"]
+        await #expect(throws: DJCError.self) { _ = try await h.session.previewAdd(rows: [H.row("djc-s", path: track.path)]) }
+        #expect(h.log.contains("retry tag saves") && h.gateCalls.value.adds.isEmpty)
+    }
 }
