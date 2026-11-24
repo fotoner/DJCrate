@@ -184,6 +184,21 @@ struct ReflectionJournalActionTests {
         #expect(reads.withLock { $0 } >= 1, "복원한 뒤 새 사본을 떠서 다시 읽는다")
     }
 
+    /// 복원이 DB를 바꾼 뒤 던질 수 있다(기록 지우기 실패·바꾼 뒤 켜짐을 봄): 옛 값을 보이지 않게 다시 읽는다(O4)
+    @Test func 복원이_실패로_끝나도_다시_읽는다() async {
+        let reads = Mutex(0)
+        let store = LibraryStore.test(activityLog: ActivityLog(), saveTagDrafts: { _ in }, movesDamagedDrafts: false,
+                                      takeLiveSnapshot: { _ in
+                                          reads.withLock { $0 += 1 }
+                                          throw DJCError.snapshotNotFound
+                                      })
+        let w = world(store: store)
+        w.calls.set { $0.restoreError = DJCError.writeRefused("시험 거절") }
+        await w.coordinator.restoreJournal()
+        #expect(w.store.toast?.kind == .failure)
+        #expect(reads.withLock { $0 } >= 1)
+    }
+
     @Test func 복원하지_않았으면_다시_읽지_않는다() async {
         let reads = Mutex(0)
         let store = LibraryStore.test(activityLog: ActivityLog(), saveTagDrafts: { _ in }, movesDamagedDrafts: false,

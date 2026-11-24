@@ -36,7 +36,7 @@ extension ReflectionCoordinator {
     /// 복원하면 자동 저장이 멈추고(R8) 라이브러리를 다시 읽는다
     func restoreJournal() async {
         let session = session
-        var restored = false
+        var restored = false, touched = false
         await serialized {
             guard mayStartJournalAction() else { return }
             guard let finding = await Self.judge(gate: session.ports.gate, target: session.target) else { return noRecord() }
@@ -61,12 +61,14 @@ extension ReflectionCoordinator {
                 case .nothing: noRecord()
                 }
             } catch {
+                // DB를 바꾼 뒤 던졌을 수 있다(기록 지우기 실패·바꾼 뒤 켜짐을 봄): 옛 값을 보이지 않게 다시 읽는다
+                touched = true
                 failed(String(ui: "기록으로 복원하지 못했습니다"), error)
             }
         }
         if restored { engine?.restored() } else { engine?.recheckJournal() }
         // 복원한 master.db는 쓰기 전 백업의 시각을 그대로 가져 "읽은 사본 뒤 바뀜"으로 잡히지 않는다(R11): 복원했으면 늘 새 사본으로 다시 읽는다
-        if restored { _ = await store.reloadAfterWrite() } else { await store.refreshIfRekordboxChanged() }
+        if restored || touched { _ = await store.reloadAfterWrite() } else { await store.refreshIfRekordboxChanged() }
     }
 
     /// 복원이 되돌릴 실제 목표: 기록 종류마다 다르다. 시점 복원은 재시도하며 목표가 바뀔 수 있어 기록에 지금 적힌 시점을 말한다
