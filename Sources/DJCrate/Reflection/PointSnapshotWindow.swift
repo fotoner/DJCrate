@@ -8,7 +8,7 @@ import SwiftUI
 /// 쓰기 전 백업은 따로 정리되고 '쓰기 전으로 복원…'으로 되돌리므로 여기서는 보기만 한다(#223 결정).
 @MainActor
 final class PointSnapshotWindow: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
+    private(set) var window: NSWindow?
     private var model: PointSnapshotModel?
     /// 저장소의 대상(쓰기·복원과 같은 곳)으로 시점 스냅샷 유스케이스를 만든다(조립 지점이 실제 구현을 고른다)
     private let points: @MainActor (LibraryStore) -> PointSnapshots

@@ -208,9 +208,11 @@ final class SheetCell: NSTableCellView {
         }
     }
 
-    func beginEditing(text: String) -> NSTextField {
+    /// - Parameter original: 칸의 원래 값(보인 글과 다르면 입력 감지기가 이 값과 견준다: 바로 타이핑하면 빈 칸으로 연다)
+    func beginEditing(text: String, original: String? = nil) -> NSTextField {
         // 표의 라벨을 편집 가능으로 바꾸면 AppKit이 제약 갱신을 반복한다. 목록처럼 입력 칸을 따로 둔다.
-        let field = NSTextField(string: text)
+        let field = SheetEditingField(string: text)
+        field.editingOriginal = original
         field.font = label.font
         field.isBordered = false
         field.drawsBackground = true
@@ -233,4 +235,9 @@ final class SheetCell: NSTableCellView {
         updateAccessibilityValue()
         updateColors()
     }
+}
+
+/// 태그 시트의 입력 칸: 편집을 시작한 칸의 원래 값을 입력 감지기에 알린다(`FieldEditingOriginal`, 컨실 3라운드 G16)
+final class SheetEditingField: NSTextField, FieldEditingOriginal {
+    var editingOriginal: String?
 }

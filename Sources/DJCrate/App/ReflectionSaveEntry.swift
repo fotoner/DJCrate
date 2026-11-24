@@ -43,10 +43,11 @@ extension LibraryWindowModel {
             }
             return
         }
-        let typing = isEditingInput
+        // 입력 중이거나, 입력 중은 아니어도(시작 때 글과 같음) 칸과 모델 값이 갈려 확정 대기가 있으면 확정한다(#405 컨실 3라운드 O14).
         // 칸이 확정을 거절하면(입력 검증이 포커스를 놓지 못하게 함) 칸의 값이 빠진 채 저장하지 않는다
+        let typing = isEditingInput || fieldEditing.hasPendingCommit()
         if typing, !fieldEditing.commit() { return store.showToast(.notice(text: Self.commitFailedText, kind: .warning)) }
-        guard typing || fieldEditing.hasPendingCommit() else { return follow(scope, reflection: reflection) }
+        guard typing else { return follow(scope, reflection: reflection) }
         // 칸의 확정이 끝났다는 신호를 받은 뒤에 줄과 대상을 계산한다: 포커스를 잃은 뒤 다음 갱신에서 값을 넣는 칸(SwiftUI)이 있다.
         // 신호가 한도 안에 오지 않으면 저장하지 않고 이유를 알린다
         Task { @MainActor [weak self] in

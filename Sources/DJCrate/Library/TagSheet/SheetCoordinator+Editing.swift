@@ -20,7 +20,7 @@ extension SheetCoordinator {
         syncAccessibilitySelection(announceFocus: false)
         editing = cursor
         editingOriginal = text(row: cursor.row, column: cursor.column)
-        let field = cell.beginEditing(text: initialText ?? editingOriginal)
+        let field = cell.beginEditing(text: initialText ?? editingOriginal, original: editingOriginal)
         field.delegate = self
         table.window?.makeFirstResponder(field)
         if let editor = field.currentEditor() {

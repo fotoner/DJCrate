@@ -18,6 +18,14 @@ struct FieldEditingStateTests {
         return window
     }
 
+    /// 편집을 끝내고 닫는다: 감지기는 이 프로세스의 모든 칸 알림을 받으므로, 끝 알림 없이 닫으면 함께 도는 다른 시험의 감지기가 그 칸을 입력 중으로 붙든다
+    func close(_ windows: NSWindow...) {
+        for window in windows {
+            window.makeFirstResponder(nil)
+            window.close()
+        }
+    }
+
     func replace(_ editor: NSTextView, with text: String) {
         editor.insertText(text, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
     }
@@ -31,7 +39,7 @@ struct FieldEditingStateTests {
     @Test func 칸을_원래_값으로_되돌리면_입력_중이_아니다() throws {
         let field = NSTextField(string: "원래 제목")
         let window = window(field)
-        defer { window.close() }
+        defer { close(window) }
         let state = FieldEditingState.live(window: { window })
         defer { state.stop() }
         #expect(window.makeFirstResponder(field))
@@ -51,7 +59,7 @@ struct FieldEditingStateTests {
         let text = NSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 120))
         text.string = "원래 코멘트"
         let window = window(text)
-        defer { window.close() }
+        defer { close(window) }
         let state = FieldEditingState.live(window: { window })
         defer { state.stop() }
         #expect(window.makeFirstResponder(text))
@@ -75,7 +83,7 @@ struct FieldEditingStateTests {
         let host = NSHostingView(rootView: Filter(marked: marked))
         host.frame = NSRect(x: 0, y: 0, width: 300, height: 40)
         let window = window(host)
-        defer { window.close() }
+        defer { close(window) }
         let state = FieldEditingState.live(window: { window })
         defer { state.stop() }
         let field = try #require(textField(in: host))
@@ -83,6 +91,22 @@ struct FieldEditingStateTests {
         let editor = try #require(field.currentEditor() as? NSTextView)
         replace(editor, with: "고른 말")
         #expect(state.isEditing == !marked)
+    }
+
+    /// 초안을 편집하지 않는 보조 창의 칸은 세지 않는다: 그 칸을 확정하지 않은 채 주 창으로 와도 입력 중이 아니다(컨실 3라운드 G18)
+    @Test func 보조_창의_칸은_입력_중으로_세지_않는다() throws {
+        let auxField = NSTextField(string: "복원 시점 이름"), mainField = NSTextField(string: "원래 제목")
+        let aux = window(auxField), main = window(mainField)
+        defer { close(aux, main) }
+        let state = FieldEditingState.live(window: { main })
+        defer { state.stop() }
+        state.countsWindow = { $0 !== aux }
+        #expect(aux.makeFirstResponder(auxField))
+        replace(try #require(auxField.currentEditor() as? NSTextView), with: "새 이름")
+        #expect(!state.isEditing, "보조 창의 칸")
+        #expect(main.makeFirstResponder(mainField))
+        replace(try #require(mainField.currentEditor() as? NSTextView), with: "고친 제목")
+        #expect(state.isEditing, "주 창의 칸")
     }
 
     // MARK: - 알림만으로(필드 편집기 없이): 바꿈부터 끝까지 미확정, 검색칸·고칠 수 없는 칸 제외, 사라진 칸 솎기(#405 1라운드에서 옮김)

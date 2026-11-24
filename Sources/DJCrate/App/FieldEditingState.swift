@@ -24,6 +24,8 @@ final class FieldEditingState {
     @ObservationIgnored var hasPendingCommit: @MainActor () -> Bool = { false }
     /// 입력 중 여부가 바뀔 때마다(같은 값은 다시 부르지 않는다). 조립 지점이 자동 저장 엔진의 편집 활동으로 옮긴다
     @ObservationIgnored var onChange: (@MainActor (Bool) -> Void)?
+    /// 이 창의 칸을 세는지(조립 지점이 초안을 편집하지 않는 보조 창을 뺀다: 그 창에서 확정하지 않고 주 창으로 와도 입력 중으로 남지 않게, 컨실 3라운드 G18)
+    @ObservationIgnored var countsWindow: @MainActor (NSWindow?) -> Bool = { _ in true }
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
     @ObservationIgnored private var center: NotificationCenter = .default
     /// 편집을 시작한 칸과 그때의 값. 창이 닫혀 끝 알림 없이 사라진 칸은 다음 알림·판정 때 솎는다
@@ -107,6 +109,7 @@ final class FieldEditingState {
 
     /// 세는 칸인지: 고칠 수 있는 글 칸·여러 줄 글 상자. 검색칸·거르기 칸·필드 편집기는 세지 않는다
     private func counts(_ object: AnyObject?) -> Bool {
+        guard countsWindow((object as? NSView)?.window) else { return false }
         if let field = object as? NSTextField {
             return field.isEditable && !(field is NSSearchField) && field.contentType?.rawValue != Self.filterIdentifier
         }
@@ -125,7 +128,9 @@ final class FieldEditingState {
 
     private func began(_ object: AnyObject?, editor: NSText?) {
         guard counts(object), let object else { return }
-        fields[ObjectIdentifier(object)] = Field(object: object, original: text(object, editor: editor))
+        // 보인 글과 다른 원래 값으로 편집을 시작한 칸(태그 시트에 바로 타이핑)은 그 원래 값과 견준다(컨실 3라운드 G16)
+        let original = (object as? FieldEditingOriginal)?.editingOriginal ?? text(object, editor: editor)
+        fields[ObjectIdentifier(object)] = Field(object: object, original: original)
     }
 
     private func changed(_ object: AnyObject?, editor: NSText?) {
@@ -154,6 +159,12 @@ final class FieldEditingState {
         let editing = fields.values.contains(where: \.changed)
         if editing != isEditing { isEditing = editing }
     }
+}
+
+/// 칸이 보인 글과 다른 원래 값으로 편집을 시작한다(태그 시트에 바로 타이핑하면 빈 칸으로 연다). 입력 감지기가 이 값과 견준다(컨실 3라운드 G16)
+@MainActor
+protocol FieldEditingOriginal: AnyObject {
+    var editingOriginal: String? { get }
 }
 
 extension View {

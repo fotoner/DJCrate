@@ -94,6 +94,8 @@ final class AppComposition {
             let input = FieldEditingState.live()
             // 인스펙터 칸은 포커스를 잃은 뒤 다음 갱신에서 확정한다: 그 확정이 끝나기를 ⌘S가 기다린다
             input.hasPendingCommit = { [tagInspector] in tagInspector.hasPendingInput }
+            // 초안을 편집하지 않는 보조 창의 칸은 세지 않는다(컨실 3라운드 G18)
+            input.countsWindow = { [windows] window in !windows.isAuxiliary(window) }
             libraryWindow.fieldEditing = input
         }
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
@@ -679,6 +681,14 @@ final class AppWindows {
     let pointSnapshots = PointSnapshotWindow(points: AppComposition.pointSnapshots(store:))
     let appleMusicImport = AppleMusicImportWindow()
     let integrationGuide = IntegrationGuideWindow()
+
+    /// 초안을 편집하지 않는 보조 창인지(곡 편집·Flip·복원 시점·Apple Music 가져오기·연동 안내·설정·단축키). 입력 감지기가 이 창의 칸을 세지 않는다(컨실 3라운드 G18)
+    func isAuxiliary(_ window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        let auxiliary = [trackEdit.window, flip.window, pointSnapshots.window, appleMusicImport.window, integrationGuide.window,
+                         SettingsWindow.current, ShortcutsWindow.current]
+        return auxiliary.contains { $0 === window }
+    }
 }
 
 extension EnvironmentValues {

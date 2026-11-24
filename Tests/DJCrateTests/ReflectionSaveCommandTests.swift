@@ -212,6 +212,61 @@ struct ReflectionSaveCommandTests {
         #expect(!input.isEditing)
     }
 
+    /// 태그 시트 칸에 바로 타이핑하면(빈 칸으로 편집을 시작) 칸의 원래 값을 감지기에 알린다: Backspace로 비워도 원래 값과 달라 입력 중이고
+    /// ⌘S가 확정한다(#405 컨실 3라운드 G16)
+    @Test func 태그_시트_칸에_바로_타이핑한_뒤_비워도_입력_중이고_저장이_확정한다() async throws {
+        _ = NSApplication.shared
+        let store = LibraryStore.test(saveTagDrafts: { _ in })
+        let rows = (1...2).map { TrackListTagEditTests.row(String($0), comment: "원래 코멘트 \($0)") }
+        for row in rows { store.rowsByUUID[row.track.uuid] = row }
+        let coordinator = SheetCoordinator(store: store)
+        let table = SheetTableView()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer {
+            window.makeFirstResponder(nil)
+            window.close()
+        }
+        table.coordinator = coordinator
+        coordinator.table = table
+        table.delegate = coordinator
+        table.dataSource = coordinator
+        table.rowHeight = 22
+        for spec in SheetColumn.all {
+            let column = NSTableColumn(identifier: .init(spec.id))
+            column.width = spec.width
+            table.addTableColumn(column)
+        }
+        let scroll = NSScrollView()
+        scroll.documentView = table
+        window.contentView = scroll
+        coordinator.update(rows: rows, revision: 0)
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.makeFirstResponder(table)
+        let input = FieldEditingState.live(window: { window })
+        defer { input.stop() }
+        let comment = try #require(SheetColumn.all.firstIndex { $0.id == "comment" })
+        coordinator.select(.init(row: 1, column: comment), extend: false)
+        // 글자를 치면 시트는 빈 칸으로 편집을 시작하고 그 글자를 넣는다(`SheetTableView.keyDown`)
+        coordinator.beginEditing(initialText: "")
+        window.contentView?.layoutSubtreeIfNeeded()
+        let editor = try #require(window.firstResponder as? NSTextView)
+        editor.insertText("x", replacementRange: NSRange(location: 0, length: 0))
+        #expect(input.isEditing)
+        editor.deleteBackward(nil)
+        #expect(editor.string.isEmpty)
+        #expect(input.isEditing, "비운 칸도 원래 값과 달라 입력 중이다")
+
+        let model = LibraryWindowModel(store: store)
+        model.fieldEditing = input
+        model.autoFeed = AutoReflectionFeed()
+        model.autoFeed?.update(.saved, ReflectionConditions(hasPending: false, autoSaves: true))
+        LibraryMenuAction.reflect.perform(in: model, windows: nil, reflection: ReflectionCoordinator.test(store: store, gate: .restoringOnly))
+        #expect(!coordinator.isEditing && !input.isEditing, "시트 칸을 확정했다")
+        #expect(store.tags.tagCell(rows[1], .comment) == "")
+        await store.writeTask?.value
+    }
+
     /// 태그 시트 칸에서 글자를 치다(Return 전) ⌘S를 누르면 그 값을 확정해 저장 대기로 만든다(R19)
     @Test func 태그_시트_칸에서_입력_중에_저장하면_확정한_값을_저장한다() async throws {
         _ = NSApplication.shared
