@@ -212,10 +212,11 @@ public final class AutoReflection {
             // 저장하지 못한 재생 목록 초안은 먼저 저장해 본다(그대로면 재시작 정리가 재생 목록 몫을 미룬다, R22)
             let library = session.ports.library
             if library.state().playlistDraftUnsaved { _ = library.savePlaylistDraft() }
-            // 늘 쓰기 잠금 아래에서 기록을 판정하고 기록이 없을 때만 정리한다(R11·R22: 그 사이 다른 실행이 남긴 중단의 초안을 지우지 않게)
+            // 늘 쓰기 잠금 아래에서 기록을 판정하고 기록이 없을 때만 정리한다(R11·R22: 그 사이 다른 실행이 남긴 중단의 초안을 지우지 않게).
+            // 수동 쓰기는 잠금을 기다려(메인 액터 밖) 판정·정리를 마친 뒤 쓴다: 정리하지 않은 채 쓰면 쓴 단계를 또 쓴다
             journalStale = false
-            await judgeAndClean()
-            // 정리를 마치지 못한 목록만 보류한다. 잠금을 잡지 못한 것은 쓰기 입구가 기다린다
+            await judgeAndClean(waits: true)
+            // 정리를 마치지 못한 목록이 있으면 쓰지 않는다
             if interrupted == nil, !cleanupHolds.isEmpty, let whenHeld { return whenHeld(cleanupHolds) }
         }
         let result: T
@@ -262,10 +263,11 @@ public final class AutoReflection {
 
     /// 대상의 쓰기 잠금을 쥔 채 기록을 판정하고, 기록이 없으면 같은 잠금 아래에서 미정리 목록을 정리한다(R11·R22).
     /// 다른 프로세스가 잠금을 쥐었으면 판정·정리를 미루고 잡을 때까지 판정마다 다시 한다
+    /// - Parameter waits: 잠금을 기다린다(수동 쓰기). 판정 줄은 기다리지 않는다
     @discardableResult
-    private func judgeAndClean() async -> ReflectionSession.JournalCleanup {
+    private func judgeAndClean(waits: Bool = false) async -> ReflectionSession.JournalCleanup {
         lastJudged = ports.clock.now()
-        let judged = await session.judgeAndResumeCleanups(lock: ports.writeLock)
+        let judged = await session.judgeAndResumeCleanups(lock: ports.writeLock, waits: waits)
         switch judged {
         case .busy:
             journalPending = true
@@ -337,8 +339,16 @@ public final class AutoReflection {
         // 확인한 중단은 실행 조건보다 먼저 알린다(자동 저장하지 않는 실행도 복원 안내를 띄운다)
         if case .off = run, let interrupted { return interruptedHold(interrupted) }
         if case let .off(reason) = run {
+            // 자동 저장하지 않는 실행도 rekordbox 켜짐을 조건에 싣는다(상태 줄 R3 3번 줄이 6번 줄보다 앞선다). 쓰지는 않는다
+            let runState = ports.runState
+            switch await BlockingWork.run(qos: .utility, { runState() }) {
+            case .running, .unknown: base.holds.insert(.rekordboxRunning)
+            case .agentOnly: base.holds.insert(.agentRunning)
+            case .stopped: break
+            }
+            guard !dirty else { return nil }
             return hold(.notAutoRun(reason), status: base.hasPending ? .held(.notAutoRun(reason)) : .saved, waiting: false,
-                        pause: journalPending || interrupted != nil ? poll : idle)
+                        pause: journalPending || interrupted != nil || base.hasPending ? poll : idle)
         }
         guard startupDone else { return hold(.starting, pause: poll) }
         // 멈춤·중단 동안에도 지켜본다: ⌘S·복원으로 풀리면 조용함을 처음부터 다시 세지 않는다
@@ -588,12 +598,17 @@ public final class AutoReflection {
             saveRecord()
             journalStale = true
         case let .failed(_, error, _):
-            // 수동 저장도 백업을 뜬 뒤 쓰기·검증에 실패해 되돌렸으면 자동 저장이 멈춘다(같은 묶음을 자동으로 다시 쓰지 않게, R7)
+            // 수동 저장도 백업을 뜬 뒤 실패했으면 자동 저장이 멈춘다(같은 묶음을 자동으로 다시 쓰지 않게, R7).
+            // 관문이 백업 뒤 표시(`AfterBackupFailure`)를 실은 오류와 쓰기·검증에 실패해 되돌린 오류다
             switch error as? DJCError {
             case .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?:
                 record.stop = .afterFailure
                 saveRecord()
-            default: break
+            default:
+                if error is RekordboxWriteGate.AfterBackupFailure {
+                    record.stop = .afterFailure
+                    saveRecord()
+                }
             }
             await judgeAndClean()
         case .restoreFailed:

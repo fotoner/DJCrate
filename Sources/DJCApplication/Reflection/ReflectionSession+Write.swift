@@ -201,7 +201,9 @@ extension ReflectionSession {
     /// 재생 목록은 디스크 초안이 묶음의 초안과 같을 때만 단계의 판을 싣고 디스크 초안(단계 식별자가 붙은)으로 바꿔 넣는다
     /// - Parameter verified: 읽어 넣을 때 도장과 내용을 이미 맞춰 본 곡 초안의 판(자동 저장). 주면 도장을 다시 읽지 않고 이것을 싣는다
     ///   (읽은 뒤 바뀐 도장을 읽은 내용에 붙이지 않게, R22)
-    func stampRevisions(_ batch: inout DraftWriteBatch, rawCues: [String: CueDraft], verified: [DraftKey: DraftBatchEntry]? = nil) {
+    /// - Parameter verifiedSteps: 읽어 넣을 때 맞춰 본 재생 목록 단계의 판(자동 저장, 묶음의 단계와 같은 차례). 주면 디스크를 다시 읽지 않는다
+    func stampRevisions(_ batch: inout DraftWriteBatch, rawCues: [String: CueDraft], verified: [DraftKey: DraftBatchEntry]? = nil,
+                        verifiedSteps: [DraftBatchEntry]? = nil) {
         let files = ports.drafts
         var tracks: [DraftKey: DraftBatchEntry] = [:]
         func put(_ key: DraftKey, _ content: () throws -> DraftContentHash) {
@@ -223,7 +225,9 @@ extension ReflectionSession {
             for merge in batch.merges { put(DraftKey(.merge, merge.id)) { try DraftContentHash(of: merge) } }
         }
         var steps: [DraftBatchEntry] = []
-        if let playlists = batch.playlists {
+        if let verifiedSteps, let playlists = batch.playlists, verifiedSteps.count == playlists.steps.count {
+            steps = verifiedSteps
+        } else if let playlists = batch.playlists {
             // 묶음의 초안은 디스크 초안 전체이거나 그 앞부분(자동 저장의 K행 나누기)이다. 해시는 디스크 초안 안에서 잰다(정리가 그 안에서 견준다)
             let disk = files.playlistDraft(), stamps = files.playlistStamps(), count = playlists.steps.count
             var source = disk

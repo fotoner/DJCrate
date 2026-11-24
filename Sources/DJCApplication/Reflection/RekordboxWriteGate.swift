@@ -10,6 +10,17 @@ public struct RekordboxWriteGate: Sendable {
         public init() {}
     }
 
+    /// 앱의 쓰기(작업이 실린 묶음)가 백업을 뜬 뒤 실패했다는 표시(R7: 자동 저장 엔진이 멈춘다). 오류 문구는 감싼 오류 그대로다
+    public struct AfterBackupFailure: LocalizedError, Sendable {
+        public let underlying: any Error
+
+        public init(_ underlying: any Error) { self.underlying = underlying }
+
+        public var errorDescription: String? { underlying.localizedDescription }
+        public var failureReason: String? { (underlying as? any LocalizedError)?.failureReason }
+        public var recoverySuggestion: String? { (underlying as? any LocalizedError)?.recoverySuggestion }
+    }
+
     /// 초안을 쓴다(`dryRun`이면 끝까지 해 보고 되돌린다)
     public var write: @Sendable (DraftWriteBatch, [String: RekordboxAnalysisInput], RekordboxWriteTarget, Bool) throws -> RekordboxWriteReport
     /// 원본의 DB·분석 파일 사본을 떠서 그 사본에 써 보고 사본을 지운다. 사본을 만든 뒤 `copied`를 부른다.

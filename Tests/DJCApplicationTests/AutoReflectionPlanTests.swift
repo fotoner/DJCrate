@@ -198,4 +198,22 @@ struct AutoReflectionPlanTests {
         #expect(await runner(files).gate(lock: locks.port, journal: none, target: target) == .satisfied)
         #expect(locks.heldKeys.isEmpty, "뜬 뒤 잠금을 푼다")
     }
+
+    // MARK: - 2라운드 S9
+
+    @Test func 곡_빼기는_직전_목록의_모든_행을_옮기기는_자리가_바뀐_구간을_센다() {
+        let entries = (1...201).map { PlaylistEntry(trackNo: $0, contentID: "\($0)") }
+        // 쓰기는 지운 행과 남은 행 전부의 번호를 다시 적는다(RekordboxWriter+Playlist의 곡 빼기)
+        let afterRemove = entries.dropLast().map { $0 }
+        #expect(AutoReflectionInventory.Step.rows(of: .removeTracks(playlist: .id("A"), entries: [entries[200]]), before: entries,
+                                                  after: afterRemove) == 201)
+        // 9번 곡을 2번 자리로: 2~9번 자리의 곡 8개가 번호를 받는다
+        let ten = Array(entries.prefix(10))
+        var moved = ten
+        let picked = moved.remove(at: 8)
+        moved.insert(picked, at: 1)
+        let renumbered = moved.enumerated().map { PlaylistEntry(trackNo: $0.offset + 1, contentID: $0.element.contentID) }
+        #expect(AutoReflectionInventory.Step.rows(of: .moveTracks(playlist: .id("A"), entries: [ten[8]], to: 2), before: ten,
+                                                  after: renumbered) == 8)
+    }
 }

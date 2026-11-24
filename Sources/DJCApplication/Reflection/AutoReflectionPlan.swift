@@ -23,17 +23,20 @@ public struct AutoReflectionInventory: Equatable, Sendable {
         }
 
         /// 단계 하나가 실제로 갱신할 곡 행 수(K와 견준다, R14). 단계 직전·직후 그 목록의 곡 줄로 센다: 넣기는 넣는 곡(끝에 붙는다),
-        /// 빼기는 뺀 곡과 그 뒤 번호가 다시 매겨지는 남은 곡, 옮기기는 자리(번호)가 바뀐 곡, 그 밖(만들기·이름·옮기기·순서·지우기)은 목록 행 하나.
+        /// 빼기는 직전 목록의 모든 행(뺀 곡 + 번호를 다시 적는 남은 곡 전부), 옮기기는 자리(번호)가 바뀐 구간, 그 밖(만들기·이름·옮기기·순서·지우기)은 목록 행 하나.
         /// 직전·직후 목록을 모르면 편집만 보고 센다(`rows(of:playlistSize:)`)
         public static func rows(of edit: PlaylistEdit, before: [PlaylistEntry]?, after: [PlaylistEntry]?) -> Int {
             guard let before, let after else { return rows(of: edit, playlistSize: before?.count ?? 0) }
             switch edit {
             case let .addTracks(_, ids): return max(ids.count, 1)
             case .removeTracks:
-                // 앞에서부터 그대로인 줄 뒤는 지워졌거나 번호가 바뀌었다
-                let kept = zip(before, after).prefix { $0 == $1 }.count
-                return max(before.count - kept, 1)
-            case .moveTracks: return max(zip(before, after).filter { $0 != $1 }.count, 1)
+                // 쓰기는 지운 행과 남은 행 전부(자리가 그대로인 곡까지)의 번호를 다시 적는다(RekordboxWriter+Playlist)
+                return max(before.count, 1)
+            case let .moveTracks(_, entries, _):
+                // 쓰기는 자리가 바뀐 곡만 다시 적는다. 같은 곡이 여러 번 든 목록도 놓치지 않게 처음·끝으로 달라진 자리 사이를 모두 센다
+                let differs = before.indices.filter { $0 >= after.count || before[$0] != after[$0] }
+                guard let first = differs.first, let last = differs.last else { return max(entries.count, 1) }
+                return max(last - first + 1, entries.count, 1)
             case .create, .rename, .move, .reorder, .delete: return 1
             }
         }

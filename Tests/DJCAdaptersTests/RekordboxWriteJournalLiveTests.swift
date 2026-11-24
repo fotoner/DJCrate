@@ -191,6 +191,22 @@ struct RekordboxWriteJournalLiveTests {
         }
     }
 
+    @Test func 앱의_수동_쓰기가_백업을_뜬_뒤_실패하면_오류는_그대로_두고_백업_뒤_표시를_싣는다() throws {
+        let fixture = try RekordboxFixture()
+        let batch = DraftWriteBatch(drafts: [try cueDraft(fixture)], operation: DraftWriteOperation(id: "op-수동", draftHome: fixture.root))
+        let injected = DJCError.queryFailed(sql: "COMMIT", message: "주입한 실패")
+        let gate = RekordboxWriteGate.live(guard: Self.copyGuard(hooks: RekordboxWriteHooks(checkpoint: { moment in
+            if moment == .before(.commit) { throw injected }
+        })))
+        do {
+            _ = try gate.write(batch, [:], target(fixture), false)
+            Issue.record("실패해야 한다")
+        } catch let failure as RekordboxWriteGate.AfterBackupFailure {
+            guard case .queryFailed = failure.underlying as? DJCError else { Issue.record("원래 오류를 싣는다: \(failure.underlying)"); return }
+            #expect(failure.localizedDescription == injected.localizedDescription, "화면 문구는 원래 오류 그대로다")
+        }
+    }
+
     // MARK: 미정리 목록(R22)
 
     @Test func 앱의_쓰기는_미정리_목록을_남기고_관문은_그_대상과_초안_저장소의_목록만_돌려준다() throws {

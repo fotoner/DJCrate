@@ -19,6 +19,9 @@ final class ReflectionHarness {
     var journal: ScriptedJournal?
     /// 다른 곳(CLI)이 재생 목록 초안 파일 잠금을 쥐었다
     let playlistLockHeld = LockedFlag()
+    /// 켜면 재생 목록 초안 파일 잠금을 기다리는 사이 앱의 재생 목록 저장이 실패한다(잡은 뒤 화면 상태가 저장하지 못함이 된다)
+    let playlistSaveFailsDuringLock = LockedFlag()
+    private let playlistUnsavedByLock = LockedFlag()
     /// 라이브러리 화면 상태(세션이 읽는다). `apply`가 받은 변경 가운데 상태에 남는 것(태그·합치기·추가 목록 등)은 여기에도 반영한다.
     var state = ReflectionLibraryState()
     var changes: [ReflectionLibraryChange] = []
@@ -77,6 +80,10 @@ final class ReflectionHarness {
     var failingMergeSave = false
     /// 쓴 뒤 판 지정 삭제(`removeWritten`)가 던진다(초안 잠금을 잡지 못함 등). 메인 밖에서 불려 잠금으로 든다
     let removeWrittenFails = LockedFlag()
+    /// 이 곡의 큐·그리드·태그 초안 저장이 실패한다(출처 포트 포함: 곡 넣기 정리가 새 곡에 옮기는 저장)
+    let failingDraftSaves = LockedStrings()
+    /// 출처 포트로 큐 초안을 저장한 뒤 부른다(옮기는 동안 바깥에서 생긴 일을 흉내 낸다)
+    var onVariantCueSave: (@Sendable (CueDraft) -> Void)?
     var failingRemoveWritten: Bool {
         get { removeWrittenFails.value }
         set { removeWrittenFails.value = newValue }
@@ -171,6 +178,7 @@ final class ReflectionHarness {
     private var libraryState: ReflectionLibraryState {
         var current = state
         if !reloadSucceeds { current.lastError = reloadError }
+        if playlistUnsavedByLock.value { current.playlistDraftUnsaved = true }
         return current
     }
 
@@ -212,8 +220,10 @@ final class ReflectionHarness {
             try saveMerges(merges)
         }
         let lockHeld = playlistLockHeld, log = log
+        let failsDuringLock = playlistSaveFailsDuringLock, unsavedByLock = playlistUnsavedByLock
         store.lockPlaylistDraft = { _ in
             if lockHeld.value { return nil }
+            if failsDuringLock.value { unsavedByLock.value = true }
             log.record("playlist lock")
             return { log.record("playlist unlock") }
         }
@@ -222,12 +232,39 @@ final class ReflectionHarness {
             log.record("playlist save")
             try savePlaylist(draft)
         }
+        // 저장 실패 주입은 출처 포트에도 건다(출처 포트는 저장소가 새로 만든다)
+        let failing = failingDraftSaves, onVariantCueSave = onVariantCueSave
+        store = Self.failingSaves(store, failing: failing, hook: nil)
+        if let variant = store.originVariant {
+            store.originVariant = { origin in Self.failingSaves(variant(origin), failing: failing, hook: onVariantCueSave) }
+        }
         let removeWritten = store.removeWritten, removeFails = removeWrittenFails
         store.removeWritten = { written in
             if removeFails.value { throw FixtureFailure() }
             return try removeWritten(written)
         }
         return store
+    }
+
+    /// 그 곡의 큐·그리드·태그 저장을 실패하게 한 포트(`hook`은 큐를 저장한 뒤 부른다)
+    nonisolated static func failingSaves(_ port: DraftStore, failing: LockedStrings, hook: (@Sendable (CueDraft) -> Void)?) -> DraftStore {
+        var port = port
+        let saveCue = port.saveCue, saveGrid = port.saveGrid, saveTags = port.saveTags
+        port.saveCue = { draft, completion in
+            guard !failing.contains(draft.trackUUID) else {
+                return completion(DraftSaveFailure(kind: .cue, trackUUID: draft.trackUUID, revision: 0, reason: "합성 실패"))
+            }
+            saveCue(draft, completion)
+            hook?(draft)
+        }
+        port.saveGrid = { draft, completion in
+            guard !failing.contains(draft.trackUUID) else {
+                return completion(DraftSaveFailure(kind: .grid, trackUUID: draft.trackUUID, revision: 0, reason: "합성 실패"))
+            }
+            saveGrid(draft, completion)
+        }
+        port.saveTags = { drafts in saveTags(drafts.filter { !failing.contains($0.trackUUID) }) }
+        return port
     }
 
     private var gate: RekordboxWriteGate { .scripted(script, calls: gateCalls, hold: previewHold, journal: journal) }
@@ -354,6 +391,12 @@ final class ReflectionHarness {
 struct FixtureFailure: Error, CustomStringConvertible { var description = "합성 실패" }
 
 /// 메인 밖에서도 읽는 시험 스위치
+final class LockedStrings: Sendable {
+    private let state = Mutex<Set<String>>([])
+    func insert(_ value: String) { state.withLock { _ = $0.insert(value) } }
+    func contains(_ value: String) -> Bool { state.withLock { $0.contains(value) } }
+}
+
 final class LockedFlag: Sendable {
     private let state = Mutex(false)
     var value: Bool {

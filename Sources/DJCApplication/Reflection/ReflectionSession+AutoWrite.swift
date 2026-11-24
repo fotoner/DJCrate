@@ -86,13 +86,15 @@ extension ReflectionSession {
     /// (저장 대기에서 사라지지 않게, 그동안 엔진은 재생 목록 판을 솎지 않는다)
     nonisolated static func playlistSteps(state: ReflectionLibraryState, files: DraftStore,
                                           judge: (DraftRevision) -> ReflectionLeftover?) -> (steps: [AutoReflectionInventory.Step], undetermined: Bool) {
-        guard !state.playlistDraft.isEmpty else { return ([], false) }
+        // 화면 목록이 비었어도 디스크를 본다(다시 켠 뒤 첫 읽기가 실패해 화면만 빈 경우): 디스크에 초안이 있으면 판정할 수 없다
+        let disk = files.playlistDraft()
+        guard !state.playlistDraft.isEmpty || !disk.isEmpty else { return ([], false) }
         func undetermined() -> (steps: [AutoReflectionInventory.Step], undetermined: Bool) {
-            (state.playlistDraft.steps.map { AutoReflectionInventory.Step(playlist: $0.edit.playlist.layoutID, rows: 1, revision: nil,
-                                                                          leftover: .needsConfirmation) }, true)
+            let steps = state.playlistDraft.isEmpty ? disk.steps : state.playlistDraft.steps
+            return (steps.map { AutoReflectionInventory.Step(playlist: $0.edit.playlist.layoutID, rows: 1, revision: nil,
+                                                             leftover: .needsConfirmation) }, true)
         }
         guard !state.playlistDraftNeedsSync, !state.playlistDraftUnsaved else { return undetermined() }
-        let disk = files.playlistDraft()
         guard disk == state.playlistDraft else { return undetermined() }
         let stamps = files.playlistStamps(), suggestions = files.playlistSuggestions()
         let projection = disk.project(onto: state.rekordboxPlaylists, contentIDs: Set(state.rows.values.map(\.track.id)))
@@ -245,18 +247,28 @@ extension ReflectionSession {
                 }
             }
         }
-        var playlists: PlaylistDraft?
+        var playlists: PlaylistDraft?, verifiedSteps: [DraftBatchEntry]?
         if withPlaylists, chunk.playlistSteps > 0, !state.playlistDraftNeedsSync {
-            let disk = files.playlistDraft(), stamps = files.playlistStamps()
-            if disk == state.playlistDraft, stamps.count == disk.steps.count, chunk.playlistSteps <= disk.steps.count,
-               stamps.prefix(chunk.playlistSteps).map(\.revision) == chunk.stepRevisions {
-                var prefix = disk
-                prefix.removeSteps(at: chunk.playlistSteps..<disk.steps.count)
-                playlists = prefix
+            let disk = files.playlistDraft(), stamps = files.playlistStamps(), count = chunk.playlistSteps
+            if disk == state.playlistDraft, stamps.count == disk.steps.count, count <= disk.steps.count,
+               stamps.prefix(count).map(\.revision) == chunk.stepRevisions {
+                // 단계마다 사람 편집만이고 지금 내용이 그 판을 저장한 때의 내용인지 본다(R4·R5). 하나라도 어긋나면 재생 목록을 빼고
+                // 다음 판정이 그 단계를 제안으로 남긴다. 맞춰 본 도장·해시를 그대로 묶음의 판으로 싣는다(R22)
+                let entries = (0..<count).compactMap { index -> DraftBatchEntry? in
+                    guard let hash = try? DraftContentHash(step: disk.steps[index], in: disk),
+                          DraftSuggestion.judge(stamp: stamps[index], currentHash: hash) == nil else { return nil }
+                    return DraftBatchEntry(stamp: stamps[index], contentHash: hash)
+                }
+                if entries.count == count {
+                    var prefix = disk
+                    prefix.removeSteps(at: count..<disk.steps.count)
+                    playlists = prefix
+                    verifiedSteps = entries
+                }
             }
         }
         var batch = DraftWriteBatch(drafts: cues, grids: grids, tags: tags, playlists: playlists)
-        stampRevisions(&batch, rawCues: [:], verified: verified)
+        stampRevisions(&batch, rawCues: [:], verified: verified, verifiedSteps: verifiedSteps)
         return batch
     }
 
@@ -297,14 +309,17 @@ extension ReflectionSession {
         public var finished = 0
         /// 다음 쓰기를 보류할 이유(`cleanupPending`·`cleanupStoreMissing`·`playlistCopyFailed`). 비면 쓰기를 막을 것이 없다
         public var holds: Set<ReflectionHold> = []
-        /// 새 곡 행을 아직 읽지 못해 곡 넣기 몫만 미룬 목록 수(쓰기는 막지 않는다: 옛 UUID 초안은 rekordbox 곡에 닿지 않는다)
+        /// 새 곡 행을 아직 읽지 못해 곡 넣기 몫만 미룬 목록 수(앱의 쓰기는 막지 않는다: 옛 UUID 초안은 rekordbox 곡에 닿지 않는다. CLI는 막는다)
         public var deferred = 0
+        /// 목록을 읽지 못한 이유(`cleanupStoreMissing`일 때)
+        public var storeError: String?
 
-        public init(found: Int = 0, finished: Int = 0, holds: Set<ReflectionHold> = [], deferred: Int = 0) {
+        public init(found: Int = 0, finished: Int = 0, holds: Set<ReflectionHold> = [], deferred: Int = 0, storeError: String? = nil) {
             self.found = found
             self.finished = finished
             self.holds = holds
             self.deferred = deferred
+            self.storeError = storeError
         }
     }
 
@@ -359,7 +374,7 @@ extension ReflectionSession {
         let gate = ports.gate, target = target ?? self.target, home = location.draftHome, files = ports.drafts
         let lists: [DraftCleanupList]
         do { lists = try await BlockingWork.run { try gate.cleanupLists(target, home) } } catch {
-            return CleanupResume(holds: [.cleanupStoreMissing])
+            return CleanupResume(holds: [.cleanupStoreMissing], storeError: error.localizedDescription)
         }
         var result = CleanupResume(found: lists.count)
         for list in lists.sorted(by: { $0.operationID < $1.operationID }) {
@@ -391,6 +406,12 @@ extension ReflectionSession {
                 } else if let unlock = await BlockingWork.run({ files.lockPlaylistDraft(0) }) {
                     // 초안 파일 잠금을 쥔 채 읽고 정리하고 저장한다(그 사이 CLI가 더한 단계를 덮지 않게)
                     defer { unlock() }
+                    // 잠금을 기다리는 동안(메인 액터를 내줬다) 앱의 재생 목록 저장이 실패했을 수 있다: 잡은 직후 다시 본다
+                    let locked = ports.library.state()
+                    guard !locked.playlistDraftNeedsSync, !locked.playlistDraftUnsaved else {
+                        result.holds.insert(.cleanupPending)
+                        continue
+                    }
                     // 연결 기록은 디스크에서 읽는다(CLI도 같은 파일을 옮긴다). 읽지 못하면 옮기지 않는다
                     let imports = try? playlistEdits.loadImports()
                     let cleanup = playlistEdits.resumeCleanup(list, backups: target.backups, imports: imports ?? PlaylistImports(),
@@ -417,12 +438,19 @@ extension ReflectionSession {
     }
 
     /// CLI 쓰기 전 정리(R22): 그 대상의 쓰기 잠금을 기다려 잡고 기록을 판정한 뒤, 기록이 없으면 남은 미정리 목록을 먼저 정리한다.
-    /// 정리를 마치지 못한 목록이 있으면 쓰지 않는다(쓴 초안·재생 목록 단계를 다시 쓰지 않게). 곡 넣기 몫만 미뤄진 것은 막지 않는다.
+    /// 목록을 읽지 못했거나 정리를 마치지 못한 목록(곡 넣기 몫을 미룬 것 포함)이 있으면 쓰지 않는다(쓴 초안·재생 목록 단계를 다시 쓰지 않게).
     /// 중단 기록이 있으면 정리하지 않는다(쓰기 입구가 같은 기록으로 거절한다)
     public func cleanUpBeforeWrite(to target: RekordboxWriteTarget, lock: RekordboxWriteLock) async throws {
         guard case let .cleaned(resumed) = await judgeAndResumeCleanups(lock: lock, waits: true, for: target) else { return }
-        // 목록을 읽지 못한 것(대상 폴더를 읽지 못함)은 막지 않는다: 그 쓰기는 관문이 같은 까닭으로 다시 거절한다
-        guard resumed.holds.subtracting([.cleanupStoreMissing]).isEmpty else { throw DJCError.writeRefused(Self.playlistSaveFailureText) }
+        if resumed.holds.contains(.cleanupStoreMissing) { throw DJCError.writeRefused(resumed.storeError ?? Self.playlistSaveFailureText) }
+        guard resumed.holds.isEmpty else { throw DJCError.writeRefused(Self.playlistSaveFailureText) }
+        // 새 곡 행을 읽어야 끝나는 곡 넣기 정리는 앱이 한다(CLI는 목록을 읽지 않는다)
+        guard resumed.deferred == 0 else { throw DJCError.writeRefused(Self.trackAddCleanupPendingText) }
+    }
+
+    /// CLI 쓰기 전: 앱이 넣은 곡의 편집을 아직 새 곡으로 옮기지 못했다
+    static var trackAddCleanupPendingText: String {
+        String(ui: "DJCrate가 rekordbox에 넣은 곡의 편집을 아직 정리하지 못했으니 DJCrate를 켜 라이브러리를 다시 읽은 뒤 다시 시도하세요")
     }
 
     /// 재시작 정리가 지운 곡 초안을 화면 표시에서도 지운다

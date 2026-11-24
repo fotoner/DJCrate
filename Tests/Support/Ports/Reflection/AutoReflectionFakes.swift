@@ -6,7 +6,8 @@ import Synchronization
 import Testing
 
 /// 프로세스 사이 쓰기 잠금(`RekordboxWriteLock`)의 가짜: 쥔 키를 메모리에 둔다. 다른 프로세스가 쥔 것은 `holdElsewhere`로 흉내 낸다.
-/// 가짜의 `lock`은 기다리지 않는다: 누가 쥐고 있으면 `MemoryWriteLocks.Busy`를 던진다(시험이 멈추지 않게).
+/// 가짜의 `lock`은 기본으로 기다리지 않는다: 누가 쥐고 있으면 `MemoryWriteLocks.Busy`를 던진다(시험이 멈추지 않게).
+/// `blocksOnLock`을 켜면 풀릴 때까지 기다린다(기다리는 수는 `waiting`. 60초가 지나면 던진다).
 /// 실제 구현은 stat·`flock`으로 막으므로 가짜도 협력 풀 밖에서 불렸는지 본다(`expectBlockingOffPool`).
 public final class MemoryWriteLocks: Sendable {
     public struct Busy: Error, Equatable {}
@@ -17,6 +18,8 @@ public final class MemoryWriteLocks: Sendable {
         var keyed: [URL] = []
         /// 잡은 차례(키)
         var taken: [RekordboxWriteLockKey] = []
+        var blocks = false
+        var waiting = 0
     }
     private let state = Mutex(State())
 
@@ -37,6 +40,10 @@ public final class MemoryWriteLocks: Sendable {
     }
 
     public var heldKeys: Set<RekordboxWriteLockKey> { state.withLock { $0.held } }
+    /// `lock`이 풀릴 때까지 기다리게 한다
+    public func blocksOnLock(_ blocks: Bool = true) { state.withLock { $0.blocks = blocks } }
+    /// `lock`에서 기다리는 수
+    public var waiting: Int { state.withLock { $0.waiting } }
     /// 이 포트로 잡은 차례(시도 성공 포함)
     public var taken: [RekordboxWriteLockKey] { state.withLock { $0.taken } }
 
@@ -68,8 +75,15 @@ public final class MemoryWriteLocks: Sendable {
             },
             lock: { [self] key in
                 expectBlockingOffPool()
-                guard let hold = take(key) else { throw Busy() }
-                return hold
+                if let hold = take(key) { return hold }
+                guard state.withLock({ $0.blocks }) else { throw Busy() }
+                state.withLock { $0.waiting += 1 }
+                defer { state.withLock { $0.waiting -= 1 } }
+                for _ in 0..<60_000 {
+                    usleep(1_000)
+                    if let hold = take(key) { return hold }
+                }
+                throw Busy()
             },
             tryLock: { [self] key in
                 expectBlockingOffPool()

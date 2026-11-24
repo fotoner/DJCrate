@@ -11,7 +11,7 @@ extension RekordboxWriteGate {
     public static func live(guard writeGuard: RekordboxWriteGuard = .system) -> Self {
         var gate = Self(
             write: { batch, inputs, target, dryRun in
-                try autoSave(batch.isAutoSave && !dryRun, writeGuard) { writeGuard in
+                try appWrite(dryRun ? .none : batch.isAutoSave ? .auto : batch.operation != nil ? .manual : .none, writeGuard) { writeGuard in
                     try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags, artworks: batch.artworks,
                                               analysisInputs: inputs, playlistDraft: batch.playlists, merges: batch.merges,
                                               histories: batch.histories, to: target.database, dryRun: dryRun, backups: target.backups,
@@ -104,15 +104,26 @@ extension RekordboxWriteGate {
         return gate
     }
 
-    /// 자동 저장 묶음의 쓰기(R7·R9). 입구의 단계는 그대로 두고 두 가지만 다르게 알린다:
-    /// - 쓰기 잠금을 기다리지 않는다. 다른 쪽이 쥐고 있으면 `LockBusy`(엔진은 잠금 보류로 보고 다음 판정에서 다시 본다)
-    /// - 백업을 뜬 뒤(쓰기 연결을 열기 직전의 재확인을 지난 뒤) 실패하면 백업 뒤 실패(`writeRolledBack`)로 알린다. 입구가 이미 켜짐·되돌림·
-    ///   검증 실패·복구 실패로 알린 것과 강제 종료 흉내는 그대로다(커밋 전 롤백을 백업 전 실패로 세지 않게, 엔진이 멈춘다)
-    static func autoSave<T>(_ enabled: Bool, _ writeGuard: RekordboxWriteGuard, _ body: (RekordboxWriteGuard) throws -> T) throws -> T {
-        guard enabled else { return try body(writeGuard) }
+    /// 앱 쓰기의 종류(관문이 다르게 알리는 것만 가른다)
+    enum AppWrite {
+        /// CLI·미리 보기·시험(그대로)
+        case none
+        /// 앱의 수동 쓰기(⌘S 등, 작업이 실린 묶음)
+        case manual
+        /// 자동 저장 묶음
+        case auto
+    }
+
+    /// 앱 쓰기(R7·R9). 입구의 단계는 그대로 두고 알리는 것만 다르다:
+    /// - 자동 저장은 쓰기 잠금을 기다리지 않는다. 다른 쪽이 쥐고 있으면 `LockBusy`(엔진은 잠금 보류로 보고 다음 판정에서 다시 본다)
+    /// - 백업을 뜬 뒤(쓰기 연결을 열기 직전의 재확인을 지난 뒤) 실패하면 백업 뒤 실패로 알린다: 자동 저장은 `writeRolledBack`,
+    ///   수동 쓰기는 화면 문구를 그대로 두고 `AfterBackupFailure`로 감싼다(엔진이 멈춘다). 입구가 이미 켜짐·되돌림·검증 실패·복구 실패로 알린 것과
+    ///   강제 종료 흉내는 그대로다(커밋 전 롤백을 백업 전 실패로 세지 않게)
+    static func appWrite<T>(_ kind: AppWrite, _ writeGuard: RekordboxWriteGuard, _ body: (RekordboxWriteGuard) throws -> T) throws -> T {
+        guard kind != .none else { return try body(writeGuard) }
         let seen = AutoSaveSteps()
         var guarded = writeGuard
-        guarded.locks.waits = false
+        if kind == .auto { guarded.locks.waits = false }
         let contended = writeGuard.locks.contended, checkpoint = writeGuard.hooks.checkpoint
         guarded.locks.contended = { key in
             seen.contended.store(true, ordering: .relaxed)
@@ -132,6 +143,7 @@ extension RekordboxWriteGate {
             case .rekordboxRunning?, .writeAheadLogPresent?, .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?, .pointRestoreFailed?:
                 throw error
             default:
+                if kind == .manual { throw RekordboxWriteGate.AfterBackupFailure(error) }
                 throw DJCError.writeRolledBack(DJCError.reason(of: error))
             }
         }

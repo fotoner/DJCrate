@@ -163,4 +163,33 @@ struct AutoReflectionJournalTests {
         let outcome = await w.engine.exclusive({ ReflectionOutcome.declined }, whenHeld: { _ in .busy })
         #expect(w.h.log.contains("save playlist") && w.h.gateCalls.value.removedCleanupLists == ["op-1"] && outcome.name == "declined")
     }
+
+    // MARK: - 2라운드 G8·O12
+
+    @Test func 수동_저장은_쓰기_잠금을_기다려_판정과_정리를_마친_뒤_쓴다() async throws {
+        let w = AutoReflectionWorld()
+        w.run = .off(.debugBuild)
+        w.cue("a")
+        w.h.script.cleanupLists = [try Self.writtenList(w)]
+        let key = MemoryWriteLocks.key(for: w.h.session.target.database)
+        // 시작 때는 다른 쪽(시점 스냅샷·CLI)이 잠금을 쥐었다. ⌘S를 누른 순간에도 쥐고 있다
+        w.fakes.locks.holdElsewhere(key)
+        w.fakes.locks.blocksOnLock()
+        try await w.start()
+        let draftAtWork = LockedFlag()
+        let engine = w.engine!, memory = w.h.memory
+        let saving = Task { @MainActor in
+            await engine.exclusive({ () -> ReflectionOutcome in
+                draftAtWork.value = memory.cue("a") != nil
+                return .declined
+            }, whenHeld: { _ in .busy })
+        }
+        for _ in 0..<2000 where w.fakes.locks.waiting == 0 && w.h.gateCalls.value.removedCleanupLists.isEmpty && !draftAtWork.value {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        w.fakes.locks.holdElsewhere(key, false)
+        let outcome = await saving.value
+        #expect(outcome.name == "declined")
+        #expect(!draftAtWork.value && w.h.gateCalls.value.removedCleanupLists == ["op-1"], "잠금을 기다려 정리를 마친 뒤 쓴다(쓴 초안을 다시 쓰지 않게)")
+    }
 }

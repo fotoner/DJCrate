@@ -30,6 +30,8 @@ public struct GateScript: Sendable {
     public var journalError: (any Error)?
     /// 미정리 목록(R22)
     public var cleanupLists: [DraftCleanupList] = []
+    /// 미정리 목록을 읽을 때 던질 오류(목록을 읽지 못함)
+    public var cleanupListsError: (any Error)?
     /// 미리 보기·쓰기 결과를 넘긴 묶음에 든 것만 남긴다(실제 관문처럼). 자동 저장이 묶음을 나눠 쓰는 시험이 켠다
     public var reportsBatchOnly = false
     /// 실제로 넣는 동안(dryRun 아님) 부른다: 넣는 동안 바깥(CLI)이 초안을 저장하는 경우를 흉내 낸다
@@ -220,6 +222,7 @@ extension RekordboxWriteGate {
             expectBlockingOffPool()
             script.onCleanupLists?()
             calls.record { $0.order.append("cleanup lists") }
+            if let error = script.cleanupListsError { throw error }
             return lists.withLock { $0 }
         }
         gate.removeCleanupList = { list, _ in

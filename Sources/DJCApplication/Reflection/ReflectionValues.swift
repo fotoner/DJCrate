@@ -178,6 +178,8 @@ public struct TrackAddCandidate: Sendable {
     public var key: String?
     /// 분석을 붙이지 못하는 이유(곡은 분석 전 상태로 넣는다)
     public var withoutAnalysis: String?
+    /// 계획을 만들 때 읽은 옛 UUID 초안(큐·그리드·태그)의 판과 그때 읽은 내용의 해시(R22: 넣기에 쓴 판으로 싣는다)
+    public var revisions: [DraftKey: DraftBatchEntry] = [:]
 
     public init(plan: TrackAddPlan, cues: [EditableCue]? = nil, key: String? = nil, withoutAnalysis: String? = nil) {
         self.plan = plan
@@ -202,6 +204,8 @@ public struct TrackAddPreview: Sendable {
     public var keys: [String: String]
     /// 계획을 만들지 못한 곡(이름: 이유)
     public var unreadable: [String]
+    /// 미리 볼 때 읽은 옛 UUID 초안의 판과 그때 읽은 내용의 해시(넣기 묶음에 그대로 싣는다. 쓰기 직전 디스크를 다시 읽지 않는다)
+    public var revisions: [DraftKey: DraftBatchEntry] = [:]
 
     public init(report: RekordboxTrackWriteReport, plans: [TrackAddPlan], stagedUUIDs: [String: String], withoutAnalysis: [String: String],
                 cues: [String: [EditableCue]] = [:], keys: [String: String] = [:], unreadable: [String]) {

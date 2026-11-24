@@ -115,6 +115,12 @@ struct AutoReflectionAppTests {
         withExtendedLifetime((coordinator, home)) {}
     }
 
+    @Test func 백업_뒤_실패_표시가_실린_오류도_원래_오류의_문구를_보인다() {
+        for error in [DJCError.queryFailed(sql: "COMMIT", message: "주입") as any Error, CocoaError(.fileWriteNoPermission), DJCError.writeRefused("이유")] {
+            #expect(AppErrorMessage.message(for: RekordboxWriteGate.AfterBackupFailure(error)) == AppErrorMessage.message(for: error))
+        }
+    }
+
     @Test func USB에_쓰는_동안_저장은_이유를_보이고_시작하지_않는다() {
         let store = store()
         let coordinator = ReflectionCoordinator.test(store: store, gate: .restoringOnly)

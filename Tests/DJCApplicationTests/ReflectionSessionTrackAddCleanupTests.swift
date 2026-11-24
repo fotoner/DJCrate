@@ -164,4 +164,191 @@ struct ReflectionSessionTrackAddCleanupTests {
         await #expect(throws: DJCError.self) { try await h.session.cleanUpBeforeWrite(to: h.session.target, lock: MemoryWriteLocks().port) }
         #expect(h.gateCalls.value.removedCleanupLists.isEmpty)
     }
+
+    // MARK: - 2라운드
+
+    /// 넣기가 쓴 판(written)과 막힌 칸·쓴 값으로 남은 곡 넣기 몫의 미정리 목록
+    func trackAddList(written: [WrittenDraft], values: DraftCleanupList.TrackAddValues, blocked: [String] = []) {
+        let add = DraftCleanupList.TrackAdd(stagedUUID: "s", trackUUID: "new-s", written: written, values: values, blockedFields: blocked)
+        h.script.cleanupLists = [DraftCleanupList(operationID: "op-add", target: MemoryWriteLocks.key(for: h.session.target.database),
+                                                  draftHome: "/drafts", backupFolder: "add-1", trackAdds: [add])]
+    }
+
+    /// 넣기는 핫큐 A를 썼고 CLI가 B를 더한 새 판을 남겼다
+    func writtenCueThenLater() throws {
+        var written = CueDraft(trackUUID: "s")
+        written.place(Self.cueA)
+        h.memory.save(written)
+        let stamp = try #require(h.memory.stamp(DraftKey(.cue, "s")))
+        var later = written
+        later.place(Self.cueB)
+        h.memory.save(later, origin: .cli)
+        trackAddList(written: [WrittenDraft(key: DraftKey(.cue, "s"), revision: stamp.revision, contentHash: try DraftContentHash(of: written))],
+                     values: .init(cues: [Self.cueA]))
+        readBackNewTrack()
+    }
+
+    @Test func 새_곡에_옮긴_초안을_저장하지_못하면_옛_초안과_목록을_남긴다() async throws {
+        try writtenCueThenLater()
+        h.failingDraftSaves.insert("new-s")
+        let resumed = await h.session.resumeCleanups()
+        #expect(resumed.holds.contains(.cleanupPending) && h.gateCalls.value.removedCleanupLists.isEmpty)
+        #expect(h.memory.cue("s")?.cues.count == 2, "옛 UUID의 새 판을 지우지 않는다")
+    }
+
+    @Test func 옮기는_동안_옛_UUID에_더_새_판이_생기면_목록을_남겨_다시_한다() async throws {
+        try writtenCueThenLater()
+        let memory = h.memory
+        let once = LockedFlag()
+        var newer = CueDraft(trackUUID: "s")
+        newer.place(Self.cueA)
+        newer.place(EditableCue(id: UUID(), kind: .hot(2), time: 45))
+        let snapshot = newer
+        h.onVariantCueSave = { draft in
+            guard draft.trackUUID == "new-s", !once.value else { return }
+            once.value = true
+            memory.save(snapshot, origin: .cli)
+        }
+        let resumed = await h.session.resumeCleanups()
+        #expect(resumed.finished == 0 && h.gateCalls.value.removedCleanupLists.isEmpty, "끝난 것으로 보지 않고 목록을 남긴다")
+        #expect(h.memory.cue("s")?.cues.contains { $0.time == 45 } == true, "옛 UUID의 더 새 판은 지우지 않는다")
+    }
+
+    @Test func 태그를_원래_값으로_되돌린_칸도_새_곡의_제안으로_옮긴다() async throws {
+        var base = TagFields()
+        base.title = "A"
+        var tag = TagDraft(trackUUID: "s", base: base)
+        tag.fields.title = "B"
+        h.memory.save(tag)
+        let stamp = try #require(h.memory.stamp(DraftKey(.tag, "s")))
+        // 넣는 동안 제목을 파일 값(A)으로 되돌리고 키를 골랐다
+        var later = tag
+        later.fields.title = "A"
+        later.fields.musicalKey = "8A"
+        h.memory.save(later, origin: .cli)
+        var written = TagFields()
+        written.title = "B"
+        trackAddList(written: [WrittenDraft(key: DraftKey(.tag, "s"), revision: stamp.revision, contentHash: try DraftContentHash(of: tag))],
+                     values: .init(tags: written))
+        _ = await h.session.resumeCleanups()
+        let moved = try #require(h.memory.tag("new-s"))
+        #expect(moved.base.title == "B" && moved.fields.title == "A" && moved.fields.musicalKey == "8A")
+    }
+
+    @Test func 같은_시각의_큐가_여럿이라_대응이_모호하면_옮기지_않고_옛_초안을_남긴다() async throws {
+        let m1 = EditableCue(id: UUID(), kind: .memory, time: 12), m2 = EditableCue(id: UUID(), kind: .memory, time: 12)
+        var written = CueDraft(trackUUID: "s")
+        written.place(m1)
+        written.place(m2)
+        h.memory.save(written)
+        let stamp = try #require(h.memory.stamp(DraftKey(.cue, "s")))
+        var later = written
+        var edited = m2
+        edited.time = 20
+        later.place(edited)
+        h.memory.save(later, origin: .cli)
+        trackAddList(written: [WrittenDraft(key: DraftKey(.cue, "s"), revision: stamp.revision, contentHash: try DraftContentHash(of: written))],
+                     values: .init(cues: [m1, m2]))
+        h.state.rows["new-s"] = TrackRow(track: H.row("new-s").track, cues: [
+            Cue(id: "c-1", contentID: "new-s", kind: 0, inMsec: 12_000, name: "", colorTableIndex: nil),
+            Cue(id: "c-2", contentID: "new-s", kind: 0, inMsec: 12_000, name: "", colorTableIndex: nil),
+        ], playCount: 0)
+        let resumed = await h.session.resumeCleanups()
+        #expect(resumed.finished == 1)
+        #expect(h.memory.cue("new-s") == nil && h.memory.cue("s") != nil, "다른 큐를 고치지 않게 옛 초안을 연결 안 된 초안으로 남긴다")
+    }
+
+    @Test func 키가_막힌_태그_초안은_재시작_정리가_막힌_키를_새_곡에_옮긴_뒤_지운다() async throws {
+        var tag = TagDraft(trackUUID: "s", base: TagFields())
+        tag.fields.title = "제목"
+        tag.fields.musicalKey = "8A"
+        h.memory.save(tag)
+        let stamp = try #require(h.memory.stamp(DraftKey(.tag, "s")))
+        var written = TagFields()
+        written.title = "제목"
+        trackAddList(written: [WrittenDraft(key: DraftKey(.tag, "s"), revision: stamp.revision, contentHash: try DraftContentHash(of: tag))],
+                     values: .init(tags: written), blocked: [TagFields.Key.musicalKey.rawValue])
+        _ = await h.session.resumeCleanups()
+        #expect(h.memory.tag("new-s")?.fields.musicalKey == "8A", "막힌 키는 새 곡의 쓰기 대기로 옮긴다")
+        #expect(h.memory.tag("s") == nil)
+    }
+
+    @Test func 새_곡에_같은_종류_초안이_이미_있으면_덮지_않고_옛_초안을_남긴다() async throws {
+        try writtenCueThenLater()
+        // 다시 읽은 뒤 사용자가 새 곡에 핫큐 C를 찍었다
+        var user = CueDraft(trackUUID: "new-s")
+        user.place(EditableCue(id: UUID(), kind: .hot(2), time: 60))
+        h.memory.save(user)
+        let resumed = await h.session.resumeCleanups()
+        #expect(resumed.finished == 1)
+        #expect(h.memory.cue("new-s") == user && h.memory.cue("s") != nil)
+    }
+
+    @Test func 초안_없이_넣는_동안_CLI가_저장한_큐는_새_곡의_제안으로_옮긴다() async throws {
+        let track = H.staged("s")
+        h.state.staged = [track]
+        h.script.addPreview.added = [H.track(track.path)]
+        var report = RekordboxTrackWriteReport(dryRun: false)
+        report.added = [H.track(track.path, uuid: "new-s")]
+        report.backup = "/backups/add-1"
+        h.script.add = report
+        var later = CueDraft(trackUUID: "s")
+        later.place(Self.cueB)
+        let snapshot = later
+        h.script.duringAdd = { [memory = h.memory] in memory.save(snapshot, origin: .cli) }
+        let outcome = await h.session.addTracks(rows: [H.row("djc-s", path: track.path)])
+        guard case .added = outcome else { Issue.record("넣었다: \(outcome)"); return }
+        #expect(h.memory.cue("new-s")?.cues.map(\.id) == [Self.idB])
+        #expect(h.session.ports.drafts.suggestion(DraftKey(.cue, "new-s")) != nil, "사람 편집으로 옮기지 않는다")
+    }
+
+    @Test func 넣기_판은_미리_볼_때_읽은_초안의_것이다() async throws {
+        let track = H.staged("s")
+        h.state.staged = [track]
+        var first = CueDraft(trackUUID: "s")
+        first.place(Self.cueA)
+        h.memory.save(first)
+        h.script.addPreview.added = [H.track(track.path)]
+        var outcome = H.track(track.path, uuid: "new-s")
+        outcome.cuesWritten = nil
+        outcome.cueReason = "큐를 쓰지 못했습니다"
+        var report = RekordboxTrackWriteReport(dryRun: false)
+        report.added = [outcome]
+        report.backup = "/backups/add-1"
+        h.script.add = report
+        // 확인 창이 떠 있는 동안 CLI가 새 판을 저장했다(넣기는 미리 볼 때 읽은 첫 판을 쓴다)
+        h.canBackUp = false
+        var later = first
+        later.place(Self.cueB)
+        h.onPrompt = { [memory = h.memory] in memory.save(later, origin: .cli) }
+        let result = await h.session.addTracks(rows: [H.row("djc-s", path: track.path)])
+        guard case .added = result else { Issue.record("넣었다: \(result)"); return }
+        #expect(h.gateCalls.value.adds.last?.revisions.tracks[DraftKey(.cue, "s")]?.contentHash == (try DraftContentHash(of: first)))
+        #expect(h.memory.cue("new-s")?.cues.count == 2)
+        #expect(h.session.ports.drafts.suggestion(DraftKey(.cue, "new-s")) != nil, "넣는 동안 생긴 새 판은 사람 편집으로 옮기지 않는다")
+    }
+
+    // MARK: - 2라운드 S20·G12
+
+    @Test func CLI_쓰기는_미정리_목록을_읽지_못하면_쓰지_않는다() async throws {
+        h.options = .cli(attachesAnalysis: false, writesArtwork: false)
+        h.script.cleanupListsError = DJCError.writeRefused("초안 정리 목록(op.json)을 읽지 못했습니다. 이 DJCrate가 모르는 형식이면 DJCrate를 업데이트한 뒤 다시 시도하세요")
+        await #expect(throws: DJCError.self) { try await h.session.cleanUpBeforeWrite(to: h.session.target, lock: MemoryWriteLocks().port) }
+    }
+
+    @Test func CLI_쓰기는_곡_넣기_정리를_미룬_목록이_있으면_쓰지_않는다() async throws {
+        h.options = .cli(attachesAnalysis: false, writesArtwork: false)
+        // 넣기는 핫큐 A를 썼고 CLI가 B를 더했다. 새 곡 행을 읽지 못해(CLI는 목록을 읽지 않는다) 옮기기를 미룬다
+        var written = CueDraft(trackUUID: "s")
+        written.place(Self.cueA)
+        h.memory.save(written)
+        let stamp = try #require(h.memory.stamp(DraftKey(.cue, "s")))
+        var later = written
+        later.place(Self.cueB)
+        h.memory.save(later, origin: .cli)
+        trackAddList(written: [WrittenDraft(key: DraftKey(.cue, "s"), revision: stamp.revision, contentHash: try DraftContentHash(of: written))],
+                     values: .init(cues: [Self.cueA]))
+        await #expect(throws: DJCError.self) { try await h.session.cleanUpBeforeWrite(to: h.session.target, lock: MemoryWriteLocks().port) }
+        #expect(h.gateCalls.value.removedCleanupLists.isEmpty)
+    }
 }

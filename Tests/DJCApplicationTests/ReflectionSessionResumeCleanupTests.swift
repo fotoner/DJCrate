@@ -88,4 +88,15 @@ struct ReflectionSessionResumeCleanupTests {
         #expect(h.gateCalls.value.journalHolds == [MemoryWriteLocks.key(for: h.session.target.database)], "쥔 잠금 아래에서 판정한다")
         #expect(locks.heldKeys.isEmpty)
     }
+
+    // MARK: - 2라운드 S2
+
+    @Test func 초안_파일_잠금을_기다리는_사이_재생_목록_저장이_실패하면_정리를_미룬다() async throws {
+        h.script.cleanupLists = [try writtenPlaylistStep()]
+        let memory = h.state.playlistDraft
+        h.playlistSaveFailsDuringLock.value = true
+        let resumed = await h.session.resumeCleanups()
+        #expect(resumed.holds.contains(.cleanupPending) && h.gateCalls.value.removedCleanupLists.isEmpty)
+        #expect(h.state.playlistDraft == memory && h.memory.store.playlistDraft().steps.count == 1)
+    }
 }

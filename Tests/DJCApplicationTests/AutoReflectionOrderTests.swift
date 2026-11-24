@@ -141,6 +141,28 @@ struct AutoReflectionOrderTests {
         #expect(w.previews.count == 1, "판이 그대로인 단계는 확인 필요로 남는다")
     }
 
+    @Test func 화면의_재생_목록_초안이_비었어도_디스크에_초안이_있으면_판을_솎지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        var draft = PlaylistDraft()
+        _ = try draft.append(.rename(playlist: .id("B"), name: "새 나"), rekordbox: Self.layout)
+        try w.h.memory.store.savePlaylistDraft(draft)
+        w.h.state.rekordboxPlaylists = Self.layout
+        w.h.state.playlistDraft = w.h.memory.store.playlistDraft()
+        w.h.script.preview.playlistOutcomes = [PlaylistOutcome(edit: draft.steps[0].edit, playlistID: "B", name: "새 나", status: .blocked,
+                                                               reason: "바뀜")]
+        try await w.start()
+        try await w.advance(12)
+        #expect(w.previews.count == 1)
+        // 화면 목록이 비었다(다시 켠 뒤 첫 읽기가 실패했다). 디스크에는 초안이 있다
+        w.h.state.playlistDraft = PlaylistDraft()
+        try await w.edited()
+        #expect(w.engine.status == .leftover(count: 1))
+        w.h.state.playlistDraft = w.h.memory.store.playlistDraft()
+        try await w.edited()
+        try await w.advance(15)
+        #expect(w.previews.count == 1, "판이 그대로인 단계는 확인 필요로 남는다")
+    }
+
     // MARK: - G7
 
     @Test func 일부만_쓴_수동_저장은_다른_곡의_취소를_풀지_않는다() async throws {
@@ -210,5 +232,32 @@ struct AutoReflectionRecordTests {
         #expect(fakes.records.record.cancelledRevisions.count == 50, "다음 판정에서 다시 남긴다")
         try await w.advance(5)
         #expect(w.writes.count == 1 && w.writes.first?.drafts.map(\.trackUUID) == ["z"])
+    }
+}
+
+/// 2라운드: 조건·멈춤(O2·O3)
+@MainActor
+@Suite("자동 저장: 조건·멈춤 2")
+struct AutoReflectionStopTests {
+    @Test func 자동_저장하지_않는_실행도_rekordbox_켜짐을_조건에_싣는다() async throws {
+        let w = AutoReflectionWorld()
+        w.run = .off(.diagnostic)
+        w.fakes.setRunState(.running)
+        try await w.start()
+        #expect(w.engine.conditions.holds.isSuperset(of: [.rekordboxRunning, .notAutoRun(.diagnostic)]))
+        #expect(w.writes.isEmpty)
+    }
+
+    @Test func 수동_저장이_백업을_뜬_뒤_실패하면_오류_종류와_상관없이_멈춘다() async throws {
+        let w = AutoReflectionWorld()
+        w.writable("a")
+        w.cue("a")
+        try await w.start()
+        // ⌘S가 백업 뒤 준비 파일을 쓰지 못해 롤백했다(오류는 원래 오류 그대로 보이고 백업 뒤 표시만 실렸다)
+        let failure = RekordboxWriteGate.AfterBackupFailure(CocoaError(.fileWriteNoPermission))
+        _ = await w.engine.exclusive { ReflectionOutcome.failed(title: "실패", error: failure, exclusions: []) }
+        try await w.settle()
+        try await w.advance(20)
+        #expect(w.writes.isEmpty && w.engine.status == .stopped(.stoppedAfterFailure))
     }
 }

@@ -113,4 +113,28 @@ struct AutoReflectionBatchTests {
         await w.engine.recordSaved()
         #expect(w.fakes.records.record.preBackupFailure == nil, "백업 전 실패로 세지 않는다")
     }
+
+    // MARK: - 2라운드 S4
+
+    @Test func 판은_같고_파일만_바뀐_재생_목록_단계는_자동으로_쓰지_않고_제안으로_남긴다() async throws {
+        let w = AutoReflectionWorld()
+        var draft = PlaylistDraft()
+        _ = try draft.append(.rename(playlist: .id("B"), name: "새 나"), rekordbox: Self.layout)
+        try w.h.memory.store.savePlaylistDraft(draft)
+        w.h.state.rekordboxPlaylists = Self.layout
+        w.h.state.playlistDraft = w.h.memory.store.playlistDraft()
+        w.h.script.preview.playlistOutcomes = [PlaylistOutcome(edit: draft.steps[0].edit, playlistID: "B", name: "새 나", status: .written)]
+        // 고른 뒤 바깥 도구가 판·단계 식별자를 그대로 둔 채 파일만 고쳤고, 앱이 쓰기 잠금을 걸며 그 초안을 받았다
+        w.onSnapshot = { [h = w.h] in
+            var changed = PlaylistDraft()
+            _ = try? changed.append(.rename(playlist: .id("B"), name: "바깥 이름"), rekordbox: Self.layout)
+            changed.setStepIDs(h.memory.store.playlistDraft().stepIDs)
+            h.memory.editPlaylistOutside(changed)
+            h.state.playlistDraft = h.memory.store.playlistDraft()
+        }
+        try await w.start()
+        try await w.advance(12)
+        #expect(w.writes.allSatisfy { $0.playlists == nil })
+        #expect(w.engine.conditions.leftovers.contains(.suggestion))
+    }
 }
