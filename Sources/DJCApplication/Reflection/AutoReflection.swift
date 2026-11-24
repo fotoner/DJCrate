@@ -20,8 +20,9 @@ public struct ReflectionUndoEdit: Equatable, Sendable {
 
 /// ⌘Q 저장(`AutoReflection.prepareToQuit`, R17)의 결과
 public enum QuitPreparation: Equatable, Sendable {
-    /// 자동으로 쓸 대상 편집이 남지 않았다(다 썼거나 처음부터 없었다). 대상 밖·제안·확인 필요 편집은 초안으로 남는다
-    case finished
+    /// 자동으로 쓸 대상 편집이 남지 않았다(다 썼거나 처음부터 없었다). 대상 밖·제안·확인 필요 편집은 초안으로 남는다.
+    /// `run`은 엔진이 이 판정에서 본 rekordbox·Agent 실행 상태다(보지 못했으면 nil). 종료 시트가 감시 모델 대신 이 값을 쓴다(컨실 2라운드 J)
+    case finished(run: RekordboxRunState?)
     /// 남은 대상 편집을 지금 쓰지 않는다(대량 유예는 nil, 그 밖은 사유: 켜짐·편집 창·멈춤·보류 등). 초안으로 남아 다음 실행 때 R1대로 다룬다
     case unwritten(ReflectionHold?)
     /// 종료 대기를 취소했다(쓰는 중이던 쓰기는 끝까지 간다)
@@ -482,7 +483,8 @@ public final class AutoReflection {
         guard hasAuto else {
             grace = nil
             publish(status: leftoverCount > 0 ? .leftover(count: leftoverCount) : .saved, conditions: base)
-            finishQuit(.finished)
+            // 대상 밖 편집만 남아도 이 판정에서 본 실행 상태를 함께 돌려준다: 종료 시트가 그 값을 쓴다(컨실 2라운드 J)
+            finishQuit(.finished(run: watch.run))
             return poll
         }
         if preBackupHeld { return hold(.preBackupFailure, waiting: false, pause: poll) }
@@ -680,6 +682,11 @@ public final class AutoReflection {
             publish(status: .held(.lockBusy), conditions: held)
             return timing.pollInterval
         case .busy:
+            return timing.pollInterval
+        case .playlistDraftBusy:
+            // 재생 목록 초안 파일을 잡지 못해 쓸 묶음이 비었다: 평소에는 잠시 뒤 다시 본다. ⌘Q에서는 기다리지 않고 초안으로 남긴다
+            // (다른 쪽이 잠금을 계속 쥐면 종료 대기가 끝나지 않는다, 컨실 2라운드 E)
+            if quitting { finishQuit(.unwritten(.lockBusy)) }
             return timing.pollInterval
         case .cancelled:
             // 사용자가 멈춘 쓰기는 받은 순간 기록했다(`cancelAutoWrite`). 곧바로 다시 판정해 남은 편집 줄을 알린다

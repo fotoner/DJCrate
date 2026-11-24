@@ -138,6 +138,9 @@ extension ReflectionSession {
         case nothingWritten(unwritten: Set<DraftRevision>)
         /// 이미 쓰는 중이다(다른 쓰기·복원)
         case busy
+        /// 재생 목록 초안 파일 잠금을 잡지 못했거나 디스크 초안이 아직 달라 이번 묶음에 쓸 것이 없다(잠시 뒤 다시 한다).
+        /// 일반 바쁨과 가른다: ⌘Q 저장은 이때 기다리지 않고 초안으로 남긴다(#406 컨실 2라운드 E)
+        case playlistDraftBusy
         /// 다른 프로세스가 쓰기 잠금을 쥐고 있었다(관문이 기다리지 않았다, R9)
         case lockBusy
         /// rekordbox·Agent가 켜져 있다(관문도 다시 본다)
@@ -181,7 +184,7 @@ extension ReflectionSession {
             if chunk.allOrNothing, batch.draftKeys != Set(chunk.tracks.values.flatMap(\.keys)) { return .held }
             guard !batch.isEmpty else {
                 // 재생 목록을 넣지 못한 것(초안 파일을 잡지 못함·디스크 초안이 아직 다름)은 잠시 뒤 다시 한다(확인 필요로 보지 않는다)
-                if chunk.playlistSteps > 0 { return .busy }
+                if chunk.playlistSteps > 0 { return .playlistDraftBusy }
                 // 고른 초안이 하나도 묶음에 들지 않았다(바뀐 것이 없다): 새 편집 전까지 다시 고르지 않는다
                 return .nothingWritten(unwritten: tracks)
             }

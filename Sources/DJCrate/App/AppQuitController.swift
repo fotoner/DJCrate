@@ -333,11 +333,12 @@ final class AppQuitController {
         }
     }
 
-    /// 엔진의 ⌘Q 저장이 rekordbox 켜짐으로 쓰지 못하고 돌아왔으면 그 실행 상태로 시트를 판정하게 한다
+    /// 엔진의 ⌘Q 저장이 본 실행 상태가 있으면 그 값으로 시트를 판정한다: 켜짐으로 쓰지 못했거나, 대상 밖 편집만 남아 다 썼다고 돌아와도 같다(S6·J)
     private func reentryAfterSaving() -> Reentry {
         switch prepared {
         case .unwritten(.rekordboxRunning)?: .confirm(.running)
         case .unwritten(.agentRunning)?: .confirm(.agentOnly)
+        case let .finished(run?)?: .confirm(run)
         default: .confirmNormally
         }
     }
@@ -395,7 +396,7 @@ struct QuitAutoSaveLink {
     /// 입력 중인 칸을 확정한다(⌘S와 같은 확정)
     var commitInput: @MainActor () async -> Void = {}
     /// 엔진의 ⌘Q 저장을 기다린다
-    var prepare: @MainActor () async -> QuitPreparation = { .finished }
+    var prepare: @MainActor () async -> QuitPreparation = { .finished(run: nil) }
     /// 엔진의 종료 대기를 푼다
     var cancel: @MainActor () -> Void = {}
     /// 새 자동 저장을 막거나(true: 시스템 종료·업데이트) 다시 연다(false: 그 종료가 취소됨)

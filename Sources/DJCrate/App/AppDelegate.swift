@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         QuitAutoSaveLink(autoSaves: { [weak self] in self?.quitAutoSave.autoSaves() ?? false },
                          autoWriting: { [weak self] in self?.quitAutoSave.autoWriting() ?? false },
                          commitInput: { [weak self] in await self?.quitAutoSave.commitInput() },
-                         prepare: { [weak self] in await self?.quitAutoSave.prepare() ?? .finished },
+                         prepare: { [weak self] in await self?.quitAutoSave.prepare() ?? .finished(run: nil) },
                          cancel: { [weak self] in self?.quitAutoSave.cancel() },
                          shutdown: { [weak self] in self?.quitAutoSave.shutdown($0) })
     }

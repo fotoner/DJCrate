@@ -397,7 +397,7 @@ struct AppQuitControllerTests {
         w.terminateReenters = true
         #expect(w.controller.requestTermination() == .terminateCancel)
         #expect(w.model.isWaiting && w.model.allowsAutoSave && w.terminated == 0)
-        await w.answerPrepare(.finished)
+        await w.answerPrepare(.finished(run: .stopped))
         #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
         #expect(Array(w.order.prefix(3)) == ["commit", "flush", "prepare"], "\(w.order)")
         #expect(w.reentrantReplies == [.terminateNow], "저장을 마친 뒤 다시 한 요청은 다시 저장하지 않고 끈다")
@@ -439,7 +439,7 @@ struct AppQuitControllerTests {
         w.autoWriting = false
         w.activity = .idle
         w.controller.activityChanged()
-        await w.answerPrepare(.finished)
+        await w.answerPrepare(.finished(run: .stopped))
         #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
         #expect(w.cancelled == 0 && w.prepareCalls == 1)
     }
@@ -450,7 +450,7 @@ struct AppQuitControllerTests {
         #expect(w.controller.requestTermination() == .terminateCancel)
         #expect(w.cancelled == 1)
         w.activity = .idle
-        await w.answerPrepare(.finished)
+        await w.answerPrepare(.finished(run: .stopped))
         #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
         #expect(w.prepareCalls == 1)
     }
@@ -468,6 +468,20 @@ struct AppQuitControllerTests {
         for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
         #expect(w.controller.requestTermination() == .terminateCancel)
         #expect(w.cancelledPrepares == 2 && !w.model.isWaiting && w.terminated == 0)
+    }
+
+    // MARK: - 엔진이 본 실행 상태로 종료 시트(컨실 2라운드 J)
+
+    /// 대상 밖 편집만 남아 엔진이 다 썼다고 돌아와도 엔진이 본 실행 상태로 시트를 판정한다(감시 모델이 아직 꺼짐이어도)
+    @Test func 엔진이_다_썼다고_돌아와도_엔진이_본_실행_상태로_종료_시트를_띄운다() async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        w.run = .stopped
+        w.pendingCount = PendingWriteCount(items: 1, playlistEdits: 0)
+        _ = w.controller.requestTermination()
+        await w.answerPrepare(.finished(run: .agentOnly))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.presented.first?.running == .agentOnly && w.reentrantReplies == [.terminateCancel])
     }
 
     /// 로그아웃·재시작·전원 끔(알림 앞이든 뒤든)과 업데이트 다시 켜기는 새 자동 저장을 기다리지 않고 막는다

@@ -42,7 +42,7 @@ struct AutoReflectionQuitTests {
         try await w.edited()
         #expect(w.writes.isEmpty && w.engine.status == .pending)
         let quit = try await preparing(w)
-        #expect(await quit.value == .finished)
+        #expect(await quit.value == .finished(run: .stopped))
         #expect(w.writes.count == 1 && w.writes.first?.drafts.map(\.trackUUID) == ["a"])
         #expect(w.fakes.publishedStatuses.contains(.quitting), "종료 대기를 알린다")
     }
@@ -56,7 +56,7 @@ struct AutoReflectionQuitTests {
         w.cue("a")
         #expect(w.engine.status == .saved)
         let quit = try await preparing(w)
-        #expect(await quit.value == .finished)
+        #expect(await quit.value == .finished(run: .stopped))
         #expect(w.writes.count == 1)
     }
 
@@ -69,7 +69,7 @@ struct AutoReflectionQuitTests {
         let quit = try await preparing(w)
         #expect(w.writes.isEmpty && w.engine.status == .quitting)
         try await w.advance(8)
-        #expect(await quit.value == .finished)
+        #expect(await quit.value == .finished(run: .stopped))
         #expect(w.writes.count == 1)
     }
 
@@ -84,7 +84,7 @@ struct AutoReflectionQuitTests {
         w.engine.setActivity(signal)
         try await w.settle()
         let quit = try await preparing(w)
-        #expect(await quit.value == .finished)
+        #expect(await quit.value == .finished(run: .stopped))
         #expect(w.writes.count == 1)
     }
 
@@ -126,7 +126,7 @@ struct AutoReflectionQuitTests {
         w.cue("a")
         w.cue("b")
         let quit = try await preparing(w)
-        #expect(await quit.value == .finished)
+        #expect(await quit.value == .finished(run: .stopped))
         #expect(w.writes.count == 1 && w.writes.first?.drafts.map(\.trackUUID) == ["a"])
         #expect(w.h.memory.cue("b") != nil, "확인이 필요한 곡은 초안으로 남는다")
     }
@@ -140,7 +140,7 @@ struct AutoReflectionQuitTests {
         w.cue("a")
         w.cue("b")
         let quit = try await preparing(w)
-        #expect(await quit.value == .finished)
+        #expect(await quit.value == .finished(run: .stopped))
         #expect(w.writes.count == 2)
     }
 
@@ -200,5 +200,39 @@ struct AutoReflectionQuitTests {
         #expect(w.writes.isEmpty)
         try await w.advance(1)
         #expect(w.writes.count == 1)
+    }
+
+    /// 다른 쪽(CLI 등)이 재생 목록 초안 파일 잠금을 계속 쥐어 쓸 묶음이 비어도 ⌘Q 저장은 끝난다: 초안으로 남기고 돌려준다(컨실 2라운드 E)
+    @Test func 재생_목록_초안_잠금을_계속_못_잡으면_초안으로_남기고_돌아온다() async throws {
+        let w = AutoReflectionWorld()
+        var draft = PlaylistDraft()
+        _ = try draft.append(.rename(playlist: .id("B"), name: "새 이름"), rekordbox: AutoReflectionEngineTests.layout)
+        try w.h.memory.store.savePlaylistDraft(draft)
+        w.h.state.rekordboxPlaylists = AutoReflectionEngineTests.layout
+        w.h.state.playlistDraft = w.h.memory.store.playlistDraft()
+        w.h.state.playlistDraftFileLocked = false
+        try await w.start()
+        try await w.advance(10)
+        #expect(w.writes.isEmpty, "잠금을 못 잡으면 평소에는 쓰지 않고 다시 본다")
+        let quit = try await preparing(w)
+        try await w.advance(3)
+        // 끝나지 않았으면 취소로 돌아온다(시험이 멈추지 않게)
+        w.engine.cancelQuit()
+        #expect(await quit.value == .unwritten(.lockBusy))
+        #expect(w.writes.isEmpty && !w.h.memory.store.playlistDraft().isEmpty, "재생 목록 초안은 남는다")
+    }
+
+    /// 자동으로 쓸 것이 없어(대상 밖 편집만 남음) 바로 끝나도 엔진이 본 rekordbox 실행 상태를 함께 돌려준다: 종료 시트가 그 값을 쓴다(컨실 2라운드 J)
+    @Test(arguments: [RekordboxRunState.running, .agentOnly])
+    func 쓸_것이_없어도_엔진이_본_실행_상태를_함께_돌려준다(_ state: RekordboxRunState) async throws {
+        let w = AutoReflectionWorld()
+        w.h.state.rows["w"] = ReflectionHarness.row("w")
+        w.h.state.artworkDrafts["w"] = ArtworkDraft(trackUUID: "w", change: .delete, base: ArtworkBase(imagePath: ""))
+        try await w.start()
+        w.fakes.setRunState(state)
+        try await w.advance(1)
+        let quit = try await preparing(w)
+        #expect(await quit.value == .finished(run: state))
+        #expect(w.writes.isEmpty)
     }
 }
