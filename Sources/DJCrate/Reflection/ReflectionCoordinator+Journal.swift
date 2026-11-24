@@ -65,7 +65,8 @@ extension ReflectionCoordinator {
             }
         }
         if restored { engine?.restored() } else { engine?.recheckJournal() }
-        await store.refreshIfRekordboxChanged()
+        // 복원한 master.db는 쓰기 전 백업의 시각을 그대로 가져 "읽은 사본 뒤 바뀜"으로 잡히지 않는다(R11): 복원했으면 늘 새 사본으로 다시 읽는다
+        if restored { _ = await store.reloadAfterWrite() } else { await store.refreshIfRekordboxChanged() }
     }
 
     /// 복원이 되돌릴 실제 목표: 기록 종류마다 다르다. 시점 복원은 재시도하며 목표가 바뀔 수 있어 기록에 지금 적힌 시점을 말한다
