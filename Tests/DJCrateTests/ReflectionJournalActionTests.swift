@@ -41,6 +41,22 @@ struct ReflectionJournalActionTests {
         func keepCalled(_ request: RekordboxJournalRequest) { state.withLock { $0.keeps.append(request) } }
         func removed(_ id: String) { state.withLock { $0.removed.append(id) } }
         func cleared() { state.withLock { $0.present = false } }
+        /// 관문을 부르는 동안 앱의 쓰기 상태(`libraryBusy`)와 USB 쓰기 상태를 본 값
+        private let busySeen = Mutex<[Bool]>([])
+        var busyDuringGate: [Bool] { busySeen.withLock { $0 } }
+        func sawBusy(_ busy: Bool) { busySeen.withLock { $0.append(busy) } }
+    }
+
+    /// 확인 창이 답한 직후 일을 하는 프롬프터(확인 창이 떠 있는 동안 USB 쓰기가 시작된 경우를 흉내 낸다)
+    @MainActor
+    final class AfterAnswerPrompter: HeadlessReflectionPrompter {
+        var afterAnswer: () -> Void = {}
+        var shown: [ReflectionPrompt] = []
+        func show(_ prompt: ReflectionPrompt) -> Bool {
+            shown.append(prompt)
+            afterAnswer()
+            return true
+        }
     }
 
     struct World {
@@ -53,23 +69,30 @@ struct ReflectionJournalActionTests {
     }
 
     func world(changedSince: Bool = false, draft: (key: DraftKey, revision: DraftRevision, hash: DraftContentHash)? = nil, home: URL? = nil,
-               store existing: LibraryStore? = nil) -> World {
+               journalHome: URL? = nil, entry: RekordboxWriteJournal.Entry = .drafts, store existing: LibraryStore? = nil,
+               prompter customPrompter: (any ReflectionPrompter)? = nil) -> World {
         let folder = home ?? FileManager.default.temporaryDirectory.appending(path: "djc-journal-action-\(UUID().uuidString)")
         let store = existing ?? LibraryStore.test(activityLog: ActivityLog(), saveTagDrafts: { _ in }, draftHome: folder, movesDamagedDrafts: false,
                                                  takeLiveSnapshot: { _ in throw DJCError.snapshotNotFound })
         store.phase = .loaded
         let calls = Calls()
         let stamp = RekordboxFileStamp(size: 100, modifiedNanoseconds: 200)
-        var journal = RekordboxWriteJournal(operationID: "op-1", kind: .counter, entry: .drafts, startCounter: 5)
+        var journal = RekordboxWriteJournal(operationID: "op-1", kind: .counter, entry: entry, startCounter: 5)
         if let draft {
-            journal.drafts = .init(home: folder.path, written: [WrittenDraft(key: draft.key, revision: draft.revision, contentHash: draft.hash)])
+            journal.drafts = .init(home: (journalHome ?? folder).path, written: [WrittenDraft(key: draft.key, revision: draft.revision, contentHash: draft.hash)])
         }
         let finding = RekordboxJournalFinding(journal: journal, changedSince: changedSince, database: stamp)
         var gate = RekordboxWriteGate.restoringOnly
         gate.journal = { _, _ in calls.present ? .interrupted(finding) : .none }
-        gate.restoreJournal = { _, request in try calls.restoreCalled(request).get() }
+        nonisolated(unsafe) let observed = store
+        let busyNow: @Sendable () -> Bool = { DispatchQueue.main.sync { MainActor.assumeIsolated { observed.libraryBusy } } }
+        gate.restoreJournal = { _, request in
+            calls.sawBusy(busyNow())
+            return try calls.restoreCalled(request).get()
+        }
         gate.keepJournal = { _, request, apply in
             guard calls.present else { return .nothing }
+            calls.sawBusy(busyNow())
             calls.keepCalled(request)
             try apply()
             calls.cleared()
@@ -79,7 +102,7 @@ struct ReflectionJournalActionTests {
         gate.cleanupLists = { _, _ in [list] }
         gate.removeCleanupList = { list, _ in calls.removed(list.operationID) }
         let prompter = ScriptedPrompter()
-        let coordinator = ReflectionCoordinator.test(store: store, prompter: prompter, gate: gate)
+        let coordinator = ReflectionCoordinator.test(store: store, prompter: customPrompter ?? prompter, gate: gate)
         return World(store: store, coordinator: coordinator, prompter: prompter, calls: calls, finding: finding, home: folder)
     }
 
@@ -174,6 +197,93 @@ struct ReflectionJournalActionTests {
         w.calls.cleared()
         await w.coordinator.keepJournal()
         #expect(w.calls.keeps.isEmpty, "판정이 기록을 찾지 못하면 묻지도 않는다")
+    }
+
+    // MARK: - S1: 다른 데이터 폴더의 기록
+
+    @Test func 이대로_두기는_기록에_적힌_초안_저장소가_이_앱의_것이_아니면_기록을_지우지_않고_알린다() async throws {
+        let home = FileManager.default.temporaryDirectory.appending(path: "djc-journal-home-a-\(UUID().uuidString)")
+        let other = FileManager.default.temporaryDirectory.appending(path: "djc-journal-home-b-\(UUID().uuidString)")
+        let store = LibraryStore.test(activityLog: ActivityLog(), saveTagDrafts: { _ in }, draftHome: home, movesDamagedDrafts: false,
+                                      takeLiveSnapshot: { _ in throw DJCError.snapshotNotFound })
+        var cue = CueDraft(trackUUID: "t1")
+        cue.place(EditableCue(id: UUID(), kind: .hot(0), time: 1))
+        let human = store.testDrafts.with(origin: .human)
+        human.saveCue(cue)
+        human.flush()
+        let key = DraftKey(.cue, "t1")
+        let stamp = try #require(store.testDrafts.stamp(key))
+        // 기록은 다른 데이터 폴더(홈 B)의 앱이 남겼다
+        let w = world(draft: (key, stamp.revision, stamp.contentHash), home: home, journalHome: other, store: store)
+        await w.coordinator.keepJournal()
+        #expect(w.calls.keeps.isEmpty && w.calls.removed.isEmpty && w.calls.present, "기록·미정리 목록을 건드리지 않는다")
+        #expect(store.testDrafts.suggestion(key) == nil, "초안도 제안으로 바꾸지 않는다")
+        #expect(w.store.toast?.kind == .warning && w.store.toast?.title.contains("다른 데이터 폴더") == true, "\(String(describing: w.store.toast?.title))")
+        #expect(w.prompter.shown.isEmpty, "처리할 수 없는 기록은 묻지 않는다")
+    }
+
+    // MARK: - S7: 앱 쓰기 상태와 USB 배타
+
+    @Test func 기록으로_복원은_관문을_부르는_동안_라이브러리_쓰기_상태를_유지하고_끝나면_푼다() async {
+        let w = world()
+        await w.coordinator.restoreJournal()
+        #expect(w.calls.restores.count == 1)
+        #expect(w.calls.busyDuringGate == [true], "복원하는 동안 USB 동기화 같은 다른 일이 겹치지 않게 쓰기 상태다: \(w.calls.busyDuringGate)")
+        #expect(!w.store.libraryBusy, "끝나면 푼다")
+    }
+
+    @Test func 이대로_두기도_관문을_부르는_동안_라이브러리_쓰기_상태를_유지한다() async {
+        let w = world()
+        await w.coordinator.keepJournal()
+        #expect(w.calls.keeps.count == 1)
+        #expect(w.calls.busyDuringGate == [true], "\(w.calls.busyDuringGate)")
+        #expect(!w.store.libraryBusy)
+    }
+
+    @Test func USB에_쓰는_중이면_복원을_시작하지_않고_이유를_알린다() async {
+        let w = world()
+        w.coordinator.isWritingUsb = { true }
+        await w.coordinator.restoreJournal()
+        #expect(w.calls.restores.isEmpty && w.calls.present)
+        #expect(w.store.toast?.title == "USB에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 시도하세요")
+    }
+
+    @Test func 확인하는_사이_USB_쓰기가_시작되면_관문을_부르기_직전에_막는다() async {
+        let prompter = AfterAnswerPrompter()
+        let w = world(prompter: prompter)
+        nonisolated(unsafe) var usb = false
+        w.coordinator.isWritingUsb = { usb }
+        prompter.afterAnswer = { usb = true }
+        await w.coordinator.restoreJournal()
+        #expect(prompter.shown.count == 1, "확인은 받았다")
+        #expect(w.calls.restores.isEmpty && w.calls.present, "그 사이 시작된 USB 쓰기를 호출 직전에 다시 본다")
+        #expect(w.store.toast?.title == "USB에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 시도하세요")
+        #expect(!w.store.libraryBusy)
+    }
+
+    @Test func 다른_저장이_도는_중이면_기록_복원은_시작하지_않는다() async {
+        let w = world()
+        w.store.isWritingRekordbox = true
+        await w.coordinator.restoreJournal()
+        #expect(w.calls.restores.isEmpty && w.prompter.shown.isEmpty)
+        #expect(w.store.toast?.title == "rekordbox 저장이 끝난 뒤 다시 시도하세요")
+        w.store.isWritingRekordbox = false
+    }
+
+    // MARK: - S9: 기록 종류에 맞는 복원 목표
+
+    @Test(arguments: [
+        (RekordboxWriteJournal.Entry.drafts, "쓰다가 끊긴 저장을 이 기록으로 쓰기 전 상태로 되돌립니다."),
+        (.trackAdd, "쓰다가 끊긴 저장을 이 기록으로 쓰기 전 상태로 되돌립니다."),
+        (.trackDelete, "쓰다가 끊긴 저장을 이 기록으로 쓰기 전 상태로 되돌립니다."),
+        (.restore, "끊긴 복원을 이 기록의 같은 백업으로 다시 끝냅니다."),
+        (.pointRestore, "끊긴 복원을 처음 고른 복원 시점으로 다시 끝냅니다."),
+        (.iTunesSync, "끊긴 iTunes 동기화가 바꾼 동기화 파일만 쓰기 전 상태로 되돌립니다."),
+    ])
+    func 복원_확인_창은_기록_종류에_맞는_실제_목표를_말한다(_ entry: RekordboxWriteJournal.Entry, _ expected: String) async {
+        let w = world(entry: entry)
+        await w.coordinator.restoreJournal()
+        #expect(w.prompter.shown.first?.text.hasPrefix(expected) == true, "\(entry): \(String(describing: w.prompter.shown.first?.text))")
     }
 
     // MARK: - 엔진의 차례와 신호

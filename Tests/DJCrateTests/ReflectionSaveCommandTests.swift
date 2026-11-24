@@ -131,9 +131,9 @@ struct ReflectionSaveCommandTests {
         let (w, _) = world(.writing, writing: true)
         w.h.store.isWritingRekordbox = true
         #expect(LibraryMenuAction.reflect.isEnabled(in: w.h.window), "자동 저장이 쓰는 동안에도 켜 둔다(대기열 맨 앞)")
-        // 이미 수동 저장이 도는 중이면 끈다
+        // 수동 저장이 도는 중에도 켜 둔다: 요청 하나를 보관해 앞 쓰기가 끝난 뒤 한다(sol S4, `ReflectionSaveEntryTests`)
         w.h.store.writeTask = Task {}
-        #expect(!LibraryMenuAction.reflect.isEnabled(in: w.h.window))
+        #expect(LibraryMenuAction.reflect.isEnabled(in: w.h.window))
         w.h.store.writeTask = nil
     }
 

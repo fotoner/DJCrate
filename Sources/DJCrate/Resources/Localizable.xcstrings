@@ -21411,6 +21411,54 @@
         }
       }
     },
+    "끊긴 iTunes 동기화가 바꾼 동기화 파일만 쓰기 전 상태로 되돌립니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restores only the sync file the interrupted iTunes sync changed to its state before writing."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まったiTunes同期が変更した同期ファイルだけを、書き込み前の状態に戻します。"
+          }
+        }
+      }
+    },
+    "끊긴 복원을 이 기록의 같은 백업으로 다시 끝냅니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finishes the interrupted restore again with the same backup in this record."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった復元を、この記録と同じバックアップでもう一度最後まで行います。"
+          }
+        }
+      }
+    },
+    "끊긴 복원을 처음 고른 복원 시점으로 다시 끝냅니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finishes the interrupted restore again with the restore point first chosen."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった復元を、最初に選んだ復元ポイントでもう一度最後まで行います。"
+          }
+        }
+      }
+    },
     "끊긴 쓰기를 마저 썼습니다" : {
       "localizations" : {
         "en" : {
@@ -22449,6 +22497,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "他で作成された編集"
+          }
+        }
+      }
+    },
+    "다른 데이터 폴더의 쓰기 기록이라 이대로 두지 않았습니다. 그 데이터 폴더로 DJCrate를 연 뒤 처리하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This write record belongs to another data folder, so it was not kept as is. Open DJCrate with that data folder, then handle it there."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のデータフォルダの書き込み記録のため、このままにしませんでした。そのデータフォルダでDJCrateを開いてから処理してください。"
           }
         }
       }
@@ -42505,22 +42569,6 @@
         }
       }
     },
-    "저장 대기 없음" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Pending Saves"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存待ちなし"
-          }
-        }
-      }
-    },
     "저장 대기 초안 보기" : {
       "localizations" : {
         "en" : {
@@ -42903,6 +42951,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存の確認に失敗し、自動復元もできませんでした"
+          }
+        }
+      }
+    },
+    "저장됨" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済み"
           }
         }
       }

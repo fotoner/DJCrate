@@ -75,6 +75,28 @@ struct AutoReflectionJournalTests {
         #expect(w.fakes.locks.heldKeys.isEmpty, "정리를 마치면 잠금을 푼다")
     }
 
+    // MARK: - #404 S8
+
+    /// 상태 줄이 [이대로 두기…]를 먼저 보일지(백업 뒤 rekordbox에서 라이브러리가 바뀜)는 엔진이 다시 판정할 때마다 발행에 실린다
+    @Test func 중단_기록을_다시_판정하면_바뀐_여부를_발행에_싣는다() async throws {
+        let w = AutoReflectionWorld()
+        let journal = ScriptedJournal(.interrupted(Self.finding))
+        w.h.journal = journal
+        w.cue("a")
+        try await w.start()
+        #expect(w.engine.conditions.holds.contains { $0.kind == .interrupted })
+        #expect(!w.engine.conditions.interruptedChangedSince, "처음 판정은 바뀐 것이 없다")
+        let changed = RekordboxJournalFinding(journal: Self.finding.journal, changedSince: true, database: nil)
+        journal.set(.interrupted(changed))
+        w.engine.recheckJournal()
+        try await w.settle()
+        #expect(w.engine.conditions.interruptedChangedSince, "다시 판정해 rekordbox가 바꾼 것을 알렸다")
+        journal.set(.interrupted(Self.finding))
+        w.engine.recheckJournal()
+        try await w.settle()
+        #expect(!w.engine.conditions.interruptedChangedSince, "다시 바뀐 것이 없다")
+    }
+
     // MARK: - S12·G5
 
     @Test(arguments: [AutoReflectionRun.Off.debugBuild, .diagnostic])

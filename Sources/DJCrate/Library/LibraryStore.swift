@@ -348,8 +348,9 @@ final class LibraryStore {
         notify(toast)
     }
 
-    /// 지금 알림을 덮어도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만
-    private var canReplaceToast: Bool {
+    /// 지금 알림을 덮어도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만.
+    /// 사용자가 누르지 않은 알림(읽기 실패·자동 저장 결과 등)이 이 값으로 덮을지 정한다
+    var canReplaceToast: Bool {
         guard let toast else { return true }
         return toast.kind == .success && toast.undoBackup == nil && toast.action == nil
     }

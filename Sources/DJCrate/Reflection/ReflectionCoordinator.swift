@@ -165,7 +165,8 @@ final class ReflectionPresenter {
         guard let store else { return }
         let result = WriteResult.written(report, preview: report).followedUp(followUp)
         let shown = Int(store.settings.value(SettingKeys.writeToastsShown))
-        guard !followUp.isEmpty || shown < Self.autoWriteToasts else {
+        // 사용자가 누르지 않은 결과라 떠 있는 경고·실패나 단추가 있는 알림을 덮지 않는다(기존 규칙): 활동 기록에만 남기고 횟수에 세지 않는다
+        guard store.canReplaceToast, !followUp.isEmpty || shown < Self.autoWriteToasts else {
             _ = store.activityLog.record(result)
             return
         }
@@ -249,6 +250,8 @@ final class ReflectionCoordinator {
     var engine: AutoReflection?
     /// 엔진이 알린 칩 상태와 조건(상태 줄 #404가 읽는다)
     let autoFeed = AutoReflectionFeed()
+    /// 쓰는 중에 누른 저장 요청 하나(R3 5번 줄). 앞 쓰기가 끝난 뒤 다음 자동 저장보다 먼저 한다
+    var queuedSave: Task<Void, Never>?
     /// USB에 쓰는 중인지(USB 쓰기·볼륨을 붙잡은 작업). 시험이 바꿔 넣는다
     lazy var isWritingUsb: @MainActor () -> Bool = { [unowned store] in store.writeActivity.writingUsb }
 
@@ -256,7 +259,6 @@ final class ReflectionCoordinator {
         self.session = session
         self.store = store
         self.prompter = prompter
-        autoFeed.onInterrupted = { [weak self] in self?.loadFinding() }
     }
 
     // MARK: - 입구(버튼·메뉴): 시작할 수 있으면 작업 하나로 돌린다
@@ -265,18 +267,35 @@ final class ReflectionCoordinator {
     /// 라이브 분석 파일을 읽는 동안 라이브러리를 바꾸지 않는다). 이미 쓰는 중이거나 다른 작업이 있으면 무시한다.
     /// 다만 자동 저장이 쓰는 중이면 그 뒤 차례로 넣는다(R3 5번 줄)
     private func canStart(blocked: Bool = false) -> Bool {
+        if refusesNow() { return false }
+        let autoWriting = engine?.isWriting == true
+        return !blocked && (!store.libraryBusy || autoWriting) && store.writeTask == nil
+    }
+
+    /// 지금 새 쓰기를 시작하지 않을 이유가 있으면 알리고 true: 종료 중·막힌 초안 비교 창·USB 쓰기
+    func refusesNow() -> Bool {
         if let refusal = store.writeRefusal {
             // Mac을 끄는 중이거나 종료를 기다리는 중(#300)에는 새 쓰기를 시작하지 않고 이유를 알린다
             store.showToast(.notice(refusal, nil))
-            return false
+            return true
         }
-        if store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return false }
+        if store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return true }
         if isWritingUsb() {
             store.showToast(.notice(String(ui: "USB에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 시도하세요"), nil))
-            return false
+            return true
         }
-        let autoWriting = engine?.isWriting == true
-        return !blocked && (!store.libraryBusy || autoWriting) && store.writeTask == nil
+        return false
+    }
+
+    /// 쓰는 중에 누른 저장: 요청 하나를 보관해 앞 쓰기가 끝난 뒤 다음 자동 저장보다 먼저 한다(R3 5번 줄).
+    /// 엔진의 차례(`exclusive`)에 지금 들어가 기다리므로 엔진이 그 사이 자동 저장을 먼저 시작하지 않는다. 저장할 대상은 실행 때 다시 읽는다.
+    /// 이미 보관한 요청이 있거나 엔진이 없으면(차례가 없어 겹쳐 쓴다) 아무것도 하지 않는다
+    func queueSave(rows: @escaping @MainActor () -> [TrackRow]) {
+        guard engine != nil, queuedSave == nil else { return }
+        queuedSave = Task { [weak self] in
+            await self?.write(later: rows)
+            self?.queuedSave = nil
+        }
     }
 
     func start(_ work: @escaping @MainActor () async -> Void) {
@@ -374,8 +393,20 @@ final class ReflectionCoordinator {
 
     /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 곡 초안만 쓴다)
     func write(rows: [TrackRow], playlists: Bool = true) async {
+        await write(later: { rows }, playlists: playlists, skipsWhenNothingSavable: false)
+    }
+
+    /// 쓸 곡을 엔진의 차례가 와서 쓰기 직전에 읽는다(보관한 저장 요청). 앞 쓰기가 저장 대기를 이미 모두 썼으면 조용히 끝낸다
+    func write(later rows: @escaping @MainActor () -> [TrackRow], playlists: Bool = true, skipsWhenNothingSavable: Bool = true) async {
         let session = session
-        let outcome = await serializedWrite { await session.write(rows: rows, playlists: playlists) }
+        let outcome = await serializedWrite { [self] in
+            // 차례를 기다린 사이 상태가 바뀌었다: 시작할 수 없는 이유를 다시 보고, 쓸 것이 없으면 아무것도 알리지 않는다
+            if skipsWhenNothingSavable {
+                if refusesNow() { return .declined }
+                guard store.hasSavableEdits else { return .declined }
+            }
+            return await session.write(rows: rows(), playlists: playlists)
+        }
         // 쓸 수 없게 된 곡·재생 목록의 초안은 창을 줄줄이 띄우지 않고 한 시트에서 줄마다 고친다(#232).
         // 고를 것이 없으면 창을 띄우지 않는다. 막힌 이유는 결과 토스트와 결과 보기에 있다(#230).
         guard case let .nothingWritable(preview, targets) = outcome else { return }
@@ -418,25 +449,10 @@ final class ReflectionCoordinator {
 final class AutoReflectionFeed {
     private(set) var status: AutoReflectionStatus = .saved
     private(set) var conditions = ReflectionConditions()
-    /// 판정이 찾은 중단 기록(상태 줄이 복원 안내의 차례를 정한다: 백업 뒤 rekordbox에서 바뀌었으면 "이대로 두기"를 먼저). 중단이 아니면 nil.
-    /// 엔진은 이 값을 내보내지 않아 앱이 중단을 알게 된 때 직접 판정한다(`ReflectionCoordinator.loadFinding`)
-    private(set) var finding: RekordboxJournalFinding?
-    /// 중단이 새로 나타났다(조정자가 기록을 읽어 `setFinding`으로 넣는다)
-    @ObservationIgnored var onInterrupted: (@MainActor () -> Void)?
-    @ObservationIgnored private var wasInterrupted = false
 
     func update(_ status: AutoReflectionStatus, _ conditions: ReflectionConditions) {
         if self.status != status { self.status = status }
         if self.conditions != conditions { self.conditions = conditions }
-        let interrupted = conditions.holds.contains { $0.kind == .interrupted }
-        if !interrupted, finding != nil { finding = nil }
-        // 중단이 나타난 때 한 번만 찾는다(찾지 못하면 기본 차례로 보인다)
-        if interrupted, !wasInterrupted { onInterrupted?() }
-        wasInterrupted = interrupted
-    }
-
-    func setFinding(_ finding: RekordboxJournalFinding?) {
-        if self.finding != finding { self.finding = finding }
     }
 }
 

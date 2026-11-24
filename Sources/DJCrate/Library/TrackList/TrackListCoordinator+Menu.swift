@@ -35,10 +35,13 @@ extension TrackListCoordinator {
         let pending = store.writeTargets(targets)
         if !pending.isEmpty {
             menu.addItem(.separator())
-            let reflect = NSMenuItem(title: String(ui: "선택한 곡 rekordbox에 저장 (\(pending.count)곡)"),
-                                     action: #selector(reflectSelected), keyEquivalent: "")
-            reflect.target = self
-            menu.addItem(reflect)
+            // 저장 항목은 다른 저장 단추처럼 R3 표의 줄(6~8번)에서만 보인다. XML 만들기는 저장이 아니라 늘 있다
+            if actions.showsSave() {
+                let reflect = NSMenuItem(title: String(ui: "선택한 곡 rekordbox에 저장 (\(pending.count)곡)"),
+                                         action: #selector(reflectSelected), keyEquivalent: "")
+                reflect.target = self
+                menu.addItem(reflect)
+            }
             let xml = NSMenuItem(title: String(ui: "선택한 곡 XML 만들기 (\(pending.count)곡)"), action: #selector(exportReflectionXML), keyEquivalent: "")
             xml.target = self
             menu.addItem(xml)

@@ -40,29 +40,22 @@ struct ReflectionStatusRowsModelTests {
     }
 
     @Test func 중단_뒤_rekordbox가_라이브러리를_바꿨으면_이대로_두기를_먼저_보인다() {
-        let h = harness(.interrupted(recoveryFailed: false), holds: [.interrupted(recoveryFailed: false)])
-        let stamp = RekordboxFileStamp(size: 10, modifiedNanoseconds: 20)
-        let journal = RekordboxWriteJournal(operationID: "op", kind: .counter, entry: .drafts, startCounter: 3)
-        h.window.autoFeed?.setFinding(RekordboxJournalFinding(journal: journal, changedSince: true, database: stamp))
+        let hold: Set<ReflectionHold> = [.interrupted(recoveryFailed: false)]
+        let h = harness(.interrupted(recoveryFailed: false), holds: hold)
+        let feed = h.window.autoFeed!
+        func publish(changedSince: Bool) {
+            feed.update(.interrupted(recoveryFailed: false), ReflectionConditions(holds: hold, hasPending: true, autoSaves: true, interruptedChangedSince: changedSince))
+        }
+        publish(changedSince: true)
         #expect(h.model.journalActions == [.keep, .restore])
-        h.window.autoFeed?.setFinding(RekordboxJournalFinding(journal: journal, changedSince: false, database: stamp))
+        // 엔진이 기록을 다시 판정해 바뀐 것이 없다고 알리면 순서가 갱신된다(S8)
+        publish(changedSince: false)
         #expect(h.model.journalActions == [.restore, .keep])
-        // 중단이 풀리면 찾은 값도 비운다(다음 중단이 옛 값을 보이지 않게)
-        h.window.autoFeed?.update(.saved, ReflectionConditions(autoSaves: true))
-        #expect(h.window.autoFeed?.finding == nil && h.model.journalActions.isEmpty)
-    }
-
-    @Test func 중단이_나타난_때_한_번만_기록을_찾는다() {
-        let feed = AutoReflectionFeed()
-        var asked = 0
-        feed.onInterrupted = { asked += 1 }
-        let interrupted = ReflectionConditions(holds: [.interrupted(recoveryFailed: false)], hasPending: true, autoSaves: true)
-        feed.update(.interrupted(recoveryFailed: false), interrupted)
-        feed.update(.interrupted(recoveryFailed: false), interrupted)
-        #expect(asked == 1, "같은 중단 동안 다시 찾지 않는다")
+        publish(changedSince: true)
+        #expect(h.model.journalActions == [.keep, .restore])
+        // 중단이 풀리면 단추가 없다
         feed.update(.saved, ReflectionConditions(autoSaves: true))
-        feed.update(.interrupted(recoveryFailed: true), ReflectionConditions(holds: [.interrupted(recoveryFailed: true)], autoSaves: true))
-        #expect(asked == 2, "다음 중단은 새로 찾는다")
+        #expect(h.model.journalActions.isEmpty)
     }
 
     @Test func 쓸_수_없음은_이유를_툴팁으로_보이고_단추는_숨는다() {
@@ -94,7 +87,7 @@ struct ReflectionStatusRowsModelTests {
     @Test func 저장_대기가_없으면_저장됨이고_단추가_숨는다() {
         let h = harness(.saved, pending: false)
         #expect(h.model.saveRow == .nothingPending && !h.model.showsWriteButton)
-        #expect(h.model.line.title == "저장 대기 없음" && h.model.line.symbol == .saved)
+        #expect(h.model.line.title == "저장됨" && h.model.line.symbol == .saved)
     }
 
     @Test func 쓰는_중은_1초_뒤에_보이고_단추가_숨는다() async {
@@ -199,7 +192,7 @@ struct ReflectionStatusRowsModelTests {
 
     @Test func 멈춤이어도_저장_대기가_없으면_4번_줄이라_단추가_숨는다() {
         let h = harness(.stopped(.stoppedAfterFailure), holds: [.stoppedAfterFailure], pending: false)
-        #expect(h.model.saveRow == .nothingPending && !h.model.showsWriteButton && h.model.line.title == "저장 대기 없음")
+        #expect(h.model.saveRow == .nothingPending && !h.model.showsWriteButton && h.model.line.title == "저장됨")
     }
 
     @Test func 디버그_실행에_rekordbox가_켜져_있으면_3번_줄이라_단추가_숨는다() {

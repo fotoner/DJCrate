@@ -75,7 +75,7 @@ extension ListHeaderActions {
     // MARK: - rekordbox 쓰기 대기
 
     static func pending(selected: Bool, narrowed: Bool = false, tracks: Int, playlistEdits: Int, histories: [HistoryMenu.Entry], unlinkedDrafts: Int,
-                        restore: Restore, locks: Locks) -> Self {
+                        restore: Restore, locks: Locks, showsWrite: Bool = true) -> Self {
         var menu: [MenuItem] = []
         if !histories.isEmpty {
             // 쓰기 대기 재생 기록(#43)은 곡 줄이 아니라 이 메뉴에서 보고(고르면 그 기록으로) 뺀다
@@ -112,7 +112,8 @@ extension ListHeaderActions {
             status = Status(kind: .hint, title: String(ui: "연결되지 않은 편집 \(unlinkedDrafts)곡"), symbol: "questionmark.folder",
                             command: Command(title: String(ui: "보기…"), systemImage: "", action: .openUnlinkedDrafts))
         }
-        return Self(primary: write, menu: menu, status: status)
+        // 자동 저장하는 앱은 자동 저장이 멈췄거나 스스로 저장하지 않을 편집이 남았을 때만 저장 단추를 보인다(R3 표)
+        return Self(primary: showsWrite ? write : nil, menu: menu, status: status)
     }
 
     // MARK: - Music·재생 목록

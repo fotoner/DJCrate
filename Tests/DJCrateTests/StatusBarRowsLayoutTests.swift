@@ -50,11 +50,7 @@ struct StatusBarRowsLayoutTests {
             h.store.setDraftMark(.cue, trackUUID: "a", exists: true)
         }
         feed.update(row.status, ReflectionConditions(holds: row.holds, leftovers: row.leftovers, writing: row.status == .writing, hasPending: row.pending,
-                                                     autoSaves: row.autoSaves))
-        if let changedSince = row.changedSince {
-            let journal = RekordboxWriteJournal(operationID: "op", kind: .counter, entry: .drafts, startCounter: 3)
-            feed.setFinding(RekordboxJournalFinding(journal: journal, changedSince: changedSince, database: nil))
-        }
+                                                     autoSaves: row.autoSaves, interruptedChangedSince: row.changedSince == true))
         h.model.refresh()
         let bar = StatusBarModel(log: h.store.activityLog, settings: SettingsStore(persist: false))
         bar.write = h.model

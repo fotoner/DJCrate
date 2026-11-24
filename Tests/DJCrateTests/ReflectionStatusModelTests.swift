@@ -90,7 +90,7 @@ struct ReflectionStatusModelTests {
     @Test func 쓰기_대기가_없으면_없음을_보이고_곡_초안이_쌓이면_곡_수를_보인다() {
         let h = Harness()
         h.model.refresh()
-        #expect(h.model.chip == .clean && h.model.chip.title == "저장 대기 없음")
+        #expect(h.model.chip == .clean && h.model.chip.title == "저장됨")
 
         h.addRows("a", "b")
         h.store.setDraftMark(.cue, trackUUID: "a", exists: true)

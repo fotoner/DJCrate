@@ -52,7 +52,7 @@ struct ReflectionStatusRunTests {
             let h = Harness()
             h.run.state = run
             h.model.refresh()
-            #expect(h.model.chip == .clean && h.model.chip.title == "저장 대기 없음", "감지 \(run)")
+            #expect(h.model.chip == .clean && h.model.chip.title == "저장됨", "감지 \(run)")
             #expect(!h.model.showsWriteButton)
         }
     }

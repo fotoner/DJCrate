@@ -13,6 +13,8 @@ final class FieldEditingState {
     var isEditing = false
     /// 입력 중인 칸을 확정한다. 시험이 바꿔 끼운다
     @ObservationIgnored var commit: @MainActor () -> Void = {}
+    /// 칸이 포커스를 잃은 뒤 값을 넣는 확정이 아직 끝나지 않았다(SwiftUI 입력 칸). 조립 지점이 인스펙터에 잇는다
+    @ObservationIgnored var hasPendingCommit: @MainActor () -> Bool = { false }
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
     /// 지금 입력 중인 칸(끝났다는 알림이 같은 칸의 것일 때만 끝낸다)
     @ObservationIgnored private weak var editing: AnyObject?

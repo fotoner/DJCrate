@@ -96,7 +96,7 @@ enum LibraryMenuAction: CaseIterable {
     ///   - reflection: rekordbox 쓰기 항목(쓰기·복원·빼기·시점 스냅샷)이 부를 화면 쪽. 없으면(조립 지점 없이 띄운 화면) 그 항목은 아무것도 하지 않는다.
     @MainActor func perform(in window: LibraryWindowModel, windows: AppWindows? = nil, reflection: ReflectionCoordinator? = nil) {
         let store = window.store
-        if self == .reflect, let row = window.saveRow { Self.performReflect(row, in: window, reflection: reflection); return }
+        if self == .reflect, window.saveRow != nil { window.requestSave(reflection: reflection); return }
         if writesLibrary, store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return }
         guard isEnabled(in: window) else {
             if let reason = disabledReason(in: window) { store.showToast(.notice(text: reason, kind: .warning)) }
@@ -126,74 +126,19 @@ enum LibraryMenuAction: CaseIterable {
 
     static var noEditsReason: String { String(ui: "저장할 편집이 없으니 곡을 편집하거나 재생 목록 편집을 먼저 만드세요") }
 
-    /// 저장할 편집이 있다(곡·재생 목록·재생 기록)
-    @MainActor private static func hasSavable(_ store: LibraryStore) -> Bool {
-        store.pendingLibraryCount > 0 || store.playlists.hasPlaylistDrafts || store.history.hasHistoryDrafts
-    }
-
     /// 줄마다 ⌘S가 켜지는 때. 쓰지 않고 이유를 보이는 줄(1~3)은 눌러도 아무 일이 없으면 안 되니 켜 둔다.
-    /// 4번 줄은 입력 중인 칸이 있을 때만 켜진다(R19). 쓰는 중(5번 줄)은 대기열 맨 앞에 넣으므로 켜 두되 이미 수동 저장이 도는 중이면 끈다
+    /// 4번 줄은 입력 중인 칸이 있을 때만 켜진다(R19). 쓰는 중(5번 줄)은 대기열 맨 앞에 넣으므로 켜 둔다
     @MainActor private static func reflectEnabled(_ row: ReflectionStatusRow, in window: LibraryWindowModel) -> Bool {
         let store = window.store
         switch row.saveCommand {
         case .restoreOnly, .refuseWithReason: return true
         case .commitFieldThenFollow: return window.isEditingInput
-        case .queueFront: return store.writeTask == nil
+        // 쓰는 중에 누른 저장은 요청 하나를 보관했다가 앞 쓰기가 끝난 뒤 한다(`requestSave`). 수동 저장이 도는 중에도 켜 둔다
+        case .queueFront: return true
         case .saveNow, .saveAndResume, .saveAllLeftovers, .saveNowIfAllowed:
             // 막힌 초안 비교 창이 열려 있으면 눌러서 이유를 본다(`perform`이 알린다)
             if store.writesBlockedBySheet { return true }
-            return !store.libraryBusy && (hasSavable(store) || window.isEditingInput)
-        }
-    }
-
-    /// ⌘S: 입력 중인 칸을 확정한 뒤(R19) 줄이 정한 일을 한다. 저장하는 줄은 `ReflectionCoordinator.startWrite`가 확인 창·관문까지 간다
-    @MainActor private static func performReflect(_ row: ReflectionStatusRow, in window: LibraryWindowModel, reflection: ReflectionCoordinator?) {
-        let store = window.store
-        guard reflectEnabled(row, in: window) else {
-            store.showToast(.notice(text: noEditsReason, kind: .warning))
-            return
-        }
-        guard let conditions = window.autoFeed?.conditions else { return }
-        let typing = window.isEditingInput
-        if typing { window.fieldEditing.commit() }
-        func follow() {
-            switch row.saveCommand {
-            case .restoreOnly:
-                store.showToast(.notice(text: String(ui: "이 라이브러리에 끝나지 않은 저장 기록이 남아 있어 저장하지 않았습니다. DJCrate 상태 줄에서 기록으로 복원하거나 이대로 두세요"),
-                                        kind: .warning))
-            case .refuseWithReason:
-                refuse(row, conditions, in: window)
-            case .commitFieldThenFollow, .queueFront, .saveNow, .saveAndResume, .saveAllLeftovers, .saveNowIfAllowed:
-                // 입력 확정이 만든 편집까지 본다: 저장할 것이 없으면 쓰기를 시작하지 않고 이유를 보인다(막힌 초안 창·쓰는 중은 입구가 알린다)
-                guard row == .writing || store.writesBlockedBySheet || hasSavable(store) else {
-                    store.showToast(.notice(text: noEditsReason, kind: .warning))
-                    return
-                }
-                reflection?.startWrite(rows: store.reflectionPreviewRows)
-            }
-        }
-        // 포커스를 잃은 뒤에 값을 넣는 칸(SwiftUI 입력 칸)은 다음 갱신에서 확정한다: 입력을 확정한 경우 저장할 편집이 보일 때까지 잠깐 기다린 뒤 이어 간다.
-        // AppKit 칸(곡 목록·태그 시트)은 확정이 바로 끝나 기다리지 않는다
-        guard typing, row != .interrupted, row != .unwritable, row != .busy else { return follow() }
-        Task { @MainActor in
-            for _ in 0..<20 where !hasSavable(store) { try? await Task.sleep(for: .milliseconds(10)) }
-            follow()
-        }
-    }
-
-    /// 쓰지 않고 이유를 보인다(R3 2·3번 줄): 종료 중·쓸 수 없음·켜짐·시트·USB·정리 못 마침
-    @MainActor private static func refuse(_ row: ReflectionStatusRow, _ conditions: ReflectionConditions, in window: LibraryWindowModel) {
-        let store = window.store
-        if let refusal = store.writeRefusal {
-            store.showToast(.notice(refusal, nil))
-        } else if row == .unwritable {
-            let text = ReflectionStatusText.line(status: .saved, conditions: conditions, row: row, count: PendingWriteCount(items: 0, playlistEdits: 0),
-                                                 showsWriting: false).help
-            store.showToast(.notice(text: text ?? noEditsReason, kind: .warning))
-        } else if ReflectionStatusText.topBusyHold(conditions) == .blockedDraftsOpen {
-            store.announceWritesBlockedBySheet()
-        } else if let refusal = ReflectionStatusText.refusal(conditions) {
-            store.showToast(.notice(refusal.title, refusal.detail))
+            return !store.libraryBusy && (store.hasSavableEdits || window.isEditingInput)
         }
     }
 

@@ -89,4 +89,43 @@ struct ReflectionAutoWriteToastTests {
         s.publish(Self.report(tracks: [], playlists: 2))
         #expect(s.store.toast?.title.hasPrefix("rekordbox에 저장했습니다") == true)
     }
+
+    // MARK: - S10: 떠 있는 알림을 덮지 않는다
+
+    @Test(arguments: [AppToast.Kind.warning, .failure])
+    func 떠_있는_경고_실패_알림은_덮지_않고_그_성공은_횟수에_세지_않는다(_ kind: AppToast.Kind) {
+        let s = Setup()
+        s.store.showToast(AppToast(kind: kind, title: "지금 읽어야 하는 알림"))
+        let shownBefore = s.store.toast?.id
+        s.presenter.publish(.autoWritten(Self.report(tracks: ["a"]), followUp: []))
+        #expect(s.store.toast?.id == shownBefore, "떠 있는 \(kind) 알림이 그대로다")
+        #expect(s.store.activityLog.latest?.result != nil, "성공은 활동 기록에 남는다")
+        #expect(s.settings.value(SettingKeys.writeToastsShown) == 0, "보이지 않은 성공은 센 횟수에 넣지 않는다")
+        // 알림을 닫은 뒤에는 처음 다섯 번이 그대로 남아 있다
+        for index in 1...5 {
+            s.publish(Self.report(tracks: ["t\(index)"]))
+            #expect(s.store.toast != nil, "\(index)번째")
+        }
+        s.publish(Self.report(tracks: ["t6"]))
+        #expect(s.store.toast == nil)
+    }
+
+    @Test func 단추가_있는_알림도_덮지_않는다() {
+        let s = Setup()
+        s.publish(Self.report(tracks: ["a"]))
+        let first = s.store.toast
+        #expect(first?.undoBackup != nil, "첫 성공 토스트에는 [되돌리기]가 있다")
+        // 사용자가 아직 누를 수 있는 [되돌리기]를 두 번째 자동 저장이 지우지 않는다
+        s.presenter.publish(.autoWritten(Self.report(tracks: ["b"], backup: "/backups/auto-2"), followUp: []))
+        #expect(s.store.toast?.id == first?.id)
+        #expect(s.settings.value(SettingKeys.writeToastsShown) == 1)
+    }
+
+    @Test func 곧_사라지는_성공_알림은_덮는다() {
+        let s = Setup()
+        s.store.showToast(AppToast(kind: .success, title: "다른 성공"))
+        s.presenter.publish(.autoWritten(Self.report(tracks: ["a"]), followUp: []))
+        #expect(s.store.toast?.title == "1곡을 저장했습니다")
+        #expect(s.settings.value(SettingKeys.writeToastsShown) == 1)
+    }
 }

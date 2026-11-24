@@ -6,7 +6,7 @@ import Foundation
 struct ReflectionStatusLine: Equatable {
     /// 칩 앞의 모양(색만으로 알리지 않는다: 글자가 늘 이유를 말한다)
     enum Symbol: Equatable {
-        /// 저장 대기 없음
+        /// 저장됨(저장 대기 없음)
         case saved
         /// 저장 대기(자동 저장이 곧 쓰거나 기다린다, 직접 저장할 편집이 남았다)
         case pending
@@ -54,7 +54,7 @@ enum ReflectionStatusText {
             let help = busyHelp(hold)
             return ReflectionStatusLine(title: reasonFirst(busyTitle(hold), count), symbol: .warning, help: help, details: [help].compactMap { $0 })
         case .nothingPending:
-            return ReflectionStatusLine(title: String(ui: "저장 대기 없음"), symbol: .saved)
+            return ReflectionStatusLine(title: ReflectionChip.clean.title, symbol: .saved)
         case .writing:
             guard showsWriting else { return ReflectionStatusLine(title: countText(count), symbol: .pending) }
             return ReflectionStatusLine(title: String(ui: "rekordbox에 저장하는 중…"), symbol: .writing)

@@ -80,15 +80,20 @@ final class AppComposition {
         self.reflection = reflection
         self.agentTools = agentTools
         self.agentNoticeEnabled = agentNoticeEnabled
-        trackListActions = .live(store: store, reflection: reflection)
+        libraryWindow = LibraryWindowModel(store: store)
+        // 곡 메뉴·머리 줄의 저장 단추도 주 창 모델의 같은 저장 입구와 R3 표의 줄을 쓴다(#404)
+        trackListActions = .live(store: store, reflection: reflection, window: libraryWindow)
         tagInspector = TagInspectorModel(store: store)
         playlistSidebar = PlaylistSidebarModel(playlists: store.playlists)
         listActionBar = ListActionBarModel(store: store)
-        libraryWindow = LibraryWindowModel(store: store)
+        listActionBar.window = libraryWindow
         // 엔진이 있는 실제 앱만: ⌘S·상태 줄이 엔진 상태를 R3 표의 줄로 읽고(#404), 입력 중인 칸을 지켜본다(R19)
         if autoReflection != nil {
             libraryWindow.autoFeed = reflection.autoFeed
-            libraryWindow.fieldEditing = FieldEditingState.live()
+            let input = FieldEditingState.live()
+            // 인스펙터 칸은 포커스를 잃은 뒤 다음 갱신에서 확정한다: 그 확정이 끝나기를 ⌘S가 기다린다
+            input.hasPendingCommit = { [tagInspector] in tagInspector.hasPendingInput }
+            libraryWindow.fieldEditing = input
         }
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
         // 칩의 이유(켜짐·꺼짐)는 감지 서비스를 읽는 연결을 여기서 한다. 화면 시험의 조립(`.none`)은 늘 모름이라 칩이 바뀌지 않는다
@@ -109,6 +114,8 @@ final class AppComposition {
             self.autoReflection = engine
             reflection.engine = engine
         }
+        // 저장 입구가 엔진 발행 뒤에 바뀐 시트·USB 쓰기를 지금 상태로 다시 본다(S3)
+        libraryWindow.liveHolds = { [weak self] in self?.saveBlockingHolds() ?? [] }
     }
 
     /// 자동 저장 엔진(#403)을 실제 포트로 만든다: 이 Mac의 시계·프로세스 목록·파일 상태·쓰기 잠금, `DJC_HOME`의 기록 파일,
@@ -129,6 +136,16 @@ final class AppComposition {
         return AutoReflection(session: reflection.session, ports: ports, run: run)
     }
 
+    /// 저장을 막는 앱 상태(R3 3번 줄): 막힌 초안 비교 창·가져오기 시트·USB 쓰기. 엔진 발행보다 늦게 바뀔 수 있어 저장 입구가 이 값을 다시 읽는다.
+    /// 덱 편집 같은 재생 중 바뀌는 값은 읽지 않는다(상태 줄·메뉴가 읽는 값이다)
+    func saveBlockingHolds() -> Set<ReflectionHold> {
+        var holds: Set<ReflectionHold> = []
+        if store.writesBlockedBySheet { holds.insert(.blockedDraftsOpen) }
+        if libraryWindow.xmlImport.preview != nil || store.usb?.syncSheet != nil { holds.insert(.importSheetOpen) }
+        if let usb = store.usb, usb.activeWrite != nil || !usb.busyVolumes.isEmpty || usb.exportSheet != nil { holds.insert(.usbBusy) }
+        return holds
+    }
+
     /// 앱 쪽 보류 사유(R16·R20)와 편집 중 신호(R1·R19). 엔진이 판정할 때마다 읽는다
     func autoReflectionHolds() -> Set<ReflectionHold> {
         var holds: Set<ReflectionHold> = []
@@ -136,9 +153,7 @@ final class AppComposition {
         if let block = store.writeBlock { holds.insert(.unwritable(block)) }
         if store.isPoweringOff { holds.insert(.shuttingDown) }
         if store.isLoading { holds.insert(.libraryReading) }
-        if store.writesBlockedBySheet { holds.insert(.blockedDraftsOpen) }
-        if libraryWindow.xmlImport.preview != nil || store.usb?.syncSheet != nil { holds.insert(.importSheetOpen) }
-        if let usb = store.usb, usb.activeWrite != nil || !usb.busyVolumes.isEmpty || usb.exportSheet != nil { holds.insert(.usbBusy) }
+        holds.formUnion(saveBlockingHolds())
         if link?.isServing == true { holds.insert(.linkServer) }
         // 시점 스냅샷 창에서 뜨는 중(뜨는 동안 라이브러리가 바뀌면 그 스냅샷을 버린다, R16)
         if windows.pointSnapshots.isWorking { holds.insert(.pointSnapshot) }

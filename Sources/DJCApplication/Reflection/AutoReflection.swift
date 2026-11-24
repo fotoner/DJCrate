@@ -345,7 +345,11 @@ public final class AutoReflection {
         base.holds.formUnion(appHolds)
         if editing { base.holds.insert(.editing) }
         if journalPending { base.holds.insert(.lockBusy) }
-        if let interrupted { base.holds.insert(.interrupted(recoveryFailed: interrupted.journal.marks.contains(.recoveryFailed))) }
+        if let interrupted {
+            base.holds.insert(.interrupted(recoveryFailed: interrupted.journal.marks.contains(.recoveryFailed)))
+            // 다시 판정할 때마다 실린다: 상태 줄이 [이대로 두기…]를 먼저 보일지 정한다(#404)
+            base.interruptedChangedSince = interrupted.changedSince
+        }
         if recordUnreadable || recordSaveFailed || record.stop == .afterFailure { base.holds.insert(.stoppedAfterFailure) }
         if record.stop == .afterRestore { base.holds.insert(.stoppedAfterRestore) }
         if shuttingDown { base.holds.insert(.shuttingDown) }

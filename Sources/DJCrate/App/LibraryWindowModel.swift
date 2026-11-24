@@ -35,8 +35,22 @@ final class LibraryWindowModel {
 
     // MARK: - 저장(R3 표)
 
+    /// 앱이 지금 아는 저장 막힘 사유(가져오기 시트·막힌 초안 비교 창·USB 쓰기). 엔진이 알린 조건은 다음 발행까지 낡을 수 있어 저장 입구가 다시 본다
+    @ObservationIgnored var liveHolds: @MainActor () -> Set<ReflectionHold> = { [] }
+
+    /// 저장 단추·⌘S·상태 줄이 보는 조건: 엔진이 알린 조건에 앱이 지금 아는 막힘 사유를 더한다(S3). 엔진이 없는 조립은 nil이다
+    var saveConditions: ReflectionConditions? {
+        guard let feed = autoFeed else { return nil }
+        var conditions = feed.conditions
+        conditions.holds.formUnion(liveHolds())
+        return conditions
+    }
+
     /// R3 표에서 지금 드는 줄. 엔진이 없는 조립은 nil이다
-    var saveRow: ReflectionStatusRow? { autoFeed.map { ReflectionStatusRow.first($0.conditions) } }
+    var saveRow: ReflectionStatusRow? { saveConditions.map { ReflectionStatusRow.first($0) } }
+
+    /// 저장 단추가 보이는 줄인가(R3 표). 엔진이 없는 조립은 지금처럼 늘 보인다
+    var showsSaveButton: Bool { saveRow?.showsSaveButton ?? true }
 
     /// 입력 중인 칸이 있다(R19): 칸에 글자를 치는 중이거나 엔진이 편집 중으로 알렸다
     var isEditingInput: Bool { fieldEditing.isEditing || autoFeed?.conditions.editingField == true }

@@ -51,7 +51,7 @@ enum ReflectionChip: Equatable {
     /// 칩 글자. 이유가 있으면 이유를 앞에 두고 「 · 」로 쓰기 대기 수를 잇는다
     var title: String {
         switch self {
-        case .clean: return String(ui: "저장 대기 없음")
+        case .clean: return String(ui: "저장됨")
         case let .pending(items, playlistEdits, reason):
             let count = PendingWriteCount(items: items, playlistEdits: playlistEdits).text
             guard let reason else { return count }
@@ -216,7 +216,7 @@ final class ReflectionStatusModel {
 
     /// 지금 R3 표에서 드는 줄. 엔진이 없으면 자동 저장하지 않는 실행으로 본다(6번 줄: 저장 대기가 있을 때 단추)
     var saveRow: ReflectionStatusRow {
-        if let feed { return ReflectionStatusRow.first(feed.conditions) }
+        if let row = window.saveRow { return row }
         return ReflectionStatusRow.first(ReflectionConditions(holds: store.writeBlock.map { [.unwritable($0)] } ?? [], writing: isWriting,
                                                               hasPending: !store.pendingWriteSummary.isEmpty))
     }
@@ -226,8 +226,8 @@ final class ReflectionStatusModel {
 
     /// 상태 줄 칩이 보이는 것(R3 표의 "상태 줄" 칸)
     var line: ReflectionStatusLine {
-        guard let feed else { return legacyLine }
-        var line = ReflectionStatusText.line(status: feed.status, conditions: feed.conditions, row: saveRow, count: store.pendingWriteSummary,
+        guard let feed, let conditions = window.saveConditions else { return legacyLine }
+        var line = ReflectionStatusText.line(status: feed.status, conditions: conditions, row: saveRow, count: store.pendingWriteSummary,
                                              showsWriting: showsWriting)
         // 재생 목록 초안을 디스크와 맞추지 못했거나 보관하지 못한 동안은 재생 목록 편집을 쓰지 못한다(엔진은 이유 둘을 한 '확인 필요'로 보낸다).
         // 이 줄이 이유를 한 번 말한다: ⌘S가 이 편집만 있을 때도 같은 안내를 보인다(`ReflectionSession.write`)
@@ -258,8 +258,8 @@ final class ReflectionStatusModel {
 
     /// 중단 알림의 단추(R11): 보통은 복원이 먼저다. 백업 뒤 rekordbox에서 라이브러리가 바뀌었으면 이대로 두기를 먼저 보인다
     var journalActions: [JournalAction] {
-        guard let feed, saveRow == .interrupted else { return [] }
-        return feed.finding?.changedSince == true ? [.keep, .restore] : [.restore, .keep]
+        guard let conditions = window.saveConditions, saveRow == .interrupted else { return [] }
+        return conditions.interruptedChangedSince ? [.keep, .restore] : [.restore, .keep]
     }
 
     func perform(_ action: JournalAction) {
@@ -322,8 +322,9 @@ final class ReflectionStatusModel {
     var canWrite: Bool { LibraryMenuAction.reflect.isEnabled(in: window) }
     var writeDisabledReason: String? { LibraryMenuAction.reflect.disabledReason(in: window) }
 
+    /// 팝오버 단추. 엔진이 있으면 저장 항목도 저장 단추처럼 R3 표의 줄(6~8번)에서만 보인다(다른 줄은 ⌘S가 이유를 보인다)
     var items: [Item] {
-        Self.popoverActions.map { action in
+        Self.popoverActions.filter { $0 != .reflect || feed == nil || showsWriteButton }.map { action in
             Item(action: action, title: action.title, shortcutHint: action.shortcut.map(Self.hint),
                  isEnabled: action.isEnabled(in: window), disabledReason: action.disabledReason(in: window))
         }

@@ -42,9 +42,11 @@ public struct ReflectionConditions: Equatable, Sendable {
     public var editingField: Bool
     /// 이 실행이 자동 저장하는지(R18)
     public var autoSaves: Bool
+    /// 중단 기록을 다시 판정했을 때 본 "백업 뒤 rekordbox에서 라이브러리가 바뀜"(R11). 상태 줄이 [이대로 두기…]를 먼저 보이는 근거다
+    public var interruptedChangedSince: Bool
 
     public init(holds: Set<ReflectionHold> = [], leftovers: Set<ReflectionLeftover> = [], writing: Bool = false, waiting: Bool = false,
-                hasPending: Bool = false, editingField: Bool = false, autoSaves: Bool = false) {
+                hasPending: Bool = false, editingField: Bool = false, autoSaves: Bool = false, interruptedChangedSince: Bool = false) {
         self.holds = holds
         self.leftovers = leftovers
         self.writing = writing
@@ -52,6 +54,7 @@ public struct ReflectionConditions: Equatable, Sendable {
         self.hasPending = hasPending
         self.editingField = editingField
         self.autoSaves = autoSaves
+        self.interruptedChangedSince = interruptedChangedSince
     }
 }
 

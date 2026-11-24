@@ -377,6 +377,10 @@ when Sources/DJCrate/App/StatusBar.swift
 when Sources/DJCrate/App/LibraryMenuAction.swift
 when Sources/DJCrate/App/FieldEditingState.swift
 when Sources/DJCrate/App/LibraryWindowModel.swift
+when Sources/DJCrate/App/ReflectionSaveEntry.swift
+when Sources/DJCrate/App/ListActionBarModel.swift
+when Sources/DJCrate/App/ListHeaderActions+Modes.swift
+when Sources/DJCrate/Library/TrackList/TrackListActions.swift
 when Sources/DJCrate/Reflection/ReflectionCoordinator*.swift
 when Sources/DJCApplication/Reflection/AutoReflectionStatus.swift
 when Sources/DJCDomain/Settings/SettingKeys.swift
@@ -384,6 +388,10 @@ suite DJCApplicationTests.ReflectionStatusRowTests
 suite DJCApplicationTests.AutoReflectionContractTests
 suite DJCrateTests.ReflectionStatusRowsModelTests
 suite DJCrateTests.ReflectionSaveCommandTests
+suite DJCrateTests.ReflectionSaveEntryTests
+suite DJCrateTests.ListActionBarModelTests
+suite DJCrateTests.ListHeaderActionsTests
+suite DJCApplicationTests.AutoReflectionJournalTests
 suite DJCrateTests.ReflectionAutoWriteToastTests
 suite DJCrateTests.ReflectionJournalActionTests
 suite DJCrateTests.AutoSaveHasNoSwitchTests
