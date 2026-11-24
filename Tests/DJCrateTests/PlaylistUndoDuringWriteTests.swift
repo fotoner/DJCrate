@@ -332,6 +332,8 @@ struct PlaylistUndoDuringWriteTests {
         #expect(try store.useCases.playlists.loadDraft().steps.count == 2, "곡을 넣어 저장했다")
         let origins = store.testDrafts.playlistStamps().map(\.origins)
         #expect(origins == [[.cli, .human], [.cli, .human]], "\(origins)")
+        // 메모리 초안을 모두 저장했으니 저장 실패 표시와 알림을 거둔다(리뷰 F12)
+        #expect(!playlists.playlistDraftUnsaved && playlists.saveFailureToast == nil)
     }
 
     /// 곡 넣기를 되돌릴 때 세션이 하는 초안 저장도 기억한 출처를 더한다(리뷰 F10: O10, `restoreStaged`의 `resetImports`)
@@ -341,6 +343,8 @@ struct PlaylistUndoDuringWriteTests {
         #expect(try store.useCases.playlists.loadDraft().edits == playlists.playlistDraft.edits, "되살린 단계를 저장했다")
         let origins = store.testDrafts.playlistStamps().map(\.origins)
         #expect(origins == [[.cli, .human]], "\(origins)")
+        // 메모리 초안을 모두 저장했으니 저장 실패 표시와 알림을 거둔다(리뷰 F12)
+        #expect(!playlists.playlistDraftUnsaved && playlists.saveFailureToast == nil)
     }
 
     /// 손상된 재생 목록 초안 파일을 옮긴 뒤 메모리 초안을 다시 저장해도 저장하지 못한 되살린 CLI 단계는 제안이다(F10과 같은 원칙, `WatchDrafts.recoverMoved`)

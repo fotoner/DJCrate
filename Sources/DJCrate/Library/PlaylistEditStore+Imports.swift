@@ -24,6 +24,8 @@ extension PlaylistEditStore {
             unsavedStepOrigins = []
             playlistDraft = draft
             adoptSavedIdentifiers()
+            // 메모리 초안을 모두 저장했다: 저장 실패 표시와 알림을 거둔다(#295 리뷰 F12)
+            applyPlaylistSave(nil)
             refreshPlaylists()
         }
         if let imports = reset.imports { applyImportsChange(imports) }
@@ -80,6 +82,8 @@ extension PlaylistEditStore {
             unsavedStepOrigins = []
             playlistDraft = draft
             adoptSavedIdentifiers()
+            // 메모리 초안을 모두 저장했다: 저장 실패 표시와 알림을 거둔다(#295 리뷰 F12)
+            applyPlaylistSave(nil)
             refreshPlaylists()
         }
         guard let imports = resolution.imports, applyImportsChange(imports) else { return }
