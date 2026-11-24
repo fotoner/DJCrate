@@ -20,19 +20,19 @@ extension PlaylistEditStore {
         let current: PlaylistRecoveryCurrent
         if let prefetched { current = prefetched } else { current = try await readPlaylistRecoveryCurrent() }
         try Task.checkCancellation()
-        guard playlistRecoveryAllowed, playlistDraft == original else { throw playlistRecoveryChanged() }
+        guard playlistRecoveryAllowed, Self.sameSteps(playlistDraft, original) else { throw playlistRecoveryChanged() }
         return try RecoverDrafts.review(playlist: id, draft: original, current: current)
     }
 
     /// - Parameter latest: 복구 시트가 저장하기 전에 한 번 다시 읽은 현재 라이브러리
     func applyPlaylistRecovery(_ review: PlaylistRecoveryReview, reapply: Bool, latest prefetched: PlaylistRecoveryCurrent? = nil) async throws {
-        guard playlistRecoveryAllowed, !library.isRecoveringDraft, playlistDraft == review.original else { throw playlistRecoveryChanged() }
+        guard playlistRecoveryAllowed, !library.isRecoveringDraft, Self.sameSteps(playlistDraft, review.original) else { throw playlistRecoveryChanged() }
         library.isRecoveringDraft = true
         defer { library.isRecoveringDraft = false }
         let current: PlaylistRecoveryCurrent
         if let prefetched { current = prefetched } else { current = try await readPlaylistRecoveryCurrent() }
         try Task.checkCancellation()
-        guard playlistRecoveryAllowed, playlistDraft == review.original else { throw playlistRecoveryChanged() }
+        guard playlistRecoveryAllowed, Self.sameSteps(playlistDraft, review.original) else { throw playlistRecoveryChanged() }
         let resolved = try RecoverDrafts.resolvePlaylist(review, reapply: reapply, latest: current)
         // 새 기준을 저장하지 못했으면 메모리에도 적용하지 않아 다음 쓰기에서 조용히 풀리지 않는다.
         // 저장에 실패한 동안 기억한 출처를 식별자 없는 단계에 더하고, 저장하면 비운다(#295 리뷰 F10)
@@ -58,6 +58,10 @@ extension PlaylistEditStore {
     }
 
     private func playlistRecoveryChanged() -> DJCError { RecoverDrafts.changedError }
+
+    /// 내용과 단계 식별자가 모두 같은지. `PlaylistDraft.==`는 식별자를 보지 않아, 그새 식별자가 채워진 초안에 낡은 준비(식별자 없음)를
+    /// 적용하면 저장하지 못했던 단계가 새 사람 단계로 다시 쓰인다(#295 리뷰 F15)
+    static func sameSteps(_ lhs: PlaylistDraft, _ rhs: PlaylistDraft) -> Bool { lhs == rhs && lhs.stepIDs == rhs.stepIDs }
 
     /// 복구 시트가 재생 목록 줄 전체를 위해 현재 라이브러리를 한 번 읽는다(줄마다 사본을 뜨지 않게, #232).
     func readPlaylistRecoveryPrefetch() async throws -> PlaylistRecoveryCurrent {

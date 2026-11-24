@@ -387,7 +387,8 @@ final class RecoverySheetModel: Identifiable {
     private func savePlaylist(_ line: RecoveryLine, id: String, current: Result<PlaylistRecoveryCurrent, any Error>?) async throws {
         guard var review = line.playlistReview else { throw DJCError.writeRefused(String(ui: "복구할 편집을 확인하지 못했으니 편집을 보관하고 곡을 다시 선택하세요.")) }
         let latest = try current?.get()
-        if host.playlists.playlistDraft != review.original {
+        // 내용이 같아도 단계 식별자가 달라졌으면(그새 저장이 식별자를 채움) 다시 비교한다(#295 리뷰 F15)
+        if !PlaylistEditStore.sameSteps(host.playlists.playlistDraft, review.original) {
             guard host.playlists.blockedPlaylistRecoveryIDs.contains(id) else {
                 // 이미 해결됐으니 줄은 저장한 것으로 보고 안내만 남긴다.
                 line.resultNote = String(ui: "앞에서 적용하면서 이미 해결됐습니다.")

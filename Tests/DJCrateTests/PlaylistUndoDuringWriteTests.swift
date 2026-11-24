@@ -502,6 +502,32 @@ struct PlaylistUndoDuringWriteTests {
         #expect(playlists.syncExternal() == .adopted && playlists.playlistDraft.edits.contains(cliStep), "다음 동기화가 바깥 초안을 받는다")
     }
 
+    /// 복구를 준비한 뒤 적용하기 전에 손상 초안 복구가 단계 식별자를 채우면 낡은 준비로 적용하지 않는다(내용만 같고 식별자가 다르다).
+    /// 다시 준비해 적용하면 저장하지 못했던 되살린 CLI 단계는 제안이다(리뷰 F15)
+    @Test func 복구_준비와_적용_사이에_식별자가_채워지면_다시_준비하고_CLI_단계는_제안이다() async throws {
+        let cli = try adoptCLIRename()
+        event { playlists.discardPlaylistDraft("A") }
+        let restore = try failingSaves()
+        undo.undo()
+        event { playlists.renamePlaylist("B", to: "사람 이름") }
+        restore()
+        let changed = PlaylistLayout([
+            (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
+            (PlaylistLayout.Item(id: "B", name: "바깥 이름"), 2),
+        ])
+        let current = PlaylistRecoveryCurrent(layout: changed, contentIDs: ["1"], titles: [:], rows: [:])
+        let stale = try await playlists.preparePlaylistRecovery(playlist: "B", prefetched: current)
+        store.applyMovedDrafts([DamagedDraftFile(name: DraftFileNames.playlist, preserved: home.appending(path: "damaged"), trackUUID: nil)],
+                               reporting: false)
+        #expect(playlists.playlistDraft.stepIDs.allSatisfy { $0 != nil }, "손상 초안 복구가 식별자를 채웠다")
+        await #expect(throws: DJCError.self) { try await playlists.applyPlaylistRecovery(stale, reapply: false, latest: current) }
+        let fresh = try await playlists.preparePlaylistRecovery(playlist: "B", prefetched: current)
+        try await playlists.applyPlaylistRecovery(fresh, reapply: false, latest: current)
+        #expect(playlists.playlistDraft.edits == cli.edits, "막힌 B 편집만 버렸다")
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+    }
+
     /// 쓰는 동안 저장하지 못한 편집을 쓴 뒤 정리가 메모리 초안으로 저장하면 기억한 출처를 비운다(리뷰 F13)
     @Test func 쓴_뒤_정리가_메모리_초안을_저장하면_기억한_출처를_비운다() throws {
         event { playlists.renamePlaylist("B", to: "쓰는 이름") }
