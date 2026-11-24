@@ -14,6 +14,8 @@ struct DJCrateApp: App {
     /// 재생 기록 자가 테스트(`--history-selftest`)는 저장소를 만들기 전에 합성 사본·임시 폴더인지 본다(사용자 초안·라이브러리를 읽지 않게).
     /// 저장소는 아래 `app` 속성이 `init`보다 먼저 만들므로 속성으로 둔다.
     private let selfTestStartup: Void = DJCrateApp.checkHistorySelfTestStartup()
+    /// 자동 저장 자가 테스트(`--auto-reflect-selftest`)는 앱을 조립하기 전에 인자·사본·`DJC_HOME` 격리를 본다(조립이 사용자 폴더를 건드리지 않게)
+    private let autoReflectStartup: Void = DJCrateApp.checkAutoReflectSelfTestStartup()
     /// 옛 이름(anicue) 데이터·설정 옮기기. 목록·덱이 설정을 읽기 전에 돌아야 해서 첫 속성으로 둔다.
     private let migrated: Void = AppComposition.migrateLegacyData()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -54,6 +56,34 @@ struct DJCrateApp: App {
         #endif
     }
 
+    /// 주 창 위치(`NSWindow Frame djc.mainWindow`)를 어떻게 쓰는지
+    enum WindowFrameUse: Equatable {
+        /// 사용자의 창 위치를 읽고, 바뀌면 사용자 환경설정에 남긴다(보통 실행)
+        case restoreAndSave
+        /// 사용자의 창 위치를 읽기만 한다
+        case restoreOnly
+        /// 읽지도 남기지도 않는다(정해진 기본 크기로 도는 실행)
+        case none
+    }
+
+    /// 이 실행이 주 창 위치를 어떻게 쓰는지. 진단 실행(자가 테스트·측정·캡처, `DiagnosticRun`)은 사용자 환경설정에 남기지 않는다(R18).
+    /// 크기 측정·재생 목록 복구·자동 저장 자가 테스트는 정해진 기본 크기로 돌아 사용자의 창 위치를 읽지도 않는다
+    static func windowFrameUse(arguments: [String]) -> WindowFrameUse {
+        if arguments.contains(where: { $0.hasPrefix("--resize-perf") }) || arguments.contains("--playlist-recovery-selftest")
+            || DiagnosticRun.isAutoReflectSelfTest(arguments: arguments) { return .none }
+        return DiagnosticRun.isActive(arguments: arguments) ? .restoreOnly : .restoreAndSave
+    }
+
+    private static func checkAutoReflectSelfTestStartup() {
+        #if DEBUG
+        let info = ProcessInfo.processInfo
+        if let refusal = AutoReflectAppSelfTest.startupRefusal(arguments: info.arguments, environment: info.environment) {
+            AutoReflectAppSelfTest.log(refusal + " · 종료 코드 2")
+            exit(2)
+        }
+        #endif
+    }
+
     private static func checkHistorySelfTestStartup() {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--usb-snapshot-capture=") }),
@@ -85,6 +115,8 @@ struct DJCrateApp: App {
                     let composition = app
                     appDelegate.rekordboxRunState = { composition.rekordboxRun.state }
                     appDelegate.consumeUpdateRelaunch = { composition.consumeUpdateRelaunch() }
+                    // ⌘Q 때 대기 중인 대상 편집을 저장하고 끈다(R17)
+                    appDelegate.quitAutoSave = composition.quitAutoSaveLink()
                     #if DEBUG
                     // 쓰기 시험(`--write-selftest`)도 키 입력 없이 스토어로만 돌아 사용 중인 앱의 포커스를 가져오지 않는다
                     if !ResizePerfSelfTest.isRequested, !DiagnosticRun.isAutoReflectSelfTest(),
@@ -154,23 +186,21 @@ private struct MainWindowFrame: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            // 자동 저장 자가 테스트는 분할 보기 칸 크기도 사용자 환경설정에 남기지 않는다(창에 붙는 첫 순간부터, R18)
+            ViewPreferences.stopSplitViewAutosave(in: window)
             // SwiftUI가 기본 크기를 잡은 뒤 저장된 프레임을 적용한다.
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window else { return }
-                #if DEBUG
-                if ResizePerfSelfTest.isRequested || ProcessInfo.processInfo.arguments.contains("--playlist-recovery-selftest") {
-                    onRestore()
-                    return
-                }
-                #endif
-                // 자동 저장 자가 테스트는 두 빌드 모두 창 위치를 저장하지 않는다(R18)
-                if DiagnosticRun.isAutoReflectSelfTest() {
-                    onRestore()
-                    return
-                }
-                if window.frameAutosaveName != "djc.mainWindow" {
-                    window.setFrameUsingName("djc.mainWindow")
-                    window.setFrameAutosaveName("djc.mainWindow")
+                ViewPreferences.stopSplitViewAutosave(in: window)
+                switch DJCrateApp.windowFrameUse(arguments: ProcessInfo.processInfo.arguments) {
+                case .restoreAndSave:
+                    if window.frameAutosaveName != "djc.mainWindow" {
+                        window.setFrameUsingName("djc.mainWindow")
+                        window.setFrameAutosaveName("djc.mainWindow")
+                    }
+                // 진단 실행은 창 위치를 읽기만 하고 남기지 않는다(R18)
+                case .restoreOnly: window.setFrameUsingName("djc.mainWindow")
+                case .none: break
                 }
                 onRestore()
             }

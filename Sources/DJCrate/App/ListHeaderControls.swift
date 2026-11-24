@@ -112,7 +112,7 @@ private struct FilterChipButton: View {
 /// 머리 줄 오른쪽 끝: 목록 | 태그 시트 전환과, 태그 시트일 때만 보이는 ⓘ(초안 범례)(#339).
 /// 보기 모드와 막힘 이유는 이 잎만 읽는다. 전환이 막히는 조건·이유와 보기 메뉴(⌘1·⌘2)는 툴바에 있던 때와 같다.
 struct ListViewModeControls: View {
-    @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
+    @AppStorage(SettingKeys.sheetMode.name, store: ViewPreferences.store) private var sheetMode = SettingKeys.sheetMode.defaultValue
     let store: LibraryStore
 
     var body: some View {

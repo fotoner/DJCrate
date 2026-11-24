@@ -73,7 +73,7 @@ TDD로 일한다. 버그는 실패하는 시험으로 먼저 재현한 뒤 고�
 |---|---|
 | 기능(사용자용) | `README.md`, `docs/features.md` |
 | 구조·경계 규칙·설계 이유, 새 코드를 둘 곳, 데이터 폴더 | `docs/architecture.md` |
-| 화면 모델·뷰(MVVM 패턴) | `docs/mvvm.md` |
+| 화면 모델·뷰(MVVM) | `docs/mvvm.md` |
 | rekordbox 형식·쓰기 규칙(실험으로 확인한 사실) | `docs/rekordbox-internals.md` |
 | USB 형식·쓰기 | `docs/usb-internals.md` |
 | 검증 단계·`check.sh` 모드·선택 실행 장치·CI·측정 기준 | `docs/ci.md` |
@@ -110,7 +110,7 @@ TDD로 일한다. 버그는 실패하는 시험으로 먼저 재현한 뒤 고�
 
 ## 핵심 설계 결정
 
-- 편집은 모두 **초안**으로 쌓는다. rekordbox에는 반영 때만 쓴다. 초안은 큐, 그리드, 게인, 태그, 앨범아트, 재생 목록이다.
+- 편집은 모두 **초안**으로 쌓는다. 자동 저장·⌘S만 rekordbox에 쓴다. 초안은 큐, 그리드, 게인, 태그, 앨범아트, 재생 목록이다.
 - 초안은 만들 때의 rekordbox 상태(`base`)를 든다. 그 뒤 rekordbox에서 바뀐 곡은 쓰지 않는다.
 - 덱과 초안의 시각은 모두 **rekordbox 시간축**이다. 이 시간축은 음원 시각 + 인코더 지연(`RekordboxTimeline.predictedOffset`)이다. 파형만 음원 시간축이라 `timelineOffset`만큼 당겨 그린다.
 - 새 곡은 미리 보기를 거쳐 컬렉션에 직접 넣는다. 호환 경로인 rekordbox XML(Import To Collection)로 넘길 수도 있다.

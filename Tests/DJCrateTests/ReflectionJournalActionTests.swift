@@ -169,6 +169,49 @@ struct ReflectionJournalActionTests {
         #expect(w.store.toast?.title == "기록으로 복원했습니다")
     }
 
+    /// 기록으로 복원한 master.db는 쓰기 전 백업의 시각을 그대로 가진다(R11). 그래서 "읽은 사본 뒤 바뀌었으면 다시 읽기"는 바뀌지 않았다고 보고
+    /// 옛 값을 보인다(자가 테스트 `kill-detect`에서 확인). 복원했으면 시각과 상관없이 다시 읽는다
+    @Test func 기록으로_복원했으면_DB_시각이_옛것이어도_다시_읽는다() async {
+        let reads = Mutex(0)
+        let store = LibraryStore.test(activityLog: ActivityLog(), saveTagDrafts: { _ in }, movesDamagedDrafts: false,
+                                      takeLiveSnapshot: { _ in
+                                          reads.withLock { $0 += 1 }
+                                          throw DJCError.snapshotNotFound
+                                      })
+        let w = world(store: store)
+        await w.coordinator.restoreJournal()
+        #expect(w.calls.restores.count == 1)
+        #expect(reads.withLock { $0 } >= 1, "복원한 뒤 새 사본을 떠서 다시 읽는다")
+    }
+
+    /// 복원이 DB를 바꾼 뒤 던질 수 있다(기록 지우기 실패·바꾼 뒤 켜짐을 봄): 옛 값을 보이지 않게 다시 읽는다(O4)
+    @Test func 복원이_실패로_끝나도_다시_읽는다() async {
+        let reads = Mutex(0)
+        let store = LibraryStore.test(activityLog: ActivityLog(), saveTagDrafts: { _ in }, movesDamagedDrafts: false,
+                                      takeLiveSnapshot: { _ in
+                                          reads.withLock { $0 += 1 }
+                                          throw DJCError.snapshotNotFound
+                                      })
+        let w = world(store: store)
+        w.calls.set { $0.restoreError = DJCError.writeRefused("시험 거절") }
+        await w.coordinator.restoreJournal()
+        #expect(w.store.toast?.kind == .failure)
+        #expect(reads.withLock { $0 } >= 1)
+    }
+
+    @Test func 복원하지_않았으면_다시_읽지_않는다() async {
+        let reads = Mutex(0)
+        let store = LibraryStore.test(activityLog: ActivityLog(), saveTagDrafts: { _ in }, movesDamagedDrafts: false,
+                                      takeLiveSnapshot: { _ in
+                                          reads.withLock { $0 += 1 }
+                                          throw DJCError.snapshotNotFound
+                                      })
+        let w = world(store: store)
+        w.calls.set { $0.restoreResult = .changed }
+        await w.coordinator.restoreJournal()
+        #expect(reads.withLock { $0 } == 0)
+    }
+
     @Test func 복원_사이에_기록이나_라이브러리가_바뀌었으면_다시_확인하게_안내한다() async {
         let w = world()
         w.calls.set { $0.restoreResult = .changed }

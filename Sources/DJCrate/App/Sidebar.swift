@@ -146,7 +146,7 @@ struct SidebarXMLExportRow: View {
 /// 구역과 줄은 저장소 대신 재생 기록 조각(`HistoryStore`)만 받는다(줄이 읽는 값을 부모로 올리지 않게 값 대신 좁은 조각을 넘긴다).
 struct SidebarHistorySection: View {
     let history: HistoryStore
-    @AppStorage(SettingKeys.sidebarHistoriesExpanded.name) private var isExpanded = SettingKeys.sidebarHistoriesExpanded.defaultValue
+    @AppStorage(SettingKeys.sidebarHistoriesExpanded.name, store: ViewPreferences.store) private var isExpanded = SettingKeys.sidebarHistoriesExpanded.defaultValue
 
     var body: some View {
         Section(isExpanded: $isExpanded) {
@@ -247,8 +247,8 @@ struct SidebarHistoryRow: View {
 /// 현황·스냅샷 구역(설정의 '현황·스냅샷 보이기'). 켜짐·펼침 설정은 여기서 읽는다.
 struct SidebarStatusSections: View {
     let store: LibraryStore
-    @AppStorage(SettingKeys.sidebarSummaryExpanded.name) private var summaryExpanded = SettingKeys.sidebarSummaryExpanded.defaultValue
-    @AppStorage(SettingKeys.sidebarShowsStatus.name) private var showsStatus = SettingKeys.sidebarShowsStatus.defaultValue
+    @AppStorage(SettingKeys.sidebarSummaryExpanded.name, store: ViewPreferences.store) private var summaryExpanded = SettingKeys.sidebarSummaryExpanded.defaultValue
+    @AppStorage(SettingKeys.sidebarShowsStatus.name, store: ViewPreferences.store) private var showsStatus = SettingKeys.sidebarShowsStatus.defaultValue
 
     var body: some View {
         if showsStatus, let report = store.report {

@@ -43,7 +43,8 @@ extension LibraryStore {
         return writeStage?.phase ?? .writing
     }
 
-    /// 새 rekordbox 쓰기를 시작하지 않을 이유(Mac을 끄는 중·종료를 기다리는 중). 없으면 nil
+    /// 새 rekordbox 쓰기를 시작하지 않을 이유(Mac을 끄는 중·종료를 기다리는 중). 없으면 nil.
+    /// 수동 입구(⌘S·복원·곡 넣기·빼기·시점 복원·Apple Music 동기화)가 본다. ⌘Q가 기다리는 엔진의 자동 저장은 세션 잠금에서만 연다(R17)
     var writeRefusal: String? {
         if isPoweringOff { return String(ui: "Mac을 끄는 중이라 rekordbox에 저장하지 않았습니다. 다시 켠 뒤 저장하세요") }
         if quitWait.isWaiting { return String(ui: "종료하는 중이라 rekordbox에 저장하지 않았습니다. 종료를 취소한 뒤 다시 저장하세요") }

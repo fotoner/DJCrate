@@ -86,8 +86,8 @@ enum SettingsWindow {
 struct GeneralSettingsView: View {
     @Bindable var deck: DeckModel
     @Bindable var store: LibraryStore
-    @AppStorage(SettingKeys.textScale.name) private var textScale = SettingKeys.textScale.defaultValue
-    @AppStorage(SettingKeys.sidebarShowsStatus.name) private var sidebarShowsStatus = SettingKeys.sidebarShowsStatus.defaultValue
+    @AppStorage(SettingKeys.textScale.name, store: ViewPreferences.store) private var textScale = SettingKeys.textScale.defaultValue
+    @AppStorage(SettingKeys.sidebarShowsStatus.name, store: ViewPreferences.store) private var sidebarShowsStatus = SettingKeys.sidebarShowsStatus.defaultValue
 
     var body: some View {
         Form {

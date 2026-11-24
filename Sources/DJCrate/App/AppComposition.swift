@@ -58,6 +58,8 @@ final class AppComposition {
     /// 입력 중인 칸(R19): 미확정 값이 있으면 자동 저장을 미룬다(엔진 편집 활동). 엔진이 있을 때만 둔다
     /// 앱 수명 동안 도는 일(바깥 초안 감시·자동 시점 스냅샷·자동 저장 판정). 창이 아니라 조립 지점이 수명을 든다(창을 닫았다 열어도 하나만 돈다)
     private var lifetimeTasks: [Task<Void, Never>] = []
+    /// 앱이 끝나기 직전 알림(수명 동안 도는 일을 멈춘다)
+    private var terminationObserver: (any NSObjectProtocol)?
     /// 자동 시점 스냅샷 실행기 하나(자동 저장 앞의 스냅샷과 하루 한 번 스냅샷이 같은 실행기를 써 겹쳐 뜨지 않는다)
     private lazy var snapshotRunner = autoPointSnapshots()
 
@@ -172,8 +174,16 @@ final class AppComposition {
         let pointer = NSEvent.pressedMouseButtons != 0
         let editor = windows.trackEdit.window?.isVisible == true || app.keyWindow?.attachedSheet != nil
         let deckEditing = deck.hasUncommittedCueEdits || deck.cueDragBase != nil || deck.gridDragBase != nil
-        if composing || pointer || editor || deckEditing { holds.insert(.editing) }
+        if Self.isEditingHold(composing: composing, pointer: pointer, editor: editor, deckEditing: deckEditing, quitWaiting: store.quitWait.isWaiting) {
+            holds.insert(.editing)
+        }
         return holds
+    }
+
+    /// 편집 중 보류인지. 종료를 기다리는 동안의 입력기 조합·마우스 누름([종료 취소]를 누르거나 메뉴로 종료를 고름)은 순간 신호라 편집이 아니다
+    /// (R17, 컨실 2라운드 I: ⌘Q가 입력 칸을 확정한다). 곡 편집 창·시트와 덱 편집은 종료 대기 중에도 편집이다
+    static func isEditingHold(composing: Bool, pointer: Bool, editor: Bool, deckEditing: Bool, quitWaiting: Bool) -> Bool {
+        (composing || pointer) && !quitWaiting || editor || deckEditing
     }
 
     /// 자동 저장 실행 조건(R18)에 넣는 값: 빌드·인자·명시한 사본·진단 실행, 자가 테스트면 쓰기 전 확인 자리(링크를 푼 경로)
@@ -300,13 +310,21 @@ final class AppComposition {
         // 자동 저장(#403): 릴리스 빌드의 라이브 라이브러리만 자동 저장한다(R18). 그 밖의 실행도 엔진이 쓰기 차례·기록 판정·재시작 정리를 맡는다
         let run = AutoReflectionRun.decide(autoReflectionFacts(arguments: info.arguments, environment: info.environment, location: location))
         return AppComposition(
-            settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store),
+            settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store, gate: writeGate(arguments: info.arguments)),
             agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
             updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
                 : linkBar(store: store, deck: deck),
             persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments), dock: .live,
             rekordboxRun: RekordboxRunModel(source: .live(workspace: NSWorkspace.shared.notificationCenter)),
             autoReflection: (run, location.draftHome))
+    }
+
+    /// 앱의 쓰기 관문. 디버그 빌드의 자동 저장 자가 테스트 실행만 자가 테스트가 미리 보기를 붙잡을 수 있는 관문을 쓴다(⌘Q 저장 시험, R17)
+    static func writeGate(arguments: [String]) -> RekordboxWriteGate {
+        #if DEBUG
+        if DiagnosticRun.isAutoReflectSelfTest(arguments: arguments) { return SelfTestWriteGate.live() }
+        #endif
+        return .live()
     }
 
     /// 자가 테스트·측정·캡처 실행의 LINK 막대: 장치 찾기를 붙이지 않는다(LNK-6). LINK 캡처만 포트 없는 가상 장치를 보인다
@@ -408,7 +426,8 @@ final class AppComposition {
         let load = store.useCases.load, location = store.location
         library.readIsLatest = { snapshot in load.isLatest(snapshot, location: location) }
         // Mac을 끄는 중·종료를 기다리는 중에는 세션도 새 쓰기를 시작하지 않는다(바쁨으로 답한다, #300)
-        var lock = WriteLock(isLocked: { [weak store] in store.map { $0.libraryBusy || $0.writeRefusal != nil } ?? false },
+        // 수동 입구는 종료 대기 중 `writeRefusal`로 거절한다. ⌘Q가 기다리는 엔진의 자동 저장만 이 잠금을 지난다(R17)
+        var lock = WriteLock(isLocked: { [weak store] in store.map { $0.libraryBusy || $0.isPoweringOff || $0.quitWait.refusesWrites } ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
                              stage: { [weak store] in store?.writeStage = $0 })
         lock.setTracks = { [weak store] in store?.setLockedTracks($0) }
@@ -420,7 +439,9 @@ final class AppComposition {
                                         await store?.reloadAfterWrite(written: written, playlistEdits: edits) ?? false
                                     }, postpone: { [weak store] written, edits in
                                         // 종료를 기다리는 중이면 쓴 뒤 다시 읽기를 미루고 쓰기 결과를 먼저 남긴다(#305)
-                                        store?.postponeReloadForQuit(written: written, playlistEdits: edits) ?? false
+                                        // ⌘Q가 엔진의 자동 저장을 기다리는 동안은 미루지 않는다: 다음 묶음이 새 사본으로 판정해야 한다(R17)
+                                        guard let store, !store.quitWait.allowsAutoSave else { return false }
+                                        return store.postponeReloadForQuit(written: written, playlistEdits: edits)
                                     }),
                                     lock: lock,
                                     // 확인 창이 떠 있는 동안은 아직 아무것도 쓰지 않았다: 종료 판정이 이 때를 가른다(#300)
@@ -572,12 +593,33 @@ final class AppComposition {
             Task { [weak self] in await self?.watchExternalDrafts() },
             Task { [weak self] in await self?.runAutoPointSnapshots() },
         ]
+        // 앱이 끝나기 직전에 멈춘다(끝나는 동안 새 판정·감시가 디스크 일을 시작하지 않게)
+        terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                                                     queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopLifetimeTasks() }
+        }
     }
 
-    /// 앱을 끌 때 수명 동안 도는 일과 자동 저장 판정을 멈춘다(쓰는 중인 저장은 끝까지 간다)
+    /// 앱을 끌 때 수명 동안 도는 일과 자동 저장 판정을 멈춘다. 앱이 실제로 끝나기 직전(`willTerminate`)에만 부른다:
+    /// 종료 판정이 그 전에 쓰던 자동 저장(미리 보기 포함)을 끝까지 기다리므로 진행 중인 저장을 취소하지 않는다(R17)
     func stopLifetimeTasks() {
         lifetimeTasks.forEach { $0.cancel() }
         autoReflection?.stop()
+    }
+
+    /// ⌘Q 저장(R17)을 엔진에 잇는다: 입력 칸 확정(⌘S와 같다), 엔진의 ⌘Q 저장·취소, 시스템 종료의 새 쓰기 막기.
+    /// 엔진이 없으면 자동 저장하지 않는 실행이다. 자동 저장하지 않는 실행도 시스템 종료 때 엔진을 멈춰 세운다
+    func quitAutoSaveLink() -> QuitAutoSaveLink {
+        guard let engine = autoReflection else { return QuitAutoSaveLink() }
+        let store = store, window = libraryWindow
+        return QuitAutoSaveLink(
+            autoSaves: { engine.run.autoSaves },
+            // 수동 쓰기는 엔진의 차례를 받아 "지금 미리 보기를 실행하는 작업"으로 등록된다. 등록되지 않은 엔진의 쓰기는 자동 저장이다
+            autoWriting: { engine.isWriting && store.previewingWriteTask == nil },
+            commitInput: { await window.commitInputBeforeQuit() },
+            prepare: { await engine.prepareToQuit() },
+            cancel: { engine.cancelQuit() },
+            shutdown: { $0 ? engine.shutdown() : engine.cancelShutdown() })
     }
 
     /// 저장 대기(곡 초안 표시·태그·재생 목록 초안)가 바뀔 때마다 엔진에 알린다(마지막 편집 뒤 T_edit를 다시 센다, R1)

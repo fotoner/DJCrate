@@ -63,6 +63,19 @@ extension LibraryWindowModel {
         }
     }
 
+    /// ⌘Q 저장(R17) 앞의 입력 확정: ⌘S와 같은 감지기로 입력 중이거나 확정 대기 칸이 있을 때만 확정한다(#405).
+    /// 확정을 거절하거나 한도 안에 끝나지 않아도 종료는 막지 않는다(칸의 값만 남지 않는다)
+    func commitInputBeforeQuit() async {
+        guard isEditingInput else { return }
+        _ = fieldEditing.commit()
+        let deadline = ContinuousClock.now + fieldEditing.settleLimit
+        while fieldEditing.isEditing || fieldEditing.hasPendingCommit(), ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        // 값을 넣는 일이 끝났는데 저장 대기에 아직 안 보이면 잠깐 더 본다(⌘S와 같다): 엔진의 ⌘Q 저장이 그 편집까지 다시 판정한다
+        for _ in 0..<20 where !store.hasSavableEdits { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
     static var commitFailedText: String {
         String(ui: "입력 중인 칸을 확정하지 못해 저장하지 않았습니다. 칸의 값을 고치거나 Return을 누른 뒤 다시 저장하세요")
     }

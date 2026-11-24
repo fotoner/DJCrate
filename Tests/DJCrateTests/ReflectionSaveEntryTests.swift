@@ -547,4 +547,56 @@ struct ReflectionSaveEntryTests {
         #expect(w.h.store.writeTask == nil && w.h.store.rekordboxWriteCount == 0)
         #expect(w.h.store.toast?.title == "입력 중인 칸을 확정하지 못해 저장하지 않았습니다. 칸의 값을 고치거나 Return을 누른 뒤 다시 저장하세요")
     }
+
+    // MARK: - ⌘Q 저장 앞 입력 확정(R17): ⌘S와 같은 감지기
+
+    /// 확정 신호가 값을 넣기 전에 끝나는 칸(SwiftUI)도 값이 저장 대기에 들어온 뒤 돌아온다: 엔진의 ⌘Q 저장이 그 편집까지 다시 판정한다
+    @Test func 종료_전_확정은_값이_저장_대기에_들어온_뒤_돌아온다() async {
+        let w = world(.saved, pending: [])
+        let input = FieldEditingState()
+        let landed = Mutex(false)
+        input.isEditing = true
+        input.commit = { [input, store = w.h.store] in
+            input.isEditing = false
+            Task { @MainActor in
+                for _ in 0..<5 { await Task.yield() }
+                let row = PendingCountCacheTests.track("b")
+                store.showRows([row])
+                store.rowsByUUID["b"] = row
+                store.rowsByID[row.id] = row
+                store.setDraftMark(.cue, trackUUID: "b", exists: true)
+                landed.withLock { $0 = true }
+            }
+            return true
+        }
+        w.h.window.fieldEditing = input
+        #expect(!w.h.store.hasSavableEdits)
+        await w.h.window.commitInputBeforeQuit()
+        #expect(landed.withLock { $0 } && w.h.store.hasSavableEdits, "확정한 값이 저장 대기에 들어온 뒤 돌아온다")
+    }
+
+    @Test func 종료_전_확정은_입력_중인_칸이_없으면_확정을_부르지_않는다() async {
+        let w = world(.pending)
+        let input = FieldEditingState()
+        let committed = Mutex(false)
+        input.commit = {
+            committed.withLock { $0 = true }
+            return true
+        }
+        w.h.window.fieldEditing = input
+        await w.h.window.commitInputBeforeQuit()
+        #expect(!committed.withLock { $0 })
+    }
+
+    /// 칸이 확정을 거절해도 종료는 막지 않는다(칸의 값만 남지 않는다). ⌘S의 거절 알림도 띄우지 않는다
+    @Test func 종료_전_확정은_칸이_거절해도_알림_없이_돌아온다() async {
+        let w = world(.pending)
+        let input = FieldEditingState()
+        input.isEditing = true
+        input.commit = { false }
+        input.settleLimit = .milliseconds(50)
+        w.h.window.fieldEditing = input
+        await w.h.window.commitInputBeforeQuit()
+        #expect(w.h.store.toast == nil)
+    }
 }

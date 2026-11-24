@@ -36,8 +36,8 @@ extension ReflectionCoordinator {
     /// 복원하면 자동 저장이 멈추고(R8) 라이브러리를 다시 읽는다
     func restoreJournal() async {
         let session = session
-        var restored = false
-        await serialized {
+        var restored = false, touched = false
+        await serialized({
             guard mayStartJournalAction() else { return }
             guard let finding = await Self.judge(gate: session.ports.gate, target: session.target) else { return noRecord() }
             let prompt = ReflectionPrompt(title: String(ui: "쓰다가 중단된 저장을 되돌릴까요?"),
@@ -61,11 +61,14 @@ extension ReflectionCoordinator {
                 case .nothing: noRecord()
                 }
             } catch {
+                // DB를 바꾼 뒤 던졌을 수 있다(기록 지우기 실패·바꾼 뒤 켜짐을 봄): 옛 값을 보이지 않게 다시 읽는다
+                touched = true
                 failed(String(ui: "기록으로 복원하지 못했습니다"), error)
             }
-        }
+        }, refused: { self.store.showToast(.notice($0, nil)) })
         if restored { engine?.restored() } else { engine?.recheckJournal() }
-        await store.refreshIfRekordboxChanged()
+        // 복원한 master.db는 쓰기 전 백업의 시각을 그대로 가져 "읽은 사본 뒤 바뀜"으로 잡히지 않는다(R11): 복원했으면 늘 새 사본으로 다시 읽는다
+        if restored || touched { _ = await store.reloadAfterWrite() } else { await store.refreshIfRekordboxChanged() }
     }
 
     /// 복원이 되돌릴 실제 목표: 기록 종류마다 다르다. 시점 복원은 재시도하며 목표가 바뀔 수 있어 기록에 지금 적힌 시점을 말한다
@@ -100,7 +103,7 @@ extension ReflectionCoordinator {
     /// 지우지 않고 제안으로 바꾸고, 기록은 마지막에 지운다. 쓰기 잠금 안에서 하므로 그 사이 기록·DB가 달라졌으면 아무것도 하지 않는다
     func keepJournal() async {
         let session = session
-        await serialized {
+        await serialized({
             guard mayStartJournalAction() else { return }
             guard let finding = await Self.judge(gate: session.ports.gate, target: session.target) else { return noRecord() }
             let files = session.ports.drafts, home = session.location.draftHome
@@ -144,7 +147,7 @@ extension ReflectionCoordinator {
             } catch {
                 failed(String(ui: "이대로 두지 못했습니다"), error)
             }
-        }
+        }, refused: { self.store.showToast(.notice($0, nil)) })
         engine?.recheckJournal()
         await store.refreshExternalDrafts()
     }

@@ -9,7 +9,7 @@ struct DeckControlTabs: View {
     let tags: TagEditStore
     @Bindable var deck: DeckModel
     let tabWidth: CGFloat
-    @AppStorage(SettingKeys.deckControlTab.name) private var tabName = SettingKeys.deckControlTab.defaultValue
+    @AppStorage(SettingKeys.deckControlTab.name, store: ViewPreferences.store) private var tabName = SettingKeys.deckControlTab.defaultValue
 
     private var tab: DeckControlTab { DeckControlTab(rawValue: tabName) ?? .cueLoop }
     private var tabHeight: CGFloat { TextScale.length(30, scale: textScale) }

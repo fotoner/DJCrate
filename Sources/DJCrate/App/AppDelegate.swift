@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var rekordboxRunState: @MainActor () -> RekordboxRunState? = { nil }
     /// 지금 처리 중인 종료 요청의 이유(Apple 이벤트 `quit`의 「why?」). 이벤트가 없거나 이유가 없으면 nil(시험은 바꿔 끼운다)
     var quitReason: @MainActor () -> UInt32? = { AppDelegate.currentQuitReason() }
+    /// ⌘Q 저장(R17)의 엔진 연결. 조립 지점이 잇는다(잇지 않았으면 자동 저장하지 않는 실행)
+    var quitAutoSave = QuitAutoSaveLink()
     /// 업데이트 설치 뒤 다시 켜려는 종료인가. 읽으면 표시를 지운다(조립 지점이 업데이트 도구에 잇는다)
     var consumeUpdateRelaunch: @MainActor () -> Bool = { false }
     /// 켜진 채 종료 시트를 띄운다(시험은 가짜로 바꾼다)
@@ -53,10 +55,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 취소된 로그아웃은 알리는 곳이 없다. 앱이 다시 활성화되면 쓰기를 다시 연다.
     func observePowerOff(center: NotificationCenter = NSWorkspace.shared.notificationCenter, activation: NotificationCenter = .default) {
         center.addObserver(forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.store?.isPoweringOff = true }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.store?.isPoweringOff = true
+                // 자동 저장도 새 쓰기를 시작하지 않는다(이미 시작한 쓰기만 마친다, R17). 종료 컨트롤러를 거쳐 막아야
+                // 기다리던 종료·시트가 취소될 때 함께 다시 연다(컨실 3라운드 U)
+                if let quit = self.quit { quit.stopAutoSaveForPowerOff() } else { self.quitAutoSave.shutdown(true) }
+            }
         }
+        // 업데이트 다시 켜기·시스템 종료로 엔진을 멈췄는데 그 종료가 취소된 것도 알림이 없다: 종료를 기다리는 중이 아니면 함께 다시 연다(컨실 2라운드 H)
         activation.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.store?.isPoweringOff = false }
+            MainActor.assumeIsolated {
+                guard let self, self.store?.quitWait.isWaiting != true else { return }
+                let poweringOff = self.store?.isPoweringOff == true
+                if poweringOff { self.store?.isPoweringOff = false }
+                if let quit = self.quit {
+                    quit.reopenAutoSaveAfterCancelledShutdown(poweringOffCancelled: poweringOff)
+                } else if poweringOff {
+                    self.quitAutoSave.shutdown(false)
+                }
+            }
         }
     }
 
@@ -68,7 +86,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let poweringOff = store?.isPoweringOff == true
         // 켜진 채 종료 시트(#326)는 사용자가 고른 종료에서만 묻는다. 누가 골랐는지는 Apple 이벤트의 종료 이유와 Mac을 끄는 중 알림, 업데이트 표시로 가른다
         let cause = AppQuitCause.classify(quitReason: quitReason(), isPoweringOff: poweringOff, isUpdateRelaunch: consumeUpdateRelaunch())
-        return quit.requestTermination(nested: poweringOff, cause: cause)
+        // 시스템 종료 Apple 이벤트가 Mac을 끄는 중 알림보다 먼저 와도 미루는 방식으로 답한다(취소로 답하면 그 일이 통째로 멈춘다)
+        return quit.requestTermination(nested: poweringOff || cause == .systemShutdown, cause: cause)
     }
 
     /// 지금 처리 중인 Apple 이벤트가 종료(`quit`)면 그 이유(「why?」, `kAEQuitReason`)를 읽는다. ⌘Q·메뉴 종료는 Apple 이벤트가 아니라 nil이다.
@@ -78,6 +97,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let keyword = AEKeyword(AppQuitCause.quitReasonKeyword)
         guard let descriptor = event.paramDescriptor(forKeyword: keyword) ?? event.attributeDescriptor(forKeyword: keyword) else { return nil }
         return descriptor.enumCodeValue
+    }
+
+    /// 컨트롤러를 만든 뒤에 조립 지점이 잇는 엔진 연결을 부를 때마다 읽는다
+    private func forwardedAutoSave() -> QuitAutoSaveLink {
+        QuitAutoSaveLink(autoSaves: { [weak self] in self?.quitAutoSave.autoSaves() ?? false },
+                         autoWriting: { [weak self] in self?.quitAutoSave.autoWriting() ?? false },
+                         commitInput: { [weak self] in await self?.quitAutoSave.commitInput() },
+                         prepare: { [weak self] in await self?.quitAutoSave.prepare() ?? .finished(run: nil) },
+                         cancel: { [weak self] in self?.quitAutoSave.cancel() },
+                         shutdown: { [weak self] in self?.quitAutoSave.shutdown($0) })
     }
 
     private func connect(to store: LibraryStore) {
@@ -99,7 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             runState: { [weak self] in self?.rekordboxRunState() },
             pending: { [weak store] in store?.pendingWriteSummary ?? PendingWriteCount(items: 0, playlistEdits: 0) },
             present: { [weak self] confirmation, answer in self?.presentQuitConfirmation(confirmation, answer) },
-            pendingRecordSave: { [weak store] in store?.pendingAutoRecordSave?() })
+            pendingRecordSave: { [weak store] in store?.pendingAutoRecordSave?() },
+            autoSave: forwardedAutoSave())
         watchWrites(of: store)
     }
 

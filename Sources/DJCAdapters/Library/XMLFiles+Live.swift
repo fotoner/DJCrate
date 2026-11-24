@@ -33,6 +33,9 @@ extension XMLFiles {
 }
 
 extension DraftFiles {
+    /// CLI가 재생 목록 초안 파일 잠금을 기다리는 초(R24). 출시 관문 측정(E1, 2026-11-24)에서 자동 저장 한 번 전체가 최대 22.7초였다
+    public static let cliPlaylistLockWait: TimeInterval = 30
+
     /// 초안 폴더 `home`의 곡별 초안 파일(큐·그리드·태그·재생 목록)을 바로 읽고 쓴다(저장 큐를 거치지 않는다).
     /// 저장하는 초안에는 `origin`과 새 판·내용 해시를 도장으로 적는다(앱의 저장소와 같은 사이드카). CLI 조립은 CLI, 정하지 않으면 모름이다(R5)
     public static func live(home: URL, origin: DraftOrigin = .unknown) -> DraftFiles {
@@ -67,8 +70,8 @@ extension DraftFiles {
                     && file.resolvingSymlinksInPath().standardizedFileURL == file.standardizedFileURL
             },
             newCueID: { UUID() })
-        // 다른 djc가 잠깐 들고 있는 것은 기다린다. 앱의 쓰기는 길어 기다리지 않고 알린다
-        files.lockPlaylist = { PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: places.playlist), wait: 2) }
+        // 다른 djc와 앱의 자동 저장 한 번(쓰는 동안 늘 잠금을 쥔다)은 기다린다. 그보다 길면 `draft_busy`로 알린다(R24)
+        files.lockPlaylist = { PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: places.playlist), wait: Self.cliPlaylistLockWait) }
         files.savePlaylistIfUnchanged = { expected, draft in
             do { return try StampedDrafts.savePlaylist(draft, url: places.playlist, origin: origin, expecting: expected) }
             catch is DraftFileDamaged { throw DraftFilesUnreadable() }
