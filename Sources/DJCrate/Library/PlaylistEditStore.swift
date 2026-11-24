@@ -345,8 +345,17 @@ final class PlaylistEditStore {
 
     /// 지금 초안에 그 편집을 거꾸로 하는 단계를 더한 초안. 되돌리지 않는 종류이거나 대상이 그 편집 뒤 모양이 아니면 nil
     private func reversedDraft(_ step: PlaylistUndoStep) -> PlaylistDraft? {
+        // 그 편집이 순서를 옮긴 목록(이 단계가 더한 reorder·move의 대상): 순서 역편집은 이 목록을 원래 자리로 옮긴다(컨실 3라운드 G)
+        let added = step.after.edits.filter { !step.before.edits.contains($0) }
+        let moved = Set(added.compactMap { edit -> String? in
+            switch edit {
+            case let .reorder(ref, _), let .move(ref, _): ref.layoutID
+            default: nil
+            }
+        })
         guard case let .edits(edits) = PlaylistUndo.reversing(before: step.beforeLayout, after: step.afterLayout,
-                                                              current: playlistProjection.layout, ids: writtenPlaylistIDs) else { return nil }
+                                                              current: playlistProjection.layout, ids: writtenPlaylistIDs,
+                                                              moved: moved) else { return nil }
         var draft = playlistDraft
         for edit in edits {
             guard (try? draft.append(edit, rekordbox: rekordboxPlaylists, frozen: frozen)) != nil else { return nil }

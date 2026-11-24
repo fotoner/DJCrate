@@ -22,7 +22,9 @@ public enum PlaylistUndo {
     ///   - before, after: 편집 전·뒤에 보이던 목록
     ///   - current: 지금 보이는 목록(rekordbox + 지금 초안)
     ///   - ids: 새 목록 키(`new:키`) → 쓴 뒤 실제 목록 ID
-    public static func reversing(before: PlaylistLayout, after: PlaylistLayout, current: PlaylistLayout, ids: [String: String]) -> Result {
+    ///   - moved: 그 편집이 순서를 옮긴 목록(`reorder`·`move`의 대상). 순서를 되돌릴 때 이 목록을 원래 자리로 옮긴다(컨실 3라운드 G)
+    public static func reversing(before: PlaylistLayout, after: PlaylistLayout, current: PlaylistLayout, ids: [String: String],
+                                 moved: Set<String> = []) -> Result {
         func real(_ id: String) -> String { ids[id] ?? id }
         let beforeIDs = Set(before.outline.map(\.id)), afterIDs = Set(after.outline.map(\.id))
         // 만들기·지우기는 되돌리지 않는다(만들기를 되돌리면 지우기다)
@@ -79,7 +81,9 @@ public enum PlaylistUndo {
                 guard (try? trial.apply(edit)) != nil, trial.childIDs(of: realParent) == old.map(real) else { return nil }
                 return edit
             }
-            guard let edit = old.lazy.compactMap(restoring).first, push(edit) else { return .unsupported }
+            // 그 편집이 옮긴 목록부터 본다(두 목록이 자리를 바꾼 모양은 어느 쪽을 옮겨도 되돌아간다: 쓰기 결과·연결 갱신 대상이 옮긴 목록이게)
+            let candidates = old.filter { moved.contains($0) } + old.filter { !moved.contains($0) }
+            guard let edit = candidates.lazy.compactMap(restoring).first, push(edit) else { return .unsupported }
         }
         // 여러 목록에 걸친 역편집은 자동 저장이 단위를 나눠 일부만 쓸 수 있다: 만들지 않는다
         guard Set(edits.map(\.playlist.layoutID)).count <= 1 else { return .unsupported }

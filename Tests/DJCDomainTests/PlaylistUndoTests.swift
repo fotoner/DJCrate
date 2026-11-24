@@ -63,6 +63,13 @@ struct PlaylistUndoTests {
         if case let .edits(edits) = result { #expect(try Self.applying(edits, to: after).childIDs(of: PlaylistLayout.root) == ["A", "S", "B", "C"]) }
     }
 
+    /// 두 목록이 자리를 바꾼 모양은 어느 쪽을 옮겨도 되돌아간다: 그 편집이 옮긴 목록(B)을 원래 자리로 옮긴다(쓰기 결과·연결 갱신 대상이 옮긴 목록이다, 컨실 3라운드 G)
+    @Test func 순서_역편집은_그_편집이_옮긴_목록을_되돌린다() throws {
+        let before = Self.layout([("A", "가", []), ("B", "나", [])]), after = Self.layout([("B", "나", []), ("A", "가", [])])
+        let result = PlaylistUndo.reversing(before: before, after: after, current: after, ids: [:], moved: ["B"])
+        #expect(result == .edits([.reorder(playlist: .id("B"), index: 1)]))
+    }
+
     /// 목록 하나를 옮긴 것으로 나타낼 수 없는 순서 바꿈은 되돌리지 않는다(⌘Z를 끈다, G)
     @Test func 한_단계로_되돌릴_수_없는_목록_순서는_되돌리지_않는다() {
         let before = Self.layout([("A", "가", []), ("B", "나", []), ("C", "다", []), ("D", "라", [])])
