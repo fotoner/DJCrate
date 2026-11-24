@@ -367,6 +367,33 @@ struct ReflectionSaveEntryTests {
                 "\(String(describing: f.store.toast?.title)) \(f.events.all)")
     }
 
+    // MARK: - S11(3라운드): 취소는 지금 미리 보기를 실행하는 작업 하나에만 간다
+
+    @Test func 미리_보기_취소는_엔진_차례를_기다리는_다른_작업을_건드리지_않는다() async throws {
+        let f = try await QueueFixture(blocking: [1, 2])
+        defer { f.stop() }
+        #expect(await f.startFirstSave())
+        f.press()   // 보관
+        f.latches[1]?.release()
+        #expect(await f.waitForEvents(3))
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.store.writeTask == nil && f.store.writeStage?.cancellable == true },
+                "앞 쓰기는 끝났고 보관한 저장이 미리 보기 중이다")
+        // 다른 쓰기 작업(곡 메뉴의 바로 넣기 같은)이 엔진 차례를 기다린다
+        f.coordinator.start { await f.coordinator.write(rows: [], playlists: true) }
+        // 미리 보기 [취소]·Esc가 부르는 기존 입구
+        f.store.cancelWritePreparation()
+        f.latches[2]?.release()
+        // 취소된 것은 미리 보기 중이던 보관한 저장 하나다(알림은 다음 쓰기의 알림이 덮으므로 활동 기록으로 본다)
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.store.activityLog.entries.contains { $0.title == "작업을 취소했습니다" } })
+        // 기다리던 작업은 취소되지 않고 차례를 받아 미리 보기까지 간다
+        #expect(await waitForEvents(f, containing: "미리 보기 3 시작"), "\(f.events.all)")
+        await f.store.writeTask?.value
+    }
+
+    func waitForEvents(_ f: QueueFixture, containing text: String) async -> Bool {
+        await waitForState(safetyNet: .seconds(90)) { f.events.all.contains { $0.hasPrefix(text) } }
+    }
+
     // MARK: - S12: 보관한 요청이 범위를 유지한다
 
     @Test func 곡_메뉴의_고른_곡_저장은_보관돼도_재생_목록을_더하지_않는다() async throws {

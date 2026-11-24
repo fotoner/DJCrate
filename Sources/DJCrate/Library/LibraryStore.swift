@@ -50,15 +50,15 @@ final class LibraryStore {
     let activityLog: ActivityLog
     @ObservationIgnored var feedback: AppFeedback
     @ObservationIgnored var writeTask: Task<Void, Never>?
-    /// 쓰는 중에 보관했다가 엔진의 차례를 받아 도는 저장(R3 5번 줄). 차례를 받은 동안에만 있다
-    @ObservationIgnored var queuedWriteTask: Task<Void, Never>?
+    /// 엔진의 차례를 받아 지금 쓰기를 실행하는 작업(미리 보기 포함). 차례를 기다리는 다른 쓰기 작업은 아니다
+    @ObservationIgnored var previewingWriteTask: Task<Void, Never>?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
 
     func cancelWritePreparation() {
         guard writeStage?.cancellable == true else { return }
-        writeTask?.cancel()
-        // 보관했다가 차례를 받아 미리 보기 중인 저장도 같은 입구(미리 보기 [취소]·Esc)가 취소한다
-        queuedWriteTask?.cancel()
+        // 지금 미리 보기를 실행하는 작업 하나에만 전달한다: 엔진 차례를 기다리는 다른 쓰기 작업(보관한 저장·곡 메뉴의 바로 넣기 등)은 건드리지 않는다.
+        // 차례 밖에서 도는 흐름은 쓰기 작업이 그 작업이다
+        (previewingWriteTask ?? writeTask)?.cancel()
     }
 
     @ObservationIgnored let settings: SettingsStore

@@ -241,6 +241,17 @@ final class ReflectionPresenter {
     }
 }
 
+/// 쓰기 작업 하나의 손잡이. 엔진의 차례를 받은 작업이 이 손잡이로 "지금 미리 보기를 실행하는 작업"이 된다(`LibraryStore.previewingWriteTask`)
+@MainActor
+final class WriteRun {
+    var task: Task<Void, Never>?
+}
+
+/// 지금 도는 쓰기 작업의 손잡이(작업 안에서 이어 부르는 흐름이 읽는다)
+enum WriteRunContext {
+    @TaskLocal static var current: WriteRun?
+}
+
 /// rekordbox 쓰기의 화면 쪽: 버튼·메뉴·토스트의 입구(시작 가능 판정, 한 번에 작업 하나), 반영 세션 부르기, 막힌 초안 복구 시트.
 /// 흐름(대상·미리 보기·확인 정책·확인·쓰기·뒤처리·결과)은 DJCApplication `ReflectionSession`이 정하고, 결과는 `ReflectionPresenter`가 보인다.
 /// 조립 지점(`AppComposition.reflection`)이 하나 만들어 메뉴·목록·사이드바·창에 넣는다.
@@ -305,57 +316,61 @@ final class ReflectionCoordinator {
     /// 차례를 받았는지 알려 주는 상자(보관한 요청의 작업과 끝 처리가 같이 본다)
     @MainActor
     private final class QueuedSaveState {
-        var task: Task<Void, Never>?
         var tookTurn = false
     }
 
     /// 쓰는 중에 누른 저장: 요청 하나를 보관해 앞 쓰기가 끝난 뒤 다음 자동 저장보다 먼저 한다(R3 5번 줄).
     /// 엔진의 차례(`exclusive`)에 지금 들어가 기다리므로 엔진이 그 사이 자동 저장을 먼저 시작하지 않는다.
-    /// - 차례를 받으면 자리를 비워 다음 ⌘S가 다시 보관된다. 그 작업은 기존 취소 입구(미리 보기 [취소]·Esc)가 취소한다
+    /// - 차례를 받으면 자리를 비워 다음 ⌘S가 다시 보관된다. 그 작업은 기존 취소 입구(미리 보기 [취소]·Esc)가 취소한다(차례를 받은 작업 하나에만 전달)
     /// - 차례를 받은 뒤 공통 저장 입구의 판정(`admits`)을 다시 하고, 저장할 곡은 그때 읽는다
     /// 이미 보관한 요청이 있거나 엔진이 없으면(차례가 없어 겹쳐 쓴다) 아무것도 하지 않는다
     func queueSave(_ request: QueuedSave) {
         guard engine != nil, queuedSave == nil else { return }
-        let state = QueuedSaveState()
+        let state = QueuedSaveState(), run = WriteRun()
         let task = Task { [weak self] in
-            guard let self else { return }
-            await write(queued: request, onTurn: { [weak self, state] in
-                guard let self else { return }
-                state.tookTurn = true
-                queuedSave = nil
-                store.queuedWriteTask = state.task
-            })
-            // 끝났다: 차례를 받았으면 취소 연결을 풀고, 받기 전에 끝났으면(거절 등) 자리를 비운다
-            if state.tookTurn {
-                if store.queuedWriteTask == state.task { store.queuedWriteTask = nil }
-            } else {
-                queuedSave = nil
+            await WriteRunContext.$current.withValue(run) {
+                await self?.write(queued: request, onTurn: { [weak self, state] in
+                    state.tookTurn = true
+                    self?.queuedSave = nil
+                })
             }
+            // 차례를 받기 전에 끝났으면(거절 등) 자리를 비운다. 받은 뒤라면 자리는 이미 비었고 새로 보관된 요청일 수 있다
+            if !state.tookTurn { self?.queuedSave = nil }
         }
-        state.task = task
+        run.task = task
         queuedSave = task
     }
 
     func start(_ work: @escaping @MainActor () async -> Void) {
-        let store = store
-        store.writeTask = Task {
+        let store = store, run = WriteRun()
+        let task = Task {
             defer { store.writeTask = nil }
-            await work()
+            await WriteRunContext.$current.withValue(run) { await work() }
         }
+        run.task = task
+        store.writeTask = task
+    }
+
+    /// 엔진의 차례를 받은 작업을 "지금 미리 보기를 실행하는 작업"으로 알린다: 미리 보기 [취소]·Esc는 이 작업 하나에만 간다
+    private func running<T>(_ work: @MainActor () async throws -> T) async rethrows -> T {
+        let task = WriteRunContext.current?.task, store = store
+        store.previewingWriteTask = task
+        defer { if store.previewingWriteTask == task { store.previewingWriteTask = nil } }
+        return try await work()
     }
 
     /// 쓰기 하나를 엔진의 차례로 한다(엔진이 없으면 바로). 엔진은 결과로 멈춤을 풀거나(저장 성공) 멈춘다(복원)
     func serialized<T>(_ work: @MainActor () async throws -> T) async rethrows -> T {
-        guard let engine else { return try await work() }
-        return try await engine.exclusive(work)
+        guard let engine else { return try await running(work) }
+        return try await engine.exclusive { try await self.running(work) }
     }
 
     /// 초안을 쓰는 흐름(⌘S·저장 단추·곡 넣기)을 엔진의 차례로 한다. 앞 쓰기의 정리를 마치지 못했으면(미정리 목록이 남음) 쓰지 않고 알린다:
     /// 쓴 재생 목록 단계가 초안에 남아 다시 쓰면 같은 목록이 두 번 생긴다(R22). 복원은 고치는 쓰기라 막지 않는다
     private func serializedWrite(_ work: @MainActor () async -> ReflectionOutcome) async -> ReflectionOutcome {
-        guard let engine else { return await work() }
+        guard let engine else { return await running(work) }
         let session = session
-        return await engine.exclusive(work, whenHeld: { holds in
+        return await engine.exclusive({ await self.running(work) }, whenHeld: { holds in
             // 잠금 아래 판정을 하지 못했으면(rekordbox가 켜져 기록을 판정하지 못함·잠금·기록을 읽다 실패) rekordbox 종료나 디스크·권한을,
             // 정리를 마치지 못했으면 편집 보관을 확인하게 한다
             // 실행 상태는 엔진이 메인 액터 밖에서 보고 보류 사유로 넘긴다(여기서 프로세스 목록을 기다리지 않는다)

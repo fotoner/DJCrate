@@ -127,12 +127,12 @@ extension ReflectionCoordinator {
                     try gate.keepJournal(target, request) {
                         // 그 쓰기의 미정리 목록을 먼저 지우고 지웠는지 확인한 뒤에만 이어 간다(남았으면 던져 기록을 남긴다). 그다음 적힌 판의 초안을 제안으로 바꾼다
                         func remaining() throws -> [DraftCleanupList] {
-                            try gate.cleanupLists(target, listHome).filter { $0.operationID == journal.operationID }
+                            // 목록 폴더를 읽을 수 있어야 "목록이 없다"고 본다(관문의 목록 읽기는 열지 못한 폴더를 빈 목록으로 돌려준다)
+                            try Self.requireReadableCleanupFolder(in: target.backups)
+                            return try gate.cleanupLists(target, listHome).filter { $0.operationID == journal.operationID }
                         }
                         for list in try remaining() { try gate.removeCleanupList(list, target) }
-                        guard try remaining().isEmpty else {
-                            throw DJCError.writeRefused(String(ui: "미정리 목록을 지우지 못해 기록을 남겼습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 시도하세요"))
-                        }
+                        guard try remaining().isEmpty else { throw Self.cleanupListKept() }
                         if let drafts = journal.drafts { _ = try files.markSuggestions(drafts.written, Set(drafts.playlistSteps)) }
                     }
                 }
@@ -147,6 +147,23 @@ extension ReflectionCoordinator {
         }
         engine?.recheckJournal()
         await store.refreshExternalDrafts()
+    }
+
+    /// 미정리 목록을 처리하지 못해 기록을 남긴다는 오류(기록을 남기면 다시 고를 수 있다)
+    private nonisolated static func cleanupListKept() -> DJCError {
+        .writeRefused(String(ui: "미정리 목록을 지우지 못해 기록을 남겼습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 시도하세요"))
+    }
+
+    /// 미정리 목록 폴더를 열거할 수 있는지 본다. 폴더가 없을 때만 목록이 없는 것이다. 있는데 열 수 없거나(권한이 사라짐)
+    /// 위 폴더를 볼 수 없으면 목록이 있는지 모르니 던져 기록을 남긴다
+    private nonisolated static func requireReadableCleanupFolder(in backups: URL) throws {
+        let folder = backups.appending(path: DraftCleanupList.folderName, directoryHint: .isDirectory)
+        var info = stat()
+        if lstat(folder.path, &info) != 0 {
+            if errno == ENOENT { return }
+            throw cleanupListKept()
+        }
+        do { _ = try FileManager.default.contentsOfDirectory(atPath: folder.path) } catch { throw cleanupListKept() }
     }
 
     /// 같은 폴더인지(링크를 푼 경로로 견준다)

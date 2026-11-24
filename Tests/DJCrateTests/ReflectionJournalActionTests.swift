@@ -294,6 +294,38 @@ struct ReflectionJournalActionTests {
         #expect(store.testDrafts.suggestion(key) == nil || w.calls.present, "기록이 남았으니 처음부터 다시 하면 된다")
     }
 
+    // MARK: - S1(3라운드): 미정리 목록 폴더를 읽을 수 없으면 비어 있다고 보지 않는다
+
+    enum Unreadable: CaseIterable {
+        /// 미정리 목록 폴더가 있는데 열 수 없다(권한이 사라짐)
+        case cleanupFolder
+        /// 백업 폴더가 있는데 그 안을 볼 수 없다
+        case backupFolder
+    }
+
+    @Test(arguments: Unreadable.allCases)
+    func 미정리_목록_폴더를_열거하지_못하면_기록을_지우지_않고_알린다(_ unreadable: Unreadable) async throws {
+        let w = world()
+        let backups = w.coordinator.session.target.backups
+        let cleanup = backups.appending(path: DraftCleanupList.folderName, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: cleanup, withIntermediateDirectories: true)
+        let locked = unreadable == .cleanupFolder ? cleanup : backups
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: locked.path) }
+        await w.coordinator.keepJournal()
+        #expect(w.calls.present, "목록이 없다고 속단하지 않고 기록을 남긴다(다시 고를 수 있다)")
+        #expect(w.calls.removed.isEmpty)
+        #expect(w.store.toast?.kind == .failure && w.store.toast?.title == "이대로 두지 못했습니다", "\(String(describing: w.store.toast?.title))")
+    }
+
+    @Test func 미정리_목록_폴더가_없으면_목록이_없는_것이라_이어_간다() async {
+        let w = world()
+        let cleanup = w.coordinator.session.target.backups.appending(path: DraftCleanupList.folderName, directoryHint: .isDirectory)
+        #expect(!FileManager.default.fileExists(atPath: cleanup.path))
+        await w.coordinator.keepJournal()
+        #expect(!w.calls.present && w.store.toast?.title == "이대로 두었습니다")
+    }
+
     // MARK: - S9(2라운드): 기록에 지금 적힌 복원 시점
 
     @Test func 시점_복원_기록은_지금_적힌_복원_시점을_말하고_재시도로_바뀌면_바뀐_시점을_말한다() async {

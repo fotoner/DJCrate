@@ -132,6 +132,9 @@ private struct CommitTextField: View {
             }
             .onSubmit(apply)
             .onChange(of: focused) { if !focused { apply() } }
+            // 칸이 사라질 때(다른 곡을 골라 칸이 새로 만들어짐) 포커스 확정이 불리지 않을 수 있다: 입력 중이던 값을 확정하고 대기를 푼다.
+            // 대상은 입력을 시작할 때 고정한 곡이다(`beginInput`). 대기가 남으면 ⌘S가 매번 확정을 기다리다 저장하지 못한다
+            .onDisappear(perform: apply)
     }
 
     private func apply() {
