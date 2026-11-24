@@ -42,6 +42,8 @@ struct FieldEditingStateTests {
         defer { close(window) }
         let state = FieldEditingState.live(window: { window })
         defer { state.stop() }
+        // 이 시험이 만든 창의 칸만 센다: 함께 도는 다른 시험의 칸 알림이 끼어들지 않게(컨실 4라운드 G21)
+        state.countsWindow = { $0 === window }
         #expect(window.makeFirstResponder(field))
         let editor = try #require(field.currentEditor() as? NSTextView)
         replace(editor, with: "고친 제목")
@@ -62,6 +64,8 @@ struct FieldEditingStateTests {
         defer { close(window) }
         let state = FieldEditingState.live(window: { window })
         defer { state.stop() }
+        // 이 시험이 만든 창의 칸만 센다: 함께 도는 다른 시험의 칸 알림이 끼어들지 않게(컨실 4라운드 G21)
+        state.countsWindow = { $0 === window }
         #expect(window.makeFirstResponder(text))
         replace(text, with: "고친 코멘트")
         #expect(state.isEditing)
@@ -86,6 +90,8 @@ struct FieldEditingStateTests {
         defer { close(window) }
         let state = FieldEditingState.live(window: { window })
         defer { state.stop() }
+        // 이 시험이 만든 창의 칸만 센다: 함께 도는 다른 시험의 칸 알림이 끼어들지 않게(컨실 4라운드 G21)
+        state.countsWindow = { $0 === window }
         let field = try #require(textField(in: host))
         #expect(window.makeFirstResponder(field))
         let editor = try #require(field.currentEditor() as? NSTextView)
@@ -100,7 +106,8 @@ struct FieldEditingStateTests {
         defer { close(aux, main) }
         let state = FieldEditingState.live(window: { main })
         defer { state.stop() }
-        state.countsWindow = { $0 !== aux }
+        // 이 시험이 만든 주 창의 칸만 센다: 보조 창(aux)의 칸은 빼고, 함께 도는 다른 시험의 칸 알림도 끼어들지 않는다(G18·G21)
+        state.countsWindow = { $0 === main }
         #expect(aux.makeFirstResponder(auxField))
         replace(try #require(auxField.currentEditor() as? NSTextView), with: "새 이름")
         #expect(!state.isEditing, "보조 창의 칸")

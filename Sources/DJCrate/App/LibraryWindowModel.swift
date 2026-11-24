@@ -52,8 +52,9 @@ final class LibraryWindowModel {
     /// 저장 단추가 보이는 줄인가(R3 표). 엔진이 없는 조립은 지금처럼 늘 보인다
     var showsSaveButton: Bool { saveRow?.showsSaveButton ?? true }
 
-    /// 입력 중인 칸이 있다(R19): 칸에 글자를 치는 중이거나 엔진이 편집 중으로 알렸다
-    var isEditingInput: Bool { fieldEditing.isEditing || autoFeed?.conditions.editingField == true }
+    /// 입력 중인 칸이 있다(R19): 칸에 글자를 치는 중이거나, 확정 대기(SwiftUI 칸이 다음 갱신에 값을 넣음)가 있거나, 엔진이 편집 중으로 알렸다.
+    /// ⌘S 메뉴 4번 줄과 저장 줄의 켜짐이 이 값을 본다(#405 컨실 4라운드 O14·G22)
+    var isEditingInput: Bool { fieldEditing.isEditing || fieldEditing.hasPendingCommit() || autoFeed?.conditions.editingField == true }
 
     // MARK: - 시트
 

@@ -172,15 +172,33 @@ struct ReflectionSaveCommandTests {
         #expect(LibraryMenuAction.reflect.isEnabled(in: h.window))
     }
 
+    /// 입력 중은 아니어도 확정 대기(SwiftUI 칸이 다음 갱신에 값을 넣음)가 있으면 저장 대기가 0이어도 ⌘S가 켜진다(#405 컨실 4라운드 O14·G22)
+    @Test func 확정_대기가_있으면_저장_대기가_0이어도_저장이_켜진다() {
+        let store = LibraryStore.test()
+        let window = LibraryWindowModel(store: store)
+        let input = FieldEditingState()
+        input.hasPendingCommit = { true }
+        window.fieldEditing = input
+        window.autoFeed = AutoReflectionFeed()
+        window.autoFeed?.update(.saved, ReflectionConditions(hasPending: false, autoSaves: true))
+        #expect(store.pendingWriteCount == 0 && !input.isEditing)
+        #expect(LibraryMenuAction.reflect.isEnabled(in: window))
+    }
+
     // MARK: - 입력 중인 칸 확정(R19, 실제 AppKit 입력 칸)
 
     /// 곡 목록 칸에서 글자를 치다(Return 전) ⌘S를 누르면 그 값을 확정해 저장 대기로 만든 뒤 저장한다
     @Test func 곡_목록_칸에서_입력_중에_저장하면_확정한_값을_저장한다() async throws {
         let a = TrackListTagEditTests.row("1", title: "원래")
         let h = ListHarness(rows: [a], selection: [a.id])
-        defer { h.close() }
+        defer {
+            h.window.makeFirstResponder(nil)
+            h.close()
+        }
         let input = FieldEditingState.live(window: { h.window })
         defer { input.stop() }
+        // 이 시험이 만든 창의 칸만 센다(컨실 4라운드 G21)
+        input.countsWindow = { [window = h.window] in $0 === window }
         h.store.rowsByUUID[a.track.uuid] = a
         let window = LibraryWindowModel(store: h.store)
         window.fieldEditing = input
@@ -201,9 +219,14 @@ struct ReflectionSaveCommandTests {
     @Test func 입력을_끝내면_입력_중이_아니다() throws {
         let a = TrackListTagEditTests.row("1")
         let h = ListHarness(rows: [a], selection: [a.id])
-        defer { h.close() }
+        defer {
+            h.window.makeFirstResponder(nil)
+            h.close()
+        }
         let input = FieldEditingState.live(window: { h.window })
         defer { input.stop() }
+        // 이 시험이 만든 창의 칸만 센다(컨실 4라운드 G21)
+        input.countsWindow = { [window = h.window] in $0 === window }
         h.pressReturn()
         #expect(!input.isEditing, "칸을 열기만 해서는 값이 바뀌지 않았다")
         h.type("글자")
@@ -245,6 +268,8 @@ struct ReflectionSaveCommandTests {
         window.makeFirstResponder(table)
         let input = FieldEditingState.live(window: { window })
         defer { input.stop() }
+        // 이 시험이 만든 창의 칸만 센다(컨실 4라운드 G21)
+        input.countsWindow = { $0 === window }
         let comment = try #require(SheetColumn.all.firstIndex { $0.id == "comment" })
         coordinator.select(.init(row: 1, column: comment), extend: false)
         // 글자를 치면 시트는 빈 칸으로 편집을 시작하고 그 글자를 넣는다(`SheetTableView.keyDown`)
@@ -277,7 +302,10 @@ struct ReflectionSaveCommandTests {
         let table = SheetTableView()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        defer { window.close() }
+        defer {
+            window.makeFirstResponder(nil)
+            window.close()
+        }
         table.coordinator = coordinator
         coordinator.table = table
         table.delegate = coordinator
@@ -296,6 +324,8 @@ struct ReflectionSaveCommandTests {
         window.makeFirstResponder(table)
         let input = FieldEditingState.live(window: { window })
         defer { input.stop() }
+        // 이 시험이 만든 창의 칸만 센다(컨실 4라운드 G21)
+        input.countsWindow = { $0 === window }
         coordinator.select(.init(row: 1, column: SheetColumn.titleIndex), extend: false)
         coordinator.beginEditing()
         window.contentView?.layoutSubtreeIfNeeded()
