@@ -528,6 +528,37 @@ struct PlaylistUndoDuringWriteTests {
         #expect(origins == [[.cli, .human]], "\(origins)")
     }
 
+    /// 디스크 초안을 읽지 못해 막힌 뒤 다시 읽을 수 있게 됐으면(파일 수정 시각이 그대로라 감시가 다시 읽지 않는다) 복구를 열 때 다시 읽고 준비한다(리뷰 F16)
+    @Test func 읽지_못했던_초안을_다시_읽을_수_있으면_복구를_열_때_다시_읽고_준비한다() async throws {
+        event { playlists.renamePlaylist("B", to: "사람 이름") }
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
+        #expect(playlists.syncExternal() == .failed && playlists.playlistDraftNeedsSync)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+        let changed = PlaylistLayout([
+            (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
+            (PlaylistLayout.Item(id: "B", name: "바깥 이름"), 2),
+        ])
+        let current = PlaylistRecoveryCurrent(layout: changed, contentIDs: ["1"], titles: [:], rows: [:])
+        let review = try await playlists.preparePlaylistRecovery(playlist: "B", prefetched: current)
+        #expect(review.playlistID == "B" && !playlists.playlistDraftNeedsSync)
+    }
+
+    /// 디스크 초안을 계속 읽지 못하면 복구는 "현재값을 다시 가져오세요"가 아니라 읽지 못한 이유로 막는다(리뷰 F16)
+    @Test func 초안을_계속_읽지_못하면_복구는_읽지_못한_이유로_막는다() async throws {
+        event { playlists.renamePlaylist("B", to: "사람 이름") }
+        try Data("손상".utf8).write(to: file)
+        #expect(playlists.syncExternal() == .failed && playlists.playlistDraftNeedsSync)
+        let changed = PlaylistLayout([
+            (PlaylistLayout.Item(id: "A", name: "가", entries: [PlaylistEntry(trackNo: 1, contentID: "1")]), 1),
+            (PlaylistLayout.Item(id: "B", name: "바깥 이름"), 2),
+        ])
+        let current = PlaylistRecoveryCurrent(layout: changed, contentIDs: ["1"], titles: [:], rows: [:])
+        await #expect { try await playlists.preparePlaylistRecovery(playlist: "B", prefetched: current) } throws: { error in
+            guard case let .writeRefused(text)? = error as? DJCError else { return false }
+            return text == PlaylistEditStore.syncFailureText
+        }
+    }
+
     /// 쓰는 동안 저장하지 못한 편집을 쓴 뒤 정리가 메모리 초안으로 저장하면 기억한 출처를 비운다(리뷰 F13)
     @Test func 쓴_뒤_정리가_메모리_초안을_저장하면_기억한_출처를_비운다() throws {
         event { playlists.renamePlaylist("B", to: "쓰는 이름") }
