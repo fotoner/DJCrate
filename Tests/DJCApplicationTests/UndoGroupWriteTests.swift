@@ -238,6 +238,53 @@ struct UndoGroupWriteTests {
         guard case .declined = outcome else { Issue.record("취소로 돌려주지 않았다"); return }
     }
 
+    /// 쓴 것 없이 묶음이 막힌 뒤 나머지가 백업 전에 실패하면 그 실패를 돌려준다: 실패 위에 복구 시트를 열지 않는다(컨실 5라운드 G25)
+    @Test func 묶음이_막힌_뒤_나머지가_백업_전에_실패하면_그_실패를_돌려준다() async {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = [H.outcome("a", .written), H.outcome("b", .blocked, reason: "바뀌었습니다"), H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.state.rows["c"] = H.row("c")
+        h.state.tagDrafts["c"] = H.tag("c")
+        h.memory.save(H.tag("c"))
+        h.onPublish = { [h] outcome in if case .nothingWritable = outcome { h.state.failedTagSaves = ["c"] } }
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("b"), H.row("c")])
+        guard case .failed = outcome else { Issue.record("실패를 돌려주지 않았다"); return }
+    }
+
+    /// 쓴 것 없이 묶음이 막힌 뒤 나머지를 진행 중에 취소하면 취소를 돌려준다: 취소했는데 복구 시트를 열지 않는다(G25)
+    @Test func 묶음이_막힌_뒤_나머지를_취소하면_취소를_돌려준다() async throws {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = [H.outcome("a", .written), H.outcome("b", .blocked, reason: "바뀌었습니다")]
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        cue(h, "c")
+        h.onPublish = { [h] outcome in if case .nothingWritable = outcome { h.previewHold.hold() } }
+        let session = h.session
+        let task = Task { await session.write(rows: [H.row("a"), H.row("b"), H.row("c")]) }
+        for _ in 0..<4000 where !h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(h.previewHold.isWaiting)
+        task.cancel()
+        h.previewHold.release()
+        guard case .cancelled = await task.value else { Issue.record("취소를 돌려주지 않았다"); return }
+    }
+
+    /// 구성원을 모두 고르지 않은 묶음은 저장 실패 검사보다 먼저 뺀다: 고르지 않은 구성원(B)의 태그 저장 실패가 묶음 밖 곡(C)의 저장을 막지 않는다(컨실 5라운드 S28)
+    @Test func 고르지_않은_구성원의_저장_실패는_묶음_밖_곡의_저장을_막지_않는다() async {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.state.failedTagSaves = ["b"]
+        cue(h, "c")
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("c")])
+        #expect(h.gateCalls.value.writes.contains { $0.drafts.map(\.trackUUID) == ["c"] }, "묶음 밖 곡은 쓴다")
+        #expect(!h.gateCalls.value.writes.contains { $0.tags.contains { $0.trackUUID == "a" } }, "묶음의 한 곡만 쓰지 않는다")
+        guard case .written = outcome else { Issue.record("쓴 결과를 돌려주지 않았다"); return }
+    }
+
     /// 묶음 구성원의 태그 초안을 보관하지 못했으면(다시 해도 실패) 구성원 없음 제외가 아니라 저장 실패로 막는다(G20)
     @Test func 묶음_구성원의_태그_저장_실패는_구성원_없음이_아니라_저장_실패로_막는다() async {
         let h = ReflectionHarness()
