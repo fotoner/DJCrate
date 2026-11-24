@@ -13,6 +13,7 @@ struct PlaylistPickerView: View {
             Text(.ui("재생 목록에 넣기 (\(model.trackCount)곡)")).font(.headline)
             TextField(text: $model.query, prompt: Text(.ui("목록·폴더 이름"))) { Text(.ui("찾기")) }
                 .textFieldStyle(.roundedBorder)
+                .filterField()
                 .focused($searchFocused)
                 .onSubmit { if model.addSelection() { dismiss() } }
             List(choices, selection: $model.selection) { choice in
