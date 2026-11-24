@@ -139,6 +139,27 @@ struct AutoReflectSelfTestJudgeTests {
         #expect(result.problems.isEmpty, "\(result.problems)")
     }
 
+    /// 렌더 시각이 빠진 버퍼가 하나라도 있으면 그 회 전체를 도착 시각으로 잰다: 절대 시각(렌더)과 측정 시작에서 잰 시각을 섞지 않는다(컨실 4라운드 X)
+    @Test func 렌더_시각이_하나라도_빠지면_그_회는_도착_시각으로_잰다() {
+        let arrivals = Self.arrivals(seconds: 60).enumerated().map { index, arrival in
+            Arrival(time: arrival.time, received: arrival.received, rendered: index == 1000 ? nil : 1_000 + arrival.time)
+        }
+        let result = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Self.continuous(seconds: 60), arrivals: arrivals, seconds: 60,
+                                                                    playheadAdvance: 60)
+        #expect(result.problems.isEmpty, "\(result.problems)")
+    }
+
+    /// 경계 간격 기준은 0.125초다(버퍼 하나 + 표식 지터): 0.11초는 끊김이 아니고 0.15초는 끊김이다(컨실 4라운드 Z)
+    @Test func 경계_간격은_0_125초까지_받는다() throws {
+        for (lead, broken) in [(0.11, false), (0.15, true)] {
+            let arrivals = Self.arrivals(seconds: 58).map { Arrival(time: $0.time + lead, received: $0.received) }
+            let last = try #require(arrivals.last)
+            let result = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Array(repeating: 0.2, count: Int(last.received * 100)), arrivals: arrivals,
+                                                                        seconds: last.time + 1024.0 / 44_100, playheadAdvance: last.received)
+            #expect(result.problems.isEmpty == !broken, "\(lead)초: \(result.problems)")
+        }
+    }
+
     /// 버퍼 하나 안의 도착 지터(앞뒤로 20ms)는 끊김이 아니다
     @Test func 버퍼_하나_안의_도착_지터는_끊김이_아니다() {
         let arrivals = Self.arrivals(seconds: 60).enumerated().map { index, arrival in

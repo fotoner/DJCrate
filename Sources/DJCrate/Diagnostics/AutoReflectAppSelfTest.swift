@@ -545,11 +545,12 @@ enum AutoReflectAppSelfTest {
     /// - 빠진 샘플: 받은 시간이 벽시계로 지난 시간과, 덱 재생 위치가 나아간 시간과 5% 넘게 다르면 끊긴 것이다. 버퍼가 0.25초 넘게 오지 않아도 같다
     /// - 누적 부족분: 버퍼가 올 때마다 "지난 시간 − 받은 소리"를 구한다. 그 범위가 0.1초(버퍼 하나 + 지터)를 넘으면 끊긴 것이다.
     ///   짧은 멈춤이 여러 번 쌓여 위 두 기준을 지나는 경우를 잡는다(컨실 2라운드 L). 지난 시간은 버퍼의 렌더 시각으로 잰다(콜백 도착 지터를 빼다, 3라운드 O15)
-    /// - 경계: 측정 시작 표식부터 첫 버퍼, 마지막 버퍼부터 끝 표식까지도 버퍼 간격으로 본다. 0.1초를 넘으면 끊긴 것이다
+    /// - 경계: 측정 시작 표식부터 첫 버퍼, 마지막 버퍼부터 끝 표식까지도 버퍼 간격으로 본다. 0.125초(버퍼 하나 + 표식 지터, 4라운드 Z)를 넘으면 끊긴 것이다
     ///   (끝 직전에 끊겨 그 뒤 버퍼 없이 측정이 닫힌 경우, 3라운드 R). 시각은 시작 표식에서 잰 초다
     struct AudioContinuity: Equatable {
         static let minimumRMS: Float = 0.05
         static let maximumDeficitRange = 0.1
+        static let maximumBoundaryGap = 0.125
         var seconds: Double
         var windows: Int
         var medianRMS: Float
@@ -577,7 +578,9 @@ enum AutoReflectAppSelfTest {
             let times = arrivals.map(\.time)
             let boundary = max(times.first ?? .infinity, seconds - (times.last ?? 0))
             let longest = (zip(times, times.dropFirst()).map { $1 - $0 } + [boundary]).max() ?? .infinity
-            let clock = arrivals.map { $0.rendered ?? $0.time }
+            // 모든 버퍼에 렌더 시각이 있을 때만 렌더 시각으로 잰다. 하나라도 빠지면 그 회 전체를 도착 시각으로 잰다(절대·상대 시각을 섞지 않는다, 4라운드 X)
+            let rendered = arrivals.compactMap(\.rendered)
+            let clock = rendered.count == arrivals.count ? rendered : arrivals.map(\.time)
             let deficits = zip(clock, arrivals).map { ($0 - (clock.first ?? 0)) - ($1.received - (arrivals.first?.received ?? 0)) }
             return Self(seconds: seconds, windows: windows.count, medianRMS: median, quietWindows: windows.filter { $0 < threshold }.count,
                         longestArrivalGap: longest, wallCoverage: seconds > 0 ? received / seconds : 0,
@@ -597,7 +600,7 @@ enum AutoReflectAppSelfTest {
             if !(deficitRange <= Self.maximumDeficitRange) {
                 problems.append(String(format: "받은 소리가 벽시계보다 누적 %.3f초 모자랐다(짧은 끊김이 쌓임)", deficitRange))
             }
-            if !(boundaryGap <= Self.maximumDeficitRange) {
+            if !(boundaryGap <= Self.maximumBoundaryGap) {
                 problems.append(String(format: "측정 경계에서 %.3f초 동안 버퍼가 없었다(측정 끝 직전·시작 직후 끊김)", boundaryGap))
             }
             return problems
