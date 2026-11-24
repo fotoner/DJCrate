@@ -88,8 +88,9 @@ final class AppQuitController {
     private var prepared: QuitPreparation?
     /// 새 자동 저장을 막아 두었다(시스템 종료·업데이트). 그 종료가 취소되면 다시 연다
     private var autoSaveStopped = false
-    /// ⌘Q 저장을 기다리는 중 시스템 종료·업데이트 다시 켜기가 합류했다: 대기를 마치고 다시 한 요청은 시트 없이 끈다(컨실 2라운드 G)
-    private var systemJoined = false
+    /// 이 종료 대기는 사용자가 고르지 않은 종료다: 시스템 종료·업데이트 다시 켜기·알 수 없는 사유로 시작했거나 ⌘Q 저장 대기에 합류했다.
+    /// 대기를 마치고 다시 한 요청은 사용자 종료로 들어와도 시트 없이 끈다(컨실 2라운드 G, 3라운드 T)
+    private var nonUserQuit = false
     /// 대기를 마치고 다시 요청한 종료 한 번(`terminate()` 안에서 곧바로 들어온다): 다시 저장하지 않고, 시트는 이 값대로 판정한다
     private var reentry: Reentry?
     private enum Reentry {
@@ -156,7 +157,7 @@ final class AppQuitController {
             if system, mode == .deferred {
                 // ⌘Q로 기다리는 중 Mac을 끄는 요청·업데이트가 오면 그 일은 취소하지 않는다. 새 자동 저장은 막고 곧바로 다시 판정한다.
                 // 다시 한 요청은 사용자 종료로 들어와도 그 사유를 잃지 않는다(시트가 업데이트·로그아웃을 막지 않게)
-                systemJoined = true
+                nonUserQuit = true
                 stopSavingFirst()
                 if nested { mode = .nested }
                 Task { @MainActor [weak self] in self?.activityChanged() }
@@ -192,12 +193,12 @@ final class AppQuitController {
             return approveTermination(nested: nested)
         case .cancelPreparationThenAutoSave:
             cancelPreparation()
-            beginWait(nested: nested, savesFirst: true)
+            beginWait(nested: nested, savesFirst: true, userChosen: userChosen)
             startPreparing()
             watch()
             return nested ? .terminateLater : .terminateCancel
         case .waitForRekordboxWrite, .waitForAutoSave:
-            beginWait(nested: nested, savesFirst: saving != .off)
+            beginWait(nested: nested, savesFirst: saving != .off, userChosen: userChosen)
             if decision == .waitForAutoSave { startPreparing() }
             watch()
             return nested ? .terminateLater : .terminateCancel
@@ -213,8 +214,9 @@ final class AppQuitController {
     }
 
     /// 종료 대기를 시작한다. 엔진의 ⌘Q 저장을 기다리면 그 자동 저장만 세션 잠금을 지난다(수동 입구는 지금처럼 거절한다)
-    private func beginWait(nested: Bool, savesFirst: Bool) {
+    private func beginWait(nested: Bool, savesFirst: Bool, userChosen: Bool) {
         self.savesFirst = savesFirst
+        nonUserQuit = !userChosen
         prepared = nil
         model.begin(at: now(), allowsAutoSave: savesFirst) { [weak self] in self?.cancelWaiting() }
         mode = nested ? .nested : .deferred
@@ -268,6 +270,9 @@ final class AppQuitController {
         model.stopAllowingAutoSave()
         stopAutoSave()
     }
+
+    /// Mac을 끄는 중 알림(`willPowerOff`)으로 새 자동 저장을 막는다. 시스템 종료·업데이트와 같은 표시를 쓴다: 종료가 취소되면 다시 연다(컨실 3라운드 U)
+    func stopAutoSaveForPowerOff() { stopAutoSave() }
 
     /// 시스템 종료·업데이트 다시 켜기로 새 자동 저장을 막았는데 그 종료가 취소돼 앱이 살아 있다(앱이 다시 활성화됨, 컨실 2라운드 H).
     /// 종료를 기다리는 중이 아니면 막아 둔 자동 저장을 다시 연다. Mac을 끄는 중 표시를 풀었으면(`poweringOffCancelled`) 그 알림이 막은 것도 연다
@@ -366,14 +371,14 @@ final class AppQuitController {
         }
     }
 
-    /// 대기를 마치고 다시 한 요청의 시트 판정. 시스템 종료·업데이트가 합류했으면 묻지 않는다(G).
-    /// 엔진의 ⌘Q 저장이 본 실행 상태가 있으면 그 값으로 판정한다: 켜짐으로 쓰지 못했거나, 대상 밖 편집만 남아 다 썼다고 돌아와도 같다(S6·J)
+    /// 대기를 마치고 다시 한 요청의 시트 판정. 사용자가 고르지 않은 종료면 묻지 않는다(G·T).
+    /// 엔진의 ⌘Q 저장이 켜짐을 봤으면 그 값으로 판정한다: 켜짐으로 쓰지 못했거나, 대상 밖 편집만 남아 다 썼다고 돌아와도 같다(S6·J).
+    /// 엔진이 꺼짐·모름을 봤으면 지금처럼 감시 모델로 판정한다(그 뒤 켜졌을 수 있다, 3라운드 Q)
     private func reentryAfterSaving() -> Reentry {
-        if systemJoined { return .skipConfirmation }
+        if nonUserQuit { return .skipConfirmation }
         switch prepared {
-        case .unwritten(.rekordboxRunning)?: return .confirm(.running)
-        case .unwritten(.agentRunning)?: return .confirm(.agentOnly)
-        case let .finished(run?)?: return .confirm(run)
+        case .unwritten(.rekordboxRunning)?, .finished(run: .running)?: return .confirm(.running)
+        case .unwritten(.agentRunning)?, .finished(run: .agentOnly)?: return .confirm(.agentOnly)
         default: return .confirmNormally
         }
     }
@@ -390,7 +395,7 @@ final class AppQuitController {
         model.finish()
         recordWait = nil
         savesFirst = false
-        systemJoined = false
+        nonUserQuit = false
         let finished = mode
         mode = nil
         switch finished {

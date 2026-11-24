@@ -56,9 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func observePowerOff(center: NotificationCenter = NSWorkspace.shared.notificationCenter, activation: NotificationCenter = .default) {
         center.addObserver(forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.store?.isPoweringOff = true
-                // 자동 저장도 새 쓰기를 시작하지 않는다(이미 시작한 쓰기만 마친다, R17)
-                self?.quitAutoSave.shutdown(true)
+                guard let self else { return }
+                self.store?.isPoweringOff = true
+                // 자동 저장도 새 쓰기를 시작하지 않는다(이미 시작한 쓰기만 마친다, R17). 종료 컨트롤러를 거쳐 막아야
+                // 기다리던 종료·시트가 취소될 때 함께 다시 연다(컨실 3라운드 U)
+                if let quit = self.quit { quit.stopAutoSaveForPowerOff() } else { self.quitAutoSave.shutdown(true) }
             }
         }
         // 업데이트 다시 켜기·시스템 종료로 엔진을 멈췄는데 그 종료가 취소된 것도 알림이 없다: 종료를 기다리는 중이 아니면 함께 다시 연다(컨실 2라운드 H)

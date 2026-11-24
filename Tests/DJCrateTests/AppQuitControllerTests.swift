@@ -575,6 +575,37 @@ struct AppQuitControllerTests {
         #expect(w.presented.first?.running == .agentOnly && w.reentrantReplies == [.terminateCancel])
     }
 
+    /// 엔진이 꺼짐·모름을 봤으면 시트는 지금처럼 감시 모델로 판정한다: 엔진이 본 뒤 rekordbox가 켜졌으면 시트를 띄운다(컨실 3라운드 Q)
+    @Test(arguments: [RekordboxRunState.stopped, .unknown])
+    func 엔진이_꺼짐이나_모름을_봤으면_감시_모델로_시트를_판정한다(_ seen: RekordboxRunState) async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        w.run = .stopped
+        w.pendingCount = PendingWriteCount(items: 1, playlistEdits: 0)
+        _ = w.controller.requestTermination()
+        for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
+        w.run = .running
+        await w.answerPrepare(.finished(run: seen))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.presented.first?.running == .rekordbox && w.reentrantReplies == [.terminateCancel])
+    }
+
+    /// 업데이트 다시 켜기·알 수 없는 사유로 처음 시작한 미루는 대기도 쓰기가 끝나 다시 한 요청은 시트 없이 끈다(컨실 3라운드 T)
+    @Test(arguments: [AppQuitCause.updateRelaunch, .unknown])
+    func 사용자가_고르지_않은_종료로_시작한_대기는_다시_요청할_때_시트를_띄우지_않는다(_ cause: AppQuitCause) async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        w.run = .running
+        w.pendingCount = PendingWriteCount(items: 2, playlistEdits: 0)
+        w.activity = AppWriteActivity(rekordbox: .writing, writingUsb: false)
+        #expect(w.controller.requestTermination(cause: cause) == .terminateCancel)
+        #expect(w.model.isWaiting && w.presented.isEmpty)
+        w.activity = .idle
+        w.controller.activityChanged()
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.presented.isEmpty && w.reentrantReplies == [.terminateNow], "\(w.reentrantReplies)")
+    }
+
     /// 로그아웃·재시작·전원 끔(알림 앞이든 뒤든)과 업데이트 다시 켜기는 새 자동 저장을 기다리지 않고 막는다
     @Test(arguments: [(true, AppQuitCause.systemShutdown), (false, .systemShutdown), (false, .updateRelaunch)])
     func 시스템_종료와_업데이트는_자동_저장을_기다리지_않고_새_쓰기를_막는다(_ nested: Bool, _ cause: AppQuitCause) {
@@ -851,6 +882,25 @@ struct AppQuitControllerTests {
         #expect(shutdowns == [true])
         center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
         #expect(shutdowns == [true, false])
+    }
+
+    /// Mac을 끄는 중 알림으로 엔진을 멈춘 뒤 기다리던 종료를 취소하면 Mac을 끄는 중 표시와 함께 엔진의 자동 저장도 다시 연다(컨실 3라운드 U)
+    @Test func 전원_끔_알림으로_멈춘_자동_저장은_종료를_취소하면_다시_연다() {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        let delegate = AppDelegate()
+        var shutdowns: [Bool] = []
+        delegate.quitAutoSave = QuitAutoSaveLink(autoSaves: { true }, shutdown: { shutdowns.append($0) })
+        let center = NotificationCenter()
+        delegate.observePowerOff(center: center, activation: center)
+        delegate.store = store
+        // ⌘Q가 쓰기를 기다리는 중 Mac을 끄는 중 알림이 왔다
+        store.setWriteLock(true)
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
+        center.post(name: NSWorkspace.willPowerOffNotification, object: nil)
+        #expect(shutdowns == [true] && store.isPoweringOff)
+        store.quitWait.cancel()
+        #expect(!store.isPoweringOff && shutdowns == [true, false], "\(shutdowns)")
+        store.setWriteLock(false)
     }
 
     /// 창을 닫았다 열면 같은 저장소를 다시 알려 온다. 기다리는 중인 컨트롤러가 바뀌면 [종료 취소]가 끊긴다.
