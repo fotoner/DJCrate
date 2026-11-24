@@ -244,6 +244,10 @@ public final class AutoReflectionFakes: Sendable {
     public let locks = MemoryWriteLocks()
     public let records = MemoryAutoReflectionRecords()
     private let runState = Mutex(RekordboxRunState.stopped)
+    /// 실행 상태를 본 횟수(엔진 판정과 자동 쓰기 동안의 메인 밖 표본, #295 E4)
+    private let runStateCalls = Mutex(0)
+    /// 켜면 실행 상태 보기가 풀릴 때까지 막힌다(오래 걸리는 관찰을 흉내 낸다)
+    private let runStateHeld = Mutex(false)
     private let quiet = Mutex(LibraryQuietStamps(walSize: nil, shmExists: false, database: RekordboxFileStamp(size: 4096, modifiedNanoseconds: 1),
                                                  playlistsXML: nil))
     private let published = Mutex<[AutoReflectionStatus]>([])
@@ -254,13 +258,23 @@ public final class AutoReflectionFakes: Sendable {
     public func setRunState(_ value: RekordboxRunState) { runState.withLock { $0 = value } }
     /// 조용함 조건의 파일 상태를 바꾼다
     public func setQuietStamps(_ value: LibraryQuietStamps) { quiet.withLock { $0 = value } }
+    /// 지금 조용함 조건의 파일 상태
+    public var quietStamps: LibraryQuietStamps { quiet.withLock { $0 } }
+    /// 실행 상태를 본 횟수(끝난 것만)
+    public var runStateChecks: Int { runStateCalls.withLock { $0 } }
+    /// 실행 상태 보기를 막거나 푼다(막힌 동안 부른 쪽은 기다린다, 60초 안전망)
+    public func holdRunState(_ held: Bool = true) { runStateHeld.withLock { $0 = held } }
     /// 엔진이 알린 칩 상태(차례대로)
     public var publishedStatuses: [AutoReflectionStatus] { published.withLock { $0 } }
 
     @MainActor
     public func ports(holds: @escaping @MainActor () -> Set<ReflectionHold> = { [] },
                       pointSnapshot: @escaping @MainActor () async -> AutoSnapshotGate = { .satisfied }) -> AutoReflectionPorts {
-        AutoReflectionPorts(clock: clock.clock, runState: { [self] in runState.withLock { $0 } },
+        AutoReflectionPorts(clock: clock.clock, runState: { [self] in
+                                for _ in 0..<60_000 where runStateHeld.withLock({ $0 }) { usleep(1_000) }
+                                defer { runStateCalls.withLock { $0 += 1 } }
+                                return runState.withLock { $0 }
+                            },
                             quietStamps: { [self] _ in quiet.withLock { $0 } }, writeLock: locks.port, records: records.port,
                             pointSnapshot: pointSnapshot, appHolds: holds,
                             publish: { [self] status, _ in published.withLock { $0.append(status) } })

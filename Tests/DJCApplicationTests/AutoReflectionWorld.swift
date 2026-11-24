@@ -76,6 +76,31 @@ final class AutoReflectionWorld {
         }
     }
 
+    /// 시계를 1초 넘겨 쓰기를 시작하게 하고, 쓰기가 그 자리(미리 보기·관문에 붙잡힘)에 닿을 때까지 기다린다
+    func advanceIntoWrite(until reached: @MainActor () -> Bool) async throws {
+        fakes.clock.advance(.seconds(1))
+        for _ in 0..<4000 where !reached() { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(reached(), "쓰기가 그 자리에 닿는다")
+    }
+
+    /// 쓰는 동안 시계를 1초씩 넘긴다(#295 E4): 자동 쓰기 동안 도는 메인 밖 표본 작업이 잠든 것을 보고 넘긴 뒤, 그 초의 실행 상태를 보고
+    /// 다시 잠들 때까지 기다린다. `blocksMain`이면 메인 액터를 내주지 않고(usleep) 기다린다: 표본 작업이 메인 밖에서 돌아야만 이어진다
+    func advanceWhileWriting(_ seconds: Int, blocksMain: Bool = false) async throws {
+        for _ in 0..<seconds {
+            try await waitFor(blocksMain) { self.fakes.clock.sleeping == 1 }
+            let before = fakes.runStateChecks
+            fakes.clock.advance(.seconds(1))
+            try await waitFor(blocksMain) { self.fakes.runStateChecks > before && self.fakes.clock.sleeping == 1 }
+        }
+    }
+
+    private func waitFor(_ blocksMain: Bool, _ condition: @MainActor () -> Bool) async throws {
+        for _ in 0..<1000 where !condition() {
+            if blocksMain { usleep(5_000) } else { try await Task.sleep(for: .milliseconds(5)) }
+        }
+        #expect(condition(), "쓰는 동안 메인 밖 표본 작업이 시계를 따라 실행 상태를 본다")
+    }
+
     /// 편집 신호를 주고 엔진이 다시 판정할 때까지 기다린다
     func edited() async throws {
         engine.edited()

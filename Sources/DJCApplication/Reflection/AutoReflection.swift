@@ -1,5 +1,6 @@
 import DJCDomain
 import Foundation
+import Synchronization
 
 /// 저장 뒤 ⌘Z가 대기열에 넣는 역편집(R12). 여러 곡에 걸쳐도 한 번의 쓰기로 전부 쓰거나 전부 쓰지 않는다.
 /// K행을 넘으면 자동으로 쓰지 않고 ⌘S·저장 단추로 쓴다. 역편집 대상(새 큐 ID 등)을 정하는 일은 W3-F(#405)가 한다.
@@ -103,9 +104,15 @@ public final class AutoReflection {
         var since: Date
         var stamps: LibraryQuietStamps
         var checked: Date
+        /// 조용함을 새로 셀 때마다 늘어나는 세대(#295 E4: 자동 쓰기가 판정 때의 조용함 그대로인지 본다)
+        var generation: Int
     }
-    /// 이 엔진이 쓴 뒤 처음 보는 파일 상태는 새 기준으로 받는다(자기 쓰기로 바뀐 master.db로 조용함을 다시 세지 않게)
+    private var quietGeneration = 0
+    /// 수동 쓰기 뒤 처음 보는 파일 상태는 새 기준으로 받는다(자기 쓰기로 바뀐 master.db로 조용함을 다시 세지 않게)
     private var rebaselineQuiet = false
+    /// 자동 쓰기 뒤 첫 관찰이 같아야 하는 파일 상태(#295 E4): 관문이 라이브러리 변경 자리에서 잡은 값, 그 자리를 지나지 않았으면 쓰기 전 기준.
+    /// 같으면 조용함을 잇고 다르면(그 사이 바깥 변경) 처음부터 센다
+    private var expectAfterWrite: LibraryQuietStamps?
     /// 마지막으로 나눈 저장 대기와, 다시 나눠야 하는지(편집·요청·쓰기 뒤)
     private var inventory: AutoReflectionInventory?
     private var inventoryStale = true
@@ -636,42 +643,104 @@ public final class AutoReflection {
         session.ports.drafts.runEpoch?.observe(running: seen.run != .stopped)
         let now = ports.clock.now()
         guard seen.run == .stopped else {
-            quiet = nil
-            rebaselineQuiet = false
+            clearQuiet()
             return seen
         }
         let gap = Self.seconds(timing.pollInterval) * 3
         if var current = quiet, now.timeIntervalSince(current.checked) <= gap {
-            if current.stamps.database != seen.stamps.database || current.stamps.playlistsXML != seen.stamps.playlistsXML {
-                current = rebaselineQuiet ? Quiet(since: current.since, stamps: seen.stamps, checked: now)
-                    : Quiet(since: now, stamps: seen.stamps, checked: now)
+            if let expected = expectAfterWrite {
+                // 자동 쓰기 뒤 첫 관찰(#295 E4): 관문이 잡은 값(바꾸지 않았으면 쓰기 전 기준)과 같을 때만 잇는다
+                current = Self.sameLibrary(seen.stamps, expected) ? Quiet(since: current.since, stamps: seen.stamps, checked: now, generation: current.generation)
+                    : newQuiet(seen.stamps, at: now)
+            } else if !Self.sameLibrary(current.stamps, seen.stamps) {
+                current = rebaselineQuiet ? Quiet(since: current.since, stamps: seen.stamps, checked: now, generation: current.generation)
+                    : newQuiet(seen.stamps, at: now)
             }
             current.checked = now
             quiet = current
         } else {
-            quiet = Quiet(since: now, stamps: seen.stamps, checked: now)
+            quiet = newQuiet(seen.stamps, at: now)
         }
         rebaselineQuiet = false
+        expectAfterWrite = nil
         return seen
     }
 
-    /// 이 엔진이 쓰는 동안은 관문이 rekordbox를 다시 본다: 쓴 뒤에는 조용함을 이어 가되 파일 상태는 새 기준으로 받는다
-    /// 마지막으로 지켜본 때는 그대로 둔다: 쓰고 다시 읽느라 지켜보지 못한 틈이 길면(3초 넘게) 다음 관찰이 조용함을 처음부터 다시 센다(R2)
-    private func wroteLibrary() {
-        guard quiet != nil else { return }
-        rebaselineQuiet = true
+    /// 조용함을 처음부터 센다(새 세대)
+    private func newQuiet(_ stamps: LibraryQuietStamps, at now: Date) -> Quiet {
+        quietGeneration += 1
+        return Quiet(since: now, stamps: stamps, checked: now, generation: quietGeneration)
+    }
+
+    /// 조용함을 지운다(다음 관찰이 처음부터 센다)
+    private func clearQuiet() {
+        quiet = nil
+        rebaselineQuiet = false
+        expectAfterWrite = nil
+    }
+
+    /// master.db·masterPlaylists6.xml이 그대로인지(R2 조건 4)
+    static func sameLibrary(_ lhs: LibraryQuietStamps, _ rhs: LibraryQuietStamps) -> Bool {
+        lhs.database == rhs.database && lhs.playlistsXML == rhs.playlistsXML
+    }
+
+    /// 미리 보기·음량 분석 뒤 관문을 부르기 직전의 확인 지점(#295 E4). 판정 때의 조용함 세대가 그대로이고, T_quiet를 채웠고, 쓰는 동안
+    /// 메인 밖 표본이 켜짐·틈 없이 이어져 마지막 꺼짐 표본이 3초 안이고, 파일 상태(DB·XML, -wal·-shm)가 판정 때의 조용함 기준과 같을 때만
+    /// 관문으로 간다. 아니면 쓰지 않는다(쓰기 뒤 조용함을 처음부터 센다)
+    private func mayCommit(_ judged: Quiet?, _ watch: AutoWriteWatch) async -> Bool {
+        let now = ports.clock.now(), seen = watch.state, gap = Self.seconds(timing.pollInterval) * 3
+        guard let judged, let current = quiet, current.generation == judged.generation, !seen.broken,
+              let last = seen.lastStopped, now.timeIntervalSince(last) <= gap,
+              now >= current.since + Self.seconds(timing.quietDelay) else { return false }
+        let quietStamps = ports.quietStamps, target = session.target
+        let stamps = await BlockingWork.run(qos: .userInitiated) { quietStamps(target) }
+        return Self.sameLibrary(stamps, current.stamps) && (stamps.walSize ?? 0) == 0 && !stamps.shmExists
+    }
+
+    /// 자동 쓰기가 끝난 뒤 조용함을 정한다(#295 E4). 확인 지점이 거절했거나·관문이 켜짐을 봤거나·쓰는 동안 켜짐이나 틈을 봤으면 처음부터 센다
+    /// (라이브러리를 바꿨을 수 있는 실패는 실패 분류 뒤 `write`가 지운다). 아니면 메인 밖 표본으로 관찰 시각을 잇고, 쓴 뒤 첫 관찰이 견줄
+    /// 기준을 둔다: 관문이 라이브러리 변경 자리에서 잡은 값, 그 자리를 지나지 않은 쓰기(DB·XML을 바꾸지 않음·백업 전 실패)는 쓰기 전 기준
+    private func settleQuiet(after outcome: ReflectionSession.AutoWriteOutcome, judged: Quiet?, watch: AutoWriteWatch.State) {
+        switch outcome {
+        case .quietLost, .rekordboxRunning:
+            clearQuiet()
+            return
+        case .written, .nothingWritten, .busy, .playlistDraftBusy, .lockBusy, .held, .cancelled, .failed:
+            break
+        }
+        guard !watch.broken, let judged, var current = quiet, current.generation == judged.generation else {
+            clearQuiet()
+            return
+        }
+        if let last = watch.lastStopped, last > current.checked { current.checked = last }
+        quiet = current
+        expectAfterWrite = watch.captured ?? current.stamps
     }
 
     /// 고른 묶음을 자동으로 쓰고 결과로 다음 판정을 정한다(R6·R7)
+    /// 쓰는 동안 rekordbox 실행 상태만 메인 액터 밖에서 1초마다 본다(#295 E4): 꺼져 있으면 조용함을 잇고, 켜짐·틈이면 처음부터 센다
     private func write(_ chunk: AutoReflectionChunk) async -> Duration? {
         isWriting = true
         publish(status: .writing, conditions: conditions(writing: true))
         userCancelledWrite = false
         writingRevisions = chunk.revisions.union(inventory?.autoRevisions(rowLimit: timing.rowLimit) ?? [])
-        let writing = Task { await session.autoWrite(chunk, mayWrite: { [unowned self] in mayStartWrite() }) }
+        let judged = quiet
+        let watch = AutoWriteWatch(start: judged?.checked ?? ports.clock.now())
+        let runState = ports.runState, clock = ports.clock, epoch = session.ports.drafts.runEpoch, poll = timing.pollInterval
+        let sampler = Task(priority: .utility) { await AutoWriteWatch.sample(watch, runState: runState, clock: clock, epoch: epoch, poll: poll) }
+        // 관문이 라이브러리 변경을 마친 자리(쓰기 잠금 안)에서 그때의 파일 상태를 잡는다
+        let quietStamps = ports.quietStamps, target = session.target
+        let probe = DraftWriteProbe { watch.capture(quietStamps(target)) }
+        let writing = Task {
+            await session.autoWrite(chunk, mayWrite: { [unowned self] in mayStartWrite() },
+                                    mayCommit: { [unowned self] in await mayCommit(judged, watch) }, afterChanges: probe)
+        }
         autoWriting = writing
         // 루프의 취소(앱 종료)는 그대로 쓰기에 전한다
         let outcome = await withTaskCancellationHandler { await writing.value } onCancel: { writing.cancel() }
+        sampler.cancel()
+        await sampler.value
+        settleQuiet(after: outcome, judged: judged, watch: watch.state)
         autoWriting = nil
         writingRevisions = []
         isWriting = false
@@ -682,7 +751,6 @@ public final class AutoReflection {
         switch outcome {
         case let .written(_, unwritten):
             autoWrites += 1
-            wroteLibrary()
             needsConfirmation.formUnion(unwritten)
             grace = nil
             preBackupSeen = nil
@@ -693,6 +761,9 @@ public final class AutoReflection {
             return nil
         case .held:
             // 준비하는 동안 보류 사유·편집·새 신호가 생겼다: 곧바로 다시 판정해 알린다
+            return nil
+        case .quietLost:
+            // 관문 직전 확인 지점이 거절했다(쓰는 동안 켜짐·오래된 표본·바깥 변경, #295 E4): 조용함을 처음부터 센다
             return nil
         case let .nothingWritten(unwritten):
             needsConfirmation.formUnion(unwritten)
@@ -714,11 +785,13 @@ public final class AutoReflection {
             // 사용자가 멈춘 쓰기는 받은 순간 기록했다(`cancelAutoWrite`). 곧바로 다시 판정해 남은 편집 줄을 알린다
             return userCancelledWrite ? nil : timing.pollInterval
         case .rekordboxRunning:
-            quiet = nil
             return nil
         case let .failed(error):
             // 백업 전 실패는 잠시 쉬고 다시 본다(같은 원인 두 번이면 보류). 그 밖은 곧바로 다시 판정해 멈춤·중단·조용함을 알린다
-            return await classify(error) ? timing.pollInterval : nil
+            let pauses = await classify(error)
+            // 라이브러리를 바꿨을 수 있는 실패(백업 뒤 실패·커밋 뒤 멈춤으로 남은 기록)는 조용함을 처음부터 센다(#295 E4)
+            if interrupted != nil || Self.mayHaveChangedLibrary(error) { clearQuiet() }
+            return pauses ? timing.pollInterval : nil
         }
     }
 
@@ -732,7 +805,7 @@ public final class AutoReflection {
         }
         switch error as? DJCError {
         case .rekordboxRunning?, .writeAheadLogPresent?:
-            quiet = nil
+            clearQuiet()
             return false
         case .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?, .pointRestoreFailed?:
             record.stop = .afterFailure
@@ -795,6 +868,16 @@ public final class AutoReflection {
         if cancelled != record.cancelledRevisions {
             record.cancelledRevisions = cancelled
             saveRecord()
+        }
+    }
+
+    /// 관문이 던진 실패가 라이브러리(DB·XML)를 바꿨을 수 있는지(#295 E4): 백업 뒤 실패와 그 복구, 켜짐·남은 -wal을 본 실패.
+    /// 백업을 뜨기 전 실패는 아무것도 바꾸지 않았다
+    static func mayHaveChangedLibrary(_ error: any Error) -> Bool {
+        if error is RekordboxWriteGate.AfterBackupFailure { return true }
+        switch error as? DJCError {
+        case .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?, .pointRestoreFailed?, .rekordboxRunning?, .writeAheadLogPresent?: return true
+        default: return false
         }
     }
 
@@ -885,8 +968,55 @@ public final class AutoReflection {
         waiters.forEach { $0.resume() }
     }
 
-    static func seconds(_ duration: Duration) -> TimeInterval {
+    nonisolated static func seconds(_ duration: Duration) -> TimeInterval {
         TimeInterval(duration.components.seconds) + TimeInterval(duration.components.attoseconds) / 1e18
+    }
+}
+
+/// 엔진의 자동 쓰기 동안 메인 액터 밖에서 본 것(#295 E4). 표본 작업·관문의 쓰기 잠금 안 채집이 쓰고 엔진이 읽는다
+final class AutoWriteWatch: Sendable {
+    struct State: Sendable {
+        /// 마지막 표본 시각(틈은 표본 시각 사이로 잰다)
+        var lastSample: Date
+        /// 마지막으로 꺼짐을 본 표본 시각
+        var lastStopped: Date?
+        /// 켜짐·모름을 봤거나 표본 사이 틈이 길었다(조용함의 세대가 바뀐 것으로 본다)
+        var broken = false
+        /// 관문이 라이브러리 변경 자리에서 잡은 파일 상태
+        var captured: LibraryQuietStamps?
+    }
+
+    private let box: Mutex<State>
+
+    /// - Parameter start: 쓰기 직전 판정이 꺼짐을 본 때
+    init(start: Date) { box = Mutex(State(lastSample: start, lastStopped: start)) }
+
+    var state: State { box.withLock { $0 } }
+
+    func capture(_ stamps: LibraryQuietStamps) { box.withLock { $0.captured = stamps } }
+
+    /// 표본 하나를 적는다: 앞 표본과의 틈이 `gap`을 넘었거나 켜짐·모름이면 끊긴 것이다
+    func note(_ run: RekordboxRunState, at now: Date, gap: TimeInterval) {
+        box.withLock { state in
+            if now.timeIntervalSince(state.lastSample) > gap || run != .stopped { state.broken = true }
+            if run == .stopped { state.lastStopped = now }
+            state.lastSample = now
+        }
+    }
+
+    /// 표본 작업: `poll`마다 실행 상태만 메인 액터 밖에서 보고 실행 경계를 넘긴다(R23). 취소될 때까지 돈다. 파일 상태는 보지 않는다
+    /// (쓰는 동안 바뀌는 것은 자기 쓰기다: 쓴 뒤 상태는 관문이 잠금 안에서 잡는다)
+    /// `@concurrent`라 메인 액터가 막혀도 표본이 이어진다(틈은 이 표본 시각 사이로 잰다)
+    @concurrent
+    static func sample(_ watch: AutoWriteWatch, runState: @escaping @Sendable () -> RekordboxRunState, clock: ReflectionClock,
+                       epoch: RekordboxRunEpoch?, poll: Duration) async {
+        let gap = AutoReflection.seconds(poll) * 3
+        while !Task.isCancelled {
+            do { try await clock.sleep(poll) } catch { return }
+            let run = await BlockingWork.run(qos: .utility) { runState() }
+            epoch?.observe(running: run != .stopped)
+            watch.note(run, at: clock.now(), gap: gap)
+        }
     }
 }
 

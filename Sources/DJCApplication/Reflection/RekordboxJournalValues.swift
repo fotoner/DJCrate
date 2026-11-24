@@ -75,11 +75,24 @@ public struct DraftWriteOperation: Equatable, Sendable {
     public var id: String
     /// 초안 저장소 위치(이 실행의 `DJC_HOME` 초안 폴더)
     public var draftHome: URL
+    /// 라이브러리 변경을 모두 마친 자리(미정리 목록을 만드는 콜백, 쓰기 잠금을 풀기 전)에서 관문이 부르는 일(#295 E4).
+    /// 자동 저장 엔진이 이때의 파일 상태를 잡아 쓴 뒤 첫 관찰과 견준다. 바꾼 것이 없어 그 자리를 지나지 않은 쓰기는 부르지 않는다
+    public var afterChanges: DraftWriteProbe?
 
-    public init(id: String, draftHome: URL) {
+    public init(id: String, draftHome: URL, afterChanges: DraftWriteProbe? = nil) {
         self.id = id
         self.draftHome = draftHome
+        self.afterChanges = afterChanges
     }
+}
+
+/// 관문이 쓰기 잠금 안에서 부르는 일 하나(#295 E4). 같은지는 같은 일(참조)인지로 본다
+public final class DraftWriteProbe: Equatable, Sendable {
+    public let run: @Sendable () -> Void
+
+    public init(_ run: @escaping @Sendable () -> Void) { self.run = run }
+
+    public static func == (lhs: DraftWriteProbe, rhs: DraftWriteProbe) -> Bool { lhs === rhs }
 }
 
 /// 묶음이 쓰기를 마치는 방식(R12)

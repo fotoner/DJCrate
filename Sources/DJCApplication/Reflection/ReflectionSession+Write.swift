@@ -264,8 +264,9 @@ extension ReflectionSession {
         try await writeDraftsFollowingUp(batch, to: target, dryRun: dryRun).report
     }
 
-    func writeDraftsFollowingUp(_ batch: DraftWriteBatch, to target: RekordboxWriteTarget,
-                                dryRun: Bool) async throws -> (report: RekordboxWriteReport, followUp: [String]) {
+    /// - Parameter beforeGate: 음량 분석 뒤 관문을 부르기 직전에 묻는다(자동 저장 엔진의 확인 지점, #295 E4). false면 관문을 부르지 않고 던진다
+    func writeDraftsFollowingUp(_ batch: DraftWriteBatch, to target: RekordboxWriteTarget, dryRun: Bool,
+                                beforeGate: (@MainActor () async -> Bool)? = nil) async throws -> (report: RekordboxWriteReport, followUp: [String]) {
         try Task.checkCancellation()
         apply(.followUp([]))
         defer { stage(nil) }
@@ -275,6 +276,10 @@ extension ReflectionSession {
         let inputs = try await analysisInputs(for: batch.grids, measuringLoudness: true)
         try Task.checkCancellation()
         try requireDraftSaves(for: uuids)
+        if let beforeGate {
+            guard await beforeGate() else { throw QuietLost() }
+            try Task.checkCancellation()
+        }
         stage(WriteStage(String(ui: "rekordbox에 저장하는 중…")))
         let gate = ports.gate
         let report = try await BlockingWork.run { try gate.write(batch, inputs, target, dryRun) }
