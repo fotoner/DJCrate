@@ -7,7 +7,7 @@ import Foundation
 ///   항목이 없는 초안. 게인 도장 묶음을 읽지 못하면 게인은 모두 뺀다. 초안 내용을 읽지 못하면 뺀다.
 /// - 대상이 아닌 것: 도장이 있는 초안(모름 `{unknown}`·`{human, unknown}` 포함, 그 도장은 의도한 제안이다), 손상된 도장 파일,
 ///   재생 목록 단계, 그림·합치기 초안
-/// - 표지(`legacy-drafts-adopted.json`, 초안 폴더): 먼저 대상 키·"도장 없음"·해시를 적고(못 적으면 이관하지 않는다), 전용 함수로 도장을
+/// - 표지(`legacy-drafts-adopted.json`, 초안 폴더): 먼저 대상 키·"도장 없음"·해시를 적고(못 적으면 이관하지 않는다. 있는 표지를 읽지 못해도 이관하지 않는다), 전용 함수로 도장을
 ///   만든 뒤 완료를 적는다. 완료가 없으면 다음 실행은 표지에 적힌 키 가운데 아직 도장이 없고 해시가 같은 것만 다시 한다(그 사이 CLI가 같은
 ///   내용으로 저장해 도장이 생긴 키는 건너뛴다). 완료가 있으면 다시 하지 않는다: 그 뒤에 생긴 도장 없는 초안은 계속 제안이다.
 /// 모든 일은 초안 잠금(`DraftStampStore.withLock`) 안에서 한다(앱·CLI의 저장·판 번호와 섞이지 않게).
@@ -42,7 +42,12 @@ public enum LegacyDraftAdoption {
                              beforeStamping: () throws -> Void = {}) throws -> Int {
         try DraftStampStore.withLock(home: home) {
             let url = markerURL(home: home), places = DraftLocations(home: home)
-            let previous = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(Marker.self, from: $0) }
+            // 표지 파일이 있는데 읽거나 풀지 못하면 이관하지 않는다: 새로 모으면 표지 뒤에 생긴 도장 없는 초안까지 사람 편집이 된다
+            var previous: Marker?
+            if FileManager.default.fileExists(atPath: url.path) {
+                guard let data = try? Data(contentsOf: url), let marker = try? JSONDecoder().decode(Marker.self, from: data) else { return 0 }
+                previous = marker
+            }
             if previous?.completed == true { return 0 }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]

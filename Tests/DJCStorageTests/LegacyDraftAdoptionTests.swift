@@ -110,6 +110,17 @@ struct LegacyDraftAdoptionTests {
         #expect(Self.stamp(DraftKey(.cue, "late"), folder.url) == nil)
     }
 
+    /// 표지 파일이 있는데 읽거나 풀지 못하면 이관하지 않는다(새로 모으면 표지 뒤에 생긴 도장 없는 초안까지 사람 편집이 된다)
+    @Test func 표지를_읽지_못하면_이관하지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try Self.legacy(places, cues: ["a"], gains: ["g": -1])
+        let marker = LegacyDraftAdoption.markerURL(home: folder.url)
+        try Data("{망가진 표지".utf8).write(to: marker)
+        #expect(try LegacyDraftAdoption.adopt(home: folder.url) == 0)
+        #expect(Self.stamp(DraftKey(.cue, "a"), folder.url) == nil && Self.stamp(DraftKey(.gain, "g"), folder.url) == nil)
+        #expect(try Data(contentsOf: marker) == Data("{망가진 표지".utf8), "표지를 덮지 않는다")
+    }
+
     @Test func 표지_시작_쓰기가_실패하면_아무것도_이관하지_않는다() throws {
         let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
         try Self.legacy(places, cues: ["a"], gains: ["g": -1])
