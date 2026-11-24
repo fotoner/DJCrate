@@ -40,11 +40,27 @@ struct AutoReflectSelfTestJudgeTests {
                                                       environment: ["DJC_REKORDBOX_DIR": linked.path, "DJC_HOME": home.path]) != nil)
     }
 
+    /// 다른 개발용 인자(예: `--sheet`)는 사용자 환경설정에 쓸 수 있어 함께 주면 조립 전에 거절한다. ⌘Q 저장 자가 테스트만 함께 돈다(컨실 2라운드 K)
+    @Test func 다른_개발용_인자를_함께_주면_조립_전에_거절한다() throws {
+        let temp = try TemporaryFolder(prefix: "djc-auto-reflect-startup")
+        let rekordbox = temp.url.appending(path: "rb"), home = temp.url.appending(path: "home")
+        try FileManager.default.createDirectory(at: rekordbox.appending(path: "share/PIONEER/USBANLZ"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        let env = ["DJC_REKORDBOX_DIR": rekordbox.path, "DJC_HOME": home.path]
+        let base = ["DJCrate", "--auto-reflect-selftest=save"]
+        #expect(AutoReflectAppSelfTest.startupRefusal(arguments: base + ["--sheet"], environment: env) != nil)
+        #expect(AutoReflectAppSelfTest.startupRefusal(arguments: base + ["--inspector"], environment: env) != nil)
+        #expect(AutoReflectAppSelfTest.startupRefusal(arguments: base + ["--quit-wait-selftest"], environment: env) == nil)
+        #expect(AutoReflectAppSelfTest.startupRefusal(arguments: base + ["-NSDocumentRevisionsDebugMode", "YES"], environment: env) == nil,
+                "AppKit 인자는 상관하지 않는다")
+    }
+
     // MARK: - 소리 끊김(S8)
 
+    private typealias Arrival = AutoReflectAppSelfTest.AudioContinuity.Arrival
     private static func continuous(seconds: Int, rms: Float = 0.2) -> [Float] { Array(repeating: rms, count: seconds * 100) }
-    private static func arrivals(seconds: Double, every: Double = 1024.0 / 44_100) -> [Double] {
-        stride(from: 0, through: seconds, by: every).map { $0 }
+    private static func arrivals(seconds: Double, every: Double = 1024.0 / 44_100) -> [Arrival] {
+        stride(from: 0, through: seconds, by: every).map { Arrival(time: $0, received: $0) }
     }
 
     @Test func 끊김_없는_연속_신호는_통과한다() {
@@ -72,9 +88,36 @@ struct AutoReflectSelfTestJudgeTests {
                                                                      seconds: 66, playheadAdvance: 66)
         #expect(skipped.problems.contains { $0.contains("재생 위치") })
         // 버퍼가 한동안 오지 않았다(엔진이 멈췄다 다시 섬)
-        let stalled = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Self.continuous(seconds: 60), arrivals: [0, 0.5] + Self.arrivals(seconds: 60).map { $0 + 1 },
+        let stalled = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Self.continuous(seconds: 60),
+                                                                     arrivals: [Arrival(time: 0, received: 0), Arrival(time: 0.5, received: 0.5)]
+                                                                         + Self.arrivals(seconds: 60).map { Arrival(time: $0.time + 1, received: $0.received + 1) },
                                                                      seconds: 60, playheadAdvance: 60)
         #expect(stalled.problems.contains { $0.contains("오지 않았다") })
+    }
+
+    /// 출력이 0.15초씩 10번 멈췄다 따라잡지 않고 이어졌다: 버퍼 간격(0.25초)·받은 시간(5%) 기준은 지나지만 소리는 끊겼다(컨실 2라운드 L)
+    @Test func 짧게_빠진_구간이_쌓이면_누적_부족분으로_끊김을_센다() throws {
+        let period = 1024.0 / 44_100
+        var arrivals: [Arrival] = [], time = 0.0, received = 0.0
+        for index in 0..<2600 {
+            arrivals.append(Arrival(time: time, received: received))
+            time += period + (index % 250 == 249 && index < 2500 ? 0.15 : 0)
+            received += period
+        }
+        let last = try #require(arrivals.last)
+        let result = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Array(repeating: 0.2, count: Int(last.received * 100)), arrivals: arrivals,
+                                                                    seconds: last.time, playheadAdvance: last.received)
+        #expect(result.problems.contains { $0.contains("누적") }, "\(result.problems)")
+    }
+
+    /// 버퍼 하나 안의 도착 지터(앞뒤로 20ms)는 끊김이 아니다
+    @Test func 버퍼_하나_안의_도착_지터는_끊김이_아니다() {
+        let arrivals = Self.arrivals(seconds: 60).enumerated().map { index, arrival in
+            Arrival(time: arrival.time + (index.isMultiple(of: 2) ? 0.02 : -0.02), received: arrival.received)
+        }
+        let result = AutoReflectAppSelfTest.AudioContinuity.measure(windows: Self.continuous(seconds: 60), arrivals: arrivals, seconds: 60,
+                                                                    playheadAdvance: 60)
+        #expect(result.problems.isEmpty, "\(result.problems)")
     }
 
     // MARK: - E1 측정(S9)
@@ -85,8 +128,8 @@ struct AutoReflectSelfTestJudgeTests {
         let t0 = ContinuousClock.now
         func at(_ ms: Int) -> ContinuousClock.Instant { t0 + .milliseconds(ms) }
         let events: [Event] = [(.recheck(.commit), at(0)), (.recheck(.commit), at(10)), (.after(.commit), at(110)), (.after(.verify), at(900)),
-                               (.recheck(.fileReplace), at(1000)), (.after(.fileReplace), at(1030)),
-                               (.recheck(.fileReplace), at(1100)), (.after(.fileReplace), at(1160))]
+                               (.recheck(.fileReplace), at(1000)), (.before(.fileReplace), at(1001)), (.after(.fileReplace), at(1030)),
+                               (.recheck(.fileReplace), at(1100)), (.before(.fileReplace), at(1101)), (.after(.fileReplace), at(1160))]
         let measured = try #require(AutoReflectAppSelfTest.E1Measurement.measure(events))
         #expect(measured.gate == .milliseconds(100), "마지막 커밋 재확인부터 커밋 끝까지가 가장 길다")
         #expect(measured.perStep[.fileReplace] == .milliseconds(60))
@@ -100,6 +143,26 @@ struct AutoReflectSelfTestJudgeTests {
         let noRecheck: [Event] = [(.after(.commit), t0), (.recheck(.fileReplace), t0), (.after(.fileReplace), t0 + .milliseconds(5))]
         #expect(AutoReflectAppSelfTest.E1Measurement.measure(noRecheck) == nil, "커밋의 재확인 짝이 없다")
         #expect(AutoReflectAppSelfTest.E1Measurement.measure([]) == nil)
+    }
+
+    /// 시작한 파일 교체(`before`)마다 그 앞의 재확인과 뒤의 완료가 있어야 그 회를 받는다(컨실 2라운드 M)
+    @Test func 시작한_파일_교체마다_재확인과_완료_짝이_없으면_그_회를_받지_않는다() {
+        let t0 = ContinuousClock.now
+        func at(_ ms: Int) -> ContinuousClock.Instant { t0 + .milliseconds(ms) }
+        let base: [Event] = [(.recheck(.commit), at(0)), (.after(.commit), at(100)),
+                             (.recheck(.fileReplace), at(200)), (.before(.fileReplace), at(201)), (.after(.fileReplace), at(230))]
+        #expect(AutoReflectAppSelfTest.E1Measurement.measure(base) != nil)
+        #expect(AutoReflectAppSelfTest.E1Measurement.measure(base + [(.recheck(.fileReplace), at(300)), (.before(.fileReplace), at(301))]) == nil,
+                "시작한 파일 교체의 완료가 없다")
+        #expect(AutoReflectAppSelfTest.E1Measurement.measure(base + [(.before(.fileReplace), at(300)), (.after(.fileReplace), at(330))]) == nil,
+                "재확인 없이 시작한 파일 교체다")
+    }
+
+    /// E1 관문(2×E1 < E2′ 최솟값 2.154초)을 넘지 못하면 자가 테스트는 종료 코드 1이다(컨실 2라운드 N)
+    @Test func E1_관문을_넘지_못하면_종료_코드_1이다() {
+        #expect(AutoReflectAppSelfTest.E1Measurement.exitCode(gate: .milliseconds(279)) == 0)
+        #expect(AutoReflectAppSelfTest.E1Measurement.exitCode(gate: .milliseconds(1077)) == 1, "2배가 2.154초와 같으면 넘지 못한다")
+        #expect(AutoReflectAppSelfTest.E1Measurement.exitCode(gate: .seconds(2)) == 1)
     }
 
     @Test func 실제로_쓴_결과가_섞인_K행이_아니면_그_회를_받지_않는다() {

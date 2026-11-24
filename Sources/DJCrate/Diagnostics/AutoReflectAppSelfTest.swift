@@ -53,6 +53,12 @@ enum AutoReflectAppSelfTest {
                                                                                            location: location)) else {
             return "쓰기 전 확인을 채우지 못했습니다. 사본과 DJC_HOME을 임시 폴더 아래에 두고, 분석 폴더는 링크 없이 복사하고, --db는 빼세요"
         }
+        // 다른 개발용 인자는 함께 주지 않는다: 그 인자가 사용자 환경설정에 쓸 수 있다(예: --sheet의 보기 모드, 컨실 2라운드 K).
+        // ⌘Q 저장 자가 테스트(--quit-wait-selftest)만 함께 돈다. AppKit 인자(-NS…)는 상관하지 않는다
+        let companions: Set<String> = ["--quit-wait-selftest"]
+        if let other = arguments.dropFirst().first(where: { $0.hasPrefix("--") && !AutoReflectSelfTest.isRequested(arguments: ["", $0]) && !companions.contains($0) }) {
+            return "다른 개발용 인자(\(other))와 함께 돌리지 않습니다. 그 인자를 빼고 다시 띄우세요"
+        }
         return nil
     }
 
@@ -148,9 +154,9 @@ enum AutoReflectAppSelfTest {
         let result = probe.analyze()
         check(stopped == 0, "자동 저장하는 동안 덱 재생이 멈추지 않았다(멈춤을 본 횟수 \(stopped))")
         check(overlays == 0, "자동 저장하는 동안 창 덮개가 뜨지 않았다(본 횟수 \(overlays))")
-        log(String(format: "곡 믹서 출력: %.1f초 · 10ms 구간 %d개 · 중앙 RMS %.4f · 끊긴 구간 %d개 · 가장 긴 버퍼 간격 %.3f초 · 받은 시간/벽시계 %.3f · 받은 시간/재생 위치 %.3f",
+        log(String(format: "곡 믹서 출력: %.1f초 · 10ms 구간 %d개 · 중앙 RMS %.4f · 끊긴 구간 %d개 · 가장 긴 버퍼 간격 %.3f초 · 받은 시간/벽시계 %.3f · 받은 시간/재생 위치 %.3f · 누적 부족분 범위 %.3f초",
                    result.seconds, result.windows, result.medianRMS, result.quietWindows, result.longestArrivalGap, result.wallCoverage,
-                   result.playheadCoverage))
+                   result.playheadCoverage, result.deficitRange))
         let problems = result.problems
         check(problems.isEmpty, "곡 믹서 출력에서 신호가 끊긴 구간이 0이다\(problems.isEmpty ? "" : "(\(problems.joined(separator: " · ")))")")
         return failures == 0 ? 0 : 1
@@ -313,7 +319,9 @@ enum AutoReflectAppSelfTest {
         guard await loadLibrary(store) else { return 1 }
         let timings = WriteTimings()
         var writeGuard = RekordboxWriteGuard.system
-        writeGuard.hooks = RekordboxWriteHooks(timing: { moment, instant in timings.add(moment, instant) })
+        // 단계 시작(`before`)도 남긴다: 시작한 파일 교체마다 재확인·완료 짝을 대조한다(컨실 2라운드 M)
+        writeGuard.hooks = RekordboxWriteHooks(checkpoint: { moment in if case .before = moment { timings.add(moment, .now) } },
+                                               timing: { moment, instant in timings.add(moment, instant) })
         let coordinator = AppComposition.reflection(store: store, gate: .live(guard: writeGuard), prompter: AutoConfirmPrompter())
         let session = coordinator.session, drafts = session.ports.drafts
         let rowLimit = AutoReflectionTiming.standard.rowLimit
@@ -395,8 +403,9 @@ enum AutoReflectAppSelfTest {
         }
         log("E1 결과(\(rounds)회): 관문 값(재확인→단계 끝 최댓값) \(seconds(gateMax)) · 참고값(커밋 완료→마지막 파일 단계 완료 최댓값) \(seconds(referenceMax)) · 쓰기 전체 최댓값 \(seconds(totalMax))")
         log("E1 단계별 최댓값: " + perStep.sorted { $0.key.rawValue < $1.key.rawValue }.map { "\($0.key.rawValue) \(seconds($0.value))" }.joined(separator: " · "))
-        log("E1 관문(2×E1 < E2′ 최솟값 2.154초): \(gateMax * 2 < .milliseconds(2154) ? "통과" : "넘지 못함")")
-        return 0
+        let code = E1Measurement.exitCode(gate: gateMax)
+        log("E1 관문(2×E1 < E2′ 최솟값 2.154초): \(code == 0 ? "통과" : "넘지 못함")")
+        return code
     }
 
     // MARK: - 도움
@@ -421,7 +430,8 @@ enum AutoReflectAppSelfTest {
         func measure() -> E1Measurement? { E1Measurement.measure(lock.withLock { events }) }
     }
 
-    /// 쓰기 한 번의 E1 값. 필수 구간(커밋과 파일 교체 하나 이상의 "재확인 → 그 단계 끝" 짝)이 없으면 만들지 않는다
+    /// 쓰기 한 번의 E1 값. 필수 구간(커밋과 파일 교체 하나 이상의 "재확인 → 그 단계 끝" 짝)이 없으면 만들지 않는다.
+    /// 시작한 파일 교체(`before`)마다 그 앞의 재확인과 뒤의 완료가 모두 있어야 한다: 하나라도 빠지면 그 회를 받지 않는다(컨실 2라운드 M)
     struct E1Measurement: Equatable {
         /// 관문 값: 단계 끝마다 그 단계의 마지막 재확인부터 잰 값의 최댓값
         var gate: Duration
@@ -433,11 +443,22 @@ enum AutoReflectAppSelfTest {
             var lastRecheck: [RekordboxWriteStep: ContinuousClock.Instant] = [:]
             var gate: Duration = .zero, perStep: [RekordboxWriteStep: Duration] = [:]
             var committed: ContinuousClock.Instant?, lastFile: ContinuousClock.Instant?
+            // 파일 교체: 재확인 뒤 아직 시작하지 않음 / 시작했고 아직 끝나지 않음
+            var replaceRechecked = false, replaceOpen = false, unpaired = false
             for (moment, instant) in events {
                 switch moment {
                 case let .recheck(step):
                     lastRecheck[step] = instant
+                    if step == .fileReplace { replaceRechecked = true }
+                case .before(.fileReplace):
+                    if replaceOpen || !replaceRechecked { unpaired = true }
+                    replaceOpen = true
+                    replaceRechecked = false
                 case let .after(step):
+                    if step == .fileReplace {
+                        if !replaceOpen { unpaired = true }
+                        replaceOpen = false
+                    }
                     if let start = lastRecheck[step] {
                         let window = instant - start
                         gate = max(gate, window)
@@ -448,9 +469,13 @@ enum AutoReflectAppSelfTest {
                 case .before: break
                 }
             }
+            guard !unpaired, !replaceOpen else { return nil }
             guard perStep[.commit] != nil, perStep[.fileReplace] != nil, let committed, let lastFile, lastFile >= committed else { return nil }
             return Self(gate: gate, reference: lastFile - committed, perStep: perStep)
         }
+
+        /// E1 관문(2×E1이 E2′ 최솟값 2.154초보다 짧다)을 지나면 0, 넘지 못하면 1(컨실 2라운드 N)
+        static func exitCode(gate: Duration) -> Int32 { gate * 2 < .milliseconds(2154) ? 0 : 1 }
 
         /// 실제로 쓴 결과가 큐·그리드·재생 목록이 섞인 약 K행 묶음인지. 아니면 그 까닭
         static func mixedBatchProblem(cues: Int, grids: Int, playlistStepsWritten: Int, playlistStepsPlanned: Int, rows: Int, rowLimit: Int) -> String? {
@@ -501,8 +526,10 @@ enum AutoReflectAppSelfTest {
         func analyze() -> AudioContinuity {
             lock.withLock {
                 guard marks.count >= 2, marks[1].window >= marks[0].window, rate > 0 else { return .measure(windows: [], arrivals: [], seconds: 0, playheadAdvance: 0) }
-                let times = arrivals.filter { $0.time >= marks[0].time && $0.time <= marks[1].time }.map(\.time)
-                return .measure(windows: Array(windows[marks[0].window..<marks[1].window]), arrivals: times, seconds: marks[1].time - marks[0].time,
+                let start = marks[0].window
+                let inside = arrivals.filter { $0.time >= marks[0].time && $0.time <= marks[1].time }
+                    .map { AudioContinuity.Arrival(time: $0.time, received: Double($0.window - start) / 100) }
+                return .measure(windows: Array(windows[marks[0].window..<marks[1].window]), arrivals: inside, seconds: marks[1].time - marks[0].time,
                                 playheadAdvance: marks[1].playhead - marks[0].playhead)
             }
         }
@@ -512,8 +539,11 @@ enum AutoReflectAppSelfTest {
     /// - 신호 세기: 중앙 RMS가 `minimumRMS`보다 작으면 무음이라 통과하지 않는다
     /// - 끊긴 구간: RMS가 중앙값의 30%(그리고 최소 세기의 30%)보다 작은 구간
     /// - 빠진 샘플: 받은 시간이 벽시계로 지난 시간과, 덱 재생 위치가 나아간 시간과 5% 넘게 다르면 끊긴 것이다. 버퍼가 0.25초 넘게 오지 않아도 같다
+    /// - 누적 부족분: 버퍼가 올 때마다 "벽시계로 지난 시간 − 받은 소리"를 구한다. 그 범위가 0.1초(버퍼 하나 + 지터)를 넘으면 끊긴 것이다.
+    ///   짧은 멈춤이 여러 번 쌓여 위 두 기준을 지나는 경우를 잡는다(컨실 2라운드 L)
     struct AudioContinuity: Equatable {
         static let minimumRMS: Float = 0.05
+        static let maximumDeficitRange = 0.1
         var seconds: Double
         var windows: Int
         var medianRMS: Float
@@ -521,15 +551,26 @@ enum AutoReflectAppSelfTest {
         var longestArrivalGap: Double
         var wallCoverage: Double
         var playheadCoverage: Double
+        /// 누적 부족분(벽시계로 지난 시간 − 받은 소리)의 범위(초)
+        var deficitRange: Double
 
-        static func measure(windows: [Float], arrivals: [Double], seconds: Double, playheadAdvance: Double) -> Self {
+        /// 출력 버퍼 하나가 온 때(벽시계 초)와 그때까지 받은 소리(초)
+        struct Arrival: Equatable, Sendable {
+            var time: Double
+            var received: Double
+        }
+
+        static func measure(windows: [Float], arrivals: [Arrival], seconds: Double, playheadAdvance: Double) -> Self {
             let median = windows.isEmpty ? 0 : windows.sorted()[windows.count / 2]
             let threshold = max(median, minimumRMS) * 0.3
             let received = Double(windows.count) / 100
-            let longest = zip(arrivals, arrivals.dropFirst()).map { $1 - $0 }.max() ?? .infinity
+            let times = arrivals.map(\.time)
+            let longest = zip(times, times.dropFirst()).map { $1 - $0 }.max() ?? .infinity
+            let deficits = arrivals.map { ($0.time - (arrivals.first?.time ?? 0)) - ($0.received - (arrivals.first?.received ?? 0)) }
             return Self(seconds: seconds, windows: windows.count, medianRMS: median, quietWindows: windows.filter { $0 < threshold }.count,
                         longestArrivalGap: longest, wallCoverage: seconds > 0 ? received / seconds : 0,
-                        playheadCoverage: playheadAdvance > 0 ? received / playheadAdvance : 0)
+                        playheadCoverage: playheadAdvance > 0 ? received / playheadAdvance : 0,
+                        deficitRange: (deficits.max() ?? 0) - (deficits.min() ?? 0))
         }
 
         /// 통과하지 못한 까닭(없으면 통과)
@@ -541,6 +582,9 @@ enum AutoReflectAppSelfTest {
             if !(longestArrivalGap < 0.25) { problems.append(String(format: "출력 버퍼가 %.3f초 동안 오지 않았다", longestArrivalGap)) }
             if abs(wallCoverage - 1) >= 0.05 { problems.append(String(format: "받은 시간/벽시계 %.3f", wallCoverage)) }
             if abs(playheadCoverage - 1) >= 0.05 { problems.append(String(format: "받은 시간/재생 위치 %.3f(빠진 샘플)", playheadCoverage)) }
+            if !(deficitRange <= Self.maximumDeficitRange) {
+                problems.append(String(format: "받은 소리가 벽시계보다 누적 %.3f초 모자랐다(짧은 끊김이 쌓임)", deficitRange))
+            }
             return problems
         }
     }
