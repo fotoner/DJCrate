@@ -51,10 +51,10 @@ struct AutoReflectionAppTests {
         restorePointSnapshot: { _, _, _, _, _ in throw refused }, writePlaylists: { _, _, _ in throw refused }, syncITunes: { _, _ in throw refused })
     }
 
-    func store() -> LibraryStore {
+    func store(draftOrigin: DraftOrigin = .unknown) -> LibraryStore {
         let home = FileManager.default.temporaryDirectory.appending(path: "djc-autosave-app-\(UUID().uuidString)")
         let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, draftHome: home, movesDamagedDrafts: false,
-                                      takeLiveSnapshot: { _ in throw DJCError.snapshotNotFound })
+                                      takeLiveSnapshot: { _ in throw DJCError.snapshotNotFound }, draftOrigin: draftOrigin)
         store.phase = .loaded
         store.playlists.rekordboxPlaylists = Self.rekordbox
         store.playlists.refreshPlaylists()

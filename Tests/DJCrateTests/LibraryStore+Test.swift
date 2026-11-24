@@ -22,6 +22,7 @@ extension LibraryStore {
     ///     앱 데이터 폴더(`DJCPaths.userData`)를 나눠 쓸 시험은 그 값을 준다
     ///   - location: 실행 인자·환경 대신 직접 만든 위치(쓰기 대상·백업·초안 폴더는 위 인자가 덮는다)
     ///   - takeLiveSnapshot: 스냅샷 뜨기(주지 않으면 이 프로세스의 rekordbox 폴더에서 뜬다)
+    ///   - draftOrigin: 이 저장소의 편집 출처(기본은 모름). 앱처럼 사람 편집으로 쌓아야 자동 저장 대상이 되는 시험은 `.human`을 준다
     ///   - ports: 라이브러리 포트(실제 구현)를 바꾼다(메모리 라이브러리·가짜 Music 등)
     static func test(settings: SettingsStore = SettingsStore(defaults: TestDefaults.make("library-store")),
                      activityLog: ActivityLog? = nil,
@@ -43,6 +44,7 @@ extension LibraryStore {
                      location: LibraryLocation? = nil,
                      takeLiveSnapshot: (@Sendable (Bool) throws -> URL)? = nil,
                      writer: DraftWriter = DraftWriter(),
+                     draftOrigin: DraftOrigin = .unknown,
                      launch: LibraryLaunchOptions = LibraryLaunchOptions(),
                      ports: ((inout LibraryPorts) -> Void)? = nil) -> LibraryStore {
         let home = draftHome ?? freshTestFolder("drafts")
@@ -52,7 +54,7 @@ extension LibraryStore {
         location.backupDirectory = backupDirectory ?? freshTestFolder("backups")
         location.draftHome = home
         location.movesDamagedDrafts = movesDamagedDrafts ?? (draftHome != nil)
-        var drafts = DraftStore.live(writer: writer, home: home)
+        var drafts = DraftStore.live(writer: writer, home: home, origin: draftOrigin)
         if let saveTagDrafts { drafts.saveTags = { saveTagDrafts($0) } }
         if let playlistDraftSaver {
             // 가짜 저장이 받은 초안을 디스크 초안으로 읽게 한다: 편집 전 바깥 변경 확인(#260)이 쓰지 않은 파일을 바깥 변경으로 보지 않게

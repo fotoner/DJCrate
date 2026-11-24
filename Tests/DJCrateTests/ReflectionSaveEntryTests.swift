@@ -243,8 +243,10 @@ struct ReflectionSaveEntryTests {
         let latches: [Int: AutoReflectionAppTests.Latch]
         let folder: TemporaryFolder
 
-        init(blocking: Set<Int> = [1]) async throws {
-            store = AutoReflectionAppTests().store()
+        /// - Parameter autoSave: 엔진이 자동 저장을 켠 채(짧은 대기) 저장 대기를 스스로 쓰게 한다. 첫 미리 보기는 자동 저장이 연다
+        init(blocking: Set<Int> = [1], autoSave: Bool = false) async throws {
+            // 자동 저장 시험대는 앱처럼 사람 편집으로 쌓아야 엔진이 대상으로 고른다(시험 저장소의 기본 출처는 모름)
+            store = AutoReflectionAppTests().store(draftOrigin: autoSave ? .human : .unknown)
             store.playlists.renamePlaylist("B", to: "새 이름")
             let events = events, calls = Mutex(0)
             let latches = Dictionary(uniqueKeysWithValues: blocking.map { ($0, AutoReflectionAppTests.Latch()) })
@@ -258,9 +260,11 @@ struct ReflectionSaveEntryTests {
                 }
                 events.add("미리 보기 \(call) 시작" + (batch.playlists != nil ? " 재생 목록" : ""))
                 if let latch = latches[call] { await latch.wait() }
-                events.add("미리 보기 \(call) 끝")
+                // 이 미리 보기를 실행하던 작업이 취소됐는지(취소 입구가 어느 작업에 닿았는지)를 남긴다
+                events.add("미리 보기 \(call) 끝" + (Task.isCancelled ? " 취소됨" : ""))
                 return RekordboxWriteReport(outcomes: [], backup: nil, dryRun: true, createdAt: "", finalUpdateCount: nil)
             }
+            if autoSave { store.testReflection.autoSaveBackupCondition = .ready }
             coordinator = ReflectionCoordinator.test(store: store, gate: gate)
             folder = try TemporaryFolder(prefix: "djc-save-entry-queue")
             feed = coordinator.autoFeed
@@ -270,13 +274,19 @@ struct ReflectionSaveEntryTests {
                                             writeLock: .live(RekordboxWriteLocks(folder: folder.url.appending(path: "locks"))),
                                             records: .live(home: folder.url), pointSnapshot: { .satisfied }, appHolds: { [] },
                                             publish: { feed.update($0, $1) })
-            engine = AutoReflection(session: coordinator.session, ports: ports, run: .off(.debugBuild))
+            // 자동 저장 시험대는 대기를 짧게 줘 엔진이 스스로 쓰게 한다(어떤 판정도 이 길이로 하지 않는다: 상태를 기다린다, TEST-30)
+            let timing = AutoReflectionTiming(editDelay: .milliseconds(5), quietDelay: .milliseconds(5), bulkDelay: .milliseconds(5),
+                                              bulkTracks: 50, rowLimit: 200, successToasts: 5)
+            engine = AutoReflection(session: coordinator.session, ports: ports, run: autoSave ? .live : .off(.debugBuild),
+                                    timing: autoSave ? timing : .standard)
             coordinator.engine = engine
             window = LibraryWindowModel(store: store)
             window.autoFeed = feed
             engine.start()
-            guard await waitForState(safetyNet: .seconds(90), until: { engine.isParked && feed.conditions.hasPending }) else {
-                throw FixtureError("엔진이 저장 대기를 보지 못했다")
+            if !autoSave {
+                guard await waitForState(safetyNet: .seconds(90), until: { engine.isParked && feed.conditions.hasPending }) else {
+                    throw FixtureError("엔진이 저장 대기를 보지 못했다")
+                }
             }
         }
 
@@ -388,6 +398,64 @@ struct ReflectionSaveEntryTests {
         // 기다리던 작업은 취소되지 않고 차례를 받아 미리 보기까지 간다
         #expect(await waitForEvents(f, containing: "미리 보기 3 시작"), "\(f.events.all)")
         await f.store.writeTask?.value
+    }
+
+    // MARK: - S11(4라운드): 자동 저장도 실행 중인 쓰기의 취소 대상이다
+
+    /// 자동 저장이 미리 보기 중일 때 [취소]·Esc는 그 자동 저장 쓰기 하나에만 간다. 엔진 차례를 기다리는 다른 쓰기 작업은 멈추지 않는다
+    @Test func 자동_저장_미리_보기_취소는_차례를_기다리는_다른_작업이_아니라_자동_저장_쓰기만_멈춘다() async throws {
+        let f = try await QueueFixture(blocking: [1, 2], autoSave: true)
+        defer { f.stop() }
+        // 자동 저장이 미리 보기에서 멈춰 있다(수동 저장을 누르지 않았다)
+        #expect(await f.waitForEvents(1), "자동 저장이 미리 보기를 연다: \(f.events.all)")
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.store.writeStage?.cancellable == true && f.feed.conditions.writing })
+        #expect(f.store.writeTask == nil, "수동 쓰기 작업은 없다: 지금 쓰는 것은 자동 저장이다")
+        // 곡 메뉴의 바로 넣기 같은 다른 쓰기가 엔진 차례를 기다린다
+        f.coordinator.start { await f.coordinator.write(rows: [], playlists: true) }
+        let waiting = try #require(f.store.writeTask)
+        // 미리 보기 [취소]·Esc가 부르는 기존 입구
+        f.store.cancelWritePreparation()
+        #expect(!waiting.isCancelled, "차례를 기다리는 작업은 취소하지 않는다")
+        f.latches[1]?.release()
+        // 취소된 것은 미리 보기 중이던 자동 저장 쓰기 하나다
+        #expect(await waitForEvents(f, containing: "미리 보기 1 끝"), "\(f.events.all)")
+        #expect(f.events.all.contains("미리 보기 1 끝 취소됨"), "자동 저장 쓰기가 취소됐다: \(f.events.all)")
+        // 기다리던 작업은 취소되지 않고 차례를 받아 미리 보기까지 간다
+        #expect(await waitForEvents(f, containing: "미리 보기 2 시작"), "\(f.events.all)")
+        #expect(!f.events.all.contains { $0.hasPrefix("미리 보기 2") && $0.hasSuffix("취소됨") }, "\(f.events.all)")
+        f.latches[2]?.release()
+        await waiting.value
+        #expect(f.events.all.contains("미리 보기 2 끝"), "기다리던 작업은 취소 없이 미리 보기를 마쳤다: \(f.events.all)")
+    }
+
+    /// 취소할 수 있는 단계인데 그 단계를 실행하는 작업이 등록되지 않았으면(차례를 기다리는 작업뿐이다) 쓰기 작업을 취소하지 않는다
+    @Test func 실행_중으로_등록된_작업이_없으면_쓰기_작업을_취소하지_않는다() async {
+        let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { _ in }))
+        var suspended: CheckedContinuation<Void, Never>?
+        var cancelled = false
+        store.writeTask = Task {
+            await withCheckedContinuation { suspended = $0 }
+            cancelled = Task.isCancelled
+        }
+        while suspended == nil { await Task.yield() }
+        store.writeStage = WriteStage("바꿀 내용을 확인하는 중…", cancellable: true)
+        store.cancelWritePreparation()
+        suspended?.resume()
+        await store.writeTask?.value
+        #expect(!cancelled, "엔진 차례를 기다리는 쓰기 작업이 다른 쓰기의 [취소]로 멈추면 안 된다")
+    }
+
+    /// 자동 저장 [취소]는 엔진 전체(대기·감시)를 멈추지 않는다: 쓰기 하나만 멈추고 엔진은 계속 돈다
+    @Test func 자동_저장_취소가_엔진_루프를_멈추지_않는다() async throws {
+        let f = try await QueueFixture(blocking: [1], autoSave: true)
+        defer { f.stop() }
+        #expect(await f.waitForEvents(1), "\(f.events.all)")
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.store.writeStage?.cancellable == true })
+        f.store.cancelWritePreparation()
+        f.latches[1]?.release()
+        #expect(await waitForEvents(f, containing: "미리 보기 1 끝 취소됨"), "\(f.events.all)")
+        // 취소된 쓰기 뒤에도 엔진은 쓰는 중이 아니게 돌아와 다음 판정을 한다(루프가 살아 있다): 바로 다시 자동 저장이 미리 보기를 연다
+        #expect(await waitForEvents(f, containing: "미리 보기 2 시작"), "취소는 쓰기 하나만 멈춘다: \(f.events.all)")
     }
 
     func waitForEvents(_ f: QueueFixture, containing text: String) async -> Bool {

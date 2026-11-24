@@ -262,8 +262,14 @@ final class ReflectionCoordinator {
     let store: LibraryStore
     let prompter: any ReflectionPrompter
     /// 자동 저장 엔진(#403). 있으면 모든 쓰기가 엔진의 차례(직렬 큐)를 받는다: 자동 저장 중에 누른 ⌘S는 그 저장이 끝난 뒤 곧 한다.
-    /// 조립 지점이 실제 앱에만 붙인다(화면 시험·자가 테스트 조립은 nil이라 지금처럼 바로 쓴다)
-    var engine: AutoReflection?
+    /// 조립 지점이 실제 앱에만 붙인다(화면 시험·자가 테스트 조립은 nil이라 지금처럼 바로 쓴다).
+    /// 붙이면 미리 보기 [취소]·Esc가 자동 저장 쓰기 하나에도 닿는다(수동 쓰기는 `running`이 등록한다)
+    var engine: AutoReflection? {
+        didSet {
+            guard let engine else { return store.cancelAutoWrite = nil }
+            store.cancelAutoWrite = { [weak engine] () -> Bool in engine?.cancelAutoWrite() ?? false }
+        }
+    }
     /// 엔진이 알린 칩 상태와 조건(상태 줄 #404가 읽는다)
     let autoFeed = AutoReflectionFeed()
     /// 쓰는 중에 누른 저장 요청 하나(R3 5번 줄). 앞 쓰기가 끝난 뒤 다음 자동 저장보다 먼저 한다

@@ -13,6 +13,8 @@ final class TestReflection {
     var backupFileWriter: @Sendable (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }
     var prompter: any ReflectionPrompter = ScriptedPrompter()
     var running = false
+    /// 자동 저장의 백업 조건(R13). 정하면 실제 폴더·볼륨을 보지 않고 이 값으로 답한다(자동 저장이 쓰기까지 가는 시험)
+    var autoSaveBackupCondition: RekordboxBackupCondition?
 }
 
 @MainActor private var testReflections: [ObjectIdentifier: (store: WeakLibraryStore, config: TestReflection)] = [:]
@@ -34,7 +36,9 @@ extension LibraryStore {
     /// 시험 설정으로 붙인 rekordbox 쓰기의 화면 쪽(부를 때마다 만든다: 상태는 저장소에 있다)
     var reflection: ReflectionCoordinator {
         let config = testReflection, running = config.running
-        return AppComposition.reflection(store: self, gate: config.gate, backups: .live(writeFile: config.backupFileWriter), prompter: config.prompter,
+        var backups = RekordboxBackups.live(writeFile: config.backupFileWriter)
+        if let condition = config.autoSaveBackupCondition { backups.autoSaveCondition = { _, _ in condition } }
+        return AppComposition.reflection(store: self, gate: config.gate, backups: backups, prompter: config.prompter,
                                          runningApps: RunningApps { running })
     }
 

@@ -49,6 +49,8 @@ public final class AutoReflection {
     public private(set) var autoWrites = 0
 
     private var loop: Task<Void, Never>?
+    /// 지금 도는 자동 저장 쓰기 하나(루프와 따로 도는 작업: 루프를 취소하면 자동 저장 전체가 멈추므로 [취소]는 이 작업에만 간다)
+    private var autoWriting: Task<ReflectionSession.AutoWriteOutcome, Never>?
     private var sleeper: Task<Void, Never>?
     /// 판정 중에 신호가 왔다: 쉬지 않고 다시 판정한다
     private var dirty = false
@@ -148,6 +150,15 @@ public final class AutoReflection {
         case .undo:
             wake()
         }
+    }
+
+    /// 지금 도는 자동 저장 쓰기 하나만 취소한다(미리 보기 [취소]·Esc). 엔진 루프는 건드리지 않아 다음 판정이 이어진다.
+    /// 자동 저장이 쓰는 중이 아니면(수동 쓰기·차례를 기다리는 쓰기·쉬는 중) 아무것도 하지 않고 false
+    @discardableResult
+    public func cancelAutoWrite() -> Bool {
+        guard let autoWriting else { return false }
+        autoWriting.cancel()
+        return true
     }
 
     /// 대량 유예의 [취소](R14). 초안은 남고 그 판은 다음 편집이나 ⌘S까지 자동 저장하지 않는다(다시 켜도 이어진다)
@@ -535,7 +546,11 @@ public final class AutoReflection {
     private func write(_ chunk: AutoReflectionChunk) async -> Duration? {
         isWriting = true
         publish(status: .writing, conditions: conditions(writing: true))
-        let outcome = await session.autoWrite(chunk, mayWrite: { [unowned self] in mayStartWrite() })
+        let writing = Task { await session.autoWrite(chunk, mayWrite: { [unowned self] in mayStartWrite() }) }
+        autoWriting = writing
+        // 루프의 취소(앱 종료)는 그대로 쓰기에 전한다
+        let outcome = await withTaskCancellationHandler { await writing.value } onCancel: { writing.cancel() }
+        autoWriting = nil
         isWriting = false
         inventoryStale = true
         defer {
