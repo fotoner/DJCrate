@@ -129,27 +129,36 @@ final class TagEditStore {
         // 단계마다 따로 건다: 저장 뒤 되돌릴 칸이 없게 되면(앨범·아티스트만 바꿈) 그 단계만 빼 ⌘Z가 꺼진다(`LibraryStore.pruneTagUndo`)
         library.tagUndoSteps.register(undoManager, canUndo: { [weak library] in
             guard let library else { return false }
-            return generations.contains { library.isEditLocked($0.uuid) } || library.tags.undoPlan(change, generations: generations) != nil
+            return generations.contains { library.defersTagUndo($0.uuid) } || library.tags.undoPlan(change, generations: generations) != nil
         }) { [weak library] in
             guard let target = library else { return }
-            // 이 단계의 곡을 쓰는 중이면 되돌리지 않고 미뤄 두었다가 잠금이 풀리면 꺼낸 차례를 지켜 다시 올린다(`restoreDeferredTagUndo`)
-            if generations.contains(where: { target.isEditLocked($0.uuid) }) {
-                if target.undoManager?.isRedoing != true { target.deferredTagUndo.append((change, generations)) }
+            // 이 단계의 곡을 쓰는 중이거나 쓴 뒤 다시 읽기를 기다리면 되돌리지 않고 누른 요청으로 줄에 둔다: 풀리면 누른 차례대로 실행한다(컨실 S5·S6)
+            if generations.contains(where: { target.defersTagUndo($0.uuid) }) {
+                if target.undoManager?.isRedoing != true {
+                    target.pendingUndo.append(ready: { [weak target] in
+                        target.map { store in !generations.contains { store.defersTagUndo($0.uuid) } } ?? true
+                    }) { [weak target] in target?.tags.performUndo(change, generations: generations, registersRedo: false) }
+                }
                 return
             }
-            guard let plan = target.tags.undoPlan(change, generations: generations) else { return }
-            target.tags.show(plan.change.before)
-            target.tags.registerUndo(plan.change.reversed)
-            // 여러 곡의 역편집은 자동 저장이 한 번에 전부 쓰거나 전부 쓰지 않는다(R12)
-            if plan.reversed.count > 1 {
-                target.onUndoAfterSave?(ReflectionUndoEdit(id: UUID().uuidString, batch: DraftWriteBatch(tags: plan.reversed, commitPolicy: .allOrNothing),
-                                                           rowCount: plan.reversed.count))
-            }
+            target.tags.performUndo(change, generations: generations, registersRedo: true)
         }
         undoManager.setActionName(String(ui: "태그 편집"))
         if grouping {
             undoManager.endUndoGrouping()
             undoManager.groupsByEvent = groupsByEvent
+        }
+    }
+
+    /// 태그 ⌘Z 한 단계를 실행한다. 잠긴 동안 눌러 미뤘다가 실행하는 요청은 다시 실행(⇧⌘Z)에 남기지 않는다
+    func performUndo(_ change: DraftChange<[String: TagDraft]>, generations: [TagUndoGeneration], registersRedo: Bool) {
+        guard let plan = undoPlan(change, generations: generations) else { return }
+        show(plan.change.before)
+        if registersRedo { registerUndo(plan.change.reversed) }
+        // 여러 곡의 역편집은 자동 저장이 한 번에 전부 쓰거나 전부 쓰지 않는다(R12)
+        if plan.reversed.count > 1 {
+            library.onUndoAfterSave?(ReflectionUndoEdit(id: UUID().uuidString, batch: DraftWriteBatch(tags: plan.reversed, commitPolicy: .allOrNothing),
+                                                        rowCount: plan.reversed.count))
         }
     }
 

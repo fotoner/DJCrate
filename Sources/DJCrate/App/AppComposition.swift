@@ -275,7 +275,9 @@ final class AppComposition {
         let location = LibraryLocation.resolve(arguments: info.arguments, environment: info.environment)
         // 초안 저장 큐는 하나다: 저장소·덱·반영·복구·그리드 추정이 모두 같은 큐로 쓴다(게인 초안은 모든 곡이 파일 하나라 순서가 지켜져야 한다).
         // 앱의 편집 포트는 사람 편집이다(출처는 조립이 정한다, R5)
-        let drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome, origin: .human)
+        var drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome, origin: .human)
+        // rekordbox 실행 경계(R23): 엔진이 켜짐·꺼짐을 넘기고 게인 base에 함께 적는다. 앱을 켤 때마다 새 이름이라 그 전 실행의 base는 모름이다
+        drafts.runEpoch = RekordboxRunEpoch(session: UUID().uuidString)
         let places = DraftLocations(home: location.draftHome)
         var ports = LibraryPorts.live(location: location, drafts: drafts, batches: .live(url: places.reflection))
         // USB 기기 재생 기록 보존(#43)은 앱만 붙인다(시험 저장소·CLI는 보존하지 않는다)

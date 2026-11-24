@@ -31,17 +31,29 @@ struct TagUndoTests {
         #expect(reverted.fields.title == "원래 제목" && reverted.fields.rating == "2" && reverted.fields.comment == "바깥 코멘트")
     }
 
-    @Test func 앨범과_아티스트는_저장_뒤_되돌리지_않는다() {
+    /// 앨범·아티스트도 되돌린다(S12). 되돌린 초안이 도메인 쓰기 규칙(`TagDraft.issues`)에 새로 걸리면 그때만 정할 수 없다
+    @Test func 앨범과_아티스트도_되돌리고_쓰기_규칙에_걸리면_정할_수_없다() throws {
         let original = Self.fields()
         var after = TagDraft(trackUUID: "t", base: original)
         after.fields.artist = "새 가수"
-        after.fields.album = "새 앨범"
-        let current = TagDraft(trackUUID: "t", base: after.fields)
-        #expect(TagUndo.reverting(before: nil, after: after, onto: current) == nil)
-        // 다른 칸과 함께 고쳤으면 그 칸만 되돌린다
-        after.fields.color = "1"
-        let mixed = TagUndo.reverting(before: nil, after: after, onto: TagDraft(trackUUID: "t", base: after.fields))
-        #expect(mixed?.changedKeys == [.color] && mixed?.fields.artist == "새 가수")
+        let reverted = try #require(TagUndo.reverting(before: nil, after: after, onto: TagDraft(trackUUID: "t", base: after.fields)))
+        #expect(reverted.changedKeys == [.artist] && reverted.fields.artist == "가수")
+        // 숫자가 아닌 연도를 고친 편집을 되돌리면 쓰기 규칙에 걸린다
+        var odd = original
+        odd.year = "모름"
+        var fixed = TagDraft(trackUUID: "t", base: odd)
+        fixed.fields.year = "2020"
+        #expect(TagUndo.reverting(before: nil, after: fixed, onto: TagDraft(trackUUID: "t", base: fixed.fields)) == nil)
+    }
+
+    /// 쓴 뒤 바깥에서 같은 칸을 또 바꿨으면(다시 읽기가 늦은 사이 rekordbox에서) 그 편집을 거꾸로 할 모양이 아니다(S4·G2)
+    @Test func 되돌릴_칸의_지금_값이_편집_직후_값과_다르면_정할_수_없다() {
+        let original = Self.fields(title: "A")
+        var after = TagDraft(trackUUID: "t", base: original)
+        after.fields.title = "B"
+        var outside = after.fields
+        outside.title = "C"
+        #expect(TagUndo.reverting(before: nil, after: after, onto: TagDraft(trackUUID: "t", base: outside)) == nil)
     }
 
     @Test func 편집_전_초안이_있었으면_그_초안의_값으로_되돌린다() throws {

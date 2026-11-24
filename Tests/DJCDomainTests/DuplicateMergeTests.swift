@@ -16,6 +16,16 @@ struct DuplicateMergeTests {
         #expect(draft.cues[0].sourceID == nil && draft.cues[0].id != source.id)
     }
 
+    /// 뺄 곡에서 저장 뒤 ⌘Z로 되살린 큐도 되살린 표시(`restoredFrom`)를 옮기지 않는다: 쓰기가 그 표시로 원래 색을 쓰므로
+    /// 다른 곡의 큐 ID를 든 채 옮기면 확인하지 않은 색을 쓴다(컨실 S10, SAFE-12. 큐 색은 옮기지 않는다)
+    @Test func 되살린_표시는_옮기지_않는다() throws {
+        var source = EditableCue(kind: .hot(1), time: 2)
+        source.color = EditableCue.ColorMark(color: 16711680, tableIndex: 3, memory: false)
+        source.restoredFrom = "77"
+        let draft = try DuplicateMerge.cues(keeping: member("a"), removing: [member("b", cues: [source])], newID: { UUID() })
+        #expect(draft.cues.count == 1 && draft.cues[0].restoredFrom == nil)
+    }
+
     @Test func 같은_큐만_합치고_핫큐_슬롯_충돌은_막는다() throws {
         let hot = EditableCue(kind: .hot(0), time: 1, name: "A")
         let memory = EditableCue(kind: .memory, time: 2)

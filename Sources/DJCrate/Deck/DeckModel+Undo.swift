@@ -13,14 +13,12 @@ extension DeckModel {
     /// 초안을 쓴 뒤 다시 읽기(`refreshAfterWrite`)는 지우지 않는다: ⌘Z가 지금 rekordbox 값 위의 역편집이 된다(R12)
     func clearDraftUndo() {
         draftUndoSteps.removeAll(undoManager)
-        deferredDraftUndo = []
         pendingDraftUndo = nil
         gridDragBase = nil
         cueDragBase = nil
     }
 
     func registerDraftUndo(from before: DeckDraftSnapshot?, name: String) {
-        restoreDeferredDraftUndo()
         guard let before, let after = draftSnapshot,
               let change = DraftChange(before: before, after: after) else { return }
         registerDraftUndo(change, name: name)
@@ -49,16 +47,22 @@ extension DeckModel {
 
     /// ⌘Z·⇧⌘Z 한 단계: 편집 전으로 되돌린다. 그 편집을 이미 rekordbox에 썼으면 지금 rekordbox 값을 base로 한 역편집 초안으로 둔다(자동 저장이 쓴다, R12).
     /// 쓴 큐를 지금 큐에서 찾지 못하면(새 큐 ID를 정할 수 없다) 되돌리지 않는다. 이 곡을 쓰는 중이면 되돌리지 않고 단계를 다시 맨 위에 둔다(쓴 뒤 다시 ⌘Z)
-    private func undoDraft(_ change: DraftChange<DeckDraftSnapshot>, name: String) {
+    /// - Parameter registersRedo: 다시 실행(⇧⌘Z) 단계를 남긴다. 잠긴 동안 눌러 미뤘다가 실행하는 요청은 남기지 않는다
+    private func undoDraft(_ change: DraftChange<DeckDraftSnapshot>, name: String, registersRedo: Bool = true) {
         if isEditLocked {
-            // 쓰는 중에는 되돌리지 않고 미뤄 두었다가 잠금이 풀리면 꺼낸 차례를 지켜 다시 올린다(`restoreDeferredDraftUndo`)
-            if undoManager?.isRedoing != true { deferredDraftUndo.append((change, name)) }
+            // 쓰는 중에는 되돌리지 않고 누른 요청으로 줄에 둔다: 잠금이 풀리면 누른 차례대로 실행한다(`pendingUndo`, 컨실 S6·O3)
+            if undoManager?.isRedoing != true {
+                pendingUndo.append(ready: { [weak self] in self.map { !$0.isEditLocked } ?? true }) { [weak self] in
+                    guard let self, !editsFrozen, row?.track.uuid == change.before.cue.trackUUID else { return }
+                    undoDraft(change, name: name, registersRedo: false)
+                }
+            }
             return
         }
         guard let current = draftSnapshot, let applied = change.before.rebased(from: change.after, onto: current) else { return }
         restoreDraft(applied)
         // 되돌린 지금 상태에서 다시 실행할 단계(그사이 저장해도 같은 규칙으로 옮긴다)
-        if let redo = DraftChange(before: current, after: applied) { registerDraftUndo(redo, name: name) }
+        if registersRedo, let redo = DraftChange(before: current, after: applied) { registerDraftUndo(redo, name: name) }
     }
 
     /// 그 단계를 지금 되돌릴 수 있는지: 지금 덱 곡의 단계이고, 저장했으면 지금 rekordbox 값 위로 옮길 수 있다(R12)
@@ -69,14 +73,6 @@ extension DeckModel {
 
     /// 저장 뒤 되돌릴 수 없게 된 단계를 기록에서 뺀다(메뉴가 꺼진다). 쓴 뒤 새 값을 덱에 다 적용한 때 부른다
     func pruneDraftUndo() { draftUndoSteps.prune(undoManager) }
-
-    /// 쓰는 동안 눌러 미뤄 둔 ⌘Z 단계를 잠금이 풀리면 다시 올린다. 먼저 꺼낸 단계(더 새 편집)가 맨 위에 오게 옛 단계부터 올린다
-    func restoreDeferredDraftUndo() {
-        guard !isEditLocked, !deferredDraftUndo.isEmpty else { return }
-        let deferred = deferredDraftUndo
-        deferredDraftUndo = []
-        for (change, name) in deferred.reversed() { registerDraftUndo(change, name: name) }
-    }
 
     /// 쓴 뒤 다시 읽은 큐에 쓰기 전 덱 초안의 큐 ID를 잇는다(R12): 새로 넣은 큐는 쓰기가 돌려준 새 rekordbox ID로, 건드리지 않은 큐는 rekordbox ID로 찾는다.
     /// 그래야 ⌘Z의 편집 전후 스냅샷이 다시 읽은 큐를 같은 ID로 찾는다. 쓴 큐를 하나라도 찾지 못하면 nil(⌘Z를 끈다).

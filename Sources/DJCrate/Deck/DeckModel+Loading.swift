@@ -60,7 +60,7 @@ extension DeckModel {
         guard writeRefreshTokens[uuid] == token else { return }
         writeRefreshTokens[uuid] = nil
         writeRefreshing.remove(uuid)
-        restoreDeferredDraftUndo()
+        pendingUndo.flush()
     }
 
     /// 백그라운드 읽기를 시작할 때의 곡이 아직 덱에 있는지(곡을 바꿀 때마다 `loadGeneration`이 오른다)

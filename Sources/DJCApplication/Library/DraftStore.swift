@@ -56,10 +56,13 @@ public struct DraftStore: Sendable {
     public var pendingGain: @Sendable (String) -> Double??
     /// 게인 초안(nil이면 지우기: 그 곡의 base도 지운다)
     public var saveGain: @Sendable (Double?, String, @escaping @Sendable (DraftSaveFailure?) -> Void) -> Void
-    /// 게인 초안의 base(R23): 곡 UUID → 초안을 만들 때 본 rekordbox 오토게인(dB). base 없이 저장한 초안(옛 형식·CLI)은 없다
-    public var gainBases: @Sendable () -> [String: Double] = { [:] }
-    /// 게인 초안의 base를 둔다(nil이면 지운다). 저장 큐에서 뒤이어 맡기는 값 저장(`saveGain`)보다 먼저 적는다. 정하지 않은 구현은 두지 않는다
-    public var saveGainBase: @Sendable (Double?, String) -> Void = { _, _ in }
+    /// 게인 초안의 base(R23): 곡 UUID → 초안을 만들 때 본 rekordbox 오토게인·실행 경계·묶인 값의 판. base 없이 저장한 초안(옛 형식·CLI)은 없다
+    public var gainBases: @Sendable () -> [String: GainDraftBase] = { [:] }
+    /// 게인 초안의 base를 둔다(nil이면 지운다). 저장 큐에서 앞서 맡긴 값 저장 뒤에 적어 그 값의 판에 묶는다. 그 곡 base가 이미 있으면 값·경계는 그대로다.
+    /// 정하지 않은 구현은 두지 않는다
+    public var saveGainBase: @Sendable (GainDraftBase?, String) -> Void = { _, _ in }
+    /// rekordbox 실행 경계(R23, 컨실 S7). 자동 저장 엔진이 rekordbox 켜짐·꺼짐을 볼 때마다 넘기고, 게인 base에 함께 적는다. 없으면 경계를 모른다
+    public var runEpoch: RekordboxRunEpoch?
 
     // MARK: 태그·앨범아트
 
@@ -207,7 +210,12 @@ extension DraftStore {
     /// (시험의 실패 주입 등)는 따라가지 않는다: 실패를 주입하려면 출처 포트를 만든 뒤 그 포트에 바꿔 넣는다.
     /// `originVariant`가 없는 포트(손으로 만든 포트)는 `origin` 표시만 바뀌고 도장은 그 구현을 따른다
     public func with(origin: DraftOrigin) -> DraftStore {
-        if let originVariant { return originVariant(origin) }
+        if let originVariant {
+            // 실행 경계(R23)는 같은 앱 실행의 것이라 출처 포트도 함께 든다
+            var variant = originVariant(origin)
+            variant.runEpoch = runEpoch
+            return variant
+        }
         var copy = self
         copy.origin = origin
         return copy
@@ -243,8 +251,15 @@ extension DraftStore {
     /// base와 함께 게인 초안을 저장한다(R23): base를 먼저 두고 값을 같은 저장 큐에 맡긴다(값 저장 실패·다시 저장은 지금처럼 값만 다룬다)
     public func saveGain(_ gain: Double?, base: Double?, trackUUID: String,
                          completion: @escaping @Sendable (DraftSaveFailure?) -> Void = { _ in }) {
-        if gain != nil { saveGainBase(base, trackUUID) }
         saveGain(gain, trackUUID, completion)
+        if gain != nil { saveGainBase(base.map { GainDraftBase(db: $0, run: runEpoch?.current) }, trackUUID) }
+    }
+
+    /// 지금 그 곡 게인 초안에 쓸 수 있는 base(R23): 지금 값의 판에 묶였고 만든 뒤 rekordbox 실행 경계를 건너지 않았다. 아니면 nil(base 없는 초안)
+    public func validGainBase(_ uuid: String) -> GainDraftBase? {
+        guard let base = gainBases()[uuid], let revision = base.revision, stamp(DraftKey(.gain, uuid))?.revision == revision,
+              base.run != nil, base.run == runEpoch?.current else { return nil }
+        return base
     }
 }
 

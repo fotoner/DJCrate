@@ -40,7 +40,22 @@ extension ReflectionSession {
         do {
             stage(WriteStage(String(ui: "바꿀 내용을 확인하는 중…"), completed: 0, total: chosen.count, cancellable: true))
             try Task.checkCancellation()
-            let preview = try await previewWrite(rows: rows, playlists: withPlaylists || withHistories, withPlaylistDraft: withPlaylists)
+            // 여러 곡 역편집 묶음은 묶음 밖 편집과 섞지 않고 따로 전부 아니면 전무로 먼저 쓴다(R12, 컨실 S1). 막히면 그 묶음은 쓰지 않고 남는다
+            let groups = ports.undoGroups.groups(touching: Set(chosen.map(\.track.uuid)))
+            let groupKeys = Set(groups.flatMap(\.keys))
+            var groupReport: RekordboxWriteReport?
+            for group in groups {
+                if let report = try await writeUndoGroup(group, rows: chosen) { groupReport = report }
+                try Task.checkCancellation()
+            }
+            let main = chosen.filter { row in !groupKeys.contains { $0.id == row.track.uuid } || (try? draftBatch(for: [row], playlists: false)
+                .removingKeys(groupKeys).isEmpty) == false }
+            if let groupReport, main.isEmpty, !withPlaylists, !withHistories {
+                stage(nil)
+                return publish(.written(groupReport, preview: groupReport, followUp: []))
+            }
+            let preview = try await previewWrite(rows: main, playlists: withPlaylists || withHistories, withPlaylistDraft: withPlaylists,
+                                                 excluding: groupKeys)
             try Task.checkCancellation()
             stage(nil)
             // 창 대신 결과에 제외한 초안까지 남긴다(#230). 막힌 초안은 화면이 복구 시트로 고치게 한다(#232).
@@ -71,6 +86,19 @@ extension ReflectionSession {
         }
     }
 
+    /// 여러 곡 역편집 묶음 하나를 따로 전부 아니면 전무로 쓴다(⌘S, 컨실 S1). 한 곡이라도 막히면(미리 보기) 아무것도 쓰지 않고 nil
+    func writeUndoGroup(_ group: AutoReflectionUndoGroup, rows: [TrackRow]) async throws -> RekordboxWriteReport? {
+        let groupRows = rows.filter { row in group.keys.contains { $0.id == row.track.uuid } }
+        var batch = try draftBatch(for: groupRows, playlists: false).restricted(to: group.keys)
+        guard !batch.isEmpty else { return nil }
+        batch.commitPolicy = .allOrNothing
+        let preview = try await previewBatch(batch, uuids: Set(groupRows.map(\.track.uuid)), exclusions: [])
+        stage(nil)
+        guard let request = preview.writeRequest else { return nil }
+        let written = try await writeDraftsFollowingUp(request, to: target, dryRun: false)
+        return Self.writtenRevisions(written.report, batch: request).isEmpty ? nil : written.report
+    }
+
     /// 쓰는 동안 편집을 막을 곡: 쓸 곡과, 그 곡이 든 합치기 초안으로 묶인 곡 모두(`DraftWriteBatch.trackUUIDs`와 같은 범위)
     func lockedTracks(for rows: [TrackRow]) -> Set<String> {
         let uuids = Set(rows.map(\.track.uuid))
@@ -82,7 +110,8 @@ extension ReflectionSession {
     /// 최신 사본에 이미 있는 재생 기록은 실제로 쓰지 않고 보존본 연결만 갱신한다(쓰기 대기에서 빠진다).
     /// - Parameter playlists: 곡이 아닌 초안(재생 목록 초안·쓰기 대기 재생 기록)도 함께 볼지(곡 초안과 달리 곡을 골라 나누지 않는다)
     /// - Parameter withPlaylistDraft: 재생 목록 초안을 묶음에 넣을지(쓰기가 정한다: 초안 파일 잠금·동기화). `playlists`가 거짓이면 늘 넣지 않는다
-    public func previewWrite(rows: [TrackRow], playlists: Bool, withPlaylistDraft: Bool = true) async throws -> WritePreview {
+    /// - Parameter excluding: 묶음에서 뺄 초안 키(⌘S가 따로 쓴 여러 곡 역편집 묶음)
+    public func previewWrite(rows: [TrackRow], playlists: Bool, withPlaylistDraft: Bool = true, excluding: Set<DraftKey> = []) async throws -> WritePreview {
         ports.drafts.flush()
         ports.library.retryTagSaves()
         let targets = writeTargets(rows)
@@ -94,7 +123,7 @@ extension ReflectionSession {
         guard ports.library.state().failedTagSaves.isDisjoint(with: uuids) else { throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage) }
         // 재생 목록 초안을 묶음에 넣을 때만 저장을 다시 시도한다(재생 기록만 넣는 묶음은 하지 않는다: 보류한 초안으로 바깥 편집을 덮지 않게)
         if playlists, withPlaylistDraft { try requirePlaylistDraftSaved() }
-        let batch = try draftBatch(for: targets, playlists: playlists, withPlaylistDraft: withPlaylistDraft)
+        let batch = try draftBatch(for: targets, playlists: playlists, withPlaylistDraft: withPlaylistDraft).removingKeys(excluding)
         // 묶음을 만든 같은 메인 액터 구간에서 쓸 재생 목록 단계를 얼린다(R21): 쓰는 동안 들어온 재생 목록 편집은 뒤에 쌓인다
         freezeWrite(batch)
         return try await previewBatch(batch, uuids: uuids, exclusions: exclusions(for: rows, blockedOnly: true))
@@ -193,7 +222,7 @@ extension ReflectionSession {
         var batch = DraftWriteBatch(drafts: cues, grids: grids, gains: gains, tags: tags, artworks: artworks, playlists: playlistDraft, merges: merges,
                                     histories: playlists ? state.pendingHistories : [])
         // 게인 base(R23)가 있는 곡은 관문이 지금 rekordbox 값과 견준다(⌘S도 같다). base 없는 게인은 지금처럼 쓴다
-        if !gains.isEmpty { batch.gainBases = files.gainBases().filter { gains[$0.key] != nil } }
+        if !gains.isEmpty { batch.gainBases = files.gainBases().filter { gains[$0.key] != nil }.mapValues(\.db) }
         stampRevisions(&batch, rawCues: rawCues)
         return batch
     }

@@ -111,8 +111,14 @@ final class ReflectionHarness {
     }
 
     var session: ReflectionSession {
-        ReflectionSession(location: location, ports: ports, options: options)
+        var ports = ports
+        // 여러 곡 역편집 묶음 보관소는 하네스가 하나 든다(앱은 조정자 하나에 하나)
+        ports.undoGroups = undoGroups
+        return ReflectionSession(location: location, ports: ports, options: options)
     }
+
+    /// 여러 곡 역편집 묶음(R12): 세션을 부를 때마다 같은 보관소를 넣는다
+    let undoGroups = ReflectionUndoGroups()
 
     var ports: ReflectionPorts {
         ReflectionPorts(gate: gate, backups: backups, drafts: drafts, snapshots: snapshots, audio: audio,

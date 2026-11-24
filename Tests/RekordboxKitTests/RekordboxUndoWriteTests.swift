@@ -6,8 +6,9 @@ import Testing
 
 /// 저장 뒤 ⌘Z의 역편집이 기대는 쓰기 입구 규칙(#405, R12·R23).
 /// - 쓴 큐는 ID가 바뀐다: 결과가 초안 큐(UUID) → 새 `djmdCue.ID`를 돌려줘 역편집이 같은 큐를 찾는다.
-/// - 지운 큐를 되살리면 ID만 새로 받고 위치·종류·이름·색은 지우기 전과 같다. 색은 rekordbox가 적어 둔 값을 그대로 옮긴다
+/// - 지운 큐를 되살리면 ID만 새로 받고 위치·종류·이름·색은 지우기 전과 같다. 색은 rekordbox가 적어 둔 두 칸을 그대로 옮긴다
 ///   (옮긴 큐가 색을 이어받는 규칙과 같은 칸, 2026-09-26 실험: docs/rekordbox-internals.md "큐").
+///   색을 쓰는 새 큐는 되살린 큐(`restoredFrom`)뿐이다. 그 밖의 새 큐는 색을 들고 있어도 기본 색이다(컨실 S10, SAFE-12).
 /// - 여러 곡 역편집은 한 곡이라도 막히면 아무것도 쓰지 않는다(`allOrNothing`).
 /// - 게인 초안에 base가 있으면 지금 rekordbox 게인과 같을 때만 쓴다.
 @Suite("rekordbox 쓰기 — 저장 뒤 ⌘Z")
@@ -78,6 +79,7 @@ struct RekordboxUndoWriteTests {
         var undo = CueDraft(trackUUID: track.uuid, rekordboxCues: try currentCues(fixture, track))
         var restored = deleted
         restored.sourceID = nil
+        restored.restoredFrom = hot.id
         undo.place(restored)
         let report = try write(fixture, drafts: [undo])
         let newID = try #require(report.written.first?.cueIDs?[restored.id.uuidString])
@@ -86,6 +88,52 @@ struct RekordboxUndoWriteTests {
         for column in ["Kind", "InMsec", "OutMsec", "Comment", "Color", "ColorTableIndex", "ActiveLoop", "BeatLoopSize"] {
             #expect(after[column] == before[column], "\(column)")
         }
+    }
+
+    /// 자동 큐는 점 큐인데 Color 255·ColorTableIndex 0·ActiveLoop 0·BeatLoopSize 0이다(픽스처 `CueSpec.autoCue`, rekordbox가 분석 때 찍은 모양).
+    /// 이 모양을 DJCrate가 새로 넣는 쓰기는 rekordbox 실험으로 확인하지 않았다(docs/rekordbox-internals.md "자동 큐" [미확인]).
+    /// 그래서 되살린 자동 큐는 고친 자동 큐와 같이 확인한 새 점 큐 모양(-1·NULL)으로 쓰고, 위치·종류·이름만 지우기 전과 같다(컨실 S9, SAFE-12·13)
+    @Test func 지운_자동_큐를_되살리면_확인한_새_큐_모양으로_쓴다() throws {
+        let fixture = try RekordboxFixture()
+        var track = TrackSpec()
+        let auto = CueSpec.autoCue(at: 8000)
+        track.cues = [auto, CueSpec(kind: 0, inMsec: 30000)]
+        try fixture.add(track)
+        let before = try #require(cueRows(fixture, track).first { $0["ID"] == auto.id })
+
+        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: track.rekordboxCues)
+        let deleted = try #require(draft.cues.first { $0.sourceID == auto.id })
+        draft.remove(deleted.id)
+        _ = try write(fixture, drafts: [draft])
+        #expect(try cueRows(fixture, track).allSatisfy { $0["ID"] != auto.id })
+
+        var undo = CueDraft(trackUUID: track.uuid, rekordboxCues: try currentCues(fixture, track))
+        var restored = deleted
+        restored.sourceID = nil
+        restored.restoredFrom = auto.id
+        undo.place(restored)
+        let report = try write(fixture, drafts: [undo])
+        let newID = try #require(report.written.first?.cueIDs?[restored.id.uuidString])
+        let after = try #require(cueRows(fixture, track).first { $0["ID"] == newID })
+        for column in ["Kind", "InMsec", "OutMsec", "Comment"] {
+            #expect(after[column] == before[column], "\(column)")
+        }
+        for (column, value) in ["Color": "-1", "ColorTableIndex": "NULL", "ActiveLoop": "NULL", "BeatLoopSize": "NULL", "CueMicrosec": "NULL"] {
+            #expect(after[column] == value, "\(column)")
+        }
+    }
+
+    /// 되살린 표시가 없는 새 큐(바깥에서 만든 초안 등)의 색은 확인한 값이 아니라 쓰지 않는다(컨실 S10, SAFE-12)
+    @Test func 되살린_표시가_없는_새_큐는_색을_들고_있어도_기본_색이다() throws {
+        let fixture = try RekordboxFixture()
+        let track = try fixture.add(TrackSpec())
+        var draft = CueDraft(trackUUID: track.uuid)
+        var cue = EditableCue(kind: .hot(0), time: 3)
+        cue.color = EditableCue.ColorMark(color: 16711680, tableIndex: 3, memory: false)
+        draft.place(cue)
+        _ = try write(fixture, drafts: [draft])
+        let row = try #require(cueRows(fixture, track).first)
+        #expect(row["Color"] == "-1" && row["ColorTableIndex"] == "NULL")
     }
 
     @Test func 색이_없는_새_큐는_지금처럼_기본_색이다() throws {
@@ -104,6 +152,7 @@ struct RekordboxUndoWriteTests {
         var draft = CueDraft(trackUUID: track.uuid)
         var cue = EditableCue(kind: .hot(0), time: 3)
         cue.color = EditableCue.ColorMark(color: 16711680, tableIndex: 3, memory: true)
+        cue.restoredFrom = "99"
         draft.place(cue)
         _ = try write(fixture, drafts: [draft])
         let row = try #require(cueRows(fixture, track).first)
@@ -156,5 +205,22 @@ struct RekordboxUndoWriteTests {
         #expect(written.gainWritten.count == 1)
         let expected = RekordboxAutoGain.halves(Float(pow(10, 1.0 / 20)))
         #expect(try gainRow() == ["GainHigh": String(expected.high), "GainLow": String(expected.low)])
+    }
+    /// 백업 전에 막힌 것(사본에 없는 곡의 그리드)이 있으면 전부 아니면 전무 쓰기는 백업을 뜨지 않고 거절한다(컨실 O4, RBW-22 취지)
+    @Test func 전부_아니면_전무면_백업_전_막힘에서_백업_없이_거절한다() throws {
+        let fixture = try RekordboxFixture()
+        var track = TrackSpec()
+        track.cues = [CueSpec(kind: 0, inMsec: 10000)]
+        try fixture.add(track)
+        var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: track.rekordboxCues)
+        draft.place(EditableCue(kind: .memory, time: 50))
+        let missing = GridDraft(trackUUID: "없는-곡", base: [GridSegment(start: 0.1, bpm: 120, firstBeatNumber: 1)],
+                                segments: [GridSegment(start: 0.2, bpm: 120, firstBeatNumber: 1)])
+        let report = try RekordboxWriter.write(drafts: [draft], grids: [missing], to: fixture.database, dryRun: false, now: now,
+                                               backups: fixture.backups, shareRoot: fixture.shareRoot, allOrNothing: true)
+        #expect(report.written.isEmpty && report.backup == nil)
+        #expect(report.blocked.map(\.trackUUID) == [track.uuid] && report.gridBlocked.count == 1)
+        let backups = (try? FileManager.default.contentsOfDirectory(atPath: fixture.backups.path)) ?? []
+        #expect(backups.isEmpty, "백업을 뜨지 않는다: \(backups)")
     }
 }

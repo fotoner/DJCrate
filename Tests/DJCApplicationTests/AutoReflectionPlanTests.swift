@@ -226,4 +226,31 @@ struct AutoReflectionPlanTests {
         #expect(AutoReflectionInventory.Step.rows(of: .moveTracks(playlist: .id("A"), entries: [entries[200]], to: 1), before: entries,
                                                   after: after) == 201)
     }
+    // MARK: - 역편집 묶음(R12, 컨실 S2·G5·G7)
+
+    /// 묶은 뒤 구성원의 판이 바뀌면(다시 고쳤다) 묶음을 풀지 않고 전체를 보류한다(한 곡만 보통 편집으로 쓰지 않는다)
+    @Test func 역편집_묶음의_판이_바뀌면_묶음_전체를_보류한다() {
+        let a = DraftKey(.tag, "a"), b = DraftKey(.tag, "b")
+        var group = AutoReflectionUndoGroup(ReflectionUndoEdit(id: "u", batch: DraftWriteBatch(tags: [TagDraft(trackUUID: "a", base: TagFields()),
+                                                                                                    TagDraft(trackUUID: "b", base: TagFields())],
+                                                                                             commitPolicy: .allOrNothing), rowCount: 2))
+        group.revisions = [a: DraftRevision(1), b: DraftRevision(2)]
+        var inventory = AutoReflectionInventory(tracks: ["a": [a: DraftRevision(1)], "b": [b: DraftRevision(9)]])
+        let result = inventory.applyingUndo([group], rowLimit: 200)
+        #expect(result.chunk == nil && result.groups.count == 1)
+        #expect(inventory.tracks.isEmpty && inventory.leftoverKeys[a] == .needsConfirmation && inventory.leftoverKeys[b] == .needsConfirmation)
+    }
+
+    /// 대기 중인 역편집 묶음 전체의 행·판·곡을 함께 센다(대량 유예와 [취소] 판, 컨실 G7)
+    @Test func 대기_중인_역편집_묶음_전체를_함께_센다() {
+        func edit(_ id: String, _ uuids: [String]) -> ReflectionUndoEdit {
+            ReflectionUndoEdit(id: id, batch: DraftWriteBatch(tags: uuids.map { TagDraft(trackUUID: $0, base: TagFields()) }, commitPolicy: .allOrNothing),
+                               rowCount: uuids.count)
+        }
+        var tracks: [String: [DraftKey: DraftRevision]] = [:]
+        for (index, uuid) in ["a", "b", "c", "d"].enumerated() { tracks[uuid] = [DraftKey(.tag, uuid): DraftRevision(UInt64(index + 1))] }
+        var inventory = AutoReflectionInventory(tracks: tracks)
+        let result = inventory.applyingUndo([AutoReflectionUndoGroup(edit("1", ["a", "b"])), AutoReflectionUndoGroup(edit("2", ["c", "d"]))], rowLimit: 200)
+        #expect(result.pendingRows == 4 && result.pendingTracks == ["a", "b", "c", "d"] && result.pendingRevisions.count == 4)
+    }
 }

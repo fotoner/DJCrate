@@ -50,7 +50,7 @@ struct DeckUndoRebaseTests {
         let after = Self.snapshot(base: [deleted, kept], cues: [kept])
         let current = Self.snapshot(base: [kept], cues: [kept])
         let applied = try #require(before.rebased(from: after, onto: current))
-        var restored = deleted; restored.sourceID = nil
+        var restored = deleted; restored.sourceID = nil; restored.restoredFrom = "10"
         #expect(applied.cue.changes == [.added(restored)])
         #expect(applied.cue.cues.first { $0.id == deleted.id }?.color == color)
     }
@@ -144,5 +144,54 @@ struct DeckUndoRebaseTests {
         let applied = try #require(before.rebased(from: after, onto: current))
         #expect(applied.grid == currentGrid && applied.grid?.hasChanges == false)
         #expect(applied.cue.changes.count == 1)
+    }
+    // MARK: - 컨실 1라운드(S3·O1·G1, S4·G2·G3)
+
+    /// 큐 A·B를 차례로 더해 저장한 뒤 ⌘Z 두 번: 두 번째(A 더하기 되돌림)가 첫 역편집(B 빼기)을 덮어 B를 되살리지 않는다
+    @Test func 연속_실행_취소는_앞_역편집을_덮지_않는다() throws {
+        let a = Self.cue(1, nil, at: 10), b = Self.cue(2, nil, at: 20)
+        var writtenA = a; writtenA.sourceID = "21"
+        var writtenB = b; writtenB.sourceID = "22"
+        let addA = (before: Self.snapshot(base: [], cues: []), after: Self.snapshot(base: [], cues: [a]))
+        // 첫 ⌘Z(B 더하기 되돌림)를 적용한 지금: base는 쓴 그대로, 초안은 B를 뺐다
+        let current = Self.snapshot(base: [writtenA, writtenB], cues: [writtenA])
+        let applied = try #require(addA.before.rebased(from: addA.after, onto: current))
+        #expect(applied.cue.cues.isEmpty, "B를 되살리지 않는다: \(applied.cue.cues)")
+        #expect(applied.cue.base == [writtenA, writtenB])
+    }
+
+    /// 큐 X·Y를 차례로 지워 저장한 뒤 ⌘Z 두 번: 첫 ⌘Z가 되살린 Y는 base에 없고 초안에만 있다. 두 번째도 정할 수 있어야 한다(단계가 사라지지 않는다)
+    @Test func 앞_역편집이_되살린_큐가_있어도_다음_실행_취소를_정한다() throws {
+        let x = Self.cue(1, "10", at: 10), y = Self.cue(2, "11", at: 20)
+        let deleteX = (before: Self.snapshot(base: [x, y], cues: [x, y]), after: Self.snapshot(base: [x, y], cues: [y]))
+        var restoredY = y; restoredY.sourceID = nil; restoredY.restoredFrom = "11"
+        let current = Self.snapshot(base: [], cues: [restoredY])
+        let applied = try #require(deleteX.before.rebased(from: deleteX.after, onto: current))
+        #expect(applied.cue.cues.map(\.id) == [x.id, y.id])
+        #expect(applied.cue.cues.first { $0.id == x.id }?.sourceID == nil)
+    }
+
+    /// 편집 뒤 바깥에서(rekordbox) 같은 큐·그리드·게인을 또 바꿨으면 그 편집을 거꾸로 할 모양이 아니다: 정할 수 없다(⌘Z가 꺼진다)
+    @Test func 지금_값이_편집_직후_값과_다르면_정할_수_없다() throws {
+        let original = Self.cue(1, "10", at: 5)
+        var moved = original; moved.time = 6
+        let before = Self.snapshot(base: [original], cues: [original])
+        let after = Self.snapshot(base: [original], cues: [moved])
+        var outside = moved; outside.sourceID = "20"; outside.time = 7
+        #expect(before.rebased(from: after, onto: Self.snapshot(base: [outside], cues: [outside])) == nil)
+
+        let segment = GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1), shifted = GridSegment(start: 0.6, bpm: 120, firstBeatNumber: 1)
+        let gridBefore = Self.snapshot(base: [original], cues: [original], gridBase: [segment])
+        let gridAfter = Self.snapshot(base: [original], cues: [original], grid: GridDraft(trackUUID: "t", base: [segment], segments: [shifted]),
+                                      gridBase: [segment])
+        let outsideGrid = GridSegment(start: 0.7, bpm: 121, firstBeatNumber: 1)
+        #expect(gridBefore.rebased(from: gridAfter, onto: Self.snapshot(base: [original], cues: [original], gridBase: [outsideGrid])) == nil)
+        // 같은 박을 다르게 적은 구간(다시 읽으면 첫 박에서 시작한다)은 같은 그리드다
+        let reread = GridSegment(start: 0.6 + 60.0 / 120 * 4, bpm: 120, firstBeatNumber: 1)
+        #expect(gridBefore.rebased(from: gridAfter, onto: Self.snapshot(base: [original], cues: [original], gridBase: [reread])) != nil)
+
+        let gainBefore = Self.snapshot(base: [original], cues: [original], gain: nil, gainBase: -6)
+        let gainAfter = Self.snapshot(base: [original], cues: [original], gain: -2, gainBase: -6)
+        #expect(gainBefore.rebased(from: gainAfter, onto: Self.snapshot(base: [original], cues: [original], gainBase: -4)) == nil)
     }
 }

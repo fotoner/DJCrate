@@ -228,14 +228,14 @@ final class DeckModel {
     /// 곡 단위 편집 잠금(R21, `LibraryStore.lockedTracks`의 덱 쪽 복사본, `onLockedTracks`로 받는다): 쓰는 묶음에 든 곡.
     /// 재생은 멈추지 않는다(`editsFrozen`만 멈춘다). 덱의 곡이 여기 들면 그 곡의 편집만 막는다.
     /// 잠긴 동안 ⌘Z는 되돌리지 않고 단계를 미뤄 둔다(`undoDraft`). 풀리면 다시 올린다. 쓴 뒤 ⌘Z는 지금 rekordbox 값 위의 역편집이 된다(R12)
-    var lockedTracks: Set<String> = [] { didSet { restoreDeferredDraftUndo() } }
-    /// 쓰는 동안 눌러 미뤄 둔 ⌘Z 단계(꺼낸 차례)
-    @ObservationIgnored var deferredDraftUndo: [(change: DraftChange<DeckDraftSnapshot>, name: String)] = []
+    var lockedTracks: Set<String> = [] { didSet { pendingUndo.flush() } }
+    /// 쓰는 동안 누른 ⌘Z 요청 줄(라이브러리와 같은 줄을 받는다, `LibraryStore.connectWriteLocks`)
+    @ObservationIgnored var pendingUndo = PendingUndoRequests()
     /// 저장한 곡의 새 초안·기준값을 덱에 적용하는 중인 곡(`refreshAfterWrite`). 쓰기 잠금이 먼저 풀려도 적용이 끝날 때까지 그 곡의 편집을 막는다.
     var writeRefreshing: Set<String> = []
     /// 쓴 곡 가운데 새 스냅샷을 아직 받지 못한 곡(`LibraryStore.writtenAwaitingReload`의 덱 쪽 복사본). 쓰기 잠금이 풀린 뒤 다시 읽기에 실패해도
     /// 다음 성공한 읽기가 새 기준값을 적용할 때까지 그 곡의 편집을 막는다.
-    var writePending: Set<String> = [] { didSet { restoreDeferredDraftUndo() } }
+    var writePending: Set<String> = [] { didSet { pendingUndo.flush() } }
     @ObservationIgnored var writeRefreshTokens: [String: Int] = [:]
     /// 곡 내용(큐·그리드·기준값) 적용 세대. 더 새로운 갱신(저장 뒤 갱신 포함)이 시작되면 오르고, 그 전에 시작한 최초 불러오기의 내용 읽기는 적용하지 않는다.
     /// 음원 열기는 `loadGeneration`이 따로 맡아 이미 열린 음원은 그대로 둔다.

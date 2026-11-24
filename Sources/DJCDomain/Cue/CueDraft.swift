@@ -85,6 +85,8 @@ public struct EditableCue: Codable, Identifiable, Hashable, Sendable {
     public var loop: Loop?
     /// rekordbox에서 불러온 큐의 지정한 색(없으면 nil, 옛 초안에는 없다). 큐 비교(`CueDraft.changes`)에는 넣지 않는다
     public var color: ColorMark?
+    /// 저장 뒤 ⌘Z가 되살린 큐면 지우기 전 rekordbox 큐 ID(R12). 쓰기는 이 표시가 있는 새 큐에만 `color`를 쓴다(SAFE-12)
+    public var restoredFrom: String?
 
     /// - Parameter id: 새 큐의 ID(부르는 쪽이 준다. 핵심부는 ID를 스스로 만들지 않는다)
     public init(id: UUID, sourceID: String? = nil, kind: Kind, time: Double, name: String = "", loop: Loop? = nil, color: ColorMark? = nil) {

@@ -289,6 +289,22 @@ struct AutoReflectionEngineTests {
         #expect(w.writes.count == 1 && w.writes.first?.commitPolicy == .allOrNothing)
     }
 
+    /// 역편집 묶음이 둘 이상이어도 모두 합쳐 대량 유예를 판정한다(컨실 G7)
+    @Test func 역편집_묶음_여럿을_합쳐_대량_유예를_판정한다() async throws {
+        let w = AutoReflectionWorld()
+        w.timing.bulkTracks = 3
+        w.h.script.preview.tagOutcomes = ["a", "b", "c", "d"].map { ReflectionHarness.outcome($0, .written) }
+        let first = undoGroup(w, ["a", "b"])
+        var second = undoGroup(w, ["c", "d"])
+        second.id = "undo-2"
+        try await w.start()
+        w.engine.enqueue(.undo(first))
+        w.engine.enqueue(.undo(second))
+        try await w.advance(15)
+        #expect(w.writes.isEmpty)
+        if case .grace = w.engine.status {} else { Issue.record("대량 유예가 아니다: \(w.engine.status)") }
+    }
+
     @Test func K행을_넘는_역편집은_자동으로_쓰지_않고_남긴다() async throws {
         let w = AutoReflectionWorld()
         w.timing.rowLimit = 1
@@ -299,6 +315,40 @@ struct AutoReflectionEngineTests {
         try await w.advance(10)
         #expect(w.writes.isEmpty && w.previews.isEmpty)
         #expect(w.engine.conditions.leftovers.contains(.undoOverRowLimit))
+    }
+
+    /// 게인 초안을 만든 뒤 rekordbox가 한 번 켜졌다 꺼졌으면 base 없는 초안으로 다룬다(R23, 컨실 S7): 자동으로 쓰지 않고 ⌘S·저장 단추로 쓴다
+    @Test func 만든_뒤_rekordbox가_켜졌다_꺼진_게인_초안은_자동으로_쓰지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.gainOutcomes = [ReflectionHarness.outcome("n", .written)]
+        w.h.state.rows["n"] = ReflectionHarness.row("n")
+        w.h.state.gainDraftUUIDs = ["n"]
+        w.h.memory.save(gain: -1, base: -3, "n")
+        try await w.start()
+        w.fakes.setRunState(.running)
+        try await w.advance(2)
+        w.fakes.setRunState(.stopped)
+        try await w.advance(25)
+        #expect(w.writes.isEmpty)
+        #expect(w.engine.conditions.leftovers.contains(.noBase))
+    }
+
+    /// R23의 경계는 "만든 뒤 한 번 켜졌다 꺼진" 것이다: rekordbox가 켜진 동안 만든 게인은 만든 뒤 켜짐이 없어 꺼진 뒤 자동으로 쓴다
+    /// (그사이 rekordbox가 게인을 바꿨으면 쓰기 입구가 base와 지금 값을 견줘 막는다)
+    @Test func rekordbox가_켜진_동안_만든_게인_초안은_꺼진_뒤_자동으로_쓴다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.gainOutcomes = [ReflectionHarness.outcome("n", .written)]
+        w.h.state.rows["n"] = ReflectionHarness.row("n")
+        w.fakes.setRunState(.running)
+        try await w.start()
+        try await w.advance(2)
+        w.h.state.gainDraftUUIDs = ["n"]
+        w.h.memory.save(gain: -1, base: -3, "n")
+        try await w.edited()
+        w.fakes.setRunState(.stopped)
+        try await w.advance(25)
+        #expect(w.writes.count == 1 && w.writes.first?.gains == ["n": -1] && w.writes.first?.gainBases == ["n": -3])
+        #expect(!w.engine.conditions.leftovers.contains(.noBase))
     }
 
     @Test func 같은_곡에_큐와_앨범아트가_있으면_큐만_자동으로_쓰고_앨범아트는_남긴다() async throws {

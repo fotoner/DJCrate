@@ -327,31 +327,47 @@ struct DraftStampStoreTests {
         #expect(DraftStampStore.stamp(DraftKey(.gain, "old"), home: folder.url)?.origins == [.human, .unknown])
     }
 
-    /// 게인 초안의 base(R23, #405): 초안을 만들 때 본 rekordbox 오토게인을 옆 파일 `gain-draft-bases.json`에 둔다.
-    /// 게인 파일 모양은 그대로라 옛 앱도 읽는다. 값을 지우면(편집 버리기·쓴 뒤 정리) base도 지운다. 값만 바꾸면 base는 그대로다
-    @Test func 게인_초안의_base는_옆_파일에_두고_값을_지우면_함께_지운다() throws {
+    /// 게인 초안의 base(R23, #405): 초안을 만들 때 본 rekordbox 오토게인과 rekordbox 실행 경계를 옆 파일 `gain-draft-bases.json`에 둔다.
+    /// 게인 파일 모양은 그대로라 옛 앱도 읽는다. base는 그 값의 판에 묶인다(값보다 뒤에, 초안 잠금 안에서 적는다). 값을 지우면 base도 지운다
+    @Test func 게인_초안의_base는_값의_판에_묶이고_값을_지우면_함께_지운다() throws {
         let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
-        try GainDraftStore.saveBase(-3.5, trackUUID: "a", url: places.gain)
+        func revision(_ uuid: String) -> DraftRevision? { DraftStampStore.stamp(DraftKey(.gain, uuid), home: folder.url)?.revision }
         try StampedDrafts.saveGain(-1, trackUUID: "a", url: places.gain, origin: .human)
-        try GainDraftStore.saveBase(-4, trackUUID: "b", url: places.gain)
-        try StampedDrafts.saveGain(-2, trackUUID: "b", url: places.gain, origin: .human)
-        #expect(try GainDraftStore.read(url: places.gain) == ["a": -1, "b": -2])
-        #expect(GainDraftStore.bases(url: places.gain) == ["a": -3.5, "b": -4])
-        #expect(DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.isHumanOnly == true)
+        try GainDraftStore.saveBase(GainDraftBase(db: -3.5, run: "E1"), trackUUID: "a", url: places.gain)
+        #expect(try GainDraftStore.read(url: places.gain) == ["a": -1])
+        #expect(GainDraftStore.bases(url: places.gain)["a"] == GainDraftBase(db: -3.5, run: "E1", revision: revision("a")))
         // 지우면 base도 지운다
         try StampedDrafts.saveGain(nil, trackUUID: "a", url: places.gain, origin: .human)
-        #expect(GainDraftStore.bases(url: places.gain) == ["b": -4])
-        // 값만 바꾸면(CLI 등) base는 그대로다: 초안을 만들 때 본 rekordbox 값이다
-        try StampedDrafts.saveGain(-6, trackUUID: "b", url: places.gain, origin: .cli)
-        #expect(GainDraftStore.bases(url: places.gain) == ["b": -4])
-        #expect(try GainDraftStore.read(url: places.gain) == ["b": -6])
+        #expect(GainDraftStore.bases(url: places.gain).isEmpty)
         // 판 지정 삭제(쓴 뒤 정리)도 base를 함께 지운다
-        try GainDraftStore.saveBase(-2, trackUUID: "c", url: places.gain)
         try StampedDrafts.saveGain(-7, trackUUID: "c", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -2, run: "E1"), trackUUID: "c", url: places.gain)
         let c = try #require(DraftStampStore.stamp(DraftKey(.gain, "c"), home: folder.url))
         _ = try StampedDrafts.removeWritten([WrittenDraft(key: DraftKey(.gain, "c"), revision: c.revision, contentHash: c.contentHash)],
                                            home: folder.url)
         #expect(GainDraftStore.bases(url: places.gain)["c"] == nil)
+    }
+
+    /// 값만 다시 저장하면(CLI 등) 판이 바뀌어 그 base는 이 값의 base가 아니다(컨실 S8: 예전 값에 새 base가 붙지 않는다)
+    @Test func 값만_다시_저장하면_base는_새_값의_판에_묶이지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveGain(-1, trackUUID: "a", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -3, run: "E1"), trackUUID: "a", url: places.gain)
+        try StampedDrafts.saveGain(-2, trackUUID: "a", url: places.gain, origin: .cli)
+        let now = try #require(DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.revision)
+        #expect(GainDraftStore.bases(url: places.gain)["a"]?.revision != now)
+    }
+
+    /// 그 곡 게인 초안과 base가 이미 있으면 base 값·실행 경계는 다시 적지 않고 새 값의 판에만 다시 묶는다(컨실 O6: 다시 고칠 때마다
+    /// 지금 rekordbox 값으로 base를 바꾸면 그사이 rekordbox에서 바뀐 것을 쓰기가 못 막는다)
+    @Test func 이미_base가_있으면_값과_경계는_그대로_두고_새_판에만_묶는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveGain(-1, trackUUID: "a", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -3, run: "E1"), trackUUID: "a", url: places.gain)
+        try StampedDrafts.saveGain(-2, trackUUID: "a", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -5, run: "E2"), trackUUID: "a", url: places.gain)
+        let now = DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.revision
+        #expect(GainDraftStore.bases(url: places.gain)["a"] == GainDraftBase(db: -3, run: "E1", revision: now))
     }
 
     @Test func 옛_형식_게인_초안에는_base가_없다() throws {

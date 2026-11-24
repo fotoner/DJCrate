@@ -192,8 +192,8 @@ struct DraftUndoTests {
         #expect(h.deck.hotCue(slot: 0)?.loop == nil && h.audio.loop == nil)
     }
 
-    /// R12(#405): 그 곡을 쓰는 동안 누른 ⌘Z는 되돌리지 않고 미뤄 두었다가, 잠금이 풀리면 꺼낸 차례를 지켜 다시 올린다
-    @Test func 쓰는_동안_누른_실행_취소는_차례를_지켜_잠금이_풀린_뒤로_미룬다() async throws {
+    /// R12(#405, 컨실 S6): 그 곡을 쓰는 동안 누른 ⌘Z는 되돌리지 않고 누른 요청으로 두었다가, 잠금이 풀리면 누른 차례대로 실행한다
+    @Test func 쓰는_동안_누른_실행_취소는_잠금이_풀리면_누른_차례대로_실행한다() async throws {
         let h = try DeckHarness()
         try await h.loaded()
         let undo = manager(h.deck)
@@ -205,11 +205,8 @@ struct DraftUndoTests {
         undo.undo()
         #expect(h.deck.draft?.cues.count == 2, "쓰는 동안에는 되돌리지 않는다")
         h.deck.lockedTracks = []
-        #expect(undo.canUndo)
-        undo.undo()
-        #expect(h.deck.draft?.cues.map(\.time) == [10], "더 새 편집부터 되돌린다")
-        undo.undo()
-        #expect(h.deck.draft?.cues.isEmpty == true)
+        #expect(h.deck.draft?.cues.isEmpty == true, "풀리면 누른 두 요청을 차례로 실행한다")
+        #expect(!undo.canUndo, "실행 취소 기록에 다시 올리지 않는다")
     }
 
     /// R12(#405): 분석 붙이기(분석 파일 없는 곡에 그리드를 처음 둔 편집)는 저장 뒤 되돌리지 않는다. 쓴 뒤 다시 읽어 그 곡에 rekordbox 그리드가

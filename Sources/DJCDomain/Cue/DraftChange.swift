@@ -33,52 +33,62 @@ public struct DeckDraftSnapshot: Equatable, Sendable {
     }
 
     /// 저장 뒤 ⌘Z(R12): 이 스냅샷(편집 전)을 지금(`current`) 위로 옮긴 것. 편집 뒤(`after`)를 아직 쓰지 않았으면(그 종류의 base가 그대로) 그대로 되살린다.
-    /// 썼으면 지금 rekordbox 값을 base로, 그 편집이 바꾼 것만 편집 전 값으로 되돌린 역편집 초안이다(편집과 상관없는 지금 값은 그대로 둔다).
+    /// 썼으면 지금 초안 위에서 그 편집이 바꾼 것만 편집 전 값으로 되돌린 역편집 초안이다(base는 지금 rekordbox 값이다).
     /// - 큐는 ID(정체성)로 찾는다: 편집이 고친 큐는 지금 rekordbox ID로 고치고, 편집이 지운 큐는 rekordbox ID 없이 새 큐로 되살리며
-    ///   (위치·종류·이름·색은 그대로), 편집이 더한 큐는 지운다. 편집이 건드리지 않은 큐와 그 뒤 rekordbox에서 더한 큐는 지금 그대로다.
-    ///   쓴 큐(편집 뒤 큐)를 지금 base에서 찾지 못하면 nil이다(정할 수 없다: ⌘Z를 끈다).
-    /// - 그리드·게인은 그 편집이 바꿨을 때만 편집 전 구간·값을 지금 rekordbox 값 위의 초안으로 둔다
+    ///   (위치·종류·이름·색은 그대로, `restoredFrom`에 지우기 전 ID), 편집이 더한 큐는 지운다. 편집이 건드리지 않은 큐·앞 역편집이 바꾼 큐·
+    ///   그 뒤 rekordbox에서 더한 큐는 지금 초안 그대로다(연속 ⌘Z가 앞 역편집을 덮지 않는다).
+    /// - 그리드·게인은 그 편집이 바꿨을 때만 편집 전 구간·값을 지금 rekordbox 값 위의 초안으로 둔다.
+    /// - 되돌릴 큐·그리드·게인의 지금 값이 그 편집 직후 값이 아니면(바깥에서 또 바뀜) nil이다. 쓴 큐를 지금 찾지 못해도 nil이다(정할 수 없다: ⌘Z를 끈다)
     public func rebased(from after: DeckDraftSnapshot, onto current: DeckDraftSnapshot) -> DeckDraftSnapshot? {
         var applied = self
         applied.gridBlockedReason = current.gridBlockedReason
         if current.cue.base != after.cue.base {
-            let base = current.cue.base
-            let known = Set(base.map(\.id))
+            let now = current.cue.cues
+            let present = Dictionary(now.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            let known = Set(current.cue.base.map(\.id)).union(present.keys)
             guard after.cue.cues.allSatisfy({ known.contains($0.id) }) else { return nil }
             let before = Dictionary(cue.cues.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             let edited = Dictionary(after.cue.cues.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            // 편집이 고치거나 더한 큐는 지금 그 편집 직후 값이어야 한다
+            for new in after.cue.cues where before[new.id].map({ !Self.sameCue($0, new) }) ?? true {
+                guard let value = present[new.id], Self.sameCue(value, new) else { return nil }
+            }
             var cues: [EditableCue] = []
-            for now in base {
-                switch (before[now.id], edited[now.id]) {
+            for value in now {
+                switch (before[value.id], edited[value.id]) {
                 case let (old?, new?) where !Self.sameCue(old, new):
                     // 편집이 고친 큐: 편집 전 값으로(지금 rekordbox ID로 찾는다)
                     var target = old
-                    target.sourceID = now.sourceID
-                    if target.color == nil { target.color = now.color }
+                    target.sourceID = value.sourceID
+                    target.restoredFrom = value.restoredFrom
+                    if target.color == nil { target.color = value.color }
                     cues.append(target)
                 case (nil, _?):
                     // 편집이 더한 큐: 지운다
                     continue
                 default:
-                    // 편집이 건드리지 않은 큐·그 뒤 rekordbox에서 더한 큐: 지금 그대로
-                    cues.append(now)
+                    cues.append(value)
                 }
             }
-            // 편집이 지운 큐: 새 큐로 되살린다(ID만 새로 받는다)
-            for old in cue.cues where edited[old.id] == nil && !known.contains(old.id) {
+            // 편집이 지운 큐: 새 큐로 되살린다(ID만 새로 받는다). 지금 있으면 편집 직후 모양이 아니다
+            for old in cue.cues where edited[old.id] == nil {
+                guard present[old.id] == nil else { return nil }
                 var restored = old
+                restored.restoredFrom = old.sourceID ?? old.restoredFrom
                 restored.sourceID = nil
                 cues.append(restored)
             }
-            applied.cue = CueDraft(trackUUID: cue.trackUUID, base: base, cues: cues.sorted { $0.time < $1.time })
+            applied.cue = CueDraft(trackUUID: cue.trackUUID, base: current.cue.base, cues: cues.sorted { $0.time < $1.time })
         }
         if current.gridBase != after.gridBase {
             let target = grid?.segments ?? gridBase, edited = after.grid?.segments ?? after.gridBase
-            if let target, let edited, current.gridBase != nil,
-               !GridDraft(trackUUID: cue.trackUUID, base: target, segments: edited).hasChanges {
+            let now = current.grid?.segments ?? current.gridBase
+            if let target, let edited, current.gridBase != nil, GridDraft.sameBeats(target, edited) {
                 // 이 편집은 그리드를 바꾸지 않았다: 지금 그리드 그대로
                 applied.grid = current.grid
             } else if let target, let base = current.gridBase {
+                // 지금 그리드가 그 편집 직후 그리드여야 한다(같은 박)
+                guard let edited, let now, GridDraft.sameBeats(now, edited) else { return nil }
                 // 덱은 그리드가 있으면 고친 것이 없어도 그리드 초안을 들고 편집한다(저장은 고친 것이 없으면 지운다)
                 applied.grid = GridDraft(trackUUID: cue.trackUUID, base: base, segments: target)
             } else if target != nil || current.gridBase != nil {
@@ -91,6 +101,8 @@ public struct DeckDraftSnapshot: Equatable, Sendable {
             guard let base = current.gainBase else { return nil }
             let target = gain ?? gainBase, edited = after.gain ?? after.gainBase
             if let target, let edited, abs(target - edited) >= 0.05 {
+                // 지금 게인이 그 편집 직후 값이어야 한다
+                guard abs((current.gain ?? base) - edited) < 0.001 else { return nil }
                 applied.gain = GainPolicy.draft(for: target, rekordbox: base)
             } else {
                 // 이 편집은 게인을 바꾸지 않았다: 지금 그대로

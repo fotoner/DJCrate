@@ -192,7 +192,8 @@ extension LibraryStore {
         verifyReflection()
         refreshBase()
         markLoadSucceeded()
-        // 저장 뒤 다시 읽었다: 되돌릴 수 없게 된 태그·재생 목록 ⌘Z 단계를 기록에서 뺀다(메뉴가 꺼진다, R12)
+        // 저장 뒤 다시 읽었다: 새 rekordbox 값을 기다리던 ⌘Z 요청을 실행하고(컨실 S5), 되돌릴 수 없게 된 단계를 기록에서 뺀다(메뉴가 꺼진다, R12)
+        pendingUndo.flush()
         if keepsUndo { pruneLibraryUndo() }
         refreshUnlinkedDrafts()
         warmPreviewWaveforms(loaded.rows)

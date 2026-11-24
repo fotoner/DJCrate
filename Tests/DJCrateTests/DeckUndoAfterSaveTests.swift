@@ -193,4 +193,23 @@ struct DeckUndoAfterSaveTests {
         let row = try #require(rig.fixture.rows("SELECT GainHigh, GainLow FROM djmdMixerParam WHERE ContentID = ?", [.text(track.id)]).first)
         #expect(row["GainHigh"] == String(original.high) && row["GainLow"] == String(original.low))
     }
+    /// 잠긴 동안 누른 덱·태그 ⌘Z는 한 줄에 누른 차례대로 두었다가 풀린 뒤 그 차례로 실행한다(컨실 S6·O3). 실행 취소 기록에 다시 올리지 않는다
+    @Test func 잠긴_동안_누른_덱과_태그_실행_취소는_풀린_뒤_누른_차례대로_실행한다() async throws {
+        var track = TrackSpec()
+        track.cues = [CueSpec(kind: 0, inMsec: 10000)]
+        let rig = try await Rig(track)
+        let uuid = track.uuid
+        rig.deck.addMemoryCue(at: 30)
+        let row = try #require(rig.store.rowsByUUID[uuid])
+        rig.store.tags.applyTagEdits([(row, .title, "새 제목")])
+        rig.store.setLockedTracks([uuid])
+        #expect(rig.deck.isEditLocked)
+        rig.undo.undo()
+        rig.undo.undo()
+        #expect(rig.deck.draft?.hasChanges == true && rig.store.tagDrafts[uuid]?.hasChanges == true, "잠긴 동안은 되돌리지 않는다")
+        rig.store.setLockedTracks([])
+        #expect(await waitForState(until: { rig.deck.draft?.hasChanges == false }))
+        #expect(rig.store.tagDrafts[uuid]?.hasChanges != true)
+        #expect(!rig.undo.canUndo, "누른 요청은 실행했고 기록에 다시 올리지 않았다")
+    }
 }

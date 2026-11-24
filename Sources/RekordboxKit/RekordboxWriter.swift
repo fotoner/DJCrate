@@ -333,6 +333,24 @@ public enum RekordboxWriter {
             }
         }
 
+        // 여러 곡 역편집(R12): 백업 전에 이미 막힌 것이 있으면 백업을 뜨지 않고 거절한다(RBW-22 취지, 컨실 O4). 모두 막힘으로 알린다
+        if allOrNothing, (tagOutcomes + artworkOutcomes + mergeOutcomes + gridOutcomes + analysisOutcomes).contains(where: { $0.status == .blocked })
+            || historyResults.values.contains(where: { $0.status == .blocked }) {
+            func pending(_ uuid: String) -> Outcome { Outcome(trackUUID: uuid, title: uuid, status: .written, reason: nil, removed: 0, added: 0) }
+            var report = Report(outcomes: drafts.filter(\.hasChanges).map { pending($0.trackUUID) }, backup: nil, dryRun: dryRun, createdAt: stamp.json)
+            report.gridOutcomes = gridOutcomes.isEmpty ? nil : gridOutcomes
+            report.analysisOutcomes = analysisOutcomes.isEmpty ? nil : analysisOutcomes
+            report.gainOutcomes = gains.isEmpty ? nil : gains.keys.sorted().map(pending)
+            let checkedTags = Set(tagOutcomes.map(\.trackUUID))
+            let tagReport = tagOutcomes + tags.filter { !checkedTags.contains($0.trackUUID) }.map { pending($0.trackUUID) }
+            report.tagOutcomes = tagReport.isEmpty ? nil : tagReport
+            report.artworkOutcomes = artworkOutcomes.isEmpty ? nil : artworkOutcomes
+            report.mergeOutcomes = mergeOutcomes.isEmpty ? nil : mergeOutcomes
+            report.playlistOutcomes = playlistSteps.isEmpty ? nil
+                : playlistSteps.map { PlaylistOutcome(edit: $0.edit, playlistID: nil, name: $0.edit.playlist.description, status: .written) }
+            report.historyOutcomes = historyReport()
+            return refusingAll(report)
+        }
         let backup = dryRun ? nil : try makeBackup(of: run?.resolved ?? database, in: backups, now: now, label: "write")
         // 분석 파일도 원본을 백업에 둔다(되돌리기용).
         /// 원래 파일 경로 → 쓰기 전 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)

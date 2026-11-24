@@ -250,10 +250,11 @@ extension RekordboxWriter {
                EditableCue.ColorMark.isPicked(color: old.color, tableIndex: old.colorTableIndex) {
                 color = old.color ?? -1
                 colorTableIndex = old.colorTableIndex
-            } else if replacing == nil, cue.sourceID == nil, let mark = cue.color, mark.memory == (kind == 0),
+            } else if replacing == nil, cue.sourceID == nil, cue.restoredFrom != nil, let mark = cue.color, mark.memory == (kind == 0),
                       EditableCue.ColorMark.isPicked(color: mark.color, tableIndex: mark.tableIndex) {
-                // 지운 큐를 되살린 새 큐(저장 뒤 ⌘Z, #405)는 rekordbox가 적어 두었던 색을 그대로 쓴다(옮긴 큐와 같은 칸, 같은 갈래만).
-                // rekordbox ID가 있는 새 큐(합치기로 다른 곡에서 옮겨 온 큐)는 지금처럼 기본 색이다
+                // 저장 뒤 ⌘Z가 지운 큐를 되살린 새 큐(`restoredFrom`, #405)만 rekordbox가 적어 두었던 색 두 칸을 그대로 쓴다.
+                // 확인한 모양은 옮긴 큐가 고른 색을 이어받는 것(같은 칸, 같은 갈래)뿐이다: 그 밖의 새 큐와 고르지 않은 색(자동 큐 255·0 등)은
+                // 기본 색이다(컨실 S9·S10, SAFE-12)
                 color = mark.color ?? -1
                 colorTableIndex = mark.tableIndex
             }

@@ -37,7 +37,7 @@ final class LibraryStore {
         manager?.removeAllActions(withTarget: self)
         manager?.removeAllActions(withTarget: mergeUndoTarget)
         manager?.removeAllActions(withTarget: historyUndoTarget)
-        deferredTagUndo = []
+        pendingUndo.removeAll()
     }
     /// rekordbox 라이브러리 위치(읽기 출처·쓰기 대상·스냅샷·백업·초안 폴더). 조립 지점이 실행 인자·환경을 한 번 풀어 준다.
     @ObservationIgnored let location: LibraryLocation
@@ -436,7 +436,7 @@ final class LibraryStore {
         didSet {
             guard lockedTracks != oldValue else { return }
             onLockedTracks?(lockedTracks)
-            restoreDeferredTagUndo()
+            pendingUndo.flush()
             pruneLibraryUndo()
         }
     }
@@ -459,15 +459,10 @@ final class LibraryStore {
     func noteTagsWritten<S: Sequence>(_ uuids: S) where S.Element == String {
         for uuid in uuids { tagWriteGeneration[uuid, default: 0] += 1 }
     }
-    /// 그 곡을 쓰는 동안 눌러 미뤄 둔 태그 ⌘Z 단계(꺼낸 차례)와 만든 때의 세대. 잠금이 풀리면 다시 올린다
-    @ObservationIgnored var deferredTagUndo: [(change: DraftChange<[String: TagDraft]>, generations: [TagUndoGeneration])] = []
-    /// 미뤄 둔 태그 ⌘Z 단계를 모든 곡의 잠금이 풀리면 다시 올린다(먼저 꺼낸 더 새 단계가 맨 위에 오게 옛 단계부터)
-    func restoreDeferredTagUndo() {
-        guard !deferredTagUndo.isEmpty, !deferredTagUndo.contains(where: { $0.generations.contains { isEditLocked($0.uuid) } }) else { return }
-        let deferred = deferredTagUndo
-        deferredTagUndo = []
-        for item in deferred.reversed() { tags.registerUndo(item.change, generations: item.generations) }
-    }
+    /// 쓰는 동안 누른 ⌘Z 요청 줄(덱·태그·재생 목록 공통, 컨실 S6·O3). 잠금이 풀리거나 쓴 뒤 다시 읽으면 앞에서부터 실행한다
+    let pendingUndo = PendingUndoRequests()
+    /// 이 곡의 태그 ⌘Z를 지금 실행하지 않고 미룰지: 쓰는 중이거나 쓴 뒤 새 rekordbox 값을 아직 다시 읽지 못했다(컨실 S5·G4)
+    func defersTagUndo(_ uuid: String) -> Bool { isEditLocked(uuid) || tagsWrittenAwaitingReload.contains(uuid) }
     /// 태그를 rekordbox에 썼지만 아직 새 사본으로 다시 읽지 못한 곡(다음 성공한 초안 쓰기 뒤 읽기가 쓴 횟수를 올린다)
     @ObservationIgnored var tagsWrittenAwaitingReload: Set<String> = []
     /// 저장 뒤 ⌘Z가 여러 곡의 역편집을 만들었다(R12): 자동 저장이 한 번에 전부 쓰거나 전부 쓰지 않게 대기열에 넣는다(조립 지점이 엔진에 잇는다)
@@ -477,6 +472,8 @@ final class LibraryStore {
     /// 쓰기 잠금을 덱에 잇는다: 통째 잠금은 재생도 멈추고(`editsFrozen`), 곡 단위 잠금은 그 곡의 편집만 막는다(`lockedTracks`).
     /// 앱 조립 지점과 시험이 같은 연결을 쓴다.
     func connectWriteLocks(to deck: DeckModel) {
+        // 쓰는 동안 누른 ⌘Z 요청은 덱과 라이브러리가 한 줄로 누른 차례를 지킨다(컨실 O3)
+        deck.pendingUndo = pendingUndo
         onWriteLock = { [weak deck] in deck?.editsFrozen = $0 }
         onLockedTracks = { [weak deck] in deck?.lockedTracks = $0 }
         onWrittenAwaitingReload = { [weak deck] in deck?.writePending = $0 }

@@ -35,3 +35,32 @@ final class UndoSteps {
         steps = [:]
     }
 }
+
+/// 쓰는 동안 누른 ⌘Z 요청(R12, 컨실 S6·O3). 덱·태그·재생 목록이 한 줄에 누른 차례대로 두었다가, 잠금이 풀리면 앞에서부터 실행한다.
+/// 실행 취소 기록에 다시 올리지 않는다(그사이 한 새 편집의 실행 취소 차례를 바꾸지 않게). 실행한 되돌리기는 다시 실행(⇧⌘Z)에 남기지 않는다.
+/// 앞 요청이 아직 잠겨 있으면 뒤 요청도 기다린다(누른 차례를 지킨다). 앱 조립 지점과 시험이 덱과 라이브러리에 같은 줄을 준다(`connectWriteLocks`)
+@MainActor
+final class PendingUndoRequests {
+    private var requests: [(ready: @MainActor () -> Bool, run: @MainActor () -> Void)] = []
+    private var flushing = false
+
+    var isEmpty: Bool { requests.isEmpty }
+
+    /// 누른 요청을 줄 끝에 둔다
+    func append(ready: @escaping @MainActor () -> Bool, run: @escaping @MainActor () -> Void) {
+        requests.append((ready, run))
+    }
+
+    /// 앞에서부터 풀린 요청을 실행한다(잠긴 요청에서 멈춘다)
+    func flush() {
+        guard !flushing else { return }
+        flushing = true
+        defer { flushing = false }
+        while let first = requests.first, first.ready() {
+            requests.removeFirst()
+            first.run()
+        }
+    }
+
+    func removeAll() { requests = [] }
+}
