@@ -285,6 +285,20 @@ struct UndoGroupWriteTests {
         guard case .written = outcome else { Issue.record("쓴 결과를 돌려주지 않았다"); return }
     }
 
+    /// 묶음을 빼기 전에 고른 구성원의 초안 저장 실패를 본다: 고른 곡의 다른 초안(큐)을 보관하지 못했으면 묶음 밖 곡도 쓰지 않고 저장 실패로 막는다
+    @Test func 고른_구성원의_다른_초안_저장_실패는_묶음을_빼기_전에_막는다() async {
+        let h = ReflectionHarness()
+        h.script.reportsBatchOnly = true
+        h.script.preview.tagOutcomes = ["a", "b"].map { H.outcome($0, .written) }
+        h.script.preview.outcomes = [H.outcome("c", .written)]
+        h.session.ports.undoGroups.enqueue(group(h, ["a", "b"]))
+        h.saveFailures = [DraftSaveFailure(kind: .cue, trackUUID: "a", revision: 1, reason: "저장 실패")]
+        cue(h, "c")
+        let outcome = await h.session.write(rows: [H.row("a"), H.row("c")])
+        #expect(h.gateCalls.value.writes.isEmpty, "고른 곡의 저장 실패를 놓친 채 묶음 밖 곡만 쓰지 않는다")
+        guard case .failed = outcome else { Issue.record("저장 실패로 막지 않았다"); return }
+    }
+
     /// 묶음 구성원의 태그 초안을 보관하지 못했으면(다시 해도 실패) 구성원 없음 제외가 아니라 저장 실패로 막는다(G20)
     @Test func 묶음_구성원의_태그_저장_실패는_구성원_없음이_아니라_저장_실패로_막는다() async {
         let h = ReflectionHarness()

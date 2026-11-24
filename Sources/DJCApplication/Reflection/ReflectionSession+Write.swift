@@ -172,14 +172,16 @@ extension ReflectionSession {
         func excluded(_ reason: String) -> UndoGroupWrite { .excluded(groupRows.map { "\($0.title): \(reason)" }) }
         let missingDraft = String(ui: "함께 되돌릴 다른 편집이 막혀 이 편집도 저장하지 않았으니 막힌 편집을 확인한 뒤 다시 저장하세요")
         let stamped = group.keys.allSatisfy { ports.drafts.stamp($0) != nil }
-        // 구성원을 모두 고르지 않은 묶음은 쓰지 않으니 저장 실패 검사보다 먼저 뺀다: 고르지 않은 구성원의 저장 실패가 묶음 밖 곡의 저장을 막지 않게(컨실 5라운드 S28).
-        // 구성원 초안이 사라졌으면(버렸다) 그 곡은 저장 대기에도 없다: 고르지 않은 것과 가른다
-        guard members.isSubset(of: Set(groupRows.map(\.track.uuid))) else {
+        // 보통 쓰기(`previewWrite`)와 같은 사전 확인을 고른 구성원에 한해 묶음을 빼기 전에 한다: 고른 곡의 저장 실패는 놓치지 않고(묶음을 빼면 그 곡은
+        // 나머지 쓰기에서도 빠진다), 고르지 않은 구성원의 저장 실패는 묶음 밖 곡의 저장을 막지 않는다(컨실 5라운드 S28).
+        // 보관하지 못한 초안은 도장이 없어도 "구성원 없음"이 아니라 저장 실패로 막는다(4라운드 G20)
+        let picked = Set(groupRows.map(\.track.uuid))
+        try requireDraftSaves(for: picked)
+        guard ports.library.state().failedTagSaves.isDisjoint(with: picked) else { throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage) }
+        // 구성원을 모두 고르지 않은 묶음은 쓰지 않는다. 구성원 초안이 사라졌으면(버렸다) 그 곡은 저장 대기에도 없다: 고르지 않은 것과 가른다
+        guard members.isSubset(of: picked) else {
             return excluded(stamped ? String(ui: "함께 되돌린 다른 곡과 한 번에 저장하니 그 곡들도 골라 다시 저장하세요") : missingDraft)
         }
-        // 쓰는 대상이 된 묶음: 보통 쓰기(`previewWrite`)와 같은 사전 확인. 보관하지 못한 초안은 도장이 없어도 "구성원 없음"이 아니라 저장 실패로 막는다(4라운드 G20)
-        try requireDraftSaves(for: members)
-        guard ports.library.state().failedTagSaves.isDisjoint(with: members) else { throw DJCError.writeRefused(DraftSaveFailure.tagSaveMessage) }
         guard stamped else { return excluded(missingDraft) }
         var batch = try draftBatch(for: groupRows, playlists: false).restricted(to: group.keys)
         guard batch.draftKeys == group.keys else { return excluded(missingDraft) }
