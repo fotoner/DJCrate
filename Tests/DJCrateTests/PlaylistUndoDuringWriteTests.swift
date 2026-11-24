@@ -406,6 +406,7 @@ struct PlaylistUndoDuringWriteTests {
         let origins = store.testDrafts.playlistStamps().map(\.origins)
         #expect(origins == [[.cli, .human]], "\(origins)")
         #expect(playlists.unsavedStepOrigins.isEmpty, "저장에 성공하면 기억한 출처를 비운다")
+        #expect(!playlists.playlistDraftUnsaved && playlists.saveFailureToast == nil, "저장 실패 표시와 알림을 거둔다(리뷰 F17)")
     }
 
     /// A·B·C 목록(복구 시험에서 막힌 목록 두 개를 만든다)
@@ -578,6 +579,7 @@ struct PlaylistUndoDuringWriteTests {
         #expect(cleanup.draftError == nil && !playlists.playlistDraftUnsaved, "쓴 뒤 정리가 메모리 초안을 저장했다")
         #expect(playlists.playlistDraft.edits == [.rename(playlist: .id("A"), name: "쓰는 중 이름")])
         #expect(playlists.unsavedStepOrigins.isEmpty)
+        #expect(playlists.playlistDraft.stepIDs.allSatisfy { $0 != nil }, "저장한 단계의 식별자를 받는다(리뷰 F17)")
     }
 
     /// 되살린 CLI 단계의 저장이 실패한 뒤 그 단계를 다시 버려 저장하고 ⌘Z하면, 되살린 단계는 그 ⌘Z 기록이 든 출처로 제안이다(리뷰 F10: S4).

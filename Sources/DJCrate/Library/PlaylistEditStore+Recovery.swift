@@ -42,7 +42,8 @@ extension PlaylistEditStore {
         playlistDraft = resolved
         // 저장이 준 단계 식별자를 받는다: 받지 않으면 다음 저장(다음 복구 줄 등)이 식별자 없는 단계를 새 사람 단계로 다시 쓴다(#295 리뷰 F11)
         adoptSavedIdentifiers()
-        playlistDraftUnsaved = false
+        // 저장했으니 저장 실패 표시와 알림을 거둔다(#295 리뷰 F17)
+        applyPlaylistSave(nil)
         rekordboxPlaylists = current.layout
         let projected = resolved.project(onto: current.layout, contentIDs: current.contentIDs).layout
         let visibleIDs = Set(projected.subtree(of: review.playlistID).flatMap { projected.item($0)?.trackIDs ?? [] })
