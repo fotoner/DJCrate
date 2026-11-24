@@ -65,34 +65,33 @@ struct AppQuitPolicyTests {
 
     // MARK: - ⌘Q 때 대기 중인 대상 편집(R17)
 
-    /// 자동 저장이 곧 쓸 대상 편집이 있으면(마지막 편집 뒤 대기·조용함 대기·시점 스냅샷) 그 저장을 기다린 뒤 끈다.
-    /// 쓰기가 끝난 단계(쉼·다시 읽기)에서만 자동 저장을 기다린다. 끊으면 안 되는 쓰기는 지금처럼 기다린다
+    /// 자동 저장하는 실행의 ⌘Q는 끝나지 않은 쓰기를 기다린 뒤 엔진의 ⌘Q 저장(`prepareToQuit`)을 기다린다.
+    /// 엔진이 최신 초안으로 다시 판정하므로 앱은 칩 상태를 해석하지 않는다(쉬는 단계면 늘 엔진에 묻는다)
     @Test(arguments: [RekordboxWritePhase.idle, .readingBack])
-    func 자동_저장이_곧_쓸_편집이_있으면_저장을_기다린_뒤_끈다(_ phase: RekordboxWritePhase) {
-        #expect(AppQuitPolicy.decision(for: Self.activity(phase), autoSave: .waiting) == .waitForAutoSave)
-        #expect(AppQuitPolicy.decision(for: Self.activity(phase), autoSave: .writing) == .waitForAutoSave)
-        #expect(AppQuitDecision.waitForAutoSave.isWaiting)
+    func 쓰기가_끝난_단계면_엔진의_종료_저장을_기다린다(_ phase: RekordboxWritePhase) {
+        #expect(AppQuitPolicy.decision(for: Self.activity(phase), autoSave: .saveFirst) == .waitForAutoSave)
+        #expect(AppQuitPolicy.decision(for: Self.activity(phase), autoSave: .autoWriting) == .waitForAutoSave)
+        #expect(AppQuitDecision.waitForAutoSave.isWaiting && AppQuitDecision.cancelPreparationThenAutoSave.isWaiting)
         #expect(AppQuitDecision.waitForAutoSave.message == nil)
     }
 
-    /// 곧 쓸 것이 없으면(저장됨·대량 유예·확인 필요·멈춤·보류) 편집은 초안으로 남기고 바로 끈다. 자동 저장하지 않는 실행도 지금과 같다
-    @Test(arguments: [QuitAutoSave.off, .idle])
-    func 곧_쓸_편집이_없으면_지금처럼_판정한다(_ autoSave: QuitAutoSave) {
+    /// 자동 저장하지 않는 실행·시스템 종료·이미 저장을 마친 다시 요청은 지금 판정 그대로다
+    @Test func 저장을_먼저_하지_않으면_지금처럼_판정한다() {
         for phase in RekordboxWritePhase.allCases {
-            #expect(AppQuitPolicy.decision(for: Self.activity(phase), autoSave: autoSave) == AppQuitPolicy.decision(for: Self.activity(phase)))
+            #expect(AppQuitPolicy.decision(for: Self.activity(phase), autoSave: .off) == AppQuitPolicy.decision(for: Self.activity(phase)))
         }
     }
 
-    /// ⌘Q가 기다리는 자동 저장은 미리 보기 단계도 기다린다(취소하지 않는다). 수동 저장의 미리 보기는 지금처럼 취소하고 끈다
-    @Test func 자동_저장의_미리_보기는_취소하지_않고_기다린다() {
-        #expect(AppQuitPolicy.decision(for: Self.activity(.cancellable), autoSave: .writing) == .waitForRekordboxWrite)
-        #expect(AppQuitPolicy.decision(for: Self.activity(.cancellable), autoSave: .waiting) == .cancelPreparationThenTerminate)
-        #expect(AppQuitPolicy.decision(for: Self.activity(.cancellable), autoSave: .idle) == .cancelPreparationThenTerminate)
+    /// 엔진의 자동 저장이 미리 보기 중이면 취소하지 않고 끝까지 기다린다. 수동 저장의 미리 보기는 취소하고 대기 중인 자동 저장을 한다
+    @Test func 미리_보기는_누구의_쓰기인지에_따라_기다리거나_취소한다() {
+        #expect(AppQuitPolicy.decision(for: Self.activity(.cancellable), autoSave: .autoWriting) == .waitForRekordboxWrite)
+        #expect(AppQuitPolicy.decision(for: Self.activity(.cancellable), autoSave: .saveFirst) == .cancelPreparationThenAutoSave)
+        #expect(AppQuitPolicy.decision(for: Self.activity(.cancellable), autoSave: .off) == .cancelPreparationThenTerminate)
     }
 
-    /// 자동 저장을 기다려도 USB 쓰기·경고창·확인 창은 지금 판정을 따른다
-    @Test func 자동_저장을_기다려도_USB_경고창_확인_창은_지금_판정을_따른다() {
-        for autoSave in [QuitAutoSave.waiting, .writing] {
+    /// 저장을 먼저 해도 USB 쓰기·경고창·확인 창·끊으면 안 되는 쓰기는 지금 판정을 따른다
+    @Test func 저장을_먼저_해도_USB_경고창_확인_창_쓰기는_지금_판정을_따른다() {
+        for autoSave in [QuitAutoSave.saveFirst, .autoWriting] {
             #expect(AppQuitPolicy.decision(for: Self.activity(.idle, usb: true), autoSave: autoSave) == .refuseWhileWritingUsb)
             #expect(AppQuitPolicy.decision(for: Self.activity(.acknowledging), autoSave: autoSave) == .keepOpenForAcknowledgement)
             #expect(AppQuitPolicy.decision(for: Self.activity(.confirming), autoSave: autoSave) == .terminateNow)

@@ -8,13 +8,13 @@ import Observation
 @Observable
 final class QuitWaitModel {
     private(set) var current: QuitWait?
-    /// ⌘Q가 대기 중인 대상 편집의 자동 저장을 기다린다(R17). 이 기다림 동안은 자동 저장(과 ⌘S)의 새 쓰기를 막지 않는다
+    /// ⌘Q가 엔진의 ⌘Q 저장을 기다린다(R17). 이 기다림 동안은 엔진의 자동 저장만 세션 잠금을 지난다(수동 입구는 `writeRefusal`이 거절한다)
     private(set) var allowsAutoSave = false
     @ObservationIgnored private var onCancel: (() -> Void)?
 
     var isWaiting: Bool { current != nil }
 
-    /// 기다리는 동안 새 rekordbox 쓰기를 거절하는지(Mac을 끄는 중·쓰던 쓰기만 마치고 끄는 종료). 자동 저장을 기다리는 ⌘Q는 막지 않는다(R17)
+    /// 기다리는 동안 세션 잠금이 쓰기를 막는지. 엔진의 ⌘Q 저장을 기다리는 동안만 자동 저장을 연다(R17)
     var refusesWrites: Bool { current != nil && !allowsAutoSave }
 
     func begin(at start: Date, allowsAutoSave: Bool = false, onCancel: @escaping () -> Void) {
@@ -28,6 +28,9 @@ final class QuitWaitModel {
         allowsAutoSave = false
         onCancel = nil
     }
+
+    /// 기다리는 동안 자동 저장의 새 쓰기를 더는 열지 않는다(시스템 종료·업데이트로 바뀜)
+    func stopAllowingAutoSave() { allowsAutoSave = false }
 
     /// [종료 취소]. 종료만 취소하고 쓰기는 끝까지 간다
     func cancel() { onCancel?() }
@@ -49,9 +52,10 @@ final class QuitWaitModel {
 ///   이 요청은 시스템 Apple 이벤트에서 온다.
 /// 쓰기를 중간에 끊는 길은 없다: 취소하는 것은 아직 아무것도 쓰지 않은 단계(미리 보기)뿐이다.
 ///
-/// ⌘Q 저장(R17): 자동 저장이 곧 쓸 대상 편집이 있으면(마지막 편집 뒤 대기·조용함 대기·시점 스냅샷) 지금의 종료 대기 화면으로 그 저장을 기다린 뒤 끈다.
-/// 쓰기는 엔진이 평소대로 한다(조용함·관문 판정을 건너뛰지 않는다). 그 저장의 미리 보기는 취소하지 않고 기다린다. 대량 유예·확인 필요 편집은
-/// 곧 쓸 것이 아니라서 기다리지 않는다(초안으로 남아 다음 실행 때 다룬다). 로그아웃·전원 끔은 새 쓰기를 기다리지 않는다(`nested`).
+/// ⌘Q 저장(R17): 자동 저장하는 실행의 사용자가 고른 종료는 입력 칸을 확정하고 초안 저장 큐를 비운 뒤 엔진의 ⌘Q 저장(`prepareToQuit`)을
+/// 지금의 종료 대기 화면으로 기다린다. 무엇을 쓸지는 엔진이 최신 초안으로 다시 판정한다(조용함·관문·실행 판정은 그대로). 엔진의 자동 저장은
+/// 미리 보기도 취소하지 않는다. [종료 취소]·두 번째 ⌘Q는 엔진의 종료 대기를 푼다(쓰는 중인 쓰기는 끝까지 간다).
+/// 로그아웃·재시작·전원 끔과 업데이트 다시 켜기는 자동 저장을 기다리지 않고 엔진이 새 쓰기를 시작하지 않게 한다(이미 시작한 쓰기만 마친다).
 @MainActor
 final class AppQuitController {
     private let model: QuitWaitModel
@@ -68,14 +72,30 @@ final class AppQuitController {
     private let present: @MainActor (QuitConfirmation, @escaping @MainActor (Bool) -> Void) -> Void
     private let now: @MainActor () -> Date
     private let pendingRecordSave: @MainActor () -> Task<Void, Never>?
-    private let autoSave: @MainActor () -> QuitAutoSave
+    private let autoSave: QuitAutoSaveLink
     private var watching = false
     /// 기록 저장을 기다리는 종료(#404 S18). 기다림을 취소하거나 끝내면 비운다: 그 뒤 끝난 저장은 종료를 다시 요청하지 않는다
     private var recordWait: UUID?
     /// 켜진 채 종료 시트가 떠 있다(그동안 온 종료 요청은 시트를 더 띄우지 않는다)
     private var isAsking = false
-    /// [그냥 종료] 뒤 다시 한 종료 요청 한 번만 묻지 않는다
-    private var skipsConfirmation = false
+    /// 이 종료 대기가 엔진의 ⌘Q 저장을 기다리는지(사용자가 고른 종료, 자동 저장하는 실행)
+    private var savesFirst = false
+    /// 도는 엔진의 ⌘Q 저장
+    private var preparing: Task<Void, Never>?
+    /// 끝난 엔진의 ⌘Q 저장 결과(이 대기의 끝을 정할 때 쓴다)
+    private var prepared: QuitPreparation?
+    /// 새 자동 저장을 막아 두었다(시스템 종료·업데이트). 그 종료가 취소되면 다시 연다
+    private var autoSaveStopped = false
+    /// 대기를 마치고 다시 요청한 종료 한 번(`terminate()` 안에서 곧바로 들어온다): 다시 저장하지 않고, 시트는 이 값대로 판정한다
+    private var reentry: Reentry?
+    private enum Reentry {
+        /// 시트도 묻지 않는다([그냥 종료]·기록 저장 대기 뒤)
+        case skipConfirmation
+        /// 시트를 평소대로 판정한다
+        case confirmNormally
+        /// 엔진이 본 실행 상태로 시트를 판정한다(S6)
+        case confirm(RekordboxRunState)
+    }
     /// 기다리는 중 어떻게 답할지(위 설명)
     private enum WaitMode { case nested, deferred }
     private var mode: WaitMode?
@@ -83,7 +103,7 @@ final class AppQuitController {
     /// - Parameters:
     ///   - activity: 지금 앱이 쓰는 중인 것. 관찰할 수 있는 값에서 읽어야 쓰기가 끝난 것을 안다
     ///   - cancelPreparation: 취소할 수 있는 단계의 쓰기를 취소한다
-    ///   - flushDrafts: 쓴 초안의 정리가 저장 큐에 걸린 채 끝나지 않게 큐를 비운다
+    ///   - flushDrafts: 초안 저장 큐를 비운다. 끄기 전과 엔진의 ⌘Q 저장 전에 늘 부른다(편집 직후 큐에 걸린 초안을 잃지 않게)
     ///   - reply: `terminateLater`로 미룬 종료에 답한다(true면 종료)
     ///   - terminate: 미루지 않고 취소로 답한 종료를 쓰기가 끝난 뒤 다시 요청한다
     ///   - inform: 끄지 않는 이유를 알린다(USB)
@@ -93,7 +113,7 @@ final class AppQuitController {
     ///   - pending: 아직 rekordbox에 쓰지 않은 편집 수. 상태 줄 칩과 같은 수다
     ///   - present: 켜진 채 종료 시트를 띄운다. 답은 true면 [그냥 종료], false면 [취소]다. 지금 이벤트 처리가 끝난 뒤에 불러야 한다
     ///   - pendingRecordSave: 자동 저장 엔진이 아직 디스크에 남기지 못한 기록 저장(사용자가 취소한 판). 있으면 그 저장이 끝난 뒤 종료를 승인한다
-    ///   - autoSave: 자동 저장의 형편(R17). 관찰할 수 있는 값에서 읽어야 저장이 끝난 것을 안다(기본은 자동 저장하지 않는 실행)
+    ///   - autoSave: 자동 저장 엔진과의 연결(R17). 기본은 자동 저장하지 않는 실행이다
     init(model: QuitWaitModel, activity: @escaping @MainActor () -> AppWriteActivity,
          cancelPreparation: @escaping @MainActor () -> Void, flushDrafts: @escaping @MainActor () -> Void,
          reply: @escaping @MainActor (Bool) -> Void, terminate: @escaping @MainActor () -> Void,
@@ -104,7 +124,7 @@ final class AppQuitController {
          present: @escaping @MainActor (QuitConfirmation, @escaping @MainActor (Bool) -> Void) -> Void = { _, answer in answer(false) },
          now: @escaping @MainActor () -> Date = { Date() },
          pendingRecordSave: @escaping @MainActor () -> Task<Void, Never>? = { nil },
-         autoSave: @escaping @MainActor () -> QuitAutoSave = { .off }) {
+         autoSave: QuitAutoSaveLink = QuitAutoSaveLink()) {
         self.model = model
         self.activity = activity
         self.cancelPreparation = cancelPreparation
@@ -124,13 +144,17 @@ final class AppQuitController {
 
     /// - Parameters:
     ///   - nested: 종료를 미루고 `reply`로 답할지(시스템이 끄는 중일 때). 아니면 취소로 답하고 쓰기가 끝나면 다시 요청한다.
-    ///   - cause: 누가 고른 종료인가. 사용자가 고른 종료(기본)만 켜진 채 종료 시트를 띄운다
+    ///   - cause: 누가 고른 종료인가. 사용자가 고른 종료(기본)만 켜진 채 종료 시트를 띄우고, 자동 저장을 먼저 한다
     func requestTermination(nested: Bool = false, cause: AppQuitCause = .user) -> NSApplication.TerminateReply {
+        // 로그아웃·재시작·전원 끔·업데이트 다시 켜기는 새 쓰기를 시작하지 않는다(R17)
+        let system = nested || cause == .systemShutdown || cause == .updateRelaunch
         if model.isWaiting {
-            // ⌘Q로 기다리는 중 Mac을 끄는 요청이 오면 그 일은 취소하지 않고 같이 기다린다(미루는 방식으로 바꾼다)
-            if nested, mode == .deferred {
-                mode = .nested
-                return .terminateLater
+            if system, mode == .deferred {
+                // ⌘Q로 기다리는 중 Mac을 끄는 요청·업데이트가 오면 그 일은 취소하지 않는다. 새 자동 저장은 막고 곧바로 다시 판정한다
+                stopSavingFirst()
+                if nested { mode = .nested }
+                Task { @MainActor [weak self] in self?.activityChanged() }
+                return nested ? .terminateLater : .terminateCancel
             }
             // 기다리는 중 다시 종료를 요청하면(⌘Q를 한 번 더) 종료만 취소한다
             cancelWaiting()
@@ -139,36 +163,94 @@ final class AppQuitController {
         // 시트가 떠 있는 동안 다시 눌린 사용자 종료는 시트를 더 띄우지 않고 취소로만 답한다(시트에서 고른다).
         // 로그아웃·재시작·전원 끔·업데이트 다시 켜기는 취소로 답하면 그 일이 통째로 멈추므로 시트가 떠 있어도 기존 판정을 따른다
         if isAsking, !nested, cause.isUserChosen { return .terminateCancel }
+        let entered = reentry
+        reentry = nil
         let current = activity()
-        if let confirmation = confirmationBeforeQuit(current, nested: nested, cause: cause) {
+        if let confirmation = confirmationBeforeQuit(current, nested: nested, cause: cause, reentry: entered) {
             ask(confirmation)
             return .terminateCancel
         }
-        // 로그아웃·재시작·전원 끔은 새 쓰기를 시작하지 않는다(R17): 자동 저장을 기다리지 않고 이미 시작한 쓰기만 마친다
-        let saving = nested ? QuitAutoSave.off : autoSave()
-        switch AppQuitPolicy.decision(for: current, autoSave: saving) {
+        if system { stopAutoSave() }
+        // 다시 요청한 종료(저장을 마쳤거나 시트·기록 저장을 거침)와 시스템 종료는 먼저 저장하지 않는다
+        let saving: QuitAutoSave = system || entered != nil || !autoSave.autoSaves() ? .off : (autoSave.autoWriting() ? .autoWriting : .saveFirst)
+        let decision = AppQuitPolicy.decision(for: current, autoSave: saving)
+        switch decision {
         case .terminateNow:
-            flushAfterWrite(current)
+            flushDrafts()
             return approveTermination(nested: nested)
         case .cancelPreparationThenTerminate:
             cancelPreparation()
-            flushAfterWrite(current)
+            flushDrafts()
             return approveTermination(nested: nested)
+        case .cancelPreparationThenAutoSave:
+            cancelPreparation()
+            beginWait(nested: nested, savesFirst: true)
+            startPreparing()
+            watch()
+            return nested ? .terminateLater : .terminateCancel
         case .waitForRekordboxWrite, .waitForAutoSave:
-            // 자동 저장하는 실행의 ⌘Q는 쓰던 쓰기가 끝난 뒤에도 대기 중인 대상 편집의 저장을 기다린다(새 쓰기를 막지 않는다)
-            model.begin(at: now(), allowsAutoSave: saving != .off) { [weak self] in self?.cancelWaiting() }
-            mode = nested ? .nested : .deferred
+            beginWait(nested: nested, savesFirst: saving != .off)
+            if decision == .waitForAutoSave { startPreparing() }
             watch()
             return nested ? .terminateLater : .terminateCancel
         case .keepOpenForAcknowledgement:
             bringForward()
-            terminationCancelled()
+            cancelled()
             return .terminateCancel
-        case let decision:
+        default:
             if let message = decision.message { inform(message) }
-            terminationCancelled()
+            cancelled()
             return .terminateCancel
         }
+    }
+
+    /// 종료 대기를 시작한다. 엔진의 ⌘Q 저장을 기다리면 그 자동 저장만 세션 잠금을 지난다(수동 입구는 지금처럼 거절한다)
+    private func beginWait(nested: Bool, savesFirst: Bool) {
+        self.savesFirst = savesFirst
+        prepared = nil
+        model.begin(at: now(), allowsAutoSave: savesFirst) { [weak self] in self?.cancelWaiting() }
+        mode = nested ? .nested : .deferred
+    }
+
+    /// 엔진의 ⌘Q 저장: 입력 칸을 확정하고(⌘S와 같다) 초안 저장 큐를 비운 뒤 엔진이 최신 초안으로 다시 판정해 쓰기를 기다린다
+    private func startPreparing() {
+        guard preparing == nil, prepared == nil else { return }
+        preparing = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await autoSave.commitInput()
+            flushDrafts()
+            let result = await autoSave.prepare()
+            preparing = nil
+            // 그사이 종료를 취소했거나 시스템 종료로 바뀌었으면 이 결과로 끝내지 않는다
+            guard model.isWaiting, savesFirst else { return }
+            prepared = result
+            activityChanged()
+        }
+    }
+
+    /// 새 자동 저장을 막는다(엔진이 이미 시작한 쓰기만 마친다)
+    private func stopAutoSave() {
+        guard !autoSaveStopped else { return }
+        autoSaveStopped = true
+        autoSave.shutdown(true)
+    }
+
+    /// 기다리던 ⌘Q 저장을 풀고 새 자동 저장을 막는다(시스템 종료·업데이트로 바뀜)
+    private func stopSavingFirst() {
+        if savesFirst { autoSave.cancel() }
+        savesFirst = false
+        prepared = nil
+        model.stopAllowingAutoSave()
+        stopAutoSave()
+    }
+
+    /// 종료를 취소로 끝냈다: 막아 둔 자동 저장을 다시 연다
+    private func cancelled() {
+        if autoSaveStopped {
+            autoSaveStopped = false
+            autoSave.shutdown(false)
+        }
+        terminationCancelled()
     }
 
     /// 종료를 승인한다. 자동 저장 엔진이 사용자가 취소한 판의 기록을 아직 디스크에 남기지 못했으면 그 저장이 끝난 뒤에 승인한다:
@@ -184,20 +266,21 @@ final class AppQuitController {
             await saving.value
             guard let self, recordWait == ticket, model.isWaiting else { return }
             // 이미 확인을 거친 종료다: 다시 요청해도 시트를 또 띄우지 않는다
-            finish(terminating: true, skippingConfirmation: true)
+            finish(terminating: true, reentry: .skipConfirmation)
         }
         return nested ? .terminateLater : .terminateCancel
     }
 
-    /// 켜진 채 종료 시트를 띄울 때만 내용을 돌려준다. [그냥 종료] 뒤 다시 한 요청 한 번은 묻지 않는다.
+    /// 켜진 채 종료 시트를 띄울 때만 내용을 돌려준다. [그냥 종료]·기록 저장 대기 뒤 다시 한 요청은 묻지 않는다.
+    /// 엔진의 ⌘Q 저장이 rekordbox 켜짐을 보고 돌아왔으면 그 실행 상태로 판정한다(감시 모델보다 늦지 않다, S6).
     /// 미루는 방식(`nested`)은 시스템이 Mac을 끄는 중이라 이유를 잘못 알려 와도 묻지 않는다(취소로 답하면 그 일이 통째로 멈춘다).
-    private func confirmationBeforeQuit(_ current: AppWriteActivity, nested: Bool, cause: AppQuitCause) -> QuitConfirmation? {
-        if skipsConfirmation {
-            skipsConfirmation = false
-            return nil
-        }
+    private func confirmationBeforeQuit(_ current: AppWriteActivity, nested: Bool, cause: AppQuitCause, reentry: Reentry?) -> QuitConfirmation? {
         guard !nested else { return nil }
-        return AppQuitPolicy.confirmation(for: current, cause: cause, run: runState(), pending: pending())
+        switch reentry {
+        case .skipConfirmation?: return nil
+        case let .confirm(run)?: return AppQuitPolicy.confirmation(for: current, cause: cause, run: run, pending: pending())
+        case .confirmNormally?, nil: return AppQuitPolicy.confirmation(for: current, cause: cause, run: runState(), pending: pending())
+        }
     }
 
     /// 종료는 취소로 답해 두고 시트를 띄운다. [그냥 종료]는 종료를 다시 요청하고 그 요청 한 번만 묻지 않는다.
@@ -208,35 +291,39 @@ final class AppQuitController {
             guard let self else { return }
             isAsking = false
             if quitAnyway {
-                skipsConfirmation = true
-                terminate()
                 // 종료 요청이 바로 처리되지 않았어도 한 번만 건너뛴 것으로 센다(다음 종료는 다시 묻는다)
-                skipsConfirmation = false
+                reentry = .skipConfirmation
+                terminate()
+                reentry = nil
             } else {
-                terminationCancelled()
+                cancelled()
             }
         }
     }
 
-    /// 기다리는 중 쓰기 상태가 바뀌었다. 끝났으면 종료로, 확인이 필요해졌으면 취소로 답한다.
-    /// 자동 저장을 기다리는 ⌘Q는 곧 쓸 대상 편집이 남은 동안(K행으로 나눈 다음 묶음 포함) 계속 기다린다(R17)
+    /// 기다리는 중 쓰기 상태가 바뀌었거나 엔진의 ⌘Q 저장이 돌아왔다. 끝났으면 종료로, 확인이 필요해졌으면 취소로 답한다.
     func activityChanged() {
         // 기록 저장 대기는 그 저장이 끝날 때만 답한다
         guard model.isWaiting, recordWait == nil else { return }
         let current = activity()
-        let saving = mode == .nested ? QuitAutoSave.off : autoSave()
+        let saving: QuitAutoSave = !savesFirst || prepared != nil ? .off : (autoSave.autoWriting() ? .autoWriting : .saveFirst)
         switch AppQuitPolicy.decision(for: current, autoSave: saving) {
-        case .waitForRekordboxWrite, .waitForAutoSave:
+        case .waitForRekordboxWrite:
             return
+        case .waitForAutoSave:
+            startPreparing()
+        case .cancelPreparationThenAutoSave:
+            cancelPreparation()
+            startPreparing()
         case .terminateNow:
             // 기다린 것은 쓰기였으니 단계와 관계없이 큐를 비운다. 쓴 뒤 다시 읽기를 미룬 길(#305)은 다시 읽는 단계를 거치지 않아
             // 쓰기가 끝났다고 알려 올 때 이미 잠금이 풀려 단계가 idle이다
             flushDrafts()
-            finish(terminating: true)
+            finish(terminating: true, reentry: reentryAfterSaving())
         case .cancelPreparationThenTerminate:
             cancelPreparation()
-            flushAfterWrite(current)
-            finish(terminating: true)
+            flushDrafts()
+            finish(terminating: true, reentry: reentryAfterSaving())
         case .keepOpenForAcknowledgement:
             bringForward()
             finish(terminating: false)
@@ -246,43 +333,48 @@ final class AppQuitController {
         }
     }
 
-    /// [종료 취소]나 두 번째 종료 요청. 종료만 취소하고 쓰기는 그대로 끝까지 간다.
+    /// 엔진의 ⌘Q 저장이 rekordbox 켜짐으로 쓰지 못하고 돌아왔으면 그 실행 상태로 시트를 판정하게 한다
+    private func reentryAfterSaving() -> Reentry {
+        switch prepared {
+        case .unwritten(.rekordboxRunning)?: .confirm(.running)
+        case .unwritten(.agentRunning)?: .confirm(.agentOnly)
+        default: .confirmNormally
+        }
+    }
+
+    /// [종료 취소]나 두 번째 종료 요청. 종료만 취소하고 쓰기는 그대로 끝까지 간다. 엔진의 종료 대기도 푼다
     func cancelWaiting() {
         guard model.isWaiting else { return }
+        if savesFirst { autoSave.cancel() }
         finish(terminating: false)
     }
 
-    /// - Parameter skippingConfirmation: 다시 요청한 종료에서 켜진 채 종료 시트를 묻지 않는다(이미 확인을 거친 종료)
-    private func finish(terminating: Bool, skippingConfirmation: Bool = false) {
+    private func finish(terminating: Bool, reentry next: Reentry = .confirmNormally) {
         model.finish()
         recordWait = nil
+        savesFirst = false
+        prepared = nil
         let finished = mode
         mode = nil
         switch finished {
         case .nested: reply(terminating)
         case .deferred:
             if terminating {
-                skipsConfirmation = skippingConfirmation
+                reentry = next
                 terminate()
-                skipsConfirmation = false
+                reentry = nil
             }
         case nil: break
         }
-        if !terminating { terminationCancelled() }
+        if !terminating { cancelled() }
     }
 
-    /// 쓴 초안 정리가 저장 큐에 걸린 채 프로세스가 끝나면 쓴 초안이 디스크에 남는다. 쓰기가 있었으면 큐를 비운 뒤 끈다.
-    private func flushAfterWrite(_ current: AppWriteActivity) {
-        if current.rekordbox != .idle { flushDrafts() }
-    }
-
-    /// 기다리는 동안만 쓰기 상태와 자동 저장의 형편을 지켜본다(`AppUpdater.watchActivity`와 같은 방식)
+    /// 기다리는 동안만 쓰기 상태를 지켜본다(`AppUpdater.watchActivity`와 같은 방식). 엔진의 ⌘Q 저장은 돌아올 때 알린다
     private func watch() {
         guard !watching else { return }
         watching = true
         withObservationTracking {
             _ = activity()
-            _ = autoSave()
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
@@ -294,21 +386,18 @@ final class AppQuitController {
     }
 }
 
-extension QuitAutoSave {
-    /// 자동 저장 엔진이 알린 상태로 ⌘Q가 기다릴지 정한다(R17). 엔진이 곧 쓰는 상태만 기다린다: 마지막 편집 뒤 대기(편집 중이 아닐 때),
-    /// 조용함 대기, 시점 스냅샷, 시작 정리·라이브러리 읽기(저장 대기가 있을 때), 쓰는 중. 대량 유예·확인 필요·멈춤·중단·켜짐·그 밖의 보류는
-    /// 곧 쓰지 않으니 기다리지 않는다(편집은 초안으로 남아 다음 실행 때 R1대로 다룬다)
-    /// - Parameters:
-    ///   - autoSaves: 이 실행이 자동 저장하는지(R18)
-    ///   - manualWriting: 수동 쓰기(⌘S·복원)가 엔진의 차례를 받아 도는 중이다. 그 쓰기는 쓰기 단계로 기다린다
-    static func outlook(status: AutoReflectionStatus, conditions: ReflectionConditions, autoSaves: Bool, manualWriting: Bool) -> QuitAutoSave {
-        guard autoSaves else { return .off }
-        switch status {
-        case .writing: return manualWriting ? .idle : .writing
-        case .pending: return conditions.holds.contains(.editing) ? .idle : .waiting
-        case .quietWaiting, .quitting, .held(.pointSnapshot): return .waiting
-        case .held(.starting), .held(.libraryReading): return conditions.hasPending ? .waiting : .idle
-        case .saved, .grace, .rekordboxRunning, .held, .leftover, .stopped, .interrupted: return .idle
-        }
-    }
+/// ⌘Q 저장(R17)을 자동 저장 엔진에 잇는 자리. 조립 지점이 엔진으로 채운다. 기본값은 자동 저장하지 않는 실행이다
+struct QuitAutoSaveLink {
+    /// 이 실행이 자동 저장하는지(엔진이 있고 자동 저장하는 실행)
+    var autoSaves: @MainActor () -> Bool = { false }
+    /// 지금 쓰는 것이 엔진의 자동 저장인지(수동 저장이 엔진의 차례를 받아 도는 것이 아니다)
+    var autoWriting: @MainActor () -> Bool = { false }
+    /// 입력 중인 칸을 확정한다(⌘S와 같은 확정)
+    var commitInput: @MainActor () async -> Void = {}
+    /// 엔진의 ⌘Q 저장을 기다린다
+    var prepare: @MainActor () async -> QuitPreparation = { .finished }
+    /// 엔진의 종료 대기를 푼다
+    var cancel: @MainActor () -> Void = {}
+    /// 새 자동 저장을 막거나(true: 시스템 종료·업데이트) 다시 연다(false: 그 종료가 취소됨)
+    var shutdown: @MainActor (Bool) -> Void = { _ in }
 }

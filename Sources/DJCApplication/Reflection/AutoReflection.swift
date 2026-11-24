@@ -18,6 +18,16 @@ public struct ReflectionUndoEdit: Equatable, Sendable {
     }
 }
 
+/// ⌘Q 저장(`AutoReflection.prepareToQuit`, R17)의 결과
+public enum QuitPreparation: Equatable, Sendable {
+    /// 자동으로 쓸 대상 편집이 남지 않았다(다 썼거나 처음부터 없었다). 대상 밖·제안·확인 필요 편집은 초안으로 남는다
+    case finished
+    /// 남은 대상 편집을 지금 쓰지 않는다(대량 유예는 nil, 그 밖은 사유: 켜짐·편집 창·멈춤·보류 등). 초안으로 남아 다음 실행 때 R1대로 다룬다
+    case unwritten(ReflectionHold?)
+    /// 종료 대기를 취소했다(쓰는 중이던 쓰기는 끝까지 간다)
+    case cancelled
+}
+
 /// 자동 저장 대기열에 넣는 요청. ⌘S·저장 단추는 여기로 오지 않고 조정자의 저장(`ReflectionCoordinator.startWrite`)이 엔진의 차례(`exclusive`)로 한다
 public enum AutoReflectionRequest: Equatable, Sendable {
     /// 저장 뒤 ⌘Z의 역편집(R12)
@@ -62,6 +72,9 @@ public final class AutoReflection {
     private var dirty = false
     private var stopped = false
     private var shuttingDown = false
+    /// ⌘Q 저장을 기다리는 쪽(R17). 있으면 T_edit와 순간 편집 신호를 건너뛰고, 더 쓸 것이 없거나 쓰지 못하면 돌려준다
+    private var quitWaiters: [CheckedContinuation<QuitPreparation, Never>] = []
+    private var quitting: Bool { !quitWaiters.isEmpty }
     /// 첫 읽기 뒤 기록 읽기·쓰기 기록 판정·재시작 정리를 마쳤다
     private var startupDone = false
     /// 마지막 대상 편집(또는 편집 활동이 끝난) 때. T_edit를 여기서 센다
@@ -131,6 +144,7 @@ public final class AutoReflection {
     /// 앱을 끌 때 대기와 감시를 멈춘다(쓰는 중인 저장은 끝까지 간다)
     public func stop() {
         stopped = true
+        finishQuit(.cancelled)
         loop?.cancel()
         sleeper?.cancel()
     }
@@ -190,15 +204,48 @@ public final class AutoReflection {
         wake()
     }
 
-    /// ⌘Q(R17): 대기 중인 대상 편집을 저장하고(미리 보기 단계도 기다린다) 끝나면 돌아온다. 유예·확인 필요 편집은 쓰지 않는다.
-    /// 쓰는 중이면 그 쓰기를 기다린다. 조용함 대기·종료 시트는 W3-H(#406)가 잇는다
-    public func prepareToQuit() async {
-        while isWriting { await waitForTurn() }
+    /// ⌘Q(R17): 대기 중인 대상 편집을 최신 초안으로 다시 판정해 쓰고, 자동으로 쓸 것이 남지 않으면 돌아온다.
+    /// - T_edit를 기다리지 않는다. 순간 편집 신호(입력 중·입력기 조합·마우스 누름)로 미루지 않는다(앱이 입력 칸을 먼저 확정한다).
+    /// - 조용함(R2)·백업 조건·쓰기 잠금·관문·rekordbox 실행 판정은 그대로 지난다. 조용함·라이브러리 읽기·시점 스냅샷은 기다린다.
+    ///   K행을 넘으면 묶음마다 쓰고 다시 읽은 뒤 다음 묶음을 쓴다.
+    /// - 여러 곡 역편집 묶음(R12)은 자동 저장 대상이면 평소처럼 따로 전부 아니면 전무로 쓰고, K행을 넘거나 확인 필요인 묶음은 초안으로 남긴다.
+    /// - 대량 유예·확인 필요·멈춤·중단·켜짐·편집 창·그 밖의 보류는 쓰지 않고 돌려준다(초안으로 남는다).
+    /// 상태는 `.quitting`이다(쓰는 동안은 `.writing`). 자동 저장하지 않는 실행이나 시작 전·멈춘 엔진은 바로 돌아온다
+    @discardableResult
+    public func prepareToQuit() async -> QuitPreparation {
+        if case let .off(reason) = run { return .unwritten(.notAutoRun(reason)) }
+        guard loop != nil, !stopped else { return .unwritten(.starting) }
+        if shuttingDown { return .unwritten(.shuttingDown) }
+        return await withCheckedContinuation { continuation in
+            quitWaiters.append(continuation)
+            wake()
+        }
     }
 
-    /// 로그아웃·전원 끔(R17): 새 쓰기를 시작하지 않는다. 이미 시작한 쓰기만 마친다
+    /// 종료 대기를 취소한다([종료 취소]·두 번째 ⌘Q·시스템 종료로 바뀜). 쓰는 중이던 쓰기는 끝까지 가고, 그 뒤 평소 판정으로 돌아간다
+    public func cancelQuit() {
+        finishQuit(.cancelled)
+    }
+
+    private func finishQuit(_ result: QuitPreparation) {
+        guard quitting else { return }
+        let waiters = quitWaiters
+        quitWaiters = []
+        waiters.forEach { $0.resume(returning: result) }
+        wake()
+    }
+
+    /// 로그아웃·재시작·전원 끔·업데이트 다시 켜기(R17): 새 쓰기를 시작하지 않는다. 이미 시작한 쓰기만 마친다. 기다리던 ⌘Q 저장도 쓰지 않고 돌려준다
     public func shutdown() {
         shuttingDown = true
+        finishQuit(.unwritten(.shuttingDown))
+        wake()
+    }
+
+    /// 끄던 일이 취소됐다(로그아웃 취소·업데이트 다시 켜기 취소): 자동 저장을 다시 연다
+    public func cancelShutdown() {
+        guard shuttingDown else { return }
+        shuttingDown = false
         wake()
     }
 
@@ -368,6 +415,8 @@ public final class AutoReflection {
             base.holds.insert(reason)
             base.waiting = waiting
             publish(status: status ?? (reason.kind == .stop ? .stopped(reason) : .held(reason)), conditions: base)
+            // ⌘Q 저장(R17): 곧 풀리는 사유(시작·라이브러리 읽기·시점 스냅샷)만 기다리고, 그 밖은 쓰지 않고 돌려준다
+            if quitting, !Self.quitWaits(reason) { finishQuit(.unwritten(reason)) }
             return pause
         }
         // 미룬 판정(잠금을 못 잡음)·다시 보라는 요청·가끔 다시 보는 중단은 대기 초안·실행 조건과 상관없이 판정한다
@@ -377,7 +426,8 @@ public final class AutoReflection {
         }
         // 지금 걸린 사유를 모두 조건에 모은다(상태 줄이 R3 표의 겹친 줄을 가린다). 칩은 아래 갈래가 고른 첫 사유만 보인다
         let appHolds = ports.appHolds()
-        let editing = activity.isEditing || appHolds.contains(.editing)
+        // ⌘Q 저장은 순간 편집 신호(입력 중·입력기 조합·마우스 누름)로 미루지 않는다. 편집 창·시트가 열려 있으면 쓰지 않고 돌려준다(R17)
+        let editing = (quitting ? activity.contains(.editorOpen) : activity.isEditing) || appHolds.contains(.editing)
         let preBackupHeld = record.preBackupFailure.map { $0.count >= 2 } == true && !preBackupRetry
         base.holds.formUnion(appHolds)
         if editing { base.holds.insert(.editing) }
@@ -432,6 +482,7 @@ public final class AutoReflection {
         guard hasAuto else {
             grace = nil
             publish(status: leftoverCount > 0 ? .leftover(count: leftoverCount) : .saved, conditions: base)
+            finishQuit(.finished)
             return poll
         }
         if preBackupHeld { return hold(.preBackupFailure, waiting: false, pause: poll) }
@@ -441,7 +492,9 @@ public final class AutoReflection {
             grace = nil
             return hold(.editing, status: .pending, pause: poll)
         }
-        if let lastEdit, now < lastEdit + Self.seconds(timing.editDelay) {
+        if quitting {
+            publish(status: .quitting, conditions: base)
+        } else if let lastEdit, now < lastEdit + Self.seconds(timing.editDelay) {
             base.waiting = true
             publish(status: .pending, conditions: base)
             return .seconds(min((lastEdit + Self.seconds(timing.editDelay)).timeIntervalSince(now), Self.seconds(poll)))
@@ -466,6 +519,11 @@ public final class AutoReflection {
         let autoRevisions = inventory.autoRevisions(rowLimit: rowLimit).union(undo.pendingRevisions)
         // 일반 대기와 여러 곡 역편집을 합쳐 M곡 이상이거나 여러 곡의 값을 지우면 대량 유예를 거친다(R14, 컨실 2라운드 D)
         if inventory.isBulk(timing: timing, undoRows: undo.pendingRows, undoTracks: undo.pendingTracks), !autoRevisions.isSubset(of: graceAccepted) {
+            // ⌘Q로 앞당기지 않는다(R14·R17): 유예 대상은 쓰지 않고 초안으로 남긴다
+            if quitting {
+                finishQuit(.unwritten(nil))
+                return poll
+            }
             let grace = grace ?? (now + Self.seconds(timing.bulkDelay), autoRevisions)
             self.grace = grace
             if now < grace.until {
@@ -482,7 +540,7 @@ public final class AutoReflection {
         if let quiet, now < quiet.since + Self.seconds(timing.quietDelay) {
             base.waiting = true
             base.holds.insert(.quietWaiting)
-            publish(status: .quietWaiting, conditions: base)
+            publish(status: quitting ? .quitting : .quietWaiting, conditions: base)
             return .seconds(min((quiet.since + Self.seconds(timing.quietDelay)).timeIntervalSince(now), Self.seconds(poll)))
         }
         // 백업 조건(R13): 같은 볼륨이라 클론이 되고 여유 공간이 넉넉하다. 어긋나면 이유를 보이고 보류한다(조건이 풀리면 저절로 다시 시작)
@@ -522,7 +580,8 @@ public final class AutoReflection {
     /// 세션이 쓰기 잠금을 걸기 직전(같은 메인 액터 구간)에 다시 보는 조건(R1·R16): 준비하는 동안 편집을 시작했거나 앱 보류 사유가 생겼거나
     /// 새 신호(편집·요청)가 왔으면 쓰지 않고 다시 판정한다
     private func mayStartWrite() -> Bool {
-        !activity.isEditing && ports.appHolds().isEmpty && !shuttingDown && !stopped && !dirty && manualWaiting == 0
+        (quitting ? !activity.contains(.editorOpen) : !activity.isEditing) && ports.appHolds().isEmpty && !shuttingDown && !stopped && !dirty
+            && manualWaiting == 0
     }
 
     /// 같은 원인으로 두 번 난 백업 전 실패의 보류는 사람 편집의 새 판이 생겼을 때만 한 번 풀어 다시 시도한다(R7).
@@ -716,6 +775,14 @@ public final class AutoReflection {
         if let djc = error as? DJCError { return "DJCError." + (Mirror(reflecting: djc).children.first?.label ?? "\(djc)") }
         let ns = error as NSError
         return "\(ns.domain)#\(ns.code)"
+    }
+
+    /// ⌘Q 저장이 기다리는 사유(곧 저절로 풀린다). 그 밖의 사유는 쓰지 않고 돌려준다
+    static func quitWaits(_ reason: ReflectionHold) -> Bool {
+        switch reason {
+        case .starting, .libraryReading, .pointSnapshot, .quietWaiting, .baseRecheck: true
+        default: false
+        }
     }
 
     /// 앱 보류 사유 가운데 상태로 보일 하나(겹치면 이 차례)

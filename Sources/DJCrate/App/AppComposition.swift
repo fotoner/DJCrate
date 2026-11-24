@@ -171,7 +171,8 @@ final class AppComposition {
         libraryWindow.fieldEditing.revalidate()
         let app = NSApplication.shared
         let composing = (app.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
-        let pointer = NSEvent.pressedMouseButtons != 0
+        // 종료를 기다리는 동안의 마우스 누름([종료 취소]를 누르거나 메뉴로 종료를 고름)은 편집이 아니다(R17)
+        let pointer = NSEvent.pressedMouseButtons != 0 && !store.quitWait.isWaiting
         let editor = windows.trackEdit.window?.isVisible == true || app.keyWindow?.attachedSheet != nil
         let deckEditing = deck.hasUncommittedCueEdits || deck.cueDragBase != nil || deck.gridDragBase != nil
         if composing || pointer || editor || deckEditing { holds.insert(.editing) }
@@ -418,7 +419,8 @@ final class AppComposition {
         let load = store.useCases.load, location = store.location
         library.readIsLatest = { snapshot in load.isLatest(snapshot, location: location) }
         // Mac을 끄는 중·종료를 기다리는 중에는 세션도 새 쓰기를 시작하지 않는다(바쁨으로 답한다, #300)
-        var lock = WriteLock(isLocked: { [weak store] in store.map { $0.libraryBusy || $0.writeRefusal != nil } ?? false },
+        // 수동 입구는 종료 대기 중 `writeRefusal`로 거절한다. ⌘Q가 기다리는 엔진의 자동 저장만 이 잠금을 지난다(R17)
+        var lock = WriteLock(isLocked: { [weak store] in store.map { $0.libraryBusy || $0.isPoweringOff || $0.quitWait.refusesWrites } ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
                              stage: { [weak store] in store?.writeStage = $0 })
         lock.setTracks = { [weak store] in store?.setLockedTracks($0) }
@@ -430,7 +432,9 @@ final class AppComposition {
                                         await store?.reloadAfterWrite(written: written, playlistEdits: edits) ?? false
                                     }, postpone: { [weak store] written, edits in
                                         // 종료를 기다리는 중이면 쓴 뒤 다시 읽기를 미루고 쓰기 결과를 먼저 남긴다(#305)
-                                        store?.postponeReloadForQuit(written: written, playlistEdits: edits) ?? false
+                                        // ⌘Q가 엔진의 자동 저장을 기다리는 동안은 미루지 않는다: 다음 묶음이 새 사본으로 판정해야 한다(R17)
+                                        guard let store, !store.quitWait.allowsAutoSave else { return false }
+                                        return store.postponeReloadForQuit(written: written, playlistEdits: edits)
                                     }),
                                     lock: lock,
                                     // 확인 창이 떠 있는 동안은 아직 아무것도 쓰지 않았다: 종료 판정이 이 때를 가른다(#300)
@@ -596,12 +600,27 @@ final class AppComposition {
         autoReflection?.stop()
     }
 
-    /// ⌘Q가 기다릴 자동 저장의 형편(R17). 엔진이 알린 칩 상태로 정한다(관찰할 수 있는 값이라 종료 대기가 지켜본다)
-    func quitAutoSave() -> QuitAutoSave {
-        guard let engine = autoReflection else { return .off }
-        let feed = reflection.autoFeed
-        return .outlook(status: feed.status, conditions: feed.conditions, autoSaves: engine.run.autoSaves,
-                        manualWriting: store.previewingWriteTask != nil)
+    /// ⌘Q 저장(R17)을 엔진에 잇는다: 입력 칸 확정(⌘S와 같다), 엔진의 ⌘Q 저장·취소, 시스템 종료의 새 쓰기 막기.
+    /// 엔진이 없으면 자동 저장하지 않는 실행이다. 자동 저장하지 않는 실행도 시스템 종료 때 엔진을 멈춰 세운다
+    func quitAutoSaveLink() -> QuitAutoSaveLink {
+        guard let engine = autoReflection else { return QuitAutoSaveLink() }
+        let store = store, window = libraryWindow
+        return QuitAutoSaveLink(
+            autoSaves: { engine.run.autoSaves },
+            // 수동 쓰기는 엔진의 차례를 받아 "지금 미리 보기를 실행하는 작업"으로 등록된다. 등록되지 않은 엔진의 쓰기는 자동 저장이다
+            autoWriting: { engine.isWriting && store.previewingWriteTask == nil },
+            commitInput: {
+                let input = window.fieldEditing
+                // 확정을 거절해도 종료는 막지 않는다(칸의 값만 남지 않는다). 포커스를 잃은 뒤 값을 넣는 칸은 한도 안에서 기다린다
+                if window.isEditingInput { _ = input.commit() }
+                let deadline = ContinuousClock.now + input.settleLimit
+                while input.isEditing || input.hasPendingCommit(), ContinuousClock.now < deadline {
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+            },
+            prepare: { await engine.prepareToQuit() },
+            cancel: { engine.cancelQuit() },
+            shutdown: { $0 ? engine.shutdown() : engine.cancelShutdown() })
     }
 
     /// 저장 대기(곡 초안 표시·태그·재생 목록 초안)가 바뀔 때마다 엔진에 알린다(마지막 편집 뒤 T_edit를 다시 센다, R1)
