@@ -11,13 +11,18 @@
 >
 > DJCrate는 [GPL-2.0-or-later 라이선스](LICENSE)에 따라 있는 그대로 제공됩니다. 사용 중 생긴 데이터 손실이나 손해는 개발자가 책임지지 않습니다.
 
+> [!IMPORTANT]
+> DJCrate는 편집을 rekordbox에 저절로 저장합니다. 이 자동 저장은 끌 수 없습니다.
+> rekordbox가 실행 중이면 저장하지 않습니다. rekordbox를 끈 뒤 잠시 지나면 저장합니다.
+> 창 아래 상태 줄에 저장 중이 보이는 동안에는 rekordbox를 실행하지 마세요.
+
 DJCrate는 rekordbox 7 라이브러리를 고치는 macOS 앱이다. 고칠 때 rekordbox를 켤 필요가 없다. 공연용이 아니라 라이브러리 관리 도구다. 명령줄 도구 `djc`도 함께 있다. 화면은 한국어·영어·일본어로 볼 수 있다.
 
 ![DJCrate 덱과 곡 목록 화면(합성 시험 데이터)](docs/images/readme/ko/main.png)
 
 ## 안전 원칙
 
-- 편집은 모두 저장 대기로 쌓인다. [rekordbox에 저장]을 누를 때만 rekordbox에 저장한다. 단축키는 ⌘S다.
+- 편집은 먼저 저장 대기로 쌓인다. rekordbox와 rekordboxAgent가 모두 꺼져 있으면 마지막 편집 3초 뒤 저절로 저장한다(자동 저장). ⌘S는 지금 바로 저장한다.
 - rekordbox나 rekordboxAgent가 켜져 있으면 저장하지 않는다.
 - 확인한 버전(7.2.x)과 DB 구조가 아니면 저장하지 않는다.
 - 저장 전에 라이브러리 전체를 백업한다. 한 트랜잭션으로 저장한 뒤 다시 읽어 검증한다.

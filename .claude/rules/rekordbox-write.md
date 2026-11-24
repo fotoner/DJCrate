@@ -94,6 +94,16 @@ AGENTS.md "안전 불변식"의 rekordbox 줄을 자세히 적은 규칙이다. 
 - **RBW-36** `LabWorkFolder.reset`은 rekordbox·DJCrate 데이터 폴더와 겹치는 폴더를 지우기 전에 거부한다(`docs/cli.md`).
 - **RBW-37** 사용자가 준 폴더를 직접 `removeItem`하지 않는다.
 
+## 자동 저장
+
+- **RBW-40** 자동 저장은 엔진 `AutoReflection`이 반영 세션의 자동 쓰기 단계(`autoWrite`)로만 쓴다. 확인 창을 띄우지 않는다. 막힌 곡은 묶음에서 뺀다. 쓸지 말지는 늘 관문이 다시 정한다.
+- **RBW-41** 자동 저장은 릴리스 빌드의 라이브 라이브러리에만 한다(`AutoReflectionRun`). 사본(`--db`·`DJC_DB`)과 진단 실행은 ⌘S로만 쓴다. 예외는 디버그 빌드의 `--auto-reflect-selftest`이고, 임시 폴더의 사본에만 쓴다.
+- **RBW-42** 새 쓰기 입구도 아래 셋을 지난다. 앱의 수동 쓰기도 엔진의 차례(`exclusive`)를 받는다.
+  - 쓰기 잠금(R9)
+  - 쓰기 기록(R11)
+  - 바꾸기 직전 재확인(R10)
+- **RBW-43** 쓰기 입구의 단계를 바꾸면 출시 관문 값(E1)을 다시 잰다. 방법과 값은 [`docs/rekordbox-internals.md` "출시 관문 측정"](../../docs/rekordbox-internals.md#출시-관문-측정e1-2026-11-24)에 있다. 관문은 E1의 2배가 E2′ 최솟값(2.154초)보다 짧은 것이다.
+
 ## 바꾼 뒤 확인
 
 - **RBW-38** 바꾼 뒤 아래 순서로 확인한다. 모두 사본으로 한다.
@@ -103,6 +113,7 @@ AGENTS.md "안전 불변식"의 rekordbox 줄을 자세히 적은 규칙이다. 
   4. `djc cue-write --db <스냅샷 사본> --dry-run`을 돌린다. 기존 초안의 쓰기/막힘 결과가 바꾸기 전과 같아야 한다.
   5. 그리드를 바꿨으면 `djc lab grid-write-test <사본.db> <사본 share> <UUID> <BPM>`을 돌린다. 이 명령은 라이브 DB와 분석 폴더를 거부한다.
   6. 흐름 전체는 `--write-selftest`로 본다(스킬 `app-selftest`). 환경 변수 `DJC_REKORDBOX_DIR=<사본> DJC_HOME=<임시>`를 준다.
+  7. 자동 저장·종료 흐름은 `--auto-reflect-selftest=<save|two-process|kill-detect>`와 `--quit-wait-selftest`로 본다.
 - **RBW-39** 쓰기 그룹 커버리지(80%)는 쓰기 그룹 파일을 바꾼 `--changed`가 본다. PR·`dev` CI도 같다. 코어 커버리지(60%)는 릴리스 전체 검사가 본다.
 
 ## 더 보기
