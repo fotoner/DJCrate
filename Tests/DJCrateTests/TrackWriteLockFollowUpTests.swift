@@ -455,9 +455,10 @@ struct TrackWriteLockFollowUpTests {
         #expect(!undo.canUndo)
     }
 
-    /// S15: 읽기 실패 사이 바깥(CLI)이 다른 곡의 태그 초안을 바꾸면, 다음 읽기가 그 초안을 받아들이므로 그 곡의 옛 ⌘Z는 무효가 된다
+    /// S15: 읽기 실패 사이 바깥(CLI)이 다른 곡의 태그 초안을 바꾸면, 다음 읽기가 그 초안을 받아들이므로 그 곡의 옛 ⌘Z는 무효가 된다.
+    /// 그 단계가 맨 위면 정할 수 없어 ⌘Z가 꺼지고 아래 단계도 실행하지 않는다(R12, #405 컨실 2라운드 A: 맨 위 단계로만 판정)
     @Test(.enabled(if: LiveDraftHome.isIsolated))
-    func 읽기_실패_사이_바깥이_바꾼_곡의_되돌리기만_무효가_되고_나머지는_남는다() async throws {
+    func 읽기_실패_사이_바깥이_바꾼_곡의_되돌리기는_무효가_되고_맨_위라_실행_취소가_꺼진다() async throws {
         let rig = try await Rig()
         rig.addCueDraft()
         let store = rig.store
@@ -485,13 +486,11 @@ struct TrackWriteLockFollowUpTests {
         await store.takeSnapshot(quiet: true, refreshITunes: false)
         #expect(store.tagDrafts[changedOutside.track.uuid]?.fields.title == "CLI가 저장한 제목", "다음 읽기가 CLI 초안을 받아들였다")
 
-        // 가장 나중 단계(바깥이 바꾼 곡): 옛 값으로 CLI 초안을 덮지 않는다
-        undo.undo()
+        // 가장 나중 단계(바깥이 바꾼 곡)는 정할 수 없다: 맨 위라 ⌘Z가 꺼진다. 옛 값으로 CLI 초안을 덮지 않고 아래 단계도 실행하지 않는다
+        #expect(!undo.canUndo, "맨 위 단계를 정할 수 없으면 메뉴가 꺼진다")
+        if undo.canUndo { undo.undo() }
         #expect(store.tagDrafts[changedOutside.track.uuid]?.fields.title == "CLI가 저장한 제목", "⌘Z가 새 CLI 초안을 이전 값으로 덮으면 안 된다")
-        // 그 앞 단계(변하지 않은 곡): 그대로 되돌려진다
-        #expect(undo.canUndo, "변하지 않은 곡의 ⌘Z는 남는다")
-        undo.undo()
-        #expect(store.tagDrafts[unchanged.track.uuid]?.hasChanges != true)
+        #expect(store.tagDrafts[unchanged.track.uuid]?.fields.title == "그대로 둘 곡의 제목", "아래 단계를 실행하지 않는다")
     }
 
     /// S16: 두 곡을 한 번에 고친 단계에서 다음 읽기가 한 곡의 CLI 초안만 받아들이면, 그 곡만 빼고 나머지 곡은 ⌘Z로 되돌린다

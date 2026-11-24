@@ -152,7 +152,9 @@ extension LibraryStore {
             var stale = Set(reconciled.tags.rebased.map(\.trackUUID))
             for uuid in Set(previousTags.keys).union(tagDrafts.keys) where previousTags[uuid] != tagDrafts[uuid] { stale.insert(uuid) }
             invalidateTagUndo(stale)
-            noteTagsWritten(tagsWrittenAwaitingReload.subtracting(stale))
+            // 실제로 쓴 곡은 무효 처리(바깥 새 초안)와 따로 쓴 횟수를 올린다: 그 곡이 "이미 쓴 곡"으로 남아 여러 곡 단계는 그 곡의 역편집을
+            // 만들 수 없으면 단계 전체를 끈다(남은 곡만 되돌리지 않는다, 컨실 3라운드 E)
+            noteTagsWritten(tagsWrittenAwaitingReload)
         }
         tagsWrittenAwaitingReload = []
         rememberTagSaves(reconciled.tags.rebased)
@@ -192,9 +194,8 @@ extension LibraryStore {
         verifyReflection()
         refreshBase()
         markLoadSucceeded()
-        // 저장 뒤 다시 읽었다: 새 rekordbox 값을 기다리던 ⌘Z 요청을 실행하고(컨실 S5), 되돌릴 수 없게 된 단계를 기록에서 뺀다(메뉴가 꺼진다, R12)
+        // 저장 뒤 다시 읽었다: 새 rekordbox 값을 기다리던 ⌘Z 요청을 실행한다(컨실 S5). 맨 위 단계 판정은 쓴 곡을 덱에 넘긴 뒤에 한다(아래)
         pendingUndo.flush()
-        if keepsUndo { settleUndo() }
         refreshUnlinkedDrafts()
         warmPreviewWaveforms(loaded.rows)
         if failedTagSaves().isEmpty { clearLibraryError() } else { reportLibraryError(DraftSaveFailure.tagSaveMessage, kind: .failure) }
@@ -213,6 +214,8 @@ extension LibraryStore {
             }
             deliverWrittenAfterReload()
         }
+        // 쓴 곡을 넘겨 다시 읽기 대기가 풀린 뒤 맨 위 ⌘Z 단계를 판정한다: 되돌릴 수 없게 됐으면 메뉴를 끈다(R12, 컨실 3라운드 G17)
+        if keepsUndo { settleUndo() }
         checkMissingFiles()
         applyLaunchSelection()
         staging.runLaunchStagingTest()

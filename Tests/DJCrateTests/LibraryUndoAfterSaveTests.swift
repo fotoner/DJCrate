@@ -2,6 +2,7 @@
 import DJCAdapters
 import DJCApplication
 import DJCDomain
+import DJCStorage
 import DJCTestKit
 import Foundation
 import RekordboxFixtures
@@ -271,6 +272,26 @@ struct LibraryUndoAfterSaveTests {
         #expect(!rig.undo.canUndo, "두 곡 단계가 맨 위가 되면 판정해 메뉴를 끈다")
         if rig.undo.canUndo { rig.undo.undo() }
         #expect(rig.store.tagDrafts[rig.tracks[0].uuid]?.hasChanges != true, "한 곡만 되돌리지 않는다")
+    }
+
+    /// 두 곡 태그를 쓴 뒤 다시 읽기 전에 바깥(CLI)이 한 곡에 새 초안을 저장해도 그 곡은 "쓴 곡"으로 센다: 그 곡의 역편집을 만들 수 없으니
+    /// 단계 전체를 끈다(남은 곡만 되돌리지 않는다, 컨실 3라운드 E)
+    @Test func 쓴_뒤_바깥이_새_초안을_둔_곡도_쓴_곡으로_세어_단계_전체를_끈다() async throws {
+        let rig = try await Rig([TrackSpec(id: "500"), TrackSpec(id: "501")])
+        let first = try rig.row(rig.tracks[0]), second = try rig.row(rig.tracks[1])
+        rig.store.tags.applyTagEdits([(first, .title, "새 제목 1"), (second, .title, "새 제목 2")])
+        rig.failingSnapshots.set(true)
+        try await rig.autoSave(reloads: false)
+        let cli = DraftStore.live(writer: DraftWriter(), home: rig.fixture.root.appending(path: "drafts"), origin: .cli)
+        var outside = rig.store.tags.tagDraft(for: second)
+        outside.fields.comment = "바깥 코멘트"
+        cli.saveTags([outside])
+        cli.flush()
+        rig.failingSnapshots.set(false)
+        await rig.store.takeSnapshot(quiet: true, refreshITunes: false)
+        #expect(!rig.undo.canUndo, "한 곡만 되돌리지 않는다")
+        if rig.undo.canUndo { rig.undo.undo() }
+        #expect(rig.store.tagDrafts[rig.tracks[0].uuid]?.hasChanges != true)
     }
 
     /// 재생 목록을 쓴 뒤 다시 읽기를 기다리는 동안 누른 ⌘Z는 옛 목록 위에서 실행해 버리지 않고 미뤘다가, 새 목록을 읽은 뒤 실행한다(컨실 2라운드 F·S14·G12)
