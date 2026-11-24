@@ -105,9 +105,10 @@ final class PlaylistEditStore {
     /// ⌘Z가 그 편집의 단계가 쓰였는지 본다. ⌘Z 기록을 비우는 자리에서만 비운다(`forgetWrittenSteps`)
     @ObservationIgnored private(set) var writtenStepIDs: Set<UUID> = []
 
-    /// 저장하지 못해 식별자 없이 메모리에 남은 단계 가운데 이을 출처가 있는 단계(⌘Z·⇧⌘Z·복원이 되살린 단계, #295 리뷰 F5).
-    /// 다음 저장에 넘기고 저장에 성공하면 비운다: 그 사이 다른 편집이 사람 편집 포트로 저장해도 그 단계는 기록한 출처로 남는다
-    @ObservationIgnored private var unsavedStepOrigins: [(step: PlaylistDraft.Step, origins: Set<DraftOrigin>)] = []
+    /// 저장에 실패한 동안 메모리 초안의 식별자 없는 단계에 걸린 출처(하나의 집합, #295 리뷰 F5·F10). 저장에 실패한 뒤에는 출처를 줄이지 않는다(합집합):
+    /// 다음 재생 목록 초안 저장(편집·복원·곡 넣기 연결·곡 넣기 되돌리기)은 단계 대응을 찾지 않고 식별자 없는 단계마다 이 집합에 그 저장의 출처를 더한다.
+    /// 저장에 성공하면 비운다. 그 사이 사람 편집도 제안이 되어 ⌘S가 필요할 수 있다(드문 실패 경우의 보수적 대가)
+    @ObservationIgnored var unsavedStepOrigins: Set<DraftOrigin> = []
 
     /// ⌘Z 기록을 비울 때 쓴 단계·연결 ID 기록도 비운다(#295 E6: ⌘Z 기록을 비우는 자리에서만)
     func forgetWrittenSteps() {
@@ -256,7 +257,9 @@ final class PlaylistEditStore {
     /// - Parameters:
     ///   - registersUndo: 실행 취소(⌘Z) 단계를 남긴다. 잠긴 동안 눌러 미뤘다가 실행하는 ⌘Z 요청은 남기지 않는다(컨실 S6)
     ///   - freshOrigins: 식별자가 없는 단계 가운데 이을 출처가 있는 자리(⌘Z·⇧⌘Z가 되살린 단계, #295 E6)
-    func setPlaylistDraft(_ draft: PlaylistDraft, actionName: String, registersUndo: Bool = true, freshOrigins: [Int: Set<DraftOrigin>] = [:]) {
+    ///   - carried: 식별자 없는 단계 모두에 더할 출처(⌘Z가 되살리는 편집 전 초안에 저장하지 못한 단계가 있었다, `PlaylistUndoStep.carried`)
+    func setPlaylistDraft(_ draft: PlaylistDraft, actionName: String, registersUndo: Bool = true, freshOrigins: [Int: Set<DraftOrigin>] = [:],
+                          carrying carried: Set<DraftOrigin> = []) {
         guard draft != playlistDraft, !isEditBlocked else { return }
         switch syncExternal() {
         case .adopted:
@@ -270,7 +273,7 @@ final class PlaylistEditStore {
         }
         // 쓰고 있는 단계는 바꾸지 않는다(되돌리기·다시 하기가 쓰는 단계를 되살리거나 지우지 않게)
         guard preservesFrozen(draft) else { return }
-        commitPlaylistDraft(draft, actionName: actionName, registersUndo: registersUndo, freshOrigins: freshOrigins)
+        commitPlaylistDraft(draft, actionName: actionName, registersUndo: registersUndo, freshOrigins: freshOrigins, carrying: carried)
     }
 
     /// 쓰고 있는 단계가 그대로 든 초안인지(얼리지 않았으면 늘 true)
@@ -302,15 +305,17 @@ final class PlaylistEditStore {
     static var syncFailureText: String { String(ui: "재생 목록 편집을 읽지 못해 고치지 않았습니다. 잠시 뒤 다시 해 주세요.") }
 
     private func commitPlaylistDraft(_ draft: PlaylistDraft, actionName: String, registersUndo: Bool = true,
-                                     freshOrigins: [Int: Set<DraftOrigin>] = [:]) {
+                                     freshOrigins: [Int: Set<DraftOrigin>] = [:], carrying carried: Set<DraftOrigin> = []) {
         let before = playlistDraft, beforeLayout = playlistProjection.layout
         guard draft != before else { return }
         let undoManager = registersUndo ? library.undoManager : nil
-        // 편집 전 단계의 출처와 막힘(⌘Z가 지금 디스크에 없는 단계를 되살릴 때 출처를 잇고, 새로 막히는지 본다, #295 E6)
+        // 편집 전 단계의 출처와 막힘(⌘Z가 지금 디스크에 없는 단계를 되살릴 때 출처를 잇고, 새로 막히는지 본다, #295 E6).
+        // 편집 전 초안의 식별자 없는 단계(저장하지 못한 단계)는 디스크 도장이 없어 저장에 실패한 동안 기억한 출처를 든다(#295 리뷰 F10)
         let beforeOrigins = undoManager == nil ? [:] : library.useCases.playlists.stepOrigins()
+        let beforeCarried = unsavedStepOrigins
         let beforeBlocked = Set(zip(before.steps, playlistProjection.blocked).compactMap { $1 == nil ? nil : $0.id })
         playlistDraft = draft
-        savePlaylistDraft(freshOrigins: freshOrigins)
+        savePlaylistDraft(freshOrigins: freshOrigins, carrying: carried)
         refreshPlaylists()
         guard let undoManager else { return }
         // 쓰는 동안 한 편집도 편집 순간 단계를 건다(#295 E6). 편집 뒤 초안은 저장 뒤 초안(저장소가 준 단계 식별자 포함)이다.
@@ -318,7 +323,8 @@ final class PlaylistEditStore {
         // 되돌릴 수 없게 되면(만들기·지우기·바깥에서 바뀜·일부만 쓰임) 그 단계가 맨 위가 됐을 때 ⌘Z 기록을 비운다(`UndoSteps`, 컨실 2라운드 A)
         let afterOrigins = library.useCases.playlists.stepOrigins()
         let step = PlaylistUndoStep(before: before, after: playlistDraft, beforeLayout: beforeLayout, afterLayout: playlistProjection.layout,
-                                    origins: beforeOrigins.merging(afterOrigins) { _, after in after }, beforeBlocked: beforeBlocked)
+                                    origins: beforeOrigins.merging(afterOrigins) { _, after in after }, carried: beforeCarried,
+                                    beforeBlocked: beforeBlocked)
         library.undoSteps.register(undoManager, kind: .library, canUndo: { [weak self] in self?.canUndo(step) ?? false }) { [weak self] in
             self?.undo(step, actionName: actionName)
         }
@@ -336,6 +342,8 @@ final class PlaylistEditStore {
         var afterLayout: PlaylistLayout
         /// 편집 전·뒤 초안의 단계 출처(식별자 → 출처). 지금 디스크에 없는 단계를 되살릴 때 잇는다(#295 E6)
         var origins: [UUID: Set<DraftOrigin>] = [:]
+        /// 편집 전 초안의 식별자 없는 단계(저장하지 못한 단계)에 걸린 출처(그때 기억한 집합). 편집 전 초안으로 되돌리면 식별자 없는 단계 모두에 더한다(#295 리뷰 F10)
+        var carried: Set<DraftOrigin> = []
         /// 편집 전 초안의 투영에서 막혀 있던 단계(식별자). 되돌린 초안에서 막힌 단계가 이것 밖이면 새로 막힌 것이다
         var beforeBlocked: Set<UUID> = []
     }
@@ -376,7 +384,7 @@ final class PlaylistEditStore {
                 origins[index] = step.origins[id] ?? [.human, .unknown]
             }
             restored.setStepIDs(ids)
-            setPlaylistDraft(restored, actionName: actionName, registersUndo: registersRedo, freshOrigins: origins)
+            setPlaylistDraft(restored, actionName: actionName, registersUndo: registersRedo, freshOrigins: origins, carrying: step.carried)
         case let .reverse(reversed):
             setPlaylistDraft(reversed, actionName: actionName, registersUndo: registersRedo)
         case .refused:
@@ -676,27 +684,22 @@ final class PlaylistEditStore {
     // MARK: - 초안 저장
 
     /// 메모리 초안을 저장한다. 실패하면 메모리 초안을 그대로 두고 기록해, 쓰기 전에 다시 저장한다.
-    /// - Parameter freshOrigins: 식별자가 없는 단계 가운데 이을 출처가 있는 자리(⌘Z·⇧⌘Z가 되살린 단계, #295 E6)
+    /// - Parameters:
+    ///   - freshOrigins: 식별자가 없는 단계 가운데 이을 출처가 있는 자리(⌘Z·⇧⌘Z가 되살린 단계, #295 E6)
+    ///   - carried: 식별자 없는 단계 모두에 더할 출처(저장에 실패한 동안 기억한 출처에 더한다, `unsavedStepOrigins`)
     @discardableResult
-    func savePlaylistDraft(freshOrigins: [Int: Set<DraftOrigin>] = [:]) -> Bool {
+    func savePlaylistDraft(freshOrigins: [Int: Set<DraftOrigin>] = [:], carrying carried: Set<DraftOrigin> = []) -> Bool {
         // 디스크 초안을 읽지 못해 메모리가 디스크와 같은지 모르면 저장하지 않는다(옛 메모리로 바깥 편집을 덮지 않게). 디스크 초안을 받으면 푼다
         guard !playlistDraftNeedsSync else { return false }
-        // 앞서 저장하지 못한 되살린 단계는 그때 기록한 출처를 잇는다(같은 내용의 식별자 없는 단계에 하나씩)
-        var origins = freshOrigins, remembered = unsavedStepOrigins
-        for (index, step) in playlistDraft.steps.enumerated() where step.id == nil && origins[index] == nil {
-            if let match = remembered.firstIndex(where: { $0.step == step }) { origins[index] = remembered.remove(at: match).origins }
-        }
+        let edits = library.useCases.playlists, carrying = unsavedStepOrigins.union(carried)
         do {
-            try library.useCases.playlists.saveDraft(playlistDraft, freshOrigins: origins)
+            try edits.saveDraft(playlistDraft, freshOrigins: freshOrigins, carrying: carrying)
             unsavedStepOrigins = []
             adoptSavedIdentifiers()
             applyPlaylistSave(nil)
             return true
         } catch {
-            let steps = playlistDraft.steps
-            unsavedStepOrigins = origins.sorted { $0.key < $1.key }.compactMap { index, origins in
-                steps.indices.contains(index) ? (steps[index], origins) : nil
-            }
+            unsavedStepOrigins = edits.carriedAfterFailure(playlistDraft, freshOrigins: freshOrigins, carrying: carrying)
             applyPlaylistSave(error)
             return false
         }
@@ -777,14 +780,12 @@ final class PlaylistEditStore {
     @discardableResult
     func restorePlaylistEdits(_ edits: [PlaylistEdit]) -> Int {
         guard !edits.isEmpty else { return 0 }
-        // 복원이 되살린 단계의 출처는 "복원이 되살림"이다: 자동 저장하지 않는 제안이 된다(R8). 그대로 둔 단계는 제 출처를 지킨다
-        let previous = playlistDraft.steps
-        let restored = library.useCases.restoredPlaylists.restore(edits, onto: playlistDraft, rekordbox: rekordboxPlaylists, imports: playlistImports,
-                                                                  importsLoadFailed: playlistImportsLoadFailed)
-        if restored.draftError != nil {
-            // 저장하지 못했으면 되살린 단계(앞 초안에 없던 식별자 없는 단계)의 출처를 기억해 다음 저장에 넘긴다(#295 리뷰 F5)
-            unsavedStepOrigins += restored.draft.steps.filter { $0.id == nil && !previous.contains($0) }.map { ($0, [.restored]) }
-        }
+        // 복원이 되살린 단계의 출처는 "복원이 되살림"이다: 자동 저장하지 않는 제안이 된다(R8). 다시 쌓은 단계는 모두 식별자가 없어 모두 그 출처를 받는다.
+        // 저장에 실패한 동안 기억한 출처도 더하고, 저장하지 못하면 그 출처를 모두 기억한다(#295 리뷰 F10)
+        let restoring = library.useCases.restoredPlaylists, carrying = unsavedStepOrigins
+        let restored = restoring.restore(edits, onto: playlistDraft, rekordbox: rekordboxPlaylists, imports: playlistImports,
+                                         importsLoadFailed: playlistImportsLoadFailed, carrying: carrying)
+        unsavedStepOrigins = restored.draftError == nil ? [] : restoring.carriedAfterFailure(restored.draft, carrying: carrying)
         playlistDraft = restored.draft
         applyPlaylistSave(restored.draftError)
         if restored.draftError == nil { adoptSavedIdentifiers() }

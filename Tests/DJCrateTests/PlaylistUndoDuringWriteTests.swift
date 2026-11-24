@@ -238,24 +238,37 @@ struct PlaylistUndoDuringWriteTests {
         return { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stamps.path) }
     }
 
-    /// ⌘Z가 되살린 CLI 단계의 저장이 실패한 뒤 다른 편집이 저장되면 그 단계는 CLI 제안으로 남는다(사람 출처로 바뀌지 않는다, 리뷰 F5)
-    @Test func 실행_취소가_되살린_CLI_단계를_저장하지_못한_뒤_다른_편집을_저장해도_CLI_제안으로_남는다() throws {
+    /// 디스크에 CLI 이름 바꾸기(A)를 두고 앱이 받는다
+    func adoptCLIRename() throws -> PlaylistDraft {
         var cli = PlaylistDraft()
         try cli.append(.rename(playlist: .id("A"), name: "CLI 이름"), rekordbox: Self.rekordbox)
         _ = try StampedDrafts.savePlaylist(cli, url: file, origin: .cli)
         #expect(playlists.syncExternal() == .adopted)
+        return cli
+    }
+
+    /// CLI 단계를 버린 뒤 ⌘Z로 되살리되 그 저장이 실패한다(식별자 없는 CLI 단계가 메모리에만 남는다)
+    func revivedCLIStepUnsaved() throws -> PlaylistDraft {
+        let cli = try adoptCLIRename()
         event { playlists.discardPlaylistDraft("A") }
         let restore = try failingSaves()
         undo.undo()
         restore()
         #expect(playlists.playlistDraftUnsaved && playlists.playlistDraft.edits == cli.edits, "되살렸지만 저장하지 못했다")
+        return cli
+    }
+
+    /// ⌘Z가 되살린 CLI 단계의 저장이 실패한 뒤 다른 편집이 저장되면 그 단계는 CLI 제안으로 남는다(사람 출처로 바뀌지 않는다, 리뷰 F5·F10).
+    /// 저장에 실패한 동안의 출처는 식별자 없는 단계 모두에 더한다(단계 대응을 찾지 않는다): 그새 한 사람 편집도 제안이 된다
+    @Test func 실행_취소가_되살린_CLI_단계를_저장하지_못한_뒤_다른_편집을_저장해도_CLI_제안으로_남는다() throws {
+        _ = try revivedCLIStepUnsaved()
         event { playlists.renamePlaylist("B", to: "사람 이름") }
         #expect(!playlists.playlistDraftUnsaved)
         let stamps = store.testDrafts.playlistStamps()
-        #expect(stamps.map(\.origins) == [[.cli], [.human]], "되살린 단계는 CLI 출처를 잇는다: \(stamps.map(\.origins))")
+        #expect(stamps.map(\.origins) == [[.cli, .human], [.cli, .human]], "되살린 단계는 CLI 출처를 잇는다: \(stamps.map(\.origins))")
     }
 
-    /// 복원이 되살린 재생 목록 단계의 저장이 실패한 뒤 다른 편집이 저장되면 그 단계는 복원 출처(제안)로 남는다(리뷰 F5)
+    /// 복원이 되살린 재생 목록 단계의 저장이 실패한 뒤 다른 편집이 저장되면 그 단계는 복원 출처(제안)로 남는다(리뷰 F5·F10)
     @Test func 복원이_되살린_단계를_저장하지_못한_뒤_다른_편집을_저장해도_복원_출처로_남는다() throws {
         let restore = try failingSaves()
         let failed = playlists.restorePlaylistEdits([.rename(playlist: .id("A"), name: "되살린 이름")])
@@ -264,7 +277,82 @@ struct PlaylistUndoDuringWriteTests {
         event { playlists.renamePlaylist("B", to: "사람 이름") }
         #expect(!playlists.playlistDraftUnsaved)
         let stamps = store.testDrafts.playlistStamps()
-        #expect(stamps.map(\.origins) == [[.restored], [.human]], "되살린 단계는 복원 출처를 잇는다: \(stamps.map(\.origins))")
+        #expect(stamps.map(\.origins) == [[.restored, .human], [.restored, .human]], "되살린 단계는 복원 출처를 잇는다: \(stamps.map(\.origins))")
+    }
+
+    /// 복원은 그대로 둔 단계도 다시 쌓아 식별자 없이 저장한다. 그 저장이 실패하면 기존 CLI 단계도 복원 출처를 기억해 다음 저장에서 제안이다(리뷰 F10: G7)
+    @Test func 복원_저장이_실패하면_다시_쌓은_기존_CLI_단계도_다음_저장에서_제안이다() throws {
+        _ = try adoptCLIRename()
+        let restore = try failingSaves()
+        playlists.restorePlaylistEdits([.rename(playlist: .id("B"), name: "되살린 이름")])
+        restore()
+        #expect(playlists.playlistDraftUnsaved && playlists.playlistDraft.stepIDs.allSatisfy { $0 == nil }, "다시 쌓은 단계는 식별자가 없다")
+        event { _ = playlists.createPlaylist(isFolder: false, in: PlaylistLayout.root, name: "새 목록") }
+        #expect(!playlists.playlistDraftUnsaved)
+        let stamps = store.testDrafts.playlistStamps()
+        #expect(stamps.count == 3 && stamps.allSatisfy { $0.origins == [.restored, .human] }, "\(stamps.map(\.origins))")
+    }
+
+    /// 복원 저장도 기억한 출처를 더하고, 성공하면 비운다(리뷰 F10: G7). 그 뒤 사람 편집은 사람 출처다
+    @Test func 복원_저장은_기억한_출처를_더하고_성공하면_비운다() throws {
+        _ = try revivedCLIStepUnsaved()
+        playlists.restorePlaylistEdits([.rename(playlist: .id("B"), name: "되살린 이름")])
+        #expect(!playlists.playlistDraftUnsaved)
+        let restored = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(restored == [[.cli, .restored], [.cli, .restored]], "\(restored)")
+        event { _ = playlists.createPlaylist(isFolder: false, in: PlaylistLayout.root, name: "새 목록") }
+        let created = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(created.count == 3 && created.last == [.human], "\(created)")
+    }
+
+    /// 저장하지 못한 되살린 CLI 만들기 단계의 이름을 바꾸면(만들기에 합쳐져 단계 내용이 바뀐다) 다음 저장에서도 제안이다(리뷰 F10: G8)
+    @Test func 저장하지_못한_되살린_CLI_만들기의_이름을_바꿔도_제안이다() throws {
+        var cli = PlaylistDraft()
+        try cli.append(.create(key: "K", name: "CLI 목록", isFolder: false, parent: .root), rekordbox: Self.rekordbox)
+        _ = try StampedDrafts.savePlaylist(cli, url: file, origin: .cli)
+        #expect(playlists.syncExternal() == .adopted)
+        event { playlists.discardPlaylistDraft(PlaylistRef.new("K").layoutID) }
+        #expect(playlists.playlistDraft.isEmpty)
+        let restore = try failingSaves()
+        undo.undo()
+        restore()
+        #expect(playlists.playlistDraftUnsaved && playlists.playlistDraft.edits == cli.edits)
+        event { playlists.renamePlaylist(PlaylistRef.new("K").layoutID, to: "사람 이름") }
+        #expect(!playlists.playlistDraftUnsaved)
+        #expect(playlists.playlistDraft.edits == [.create(key: "K", name: "사람 이름", isFolder: false, parent: .root)], "이름 바꾸기가 만들기에 합쳐졌다")
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+    }
+
+    /// 저장하지 못한 되살린 CLI 단계는 곡 넣기 연결 저장에서도 제안이다(리뷰 F10: O10)
+    @Test func 저장하지_못한_되살린_CLI_단계는_곡_넣기_연결_저장에서도_제안이다() throws {
+        _ = try revivedCLIStepUnsaved()
+        playlists.playlistImports.addFiles(["/fixtures/a"], to: .id("B"))
+        playlists.resolvePlaylistImports(contentIDsByPath: ["/fixtures/a": "9"])
+        #expect(try store.useCases.playlists.loadDraft().steps.count == 2, "곡을 넣어 저장했다")
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human], [.cli, .human]], "\(origins)")
+    }
+
+    /// 곡 넣기를 되돌릴 때 세션이 하는 초안 저장도 기억한 출처를 더한다(리뷰 F10: O10, `restoreStaged`의 `resetImports`)
+    @Test func 저장하지_못한_되살린_CLI_단계는_곡_넣기_되돌리기_저장에서도_제안이다() throws {
+        _ = try revivedCLIStepUnsaved()
+        store.resetPlaylistImports(contentIDs: ["9"])
+        #expect(try store.useCases.playlists.loadDraft().edits == playlists.playlistDraft.edits, "되살린 단계를 저장했다")
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+    }
+
+    /// 되살린 CLI 단계의 저장이 실패한 뒤 그 단계를 다시 버려 저장하고 ⌘Z하면, 되살린 단계는 그 ⌘Z 기록이 든 출처로 제안이다(리뷰 F10: S4).
+    /// 디스크에 없는 식별자 없는 단계라 디스크 도장으로는 출처를 알 수 없다
+    @Test func 저장하지_못한_되살린_CLI_단계를_다시_버린_뒤_실행_취소해도_제안이다() throws {
+        let cli = try revivedCLIStepUnsaved()
+        event { playlists.discardPlaylistDraft("A") }
+        #expect(!playlists.playlistDraftUnsaved && playlists.playlistDraft.isEmpty)
+        undo.undo()
+        #expect(playlists.playlistDraft.edits == cli.edits)
+        let origins = store.testDrafts.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
     }
 
     // MARK: - 저장 전 경로·역편집

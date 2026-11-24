@@ -152,9 +152,12 @@ extension LibraryStore {
     /// 시험: 곡 넣기를 되돌린 뒤 반영 세션이 하는 연결 기록·초안 편집 잊기(`EditPlaylists.resetImports`)와 화면 맞추기
     func resetPlaylistImports(contentIDs: Set<String>) {
         guard !contentIDs.isEmpty else { return }
-        applyReflection(.playlistImportsReset(useCases.playlists.resetImports(contentIDs: contentIDs, draft: playlists.playlistDraft,
-                                                                               rekordbox: playlists.rekordboxPlaylists, imports: playlists.playlistImports,
-                                                                               importsLoadFailed: playlists.playlistImportsLoadFailed)))
+        // 세션처럼 화면 상태(`reflectionState`)를 읽어 넘긴다
+        let state = reflectionState()
+        applyReflection(.playlistImportsReset(useCases.playlists.resetImports(contentIDs: contentIDs, draft: state.playlistDraft,
+                                                                               rekordbox: state.rekordboxPlaylists, imports: state.playlistImports,
+                                                                               importsLoadFailed: state.playlistImportsLoadFailed,
+                                                                               carrying: state.playlistCarriedOrigins)))
     }
 
     /// 시험: 쓴 뒤·복원 뒤 반영 세션이 하는 태그 초안 저장(`ReflectionSession.replaceTagDrafts`, 넘길 초안이 있을 때만)과 화면 맞추기
