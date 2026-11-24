@@ -201,6 +201,23 @@ struct PlaylistUndoDuringWriteTests {
         #expect(playlists.playlistItem(id) == nil && playlists.playlistDraft.isEmpty)
     }
 
+    /// 바깥에서 내용만 바뀐 사람 단계(식별자·도장 그대로, 해시가 어긋나 제안)를 버린 뒤 ⌘Z하면 되살린 단계도 제안으로 남는다(리뷰 F1)
+    @Test func 바깥에서_내용만_바뀐_사람_단계를_버린_뒤_실행_취소하면_제안으로_남는다() throws {
+        event { playlists.renamePlaylist("B", to: "사람 이름") }
+        var outside = PlaylistDraft()
+        try outside.append(.rename(playlist: .id("B"), name: "바깥 이름"), rekordbox: Self.rekordbox)
+        outside.setStepIDs(playlists.playlistDraft.stepIDs)
+        try PlaylistDraftStore.save(outside, url: file)
+        #expect(playlists.syncExternal() == .adopted)
+        #expect(store.testDrafts.playlistSuggestions().first.flatMap { $0 } != nil, "해시가 어긋나 제안이다")
+        event { playlists.discardPlaylistDraft("B") }
+        #expect(playlists.playlistDraft.isEmpty)
+        undo.undo()
+        #expect(playlists.playlistDraft.edits == outside.edits)
+        #expect(store.testDrafts.playlistStamps().first?.origins.contains(.unknown) == true, "바깥 변경을 모름으로 잇는다")
+        #expect(store.testDrafts.playlistSuggestions().first.flatMap { $0 } != nil, "되살린 단계도 제안으로 남는다")
+    }
+
     @Test func CLI_단계가_든_목록을_버린_뒤_실행_취소하면_CLI_제안으로_남는다() throws {
         var cli = PlaylistDraft()
         try cli.append(.rename(playlist: .id("A"), name: "CLI 이름"), rekordbox: Self.rekordbox)

@@ -44,14 +44,17 @@ public struct EditPlaylists: Sendable {
         try save(draft, freshOrigins)
     }
 
-    /// 디스크 초안의 단계 출처(식별자 → 출처, #295 E6). ⌘Z 단계가 편집 전·뒤 단계의 출처를 기록한다. 읽지 못하면 빈 사전
+    /// 디스크 초안의 단계 출처(식별자 → 출처, #295 E6). ⌘Z 단계가 편집 전·뒤 단계의 출처를 기록한다. 읽지 못하면 빈 사전.
+    /// 단계의 지금 내용 해시가 도장의 해시와 다르면(바깥에서 고쳤다) 모름을 더한다(`PlaylistStepStamping.save`의 바깥 변경 규칙과 같다)
     public func stepOrigins() -> [UUID: Set<DraftOrigin>] {
         guard let disk = try? drafts.readPlaylistDraft() else { return [:] }
         let stamps = drafts.playlistStamps()
         guard stamps.count == disk.steps.count else { return [:] }
         var origins: [UUID: Set<DraftOrigin>] = [:]
         for (step, stamp) in zip(disk.steps, stamps) {
-            if let id = step.id { origins[id] = stamp.origins }
+            guard let id = step.id else { continue }
+            let outside = (try? DraftContentHash(step: step, in: disk)) != stamp.contentHash
+            origins[id] = outside ? stamp.origins.union([.unknown]) : stamp.origins
         }
         return origins
     }
