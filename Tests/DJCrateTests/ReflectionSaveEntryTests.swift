@@ -209,13 +209,15 @@ struct ReflectionSaveEntryTests {
                 store.setDraftMark(.cue, trackUUID: "b", exists: true)
                 landed.withLock { $0 = true }
             }
+            return true
         }
         input.hasPendingCommit = { !landed.withLock { $0 } }
+        input.settleLimit = .seconds(600)   // 한도는 안전망일 뿐이다: 다른 시험이 메인 액터를 나눠 써도 걸린 시간으로 판정하지 않는다(TEST-30)
         w.h.window.fieldEditing = input
         let coordinator = ReflectionCoordinator.test(store: w.h.store, gate: .restoringOnly)
         LibraryMenuAction.reflect.perform(in: w.h.window, windows: nil, reflection: coordinator)
         #expect(w.h.store.writeTask == nil || landed.withLock { $0 }, "확정이 끝나기 전에 저장을 시작하지 않는다")
-        #expect(await waitForState(safetyNet: .seconds(20)) { w.h.store.writeTask != nil || w.h.store.rekordboxWriteCount > 0 })
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.h.store.writeTask != nil || w.h.store.rekordboxWriteCount > 0 })
         #expect(landed.withLock { $0 }, "확정이 끝난 뒤에 시작한다")
         #expect(w.h.window.saveRows.map(\.track.uuid).sorted() == ["a", "b"], "새 편집까지 대상에 든다")
         await w.h.store.writeTask?.value
@@ -229,53 +231,186 @@ struct ReflectionSaveEntryTests {
         var all: [String] { state.withLock { $0 } }
     }
 
-    @Test func 수동_저장_중에_누른_저장은_하나만_보관해_앞_쓰기가_끝난_뒤_이어_한다() async throws {
-        let store = AutoReflectionAppTests().store()
-        store.playlists.renamePlaylist("B", to: "새 이름")
-        let events = Events(), calls = Mutex(0), latch = AutoReflectionAppTests.Latch()
-        var gate = RekordboxWriteGate.restoringOnly
-        gate.preview = { _, _, _, copied in
-            await copied()
-            let call = calls.withLock { state -> Int in
-                state += 1
-                return state
+    /// 엔진·가짜 관문(미리 보기마다 사건을 남기고 `blocking`에 든 번째에서 멈춘다)을 붙인 저장 대기열 시험대
+    @MainActor
+    final class QueueFixture {
+        let store: LibraryStore
+        let coordinator: ReflectionCoordinator
+        let engine: AutoReflection
+        let window: LibraryWindowModel
+        let feed: AutoReflectionFeed
+        let events = Events()
+        let latches: [Int: AutoReflectionAppTests.Latch]
+        let folder: TemporaryFolder
+
+        init(blocking: Set<Int> = [1]) async throws {
+            store = AutoReflectionAppTests().store()
+            store.playlists.renamePlaylist("B", to: "새 이름")
+            let events = events, calls = Mutex(0)
+            let latches = Dictionary(uniqueKeysWithValues: blocking.map { ($0, AutoReflectionAppTests.Latch()) })
+            self.latches = latches
+            var gate = RekordboxWriteGate.restoringOnly
+            gate.preview = { batch, _, _, copied in
+                await copied()
+                let call = calls.withLock { state -> Int in
+                    state += 1
+                    return state
+                }
+                events.add("미리 보기 \(call) 시작" + (batch.playlists != nil ? " 재생 목록" : ""))
+                if let latch = latches[call] { await latch.wait() }
+                events.add("미리 보기 \(call) 끝")
+                return RekordboxWriteReport(outcomes: [], backup: nil, dryRun: true, createdAt: "", finalUpdateCount: nil)
             }
-            events.add("미리 보기 \(call) 시작")
-            if call == 1 { await latch.wait() }
-            events.add("미리 보기 \(call) 끝")
-            return RekordboxWriteReport(outcomes: [], backup: nil, dryRun: true, createdAt: "", finalUpdateCount: nil)
+            coordinator = ReflectionCoordinator.test(store: store, gate: gate)
+            folder = try TemporaryFolder(prefix: "djc-save-entry-queue")
+            feed = coordinator.autoFeed
+            let feed = feed
+            let ports = AutoReflectionPorts(clock: .live, runState: { .stopped },
+                                            quietStamps: { _ in LibraryQuietStamps(walSize: nil, shmExists: false, database: nil, playlistsXML: nil) },
+                                            writeLock: .live(RekordboxWriteLocks(folder: folder.url.appending(path: "locks"))),
+                                            records: .live(home: folder.url), pointSnapshot: { .satisfied }, appHolds: { [] },
+                                            publish: { feed.update($0, $1) })
+            engine = AutoReflection(session: coordinator.session, ports: ports, run: .off(.debugBuild))
+            coordinator.engine = engine
+            window = LibraryWindowModel(store: store)
+            window.autoFeed = feed
+            engine.start()
+            guard await waitForState(safetyNet: .seconds(90), until: { engine.isParked && feed.conditions.hasPending }) else {
+                throw FixtureError("엔진이 저장 대기를 보지 못했다")
+            }
         }
-        let coordinator = ReflectionCoordinator.test(store: store, gate: gate)
-        let folder = try TemporaryFolder(prefix: "djc-save-entry-s4")
-        let feed = coordinator.autoFeed
-        let ports = AutoReflectionPorts(clock: .live, runState: { .stopped },
-                                        quietStamps: { _ in LibraryQuietStamps(walSize: nil, shmExists: false, database: nil, playlistsXML: nil) },
-                                        writeLock: .live(RekordboxWriteLocks(folder: folder.url.appending(path: "locks"))),
-                                        records: .live(home: folder.url), pointSnapshot: { .satisfied }, appHolds: { [] },
-                                        publish: { feed.update($0, $1) })
-        let engine = AutoReflection(session: coordinator.session, ports: ports, run: .off(.debugBuild))
-        coordinator.engine = engine
-        let window = LibraryWindowModel(store: store)
-        window.autoFeed = feed
-        engine.start()
-        #expect(await waitForState(safetyNet: .seconds(20)) { engine.isParked && feed.conditions.hasPending })
-        // 첫 저장(수동)
-        LibraryMenuAction.reflect.perform(in: window, windows: nil, reflection: coordinator)
-        #expect(await waitForState(safetyNet: .seconds(20)) { events.all == ["미리 보기 1 시작"] })
-        #expect(await waitForState(safetyNet: .seconds(20)) { feed.conditions.writing }, "쓰는 중은 5번 줄이다")
-        #expect(window.saveRow == .writing)
+
+        func press() { LibraryMenuAction.reflect.perform(in: window, windows: nil, reflection: coordinator) }
+
+        /// 사건이 `count`개 이상 쌓일 때까지
+        func waitForEvents(_ count: Int, seconds: Int = 90) async -> Bool {
+            await waitForState(safetyNet: .seconds(seconds)) { events.all.count >= count }
+        }
+
+        /// 첫 저장을 시작해 첫 미리 보기에서 멈춘 상태로 만든다
+        func startFirstSave() async -> Bool {
+            press()
+            guard await waitForEvents(1), await waitForState(safetyNet: .seconds(90), until: { feed.conditions.writing }) else { return false }
+            return window.saveRow == .writing
+        }
+
+        func stop() {
+            engine.stop()
+            withExtendedLifetime(folder) {}
+        }
+    }
+
+    @Test func 수동_저장_중에_누른_저장은_하나만_보관해_앞_쓰기가_끝난_뒤_이어_한다() async throws {
+        let f = try await QueueFixture()
+        defer { f.stop() }
+        #expect(await f.startFirstSave())
         // 쓰는 중에 또 눌렀다: 켜져 있고, 하나만 보관한다
-        #expect(LibraryMenuAction.reflect.isEnabled(in: window), "수동 저장 중에도 5번 줄은 켜 둔다")
-        LibraryMenuAction.reflect.perform(in: window, windows: nil, reflection: coordinator)
-        LibraryMenuAction.reflect.perform(in: window, windows: nil, reflection: coordinator)
-        #expect(events.all == ["미리 보기 1 시작"], "앞 쓰기가 끝나기 전에는 겹쳐 쓰지 않는다")
-        latch.release()
-        #expect(await waitForState(safetyNet: .seconds(20)) { events.all.count >= 4 })
-        #expect(events.all == ["미리 보기 1 시작", "미리 보기 1 끝", "미리 보기 2 시작", "미리 보기 2 끝"], "\(events.all)")
+        #expect(LibraryMenuAction.reflect.isEnabled(in: f.window), "수동 저장 중에도 5번 줄은 켜 둔다")
+        f.press()
+        f.press()
+        #expect(f.events.all == ["미리 보기 1 시작 재생 목록"], "앞 쓰기가 끝나기 전에는 겹쳐 쓰지 않는다")
+        f.latches[1]?.release()
+        #expect(await f.waitForEvents(4))
+        #expect(f.events.all == ["미리 보기 1 시작 재생 목록", "미리 보기 1 끝", "미리 보기 2 시작 재생 목록", "미리 보기 2 끝"], "\(f.events.all)")
         // 세 번째는 없다(보관은 하나)
         await drainMainActor(rounds: 200)
-        #expect(events.all.count == 4, "\(events.all)")
-        engine.stop()
-        withExtendedLifetime((coordinator, folder)) {}
+        #expect(f.events.all.count == 4, "\(f.events.all)")
+    }
+
+    // MARK: - S4(2라운드): 보관한 요청이 차례를 받으면 자리를 비운다
+
+    @Test func 보관한_요청이_실행_중이어도_다음_저장을_다시_보관할_수_있다() async throws {
+        let f = try await QueueFixture(blocking: [1, 2])
+        defer { f.stop() }
+        #expect(await f.startFirstSave())
+        f.press()   // 보관
+        f.latches[1]?.release()
+        #expect(await f.waitForEvents(3), "보관한 요청이 차례를 받아 미리 보기 2를 시작한다")
+        #expect(f.events.all.last == "미리 보기 2 시작 재생 목록")
+        // 보관한 요청이 실행 중이다: 지금 누른 저장은 새로 보관된다
+        f.press()
+        f.latches[2]?.release()
+        #expect(await f.waitForEvents(6), "\(f.events.all)")
+        #expect(f.events.all == ["미리 보기 1 시작 재생 목록", "미리 보기 1 끝", "미리 보기 2 시작 재생 목록", "미리 보기 2 끝",
+                                 "미리 보기 3 시작 재생 목록", "미리 보기 3 끝"], "\(f.events.all)")
+    }
+
+    // MARK: - S3(2라운드): 차례를 받은 뒤 공통 저장 입구가 다시 판정한다
+
+    @Test func 보관한_요청이_차례를_받은_뒤_열린_가져오기_시트는_3번_줄_이유로_막는다() async throws {
+        let f = try await QueueFixture()
+        defer { f.stop() }
+        #expect(await f.startFirstSave())
+        f.press()   // 보관
+        // 차례를 받기 전에 가져오기 시트가 열렸다
+        f.window.liveHolds = { [.importSheetOpen] }
+        f.latches[1]?.release()
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.store.toast?.title == "가져오기 창에서 적용하거나 닫은 뒤 다시 시도하세요" },
+                "\(String(describing: f.store.toast?.title)) \(f.events.all)")
+        #expect(f.events.all == ["미리 보기 1 시작 재생 목록", "미리 보기 1 끝"], "보관한 저장은 쓰지 않는다: \(f.events.all)")
+    }
+
+    // MARK: - S11: 보관한 요청의 미리 보기도 기존 취소 입구가 취소한다
+
+    @Test func 보관한_요청이_차례를_받으면_미리_보기_취소가_그_작업을_취소한다() async throws {
+        let f = try await QueueFixture(blocking: [1, 2])
+        defer { f.stop() }
+        #expect(await f.startFirstSave())
+        f.press()   // 보관
+        f.latches[1]?.release()
+        #expect(await f.waitForEvents(3))
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.store.writeStage?.cancellable == true }, "미리 보기 단계다")
+        // 미리 보기 [취소]·Esc가 부르는 기존 입구
+        f.store.cancelWritePreparation()
+        f.latches[2]?.release()
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.store.toast?.title == "작업을 취소했습니다" },
+                "\(String(describing: f.store.toast?.title)) \(f.events.all)")
+    }
+
+    // MARK: - S12: 보관한 요청이 범위를 유지한다
+
+    @Test func 곡_메뉴의_고른_곡_저장은_보관돼도_재생_목록을_더하지_않는다() async throws {
+        let f = try await QueueFixture()
+        defer { f.stop() }
+        #expect(await f.startFirstSave())
+        // 메뉴를 열었을 때는 보이던 항목: 누르는 순간 저장 중이 되어 보관된다(고른 곡만, 재생 목록 제외)
+        f.window.requestSave(.rows([], playlists: false), reflection: f.coordinator)
+        f.latches[1]?.release()
+        #expect(await waitForState(safetyNet: .seconds(90)) { f.coordinator.queuedSave == nil && f.events.all.count >= 2 })
+        await drainMainActor(rounds: 200)
+        #expect(!f.events.all.dropFirst(2).contains { $0.contains("재생 목록") }, "고른 곡 범위가 전체 저장으로 바뀌지 않는다: \(f.events.all)")
+    }
+
+    // MARK: - S6(2라운드): 칸 확정이 끝난 뒤에만 저장한다
+
+    @Test func 칸이_확정을_거절하면_저장하지_않고_이유를_알린다() async {
+        let w = world(.pending)
+        let input = FieldEditingState()
+        input.isEditing = true
+        input.commit = { false }   // 입력 검증이 포커스를 놓지 못하게 한다
+        w.h.window.fieldEditing = input
+        let coordinator = ReflectionCoordinator.test(store: w.h.store, gate: .restoringOnly)
+        LibraryMenuAction.reflect.perform(in: w.h.window, windows: nil, reflection: coordinator)
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.h.store.toast != nil })
+        #expect(w.h.store.writeTask == nil && w.h.store.rekordboxWriteCount == 0, "칸의 값이 빠진 채 저장하지 않는다")
+        #expect(w.h.store.toast?.title == "입력 중인 칸을 확정하지 못해 저장하지 않았습니다. 칸의 값을 고치거나 Return을 누른 뒤 다시 저장하세요")
+    }
+
+    @Test func 확정이_시간_안에_끝나지_않으면_저장하지_않고_이유를_알린다() async {
+        let w = world(.pending)
+        let input = FieldEditingState()
+        input.isEditing = true
+        input.commit = { [input] in
+            input.isEditing = false
+            return true
+        }
+        input.hasPendingCommit = { true }   // 확정이 끝났다는 신호가 오지 않는다
+        input.settleLimit = .milliseconds(100)
+        w.h.window.fieldEditing = input
+        let coordinator = ReflectionCoordinator.test(store: w.h.store, gate: .restoringOnly)
+        LibraryMenuAction.reflect.perform(in: w.h.window, windows: nil, reflection: coordinator)
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.h.store.toast != nil })
+        #expect(w.h.store.writeTask == nil && w.h.store.rekordboxWriteCount == 0)
+        #expect(w.h.store.toast?.title == "입력 중인 칸을 확정하지 못해 저장하지 않았습니다. 칸의 값을 고치거나 Return을 누른 뒤 다시 저장하세요")
     }
 }

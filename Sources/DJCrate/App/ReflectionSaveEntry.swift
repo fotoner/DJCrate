@@ -44,32 +44,43 @@ extension LibraryWindowModel {
             return
         }
         let typing = isEditingInput
-        if typing { fieldEditing.commit() }
+        // 칸이 확정을 거절하면(입력 검증이 포커스를 놓지 못하게 함) 칸의 값이 빠진 채 저장하지 않는다
+        if typing, !fieldEditing.commit() { return store.showToast(.notice(text: Self.commitFailedText, kind: .warning)) }
         guard typing || fieldEditing.hasPendingCommit() else { return follow(scope, reflection: reflection) }
-        // 칸의 확정이 끝난 것을 받은 뒤에 줄과 대상을 계산한다: 포커스를 잃은 뒤 다음 갱신에서 값을 넣는 칸(SwiftUI)이 있다.
-        // 끝나지 않는 칸에 잡히지 않게 상한을 둔다
+        // 칸의 확정이 끝났다는 신호를 받은 뒤에 줄과 대상을 계산한다: 포커스를 잃은 뒤 다음 갱신에서 값을 넣는 칸(SwiftUI)이 있다.
+        // 신호가 한도 안에 오지 않으면 저장하지 않고 이유를 알린다
         Task { @MainActor [weak self] in
-            for _ in 0..<150 where self?.fieldEditing.isEditing == true || self?.fieldEditing.hasPendingCommit() == true {
+            guard let self else { return }
+            let deadline = ContinuousClock.now + fieldEditing.settleLimit
+            while fieldEditing.isEditing || fieldEditing.hasPendingCommit() {
+                guard ContinuousClock.now < deadline else { return store.showToast(.notice(text: Self.commitFailedText, kind: .warning)) }
                 try? await Task.sleep(for: .milliseconds(10))
             }
             // 값을 넣는 일이 끝났는데 저장 대기에 아직 안 보이면 잠깐 더 본다
-            for _ in 0..<20 where self?.store.hasSavableEdits == false { try? await Task.sleep(for: .milliseconds(10)) }
-            self?.follow(scope, reflection: reflection)
+            for _ in 0..<20 where !store.hasSavableEdits { try? await Task.sleep(for: .milliseconds(10)) }
+            follow(scope, reflection: reflection)
         }
+    }
+
+    static var commitFailedText: String {
+        String(ui: "입력 중인 칸을 확정하지 못해 저장하지 않았습니다. 칸의 값을 고치거나 Return을 누른 뒤 다시 저장하세요")
     }
 
     /// 입력 확정 뒤 지금 상태로 줄을 다시 계산해 한다
     private func follow(_ scope: SaveScope, reflection: ReflectionCoordinator?) {
         guard let conditions = saveConditions else { return }
         let row = ReflectionStatusRow.first(conditions)
+        if showsRefusal(row, conditions) { return }
         switch row.saveCommand {
-        case .restoreOnly:
-            store.showToast(.notice(text: String(ui: "이 라이브러리에 끝나지 않은 저장 기록이 남아 있어 저장하지 않았습니다. DJCrate 상태 줄에서 기록으로 복원하거나 이대로 두세요"),
-                                    kind: .warning))
-        case .refuseWithReason:
-            refuse(row, conditions)
+        case .restoreOnly, .refuseWithReason:
+            break
         case .queueFront:
-            reflection?.queueSave(rows: { [weak self] in self?.saveRows ?? [] })
+            // 보관한 요청은 범위를 그대로 지니고, 차례를 받은 뒤 같은 입구 판정을 다시 한다
+            let admits: @MainActor () -> Bool = { [weak self] in self?.admitsSaveNow() ?? false }
+            switch scope {
+            case .all: reflection?.queueSave(.init(rows: { [weak self] in self?.saveRows ?? [] }, admits: admits))
+            case let .rows(rows, playlists): reflection?.queueSave(.init(rows: { rows }, playlists: playlists, admits: admits))
+            }
         case .commitFieldThenFollow, .saveNow, .saveAndResume, .saveAllLeftovers, .saveNowIfAllowed:
             guard store.writesBlockedBySheet || store.hasSavableEdits else {
                 store.showToast(.notice(text: LibraryMenuAction.noEditsReason, kind: .warning))
@@ -79,6 +90,27 @@ extension LibraryWindowModel {
             case .all: reflection?.startWrite(rows: saveRows)
             case let .rows(rows, playlists): reflection?.startWrite(rows: rows, playlists: playlists)
             }
+        }
+    }
+
+    /// 보관한 저장이 엔진의 차례를 받은 뒤 지금 상태로 시작해도 되는지(1~3번 줄이면 이유를 알리고 false)
+    private func admitsSaveNow() -> Bool {
+        guard let conditions = saveConditions else { return true }
+        return !showsRefusal(ReflectionStatusRow.first(conditions), conditions)
+    }
+
+    /// 1~3번 줄이면 쓰지 않고 이유를 알린다(true)
+    private func showsRefusal(_ row: ReflectionStatusRow, _ conditions: ReflectionConditions) -> Bool {
+        switch row.saveCommand {
+        case .restoreOnly:
+            store.showToast(.notice(text: String(ui: "이 라이브러리에 끝나지 않은 저장 기록이 남아 있어 저장하지 않았습니다. DJCrate 상태 줄에서 기록으로 복원하거나 이대로 두세요"),
+                                    kind: .warning))
+            return true
+        case .refuseWithReason:
+            refuse(row, conditions)
+            return true
+        default:
+            return false
         }
     }
 

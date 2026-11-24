@@ -29,6 +29,7 @@ struct ReflectionSaveCommandTests {
         world.input.commit = { [input = world.input] in
             counter.commits += 1
             input.isEditing = false
+            return true
         }
         world.input.isEditing = editingField
         h.window.autoFeed = world.feed
@@ -112,6 +113,7 @@ struct ReflectionSaveCommandTests {
             h.addRows("a")
             h.store.setDraftMark(.cue, trackUUID: "a", exists: true)
             input.isEditing = false
+            return true
         }
         press(w)
         #expect(counter.commits == 1 && w.h.store.pendingWriteCount == 1)

@@ -128,4 +128,24 @@ struct ReflectionAutoWriteToastTests {
         #expect(s.store.toast?.title == "1곡을 저장했습니다")
         #expect(s.settings.value(SettingKeys.writeToastsShown) == 1)
     }
+
+    // MARK: - S13: 뒤처리 경고는 성공 토스트의 덮어쓰기 제한을 받지 않는다
+
+    @Test(arguments: [AppToast.Kind.warning, .failure])
+    func 뒤처리_경고는_떠_있는_경고_실패_알림이_있어도_늘_보인다(_ kind: AppToast.Kind) {
+        let s = Setup()
+        s.store.showToast(AppToast(kind: kind, title: "먼저 뜬 알림"))
+        s.presenter.publish(.autoWritten(Self.report(tracks: ["a"]), followUp: ["초안을 정리하지 못했습니다"]))
+        #expect(s.store.toast?.kind == .warning && s.store.toast?.detail?.contains("초안을 정리하지 못했습니다") == true,
+                "경고는 성공 토스트 제한과 무관하다: \(String(describing: s.store.toast?.title))")
+        #expect(s.settings.value(SettingKeys.writeToastsShown) == 0, "경고는 성공 횟수에 세지 않는다")
+    }
+
+    @Test func 뒤처리_경고는_단추가_있는_알림이_떠_있어도_보인다() {
+        let s = Setup()
+        s.publish(Self.report(tracks: ["a"]))
+        #expect(s.store.toast?.undoBackup != nil)
+        s.presenter.publish(.autoWritten(Self.report(tracks: ["b"], backup: "/backups/auto-2"), followUp: ["초안을 정리하지 못했습니다"]))
+        #expect(s.store.toast?.kind == .warning && s.store.toast?.undoBackup == URL(filePath: "/backups/auto-2"))
+    }
 }

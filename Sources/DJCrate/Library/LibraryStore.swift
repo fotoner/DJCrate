@@ -50,11 +50,15 @@ final class LibraryStore {
     let activityLog: ActivityLog
     @ObservationIgnored var feedback: AppFeedback
     @ObservationIgnored var writeTask: Task<Void, Never>?
+    /// 쓰는 중에 보관했다가 엔진의 차례를 받아 도는 저장(R3 5번 줄). 차례를 받은 동안에만 있다
+    @ObservationIgnored var queuedWriteTask: Task<Void, Never>?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
 
     func cancelWritePreparation() {
         guard writeStage?.cancellable == true else { return }
         writeTask?.cancel()
+        // 보관했다가 차례를 받아 미리 보기 중인 저장도 같은 입구(미리 보기 [취소]·Esc)가 취소한다
+        queuedWriteTask?.cancel()
     }
 
     @ObservationIgnored let settings: SettingsStore

@@ -41,7 +41,7 @@ extension ReflectionCoordinator {
             guard mayStartJournalAction() else { return }
             guard let finding = await Self.judge(gate: session.ports.gate, target: session.target) else { return noRecord() }
             let prompt = ReflectionPrompt(title: String(ui: "쓰다가 중단된 저장을 되돌릴까요?"),
-                                          text: ([Self.restoreGoal(finding.journal.entry)]
+                                          text: ([Self.restoreGoal(finding.journal)]
                                               + (finding.changedSince
                                                   ? [String(ui: "⚠︎ 이 백업 뒤에 rekordbox에서도 라이브러리가 바뀌었습니다(큐·재생 목록·곡 추가 등). 복원하면 그 변경도 함께 사라집니다.")] : []))
                                               .joined(separator: "\n\n"),
@@ -68,12 +68,17 @@ extension ReflectionCoordinator {
         await store.refreshIfRekordboxChanged()
     }
 
-    /// 복원이 되돌릴 실제 목표: 기록 종류마다 다르다(시점 복원 기록은 처음 고른 시점으로 다시 복원한다)
-    static func restoreGoal(_ entry: RekordboxWriteJournal.Entry) -> String {
-        switch entry {
+    /// 복원이 되돌릴 실제 목표: 기록 종류마다 다르다. 시점 복원은 재시도하며 목표가 바뀔 수 있어 기록에 지금 적힌 시점을 말한다
+    static func restoreGoal(_ journal: RekordboxWriteJournal) -> String {
+        switch journal.entry {
         case .drafts, .trackAdd, .trackDelete: String(ui: "쓰다가 끊긴 저장을 이 기록으로 쓰기 전 상태로 되돌립니다.")
         case .restore: String(ui: "끊긴 복원을 이 기록의 같은 백업으로 다시 끝냅니다.")
-        case .pointRestore: String(ui: "끊긴 복원을 처음 고른 복원 시점으로 다시 끝냅니다.")
+        case .pointRestore:
+            if let snapshot = journal.basis.pointSnapshot {
+                String(ui: "끊긴 복원을 ‘\(URL(filePath: snapshot).lastPathComponent)’ 복원 시점으로 다시 끝냅니다.")
+            } else {
+                String(ui: "끊긴 복원을 이 기록의 복원 시점으로 다시 끝냅니다.")
+            }
         case .iTunesSync: String(ui: "끊긴 iTunes 동기화가 바꾼 동기화 파일만 쓰기 전 상태로 되돌립니다.")
         }
     }
@@ -115,12 +120,18 @@ extension ReflectionCoordinator {
             defer { session.ports.lock.set(false, false) }
             let gate = session.ports.gate, target = session.target
             let journal = finding.journal, request = finding.request
+            // 미정리 목록은 그 쓰기를 한 앱이 기록에 적은 경로로 찾는다(같은 폴더를 다른 경로로 열었어도 같은 목록이다)
+            let listHome = journal.drafts.map { URL(filePath: $0.home) } ?? home
             do {
                 let kept = try await BlockingWork.run {
                     try gate.keepJournal(target, request) {
-                        // 그 쓰기의 미정리 목록을 먼저 지운 뒤 적힌 판의 초안을 제안으로 바꾼다
-                        for list in try gate.cleanupLists(target, home) where list.operationID == journal.operationID {
-                            try gate.removeCleanupList(list, target)
+                        // 그 쓰기의 미정리 목록을 먼저 지우고 지웠는지 확인한 뒤에만 이어 간다(남았으면 던져 기록을 남긴다). 그다음 적힌 판의 초안을 제안으로 바꾼다
+                        func remaining() throws -> [DraftCleanupList] {
+                            try gate.cleanupLists(target, listHome).filter { $0.operationID == journal.operationID }
+                        }
+                        for list in try remaining() { try gate.removeCleanupList(list, target) }
+                        guard try remaining().isEmpty else {
+                            throw DJCError.writeRefused(String(ui: "미정리 목록을 지우지 못해 기록을 남겼습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 시도하세요"))
                         }
                         if let drafts = journal.drafts { _ = try files.markSuggestions(drafts.written, Set(drafts.playlistSteps)) }
                     }

@@ -160,22 +160,27 @@ final class ReflectionPresenter {
     static let autoWriteToasts = AutoReflectionTiming.standard.successToasts
 
     /// 성공한 자동 저장은 활동 기록에만 남긴다. 처음 몇 번만 토스트를 보이고 그 횟수는 설정에 남겨 다시 켜도 이어 센다.
-    /// 뒤처리에 남은 경고(`followUp`)가 있으면 횟수와 상관없이 경고로 알린다(조용한 성공이 아니다)
+    /// 뒤처리에 남은 경고(`followUp`)가 있으면 횟수와 덮어쓰기 제한 없이 경고로 알린다(조용한 성공이 아니다)
     private func publishAutoWritten(_ report: RekordboxWriteReport, followUp: [String]) {
         guard let store else { return }
         let result = WriteResult.written(report, preview: report).followedUp(followUp)
         let shown = Int(store.settings.value(SettingKeys.writeToastsShown))
         // 사용자가 누르지 않은 결과라 떠 있는 경고·실패나 단추가 있는 알림을 덮지 않는다(기존 규칙): 활동 기록에만 남기고 횟수에 세지 않는다
-        guard store.canReplaceToast, !followUp.isEmpty || shown < Self.autoWriteToasts else {
+        // 뒤처리에 남은 경고는 성공 토스트의 덮어쓰기 제한·횟수와 상관없이 늘 보인다(조용한 성공이 아니다)
+        if !followUp.isEmpty {
+            var toast = result.toast
+            toast.undoBackup = report.backup.map { URL(filePath: $0) }
+            store.showToast(toast, for: result)
+            return
+        }
+        guard store.canReplaceToast, shown < Self.autoWriteToasts else {
             _ = store.activityLog.record(result)
             return
         }
         var toast = result.toast
-        if followUp.isEmpty {
-            let tracks = Self.writtenTracks(report)
-            if tracks > 0 { toast.title = String(ui: "\(tracks)곡을 저장했습니다") }
-            store.settings.set(SettingKeys.writeToastsShown, Double(shown + 1))
-        }
+        let tracks = Self.writtenTracks(report)
+        if tracks > 0 { toast.title = String(ui: "\(tracks)곡을 저장했습니다") }
+        store.settings.set(SettingKeys.writeToastsShown, Double(shown + 1))
         toast.undoBackup = report.backup.map { URL(filePath: $0) }
         store.showToast(toast, for: result)
     }
@@ -287,15 +292,48 @@ final class ReflectionCoordinator {
         return false
     }
 
+    /// 보관한 저장 요청 하나(R3 5번 줄): 범위 + 차례를 받은 뒤 판정. 자리 비움·취소 연결은 `queueSave`가 한다
+    struct QueuedSave {
+        /// 저장할 곡. 차례를 받은 뒤 읽는다(앞 쓰기가 끝난 상태의 저장 대기)
+        var rows: @MainActor () -> [TrackRow]
+        /// 재생 목록 초안도 함께 쓸지(곡 메뉴는 고른 곡의 초안만)
+        var playlists = true
+        /// 차례를 받은 뒤 지금 상태로 시작해도 되는지(공통 저장 입구의 1~3번 줄 판정: 시트·USB·종료·쓸 수 없음·중단). 아니면 이유를 알리고 false
+        var admits: @MainActor () -> Bool = { true }
+    }
+
+    /// 차례를 받았는지 알려 주는 상자(보관한 요청의 작업과 끝 처리가 같이 본다)
+    @MainActor
+    private final class QueuedSaveState {
+        var task: Task<Void, Never>?
+        var tookTurn = false
+    }
+
     /// 쓰는 중에 누른 저장: 요청 하나를 보관해 앞 쓰기가 끝난 뒤 다음 자동 저장보다 먼저 한다(R3 5번 줄).
-    /// 엔진의 차례(`exclusive`)에 지금 들어가 기다리므로 엔진이 그 사이 자동 저장을 먼저 시작하지 않는다. 저장할 대상은 실행 때 다시 읽는다.
+    /// 엔진의 차례(`exclusive`)에 지금 들어가 기다리므로 엔진이 그 사이 자동 저장을 먼저 시작하지 않는다.
+    /// - 차례를 받으면 자리를 비워 다음 ⌘S가 다시 보관된다. 그 작업은 기존 취소 입구(미리 보기 [취소]·Esc)가 취소한다
+    /// - 차례를 받은 뒤 공통 저장 입구의 판정(`admits`)을 다시 하고, 저장할 곡은 그때 읽는다
     /// 이미 보관한 요청이 있거나 엔진이 없으면(차례가 없어 겹쳐 쓴다) 아무것도 하지 않는다
-    func queueSave(rows: @escaping @MainActor () -> [TrackRow]) {
+    func queueSave(_ request: QueuedSave) {
         guard engine != nil, queuedSave == nil else { return }
-        queuedSave = Task { [weak self] in
-            await self?.write(later: rows)
-            self?.queuedSave = nil
+        let state = QueuedSaveState()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await write(queued: request, onTurn: { [weak self, state] in
+                guard let self else { return }
+                state.tookTurn = true
+                queuedSave = nil
+                store.queuedWriteTask = state.task
+            })
+            // 끝났다: 차례를 받았으면 취소 연결을 풀고, 받기 전에 끝났으면(거절 등) 자리를 비운다
+            if state.tookTurn {
+                if store.queuedWriteTask == state.task { store.queuedWriteTask = nil }
+            } else {
+                queuedSave = nil
+            }
         }
+        state.task = task
+        queuedSave = task
     }
 
     func start(_ work: @escaping @MainActor () async -> Void) {
@@ -393,22 +431,27 @@ final class ReflectionCoordinator {
 
     /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 곡 초안만 쓴다)
     func write(rows: [TrackRow], playlists: Bool = true) async {
-        await write(later: { rows }, playlists: playlists, skipsWhenNothingSavable: false)
+        let session = session
+        let outcome = await serializedWrite { await session.write(rows: rows, playlists: playlists) }
+        await finish(outcome)
     }
 
-    /// 쓸 곡을 엔진의 차례가 와서 쓰기 직전에 읽는다(보관한 저장 요청). 앞 쓰기가 저장 대기를 이미 모두 썼으면 조용히 끝낸다
-    func write(later rows: @escaping @MainActor () -> [TrackRow], playlists: Bool = true, skipsWhenNothingSavable: Bool = true) async {
+    /// 보관한 저장 요청(`queueSave`)을 엔진의 차례가 와서 한다. 차례를 받은 뒤 시작할 수 있는지 다시 보고, 저장할 곡은 그때 읽는다.
+    /// 앞 쓰기가 저장 대기를 이미 모두 썼으면 조용히 끝낸다
+    func write(queued request: QueuedSave, onTurn: @escaping @MainActor () -> Void) async {
         let session = session
         let outcome = await serializedWrite { [self] in
-            // 차례를 기다린 사이 상태가 바뀌었다: 시작할 수 없는 이유를 다시 보고, 쓸 것이 없으면 아무것도 알리지 않는다
-            if skipsWhenNothingSavable {
-                if refusesNow() { return .declined }
-                guard store.hasSavableEdits else { return .declined }
-            }
-            return await session.write(rows: rows(), playlists: playlists)
+            onTurn()
+            if !request.admits() || refusesNow() { return .declined }
+            guard store.hasSavableEdits else { return .declined }
+            return await session.write(rows: request.rows(), playlists: request.playlists)
         }
-        // 쓸 수 없게 된 곡·재생 목록의 초안은 창을 줄줄이 띄우지 않고 한 시트에서 줄마다 고친다(#232).
-        // 고를 것이 없으면 창을 띄우지 않는다. 막힌 이유는 결과 토스트와 결과 보기에 있다(#230).
+        await finish(outcome)
+    }
+
+    /// 쓸 수 없게 된 곡·재생 목록의 초안은 창을 줄줄이 띄우지 않고 한 시트에서 줄마다 고친다(#232).
+    /// 고를 것이 없으면 창을 띄우지 않는다. 막힌 이유는 결과 토스트와 결과 보기에 있다(#230).
+    private func finish(_ outcome: ReflectionOutcome) async {
         guard case let .nothingWritable(preview, targets) = outcome else { return }
         let requests = Self.recoveryRequests(store: store, targets: targets, blocked: BlockedDrafts(report: preview.report))
         if !requests.isEmpty { await recover(requests: requests, staleOnly: true) }

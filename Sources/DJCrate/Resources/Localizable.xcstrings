@@ -21427,6 +21427,22 @@
         }
       }
     },
+    "끊긴 복원을 ‘%@’ 복원 시점으로 다시 끝냅니다." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finishes the interrupted restore again with the ‘%@’ restore point."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "途中で止まった復元を、復元ポイント「%@」でもう一度最後まで行います。"
+          }
+        }
+      }
+    },
     "끊긴 복원을 이 기록의 같은 백업으로 다시 끝냅니다." : {
       "localizations" : {
         "en" : {
@@ -21443,18 +21459,18 @@
         }
       }
     },
-    "끊긴 복원을 처음 고른 복원 시점으로 다시 끝냅니다." : {
+    "끊긴 복원을 이 기록의 복원 시점으로 다시 끝냅니다." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Finishes the interrupted restore again with the restore point first chosen."
+            "value" : "Finishes the interrupted restore again with the restore point in this record."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "途中で止まった復元を、最初に選んだ復元ポイントでもう一度最後まで行います。"
+            "value" : "途中で止まった復元を、この記録の復元ポイントでもう一度最後まで行います。"
           }
         }
       }
@@ -27933,6 +27949,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未保存のプレイリストはエクスポートできません。rekordboxにプレイリストを保存してからエクスポートしてください。"
+          }
+        }
+      }
+    },
+    "미정리 목록을 지우지 못해 기록을 남겼습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 시도하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't remove the pending-cleanup list, so the record was kept. Check write permission on the DJCrate data folder, then try again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未整理リストを削除できなかったため、記録を残しました。DJCrateのデータフォルダの書き込み権限を確認してから、もう一度お試しください。"
           }
         }
       }
@@ -40447,6 +40479,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "追加日"
+          }
+        }
+      }
+    },
+    "입력 중인 칸을 확정하지 못해 저장하지 않았습니다. 칸의 값을 고치거나 Return을 누른 뒤 다시 저장하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The field being edited couldn't be committed, so nothing was saved. Fix the value or press Return, then save again."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入力中の欄を確定できなかったため保存しませんでした。値を直すかReturnキーを押してから、もう一度保存してください。"
           }
         }
       }

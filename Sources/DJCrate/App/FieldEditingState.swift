@@ -11,8 +11,10 @@ import Observation
 final class FieldEditingState {
     /// 입력 중인 칸이 있다
     var isEditing = false
-    /// 입력 중인 칸을 확정한다. 시험이 바꿔 끼운다
-    @ObservationIgnored var commit: @MainActor () -> Void = {}
+    /// 입력 중인 칸을 확정한다. 칸이 확정을 거절하면(검증이 포커스를 놓지 못하게 함) false. 시험이 바꿔 끼운다
+    @ObservationIgnored var commit: @MainActor () -> Bool = { true }
+    /// 확정이 끝나기를 기다리는 한도. 넘으면 저장하지 않고 이유를 알린다(칸의 값이 빠진 채 저장하지 않게)
+    @ObservationIgnored var settleLimit: Duration = .milliseconds(1500)
     /// 칸이 포커스를 잃은 뒤 값을 넣는 확정이 아직 끝나지 않았다(SwiftUI 입력 칸). 조립 지점이 인스펙터에 잇는다
     @ObservationIgnored var hasPendingCommit: @MainActor () -> Bool = { false }
     @ObservationIgnored private var observers: [any NSObjectProtocol] = []
@@ -24,8 +26,11 @@ final class FieldEditingState {
     static func live(window: @escaping @MainActor () -> NSWindow? = { NSApp.keyWindow }) -> FieldEditingState {
         let state = FieldEditingState()
         state.commit = { [weak state] in
+            guard let window = window() else { return true }
             // 칸이 확정을 거절하면(검증 실패) 입력은 이어진다
-            if let window = window(), window.makeFirstResponder(nil) { state?.finish(nil) }
+            guard window.makeFirstResponder(nil) else { return false }
+            state?.finish(nil)
+            return true
         }
         let center = NotificationCenter.default
         let began = center.addObserver(forName: NSControl.textDidBeginEditingNotification, object: nil, queue: .main) { [weak state] note in
