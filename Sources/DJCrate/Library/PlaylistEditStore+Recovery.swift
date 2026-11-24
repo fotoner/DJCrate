@@ -13,7 +13,6 @@ extension PlaylistEditStore {
 
     /// - Parameter prefetched: 복구 시트가 재생 목록 줄 여럿을 위해 한 번 읽어 둔 현재 라이브러리(`readPlaylistRecoveryPrefetch`)
     func preparePlaylistRecovery(playlist id: String, prefetched: PlaylistRecoveryCurrent? = nil) async throws -> PlaylistRecoveryReview {
-        resyncForRecovery()
         guard playlistRecoveryAllowed, !library.isRecoveringDraft else { throw playlistRecoveryRefused() }
         let original = playlistDraft
         library.isRecoveringDraft = true
@@ -59,14 +58,10 @@ extension PlaylistEditStore {
         !library.libraryBusy && !library.isLoading && !playlistDraftNeedsSync && (library.allowsLibrarySync?() ?? true)
     }
 
-    /// 복구를 막은 이유: 디스크 초안을 읽지 못했으면 그 이유(현재값을 다시 가져와도 풀리지 않는다), 아니면 비교 뒤 바뀜(#295 리뷰 F16)
+    /// 복구를 막은 이유: 디스크 초안을 읽지 못했으면 그 이유(현재값을 다시 가져와도 풀리지 않는다), 아니면 비교 뒤 바뀜(#295 리뷰 F16).
+    /// 여기서 디스크를 다시 읽지 않는다: 감시가 손상 파일을 옮긴 뒤 메모리 초안을 다시 저장하기 전에 읽으면 메모리 편집을 잃는다(리뷰 S11)
     private func playlistRecoveryRefused() -> DJCError {
         playlistDraftNeedsSync ? .writeRefused(Self.syncFailureText) : RecoverDrafts.changedError
-    }
-
-    /// 복구를 열 때: 디스크 초안을 읽지 못했던 상태면 먼저 다시 읽는다. 권한을 되찾았는데 파일 수정 시각이 그대로면 감시가 다시 읽지 않는다(#295 리뷰 F16)
-    private func resyncForRecovery() {
-        if playlistDraftNeedsSync { _ = syncExternal() }
     }
 
     /// 내용과 단계 식별자가 모두 같은지. `PlaylistDraft.==`는 식별자를 보지 않아, 그새 식별자가 채워진 초안에 낡은 준비(식별자 없음)를
@@ -75,7 +70,6 @@ extension PlaylistEditStore {
 
     /// 복구 시트가 재생 목록 줄 전체를 위해 현재 라이브러리를 한 번 읽는다(줄마다 사본을 뜨지 않게, #232).
     func readPlaylistRecoveryPrefetch() async throws -> PlaylistRecoveryCurrent {
-        resyncForRecovery()
         guard playlistRecoveryAllowed, !library.isRecoveringDraft else { throw playlistRecoveryRefused() }
         library.isRecoveringDraft = true
         defer { library.isRecoveringDraft = false }

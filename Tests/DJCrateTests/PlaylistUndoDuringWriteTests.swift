@@ -529,9 +529,11 @@ struct PlaylistUndoDuringWriteTests {
         #expect(origins == [[.cli, .human]], "\(origins)")
     }
 
-    /// 디스크 초안을 읽지 못해 막힌 뒤 다시 읽을 수 있게 됐으면(파일 수정 시각이 그대로라 감시가 다시 읽지 않는다) 복구를 열 때 다시 읽고 준비한다(리뷰 F16)
-    @Test func 읽지_못했던_초안을_다시_읽을_수_있으면_복구를_열_때_다시_읽고_준비한다() async throws {
+    /// 복구를 열어도 디스크 초안을 다시 읽지 않는다: 감시가 손상 파일을 옮긴 뒤 메모리 초안을 다시 저장하기 전에 다시 읽으면
+    /// 파일이 없는 상태를 빈 초안으로 받아 메모리 편집을 잃는다(리뷰 S11). 읽지 못한 동안은 그 이유로 막고 메모리 초안은 그대로 둔다
+    @Test func 복구를_열어도_디스크_초안을_다시_읽지_않고_메모리_초안을_지킨다() async throws {
         event { playlists.renamePlaylist("B", to: "사람 이름") }
+        let memory = playlists.playlistDraft
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: file.path)
         #expect(playlists.syncExternal() == .failed && playlists.playlistDraftNeedsSync)
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
@@ -540,8 +542,12 @@ struct PlaylistUndoDuringWriteTests {
             (PlaylistLayout.Item(id: "B", name: "바깥 이름"), 2),
         ])
         let current = PlaylistRecoveryCurrent(layout: changed, contentIDs: ["1"], titles: [:], rows: [:])
-        let review = try await playlists.preparePlaylistRecovery(playlist: "B", prefetched: current)
-        #expect(review.playlistID == "B" && !playlists.playlistDraftNeedsSync)
+        await #expect { try await playlists.preparePlaylistRecovery(playlist: "B", prefetched: current) } throws: { error in
+            guard case let .writeRefused(text)? = error as? DJCError else { return false }
+            return text == PlaylistEditStore.syncFailureText
+        }
+        #expect(playlists.playlistDraftNeedsSync)
+        #expect(PlaylistEditStore.sameSteps(playlists.playlistDraft, memory))
     }
 
     /// 디스크 초안을 계속 읽지 못하면 복구는 "현재값을 다시 가져오세요"가 아니라 읽지 못한 이유로 막는다(리뷰 F16)
