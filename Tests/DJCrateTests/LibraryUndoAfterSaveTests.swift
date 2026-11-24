@@ -253,6 +253,22 @@ struct LibraryUndoAfterSaveTests {
         #expect(try rig.tagValues() == original)
     }
 
+    /// 연속 두 쓰기가 겹쳐도(앞 쓰기의 다시 읽기를 기다리는 동안 다음 자동 저장) ⌘Z 기록이 남는다(#295 E3: 1초 저장이라 잦다)
+    @Test func 연속_두_쓰기가_겹쳐도_실행_취소_기록이_남는다() async throws {
+        let rig = try await Rig([TrackSpec(id: "500"), TrackSpec(id: "501")])
+        let original = try rig.tagValues()
+        let first = try rig.row(rig.tracks[0]), second = try rig.row(rig.tracks[1])
+        rig.event { rig.store.tags.applyTagEdits([(first, .rating, "3")]) }
+        try await rig.autoSave(reloads: false)
+        rig.event { rig.store.tags.applyTagEdits([(second, .rating, "5")]) }
+        try await rig.autoSave()
+        #expect(rig.undo.canUndo, "겹친 두 쓰기 뒤에도 ⌘Z 기록이 남는다")
+        rig.undo.undo()
+        rig.undo.undo()
+        try await rig.autoSave()
+        #expect(try rig.tagValues() == original)
+    }
+
     @Test func 재생_목록_이름을_두_번_바꾸고_저장하면_실행_취소_두_번이_차례대로_되돌린다() async throws {
         let rig = try await Rig(Self.tracks, playlists: Self.playlists)
         let original = try rig.playlistValues()
