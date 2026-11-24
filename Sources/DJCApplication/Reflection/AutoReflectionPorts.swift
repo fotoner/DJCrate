@@ -19,6 +19,9 @@ public struct AutoReflectionTiming: Equatable, Sendable {
     public var rowLimit: Int
     /// 처음 몇 번만 성공 토스트를 보인다(R15)
     public var successToasts: Int
+    /// 덱 편집 뒤 저장까지(#295 E3). 덱은 쓰는 곡의 편집을 조용히 버리므로(쓰기 잠금) 덱에서 이어 고치는 동안 쓰기가 끼지 않게 T_edit보다 길게 둔다.
+    /// 라이브러리·태그 편집은 T_edit 그대로다
+    public var deckEditDelay: Duration = .seconds(3)
     /// 바깥 조건(rekordbox 실행·조용함·앱 보류·쓰기 잠금)을 다시 보는 간격. 저장 대기가 있고 그 조건을 기다릴 때만 본다
     public var pollInterval: Duration = .seconds(1)
     /// 기다릴 것이 없을 때 쉬는 길이(편집·요청 신호가 깨운다)

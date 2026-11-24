@@ -542,8 +542,10 @@ final class AppComposition {
         LinkCapture.runIfRequested(link: link, store: store)
         DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows, libraryWindow: libraryWindow)
         #endif
-        deck.onDraftChange = { [weak store] uuid, kind, exists in
+        deck.onDraftChange = { [weak store, weak self] uuid, kind, exists in
             store?.draftChanged(trackUUID: uuid, kind: kind, exists: exists)
+            // 덱 편집은 3초 뒤에 저장한다(#295 E3: 쓰는 곡의 덱 편집은 버려지므로 이어 고치는 동안 쓰기가 끼지 않게)
+            self?.autoReflection?.edited(fromDeck: true)
         }
         // DJCrate에서 고친 큐를 LINK로 내어 주는 큐에 옮긴다(#281)
         if let link {

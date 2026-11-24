@@ -85,6 +85,8 @@ public final class AutoReflection {
     private var startupDone = false
     /// 마지막 대상 편집(또는 편집 활동이 끝난) 때. T_edit를 여기서 센다
     private var lastEdit: Date?
+    /// 마지막 덱 편집 때. 덱 편집 뒤에는 T_edit 대신 덱 대기(`deckEditDelay`)를 센다(#295 E3)
+    private var lastDeckEdit: Date?
     private var activity = EditActivity()
     /// 영속 기록(멈춤·[취소]한 판·백업 전 실패). 읽지 못하면 멈춤으로 본다(R7)
     private var record = AutoReflectionRecord()
@@ -173,8 +175,12 @@ public final class AutoReflection {
 
     /// 대상 편집이 생겼다(저장 대기가 바뀔 때마다). 마지막 편집 뒤 T_edit를 다시 센다. 대량 유예는 처음부터 다시 센다.
     /// 같은 원인으로 두 번 난 백업 전 실패의 보류는 다시 나눈 저장 대기에 사람 편집의 새 판이 있을 때만 다시 시도한다(R7)
-    public func edited() {
-        lastEdit = ports.clock.now()
+    /// - Parameter fromDeck: 덱에서 고쳤다. 마지막 덱 편집 뒤 덱 대기(3초)가 지나야 쓴다: 덱은 쓰는 곡의 편집을 조용히 버리므로 이어 고치는 동안
+    ///   쓰기가 끼면 편집을 잃는다(#295 E3)
+    public func edited(fromDeck: Bool = false) {
+        let now = ports.clock.now()
+        lastEdit = now
+        if fromDeck { lastDeckEdit = now }
         grace = nil
         wake()
     }
@@ -523,12 +529,15 @@ public final class AutoReflection {
             grace = nil
             return hold(.editing, status: .pending, pause: poll)
         }
+        // 마지막 편집 뒤 T_edit, 덱 편집 뒤에는 덱 대기(둘 가운데 늦은 때)
+        let editDue = [lastEdit.map { $0 + Self.seconds(timing.editDelay) }, lastDeckEdit.map { $0 + Self.seconds(timing.deckEditDelay) }]
+            .compactMap { $0 }.max()
         if quitting {
             publish(status: .quitting, conditions: base)
-        } else if let lastEdit, now < lastEdit + Self.seconds(timing.editDelay) {
+        } else if let editDue, now < editDue {
             base.waiting = true
             publish(status: .pending, conditions: base)
-            return .seconds(min((lastEdit + Self.seconds(timing.editDelay)).timeIntervalSince(now), Self.seconds(poll)))
+            return .seconds(min(editDue.timeIntervalSince(now), Self.seconds(poll)))
         }
         // 앱 보류 사유·rekordbox 켜짐은 대량 유예보다 먼저 본다. 그동안은 유예를 세지 않는다(풀린 뒤 처음부터 다시 센다, R14·R16)
         if let reason = Self.firstHold(appHolds.subtracting([.editing])) {

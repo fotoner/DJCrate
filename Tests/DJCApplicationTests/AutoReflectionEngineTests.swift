@@ -99,6 +99,73 @@ struct AutoReflectionEngineTests {
         #expect(order.firstIndex(of: "remove cleanup list")! < order.firstIndex(of: "write")!)
     }
 
+    // MARK: - 덱 편집 뒤 3초(#295 E3)
+
+    /// 덱에서 곡을 1.5초 간격으로 다섯 번 고친다. 덱은 그 곡이 쓰기 묶음에 들어 잠긴 동안 편집을 조용히 버린다(`DeckModel.isEditLocked`).
+    /// T_edit가 1초이고 쓰기가 2초 걸리면 편집 사이에 자동 저장이 끼어 버려지는 편집이 생긴다: 덱 편집 뒤에는 3초를 기다려 버려지는 편집이 없다
+    @Test func 덱_곡을_1_5초_간격으로_다섯_번_고쳐도_쓰기_잠금에_버려지는_편집이_없다() async throws {
+        let w = AutoReflectionWorld()
+        w.timing.editDelay = .seconds(1)
+        w.writable("a")
+        let hold = WriteHold()
+        w.h.script.duringWrite = { hold.wait() }
+        try await w.start()
+        try await w.advance(10)
+        hold.hold()
+        var writeStarted: Date?
+        /// 0.5초씩 넘기며 엔진이 쉬거나 관문에 붙잡힐 때까지 기다린다. 붙잡힌 쓰기는 2초 뒤 놓는다(쓰기 한 번이 2초 걸린다)
+        func tick() async throws {
+            w.fakes.clock.advance(.milliseconds(500))
+            for _ in 0..<4000 where !((w.engine.isParked || hold.isWaiting) && w.fakes.clock.sleeping == 1) {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            guard hold.isWaiting else { return }
+            let now = w.fakes.clock.now
+            if writeStarted == nil { writeStarted = now }
+            if let started = writeStarted, now.timeIntervalSince(started) >= 2 {
+                hold.release()
+                writeStarted = nil
+                try await w.settle()
+                hold.hold()
+            }
+        }
+        var dropped = 0
+        for index in 0..<5 {
+            if w.h.lockedTrackSet.contains("a") {
+                dropped += 1
+            } else {
+                w.cue("a", at: Double(10 + index))
+                w.engine.edited(fromDeck: true)
+                if !hold.isWaiting { try await w.settle() }
+            }
+            for _ in 0..<3 { try await tick() }
+        }
+        for _ in 0..<20 where w.writes.isEmpty || hold.isWaiting { try await tick() }
+        hold.release()
+        #expect(dropped == 0, "쓰기 잠금에 걸려 버려진 덱 편집 \(dropped)번")
+        #expect(w.writes.count == 1 && w.writes.first?.drafts.first?.cues.first?.time == 14, "다섯 번째 편집까지 한 번에 쓴다")
+    }
+
+    /// 덱 편집은 마지막 덱 편집 뒤 3초, 라이브러리·태그 편집은 T_edit(1초) 뒤에 쓴다
+    @Test func 덱_편집은_3초_라이브러리_편집은_T_edit_뒤에_쓴다() async throws {
+        let w = AutoReflectionWorld()
+        w.timing.editDelay = .seconds(1)
+        w.writable("a", "b")
+        try await w.start()
+        try await w.advance(10)
+        w.cue("a")
+        try await w.edited()
+        try await w.advance(1)
+        #expect(w.writes.count == 1, "라이브러리 편집은 1초 뒤에 쓴다")
+        w.cue("b")
+        w.engine.edited(fromDeck: true)
+        try await w.settle()
+        try await w.advance(2)
+        #expect(w.writes.count == 1 && w.engine.status == .pending, "덱 편집은 3초 전에 쓰지 않는다")
+        try await w.advance(1)
+        #expect(w.writes.count == 2)
+    }
+
     // MARK: - R2 rekordbox 켜짐과 조용함
 
     @Test(arguments: [RekordboxRunState.running, .agentOnly, .unknown])
