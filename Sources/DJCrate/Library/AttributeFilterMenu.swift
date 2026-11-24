@@ -164,6 +164,7 @@ private struct AttributeFilterEditor: View {
             .textFieldStyle(.roundedBorder)
             .multilineTextAlignment(.trailing)
             .frame(width: 64)
+            .filterField()
     }
 
     private func parsed(_ value: Double?) -> FilterBPMText.Parsed { value.map(FilterBPMText.Parsed.value) ?? .empty }

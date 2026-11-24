@@ -35,6 +35,8 @@ extension LibraryStore {
                 if cueCounts { draftCueCounts[uuid] = nil }
                 draftChanged(trackUUID: uuid, kind: DeckModel.DraftKind(kind), exists: false)
             }
+        case let .cueIDsWritten(ids): writtenCueIDs.merge(ids) { old, new in old.merging(new) { _, latest in latest } }
+        case let .tagsWritten(uuids): tagsWrittenAwaitingReload.formUnion(uuids)
         case let .tagDrafts(drafts): replaceTagDrafts(drafts)
         case let .mergeDrafts(drafts, failure, moved): applyMergeDraftsAfterWrite(drafts, failure: failure, moved: moved)
         case let .playlistWritten(cleanup): playlists.applyPlaylistWrite(cleanup)
@@ -82,6 +84,11 @@ extension LibraryStore {
         }
         isWritingRekordbox = locked
         if deck { onWriteLock?(locked) }
+        // 쓰는 동안 눌러 미뤄 둔 재생 목록 ⌘Z를 다시 올리고, 저장 뒤 되돌릴 수 없게 된 단계를 뺀다(R12)
+        if !locked {
+            pendingUndo.flush()
+            settleUndo()
+        }
         // 종료를 기다리느라 미룬 다시 읽기는 종료를 취소했는데 쓰기 잠금이 아직 걸려 있었을 때 여기서 이어 한다(#305)
         if !locked { resumePostponedReload() }
     }

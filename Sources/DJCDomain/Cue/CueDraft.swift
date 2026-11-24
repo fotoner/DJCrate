@@ -55,6 +55,26 @@ public struct EditableCue: Codable, Identifiable, Hashable, Sendable {
         }
     }
 
+    /// rekordbox가 적어 둔 큐 색(`djmdCue.Color`·`ColorTableIndex`)과 그 색을 받은 큐가 메모리 큐였는지(#405).
+    /// 지운 큐를 되살릴 때(저장 뒤 ⌘Z) 지우기 전 색을 그대로 쓴다. 기본 색(메모리 -1, 루프 255·표 0)은 두지 않는다
+    public struct ColorMark: Codable, Hashable, Sendable {
+        public var color: Int?
+        public var tableIndex: Int?
+        /// 이 색을 받은 큐가 메모리 큐였다(쓰기는 같은 갈래의 큐에만 이 색을 쓴다: 메모리 ↔ 핫큐의 색 칸은 뜻이 다르다)
+        public var memory: Bool
+
+        public init(color: Int?, tableIndex: Int?, memory: Bool) {
+            self.color = color
+            self.tableIndex = tableIndex
+            self.memory = memory
+        }
+
+        /// 사용자가 고른 색인지(쓰기가 옮긴 큐에 색을 이어 줄 때와 같은 기준)
+        public static func isPicked(color: Int?, tableIndex: Int?) -> Bool {
+            (color.map { $0 != -1 && $0 != 255 } ?? false) || (tableIndex ?? 0) > 0
+        }
+    }
+
     public var id: UUID
     /// rekordbox `djmdCue.ID`. rekordbox에서 불러온 큐만 가진다.
     public var sourceID: String?
@@ -63,15 +83,20 @@ public struct EditableCue: Codable, Identifiable, Hashable, Sendable {
     public var name: String
     /// 루프면 끝 지점·활성 여부(옛 초안에는 없다)
     public var loop: Loop?
+    /// rekordbox에서 불러온 큐의 지정한 색(없으면 nil, 옛 초안에는 없다). 큐 비교(`CueDraft.changes`)에는 넣지 않는다
+    public var color: ColorMark?
+    /// 저장 뒤 ⌘Z가 되살린 큐면 지우기 전 rekordbox 큐 ID(R12). 쓰기는 이 표시가 있는 새 큐에만 `color`를 쓴다(SAFE-12)
+    public var restoredFrom: String?
 
     /// - Parameter id: 새 큐의 ID(부르는 쪽이 준다. 핵심부는 ID를 스스로 만들지 않는다)
-    public init(id: UUID, sourceID: String? = nil, kind: Kind, time: Double, name: String = "", loop: Loop? = nil) {
+    public init(id: UUID, sourceID: String? = nil, kind: Kind, time: Double, name: String = "", loop: Loop? = nil, color: ColorMark? = nil) {
         self.id = id
         self.sourceID = sourceID
         self.kind = kind
         self.time = time
         self.name = name
         self.loop = loop
+        self.color = color
     }
 
     /// 루프 길이(초)
@@ -86,7 +111,9 @@ public struct EditableCue: Codable, Identifiable, Hashable, Sendable {
         guard let kind = Kind(rekordbox: cue.kind) else { return nil }
         self.init(id: id, sourceID: cue.id, kind: kind, time: Double(cue.inMsec) / 1000, name: cue.name,
                   loop: cue.isLoop ? Loop(end: Double(cue.outMsec) / 1000, active: cue.activeLoop > 0,
-                                          beats: Loop.beats(beatLoopSize: cue.beatLoopSize)) : nil)
+                                          beats: Loop.beats(beatLoopSize: cue.beatLoopSize)) : nil,
+                  color: ColorMark.isPicked(color: cue.color, tableIndex: cue.colorTableIndex)
+                      ? ColorMark(color: cue.color, tableIndex: cue.colorTableIndex, memory: cue.kind == 0) : nil)
     }
 
     /// rekordbox 큐 가운데 편집할 수 있는 것만 편집용으로 바꾼다. ID는 편집할 수 있는 큐에만 `newID`로 받는다.
@@ -106,6 +133,13 @@ public struct CueDraft: Codable, Equatable, Sendable {
         self.trackUUID = trackUUID
         base = []
         cues = []
+    }
+
+    /// base와 큐를 정해 만든다(저장 뒤 ⌘Z의 역편집: 지금 rekordbox 큐를 base로 편집 전 큐를 목표로, #405)
+    public init(trackUUID: String, base: [EditableCue], cues: [EditableCue]) {
+        self.trackUUID = trackUUID
+        self.base = base
+        self.cues = cues
     }
 
     /// rekordbox 큐로 시작하는 초안. 편집할 수 있는 큐마다 `newID`로 ID를 받는다(base·cues가 같은 ID).

@@ -90,6 +90,13 @@ extension DraftStore {
         store.lockPlaylistDraft = { PlaylistDraftLock.acquire(PlaylistDraftLock.url(for: places.playlist), wait: $0) }
         // 출처·판(R5·R22): 도장은 사이드카에서 읽고, 판 지정 삭제는 저장 큐에서 앞서 걸린 저장 뒤에 초안 잠금 안에서 한다
         store.origin = origin
+        // 게인 초안의 base(R23)는 값과 같은 저장 큐·같은 차례로 옆 파일에 둔다
+        store.gainBases = { GainDraftStore.bases(url: places.gain) }
+        store.saveGainBase = { base, uuid in writer.saveGainBase(base, trackUUID: uuid, url: places.gain) }
+        store.saveGainWithBase = { gain, base, uuid, completion in
+            writer.save(gain: gain, base: base, trackUUID: uuid, url: places.gain,
+                        write: { try StampedDrafts.saveGain($0, trackUUID: $1, url: $2, origin: origin) }, completion: completion)
+        }
         store.originVariant = { live(writer: writer, home: home, origin: $0) }
         store.stamp = { DraftStampStore.stamp($0, home: home) }
         store.playlistStamps = { StampedDrafts.playlistStamps(home: home) }

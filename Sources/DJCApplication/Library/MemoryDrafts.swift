@@ -13,6 +13,8 @@ public final class MemoryDrafts: Sendable {
         var cues: [String: CueDraft] = [:]
         var grids: [String: GridDraft] = [:]
         var gains: [String: Double] = [:]
+        /// 게인 초안의 base(R23, 실제 저장소의 옆 파일과 같다)
+        var gainBases: [String: GainDraftBase] = [:]
         var tags: [String: TagDraft] = [:]
         var artwork: [String: ArtworkEdit] = [:]
         var playlist = PlaylistDraft()
@@ -76,7 +78,7 @@ public final class MemoryDrafts: Sendable {
             switch key.kind {
             case .cue: cues[key.id] = nil
             case .grid: grids[key.id] = nil
-            case .gain: gains[key.id] = nil
+            case .gain: gains[key.id] = nil; gainBases[key.id] = nil
             case .tag: tags[key.id] = nil
             case .artwork: artwork[key.id] = nil
             case .merge: merges.removeAll { $0.id == key.id }
@@ -114,13 +116,35 @@ public final class MemoryDrafts: Sendable {
             $0.restamp(DraftKey(.grid, draft.trackUUID), hash: draft.hasChanges ? Self.hash(draft) : nil, origin: origin)
         }
     }
+    /// 게인 초안(nil이면 지우기: base도 지운다. 값만 바꾸면 base는 그대로다)
     public func save(gain: Double?, _ uuid: String, origin: DraftOrigin = .human) {
         state.withLock {
             $0.revision += 1
             $0.gains[uuid] = gain
+            if gain == nil { $0.gainBases[uuid] = nil }
             $0.restamp(DraftKey(.gain, uuid), hash: gain.flatMap { Self.hash($0) }, origin: origin)
         }
     }
+    /// base와 함께 게인 초안을 저장한다(R23): 값을 저장한 뒤 base를 그 값의 판에 묶는다. 실행 경계는 이 저장소의 지금 경계다
+    public func save(gain: Double?, base: Double?, _ uuid: String, origin: DraftOrigin = .human) {
+        save(gain: gain, uuid, origin: origin)
+        if gain != nil { saveGainBase(base.map { GainDraftBase(db: $0, run: runEpoch.current) }, uuid) }
+    }
+    /// 게인 초안의 base(R23, nil이면 지운다). 실제 저장소처럼 지금 값의 판에 묶고, 이미 있으면 값·경계는 그대로 둔다
+    public func saveGainBase(_ base: GainDraftBase?, _ uuid: String) {
+        state.withLock { state in
+            guard let base else {
+                state.gainBases[uuid] = nil
+                return
+            }
+            var entry = state.gainBases[uuid] ?? base
+            entry.revision = state.stamps[DraftKey(.gain, uuid)]?.revision
+            state.gainBases[uuid] = entry
+        }
+    }
+    public func gainBase(_ uuid: String) -> GainDraftBase? { state.withLock { $0.gainBases[uuid] } }
+    /// rekordbox 실행 경계(R23): 자동 저장 엔진 시험이 rekordbox 켜짐·꺼짐을 넘긴다
+    public let runEpoch = RekordboxRunEpoch(session: "memory")
     public func save(_ draft: TagDraft, origin: DraftOrigin = .human) {
         state.withLock {
             $0.tags[draft.trackUUID] = draft.hasChanges ? draft : nil
@@ -317,6 +341,9 @@ public final class MemoryDrafts: Sendable {
             saveMergeDrafts: { drafts in self.saveMerges(drafts, origin: origin) },
             newCueID: { MemoryCueIDs.next() })
         store.origin = origin
+        store.gainBases = { self.state.withLock { $0.gainBases } }
+        store.saveGainBase = { base, uuid in self.saveGainBase(base, uuid) }
+        store.runEpoch = runEpoch
         store.originVariant = { self.store(origin: $0) }
         store.stamp = { self.stamp($0) }
         store.playlistStamps = { self.playlistStamps }

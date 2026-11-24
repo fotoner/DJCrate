@@ -30,6 +30,12 @@ extension RekordboxWriter {
                 """, [.text(id)]) { r in stored = (0..<6).map { r.string(Int32($0)) ?? "NULL" } }
             guard stored == seek else { throw fail(String(ui: "새 큐의 탐색 위치가 계산과 다릅니다")) }
         }
+        // 새 큐의 색 칸(옮긴 큐가 이어받은 색·되살린 큐의 지우기 전 색·기본 색)이 정한 값 그대로인지
+        for (id, colors) in expected.insertedColors {
+            var stored: [String] = []
+            try db.query("SELECT Color, ColorTableIndex FROM djmdCue WHERE ID = ?", [.text(id)]) { r in stored = (0..<2).map { r.string(Int32($0)) ?? "NULL" } }
+            guard stored == colors else { throw fail(String(ui: "새 큐의 색이 편집과 다릅니다")) }
+        }
 
         var records: [(cues: String?, count: Int?, usn: Int?)] = []
         try db.query("SELECT Cues, rb_cue_count, rb_local_usn FROM contentCue WHERE ContentID = ?", [.text(contentID)]) { r in

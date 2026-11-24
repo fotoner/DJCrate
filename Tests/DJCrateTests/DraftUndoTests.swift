@@ -184,8 +184,77 @@ struct DraftUndoTests {
         #expect(h.deck.hotCue(slot: 0)?.loop == nil && h.audio.loop == nil)
         undo.redo()
         #expect(h.deck.draft == loop)
+        // 저장 뒤 다시 읽어도 ⌘Z 기록은 남는다(R12, #405: 예전에는 지웠다). 쓰지 않은 초안이 남았으니 지금처럼 편집 전 초안으로 되돌린다
         h.deck.refreshAfterWrite(h.deck.row)
-        #expect(!undo.canUndo && !undo.canRedo)
+        #expect(await waitForState(until: { !h.deck.isEditLocked }))
+        #expect(undo.canUndo && h.deck.draft == loop)
+        undo.undo()
+        #expect(h.deck.hotCue(slot: 0)?.loop == nil && h.audio.loop == nil)
+    }
+
+    /// R12(#405, 컨실 S6): 그 곡을 쓰는 동안 누른 ⌘Z는 되돌리지 않고 누른 요청으로 두었다가, 잠금이 풀리면 누른 차례대로 실행한다
+    @Test func 쓰는_동안_누른_실행_취소는_잠금이_풀리면_누른_차례대로_실행한다() async throws {
+        let h = try DeckHarness()
+        try await h.loaded()
+        let undo = manager(h.deck)
+        h.deck.addMemoryCue(at: 10)
+        h.deck.addMemoryCue(at: 20)
+        let uuid = try #require(h.deck.row?.track.uuid)
+        h.deck.lockedTracks = [uuid]
+        undo.undo()
+        undo.undo()
+        #expect(h.deck.draft?.cues.count == 2, "쓰는 동안에는 되돌리지 않는다")
+        h.deck.lockedTracks = []
+        #expect(h.deck.draft?.cues.isEmpty == true, "풀리면 누른 두 요청을 차례로 실행한다")
+        #expect(!undo.canUndo, "실행 취소 기록에 다시 올리지 않는다")
+    }
+
+    /// R12(#405): 분석 붙이기(분석 파일 없는 곡에 그리드를 처음 둔 편집)는 저장 뒤 되돌리지 않는다. 쓴 뒤 다시 읽어 그 곡에 rekordbox 그리드가
+    /// 생기면 그 ⌘Z는 기록에서 빠져 메뉴가 꺼진다(무동작이 아니다)
+    @Test func 분석을_붙인_그리드_편집은_저장_뒤_실행_취소가_꺼진다() async throws {
+        let drafts = MemoryDrafts()
+        let storage = DeckStorage.memory(drafts)
+        let segment = GridSegment(start: 0.5, bpm: 120, firstBeatNumber: 1)
+        var assets = MemoryTrackAssets()
+        let analysed = "/PIONEER/USBANLZ/after/ANLZ0000.DAT"
+        assets.analysis[analysed] = .init(grid: .grid(GridDraft(trackUUID: "track-1", base: [segment], segments: [segment]).grid(duration: 181)))
+        let deck = DeckModel.test(audio: FakeDeckAudio(), storage: storage, reader: .memory(storage, assets), runsAnalysis: false)
+        let undo = manager(deck)
+        func track(_ analysis: String?) -> Track {
+            Track(id: "1", uuid: "track-1", title: "시험 곡", artist: nil, album: nil, albumArtist: nil, genre: nil, composer: nil,
+                  releaseYear: nil, trackNumber: nil, key: nil, bpm: 120, lengthSeconds: 180, folderPath: "/tmp/silence.wav", comment: "",
+                  importedOn: nil, analysisDataPath: analysis, imagePath: nil, isDeleted: false)
+        }
+        deck.load(TrackRow(track: track(nil), cues: [], playCount: 0))
+        #expect(await waitForState(until: { deck.draft != nil }))
+        // 분석 전 곡에 그리드를 처음 둔다(쓰면 분석 파일을 붙인다)
+        let before = deck.draftSnapshot
+        deck.gridDraft = GridDraft(trackUUID: "track-1", base: [], segments: [segment])
+        deck.registerDraftUndo(from: before, name: "추정 그리드 적용")
+        #expect(undo.canUndo)
+        // 쓴 뒤 다시 읽음: rekordbox에 분석 파일과 그리드가 생겼다
+        drafts.removeGrid("track-1")
+        deck.refreshAfterWrite(TrackRow(track: track(analysed), cues: [], playCount: 0))
+        #expect(await waitForState(until: { !deck.isEditLocked && deck.originalGrid != nil }))
+        #expect(!undo.canUndo, "되돌릴 수 없는 단계는 기록에서 빠진다")
+    }
+
+    /// 쓴 뒤 큐를 하나로 정할 수 없으면(쓰기가 새 큐 ID를 돌려주지 않음) 그 ⌘Z는 꺼진다. 돌려주면 남는다
+    @Test(arguments: [false, true])
+    func 쓴_큐의_새_ID를_받지_못하면_실행_취소가_꺼진다(_ receivesIDs: Bool) async throws {
+        let h = try DeckHarness()
+        try await h.loaded()
+        let undo = manager(h.deck)
+        h.deck.addMemoryCue(at: 30)
+        let added = try #require(h.deck.draft?.cues.first { $0.time == 30 })
+        #expect(undo.canUndo)
+        // 쓴 뒤: 초안은 지워지고 rekordbox에 새 ID의 큐가 있다
+        h.drafts.save(CueDraft(trackUUID: "track-1"))
+        let row = try #require(h.deck.row)
+        let written = Cue(id: "N1", contentID: "1", kind: 0, inMsec: 30_000, name: "", colorTableIndex: nil)
+        h.deck.refreshAfterWrite(TrackRow(track: row.track, cues: [written], playCount: 0), cueIDs: receivesIDs ? [added.id.uuidString: "N1"] : [:])
+        #expect(await waitForState(until: { !h.deck.isEditLocked }))
+        #expect(undo.canUndo == receivesIDs)
     }
 
     @Test func 쓰기_중에는_새로운_초안도_만들지_않는다() async throws {

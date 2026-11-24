@@ -121,9 +121,10 @@ public struct AutoReflectionInventory: Equatable, Sendable {
         tracks.count + autoUnits(rowLimit: rowLimit).units.flatMap { Array($0) }.reduce(0) { $0 + steps[$1].rows }
     }
 
-    /// 대량 유예를 거칠지(R14): 자동으로 쓸 행이 M 이상이거나, 값을 지우는 편집이 여러 곡에 있다
-    public func isBulk(timing: AutoReflectionTiming) -> Bool {
-        autoRows(rowLimit: timing.rowLimit) >= timing.bulkTracks || clearing.intersection(tracks.keys).count >= 2
+    /// 대량 유예를 거칠지(R14): 자동으로 쓸 행이 M 이상이거나, 값을 지우는 편집이 여러 곡에 있다.
+    /// 대기 중인 여러 곡 역편집 묶음의 행·곡도 합산한다(따로 보면 둘 다 M 아래여도, 컨실 2라운드 D·G7)
+    public func isBulk(timing: AutoReflectionTiming, undoRows: Int = 0, undoTracks: Set<String> = []) -> Bool {
+        autoRows(rowLimit: timing.rowLimit) + undoRows >= timing.bulkTracks || clearing.intersection(Set(tracks.keys).union(undoTracks)).count >= 2
     }
 
     /// 자동으로 쓸 것이 있는지
@@ -163,6 +164,105 @@ public struct AutoReflectionInventory: Equatable, Sendable {
     }
 }
 
+// MARK: - 저장 뒤 ⌘Z의 역편집 묶음(R12)
+
+/// 저장 뒤 ⌘Z가 대기열에 넣은 여러 곡 역편집(`ReflectionUndoEdit`의 초안 키). 한 번의 쓰기로 전부 쓰거나 전부 쓰지 않는다
+public struct AutoReflectionUndoGroup: Equatable, Sendable {
+    public var id: String
+    public var keys: Set<DraftKey>
+    /// 이 쓰기가 갱신할 곡 행 수(K와 견준다)
+    public var rows: Int
+    /// 처음 저장 대기에서 본 판. 그 뒤 판이 바뀌면(다시 고쳤다) 묶음을 풀어 보통 편집으로 쓴다
+    public var revisions: [DraftKey: DraftRevision] = [:]
+
+    public init(_ edit: ReflectionUndoEdit) {
+        id = edit.id
+        keys = edit.batch.draftKeys
+        rows = edit.rowCount
+    }
+}
+
+/// 대기 중인 여러 곡 역편집 묶음(R12). 자동 저장 엔진과 ⌘S가 같은 묶음을 본다(반영 포트 `ReflectionPorts.undoGroups`)
+@MainActor
+public final class ReflectionUndoGroups {
+    public internal(set) var groups: [AutoReflectionUndoGroup] = []
+
+    public init() {}
+
+    /// 묶음을 넣는다. 키가 겹치는 묶음은 합친다(키 합집합, 행 수는 곡 수로 다시 세고 판은 다시 잡는다, 컨실 O2)
+    public func enqueue(_ edit: ReflectionUndoEdit) {
+        groups.removeAll { $0.id == edit.id }
+        var group = AutoReflectionUndoGroup(edit)
+        guard group.keys.count > 1 else { return }
+        let overlapping = groups.filter { !$0.keys.isDisjoint(with: group.keys) }
+        guard !overlapping.isEmpty else {
+            groups.append(group)
+            return
+        }
+        groups.removeAll { !$0.keys.isDisjoint(with: group.keys) }
+        for other in overlapping { group.keys.formUnion(other.keys) }
+        group.rows = Set(group.keys.map(\.id)).count
+        group.revisions = [:]
+        groups.append(group)
+    }
+
+    /// 그 곡들에 닿는 묶음(⌘S가 묶음 밖 편집과 섞지 않고 따로 쓴다)
+    public func groups(touching uuids: Set<String>) -> [AutoReflectionUndoGroup] {
+        groups.filter { group in group.keys.contains { uuids.contains($0.id) } }
+    }
+
+    /// 쓴 묶음을 뺀다(⌘S, 컨실 2라운드 B)
+    public func remove(_ id: String) { groups.removeAll { $0.id == id } }
+}
+
+extension AutoReflectionInventory {
+    /// 역편집 묶음을 반영한다(R12): 묶음의 곡 초안은 보통 자동 저장에서 빼고, 모두 자동으로 쓸 수 있으면 그 묶음만 따로 전부 아니면 전무로 쓴다(한 번에 하나).
+    /// K행을 넘으면 `undoOverRowLimit`로, 한 곡이라도 자동으로 쓸 수 없거나 묶었을 때와 구성원·판이 다르면(빠짐·다시 고침) 묶음 전체를 `needsConfirmation`으로
+    /// 남긴다(⌘S·저장 단추로 쓴다, 컨실 S2·G5). 저장 대기에서 모두 사라진 묶음(썼다·버렸다)은 버린다.
+    /// - Returns: 남길 묶음, 이번에 쓸 묶음(없으면 nil), 쓸 수 있는 모든 묶음의 행 수·판·곡(대량 유예와 [취소] 판에 합산, 컨실 G7)
+    public mutating func applyingUndo(_ groups: [AutoReflectionUndoGroup], rowLimit: Int)
+        -> (groups: [AutoReflectionUndoGroup], chunk: AutoReflectionChunk?, pendingRows: Int, pendingRevisions: Set<DraftRevision>, pendingTracks: Set<String>) {
+        var auto: [DraftKey: DraftRevision] = [:]
+        for revisions in tracks.values { auto.merge(revisions) { first, _ in first } }
+        var kept: [AutoReflectionUndoGroup] = [], chunk: AutoReflectionChunk?
+        var pendingRows = 0, pendingRevisions: Set<DraftRevision> = [], pendingTracks: Set<String> = []
+        for var group in groups {
+            let present = group.keys.filter { auto[$0] != nil || leftoverKeys[$0] != nil }
+            guard !present.isEmpty else { continue }
+            var changed = false
+            if group.revisions.isEmpty {
+                // 처음 볼 때(합쳐 판을 비운 묶음 포함) 구성원이 모두 자동 저장 대기에 있을 때만 판을 잡는다: 빠진 구성원이 있으면
+                // 판을 잡지 않고 묶음 전체를 보류한다(남은 곡만 묶음으로 쓰지 않는다, 컨실 2라운드 C·O11)
+                if group.keys.allSatisfy({ auto[$0] != nil }) { group.revisions = auto.filter { group.keys.contains($0.key) } }
+            } else {
+                // 묶었을 때와 판이 다르거나(다시 고침) 구성원이 빠졌다(따로 쓰거나 버림)
+                changed = group.revisions.contains { key, revision in auto[key].map { $0 != revision } ?? (leftoverKeys[key] == nil) }
+            }
+            kept.append(group)
+            let members = present.filter { auto[$0] != nil }
+            for key in members {
+                tracks[key.id]?[key] = nil
+                if tracks[key.id]?.isEmpty == true { tracks[key.id] = nil }
+            }
+            let held: ReflectionLeftover? = changed || members.count < group.keys.count ? .needsConfirmation
+                : group.rows > rowLimit ? .undoOverRowLimit : nil
+            if let held {
+                for key in members { leftoverKeys[key] = held }
+                continue
+            }
+            pendingRows += group.rows
+            pendingRevisions.formUnion(members.compactMap { auto[$0] })
+            pendingTracks.formUnion(members.map(\.id))
+            if chunk == nil {
+                var chosen: [String: [DraftKey: DraftRevision]] = [:]
+                for key in members { chosen[key.id, default: [:]][key] = auto[key] }
+                chunk = AutoReflectionChunk(tracks: chosen, playlistSteps: 0, stepRevisions: [], rows: group.rows, allOrNothing: true)
+            }
+        }
+        return (kept, chunk, pendingRows, pendingRevisions, pendingTracks)
+    }
+}
+
 /// 자동 저장 한 번에 쓸 것(K행까지)
 public struct AutoReflectionChunk: Equatable, Sendable {
     /// 쓸 곡 초안(곡 → 종류별 판). 같은 곡의 대상 밖 초안은 들지 않는다(R4)
@@ -173,12 +273,16 @@ public struct AutoReflectionChunk: Equatable, Sendable {
     public var stepRevisions: [DraftRevision]
     /// 갱신할 곡 행 수
     public var rows: Int
+    /// 여러 곡 역편집 묶음(R12): 한 곡이라도 막히면 아무것도 쓰지 않는다
+    public var allOrNothing: Bool
 
-    public init(tracks: [String: [DraftKey: DraftRevision]], playlistSteps: Int, stepRevisions: [DraftRevision], rows: Int) {
+    public init(tracks: [String: [DraftKey: DraftRevision]], playlistSteps: Int, stepRevisions: [DraftRevision], rows: Int,
+                allOrNothing: Bool = false) {
         self.tracks = tracks
         self.playlistSteps = playlistSteps
         self.stepRevisions = stepRevisions
         self.rows = rows
+        self.allOrNothing = allOrNothing
     }
 
     /// 묶음에 든 판 전부

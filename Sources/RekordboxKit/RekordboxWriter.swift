@@ -50,13 +50,16 @@ public enum RekordboxWriter {
     ///   - playlistDraft: 앱의 재생 목록 초안. `playlists` 대신 준다. 초안을 만든 뒤 rekordbox에서 바뀐 목록(base와 다름)의 편집은 쓰지 않는다.
     ///   - artworks: 곡 정보 그림 초안(넣기·바꾸기·지우기, #66). 그림 파일 셋은 `shareRoot` 아래에 쓴다. 음원 파일의 그림은 그대로 둔다.
     ///   - histories: USB에서 가져온 기기 재생 기록(#43, 넘긴 순서대로). `writesHistories`가 닫혀 있으면 모두 막고 DB·백업을 건드리지 않는다.
-    public static func write(drafts: [CueDraft], grids: [GridDraft] = [], gains: [String: Double] = [:], tags: [TagDraft] = [],
+    ///   - gainBases: 게인 초안의 base(초안을 만들 때 본 rekordbox 오토게인 dB, R23). 있으면 지금 값과 같을 때만 쓴다. 없는 곡은 지금처럼 쓴다
+    ///   - allOrNothing: 여러 곡 역편집(저장 뒤 ⌘Z, R12). 하나라도 막히면 아무것도 쓰지 않는다(커밋·파일 단계 없이 모두 막힘으로 알린다)
+    public static func write(drafts: [CueDraft], grids: [GridDraft] = [], gains: [String: Double] = [:], gainBases: [String: Double] = [:],
+                             tags: [TagDraft] = [],
                              artworks: [ArtworkEdit] = [],
                              analysisInputs: [String: AnalysisInput] = [:], playlists: [PlaylistEdit] = [],
                              playlistDraft: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [], histories: [HistoryImport] = [],
                              iTunesSync: RekordboxITunesSyncChange? = nil,
                              to database: URL, dryRun: Bool,
-                             now: Date = .now, backups: URL, shareRoot: URL? = nil,
+                             now: Date = .now, backups: URL, shareRoot: URL? = nil, allOrNothing: Bool = false,
                              guard writeGuard: RekordboxWriteGuard = .system,
                              record: RekordboxDraftRecord<Report>? = nil) throws -> Report {
         if let iTunesSync {
@@ -64,10 +67,11 @@ public enum RekordboxWriter {
                   playlists.isEmpty, playlistDraft == nil, merges.isEmpty, histories.isEmpty else { throw RekordboxITunesSyncChange.invalidSource }
             return try writeITunesSync(iTunesSync, to: database, dryRun: dryRun, now: now, backups: backups, guard: writeGuard)
         }
-        return try write(drafts: drafts, grids: grids, gains: gains, tags: tags, artworks: artworks, analysisInputs: analysisInputs, playlists: playlists,
+        return try write(drafts: drafts, grids: grids, gains: gains, gainBases: gainBases, tags: tags, artworks: artworks,
+                  analysisInputs: analysisInputs, playlists: playlists,
                   playlistDraft: playlistDraft, merges: merges, histories: histories, to: database,
-                  dryRun: dryRun, now: now, backups: backups, shareRoot: shareRoot, guard: writeGuard, attachesAnalysis: attachesAnalysis,
-                  writesArtwork: RekordboxTrackWriter.writesArtwork, record: record)
+                  dryRun: dryRun, now: now, backups: backups, shareRoot: shareRoot, allOrNothing: allOrNothing, guard: writeGuard,
+                  attachesAnalysis: attachesAnalysis, writesArtwork: RekordboxTrackWriter.writesArtwork, record: record)
     }
 
     /// - Parameters:
@@ -77,12 +81,13 @@ public enum RekordboxWriter {
     ///   - tagScopes: 칸별로 확인한 범위(평점·곡 색의 곡 상태·재생 목록). 앱은 `TagWriteScope.byKey`, 사본 실험만 비운다.
     ///   - writesHistories: 재생 기록 쓰기를 여는지. 앱은 `writesHistories`를 따르고, 시험과 사본 재현(`djc lab history-repro`)만 연다.
     ///   - historyEnvironment: 기록 ID·UUID 난수와 로컬 시간대(시험만 정한다)
-    package static func write(drafts: [CueDraft], grids: [GridDraft], gains: [String: Double], tags: [TagDraft] = [],
+    package static func write(drafts: [CueDraft], grids: [GridDraft], gains: [String: Double], gainBases: [String: Double] = [:],
+                              tags: [TagDraft] = [],
                               artworks: [ArtworkEdit] = [],
                               analysisInputs: [String: AnalysisInput],
                               playlists: [PlaylistEdit] = [], playlistDraft: PlaylistDraft? = nil, merges: [DuplicateMergeDraft] = [],
                               histories: [HistoryImport] = [], to database: URL, dryRun: Bool, now: Date,
-                              backups: URL, shareRoot: URL?,
+                              backups: URL, shareRoot: URL?, allOrNothing: Bool = false,
                               guard writeGuard: RekordboxWriteGuard = .system, attachesAnalysis: Bool,
                               writesArtwork: Bool = RekordboxTrackWriter.writesArtwork,
                               tagKeys: Set<TagFields.Key> = writableTagKeys,
@@ -328,6 +333,24 @@ public enum RekordboxWriter {
             }
         }
 
+        // 여러 곡 역편집(R12): 백업 전에 이미 막힌 것이 있으면 백업을 뜨지 않고 거절한다(RBW-22 취지, 컨실 O4). 모두 막힘으로 알린다
+        if allOrNothing, (tagOutcomes + artworkOutcomes + mergeOutcomes + gridOutcomes + analysisOutcomes).contains(where: { $0.status == .blocked })
+            || historyResults.values.contains(where: { $0.status == .blocked }) {
+            func pending(_ uuid: String) -> Outcome { Outcome(trackUUID: uuid, title: uuid, status: .written, reason: nil, removed: 0, added: 0) }
+            var report = Report(outcomes: drafts.filter(\.hasChanges).map { pending($0.trackUUID) }, backup: nil, dryRun: dryRun, createdAt: stamp.json)
+            report.gridOutcomes = gridOutcomes.isEmpty ? nil : gridOutcomes
+            report.analysisOutcomes = analysisOutcomes.isEmpty ? nil : analysisOutcomes
+            report.gainOutcomes = gains.isEmpty ? nil : gains.keys.sorted().map(pending)
+            let checkedTags = Set(tagOutcomes.map(\.trackUUID))
+            let tagReport = tagOutcomes + tags.filter { !checkedTags.contains($0.trackUUID) }.map { pending($0.trackUUID) }
+            report.tagOutcomes = tagReport.isEmpty ? nil : tagReport
+            report.artworkOutcomes = artworkOutcomes.isEmpty ? nil : artworkOutcomes
+            report.mergeOutcomes = mergeOutcomes.isEmpty ? nil : mergeOutcomes
+            report.playlistOutcomes = playlistSteps.isEmpty ? nil
+                : playlistSteps.map { PlaylistOutcome(edit: $0.edit, playlistID: nil, name: $0.edit.playlist.description, status: .written) }
+            report.historyOutcomes = historyReport()
+            return refusingAll(report)
+        }
         let backup = dryRun ? nil : try makeBackup(of: run?.resolved ?? database, in: backups, now: now, label: "write")
         // 분석 파일도 원본을 백업에 둔다(되돌리기용).
         /// 원래 파일 경로 → 쓰기 전 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
@@ -363,6 +386,14 @@ public enum RekordboxWriter {
         var historyPlays: [String: HistoryPlay] = [:]
         var finalUpdateCount: Int?
         var committed = false
+        /// 여러 곡 역편집이 막혀 아무것도 쓰지 않았다(`allOrNothing`)
+        var refusedAll = false
+        /// 막힌 결과가 하나라도 있는지(그리드·분석 붙이기·그림·재생 기록은 트랜잭션 전에 막힌 것도 든다)
+        func hasBlocked() -> Bool {
+            (outcomes + gridOutcomes + gainOutcomes + analysisOutcomes + tagOutcomes + artworkOutcomes + mergeOutcomes)
+                .contains { $0.status == .blocked }
+                || playlistOutcomes.contains { $0.status == .blocked } || historyResults.values.contains { $0.status == .blocked }
+        }
         /// 커밋 뒤 파일 단계(R10). 커밋 전에 정하고 준비 폴더에 새 내용을 만든다
         var fileSteps: [FileStep] = []
         /// XML·분석 붙이기·그리드·그림·합치기 파일 단계(커밋 뒤 이 차례로 한다: DB를 확인한 뒤 XML, 분석 파일, 그림, 합치기가 지울 파일)
@@ -503,7 +534,7 @@ public enum RekordboxWriter {
             for (uuid, gainDB) in gains.sorted(by: { $0.key < $1.key }) {
                 try db.execute("SAVEPOINT djc_gain")
                 do {
-                    let result = try applyGain(uuid: uuid, gainDB: gainDB, db: db, usn: &usn, stamp: stamp)
+                    let result = try applyGain(uuid: uuid, gainDB: gainDB, base: gainBases[uuid], db: db, usn: &usn, stamp: stamp)
                     gainOutcomes.append(result.outcome)
                     gained.append(result.expectation)
                     try db.execute("RELEASE djc_gain")
@@ -710,7 +741,11 @@ public enum RekordboxWriter {
 
             let databaseChanged = !written.isEmpty || !regridded.isEmpty || !gained.isEmpty || !attached.isEmpty || !tagged.isEmpty
                 || !drawn.isEmpty || playlistWork != nil || !merged.isEmpty || !historyExpectations.isEmpty
-            if dryRun || !databaseChanged {
+            // 여러 곡 역편집(R12): 하나라도 막혔으면 커밋하지 않는다(파일 단계도 하지 않는다)
+            refusedAll = allOrNothing && hasBlocked()
+            // 쓰지 않았으니 카운터는 처음 그대로다(되돌리기 판단이 이 백업 뒤 라이브러리가 바뀌었다고 보지 않게)
+            if refusedAll { finalUpdateCount = startUSN }
+            if dryRun || !databaseChanged || refusedAll {
                 try db.execute("ROLLBACK")
             } else {
                 // 커밋 전: 분석·그림·XML의 새 내용을 준비 폴더에 만들고(R10), 실행을 다시 본 뒤 쓰기 기록을 남긴다(R11).
@@ -774,7 +809,7 @@ public enum RekordboxWriter {
                     for expectation in historyExpectations { try verifyHistory(db: db, expectation) }
                     try verifyHistoryPlays(db: db, historyPlays)
                     try run.after(.verify)
-                } else if !gridPlans.isEmpty {
+                } else if !gridPlans.isEmpty, !refusedAll {
                     fileSteps = plannedFileSteps()
                     try stage(&fileSteps, key: run.key)
                 }
@@ -822,6 +857,7 @@ public enum RekordboxWriter {
         report.mergeOutcomes = mergeOutcomes.isEmpty ? nil : mergeOutcomes
         report.artworkOutcomes = artworkOutcomes.isEmpty ? nil : artworkOutcomes
         report.historyOutcomes = historyReport()
+        if refusedAll { report = refusingAll(report) }
         if let backup, let run {
             // 보고서 저장은 기록을 지우기 전에 한다. 실패해도 쓰기를 실패로 돌리지 않고 경고한다(R11)
             if let warning = try saveReport(report, in: backup, shareRoot: gridRoot, run: run) { report.warnings = [warning] }
@@ -876,6 +912,47 @@ public enum RekordboxWriter {
     }
 
     // MARK: - 커밋 뒤 실패
+
+    /// 여러 곡 역편집이 막혀 아무것도 쓰지 않은 결과(R12): 쓸 수 있던 것도 막힘으로 알린다(새 큐 ID도 없다)
+    static func refusingAll(_ report: Report) -> Report {
+        let reason = String(ui: "함께 되돌릴 다른 편집이 막혀 이 편집도 저장하지 않았으니 막힌 편집을 확인한 뒤 다시 저장하세요")
+        func refused(_ outcomes: [Outcome]?) -> [Outcome]? {
+            outcomes?.map { outcome in
+                guard outcome.status == .written else { return outcome }
+                var refused = outcome
+                refused.status = .blocked
+                refused.reason = reason
+                refused.cueIDs = nil
+                return refused
+            }
+        }
+        var report = report
+        report.outcomes = refused(report.outcomes) ?? []
+        report.gridOutcomes = refused(report.gridOutcomes)
+        report.gainOutcomes = refused(report.gainOutcomes)
+        report.analysisOutcomes = refused(report.analysisOutcomes)
+        report.tagOutcomes = refused(report.tagOutcomes)
+        report.artworkOutcomes = refused(report.artworkOutcomes)
+        report.mergeOutcomes = refused(report.mergeOutcomes)
+        report.artworkAdded = nil
+        report.createdFiles = nil
+        report.playlistOutcomes = report.playlistOutcomes?.map { outcome in
+            guard outcome.status == .written else { return outcome }
+            var refused = outcome
+            refused.status = .blocked
+            refused.reason = reason
+            return refused
+        }
+        report.historyOutcomes = report.historyOutcomes?.map { outcome in
+            guard outcome.status == .written else { return outcome }
+            var refused = outcome
+            refused.status = .blocked
+            refused.reason = reason
+            refused.historyID = nil
+            return refused
+        }
+        return report
+    }
 
     /// masterPlaylists6.xml을 적고 다시 읽어 확인한다(DB를 커밋하고 확인한 뒤). 초안 쓰기와 같은 파일 단계(R10)로 한다: 새 내용을 DB 폴더의
     /// 준비 폴더에 만든 뒤 이름 바꾸기로 끼운다. 끼우거나 다시 읽다 실패하면 DB를 되돌리기 전에 원본 XML부터 다시 쓰고(재생 목록 쓰기 #38과

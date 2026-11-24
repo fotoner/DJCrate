@@ -55,6 +55,8 @@ extension LibraryStore {
         location.draftHome = home
         location.movesDamagedDrafts = movesDamagedDrafts ?? (draftHome != nil)
         var drafts = DraftStore.live(writer: writer, home: home, origin: draftOrigin)
+        // 앱 조립 지점과 같이 이번 실행의 rekordbox 실행 경계를 든다(R23, 게인 base)
+        drafts.runEpoch = RekordboxRunEpoch(session: UUID().uuidString)
         if let saveTagDrafts { drafts.saveTags = { saveTagDrafts($0) } }
         if let playlistDraftSaver {
             // 가짜 저장이 받은 초안을 디스크 초안으로 읽게 한다: 편집 전 바깥 변경 확인(#260)이 쓰지 않은 파일을 바깥 변경으로 보지 않게

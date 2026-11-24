@@ -211,6 +211,20 @@ public final class DraftWriter: Sendable {
         enqueue(.gain(gain), key: Self.key(.gain, trackUUID, url), write: { try write(gain, trackUUID, url) }, completion: completion)
     }
     public func removeGain(trackUUID: String, url: URL) { save(gain: nil, trackUUID: trackUUID, url: url) }
+    /// 게인 값과 base(R23)를 한 저장 차례에 쓴다: 값을 쓴 뒤에만 base를 그 값의 판에 묶는다(값 저장이 실패하면 묶지 않는다, 컨실 2라운드 L).
+    /// 보관하지 못한 값을 다시 보관할 때도 같은 차례로 묶는다. base 쓰기가 실패해도 값 저장은 그대로다(base 없는 초안이 될 뿐이다)
+    public func save(gain: Double?, base: GainDraftBase?, trackUUID: String, url: URL,
+                     write: @escaping @Sendable (Double?, String, URL) throws -> Void,
+                     completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
+        save(gain: gain, trackUUID: trackUUID, url: url, write: { value, uuid, url in
+            try write(value, uuid, url)
+            if value != nil { try? GainDraftStore.saveBase(base, trackUUID: uuid, url: url) }
+        }, completion: completion)
+    }
+    /// 게인 초안의 base(R23)를 같은 저장 큐에 맡긴다: 앞서 맡긴 값 저장 뒤에 적어 그 값의 판에 묶는다. 실패해도 값 저장은 그대로다(base가 없으면 자동 저장하지 않을 뿐이다)
+    public func saveGainBase(_ base: GainDraftBase?, trackUUID: String, url: URL) {
+        queue.async { try? GainDraftStore.saveBase(base, trackUUID: trackUUID, url: url) }
+    }
 
     /// 데이터 폴더의 손상된 초안 파일을 옮겨 보관하고 그 목록을 받는다(저장과 같은 큐에서, 막 쓴 파일을 옮기지 않게).
     public func preserveDamagedDrafts(home: URL) -> [DamagedDrafts.Entry] {

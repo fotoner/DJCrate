@@ -496,6 +496,27 @@ struct ReflectionSaveEntryTests {
 
     // MARK: - S6(2라운드): 칸 확정이 끝난 뒤에만 저장한다
 
+    /// 입력 중으로 보지 않아도(시작 때 글과 같음) 칸과 모델 값이 갈려 확정 대기가 있으면 ⌘S가 확정을 부른다(#405 컨실 3라운드 O14)
+    @Test func 확정_대기가_있으면_입력_중이_아니어도_확정을_부른다() async {
+        let w = world(.pending)
+        let input = FieldEditingState()
+        let committed = Mutex(false)
+        input.isEditing = false
+        input.commit = {
+            committed.withLock { $0 = true }
+            return true
+        }
+        input.hasPendingCommit = { !committed.withLock { $0 } }
+        input.settleLimit = .milliseconds(100)
+        w.h.window.fieldEditing = input
+        let coordinator = ReflectionCoordinator.test(store: w.h.store, gate: .restoringOnly)
+        LibraryMenuAction.reflect.perform(in: w.h.window, windows: nil, reflection: coordinator)
+        #expect(committed.withLock { $0 }, "확정을 불렀다")
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.h.store.writeTask != nil || w.h.store.rekordboxWriteCount > 0 || w.h.store.toast != nil })
+        #expect(w.h.store.toast?.title != LibraryWindowModel.commitFailedText, "확정하지 못했다고 알리지 않는다")
+        await w.h.store.writeTask?.value
+    }
+
     @Test func 칸이_확정을_거절하면_저장하지_않고_이유를_알린다() async {
         let w = world(.pending)
         let input = FieldEditingState()

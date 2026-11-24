@@ -315,3 +315,19 @@ public extension GridSegment {
         return result.filter { $0.start >= 0 }
     }
 }
+
+public extension GridDraft {
+    /// 두 구간 목록이 같은 박을 그리는지(R12): 구간 수가 같고, 구간마다 BPM이 같고(0.01 안), 시작이 박 간격의 정수배만큼 떨어지며(1ms 안)
+    /// 박 번호가 그만큼 돈다. 쓴 그리드를 다시 읽으면 구간을 첫 박에서 시작하게 다시 적으므로 구간 값끼리 견주지 않는다
+    static func sameBeats(_ a: [GridSegment], _ b: [GridSegment]) -> Bool {
+        guard a.count == b.count else { return false }
+        return zip(a, b).allSatisfy { x, y in
+            guard abs(x.bpm - y.bpm) < 0.01, x.bpm > 0 else { return false }
+            let period = 60 / x.bpm, beats = (y.start - x.start) / period
+            let whole = beats.rounded()
+            guard abs(beats - whole) * period < 0.001 else { return false }
+            let shift = ((Int(whole) % 4) + 4) % 4
+            return (x.firstBeatNumber - 1 + shift) % 4 + 1 == y.firstBeatNumber
+        }
+    }
+}

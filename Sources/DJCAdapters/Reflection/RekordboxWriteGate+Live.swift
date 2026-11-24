@@ -12,10 +12,11 @@ extension RekordboxWriteGate {
         var gate = Self(
             write: { batch, inputs, target, dryRun in
                 try appWrite(dryRun ? .none : batch.isAutoSave ? .auto : batch.operation != nil ? .manual : .none, writeGuard) { writeGuard in
-                    try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags, artworks: batch.artworks,
-                                              analysisInputs: inputs, playlistDraft: batch.playlists, merges: batch.merges,
+                    try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, gainBases: batch.gainBases, tags: batch.tags,
+                                              artworks: batch.artworks, analysisInputs: inputs, playlistDraft: batch.playlists, merges: batch.merges,
                                               histories: batch.histories, to: target.database, dryRun: dryRun, backups: target.backups,
-                                              shareRoot: target.shareRoot, guard: writeGuard, record: dryRun ? nil : batch.draftRecord)
+                                              shareRoot: target.shareRoot, allOrNothing: batch.commitPolicy == .allOrNothing, guard: writeGuard,
+                                              record: dryRun ? nil : batch.draftRecord)
                 }
             },
             preview: { batch, inputs, source, copied in
@@ -26,11 +27,11 @@ extension RekordboxWriteGate {
                     try Task.checkCancellation()
                     // 사본에 끝까지 써 보는 일은 오래 막는 DB 입출력이라 협력 풀 밖에서 한다(사본 뜨기도 풀 밖에서 작업 취소를 보며 한다)
                     return try await BlockingWork.run {
-                        try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, tags: batch.tags,
-                                                  artworks: batch.artworks, analysisInputs: inputs, playlistDraft: batch.playlists,
+                        try RekordboxWriter.write(drafts: batch.drafts, grids: batch.grids, gains: batch.gains, gainBases: batch.gainBases,
+                                                  tags: batch.tags, artworks: batch.artworks, analysisInputs: inputs, playlistDraft: batch.playlists,
                                                   merges: batch.merges, histories: batch.histories, to: snapshot, dryRun: true,
                                                   backups: snapshot.deletingLastPathComponent().appending(path: "backups"), shareRoot: share,
-                                                  guard: writeGuard)
+                                                  allOrNothing: batch.commitPolicy == .allOrNothing, guard: writeGuard)
                     }
                 }
             },

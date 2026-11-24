@@ -72,6 +72,8 @@ final class ReflectionHarness {
     var pointRefusal: String? { get { backupsMemory.refusal } set { backupsMemory.refusal = newValue } }
     var updateCount: Int { get { backupsMemory.updateCount } set { backupsMemory.updateCount = newValue } }
     var preserved: [DamagedDraftFile] = []
+    /// 태그 저장을 다시 해 볼 때 한다(저장하지 못한 태그 초안이 이때 보관되는 것을 흉내 낸다)
+    var onRetryTagSaves: (@MainActor () -> Void)?
     var playlistSaves = true
     /// 재생 목록 초안을 다시 저장하면 저장하지 못한 표시(`playlistDraftUnsaved`)를 푼다
     var playlistSaveClearsUnsaved = false
@@ -111,13 +113,19 @@ final class ReflectionHarness {
     }
 
     var session: ReflectionSession {
-        ReflectionSession(location: location, ports: ports, options: options)
+        var ports = ports
+        // 여러 곡 역편집 묶음 보관소는 하네스가 하나 든다(앱은 조정자 하나에 하나)
+        ports.undoGroups = undoGroups
+        return ReflectionSession(location: location, ports: ports, options: options)
     }
+
+    /// 여러 곡 역편집 묶음(R12): 세션을 부를 때마다 같은 보관소를 넣는다
+    let undoGroups = ReflectionUndoGroups()
 
     var ports: ReflectionPorts {
         ReflectionPorts(gate: gate, backups: backups, drafts: drafts, snapshots: snapshots, audio: audio,
                         library: ReflectionLibrary(state: { self.libraryState }, apply: { self.apply($0) },
-                                                   retryTagSaves: { self.log.record("retry tag saves") },
+                                                   retryTagSaves: { self.log.record("retry tag saves"); self.onRetryTagSaves?() },
                                                    preserveDamagedDrafts: { self.log.record("preserve damaged"); return self.preserved },
                                                    savePlaylistDraft: {
                                                        self.log.record("save playlist")
@@ -371,6 +379,8 @@ final class ReflectionHarness {
         changes.map { change in
             switch change {
             case let .draftsCleared(kind, uuids, counts): "cleared \(kind) \(uuids.sorted())\(counts ? " counts" : "")"
+            case let .cueIDsWritten(ids): "cue ids \(ids.keys.sorted())"
+            case let .tagsWritten(uuids): "tags written \(uuids)"
             case let .tagDrafts(drafts): "tags \(drafts.map(\.trackUUID).sorted())"
             case let .mergeDrafts(drafts, failure, _): "merges \(drafts.map(\.id))\(failure == nil ? "" : " failed")"
             case .playlistWritten: "playlist written"

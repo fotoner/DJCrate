@@ -31833,6 +31833,22 @@
         }
       }
     },
+    "새 큐의 색이 편집과 다릅니다" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The new cue color differs from the edit"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいキューの色が編集と異なります"
+          }
+        }
+      }
+    },
     "새 큐의 탐색 위치가 계산과 다릅니다" : {
       "localizations" : {
         "en" : {
@@ -49823,6 +49839,22 @@
         }
       }
     },
+    "편집을 만든 뒤 rekordbox에서 이 곡의 게인이 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This track's gain changed in rekordbox after the edit was made. Reload the library in DJCrate and check it"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編集を作成した後、rekordboxでこの曲のゲインが変更されました。DJCrateで読み込み直して確認してください"
+          }
+        }
+      }
+    },
     "편집을 만든 뒤 rekordbox에서 이 곡의 큐가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요" : {
       "localizations" : {
         "en" : {
@@ -50857,6 +50889,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "1つのフォルダ内のファイルが多すぎます。曲を分けてエクスポートしてください"
+          }
+        }
+      }
+    },
+    "함께 되돌린 다른 곡과 한 번에 저장하니 그 곡들도 골라 다시 저장하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This edit is saved together with the other tracks undone with it. Select those tracks too, then save again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一緒に元に戻した他の曲とまとめて保存するため、それらの曲も選んでからもう一度保存してください"
+          }
+        }
+      }
+    },
+    "함께 되돌릴 다른 편집이 막혀 이 편집도 저장하지 않았으니 막힌 편집을 확인한 뒤 다시 저장하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Another edit undone together with this one was blocked, so this edit was not saved either. Check the blocked edit, then save again"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一緒に元に戻す別の編集がブロックされたため、この編集も保存しませんでした。ブロックされた編集を確認してから、もう一度保存してください"
           }
         }
       }

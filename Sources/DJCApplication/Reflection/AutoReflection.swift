@@ -150,10 +150,12 @@ public final class AutoReflection {
         wake()
     }
 
-    /// 대기열에 넣는다. 역편집(R12)은 W3-F(#405)가 잇는다
+    /// 대기열에 넣는다. 여러 곡 역편집(R12)은 한 묶음으로 보통 자동 저장과 따로, 전부 쓰거나 전부 쓰지 않는다. K행을 넘으면 ⌘S·저장 단추로 쓴다.
+    /// 묶음은 앱 수명 동안만 든다(항목별 되돌리기의 영속 기록은 범위 밖: 다시 켜면 그 초안은 보통 편집으로 쓴다)
     public func enqueue(_ request: AutoReflectionRequest) {
         switch request {
-        case .undo:
+        case let .undo(edit):
+            session.ports.undoGroups.enqueue(edit)
             wake()
         }
     }
@@ -255,9 +257,8 @@ public final class AutoReflection {
             // 잠금 아래 판정을 하지 못했으면(rekordbox가 켜져 기록을 판정하지 못함·잠금·기록을 읽다 실패) 이전 보류로 판단해 정리 없이 쓰지 않는다.
             // 알림이 이유를 고르게 실행 상태를 메인 액터 밖에서 보고 함께 넘긴다
             if case .busy = judged, let whenHeld {
-                let runState = ports.runState
                 var holds: Set<ReflectionHold> = [.lockBusy]
-                switch await BlockingWork.run(qos: .userInitiated, { runState() }) {
+                switch await observeRun(qos: .userInitiated) {
                 case .running, .unknown: holds.insert(.rekordboxRunning)
                 case .agentOnly: holds.insert(.agentRunning)
                 case .stopped: break
@@ -343,7 +344,11 @@ public final class AutoReflection {
     /// 판정 한 번. 때가 됐으면 쓰고 nil(곧 다시 판정)을, 기다릴 것이 있으면 쉴 길이를 돌려준다.
     /// 자동 저장하는 실행이면 저장 대기가 없어도 rekordbox 실행·파일 상태를 짧은 간격으로 지켜본다(조용함이 끊기지 않게, R2)
     private func step() async -> Duration? {
-        guard manualWaiting == 0, !isWriting else { return timing.idleInterval }
+        guard manualWaiting == 0, !isWriting else {
+            // 수동 쓰기·확인 창 동안에도 rekordbox 실행 경계는 넘긴다(R23, 컨실 2라운드 K): 그동안 켜졌다 꺼진 게인 초안을 자동으로 쓰지 않게
+            _ = await observeRun(qos: .utility)
+            return timing.pollInterval
+        }
         let rowLimit = timing.rowLimit, idle = timing.idleInterval, poll = timing.pollInterval
         if inventoryStale || inventory == nil {
             inventoryStale = false
@@ -352,8 +357,11 @@ public final class AutoReflection {
             prune(next)
             notePreBackupRetry(next.autoRevisions(rowLimit: rowLimit))
         }
-        guard let inventory, !dirty else { return nil }
-        let hasAuto = inventory.hasAuto(rowLimit: rowLimit), leftoverCount = inventory.leftoverCount(rowLimit: rowLimit)
+        guard var inventory, !dirty else { return nil }
+        // 여러 곡 역편집 묶음은 보통 자동 저장에서 빼고 따로 전부 아니면 전무로 쓴다(R12)
+        let undo = inventory.applyingUndo(session.ports.undoGroups.groups, rowLimit: rowLimit)
+        session.ports.undoGroups.groups = undo.groups
+        let hasAuto = inventory.hasAuto(rowLimit: rowLimit) || undo.chunk != nil, leftoverCount = inventory.leftoverCount(rowLimit: rowLimit)
         var base = ReflectionConditions(leftovers: inventory.leftovers(rowLimit: rowLimit), hasPending: hasAuto || leftoverCount > 0,
                                         editingField: activity.contains(.fieldEditing), autoSaves: run.autoSaves)
         func hold(_ reason: ReflectionHold, status: AutoReflectionStatus? = nil, waiting: Bool = true, pause: Duration?) -> Duration? {
@@ -392,8 +400,7 @@ public final class AutoReflection {
         if case .off = run, let interrupted { return interruptedHold(interrupted) }
         if case let .off(reason) = run {
             // 자동 저장하지 않는 실행도 rekordbox 켜짐을 조건에 싣는다(상태 줄 R3 3번 줄이 6번 줄보다 앞선다). 쓰지는 않는다
-            let runState = ports.runState
-            switch await BlockingWork.run(qos: .utility, { runState() }) {
+            switch await observeRun(qos: .utility) {
             case .running, .unknown: base.holds.insert(.rekordboxRunning)
             case .agentOnly: base.holds.insert(.agentRunning)
             case .stopped: break
@@ -455,8 +462,10 @@ public final class AutoReflection {
         case .stopped: break
         }
         // 대량 유예(R14): 유예 동안 「N초 뒤 저장 · [취소]」. ⌘Q·창 전환으로 앞당기지 않는다
-        let autoRevisions = inventory.autoRevisions(rowLimit: rowLimit)
-        if inventory.isBulk(timing: timing), !autoRevisions.isSubset(of: graceAccepted) {
+        // 대기 중인 역편집 묶음 전체를 [취소] 판과 대량 유예 판정에 합산한다(컨실 G7)
+        let autoRevisions = inventory.autoRevisions(rowLimit: rowLimit).union(undo.pendingRevisions)
+        // 일반 대기와 여러 곡 역편집을 합쳐 M곡 이상이거나 여러 곡의 값을 지우면 대량 유예를 거친다(R14, 컨실 2라운드 D)
+        if inventory.isBulk(timing: timing, undoRows: undo.pendingRows, undoTracks: undo.pendingTracks), !autoRevisions.isSubset(of: graceAccepted) {
             let grace = grace ?? (now + Self.seconds(timing.bulkDelay), autoRevisions)
             self.grace = grace
             if now < grace.until {
@@ -506,7 +515,7 @@ public final class AutoReflection {
         // 스냅샷을 뜨느라 지켜보지 못한 틈이 있으면 처음부터 다시 판정한다(조용함을 다시 본다)
         if ports.clock.now().timeIntervalSince(now) > Self.seconds(poll) { return nil }
         guard !dirty, manualWaiting == 0, !isWriting else { return nil }
-        guard let chunk = inventory.chunk(rowLimit: rowLimit) else { return poll }
+        guard let chunk = undo.chunk ?? inventory.chunk(rowLimit: rowLimit) else { return poll }
         return await write(chunk)
     }
 
@@ -529,9 +538,19 @@ public final class AutoReflection {
 
     /// rekordbox·Agent 실행 여부와 대상 폴더의 파일 상태를 메인 액터 밖에서 보고 조용함을 센다(R2 조건 1·4).
     /// 켜져 있으면 조용함을 지운다. 지켜보지 못한 틈이 있었거나 master.db·masterPlaylists6.xml이 바뀌었으면 처음부터 다시 센다(자기 쓰기 뒤는 기준만 바꾼다)
+    /// rekordbox 실행 상태를 메인 액터 밖에서 보고 실행 경계를 넘긴다(R23): 실행 상태를 볼 때마다 경계를 맞춘다(컨실 2라운드 K)
+    private func observeRun(qos: DispatchQoS.QoSClass) async -> RekordboxRunState {
+        let runState = ports.runState
+        let run = await BlockingWork.run(qos: qos) { runState() }
+        session.ports.drafts.runEpoch?.observe(running: run != .stopped)
+        return run
+    }
+
     private func observeLibrary() async -> (run: RekordboxRunState, stamps: LibraryQuietStamps) {
         let runState = ports.runState, quietStamps = ports.quietStamps, target = session.target
         let seen = await BlockingWork.run(qos: .utility) { (run: runState(), stamps: quietStamps(target)) }
+        // rekordbox 실행 경계를 넘긴다(R23, 컨실 S7): 만든 뒤 켜짐을 건넌 게인 초안은 base 없는 초안이 된다
+        session.ports.drafts.runEpoch?.observe(running: seen.run != .stopped)
         let now = ports.clock.now()
         guard seen.run == .stopped else {
             quiet = nil
@@ -659,18 +678,11 @@ public final class AutoReflection {
             record.stop = .afterRestore
             saveRecord()
             journalStale = true
-        case let .failed(_, error, _):
-            // 수동 저장도 백업을 뜬 뒤 실패했으면 자동 저장이 멈춘다(같은 묶음을 자동으로 다시 쓰지 않게, R7).
-            // 관문이 백업 뒤 표시(`AfterBackupFailure`)를 실은 오류와 쓰기·검증에 실패해 되돌린 오류다
-            switch error as? DJCError {
-            case .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?:
+        case .failed:
+            // 수동 저장도 백업을 뜬 뒤 실패했으면 자동 저장이 멈춘다(같은 묶음을 자동으로 다시 쓰지 않게, R7)
+            if outcome.failedAfterBackup {
                 record.stop = .afterFailure
                 saveRecord()
-            default:
-                if error is RekordboxWriteGate.AfterBackupFailure {
-                    record.stop = .afterFailure
-                    saveRecord()
-                }
             }
             await judgeAndClean()
         case .restoreFailed:
@@ -788,6 +800,15 @@ extension ReflectionOutcome {
         switch self {
         case .written, .autoWritten, .added, .deleted, .restored: true
         case .busy, .declined, .notice, .cancelled, .nothingWritable, .nothingAdded, .nothingDeleted, .failed, .restoreFailed: false
+        }
+    }
+
+    /// 백업을 뜬 뒤 실패했다(자동 저장이 멈춘다, R7): 관문이 백업 뒤 표시(`AfterBackupFailure`)를 실은 오류와 쓰기·검증에 실패해 되돌린 오류다
+    var failedAfterBackup: Bool {
+        guard case let .failed(_, error, _) = self else { return false }
+        switch error as? DJCError {
+        case .writeVerificationFailed?, .writeRolledBack?, .restoreFailed?: return true
+        default: return error is RekordboxWriteGate.AfterBackupFailure
         }
     }
 }

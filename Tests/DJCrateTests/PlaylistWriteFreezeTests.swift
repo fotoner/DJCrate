@@ -140,6 +140,19 @@ struct PlaylistWriteFreezeTests {
         endDraftWrite()
     }
 
+    /// 얼려 둔 동안 누른 재생 목록 ⌘Z는 얼린 단계에 막혀 사라지지 않고 미뤘다가 얼림이 풀린 뒤 실행한다(R12, #405 컨실 2라운드 F·G12)
+    @Test func 얼려_둔_동안_누른_실행_취소는_얼림이_풀린_뒤_실행한다() throws {
+        playlists.renamePlaylist("B", to: "쓰는 이름")
+        let written = playlists.playlistDraft
+        beginDraftWrite()
+        #expect(playlists.freezeWrite(written))
+        undo.undo()
+        #expect(playlists.playlistDraft.edits == written.edits, "얼린 단계를 되돌리지 않는다")
+        playlists.thawWrite()
+        endDraftWrite()
+        #expect(playlists.playlistDraft.isEmpty, "얼림이 풀린 뒤 실행한다")
+    }
+
     @Test func 쓰는_동안_더한_편집은_쓰는_단계와_합치지_않고_뒤에_쌓인다() throws {
         let id = try #require(playlists.createPlaylist(isFolder: false, in: PlaylistLayout.root, name: "새 목록"))
         playlists.renamePlaylist("B", to: "쓰는 이름")

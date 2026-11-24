@@ -204,6 +204,194 @@ struct AutoReflectionEngineTests {
         #expect(w.engine.status == .leftover(count: 1) || w.engine.status == .leftover(count: 2))
     }
 
+    /// R23(#405): base를 단 게인 초안은 대상 편집이라 자동으로 쓰고, 관문에 base를 함께 넘긴다(지금 rekordbox 값과 다르면 관문이 막는다)
+    @Test func base가_있는_게인_초안은_자동으로_쓰고_base를_함께_넘긴다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.gainOutcomes = [ReflectionHarness.outcome("n", .written)]
+        w.h.state.rows["n"] = ReflectionHarness.row("n")
+        w.h.state.gainDraftUUIDs = ["n"]
+        w.h.memory.save(gain: -1, base: -3, "n")
+        try await w.start()
+        try await w.advance(10)
+        #expect(w.writes.count == 1)
+        #expect(w.writes.first?.gains == ["n": -1] && w.writes.first?.gainBases == ["n": -3])
+        #expect(!w.engine.conditions.leftovers.contains(.noBase))
+    }
+
+    // MARK: - 저장 뒤 ⌘Z의 역편집 묶음(R12, #405)
+
+    /// 여러 곡의 태그 역편집(저장 뒤 ⌘Z가 만든 사람 편집 초안)과 그 묶음
+    func undoGroup(_ w: AutoReflectionWorld, _ uuids: [String], rows: Int? = nil) -> ReflectionUndoEdit {
+        var tags: [TagDraft] = []
+        for uuid in uuids {
+            let tag = ReflectionHarness.tag(uuid, title: "되돌린 제목")
+            w.h.state.rows[uuid] = ReflectionHarness.row(uuid)
+            w.h.state.tagDrafts[uuid] = tag
+            w.h.memory.save(tag)
+            tags.append(tag)
+        }
+        return ReflectionUndoEdit(id: "undo-1", batch: DraftWriteBatch(tags: tags, commitPolicy: .allOrNothing), rowCount: rows ?? uuids.count)
+    }
+
+    @Test func 여러_곡_역편집은_한_묶음으로_전부_아니면_전무로_쓴다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.tagOutcomes = ["a", "b"].map { ReflectionHarness.outcome($0, .written) }
+        let edit = undoGroup(w, ["a", "b"])
+        w.writable("c")
+        w.cue("c")
+        try await w.start()
+        w.engine.enqueue(.undo(edit))
+        try await w.advance(10)
+        // 역편집 묶음을 먼저 따로 쓴다(다른 곡 편집과 섞지 않는다)
+        #expect(w.writes.count == 2)
+        #expect(w.writes.first?.commitPolicy == .allOrNothing && w.writes.first?.tags.map(\.trackUUID).sorted() == ["a", "b"])
+        #expect(w.writes.first?.drafts.isEmpty == true && w.writes.last?.commitPolicy == .writable)
+    }
+
+    @Test func 여러_곡_역편집_가운데_한_곡이라도_막히면_하나도_쓰지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.tagOutcomes = [ReflectionHarness.outcome("a", .written), ReflectionHarness.outcome("b", .blocked, reason: "바뀌었습니다")]
+        let edit = undoGroup(w, ["a", "b"])
+        try await w.start()
+        w.engine.enqueue(.undo(edit))
+        try await w.advance(10)
+        #expect(w.previews.first?.commitPolicy == .allOrNothing)
+        #expect(w.writes.isEmpty)
+        #expect(w.h.memory.tag("a") != nil && w.h.memory.tag("b") != nil)
+        // 쓰지 못한 결과는 다음 판정이 알린다
+        try await w.advance(2)
+        #expect(w.writes.isEmpty && w.previews.count == 1, "새 편집 전까지 다시 미리 보지 않는다")
+        #expect(w.engine.conditions.leftovers.contains(.needsConfirmation))
+    }
+
+    /// 여러 곡의 값을 지우는 역편집(채운 코멘트를 저장 뒤 ⌘Z)도 대량 유예를 거친다(R14)
+    @Test func 여러_곡의_값을_지우는_역편집은_대량_유예를_거친다() async throws {
+        let w = AutoReflectionWorld()
+        var tags: [TagDraft] = []
+        for uuid in ["a", "b"] {
+            var base = TagFields()
+            base.comment = "채운 코멘트"
+            let tag = TagDraft(trackUUID: uuid, base: base)
+            var cleared = tag
+            cleared.fields.comment = ""
+            w.h.state.rows[uuid] = ReflectionHarness.row(uuid)
+            w.h.state.tagDrafts[uuid] = cleared
+            w.h.memory.save(cleared)
+            tags.append(cleared)
+        }
+        w.h.script.preview.tagOutcomes = ["a", "b"].map { ReflectionHarness.outcome($0, .written) }
+        try await w.start()
+        w.engine.enqueue(.undo(ReflectionUndoEdit(id: "undo-clear", batch: DraftWriteBatch(tags: tags, commitPolicy: .allOrNothing), rowCount: 2)))
+        try await w.advance(15)
+        #expect(w.writes.isEmpty)
+        if case .grace = w.engine.status {} else { Issue.record("대량 유예가 아니다: \(w.engine.status)") }
+        try await w.advance(31)
+        #expect(w.writes.count == 1 && w.writes.first?.commitPolicy == .allOrNothing)
+    }
+
+    /// 역편집 묶음이 둘 이상이어도 모두 합쳐 대량 유예를 판정한다(컨실 G7)
+    @Test func 역편집_묶음_여럿을_합쳐_대량_유예를_판정한다() async throws {
+        let w = AutoReflectionWorld()
+        w.timing.bulkTracks = 3
+        w.h.script.preview.tagOutcomes = ["a", "b", "c", "d"].map { ReflectionHarness.outcome($0, .written) }
+        let first = undoGroup(w, ["a", "b"])
+        var second = undoGroup(w, ["c", "d"])
+        second.id = "undo-2"
+        try await w.start()
+        w.engine.enqueue(.undo(first))
+        w.engine.enqueue(.undo(second))
+        try await w.advance(15)
+        #expect(w.writes.isEmpty)
+        if case .grace = w.engine.status {} else { Issue.record("대량 유예가 아니다: \(w.engine.status)") }
+    }
+
+    /// 일반 저장 대기와 역편집 묶음을 합쳐 M곡 이상이면 대량 유예를 거친다(따로 보면 둘 다 M곡 아래, 컨실 2라운드 D·G7)
+    @Test func 일반_대기와_역편집_묶음을_합쳐_대량_유예를_판정한다() async throws {
+        let w = AutoReflectionWorld()
+        w.timing.bulkTracks = 3
+        w.writable("x")
+        w.cue("x")
+        w.h.script.preview.tagOutcomes = ["a", "b"].map { ReflectionHarness.outcome($0, .written) }
+        let edit = undoGroup(w, ["a", "b"])
+        try await w.start()
+        w.engine.enqueue(.undo(edit))
+        try await w.advance(15)
+        #expect(w.writes.isEmpty)
+        if case .grace = w.engine.status {} else { Issue.record("대량 유예가 아니다: \(w.engine.status)") }
+    }
+
+    @Test func K행을_넘는_역편집은_자동으로_쓰지_않고_남긴다() async throws {
+        let w = AutoReflectionWorld()
+        w.timing.rowLimit = 1
+        w.h.script.preview.tagOutcomes = ["a", "b"].map { ReflectionHarness.outcome($0, .written) }
+        let edit = undoGroup(w, ["a", "b"])
+        try await w.start()
+        w.engine.enqueue(.undo(edit))
+        try await w.advance(10)
+        #expect(w.writes.isEmpty && w.previews.isEmpty)
+        #expect(w.engine.conditions.leftovers.contains(.undoOverRowLimit))
+    }
+
+    /// 게인 초안을 만든 뒤 rekordbox가 한 번 켜졌다 꺼졌으면 base 없는 초안으로 다룬다(R23, 컨실 S7): 자동으로 쓰지 않고 ⌘S·저장 단추로 쓴다
+    @Test func 만든_뒤_rekordbox가_켜졌다_꺼진_게인_초안은_자동으로_쓰지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.gainOutcomes = [ReflectionHarness.outcome("n", .written)]
+        w.h.state.rows["n"] = ReflectionHarness.row("n")
+        w.h.state.gainDraftUUIDs = ["n"]
+        w.h.memory.save(gain: -1, base: -3, "n")
+        try await w.start()
+        w.fakes.setRunState(.running)
+        try await w.advance(2)
+        w.fakes.setRunState(.stopped)
+        try await w.advance(25)
+        #expect(w.writes.isEmpty)
+        #expect(w.engine.conditions.leftovers.contains(.noBase))
+    }
+
+    /// 수동 쓰기(확인 창 포함) 동안에도 rekordbox 실행 경계를 넘긴다: 그동안 켜졌다 꺼졌으면 base 없는 초안이다(R23, 컨실 2라운드 K)
+    @Test func 수동_쓰기_동안_rekordbox가_켜졌다_꺼진_게인_초안은_자동으로_쓰지_않는다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.gainOutcomes = [ReflectionHarness.outcome("n", .written)]
+        w.h.state.rows["n"] = ReflectionHarness.row("n")
+        w.h.state.gainDraftUUIDs = ["n"]
+        w.h.memory.save(gain: -1, base: -3, "n")
+        w.appHolds = [.editing]
+        try await w.start()
+        var release: CheckedContinuation<Void, Never>?
+        let manual = Task { @MainActor in await w.engine.exclusive({ await withCheckedContinuation { release = $0 } }) }
+        while release == nil { await Task.yield() }
+        try await w.settle()
+        w.fakes.setRunState(.running)
+        try await w.advance(2)
+        w.fakes.setRunState(.stopped)
+        try await w.advance(2)
+        release?.resume()
+        await manual.value
+        w.appHolds = []
+        try await w.edited()
+        try await w.advance(25)
+        #expect(w.writes.isEmpty)
+        #expect(w.engine.conditions.leftovers.contains(.noBase))
+    }
+
+    /// R23의 경계는 "만든 뒤 한 번 켜졌다 꺼진" 것이다: rekordbox가 켜진 동안 만든 게인은 만든 뒤 켜짐이 없어 꺼진 뒤 자동으로 쓴다
+    /// (그사이 rekordbox가 게인을 바꿨으면 쓰기 입구가 base와 지금 값을 견줘 막는다)
+    @Test func rekordbox가_켜진_동안_만든_게인_초안은_꺼진_뒤_자동으로_쓴다() async throws {
+        let w = AutoReflectionWorld()
+        w.h.script.preview.gainOutcomes = [ReflectionHarness.outcome("n", .written)]
+        w.h.state.rows["n"] = ReflectionHarness.row("n")
+        w.fakes.setRunState(.running)
+        try await w.start()
+        try await w.advance(2)
+        w.h.state.gainDraftUUIDs = ["n"]
+        w.h.memory.save(gain: -1, base: -3, "n")
+        try await w.edited()
+        w.fakes.setRunState(.stopped)
+        try await w.advance(25)
+        #expect(w.writes.count == 1 && w.writes.first?.gains == ["n": -1] && w.writes.first?.gainBases == ["n": -3])
+        #expect(!w.engine.conditions.leftovers.contains(.noBase))
+    }
+
     @Test func 같은_곡에_큐와_앨범아트가_있으면_큐만_자동으로_쓰고_앨범아트는_남긴다() async throws {
         let w = AutoReflectionWorld()
         w.writable("a")

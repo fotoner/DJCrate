@@ -63,7 +63,7 @@ extension LibraryStore {
         useCases.recover.flush()
         try checkRecoveryInput(review.original)
         if let save { try save(resolved) } else { try useCases.recover.save(resolved, restoring: review.original) }
-        undoManager?.removeAllActions(withTarget: self)
+        clearLibraryUndo()
         switch resolved {
         case let .tags(draft):
             tagDrafts[draft.trackUUID] = draft.hasChanges ? draft : nil

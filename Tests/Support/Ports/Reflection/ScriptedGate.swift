@@ -13,6 +13,8 @@ public struct GateScript: Sendable {
     /// nil이면 미리 본 보고서를 쓴 결과로 돌려준다(백업은 대상의 백업 폴더 안)
     public var write: RekordboxWriteReport?
     public var writeError: (any Error)?
+    /// 묶음에 따라 쓰기에서 던질 오류(⌘S가 나눠 쓴 쓰기 가운데 하나만 실패시키는 시험)
+    public var writeErrorFor: (@Sendable (DraftWriteBatch) -> (any Error)?)?
     public var addPreview = RekordboxTrackWriteReport(dryRun: true)
     public var add: RekordboxTrackWriteReport?
     public var addError: (any Error)?
@@ -108,7 +110,7 @@ extension RekordboxWriteGate {
                     $0.writes.append(batch); $0.writeInputs.append(inputs); $0.writeTargets.append(target); $0.dryRuns.append(dryRun)
                     $0.order.append("write")
                 }
-                if let error = script.writeError { throw error }
+                if let error = script.writeError ?? script.writeErrorFor?(batch) { throw error }
                 var report = script.write ?? script.preview
                 if script.reportsBatchOnly { report = report.restricted(to: batch) }
                 report.dryRun = dryRun

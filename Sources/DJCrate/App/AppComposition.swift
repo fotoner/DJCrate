@@ -55,6 +55,7 @@ final class AppComposition {
     private var connected = false
     /// 자동 저장 엔진(#403). 실제 앱만 둔다(화면 시험 조립은 nil이라 지금처럼 ⌘S로만 쓴다). 반영 조정자의 쓰기도 이 엔진의 차례를 받는다
     private(set) var autoReflection: AutoReflection?
+    /// 입력 중인 칸(R19): 미확정 값이 있으면 자동 저장을 미룬다(엔진 편집 활동). 엔진이 있을 때만 둔다
     /// 앱 수명 동안 도는 일(바깥 초안 감시·자동 시점 스냅샷·자동 저장 판정). 창이 아니라 조립 지점이 수명을 든다(창을 닫았다 열어도 하나만 돈다)
     private var lifetimeTasks: [Task<Void, Never>] = []
     /// 자동 시점 스냅샷 실행기 하나(자동 저장 앞의 스냅샷과 하루 한 번 스냅샷이 같은 실행기를 써 겹쳐 뜨지 않는다)
@@ -93,6 +94,8 @@ final class AppComposition {
             let input = FieldEditingState.live()
             // 인스펙터 칸은 포커스를 잃은 뒤 다음 갱신에서 확정한다: 그 확정이 끝나기를 ⌘S가 기다린다
             input.hasPendingCommit = { [tagInspector] in tagInspector.hasPendingInput }
+            // 초안을 편집하지 않는 보조 창의 칸은 세지 않는다(컨실 3라운드 G18)
+            input.countsWindow = { [windows] window in !windows.isAuxiliary(window) }
             libraryWindow.fieldEditing = input
         }
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
@@ -113,6 +116,10 @@ final class AppComposition {
             let engine = makeAutoReflection(run: autoReflection.run, home: autoReflection.home)
             self.autoReflection = engine
             reflection.engine = engine
+            // ⌘S가 확정하는 입력 감지기 하나가 자동 저장도 미룬다(R19): 입력 중 여부를 엔진의 편집 활동으로 옮긴다
+            libraryWindow.fieldEditing.onChange = { [weak engine] editing in engine?.setActivity(FieldEditingState.activity(editing: editing)) }
+            // 저장 뒤 ⌘Z가 만든 여러 곡 역편집은 한 번에 전부 쓰거나 전부 쓰지 않는다(R12)
+            store.onUndoAfterSave = { [weak engine] edit in engine?.enqueue(.undo(edit)) }
         }
         // 저장 입구가 엔진 발행 뒤에 바뀐 시트·USB 쓰기를 지금 상태로 다시 본다(S3)
         libraryWindow.liveHolds = { [weak self] in self?.saveBlockingHolds() ?? [] }
@@ -157,7 +164,9 @@ final class AppComposition {
         if link?.isServing == true { holds.insert(.linkServer) }
         // 시점 스냅샷 창에서 뜨는 중(뜨는 동안 라이브러리가 바뀌면 그 스냅샷을 버린다, R16)
         if windows.pointSnapshots.isWorking { holds.insert(.pointSnapshot) }
-        // 편집 중: 입력기 조합·마우스 누름·끌기·덱 큐 끌기·곡 편집 창이나 시트가 열림(자동 저장은 입력을 확정하지 않고 미룬다)
+        // 편집 중: 입력기 조합·마우스 누름·끌기·덱 큐 끌기·곡 편집 창이나 시트가 열림(자동 저장은 입력을 확정하지 않고 미룬다).
+        // 미확정 칸(R19)은 엔진 편집 활동으로 따로 온다: 끝 알림 없이 사라진 칸은 여기서 솎는다
+        libraryWindow.fieldEditing.revalidate()
         let app = NSApplication.shared
         let composing = (app.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
         let pointer = NSEvent.pressedMouseButtons != 0
@@ -268,7 +277,9 @@ final class AppComposition {
         let location = LibraryLocation.resolve(arguments: info.arguments, environment: info.environment)
         // 초안 저장 큐는 하나다: 저장소·덱·반영·복구·그리드 추정이 모두 같은 큐로 쓴다(게인 초안은 모든 곡이 파일 하나라 순서가 지켜져야 한다).
         // 앱의 편집 포트는 사람 편집이다(출처는 조립이 정한다, R5)
-        let drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome, origin: .human)
+        var drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome, origin: .human)
+        // rekordbox 실행 경계(R23): 엔진이 켜짐·꺼짐을 넘기고 게인 base에 함께 적는다. 앱을 켤 때마다 새 이름이라 그 전 실행의 base는 모름이다
+        drafts.runEpoch = RekordboxRunEpoch(session: UUID().uuidString)
         let places = DraftLocations(home: location.draftHome)
         var ports = LibraryPorts.live(location: location, drafts: drafts, batches: .live(url: places.reflection))
         // USB 기기 재생 기록 보존(#43)은 앱만 붙인다(시험 저장소·CLI는 보존하지 않는다)
@@ -670,6 +681,14 @@ final class AppWindows {
     let pointSnapshots = PointSnapshotWindow(points: AppComposition.pointSnapshots(store:))
     let appleMusicImport = AppleMusicImportWindow()
     let integrationGuide = IntegrationGuideWindow()
+
+    /// 초안을 편집하지 않는 보조 창인지(곡 편집·Flip·복원 시점·Apple Music 가져오기·연동 안내·설정·단축키). 입력 감지기가 이 창의 칸을 세지 않는다(컨실 3라운드 G18)
+    func isAuxiliary(_ window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        let auxiliary = [trackEdit.window, flip.window, pointSnapshots.window, appleMusicImport.window, integrationGuide.window,
+                         SettingsWindow.current, ShortcutsWindow.current]
+        return auxiliary.contains { $0 === window }
+    }
 }
 
 extension EnvironmentValues {

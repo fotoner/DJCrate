@@ -5,7 +5,7 @@ import SwiftUI
 
 @MainActor
 final class AppleMusicImportWindow: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
+    private(set) var window: NSWindow?
     private var model: AppleMusicImportModel?
 
     func open(store: LibraryStore) {

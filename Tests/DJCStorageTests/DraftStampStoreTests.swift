@@ -327,6 +327,83 @@ struct DraftStampStoreTests {
         #expect(DraftStampStore.stamp(DraftKey(.gain, "old"), home: folder.url)?.origins == [.human, .unknown])
     }
 
+    /// 게인 초안의 base(R23, #405): 초안을 만들 때 본 rekordbox 오토게인과 rekordbox 실행 경계를 옆 파일 `gain-draft-bases.json`에 둔다.
+    /// 게인 파일 모양은 그대로라 옛 앱도 읽는다. base는 그 값의 판에 묶인다(값보다 뒤에, 초안 잠금 안에서 적는다). 값을 지우면 base도 지운다
+    @Test func 게인_초안의_base는_값의_판에_묶이고_값을_지우면_함께_지운다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        func revision(_ uuid: String) -> DraftRevision? { DraftStampStore.stamp(DraftKey(.gain, uuid), home: folder.url)?.revision }
+        try StampedDrafts.saveGain(-1, trackUUID: "a", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -3.5, run: "E1"), trackUUID: "a", url: places.gain)
+        #expect(try GainDraftStore.read(url: places.gain) == ["a": -1])
+        #expect(GainDraftStore.bases(url: places.gain)["a"] == GainDraftBase(db: -3.5, run: "E1", revision: revision("a")))
+        // 지우면 base도 지운다
+        try StampedDrafts.saveGain(nil, trackUUID: "a", url: places.gain, origin: .human)
+        #expect(GainDraftStore.bases(url: places.gain).isEmpty)
+        // 판 지정 삭제(쓴 뒤 정리)도 base를 함께 지운다
+        try StampedDrafts.saveGain(-7, trackUUID: "c", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -2, run: "E1"), trackUUID: "c", url: places.gain)
+        let c = try #require(DraftStampStore.stamp(DraftKey(.gain, "c"), home: folder.url))
+        _ = try StampedDrafts.removeWritten([WrittenDraft(key: DraftKey(.gain, "c"), revision: c.revision, contentHash: c.contentHash)],
+                                           home: folder.url)
+        #expect(GainDraftStore.bases(url: places.gain)["c"] == nil)
+    }
+
+    /// 저장 큐는 값과 base를 한 차례에 쓴다: 값을 보관하지 못하면 base를 묶지 않고, 다시 보관하면 그때 묶는다(컨실 2라운드 L)
+    @Test func 값_저장이_실패하면_base를_묶지_않고_다시_보관하면_묶는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        final class Flag: @unchecked Sendable {
+            private let lock = NSLock()
+            private var on = true
+            var isOn: Bool { lock.withLock { on } }
+            func set(_ value: Bool) { lock.withLock { on = value } }
+        }
+        let writer = DraftWriter(), failing = Flag()
+        let write: @Sendable (Double?, String, URL) throws -> Void = { value, uuid, url in
+            if failing.isOn { throw CocoaError(.fileWriteNoPermission) }
+            try StampedDrafts.saveGain(value, trackUUID: uuid, url: url, origin: .human)
+        }
+        writer.save(gain: -1, base: GainDraftBase(db: -3, run: "E1"), trackUUID: "a", url: places.gain, write: write)
+        writer.flush()
+        #expect(GainDraftStore.bases(url: places.gain).isEmpty, "값을 보관하지 못했으면 base를 묶지 않는다")
+        failing.set(false)
+        writer.save(gain: -1, base: GainDraftBase(db: -3, run: "E1"), trackUUID: "a", url: places.gain, write: write)
+        writer.flush()
+        let revision = DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.revision
+        #expect(GainDraftStore.bases(url: places.gain)["a"] == GainDraftBase(db: -3, run: "E1", revision: revision))
+    }
+
+    /// 값만 다시 저장하면(CLI 등) 판이 바뀌어 그 base는 이 값의 base가 아니다(컨실 S8: 예전 값에 새 base가 붙지 않는다)
+    @Test func 값만_다시_저장하면_base는_새_값의_판에_묶이지_않는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveGain(-1, trackUUID: "a", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -3, run: "E1"), trackUUID: "a", url: places.gain)
+        try StampedDrafts.saveGain(-2, trackUUID: "a", url: places.gain, origin: .cli)
+        let now = try #require(DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.revision)
+        #expect(GainDraftStore.bases(url: places.gain)["a"]?.revision != now)
+    }
+
+    /// 그 곡 게인 초안과 base가 이미 있으면 base 값·실행 경계는 다시 적지 않고 새 값의 판에만 다시 묶는다(컨실 O6: 다시 고칠 때마다
+    /// 지금 rekordbox 값으로 base를 바꾸면 그사이 rekordbox에서 바뀐 것을 쓰기가 못 막는다)
+    @Test func 이미_base가_있으면_값과_경계는_그대로_두고_새_판에만_묶는다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try StampedDrafts.saveGain(-1, trackUUID: "a", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -3, run: "E1"), trackUUID: "a", url: places.gain)
+        try StampedDrafts.saveGain(-2, trackUUID: "a", url: places.gain, origin: .human)
+        try GainDraftStore.saveBase(GainDraftBase(db: -5, run: "E2"), trackUUID: "a", url: places.gain)
+        let now = DraftStampStore.stamp(DraftKey(.gain, "a"), home: folder.url)?.revision
+        #expect(GainDraftStore.bases(url: places.gain)["a"] == GainDraftBase(db: -3, run: "E1", revision: now))
+    }
+
+    @Test func 옛_형식_게인_초안에는_base가_없다() throws {
+        let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
+        try Data(#"{"old":-2.5}"#.utf8).write(to: places.gain)
+        #expect(GainDraftStore.bases(url: places.gain).isEmpty)
+        // 옆 파일이 손상돼도 base를 모를 뿐 게인 초안은 그대로 읽는다(자동으로 쓰지 않는다)
+        try Data("깨짐".utf8).write(to: GainDraftStore.basesURL(for: places.gain))
+        #expect(GainDraftStore.bases(url: places.gain).isEmpty)
+        #expect(try GainDraftStore.read(url: places.gain) == ["old": -2.5])
+    }
+
     @Test func 그림과_합치기_초안도_판_지정으로_지운다() throws {
         let folder = try TemporaryFolder(), places = DraftLocations(home: folder.url)
         let artwork = ArtworkDraftStore.edit(trackUUID: "w", base: ArtworkBase(imagePath: ""), image: Data("그림".utf8), imageName: "a.png")

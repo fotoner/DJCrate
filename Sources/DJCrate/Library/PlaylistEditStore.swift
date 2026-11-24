@@ -99,6 +99,9 @@ final class PlaylistEditStore {
 
     /// 얼린 단계(없으면 빈 집합)
     private var frozen: Set<UUID> { writeFreeze ?? [] }
+    /// 쓴 새 목록의 연결 ID(`new:키` → 실제 ID). 저장 뒤 ⌘Z가 새로 만든 목록을 찾는다(R12)
+    @ObservationIgnored var writtenPlaylistIDs: [String: String] = [:]
+
 
     /// 쓸 수 없는 초안 편집 수(rekordbox에서 바뀐 목록 등)
     var blockedPlaylistEditCount: Int { playlistProjection.blocked.compactMap { $0 }.count }
@@ -237,7 +240,8 @@ final class PlaylistEditStore {
 
     /// 초안을 바꾸고 저장·화면 갱신·되돌리기(⌘Z)를 건다. 되돌리기 대상은 핵심이다(쓰기 잠금이 핵심 대상으로 지운다).
     /// 디스크 초안이 바깥(CLI)에서 바뀌었으면 그 초안을 받고 이 변경은 하지 않는다(옛 초안으로 만든 변경이 CLI 초안을 덮지 않게).
-    func setPlaylistDraft(_ draft: PlaylistDraft, actionName: String) {
+    /// - Parameter registersUndo: 실행 취소(⌘Z) 단계를 남긴다. 잠긴 동안 눌러 미뤘다가 실행하는 ⌘Z 요청은 남기지 않는다(컨실 S6)
+    func setPlaylistDraft(_ draft: PlaylistDraft, actionName: String, registersUndo: Bool = true) {
         guard draft != playlistDraft, !isEditBlocked else { return }
         switch syncExternal() {
         case .adopted:
@@ -251,7 +255,7 @@ final class PlaylistEditStore {
         }
         // 쓰고 있는 단계는 바꾸지 않는다(되돌리기·다시 하기가 쓰는 단계를 되살리거나 지우지 않게)
         guard preservesFrozen(draft) else { return }
-        commitPlaylistDraft(draft, actionName: actionName)
+        commitPlaylistDraft(draft, actionName: actionName, registersUndo: registersUndo)
     }
 
     /// 쓰고 있는 단계가 그대로 든 초안인지(얼리지 않았으면 늘 true)
@@ -282,20 +286,95 @@ final class PlaylistEditStore {
 
     static var syncFailureText: String { String(ui: "재생 목록 편집을 읽지 못해 고치지 않았습니다. 잠시 뒤 다시 해 주세요.") }
 
-    private func commitPlaylistDraft(_ draft: PlaylistDraft, actionName: String) {
-        let before = playlistDraft
+    private func commitPlaylistDraft(_ draft: PlaylistDraft, actionName: String, registersUndo: Bool = true) {
+        let before = playlistDraft, beforeLayout = playlistProjection.layout
         guard draft != before else { return }
         playlistDraft = draft
         savePlaylistDraft()
         refreshPlaylists()
-        // 쓰는 동안 한 편집은 실행 취소에 남기지 않는다: 되돌릴 초안이 쓰고 있는 단계를 담고 있어 쓴 뒤에는 맞지 않는다(저장 뒤 실행 취소는 W3-F)
-        guard !library.libraryBusy, let undoManager = library.undoManager else { return }
-        undoManager.registerUndo(withTarget: library) { target in
-            guard !target.playlists.isEditBlocked else { return }
-            target.playlists.setPlaylistDraft(before, actionName: actionName)
+        // 쓰는 동안 한 편집은 실행 취소에 남기지 않는다(#402: 되돌릴 초안이 쓰고 있는 단계를 담고 있다)
+        guard registersUndo, !library.libraryBusy, let undoManager = library.undoManager else { return }
+        // 편집 전후 초안과 그때 보이던 목록을 든다: 쓴 뒤에도 지금 목록 위에서 이 편집을 거꾸로 하는 단계를 만든다(R12, `PlaylistUndo`).
+        // 저장 뒤 되돌릴 수 없게 되면(만들기·지우기·곡 빼기·바깥에서 바뀜) 그 단계가 맨 위가 됐을 때 ⌘Z가 꺼진다(`UndoSteps`, 컨실 2라운드 A)
+        let step = PlaylistUndoStep(before: before, after: draft, beforeLayout: beforeLayout, afterLayout: playlistProjection.layout)
+        library.undoSteps.register(undoManager, kind: .library, canUndo: { [weak self] in self?.canUndo(step) ?? false }) { [weak self] in
+            self?.undo(step, actionName: actionName)
         }
         undoManager.setActionName(actionName)
     }
+
+    // MARK: - 저장 뒤 ⌘Z(R12)
+
+    /// 재생 목록 ⌘Z 한 단계: 편집 전후 초안과 그때 보이던 목록(rekordbox + 초안)
+    struct PlaylistUndoStep {
+        var before: PlaylistDraft
+        var after: PlaylistDraft
+        var beforeLayout: PlaylistLayout
+        var afterLayout: PlaylistLayout
+    }
+
+    /// ⌘Z·⇧⌘Z 한 단계. 쓰는 중이면 누른 요청으로 줄에 두었다가 쓰기가 끝나면 누른 차례대로 실행한다(`LibraryStore.pendingUndo`, 컨실 S6).
+    /// 아직 쓰지 않았으면(초안이 그 편집 뒤 그대로) 지금처럼 편집 전 초안으로, 썼으면 지금 목록 위에서 그 편집을 거꾸로 하는 단계를 쌓는다(자동 저장이 쓴다)
+    /// - Parameter registersRedo: 다시 실행(⇧⌘Z) 단계를 남긴다(미뤘다가 실행하는 요청은 남기지 않는다)
+    private func undo(_ step: PlaylistUndoStep, actionName: String, registersRedo: Bool = true) {
+        if defersUndo {
+            if library.undoManager?.isRedoing != true {
+                library.pendingUndo.append(ready: { [weak self] in self.map { !$0.defersUndo } ?? true }) { [weak self] in
+                    self?.undo(step, actionName: actionName, registersRedo: false)
+                }
+            }
+            return
+        }
+        if playlistDraft == step.after {
+            setPlaylistDraft(step.before, actionName: actionName, registersUndo: registersRedo)
+        } else if let reversed = reversedDraft(step) {
+            setPlaylistDraft(reversed, actionName: actionName, registersUndo: registersRedo)
+        }
+    }
+
+    /// 그 단계를 지금 되돌릴 수 있는지(미루면 참)
+    private func canUndo(_ step: PlaylistUndoStep) -> Bool {
+        defersUndo || playlistDraft == step.after || reversedDraft(step) != nil
+    }
+
+    /// 재생 목록 ⌘Z를 지금 실행하지 않고 누른 요청으로 미룰지: 쓰는 중이거나 쓰는 단계를 얼려 두었거나, 쓴 뒤·복원 뒤 새 목록을 아직 읽지 못했다
+    /// (옛 목록 위에서 거꾸로 할 단계를 만들거나 얼린 단계에 막혀 요청을 잃지 않게, 컨실 2라운드 F·S14·G12)
+    private var defersUndo: Bool {
+        isEditBlocked || writeFreeze != nil || library.draftWriteReadPending || !playlistEditsAwaitingReload.isEmpty
+    }
+
+    /// 편집 한 번이 초안에 더한 편집: 편집 전 초안이 앞에 그대로 있으면 뒤에 붙은 것, 아니면(합침·정리) 편집 뒤에만 있는 것을 개수까지 센 차집합
+    static func addedEdits(before: [PlaylistEdit], after: [PlaylistEdit]) -> [PlaylistEdit] {
+        if after.starts(with: before) { return Array(after.dropFirst(before.count)) }
+        var remaining = Dictionary(before.map { ($0, 1) }, uniquingKeysWith: +)
+        return after.filter { edit in
+            guard let count = remaining[edit], count > 0 else { return true }
+            remaining[edit] = count - 1
+            return false
+        }
+    }
+
+    /// 지금 초안에 그 편집을 거꾸로 하는 단계를 더한 초안. 되돌리지 않는 종류이거나 대상이 그 편집 뒤 모양이 아니면 nil
+    private func reversedDraft(_ step: PlaylistUndoStep) -> PlaylistDraft? {
+        // 그 편집이 순서를 옮긴 목록(이 단계가 더한 reorder·move의 대상): 순서 역편집은 이 목록을 원래 자리로 옮긴다(컨실 3라운드 G).
+        // 같은 목록을 같은 자리로 다시 옮겨 같은 편집이 쌓여도 이 단계가 더한 편집을 구한다: 앞이 같으면 뒤에 붙은 것, 아니면 멀티셋 차집합(4라운드 G23)
+        let added = Self.addedEdits(before: step.before.edits, after: step.after.edits)
+        let moved = Set(added.compactMap { edit -> String? in
+            switch edit {
+            case let .reorder(ref, _), let .move(ref, _): ref.layoutID
+            default: nil
+            }
+        })
+        guard case let .edits(edits) = PlaylistUndo.reversing(before: step.beforeLayout, after: step.afterLayout,
+                                                              current: playlistProjection.layout, ids: writtenPlaylistIDs,
+                                                              moved: moved) else { return nil }
+        var draft = playlistDraft
+        for edit in edits {
+            guard (try? draft.append(edit, rekordbox: rekordboxPlaylists, frozen: frozen)) != nil else { return nil }
+        }
+        return draft
+    }
+
 
     // MARK: - 곡
 
@@ -455,7 +534,7 @@ final class PlaylistEditStore {
         guard changed || disk.stepIDs != playlistDraft.stepIDs else { return false }
         playlistDraft = disk
         refreshPlaylists()
-        if changed { library.undoManager?.removeAllActions(withTarget: library) }
+        if changed { library.clearLibraryUndo() }
         return changed
     }
 
@@ -554,6 +633,8 @@ final class PlaylistEditStore {
     /// 메모리 초안·연결 기록을 맞추고, 새로 만든 목록의 `new:키`를 새 rekordbox ID로 바꿔 둔다(최근 목록·보고 있는 목록).
     func applyPlaylistWrite(_ cleanup: EditPlaylists.WriteCleanup) {
         let ids = cleanup.ids
+        // 새 목록의 실제 ID를 기억한다: 저장 뒤 ⌘Z가 그 목록을 찾는다(R12)
+        writtenPlaylistIDs.merge(ids) { _, new in new }
         // 쓴 단계를 뺐으니 얼림을 푼다. 쓰기가 끝나 새 사본을 읽을 때까지(`libraryBusy`) 재생 목록 편집은 받지 않는다
         // (옛 사본 위에 더한 단계가 쓴 목록의 기준과 어긋나지 않게)
         thawWrite(refresh: false)

@@ -21,6 +21,8 @@ public struct ReflectionPorts {
     public var runningApps: RunningApps
     /// 재생 목록 연결 기록(쓴 뒤 새 목록 ID 잇기·곡 넣기를 되돌린 뒤 잊기)
     public var playlistImports: PlaylistImportsStore
+    /// 대기 중인 여러 곡 역편집 묶음(R12): 자동 저장과 ⌘S가 묶음 밖 편집과 섞지 않고 전부 아니면 전무로 쓴다
+    public var undoGroups = ReflectionUndoGroups()
 
     public init(gate: RekordboxWriteGate, backups: RekordboxBackups, drafts: DraftStore, snapshots: SnapshotTaker, audio: TrackAudioReader,
                 library: ReflectionLibrary, reload: LibraryReloader, lock: WriteLock, confirmation: UserConfirmation,

@@ -56,7 +56,7 @@ extension LibraryStore {
         if let tags = WatchDrafts.externalTags(disk: contents.tagDrafts, memory: tagDrafts, failed: failedTags) {
             tagDrafts = tags
             // 외부 변경 뒤 옛 되돌리기가 새 초안을 덮지 않게 한다.
-            undoManager?.removeAllActions(withTarget: self)
+            clearLibraryUndo()
             tagRevision += 1
         }
         setDraftMarks(cue: Set(cues.keys), grid: contents.gridDraftUUIDs)
