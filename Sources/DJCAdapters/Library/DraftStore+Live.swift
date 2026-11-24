@@ -50,14 +50,14 @@ extension DraftStore {
             cueDraft: { CueDraftStore.load(trackUUID: $0, directory: places.cue) },
             pendingCue: { writer.pendingCue(trackUUID: $0, directory: places.cue) },
             saveCue: { draft, completion in
-                writer.save(draft, directory: places.cue, origin: origin, write: { try StampedDrafts.saveCue($0, directory: $1, origin: $2) },
+                writer.save(draft, directory: places.cue, origin: origin, write: { try StampedDrafts.saveCue($0, directory: $1, origins: $2) },
                             completion: completion)
             },
             gridDraftUUIDs: { GridDraftStore.uuids(directory: places.grid) },
             gridDraft: { GridDraftStore.load(trackUUID: $0, directory: places.grid) },
             pendingGrid: { writer.pendingGrid(trackUUID: $0, directory: places.grid) },
             saveGrid: { draft, completion in
-                writer.save(draft, directory: places.grid, origin: origin, write: { try StampedDrafts.saveGrid($0, directory: $1, origin: $2) },
+                writer.save(draft, directory: places.grid, origin: origin, write: { try StampedDrafts.saveGrid($0, directory: $1, origins: $2) },
                             completion: completion)
             },
             gainDraftUUIDs: { GainDraftStore.uuids(url: places.gain) },
@@ -65,11 +65,11 @@ extension DraftStore {
             pendingGain: { writer.pendingGain(trackUUID: $0, url: places.gain) },
             saveGain: { gain, uuid, completion in
                 writer.save(gain: gain, base: nil, trackUUID: uuid, url: places.gain, origin: origin,
-                            write: { try StampedDrafts.saveGain($0, trackUUID: $1, url: $2, origin: $3) }, completion: completion)
+                            write: { try StampedDrafts.saveGain($0, trackUUID: $1, url: $2, origins: $3) }, completion: completion)
             },
             tagDraftUUIDs: { TagDraftStore.uuids(directory: places.tags) },
             tagDraft: { TagDraftStore.load(trackUUID: $0, directory: places.tags) },
-            saveTags: { writer.save($0, directory: places.tags, origin: origin, write: { try StampedDrafts.saveTag($0, directory: $1, origin: $2) }) },
+            saveTags: { writer.save($0, directory: places.tags, origin: origin, write: { try StampedDrafts.saveTag($0, directory: $1, origins: $2) }) },
             artworkDraftUUIDs: { ArtworkDraftStore.uuids(directory: places.artwork) },
             artworkDrafts: { ArtworkDraftStore.all(directory: places.artwork) },
             artworkEdit: { try ArtworkDraftStore.load(trackUUID: $0, directory: places.artwork) },
@@ -97,7 +97,7 @@ extension DraftStore {
         store.saveGainBase = { base, uuid in writer.saveGainBase(base, trackUUID: uuid, url: places.gain) }
         store.saveGainWithBase = { gain, base, uuid, completion in
             writer.save(gain: gain, base: .some(base), trackUUID: uuid, url: places.gain, origin: origin,
-                        write: { try StampedDrafts.saveGain($0, trackUUID: $1, url: $2, origin: $3) }, completion: completion)
+                        write: { try StampedDrafts.saveGain($0, trackUUID: $1, url: $2, origins: $3) }, completion: completion)
         }
         store.originVariant = { live(writer: writer, home: home, origin: $0) }
         store.stamp = { DraftStampStore.stamp($0, home: home) }

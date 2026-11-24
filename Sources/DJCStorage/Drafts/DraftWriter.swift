@@ -12,8 +12,8 @@ public final class DraftWriter: Sendable {
 
     private let queue = DispatchQueue(label: "djc.draft-writer", qos: .utility)
     private let tagFailures = Mutex<[String: Set<String>]>([:])
-    /// 저장에 실패한 태그 입력과 그 출처. 같은 내용을 출처를 받는 저장으로 다시 맡으면 이 출처로 저장한다(#295 리뷰 F5)
-    private let failedTagOrigins = Mutex<[String: [String: (draft: TagDraft, origin: DraftOrigin)]]>([:])
+    /// 저장에 실패해 아직 디스크에 못 쓴 태그 입력들의 출처(폴더 → 곡 → 출처). 그 곡의 다음 저장에 더한다(`perform`과 같다, #295 리뷰 F9)
+    private let failedTagOrigins = Mutex<[String: [String: Set<DraftOrigin>]]>([:])
     private let records = Mutex(Records())
 
     public init() {}
@@ -30,7 +30,7 @@ public final class DraftWriter: Sendable {
         var uuid: String
     }
 
-    private enum Input: Equatable, Sendable {
+    private enum Input: Sendable {
         /// 게인은 nil이 초안 지우기다.
         case cue(CueDraft), grid(GridDraft), gain(Double?)
     }
@@ -38,14 +38,17 @@ public final class DraftWriter: Sendable {
     private struct Record: Sendable {
         var input: Input
         var state: SaveState
-        var write: @Sendable () throws -> Void
-        /// 출처를 받는 저장이면 이 입력을 저장한 출처
+        /// 출처를 받는 저장이면 쓸 차례에 정한 출처를 받는다(출처를 받지 않는 저장은 nil을 받고 쓰지 않는다)
+        var write: @Sendable (Set<DraftOrigin>?) throws -> Void
+        /// 출처를 받는 저장이면 이 입력을 맡긴 포트의 출처
         var origin: DraftOrigin?
     }
 
     private struct Records: Sendable {
         var revision: UInt64 = 0
         var values: [Key: Record] = [:]
+        /// 저장에 실패해 아직 디스크에 못 쓴 입력들의 출처(키마다). 그 키의 다음 저장에 더하고, 그 키의 저장이 성공하면 비운다
+        var failedOrigins: [Key: Set<DraftOrigin>] = [:]
     }
 
     private static func key(_ kind: Kind, _ uuid: String, _ directory: URL) -> Key {
@@ -126,28 +129,30 @@ public final class DraftWriter: Sendable {
         }
     }
 
-    /// - Parameter origin: 출처를 받는 저장의 출처. 저장에 실패해 아직 저장하지 못한 입력과 같은 내용을 다시 맡으면(덱의 「다시 적용」 등)
-    ///   그 입력의 출처를 쓰기에 넘긴다: 복원이 되살린 초안을 사람 편집 포트로 다시 저장해도 되살린 출처를 잇는다(#295 리뷰 F5). 내용이 다르면 이번 출처다
-    private func enqueue(_ input: Input, key: Key, origin: DraftOrigin? = nil, write: @escaping @Sendable (DraftOrigin?) throws -> Void,
+    /// - Parameter origin: 출처를 받는 저장의 출처(`perform`이 쓸 차례에 앞서 실패한 입력들의 출처를 더한다)
+    private func enqueue(_ input: Input, key: Key, origin: DraftOrigin? = nil, write: @escaping @Sendable (Set<DraftOrigin>?) throws -> Void,
                          completion: @escaping @Sendable (Failure?) -> Void) {
         records.withLock { records in
             records.revision += 1
             let previous = records.values[key]
-            let retrying = previous.map { $0.state.failure != nil && $0.state.savedRevision != $0.state.revision && $0.input == input } ?? false
-            let chosen = retrying ? previous?.origin ?? origin : origin
             let record = Record(input: input, state: SaveState(revision: records.revision,
                                                               savedRevision: previous?.state.savedRevision,
-                                                              failure: previous?.state.failure), write: { try write(chosen) }, origin: chosen)
+                                                              failure: previous?.state.failure), write: write, origin: origin)
             records.values[key] = record
             queue.async { self.perform(record, key: key, completion: completion) }
         }
     }
 
+    /// 쓸 차례에 출처를 정한다: 저장에 실패한 뒤에는 출처를 줄이지 않는다(합집합). 그 키에서 앞서 저장에 실패해 아직 디스크에 못 쓴 입력들의 출처에
+    /// 이번 출처를 더해 쓴다(내용과 상관없이: 되살린 초안 위의 사람 편집도, 실패한 사람 편집과 같은 내용의 복원 저장도 제안으로 남는다, #295 리뷰 F9).
+    /// 쓰기가 실패하면 그 출처를 기억하고, 성공하면(지우기 포함) 비운다. 큐가 직렬이라 앞 입력의 실패를 이미 안다
     private func perform(_ record: Record, key: Key, completion: @Sendable (Failure?) -> Void) {
+        let origins = record.origin.map { origin in records.withLock { $0.failedOrigins[key, default: []] }.union([origin]) }
         let failure: Failure?
-        do { try record.write(); failure = nil }
+        do { try record.write(origins); failure = nil }
         catch { failure = Failure(kind: key.kind, trackUUID: key.uuid, revision: record.state.revision, reason: Self.failureReason(error)) }
         records.withLock { records in
+            if failure == nil { records.failedOrigins[key] = nil } else if let origins { records.failedOrigins[key, default: []].formUnion(origins) }
             guard var current = records.values[key] else { return }
             if failure == nil { current.state.savedRevision = record.state.revision }
             // 앞선 완료가 최신 입력의 저장 오류를 지우지 않게 한다.
@@ -192,12 +197,12 @@ public final class DraftWriter: Sendable {
                      completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
         enqueue(.cue(draft), key: Self.key(.cue, draft.trackUUID, directory), write: { _ in try write(draft, directory) }, completion: completion)
     }
-    /// 출처를 받는 큐 초안 저장(실패한 같은 내용의 입력이 있으면 그 출처로 쓴다, `enqueue`)
+    /// 출처를 받는 큐 초안 저장. 쓰기는 이번 출처에 그 곡의 앞서 실패한 입력들의 출처를 더한 집합을 받는다(`perform`)
     public func save(_ draft: CueDraft, directory: URL, origin: DraftOrigin,
-                     write: @escaping @Sendable (CueDraft, URL, DraftOrigin) throws -> Void,
+                     write: @escaping @Sendable (CueDraft, URL, Set<DraftOrigin>) throws -> Void,
                      completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
         enqueue(.cue(draft), key: Self.key(.cue, draft.trackUUID, directory), origin: origin,
-                write: { try write(draft, directory, $0 ?? origin) }, completion: completion)
+                write: { try write(draft, directory, $0 ?? [origin]) }, completion: completion)
     }
     /// 반영이 끝난 곡의 큐 초안을 지운다(앞서 걸린 저장 뒤에).
     public func removeCue(trackUUID: String, directory: URL) {
@@ -217,12 +222,12 @@ public final class DraftWriter: Sendable {
                      completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
         enqueue(.grid(draft), key: Self.key(.grid, draft.trackUUID, directory), write: { _ in try write(draft, directory) }, completion: completion)
     }
-    /// 출처를 받는 그리드 초안 저장(실패한 같은 내용의 입력이 있으면 그 출처로 쓴다, `enqueue`)
+    /// 출처를 받는 그리드 초안 저장(출처는 큐 초안과 같다, `perform`)
     public func save(_ draft: GridDraft, directory: URL, origin: DraftOrigin,
-                     write: @escaping @Sendable (GridDraft, URL, DraftOrigin) throws -> Void,
+                     write: @escaping @Sendable (GridDraft, URL, Set<DraftOrigin>) throws -> Void,
                      completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
         enqueue(.grid(draft), key: Self.key(.grid, draft.trackUUID, directory), origin: origin,
-                write: { try write(draft, directory, $0 ?? origin) }, completion: completion)
+                write: { try write(draft, directory, $0 ?? [origin]) }, completion: completion)
     }
     public func removeGrid(trackUUID: String, directory: URL, completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
         save(GridDraft(trackUUID: trackUUID, base: [], segments: []), directory: directory, completion: completion)
@@ -233,13 +238,13 @@ public final class DraftWriter: Sendable {
                      completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
         enqueue(.gain(gain), key: Self.key(.gain, trackUUID, url), write: { _ in try write(gain, trackUUID, url) }, completion: completion)
     }
-    /// 출처를 받는 게인 초안 저장(실패한 같은 내용의 입력이 있으면 그 출처로 쓴다, `enqueue`).
+    /// 출처를 받는 게인 초안 저장(출처는 큐 초안과 같다, `perform`).
     /// - Parameter base: 주면(`.some`) 값을 쓴 뒤 그 값의 판에 묶는다(nil base면 지운다). 주지 않으면(`nil`) base는 건드리지 않는다
     public func save(gain: Double?, base: GainDraftBase??, trackUUID: String, url: URL, origin: DraftOrigin,
-                     write: @escaping @Sendable (Double?, String, URL, DraftOrigin) throws -> Void,
+                     write: @escaping @Sendable (Double?, String, URL, Set<DraftOrigin>) throws -> Void,
                      completion: @escaping @Sendable (Failure?) -> Void = { _ in }) {
-        enqueue(.gain(gain), key: Self.key(.gain, trackUUID, url), origin: origin, write: { chosen in
-            try write(gain, trackUUID, url, chosen ?? origin)
+        enqueue(.gain(gain), key: Self.key(.gain, trackUUID, url), origin: origin, write: { origins in
+            try write(gain, trackUUID, url, origins ?? [origin])
             if gain != nil, let base { try? GainDraftStore.saveBase(base, trackUUID: trackUUID, url: url) }
         }, completion: completion)
     }
@@ -274,27 +279,27 @@ public final class DraftWriter: Sendable {
                 do {
                     try write(draft, directory)
                     _ = self.tagFailures.withLock { $0[key]?.remove(draft.trackUUID) }
+                    _ = self.failedTagOrigins.withLock { $0[key]?.removeValue(forKey: draft.trackUUID) }
                 } catch {
                     _ = self.tagFailures.withLock { $0[key, default: []].insert(draft.trackUUID) }
                 }
             }
         }
     }
-    /// 출처를 받는 태그 초안 저장: 저장에 실패한 같은 내용을 다시 맡으면 그때의 출처로 쓴다(큐·그리드·게인의 `enqueue`와 같다, #295 리뷰 F5)
+    /// 출처를 받는 태그 초안 저장: 그 곡의 앞서 저장에 실패한 입력들의 출처에 이번 출처를 더해 쓴다(큐·그리드·게인의 `perform`과 같다, #295 리뷰 F9)
     public func save(_ drafts: [TagDraft], directory: URL, origin: DraftOrigin,
-                     write: @escaping @Sendable (TagDraft, URL, DraftOrigin) throws -> Void) {
+                     write: @escaping @Sendable (TagDraft, URL, Set<DraftOrigin>) throws -> Void) {
         let key = directory.resolvingSymlinksInPath().standardizedFileURL.path
         queue.async {
             for draft in drafts {
-                let failed = self.failedTagOrigins.withLock { $0[key]?[draft.trackUUID] }
-                let chosen = failed.flatMap { $0.draft == draft ? $0.origin : nil } ?? origin
+                let origins = self.failedTagOrigins.withLock { $0[key]?[draft.trackUUID] ?? [] }.union([origin])
                 do {
-                    try write(draft, directory, chosen)
+                    try write(draft, directory, origins)
                     _ = self.tagFailures.withLock { $0[key]?.remove(draft.trackUUID) }
                     _ = self.failedTagOrigins.withLock { $0[key]?.removeValue(forKey: draft.trackUUID) }
                 } catch {
                     _ = self.tagFailures.withLock { $0[key, default: []].insert(draft.trackUUID) }
-                    self.failedTagOrigins.withLock { $0[key, default: [:]][draft.trackUUID] = (draft, chosen) }
+                    self.failedTagOrigins.withLock { $0[key, default: [:]][draft.trackUUID, default: []].formUnion(origins) }
                 }
             }
         }

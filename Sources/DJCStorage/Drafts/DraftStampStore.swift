@@ -118,16 +118,16 @@ public enum DraftStampStore {
         try encode(stamps).write(to: url, options: .atomic)
     }
 
-    /// 초안 하나를 저장한 뒤 새 판으로 도장을 적는다. 출처는 포트의 출처에 앞 도장의 출처를 모은다. 저장 전에 파일이 있었는데
+    /// 초안 하나를 저장한 뒤 새 판으로 도장을 적는다. 출처는 이번 출처(포트의 출처, 저장 큐가 앞서 실패한 입력들의 출처를 더한 것)에 앞 도장의 출처를 모은다. 저장 전에 파일이 있었는데
     /// 도장이 없으면 업데이트 전부터 있던 초안이라 출처를 모름으로 모은다. `hash`가 nil이면 초안이 없어진 것이라 도장도 지운다
     /// `outside`: 덮어쓰기 전 파일 내용이 도장의 해시와 달랐다(바깥에서 고쳤다). 그 위에 쓴 초안이라 모름도 더한다
-    static func restamp(_ key: DraftKey, home: URL, existed: Bool, origin: DraftOrigin, hash: DraftContentHash?, outside: Bool = false) throws {
+    static func restamp(_ key: DraftKey, home: URL, existed: Bool, origins given: Set<DraftOrigin>, hash: DraftContentHash?, outside: Bool = false) throws {
         guard isSafeName(key.id) || !perFile(key.kind) else { return }
         guard let hash else {
             try write(nil, for: key, home: home)
             return
         }
-        var origins: Set<DraftOrigin> = [origin]
+        var origins = given
         if existed { origins.formUnion(read(key, home: home)?.origins ?? [.unknown]) }
         if outside { origins.insert(.unknown) }
         let revision = try nextRevisions(1, home: home)[0]
