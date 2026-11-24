@@ -30,6 +30,10 @@ public struct GateScript: Sendable {
     public var journalError: (any Error)?
     /// 미정리 목록(R22)
     public var cleanupLists: [DraftCleanupList] = []
+    /// 미리 보기·쓰기 결과를 넘긴 묶음에 든 것만 남긴다(실제 관문처럼). 자동 저장이 묶음을 나눠 쓰는 시험이 켠다
+    public var reportsBatchOnly = false
+    /// 실제로 넣는 동안(dryRun 아님) 부른다: 넣는 동안 바깥(CLI)이 초안을 저장하는 경우를 흉내 낸다
+    public var duringAdd: (@Sendable () -> Void)?
 
     public init() {}
 }
@@ -91,6 +95,8 @@ extension RekordboxWriteGate {
     /// - Parameter journal: 가짜 관문이 드는 쓰기 기록 상태(시험이 기록이 남았는지 직접 본다). 주지 않으면 `script.journal`로 새로 만든다
     public static func scripted(_ script: GateScript, calls: GateCalls = GateCalls(), hold: PreviewHold = PreviewHold(),
                                 journal: ScriptedJournal? = nil) -> Self {
+        // 미정리 목록은 가짜 관문이 상태로 든다: 처음 값은 `script.cleanupLists`, 앱 쓰기(작업이 실린 묶음)는 쓴 뒤 목록을 남기고 지우기가 뺀다
+        let lists = Mutex(script.cleanupLists)
         var gate = RekordboxWriteGate(
             write: { batch, inputs, target, dryRun in
                 expectBlockingOffPool()
@@ -100,8 +106,17 @@ extension RekordboxWriteGate {
                 }
                 if let error = script.writeError { throw error }
                 var report = script.write ?? script.preview
+                if script.reportsBatchOnly { report = report.restricted(to: batch) }
                 report.dryRun = dryRun
                 if script.write == nil { report.backup = dryRun ? nil : target.backups.appending(path: "write-1").path }
+                if !dryRun, let operation = batch.operation {
+                    let steps = batch.revisions.playlistSteps.map { DraftCleanupList.PlaylistStep(revision: $0.revision, contentHash: $0.contentHash,
+                                                                                                outcome: .written) }
+                    let list = DraftCleanupList(operationID: operation.id, target: RekordboxWriteLockKey(device: 0, inode: 0),
+                                                draftHome: operation.draftHome.path, backupFolder: "write-1",
+                                                written: batch.revisions.written(batch.revisions.tracks.keys), playlistSteps: steps)
+                    lists.withLock { $0.append(list) }
+                }
                 return report
             },
             preview: { batch, _, source, copied in
@@ -110,6 +125,7 @@ extension RekordboxWriteGate {
                 calls.record { $0.previews.append(batch); $0.previewSources.append(source); $0.order.append("preview") }
                 if let error = script.previewError { throw error }
                 var report = script.preview
+                if script.reportsBatchOnly { report = report.restricted(to: batch) }
                 report.dryRun = true
                 return report
             },
@@ -123,6 +139,7 @@ extension RekordboxWriteGate {
                 expectBlockingOffPool()
                 calls.record { $0.adds.append(batch); $0.addTargets.append(target); $0.dryRuns.append(dryRun); $0.order.append(dryRun ? "add preview" : "add") }
                 if !dryRun, let error = script.addError { throw error }
+                if !dryRun { script.duringAdd?() }
                 var report = dryRun ? script.addPreview : script.add ?? script.addPreview
                 report.dryRun = dryRun
                 return report
@@ -194,10 +211,11 @@ extension RekordboxWriteGate {
         gate.cleanupLists = { _, _ in
             expectBlockingOffPool()
             calls.record { $0.order.append("cleanup lists") }
-            return script.cleanupLists
+            return lists.withLock { $0 }
         }
         gate.removeCleanupList = { list, _ in
             expectBlockingOffPool()
+            lists.withLock { $0.removeAll { $0.operationID == list.operationID } }
             calls.record { $0.removedCleanupLists.append(list.operationID); $0.order.append("remove cleanup list") }
         }
         return gate
@@ -246,4 +264,24 @@ public func pointEntry(_ url: URL) -> RekordboxPointSnapshotEntry {
     let json = #"{"version":1,"name":"","kind":"manual","createdAt":0,"pinned":false,"items":[]}"#
     let metadata = try! JSONDecoder().decode(RekordboxPointSnapshotMetadata.self, from: Data(json.utf8))
     return RekordboxPointSnapshotEntry(url: url, metadata: metadata)
+}
+
+extension RekordboxWriteReport {
+    /// 묶음에 든 초안의 결과만 남긴 보고서(재생 목록 결과는 묶음의 단계 수만큼 앞에서부터)
+    public func restricted(to batch: DraftWriteBatch) -> Self {
+        var report = self
+        let cues = Set(batch.drafts.map(\.trackUUID)), grids = Set(batch.grids.map(\.trackUUID)), gains = Set(batch.gains.keys)
+        let tags = Set(batch.tags.map(\.trackUUID)), artworks = Set(batch.artworks.map(\.trackUUID)), merges = Set(batch.merges.map(\.id))
+        report.outcomes = outcomes.filter { cues.contains($0.trackUUID) }
+        report.gridOutcomes = gridOutcomes?.filter { grids.contains($0.trackUUID) }
+        report.analysisOutcomes = analysisOutcomes?.filter { grids.contains($0.trackUUID) }
+        report.gainOutcomes = gainOutcomes?.filter { gains.contains($0.trackUUID) }
+        report.tagOutcomes = tagOutcomes?.filter { tags.contains($0.trackUUID) }
+        report.artworkOutcomes = artworkOutcomes?.filter { artworks.contains($0.trackUUID) }
+        report.mergeOutcomes = mergeOutcomes?.filter { merges.contains($0.trackUUID) }
+        report.playlistOutcomes = batch.playlists.map { Array((playlistOutcomes ?? []).prefix($0.steps.count)) }
+        let histories = Set(batch.histories.map(\.id))
+        report.historyOutcomes = historyOutcomes?.filter { histories.contains($0.id) }
+        return report
+    }
 }

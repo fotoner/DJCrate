@@ -189,12 +189,15 @@ public enum ReflectionPrompts {
             sections.append(report.mergeWritten.map { String(ui: "• \($0.title) 유지 · 중복 \($0.removed)곡을 컬렉션에서 뺍니다") }
                 + report.mergeWritten.compactMap(\.reason) + ["", DuplicateMerge.lossNotice])
         }
+        // 재생 목록·폴더 지우기는 그 안의 목록·곡까지 사라지는 손실이다(R4). 줄 모양은 막힌 편집 줄과 같다
+        let deletions = report.playlistDeletions
+        if !deletions.isEmpty { sections.append(deletions.map { "• \($0.name): \(PlaylistWriteText.change($0.edit))" }) }
         let reasons = reasons(report) + exclusions
         if !reasons.isEmpty { sections.append([skippedHeader(reasons.count)] + reasons) }
         if !canBackUp { sections.append([noBackupText]) }
         return ReflectionPrompt(title: String(ui: "\(writeCounts(report).map(\.summary).joined(separator: " · "))을 rekordbox에 저장할까요?"),
                                 text: "",
-                                confirm: String(ui: "rekordbox에 저장"), destructive: !report.mergeWritten.isEmpty,
+                                confirm: String(ui: "rekordbox에 저장"), destructive: !report.mergeWritten.isEmpty || !deletions.isEmpty,
                                 details: Array(sections.joined(separator: [""])))
     }
 

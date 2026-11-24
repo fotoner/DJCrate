@@ -20,7 +20,8 @@ public enum WriteConfirmPolicy {
         var reasons: [Reason] = []
         if !ReflectionPrompts.reasons(report).isEmpty { reasons.append(.blocked) }
         if !exclusions.isEmpty { reasons.append(.excluded) }
-        if !report.mergeWritten.isEmpty { reasons.append(.loss) }
+        // 합치기와 재생 목록·폴더 지우기는 ⌘S로 쓸 때도 손실로 본다(R4: 지우면 그 안의 rekordbox 변경까지 사라진다)
+        if !report.mergeWritten.isEmpty || !report.playlistDeletions.isEmpty { reasons.append(.loss) }
         if !canBackUp { reasons.append(.noBackup) }
         return reasons
     }
@@ -32,5 +33,15 @@ public enum WriteConfirmPolicy {
         if !ReflectionPrompts.addShortfalls(preview, writesArtwork: writesArtwork).isEmpty { reasons.append(.excluded) }
         if !canBackUp { reasons.append(.noBackup) }
         return reasons
+    }
+}
+
+extension RekordboxWriteReport {
+    /// 쓰는 재생 목록·폴더 지우기(손실 확인을 거친다, R4)
+    public var playlistDeletions: [PlaylistOutcome] {
+        (playlistOutcomes ?? []).filter { outcome in
+            guard outcome.status == .written, case .delete = outcome.edit else { return false }
+            return true
+        }
     }
 }

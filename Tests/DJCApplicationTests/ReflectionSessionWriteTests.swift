@@ -12,6 +12,7 @@ extension ReflectionOutcome {
         case .notice: "notice"
         case .cancelled: "cancelled"
         case .written: "written"
+        case .autoWritten: "autoWritten"
         case .nothingWritable: "nothingWritable"
         case .added: "added"
         case .nothingAdded: "nothingAdded"

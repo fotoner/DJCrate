@@ -36,6 +36,7 @@ extension LibraryStore {
         case let .tagDrafts(drafts): replaceTagDrafts(drafts)
         case let .mergeDrafts(drafts, failure, moved): applyMergeDraftsAfterWrite(drafts, failure: failure, moved: moved)
         case let .playlistWritten(cleanup): playlists.applyPlaylistWrite(cleanup)
+        case let .playlistWriteFrozen(draft, histories): playlists.freezeWrite(draft, histories: histories)
         case let .artworkCleared(uuids, failed): clearWrittenArtwork(uuids, failed: failed)
         case let .artworkRestored(drafts, touched): showRestoredArtwork(drafts, touched: touched)
         case let .unstaged(uuids): _ = staging.unstage(uuids: uuids)

@@ -38,6 +38,9 @@ final class PointSnapshotWindow: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool { model?.isWorking != true }
+
+    /// 이 창에서 시점 스냅샷을 뜨거나 비교·복원하는 중(그동안 자동 저장을 시작하지 않는다, R16)
+    var isWorking: Bool { model?.isWorking == true }
 }
 
 struct PointSnapshotView: View {

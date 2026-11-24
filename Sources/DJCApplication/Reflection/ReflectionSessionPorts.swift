@@ -62,6 +62,7 @@ public struct WriteLock {
     /// 곡 단위 편집 잠금(R21): 쓰는 묶음에 든 곡의 편집만 막는다(빈 집합이면 푼다). 덱 재생·사이드바·목록·다른 곡 편집은 그대로다.
     /// 기본값은 아무것도 하지 않는다. 초안을 쓸 때는 곡을 먼저 정하고(`setTracks`) `setDraftWriting(true)` 뒤 `set(true, false)`로 쓰는 중을 켠다.
     /// 풀 때는 `set(false, false)`, `setDraftWriting(false)`, `setTracks([])` 순서다(사이에 통째 잠금이 한 틱도 켜지지 않게).
+    /// 곡 단위 자동 저장도 이 순서를 따른다: 세션의 `lockDraftWrite(tracks:)`·`unlockDraftWrite()`를 쓴다. 곡 집합이 비고 초안 쓰기 표시도 없으면 통째 잠금이다.
     public var setTracks: @MainActor (Set<String>) -> Void = { _ in }
     /// 지금 편집을 막은 곡
     public var lockedTracks: @MainActor () -> Set<String> = { [] }

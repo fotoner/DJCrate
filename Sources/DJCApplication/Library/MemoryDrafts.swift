@@ -232,7 +232,7 @@ public final class MemoryDrafts: Sendable {
         }
     }
 
-    /// 쓴 재생 목록 단계 정리(`DraftStore.removeWrittenSteps`의 규칙). 연결 ID 옮기기는 하지 않는다(규칙은 W2-G2의 `PlaylistDraft`가 정한다)
+    /// 쓴 재생 목록 단계 정리(`DraftStore.removeWrittenSteps`의 규칙). 연결 ID 옮기기는 하지 않는다(쓴 뒤 정리 `EditPlaylists`가 남은 단계에 옮긴다)
     public func removeWrittenSteps(_ cleanup: PlaylistStepCleanup) -> PlaylistStepRemoval {
         state.withLock { state in
             var result = PlaylistStepRemoval()

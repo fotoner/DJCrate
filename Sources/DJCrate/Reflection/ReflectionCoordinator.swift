@@ -1,6 +1,7 @@
 import DJCApplication
 import DJCDomain
 import AppKit
+import Observation
 import SwiftUI
 
 /// 창을 띄운다. 시험에서는 정해 둔 답을 돌려준다.
@@ -121,6 +122,9 @@ final class ReflectionPresenter {
         case .cancelled: publishCancelled()
         case let .written(report, preview, followUp):
             publish(WriteResult.written(report, preview: preview).followedUp(followUp), undo: report.backup)
+        case let .autoWritten(report, followUp):
+            // 자동 저장은 토스트 없이 활동 기록에만 남긴다(R15의 처음 몇 번 토스트는 상태 줄 #404 몫)
+            _ = store?.activityLog.record(WriteResult.written(report, preview: report).followedUp(followUp))
         case let .nothingWritable(preview, _):
             // 창 대신 결과에 제외한 초안까지 남긴다(#230).
             var result = WriteResult.written(preview.report, preview: preview.report)
@@ -211,6 +215,13 @@ final class ReflectionCoordinator {
     /// 쓰기 상태·작업·복구 시트를 보이는 화면 모델
     let store: LibraryStore
     let prompter: any ReflectionPrompter
+    /// 자동 저장 엔진(#403). 있으면 모든 쓰기가 엔진의 차례(직렬 큐)를 받는다: 자동 저장 중에 누른 ⌘S는 그 저장이 끝난 뒤 곧 한다.
+    /// 조립 지점이 실제 앱에만 붙인다(화면 시험·자가 테스트 조립은 nil이라 지금처럼 바로 쓴다)
+    var engine: AutoReflection?
+    /// 엔진이 알린 칩 상태와 조건(상태 줄 #404가 읽는다)
+    let autoFeed = AutoReflectionFeed()
+    /// USB에 쓰는 중인지(USB 쓰기·볼륨을 붙잡은 작업). 시험이 바꿔 넣는다
+    lazy var isWritingUsb: @MainActor () -> Bool = { [unowned store] in store.writeActivity.writingUsb }
 
     init(session: ReflectionSession, store: LibraryStore, prompter: any ReflectionPrompter) {
         self.session = session
@@ -220,7 +231,9 @@ final class ReflectionCoordinator {
 
     // MARK: - 입구(버튼·메뉴): 시작할 수 있으면 작업 하나로 돌린다
 
-    /// 막힌 초안 비교 창이 열려 있으면 알리고 시작하지 않는다(#232). 이미 쓰는 중이거나 다른 작업이 있으면 무시한다.
+    /// 막힌 초안 비교 창이 열려 있으면 알리고 시작하지 않는다(#232). USB에 쓰는 중이면 이유를 알리고 시작하지 않는다(R3 3번 줄: USB 쓰기가
+    /// 라이브 분석 파일을 읽는 동안 라이브러리를 바꾸지 않는다). 이미 쓰는 중이거나 다른 작업이 있으면 무시한다.
+    /// 다만 자동 저장이 쓰는 중이면 그 뒤 차례로 넣는다(R3 5번 줄)
     private func canStart(blocked: Bool = false) -> Bool {
         if let refusal = store.writeRefusal {
             // Mac을 끄는 중이거나 종료를 기다리는 중(#300)에는 새 쓰기를 시작하지 않고 이유를 알린다
@@ -228,7 +241,12 @@ final class ReflectionCoordinator {
             return false
         }
         if store.writesBlockedBySheet { store.announceWritesBlockedBySheet(); return false }
-        return !blocked && !store.libraryBusy && store.writeTask == nil
+        if isWritingUsb() {
+            store.showToast(.notice(String(ui: "USB에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 시도하세요"), nil))
+            return false
+        }
+        let autoWriting = engine?.isWriting == true
+        return !blocked && (!store.libraryBusy || autoWriting) && store.writeTask == nil
     }
 
     private func start(_ work: @escaping @MainActor () async -> Void) {
@@ -237,6 +255,25 @@ final class ReflectionCoordinator {
             defer { store.writeTask = nil }
             await work()
         }
+    }
+
+    /// 쓰기 하나를 엔진의 차례로 한다(엔진이 없으면 바로). 엔진은 결과로 멈춤을 풀거나(저장 성공) 멈춘다(복원)
+    private func serialized<T>(_ work: @MainActor () async throws -> T) async rethrows -> T {
+        guard let engine else { return try await work() }
+        return try await engine.exclusive(work)
+    }
+
+    /// 초안을 쓰는 흐름(⌘S·저장 단추·곡 넣기)을 엔진의 차례로 한다. 앞 쓰기의 정리를 마치지 못했으면(미정리 목록이 남음) 쓰지 않고 알린다:
+    /// 쓴 재생 목록 단계가 초안에 남아 다시 쓰면 같은 목록이 두 번 생긴다(R22). 복원은 고치는 쓰기라 막지 않는다
+    private func serializedWrite(_ work: @MainActor () async -> ReflectionOutcome) async -> ReflectionOutcome {
+        guard let engine else { return await work() }
+        let session = session
+        return await engine.exclusive(work, whenHeld: { _ in
+            let outcome = ReflectionOutcome.notice(title: String(ui: "rekordbox에 저장하지 않았습니다"), text: ReflectionSession.playlistSaveFailureText,
+                                                   lines: [])
+            session.ports.results.publish(outcome)
+            return outcome
+        })
     }
 
     /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 false)
@@ -293,7 +330,8 @@ final class ReflectionCoordinator {
 
     /// - Parameter playlists: 재생 목록 초안도 함께 쓸지(곡을 골라 쓰는 오른쪽 클릭 메뉴는 곡 초안만 쓴다)
     func write(rows: [TrackRow], playlists: Bool = true) async {
-        let outcome = await session.write(rows: rows, playlists: playlists)
+        let session = session
+        let outcome = await serializedWrite { await session.write(rows: rows, playlists: playlists) }
         // 쓸 수 없게 된 곡·재생 목록의 초안은 창을 줄줄이 띄우지 않고 한 시트에서 줄마다 고친다(#232).
         // 고를 것이 없으면 창을 띄우지 않는다. 막힌 이유는 결과 토스트와 결과 보기에 있다(#230).
         guard case let .nothingWritable(preview, targets) = outcome else { return }
@@ -301,17 +339,45 @@ final class ReflectionCoordinator {
         if !requests.isEmpty { await recover(requests: requests, staleOnly: true) }
     }
 
-    func addTracks(rows: [TrackRow]) async { _ = await session.addTracks(rows: rows) }
+    func addTracks(rows: [TrackRow]) async {
+        let session = session
+        _ = await serializedWrite { await session.addTracks(rows: rows) }
+    }
 
-    func deleteTracks(rows: [TrackRow]) async { _ = await session.deleteTracks(rows: rows) }
+    func deleteTracks(rows: [TrackRow]) async {
+        let session = session
+        _ = await serialized { await session.deleteTracks(rows: rows) }
+    }
 
     /// - Parameter confirmed: 쓰기 결과 토스트의 복원 단추로 불렀는지(그 백업을 보고 누른 것이라 확인으로 본다)
-    func restore(_ backup: RekordboxWriteBackup, confirmed: Bool = false) async { _ = await session.restore(backup, confirmed: confirmed) }
+    func restore(_ backup: RekordboxWriteBackup, confirmed: Bool = false) async {
+        let session = session
+        _ = await serialized { await session.restore(backup, confirmed: confirmed) }
+    }
 
-    /// 시점 스냅샷 복원(#225): 대상은 쓰기와 같은 곳, 보관 일수는 설정
+    /// 시점 스냅샷 복원(#225): 대상은 쓰기와 같은 곳, 보관 일수는 설정. 복원하면 자동 저장이 멈춘다(R8)
     func restorePointSnapshot(_ entry: URL, snapshots: URL, changedTracks: Set<String>) async throws -> RekordboxPointRestoreReport {
-        try await session.restorePointSnapshot(entry, snapshots: snapshots, autoDays: Int(store.settings.value(SettingKeys.pointSnapshotAutoDays)),
-                                               now: .now, changedTracks: changedTracks, to: session.target)
+        let session = session, days = Int(store.settings.value(SettingKeys.pointSnapshotAutoDays))
+        let report = try await serialized {
+            try await session.restorePointSnapshot(entry, snapshots: snapshots, autoDays: days, now: .now, changedTracks: changedTracks,
+                                                   to: session.target)
+        }
+        engine?.restored()
+        return report
+    }
+}
+
+/// 자동 저장 엔진이 알린 칩 상태와 상태 줄·⌘S가 보는 조건(R3 표의 입력). 엔진(핵심부)은 관찰 값을 들지 않아 화면 쪽이 받아 든다.
+/// 화면(상태 줄)은 이 값만 읽고 줄과 단추를 고른다(#404)
+@MainActor
+@Observable
+final class AutoReflectionFeed {
+    private(set) var status: AutoReflectionStatus = .saved
+    private(set) var conditions = ReflectionConditions()
+
+    func update(_ status: AutoReflectionStatus, _ conditions: ReflectionConditions) {
+        if self.status != status { self.status = status }
+        if self.conditions != conditions { self.conditions = conditions }
     }
 }
 

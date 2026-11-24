@@ -69,6 +69,12 @@ final class ReflectionHarness {
     var failingArtworkRemovals: Set<String> = []
     /// 합치기 초안 저장이 실패한다
     var failingMergeSave = false
+    /// 쓴 뒤 판 지정 삭제(`removeWritten`)가 던진다(초안 잠금을 잡지 못함 등). 메인 밖에서 불려 잠금으로 든다
+    let removeWrittenFails = LockedFlag()
+    var failingRemoveWritten: Bool {
+        get { removeWrittenFails.value }
+        set { removeWrittenFails.value = newValue }
+    }
     /// 세션이 저장한 재생 목록 연결 기록(차례대로)
     var importsSaved: [PlaylistImports] = []
     /// 세션이 화면에 넘긴 재생 기록 결과(쓴 기록·이미 있던 기록, #43, 차례대로)와 그때 돌려줄 표시 저장 경고
@@ -194,6 +200,11 @@ final class ReflectionHarness {
             if failingMerge { throw FixtureFailure() }
             try saveMerges(merges)
         }
+        let removeWritten = store.removeWritten, removeFails = removeWrittenFails
+        store.removeWritten = { written in
+            if removeFails.value { throw FixtureFailure() }
+            return try removeWritten(written)
+        }
         return store
     }
 
@@ -293,6 +304,7 @@ final class ReflectionHarness {
             case let .tagDrafts(drafts): "tags \(drafts.map(\.trackUUID).sorted())"
             case let .mergeDrafts(drafts, failure, _): "merges \(drafts.map(\.id))\(failure == nil ? "" : " failed")"
             case .playlistWritten: "playlist written"
+            case let .playlistWriteFrozen(draft, histories): "frozen \(draft.steps.count) histories \(histories.count)"
             case let .artworkCleared(uuids, failed): "artwork cleared \(uuids) failed \(failed)"
             case let .artworkRestored(drafts, touched): "artwork restored \(drafts.keys.sorted()) touched \(touched)"
             case let .unstaged(uuids): "unstaged \(uuids.sorted())"
@@ -318,3 +330,12 @@ final class ReflectionHarness {
 }
 
 struct FixtureFailure: Error, CustomStringConvertible { var description = "합성 실패" }
+
+/// 메인 밖에서도 읽는 시험 스위치
+final class LockedFlag: Sendable {
+    private let state = Mutex(false)
+    var value: Bool {
+        get { state.withLock { $0 } }
+        set { state.withLock { $0 = newValue } }
+    }
+}

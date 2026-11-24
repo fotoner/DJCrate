@@ -144,7 +144,10 @@ struct ReflectionSessionRestoreTests {
         h.backupDrafts.artworks = [ArtworkEdit(draft: ArtworkDraft(trackUUID: "w", change: .delete, base: ArtworkBase(imagePath: "")), image: nil)]
         let session = h.session
         var ports = session.ports
-        ports.drafts.saveArtwork = { _ in throw FixtureFailure() }
+        // 되살린 초안은 "복원이 되살림" 출처의 포트로 저장한다(R8): 실패는 그 출처 포트에 넣는다(`DraftStore.with(origin:)`)
+        var restored = ports.drafts.with(origin: .restored)
+        restored.saveArtwork = { _ in throw FixtureFailure() }
+        ports.drafts.originVariant = { [restored] _ in restored }
         _ = try await ReflectionSession(location: session.location, ports: ports, options: session.options).restoreBackup(backup(), to: .copy)
         #expect(h.followUp == [ReflectionSession.artworkRestoreFailureText(1)])
     }

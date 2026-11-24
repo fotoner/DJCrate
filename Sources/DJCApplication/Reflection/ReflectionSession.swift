@@ -99,16 +99,17 @@ public struct ReflectionSession {
     var playlistEdits: EditPlaylists { EditPlaylists(imports: ports.playlistImports, drafts: ports.drafts) }
 
     /// 태그 초안을 통째로 바꿔 저장하고(변경이 없는 초안은 파일째 지운다) 화면이 메모리를 맞추게 한다
-    func replaceTagDrafts(_ tags: [TagDraft]) {
-        ports.drafts.saveTags(tags)
+    /// - Parameter store: 저장할 포트(복원이 되살린 초안은 그 출처의 포트). 주지 않으면 세션의 초안 저장소
+    func replaceTagDrafts(_ tags: [TagDraft], in store: DraftStore? = nil) {
+        (store ?? ports.drafts).saveTags(tags)
         apply(.tagDrafts(tags))
     }
 
     /// 합치기 초안을 이것으로 바꿔 저장하고 화면이 메모리를 맞추게 한다. 쓰기·복원은 이미 끝났으니 저장 실패는 화면이 경고로만 알린다
     /// (실패로 바꾸면 되돌리기 안내까지 잃는다).
-    func replaceMergeDrafts(_ merges: [DuplicateMergeDraft]) {
+    func replaceMergeDrafts(_ merges: [DuplicateMergeDraft], in store: DraftStore? = nil) {
         do {
-            try ports.drafts.saveMergeDrafts(merges)
+            try (store ?? ports.drafts).saveMergeDrafts(merges)
             apply(.mergeDrafts(merges, failure: nil, moved: location.movesDamagedDrafts ? ports.drafts.takeMovedFiles() : []))
         } catch {
             apply(.mergeDrafts(merges, failure: error, moved: []))
