@@ -625,9 +625,9 @@ POSSIBILITY OF SUCH DAMAGE.
 - 고지 기준 커밋: `ca824f710fd731a35709a3b664a6be4257d0019c`(태그 `0.1.6`). 0.1.0과 라이선스·저작권 고지가 같다(LICENSE는 두 번 들어간 GPLv2 전문을 한 벌로 줄였다)
 - 출처: [ImBada/DJLinkKit](https://github.com/ImBada/DJLinkKit/tree/0.1.6)
 - 원문: [LICENSE](https://github.com/ImBada/DJLinkKit/blob/0.1.6/LICENSE)(GPL-2.0-or-later). 범위별 저작권은 [COPYRIGHT.md](https://github.com/ImBada/DJLinkKit/blob/0.1.6/COPYRIGHT.md)에, 그 안에 든 제3자 코드의 원문과 저작권 표시는 [THIRD_PARTY_NOTICES.md](https://github.com/ImBada/DJLinkKit/blob/0.1.6/THIRD_PARTY_NOTICES.md)에 있다.
-- 담긴 것: [alphatheta-connect](https://github.com/chrisle/alphatheta-connect)(MIT, Copyright (c) 2013 Evan Purkhiser, Copyright (c) 2025–2026 Chris Le 등)의 Swift 포트와 [rbxport](https://github.com/chrisle/rbxport)(GPL-2.0-or-later, Copyright (c) 2026 Chris Le)의 포트(`DJLinkExport`).
+- 담긴 것: Bada의 Swift 코드·문서(GPL-2.0-or-later, Copyright (c) 2026), [alphatheta-connect](https://github.com/chrisle/alphatheta-connect)·[onelibrary-connect](https://github.com/chrisle/onelibrary-connect)·[metadata-connect](https://github.com/chrisle/metadata-connect)의 Swift 포트(MIT, Copyright (c) 2013 Evan Purkhiser, Copyright (c) 2025–2026 Chris Le 등), [rbxport](https://github.com/chrisle/rbxport)의 Swift 포트(`DJLinkExport*`, GPL-2.0-or-later, Copyright (c) 2026 Chris Le), DJCrate에서 옮긴 리더(Copyright (c) 2026 Hyeonjae Nam, MIT에서 GPL-2.0-or-later로 재배포). 나머지 항목은 위 제3자 고지 원문에 있다.
 - 가져오는 방법: `Package.swift`가 SwiftPM 패키지 `0.1.6`을 정확히 고정한다. 코드는 이 저장소에 옮기지 않는다.
-- DJCrate에서 쓰는 곳: `Sources/DJCLink/`(Pro DJ Link 장치 알림 읽기, LINK로 라이브러리를 CDJ에 내어 주는 Link Export 서버, 플레이어에 곡 싣기). DJLinkKit을 import하는 곳은 이 모듈뿐이다. 앱의 LINK 막대가 쓴다(CLI는 쓰지 않는다).
+- DJCrate에서 쓰는 곳: `Sources/DJCLink/`(Pro DJ Link 장치 알림 읽기, LINK로 라이브러리를 CDJ에 내어 주는 Link Export 서버, 플레이어에 곡 싣기). 앱의 LINK 막대가 쓰며, 앱과 `djc`는 모두 `DJCAdapters`를 거쳐 DJLinkKit을 링크한다.
 - 이 패키지를 링크해 배포하는 프로그램은 GPL-2.0-or-later 조건을 따라야 한다. 그래서 DJCrate도 GPL-2.0-or-later로 바꿨다(#268).
 
 ## pyrekordbox (MIT)

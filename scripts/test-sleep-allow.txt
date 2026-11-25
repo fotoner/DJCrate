@@ -1,0 +1,88 @@
+# 여러 줄에 걸친 상태 확인은 반복 조건과 본문을 >> 로 잇는다.
+# 기존 시험 대기 중 상태·신호 판정 또는 입력 재현에 필요한 호출(scripts/check-imports.py, TEST-30).
+# 파일<TAB>사유<TAB>주석·문자열·들여쓰기를 뺀 코드 줄<TAB>곳 수. 파일 전체를 허용하지 않는다.
+# 호출을 지우면 목록도 줄인다. 새 시험은 waitForState·신호·가짜 시계를 먼저 쓴다.
+Tests/DJCAdaptersTests/RekordboxWriteJournalLiveTests.swift	상태 확인	for _ in 0..<4000 where !contended.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(5)) }	2
+Tests/DJCApplicationTests/ArchiveUsbHistoriesTests.swift	상태 확인	while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCApplicationTests/AutoReflectionEngineTests.swift	상태 확인	for _ in 0..<2000 where !w.h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }	2
+Tests/DJCApplicationTests/AutoReflectionEngineTests.swift	상태 확인	for _ in 0..<4000 where !((w.engine.isParked || hold.isWaiting) && w.fakes.clock.sleeping == 1) { >> try await Task.sleep(for: .milliseconds(5)) >> }	1
+Tests/DJCApplicationTests/AutoReflectionJournalTests.swift	상태 확인	for _ in 0..<2000 where w.fakes.locks.waiting == 0 && w.h.gateCalls.value.removedCleanupLists.isEmpty && !draftAtWork.value { >> try await Task.sleep(for: .milliseconds(5)) >> }	1
+Tests/DJCApplicationTests/AutoReflectionOrderTests.swift	상태 확인	for _ in 0..<2000 where !w.h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCApplicationTests/AutoReflectionQuitTests.swift	상태 확인	for _ in 0..<4000 where !gate.arrived { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCApplicationTests/AutoReflectionQuitTests.swift	상태 확인	for _ in 0..<4000 where !progress.started { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCApplicationTests/AutoReflectionQuitTests.swift	상태 확인	for _ in 0..<4000 where !(progress.started && (progress.finished || engine.status == .quitting && engine.isParked && w.fakes.clock.sleeping == 1)) { >> try await Task.sleep(for: .milliseconds(5)) >> }	1
+Tests/DJCApplicationTests/AutoReflectionWorld.swift	상태 확인	for _ in 0..<4000 where !(engine.isParked && fakes.clock.sleeping == 1) { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCApplicationTests/AutoReflectionWorld.swift	상태 확인	for _ in 0..<4000 where !reached() { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCApplicationTests/AutoReflectionWorld.swift	상태 확인	for _ in 0..<1000 where !condition() { >> if blocksMain { usleep(5_000) } else { try await Task.sleep(for: .milliseconds(5)) } >> }	2
+Tests/DJCApplicationTests/AutoReflectionWriteWatchTests.swift	상태 확인	for _ in 0..<1000 where w.fakes.clock.sleeping != 0 { try await Task.sleep(for: .milliseconds(5)) }	2
+Tests/DJCApplicationTests/AutoReflectionWriteWatchTests.swift	상태 확인	for _ in 0..<5000 where !(fakes.runStateChecks > before && fakes.clock.sleeping == 1) { usleep(1_000) }	1
+Tests/DJCApplicationTests/AutoReflectionWriteWatchTests.swift	상태 확인	for _ in 0..<5000 where fakes.clock.sleeping != 1 { usleep(1_000) }	1
+Tests/DJCApplicationTests/ImportXMLTests.swift	취소 재료	while !Task.isCancelled, ContinuousClock.now < deadline { usleep(1_000) }	1
+Tests/DJCApplicationTests/LibraryReadFlowTests.swift	상태 확인	while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCApplicationTests/LinkDiscoveryTests.swift	가짜 재시도 간격	sleep: { _ in try await Task.sleep(for: .milliseconds(2)) })	1
+Tests/DJCApplicationTests/LinkDiscoveryTests.swift	상태 확인	while clock.now < deadline { >> if condition() { return true } >> try? await Task.sleep(for: .milliseconds(2)) >> }	1
+Tests/DJCApplicationTests/LinkDiscoveryTests.swift	실패 안전망	group.addTask { try? await Task.sleep(for: .seconds(300)); return false }	1
+Tests/DJCApplicationTests/LinkSessionTests.swift	상태 확인	while !fake.isChecking, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	1
+Tests/DJCApplicationTests/LinkSessionTests.swift	상태 확인	while !fake.isHolding, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	3
+Tests/DJCApplicationTests/LinkSessionTests.swift	상태 확인	while await failingSession.currentGeneration < 2, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	1
+Tests/DJCApplicationTests/LinkSessionTests.swift	상태 확인	while await session.currentGeneration < 2, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	3
+Tests/DJCApplicationTests/LinkSessionTests.swift	상태 확인	while await session.currentGeneration < 3, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	1
+Tests/DJCApplicationTests/ReflectionSessionRevisionTests.swift	상태 확인	for _ in 0..<2000 where !h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }	4
+Tests/DJCApplicationTests/RekordboxRunWatchTests.swift	상태 확인	while clock.now < deadline { >> if condition() { return true } >> try? await Task.sleep(for: .milliseconds(2)) >> }	1
+Tests/DJCApplicationTests/UndoGroupWriteTests.swift	상태 확인	for _ in 0..<4000 where !h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }	2
+Tests/DJCApplicationTests/UsbSyncFlowTests.swift	상태 확인	for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCStorageTests/PreviewWaveformStoreTests.swift	상태 확인	while reads.withLock({ $0 }) == 0 { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCrateTests/AsyncFailureGuidanceTests.swift	상태 확인	for _ in 0..<200 where h.deck.audioSourceState == .preparing { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/AudioStartupTests.swift	상태 확인	for _ in 0..<200 where counter.calls < 2 { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCrateTests/AudioStartupTests.swift	상태 확인	for _ in 0..<400 where audio.isPreparingOutput { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCrateTests/AudioStartupTests.swift	상태 확인	while calls == 0 { try? await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCrateTests/AutoReflectionAppTests.swift	상태 확인	for _ in 0..<2000 where !engine.isParked { try await Task.sleep(for: .milliseconds(5)) }	2
+Tests/DJCrateTests/AutoReflectionAppTests.swift	상태 확인	for _ in 0..<2000 where !latch.arrived { try await Task.sleep(for: .milliseconds(5)) }	4
+Tests/DJCrateTests/CueListRowHeightTests.swift	상태 확인	for _ in 0..<200 where findTable(in: window.contentView)?.numberOfRows != 5 { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/CueListRowHeightTests.swift	상태 확인	for _ in 0..<200 { >> found = findTable(in: window.contentView) >> if let found, !found.usesAutomaticRowHeights, found.rowHeight == expected { break } >> try await Task.sleep(for: .milliseconds(10)) >> }	1
+Tests/DJCrateTests/CueListRowHeightTests.swift	상태 확인	for _ in 0..<200 where !(findTable(in: window.contentView).map { !$0.usesAutomaticRowHeights && $0.rowHeight == expected && $0.numberOfRows == 3 } ?? false) { >> try await Task.sleep(for: .milliseconds(10)) >> }	1
+Tests/DJCrateTests/DeckFakes.swift	상태 확인	for _ in 0..<200 where deck.draft == nil { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/DeckHeaderLayoutTests.swift	상태 확인	while quiet < 3, turns < 500 { >> turns += 1 >> view.needsLayout = true >> view.layoutSubtreeIfNeeded() >> try await Task.sleep(for: .milliseconds(2)) >> let now = counter.sizeCalls >> quiet = now == last ? quiet + 1 : 0 >> last = now >> }	1
+Tests/DJCrateTests/DeckModelTests.swift	상태 확인	for _ in 0..<100 where h.deck.hotCue(slot: 0) == nil { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/DeckSuggestionBarTests.swift	상태 확인	for _ in 0..<200 where deck.draft == nil { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/DeckWaveformLayoutTests.swift	상태 확인	for _ in 0..<80 where settled < 2 { >> window.contentView?.layoutSubtreeIfNeeded() >> if let zoom = SelfTestFrames.frames[zoomKey], let group = SelfTestFrames.frames[groupKey], >> !zoom.isEmpty, !group.isEmpty { >> settled = previous?.zoom == zoom && previous?.group == group ? settled + 1 : 0 >> previous = (zoom, group) >> } >> if settled < 2 { try await Task.sleep(for: .milliseconds(50)) } >> }	1
+Tests/DJCrateTests/DraftFileFailureTests.swift	상태 확인	for _ in 0..<100 where !deck.currentDraftSaveFailures.isEmpty { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCrateTests/DraftFileFailureTests.swift	상태 확인	for _ in 0..<100 where deck.currentDraftSaveFailures.isEmpty { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCrateTests/DraftSaveRecoveryTests.swift	상태 확인	for _ in 0..<100 where deck.draftSaveFailures.count < 2 { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCrateTests/DraftSaveRecoveryTests.swift	상태 확인	for _ in 0..<100 where deck.draftSaveFailures.isEmpty { try await Task.sleep(for: .milliseconds(5)) }	1
+Tests/DJCrateTests/ExternalPlaylistDraftTests.swift	상태 확인	for _ in 0..<100 where !held { >> try await Task.sleep(for: .milliseconds(20)) >> held = h.store.playlistDraftUnlock != nil >> }	1
+Tests/DJCrateTests/HideStreamingTests.swift	상태 확인	for _ in 0..<500 where store.isCheckingFiles { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/ITunesMissingCacheReloadTests.swift	상태 확인	while !started.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/LayoutRecomputeTests.swift	사용자 입력 간격	try await Task.sleep(for: .milliseconds(16))	5
+Tests/DJCrateTests/LayoutRecomputeTests.swift	사용자 입력 간격	try await Task.sleep(for: .milliseconds(700))	2
+Tests/DJCrateTests/LayoutRecomputeTests.swift	상태 확인	for _ in 0..<300 where deck.draft == nil { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/LibrarySyncTests.swift	상태 확인	while !started.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/SwitchSelfTestTests.swift	합성 오디오 신호 간격	while !Task.isCancelled { >> try await Task.sleep(for: .milliseconds(20)) >> render() >> }	1
+Tests/DJCrateTests/LinkBarModelTests.swift	상태 확인	while !model.isConnected, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	2
+Tests/DJCrateTests/LinkBarModelTests.swift	상태 확인	while model.connection != .off, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	1
+Tests/DJCrateTests/LoudnessCacheLocationTests.swift	상태 확인	for _ in 0..<100 where !FileManager.default.fileExists(atPath: paths.loudness.path) { >> try await Task.sleep(for: .milliseconds(50)) >> }	1
+Tests/DJCrateTests/PlaylistImportIntegrationTests.swift	상태 확인	for _ in 0..<100 where store.playlists.playlistImports.pendingCount == 0 { >> try await Task.sleep(for: .milliseconds(10)) >> }	1
+Tests/DJCrateTests/PlaylistWriteFreezeTests.swift	상태 확인	for _ in 0..<100 where !held { >> try await Task.sleep(for: .milliseconds(20)) >> held = store.reflectionState().playlistDraftFileLocked >> }	1
+Tests/DJCrateTests/ReflectionLayoutTests.swift	상태 확인	for _ in 0..<80 where settled < 2 { >> window.contentView?.layoutSubtreeIfNeeded() >> if let content = SelfTestFrames.frames[contentKey], let toast = SelfTestFrames.frames[toastKey], >> !content.isEmpty, !toast.isEmpty { >> settled = previous?.content == content && previous?.toast == toast ? settled + 1 : 0 >> previous = (content, toast) >> } else { >> settled = 0 >> previous = nil >> } >> if settled < 2 { try await Task.sleep(for: .milliseconds(50)) } >> }	1
+Tests/DJCrateTests/RekordboxRunModelTests.swift	취소 재료	sleep: { _ in try await Task.sleep(for: .seconds(3600)) })	1
+Tests/DJCrateTests/RelocateModelTests.swift	취소 재료	if delay != .zero { try await Task.sleep(for: delay) }	1
+Tests/DJCrateTests/StateWaiting.swift	상태 확인	while !condition() { >> if giveUp() || ContinuousClock.now >= deadline { return condition() } >> try? await Task.sleep(for: .milliseconds(10)) >> }	1
+Tests/DJCrateTests/TrackEditModelTests.swift	상태 확인	for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/TrackListDragTests.swift	상태 확인	while !(store.playlists.canReorderDisplayedTracks && table.numberOfRows == 60), clock.now < deadline { >> store.sortOrder = [] >> host.layoutSubtreeIfNeeded() >> try await Task.sleep(for: .milliseconds(20)) >> }	1
+Tests/DJCrateTests/TrackListDragTests.swift	상태 확인	while table.frame.height < bottom, clock.now < settled { try await Task.sleep(for: .milliseconds(20)) }	1
+Tests/DJCrateTests/TrackWriteLockFollowUpTests.swift	상태 확인	for _ in 0..<200 where deck.draft == nil { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/DJCrateTests/TrackWriteLockFollowUpTests.swift	취소 재료	try await Task.sleep(for: .seconds(120))	1
+Tests/DJCrateTests/UsbEditActionsTests.swift	상태 확인	while !lock.withLock({ opened }) { >> if Date() >= deadline { >> lock.withLock { expired = true } >> return >> } >> Thread.sleep(forTimeInterval: 0.005) >> }	1
+Tests/DJCrateTests/UsbEditActionsTests.swift	상태 확인	while !condition() { >> guard clock.now < deadline else { return false } >> try? await Task.sleep(for: .milliseconds(10)) >> }	1
+Tests/DJCrateTests/WriteReloadTests.swift	상태 확인	while !finished.withLock({ $0 }) && !captureStarted.withLock({ $0 }) { >> try? await Task.sleep(for: .milliseconds(10)) >> }	1
+Tests/DJCrateTests/XMLImportModelTests.swift	취소 재료	try await Task.sleep(for: .seconds(60))	1
+Tests/RekordboxKitTests/RekordboxProcessCheckTests.swift	상태 확인	while clock.now < deadline { >> if condition() { return true } >> try? await Task.sleep(for: .milliseconds(10)) >> }	1
+Tests/RekordboxKitTests/RekordboxWriteJournalBoundaryTests.swift	상태 확인	while finished.withLock({ $0 }) == nil, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/RekordboxKitTests/RekordboxWriteJournalHardeningTests.swift	상태 확인	while !state.contended.withLock({ $0 }), !state.finished.withLock({ $0 }), ContinuousClock.now < deadline { >> try await Task.sleep(for: .milliseconds(10)) >> }	1
+Tests/RekordboxKitTests/RekordboxWriteLockTests.swift	상태 확인	while !contended.withLock({ $0 }), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }	1
+Tests/Support/Ports/Library/FakeRekordboxProcesses.swift	가짜 시계	sleep: { [self] duration in try await sleep(duration) })	1
+Tests/Support/Ports/Reflection/AutoReflectionFakes.swift	가짜 시계	ReflectionClock(now: { [self] in now }, sleep: { [self] duration in try await sleep(duration) })	1
+Tests/Support/Ports/Reflection/AutoReflectionFakes.swift	상태 확인	for _ in 0..<60_000 where runStateHeld.withLock({ $0 }) { usleep(1_000) }	1
+Tests/Support/Ports/Reflection/AutoReflectionFakes.swift	상태 확인	for _ in 0..<60_000 { >> usleep(1_000) >> if let hold = take(key) { return hold } >> }	1
+Tests/Support/Ports/Reflection/ScriptedGate.swift	상태 확인	for _ in 0..<60_000 where state.withLock({ $0.on }) { usleep(1_000) }	1
+Tests/djcTests/RelocateScannerTests.swift	취소 재료	try? await Task.sleep(for: .seconds(60))	1

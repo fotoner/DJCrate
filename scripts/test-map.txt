@@ -165,7 +165,7 @@ suite DJCDomainTests.LogPathsTests
 
 # 쓰기 커버리지 그룹: scripts/check.sh 커버리지 awk의 쓰기 정규식과 같은 파일(test-check.py가 맞대어 본다).
 # 그룹 80%는 이 세 타깃 전체로 잰다. Write/ 아래는 정규식이 허용하는 자리라 maybe로 둔다.
-group write-coverage
+group write-coverage-rekordbox
 when Sources/RekordboxKit/RekordboxWriter**
 when Sources/RekordboxKit/RekordboxGridWriter**
 when Sources/RekordboxKit/RekordboxCompatibility**
@@ -176,14 +176,25 @@ maybe Sources/RekordboxKit/Write/RekordboxGridWriter**
 maybe Sources/RekordboxKit/Write/RekordboxCompatibility**
 maybe Sources/RekordboxKit/Write/RekordboxTrackWriter**
 maybe Sources/RekordboxKit/Write/RekordboxTrackAdd**
-when Sources/RekordboxKit/Usb/Write/**
 when Sources/DJCApplication/Reflection/RekordboxWriteGate.swift
 when Sources/DJCAdapters/Reflection/RekordboxWriteGate+Live.swift
+check write-coverage
+target RekordboxKitTests
+target DJCApplicationTests
+target DJCAdaptersTests
+require 사본에서 djc compat을 돌리고, djc cue-write --db <스냅샷 사본> --dry-run의 바꾸기 전후 결과를 비교합니다(RBW-38)
+require 그리드를 바꿨으면 djc lab grid-write-test를 사본에서 돌립니다(RBW-38)
+require --write-selftest로 사본의 쓰기 흐름을 확인합니다(app-selftest, RBW-38)
+
+group write-coverage-usb
+when Sources/RekordboxKit/Usb/Write/**
 when Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift
 check write-coverage
 target RekordboxKitTests
 target DJCApplicationTests
 target DJCAdaptersTests
+require usb-image-check로 디스크 이미지 쓰기 전 과정을 확인합니다(USB-48)
+require --usb-selftest로 앱의 USB 흐름을 확인합니다(app-selftest, USB-49)
 
 # 화면 관찰 범위(#129·#137·#138). LayoutRecomputeTests는 환경 변수가 있어야 돈다.
 group observation

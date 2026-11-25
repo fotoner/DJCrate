@@ -138,7 +138,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | import 예외 | 조립 지점은 파일 이름 목록 `ASSEMBLY_FILES` 5개다. 아래 층을 모두 import한다 |
 | import 예외 | 디버그 자가 테스트(`Sources/DJCrate/Diagnostics/`), 실험 명령(`Sources/djc/Lab/`)은 `BROAD_FOLDERS`에 적은 import만 더 받는다 |
 | import 제한 | 외부 모듈 Sparkle은 `EXTERNAL_FILES`에 적은 파일 하나(`Sources/DJCrate/App/AppUpdater.swift`)만 import한다. 화면 모델과 핵심부로 번지지 않게 한다 |
-| import 제한 | DJLinkKit 패키지의 제품(`DJLinkKit`·`DJLinkControl`·`DJLinkPassive`·`DJLinkExport`)은 DJCLink만 import한다. DJCLink도 `ALLOWED`에 적은 제품만 쓴다 |
+| import 제한 | DJLinkKit 패키지 타깃은 DJCLink만 import한다. 패키지 전체는 `DJLINK_MODULES`에, 실제로 쓰는 제품과 내부 타깃은 `ALLOWED["DJCLink"]`에 적는다 |
 | api | 핵심부(DJCDomain·DJCApplication)는 `FileManager`, `ProcessInfo`, `UserDefaults`를 직접 쓰지 않는다 |
 | api | 핵심부는 `Bundle` 타입, `Date()`·`Date.now`, `UUID()`도 직접 쓰지 않는다. `.init()` 꼴도 같다. 시계·ID·환경·파일·번들은 포트나 주입으로 받는다 |
 | api | 핵심부는 `Locale`·`TimeZone`·`Calendar`의 `.current`·`.autoupdatingCurrent`를 쓰지 않는다. 타입 없이 쓴 `.main`·`.current`·`.now`도 쓰지 않는다 |
@@ -335,7 +335,7 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - 쓰기 전 백업: `rekordbox-backups/`
 - 시점 스냅샷: `point-snapshots/`(#224)
 - 캐시: `analysis/`, `waveforms/`, `loudness.json`
-- LINK WAV 변환본: 데이터 폴더가 아니라 `~/Music/DJCrate/LINK`다. `DJC_HOME`이 있으면 그 안 `link-audio/`다. CDJ가 NFS로 읽으므로 음원이 보통 있는 음악 폴더에 둔다(#277·#287).
+- LINK WAV 변환본은 [LINK의 WAV 변환](#link의-wav-변환)에 있다.
 - USB 백업과 초안: `usb-backups/`, `usb-drafts/`
 - USB DB의 Mac 사본: `usb-snapshots/`
 - USB 시점 스냅샷: `usb-point-snapshots/<볼륨>/`(#226). 사용자가 남긴 것이라 캐시가 아니다.
@@ -344,6 +344,26 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - USB에서 가져와 보존한 기기 재생 기록: `usb-histories/`. 기록마다 JSON 한 파일이다. 캐시가 아니므로 지우지 않는다(#43).
 - 스냅샷·백업·DB 사본에는 rekordbox 클라우드 토큰이 들어 있다. 이 파일을 커밋·이슈·로그에 넣지 않는다.
 - 캐시 종류별 비우기는 `docs/cli.md` "캐시 보기·비우기"에 있다.
+
+### LINK의 WAV 변환
+
+FLAC·ALAC을 못 읽는 기종(`LinkPlayerFormats`)에 실을 때만 WAV로 바꾼다(`LinkAudioConverter`). 바꾸는 때는 아래 둘이다.
+
+- DJCrate에서 끌어 놓아 실을 때: 바꾼 뒤 싣는다.
+- CDJ에서 고를 때: 플레이어가 NFS로 원본을 찾으면 백그라운드에서 바꿔 끼운다(`LinkSession.fileRequested`).
+
+바꿀 때는 다음 순서를 지킨다.
+
+- 바꾸는 동안 그 요청에 답하지 않는다(`LinkFileHold`). CDJ가 1초쯤 뒤 다시 묻는 요청에 WAV로 답해 첫 싣기부터 실린다. 원본으로 답해 E-8305로 실패시키지 않는다.
+- 15초(`LinkFileHold.limit`) 안에 못 바꾸면 원본으로 답한다. 그 싣기는 실패하므로 다 바꾼 뒤 다시 실으라고 알린다. 바꿀 필요가 없는 곡은 곧바로 원본으로 답한다. 바꾸지 못한 곡도 그렇다.
+- 바꾸지 못한 원본은 그 연결에서 기억한다(#287). CDJ가 다시 찾아도 다시 바꾸지 않는다. 알림도 다시 띄우지 않는다. 끌어 놓으면 다시 바꿔 본다.
+- 같은 원본을 바꿔 끼우는 일은 연결마다 하나다(`LinkSession.prepare`). 끌어 놓기·CDJ 요청이 그 일을 함께 기다린다. 그래서 바꿔 끼운 뒤에 싣는다(#287).
+- 보류 풀기와 바꿔 끼우기는 그 변환을 시작한 연결 차례가 지금 차례일 때만 한다(#287). 앞 연결의 변환이 새 연결의 보류를 풀지 않는다.
+- CDJ가 처음 받은 파일 이름을 기억하므로 WAV도 세션의 같은 이름으로 내어 준다(`redirect_file`). 곡 정보에서 파일 형식을 WAV로 바꾼다. 이미 열린 핸들은 원본을 이어 읽는다.
+- DJLinkKit 0.1.6은 깊은 음원 경로의 앞 세 단계 폴더를 NFS로 연다. `LinkExportFiles`는 경로와 열린 일반 파일을 확인한 뒤 그 파일 디스크립터에서 세션 사본을 만든다. NFS에는 사본의 세 단계 경로(`/.vol/<볼륨 번호>/<파일 번호>`)만 등록한다. 라이브러리가 지정한 분석 파일과 그림은 크기별 그림·추가 분석 파일까지 하나씩 확인한다. APFS 복제가 불가능한 볼륨 간에는 같은 디스크립터에서 내용을 복사한다(#282).
+- 바꾼 파일은 `DJCCachePaths.linkAudio`에만 쓴다. 자리는 `~/Music/DJCrate/LINK`다. `DJC_HOME`이 있으면 그 안 `link-audio/`다. 시험은 임시 폴더에서만 바꾼다.
+- 코덱 확인과 변환은 세션 음원 사본을 읽는다. 캐시 이름은 컬렉션 경로와 사본의 수정 시각·내용으로 정한다. CDJ에 내어 줄 WAV도 캐시에서 세션 폴더로 복사한다. 연결을 끄면 서버가 사본을 놓는다. 진행 중인 코덱 확인과 변환은 끝날 때 사본을 놓는다.
+- 바꾼 파일은 캐시 종류 `link-audio`다(#287). 저장 공간 설정·`djc cache`가 용량을 보인다. 비우기도 거기서 한다. LINK로 내어 주는 동안 앱 화면은 이 종류를 비우지 않는다. 비우는 사이 LINK를 켜면 다 비운 뒤에 내어 준다(`LinkBarModel.beginCacheClear`).
 
 ## 데이터 흐름
 

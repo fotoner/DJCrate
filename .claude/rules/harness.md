@@ -30,13 +30,13 @@ paths:
 - **HAR-3** 워크플로를 바꾸면 `actionlint`를 돌린다.
 - **HAR-4** 문서 문장을 고치면 `python3 scripts/check-prose.py`를 돌린다. 사용법은 `docs/ci.md`의 "문장 규칙"에 있다.
 - **HAR-5** 지침을 바꾸면 `python3 scripts/check-docs.py`를 돌린다.
-- **HAR-36** `python3 scripts/test-check.py` 전체는 2분을 넘는다. 에이전트의 Bash 도구 기본 timeout(120초)에 걸린다. 그래서 배경으로 돌린다. 앞에서 돌릴 때는 timeout을 600초로 준다.
+- **HAR-36** `python3 scripts/test-check.py` 전체는 2분을 넘는다. `scripts/check.sh --changed`가 빌드까지 하면 2분을 넘기도 한다. Bash 도구에서 기본 timeout(120초)에 걸리면 배경으로 돌린다. 앞에서 돌릴 때는 timeout을 600초로 준다.
 
 ## CI 범위
 
-- **HAR-38** PR과 `dev` 푸시 CI는 `scripts/check.sh --changed`만 돈다. 전체 검사는 릴리스에만 돈다. 릴리스는 `main`·`release/*` 푸시, `main` 대상·`release/*` PR, 수동 실행이다. 정책을 바꾸면 AGENTS.md "검증", `docs/ci.md` "CI 구성", 스킬 `verify-change`를 함께 고친다.
+- **HAR-38** CI 실행 범위는 [docs/ci.md의 CI 구성](../../docs/ci.md#ci-구성)이 정본이다. 정책을 바꾸면 이 절을 고친다.
 - **HAR-39** CI의 `--changed` 비교 기준은 `scripts/ci-base.sh`가 정한다. 기준을 구할 수 없으면 전체 검사로 넓힌다. 새 브랜치, 강제 푸시, 앞 끝이 조상이 아닌 경우가 그렇다. 조용히 좁히지 않는다. 그래서 푸시 실행은 앞 실행을 취소하지 않는다. 취소하면 그 푸시의 차이를 아무도 검사하지 않는다.
-- **HAR-40** Swift를 바꾼 `--changed`는 안전 시험 선택 검사(`test-check.py affected-real-map safety-`)를 돈다. 이 검사를 빼지 않는다. PR CI가 고른 시험만 돌기 때문에, 안전 Suite를 고르는 일이 곧 안전 시험을 돌리는 일이다. `--changed`가 놓칠 수 있는 회귀는 릴리스 전체 검사가 잡는다. 그런 회귀를 알게 되면 `scripts/test-map.txt`에 줄을 더한다. 프로토콜로만 닿는 구현, 전역 함수, 다른 타입을 거친 동작 변화가 그런 예다.
+- **HAR-40** Swift를 바꾼 `--changed`의 안전 시험 선택 검사(`test-check.py affected-real-map safety-`)를 빼지 않는다. 선택에서 빠진 회귀를 찾으면 `scripts/test-map.txt`에 줄을 더한다. 선택 검사의 범위는 [docs/ci.md의 CI 구성](../../docs/ci.md#ci-구성)에 있다.
 - **HAR-41** 시험 단계 멈춤 감시는 끄지 않는다. 기준 초는 `DJC_CHECK_STALL_SECONDS`다. 기본값은 300초다. 멈춘 실행은 종료 코드 124로 끝난다. 느린 시험이 걸리면 먼저 시험을 고친다. 고칠 수 없을 때만 값을 늘린다.
 - **HAR-42** 넓힌 `--changed`는 릴리스 앱 빌드를 뺀 전체 검사를 돈다. 릴리스 빌드는 릴리스 검사(인자 없는 `check.sh`·`--release`)의 몫이다. 이 통과 기록은 인자 없는 전체 검사를 대신하지 않는다. CI의 기준 없는 changed job도 `--coverage`를 돈다.
 
@@ -69,7 +69,7 @@ paths:
 ## 모듈 경계
 
 - **HAR-14** 모듈 경계 규칙은 `scripts/check-imports.py` 맨 위 표에 있다. 남은 위반은 빚 목록 `scripts/import-debt.txt`에 둔다. 2026-10-10 기준 빚은 0줄이다.
-- **HAR-15** 새 위반을 빚 목록에 더하지 않는다. 빚을 갚으면 그 줄을 지운다. `view-task` 줄은 곳 수가 줄면 곳 수를 고친다.
+- **HAR-15** 새 위반을 빚 목록에 더하지 않는다. 빚을 갚으면 그 줄을 지운다. `view-task`·`test-sleep` 줄은 곳 수가 줄면 곳 수를 고친다.
 - **HAR-16** 파일의 모듈은 `Package.swift` 타깃 경로로 정한다. 타깃 이름이나 폴더를 바꾸면 `ALLOWED` 키만 맞춘다.
 - **HAR-17** 파일·폴더를 옮기면 `.claude/rules/*.md`의 `paths`도 따라 고친다. `scripts/test-map.txt`의 `when`도 고친다.
 - **HAR-18** 맞는 파일이 없는 글롭은 전체 검사에서 실패한다. 넓힌 `--changed`에서도 실패한다. `check-docs.py`와 `affected-tests.py --check-map`이 이것을 본다.

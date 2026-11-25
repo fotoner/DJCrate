@@ -51,7 +51,7 @@ DOCS = ["*.md", "**/*.md", "docs/**", "skills/**", "LICENSE*"]
 # 훅·지침·하네스 검사 자신: 앱 코드에 닿지 않으므로 넓히지 않고 두 검사만 돈다
 HARNESS = ["scripts/hooks/**", ".claude/**", "scripts/test-harness.py", "scripts/check-docs.py", "scripts/check-prose.py",
            "scripts/prose-*.txt", "scripts/worker-lock.sh"]
-IMPORT_FILES = ["scripts/check-imports.py", "scripts/import-debt.txt"]
+IMPORT_FILES = ["scripts/check-imports.py", "scripts/import-debt.txt", "scripts/test-sleep-allow.txt"]
 # scripts/test-check.py가 시험하는 스크립트. CI에 늘 돌던 test-check.py 단계를 없앴으므로 이것이 바뀔 때 돈다.
 SCRIPT_FILES = ["scripts/test-check.py", "scripts/affected-tests.py", "scripts/test-map.txt", "scripts/optin-suites.txt", "scripts/check.sh",
                 "scripts/check-imports.py", "scripts/ci-base.sh", "scripts/ci-mtimes.py"]
