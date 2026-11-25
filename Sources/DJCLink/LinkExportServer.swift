@@ -248,9 +248,11 @@ public final class LinkExportServer: Sendable {
 
     /// 곡과 재생 목록으로 서버를 띄운다. `peer`(보이는 CDJ 하나의 주소)로 가는 인터페이스에 참여한다.
     /// 시험 프로세스에서는 DJLinkKit이 소켓을 만들지 않고 바로 실패한다.
+    /// - Parameter beforeBind: 파일을 준비한 뒤 포트를 열기 직전에 호출한다. 던진 오류를 그대로 돌려준다.
     /// - Parameter onHistory: CDJ가 재생 기록에 곡을 넣거나 뺄 때(rekordbox의 LINK HISTORY). DJLinkKit 액터에서 부른다
     /// - Parameter onFileRequest: 플레이어가 파일을 찾거나 처음부터 읽을 때. DJLinkKit 액터에서 NFS 답을 하는 도중에 부르므로 짧게 끝낸다
     public static func start(tracks: [LinkExportTrack], playlists: [LinkExportPlaylist], shareRoot: String, peer: String,
+                             beforeBind: @escaping @Sendable () throws -> Void,
                              onHistory: @escaping @Sendable (LinkExportHistoryEvent) -> Void = { _ in },
                              onFileRequest: @escaping @Sendable (LinkExportFileRequest) -> Void = { _ in },
                              cacheDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Music/DJCrate/LINK"),
@@ -266,9 +268,11 @@ public final class LinkExportServer: Sendable {
             for track in files.tracks { names.push(((files.originalByAlias[track.path] ?? "") as NSString).lastPathComponent) }
             library.file_name = names
             let source = ExportSource(library: library, shareRoot: files.directory, tracks: files.tracks, onHistory: onHistory)
+            let announcements = RecentAnnouncements.recent()
+            try beforeBind()
             do {
                 // 장치 찾기가 방금 들은 알림을 넘겨 CDJ의 다음 알림(약 2초 간격)을 기다리지 않고 바로 참여한다
-                let export = try await LinkExport.start(source, interface, seedAnnouncements: RecentAnnouncements.recent())
+                let export = try await LinkExport.start(source, interface, seedAnnouncements: announcements)
                 let originals = files.originalByAlias
                 export.observe_files { path, player in
                     guard let original = originals[path] else { return }

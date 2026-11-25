@@ -1,5 +1,6 @@
 import DJCDomain
 import Foundation
+import Synchronization
 
 /// LINK 서버의 지금 상태(#273)
 public struct LinkServerStatus: Equatable, Sendable {
@@ -127,10 +128,14 @@ public struct LinkPreparedAudio: Sendable {
 
 /// LINK 서버 포트(#273). 실제 구현은 DJLinkKit `DJLinkExport`를 띄운다. 한 번에 서버 하나만 둔다.
 public struct LinkServerSource: Sendable {
+    public typealias BindingCheck = @Sendable () throws(LinkProblem) -> Void
+
     /// 라이브러리를 내어 주는 서버를 띄운다(이미 떠 있으면 내리고 새로 띄운다). `peer` 장치로 가는 인터페이스에 참여한다.
+    /// 파일을 준비한 뒤 포트를 열기 직전에 beforeBind를 호출한다. 거부되면 준비한 파일을 정리한다.
     /// 서버가 실제 준비한 곡 번호와 변환기가 읽을 세션 사본 경로를 돌려준다.
     public var start: @Sendable (_ library: LinkLibrary, _ shareRoot: String, _ peer: String,
-                                 _ history: @escaping @Sendable (LinkHistoryEvent) -> Void) async throws(LinkProblem) -> LinkPreparedAudio
+                                 _ history: @escaping @Sendable (LinkHistoryEvent) -> Void,
+                                 _ beforeBind: @escaping BindingCheck) async throws(LinkProblem) -> LinkPreparedAudio
     /// 이번 실행의 사용자 데이터·rekordbox 폴더. 음원 경로로 받지 않는다.
     public var protectedDirectories: [String] = []
     /// 서버를 내리고 포트를 돌려준다
@@ -150,7 +155,8 @@ public struct LinkServerSource: Sendable {
     /// NFS가 답하는 도중에 부르므로 바로 끝나야 한다
     public var setFileHold: @Sendable (_ hold: @escaping @Sendable (_ path: String, _ playerModel: String) -> Bool) async -> Void
 
-    public init(start: @escaping @Sendable (LinkLibrary, String, String, @escaping @Sendable (LinkHistoryEvent) -> Void) async throws(LinkProblem) -> LinkPreparedAudio,
+    public init(start: @escaping @Sendable (LinkLibrary, String, String, @escaping @Sendable (LinkHistoryEvent) -> Void,
+                                             @escaping BindingCheck) async throws(LinkProblem) -> LinkPreparedAudio,
                 stop: @escaping @Sendable () async -> Void,
                 status: @escaping @Sendable () async -> LinkServerStatus?,
                 load: @escaping @Sendable (Int, UInt32) async throws(LinkProblem) -> Void,
@@ -171,7 +177,7 @@ public struct LinkServerSource: Sendable {
     }
 
     /// 서버를 띄우지 않는다(화면 시험·자가 테스트 실행). 연결을 켜면 쓸 수 없다고 한다
-    public static let none = LinkServerSource(start: { _, _, _, _ throws(LinkProblem) in throw .noInterface }, stop: {},
+    public static let none = LinkServerSource(start: { _, _, _, _, _ throws(LinkProblem) in throw .noInterface }, stop: {},
                                               status: { nil }, load: { _, _ throws(LinkProblem) in throw .notConnected },
                                               isRekordboxRunning: { false })
 }
@@ -202,7 +208,9 @@ public actor LinkSession {
     private var library: LinkLibrary?
     private var audioFiles: LinkPreparedAudio?
     /// 켜기·끄기 차례. 켜기를 기다리는 사이(rekordbox 확인·서버 띄우기) 끄기가 끼어들면 그 켜기는 서버를 띄우지 않거나 바로 내린다
-    private var generation = 0
+    // 서버는 다른 액터에서 바인드 직전에 이 차례를 동기적으로 읽는다.
+    private let bindingGeneration = Mutex(0)
+    private var generation: Int { bindingGeneration.withLock { $0 } }
     /// 서버를 띄워 둔 채인지. 끄기는 띄운 서버가 있을 때만 내린다
     private var serverUp = false
     /// 마지막으로 줄 세운 켜기·끄기. 서버 띄우기·내리기는 부른 차례대로 하나씩 한다(겹쳐 뜨거나 새 서버를 내리지 않게)
@@ -266,8 +274,10 @@ public actor LinkSession {
     public func connect(rows: [TrackRow], playlists: PlaylistLayout, iTunes: [SyncedITunesLibrary.Node] = [],
                         draftCues: [String: [Cue]] = [:], shareRoot: String, peers: [LinkDevice]) async throws(LinkProblem) -> Int {
         // 차례는 기다리기 전에 받는다. 그래야 기다리는 사이 들어온 끄기가 이 켜기를 무른다
-        generation += 1
-        let mine = generation
+        let mine = bindingGeneration.withLock { value in
+            value += 1
+            return value
+        }
         let result = await serialized { session in
             await session.connectNow(rows: rows, playlists: playlists, iTunes: iTunes, draftCues: draftCues, shareRoot: shareRoot,
                                      peers: peers, mine: mine)
@@ -289,7 +299,7 @@ public actor LinkSession {
 
     /// 연결을 끈다. 켜는 중이어도 끈다(그 켜기는 차례가 바뀐 것을 보고 서버를 띄우지 않거나 내린다)
     public func disconnect() async {
-        generation += 1
+        bindingGeneration.withLock { $0 += 1 }
         library = nil
         await serialized { session in await session.stopNow() }
     }
@@ -331,7 +341,12 @@ public actor LinkSession {
         guard !built.tracks.isEmpty else { return .failure(.unsafeFile) }
         let prepared: LinkPreparedAudio
         do {
-            prepared = try await source.start(built, shareRoot, peer.address, history)
+            prepared = try await source.start(built, shareRoot, peer.address, history) { [self] () throws(LinkProblem) in
+                guard bindingGeneration.withLock({ $0 == mine }) else { throw .cancelled }
+                let rekordboxRunning = source.isRekordboxRunning()
+                guard bindingGeneration.withLock({ $0 == mine }) else { throw .cancelled }
+                if rekordboxRunning { throw .rekordboxRunning }
+            }
         } catch {
             // 기다리는 사이 껐거나 다시 켰으면 이 실패는 알릴 일이 아니다(화면이 뒤 켜기의 상태를 끄지 않게)
             return .failure(generation == mine ? error : .cancelled)

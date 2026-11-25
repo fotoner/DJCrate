@@ -29,6 +29,7 @@ struct LinkSessionTests {
         let loadProblem = Mutex<LinkProblem?>(nil)
         /// 켜면 서버 띄우기를 시험이 풀어 줄 때까지 멈춘다(그 사이 끄기를 끼워 넣는다)
         let holdsStart = Mutex(false)
+        let holdsPreparation = Mutex(false)
         let held = Mutex<CheckedContinuation<Void, Never>?>(nil)
 
         /// 켜면 rekordbox 확인을 시험이 풀어 줄 때까지 막는다(확인은 메인 밖 스레드에서 돈다)
@@ -42,7 +43,11 @@ struct LinkSessionTests {
 
         var source: LinkServerSource {
             LinkServerSource(
-                start: { [self] library, root, peer, history throws(LinkProblem) in
+                start: { [self] library, root, peer, history, beforeBind throws(LinkProblem) in
+                    if holdsPreparation.withLock({ $0 }) {
+                        await withCheckedContinuation { continuation in held.withLock { $0 = continuation } }
+                    }
+                    try beforeBind()
                     self.history.withLock { $0 = history }
                     if holdsStart.withLock({ $0 }) {
                         await withCheckedContinuation { continuation in held.withLock { $0 = continuation } }
@@ -98,7 +103,7 @@ struct LinkSessionTests {
         let observed = Mutex<[String]>([])
         let members = Mutex<[[UInt32]]>([])
         var source = fake.source
-        source.start = { _, _, _, _ throws(LinkProblem) in LinkPreparedAudio([2: input]) }
+        source.start = { _, _, _, _, _ throws(LinkProblem) in LinkPreparedAudio([2: input]) }
         source.updatePlaylists = { lists in members.withLock { $0 = lists.map(\.trackIDs) } }
         let converter = LinkAudioConverter(convert: { copy, name throws(LinkProblem) in
             observed.withLock { $0.append(copy) }
@@ -133,7 +138,7 @@ struct LinkSessionTests {
         }
         let released = Mutex(false), gate = Mutex<CheckedContinuation<Void, Never>?>(nil)
         var source = Fake().source
-        source.start = { _, _, _, _ throws(LinkProblem) in
+        source.start = { _, _, _, _, _ throws(LinkProblem) in
             LinkPreparedAudio([1: "/session/song.flac"], retaining: Lease { released.withLock { $0 = true } })
         }
         let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
@@ -153,7 +158,7 @@ struct LinkSessionTests {
     @Test func 준비한_곡이_없으면_연결을_정리하고_안내한다() async {
         let fake = Fake()
         var source = fake.source
-        source.start = { _, _, _, _ throws(LinkProblem) in LinkPreparedAudio([:]) }
+        source.start = { _, _, _, _, _ throws(LinkProblem) in LinkPreparedAudio([:]) }
         let session = LinkSession(source: source)
         await #expect(throws: LinkProblem.unsafeFile) {
             try await session.connect(rows: [Self.row("1")], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
@@ -729,6 +734,33 @@ struct LinkSessionTests {
         await #expect(throws: LinkProblem.notConnected) { try await session.load(contentID: "10", player: 2) }
     }
 
+    @Test(arguments: [false, true])
+    func 사본_준비_중에_끄거나_rekordbox가_시작하면_포트를_열지_않는다(rekordboxStarts: Bool) async {
+        let fake = Fake()
+        fake.holdsPreparation.withLock { $0 = true }
+        let session = LinkSession(source: fake.source)
+        let connecting = Task {
+            try await session.connect(rows: [Self.row("10")], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(300))
+        while !fake.isHolding, ContinuousClock.now < deadline { await Task.yield() }
+        #expect(fake.isHolding)
+        let disconnecting: Task<Void, Never>?
+        if rekordboxStarts {
+            fake.rekordbox.withLock { $0 = true }
+            disconnecting = nil
+        } else {
+            disconnecting = Task { await session.disconnect() }
+            while await session.currentGeneration < 2, ContinuousClock.now < deadline { await Task.yield() }
+        }
+        fake.releaseStart()
+        await #expect(throws: rekordboxStarts ? LinkProblem.rekordboxRunning : .cancelled) { try await connecting.value }
+        await disconnecting?.value
+        #expect(fake.started.withLock { $0.isEmpty })
+        #expect(fake.stopped.withLock { $0 } == 0)
+        #expect(!(await session.isConnected))
+    }
+
     @Test func 켜는_도중에_끄면_띄운_서버를_바로_내리고_켜지지_않는다() async throws {
         let fake = Fake()
         fake.holdsStart.withLock { $0 = true }
@@ -777,8 +809,8 @@ struct LinkSessionTests {
         fake.holdsStart.withLock { $0 = true }
         // 앞 켜기의 띄우기가 포트 충돌로 실패하는 경우
         let failing = LinkServerSource(
-            start: { library, root, peer, history throws(LinkProblem) in
-                _ = try await fake.source.start(library, root, peer, history)
+            start: { library, root, peer, history, beforeBind throws(LinkProblem) in
+                _ = try await fake.source.start(library, root, peer, history, beforeBind)
                 throw .portInUse("UDP 50000")
             },
             stop: fake.source.stop, status: fake.source.status, load: fake.source.load,

@@ -12,8 +12,9 @@ extension LinkServerSource {
         let directories = [DJCIdentity.dataDirectory, LibrarySnapshot.rekordboxDirectory, URL.libraryDirectory]
             .flatMap { [$0.path, $0.resolvingSymlinksInPath().path] }
         var port = LinkServerSource(
-            start: { library, shareRoot, peer, history throws(LinkProblem) in
-                try await slot.start(library, shareRoot: shareRoot, peer: peer, protectedDirectories: directories, history: history)
+            start: { library, shareRoot, peer, history, beforeBind throws(LinkProblem) in
+                try await slot.start(library, shareRoot: shareRoot, peer: peer, protectedDirectories: directories,
+                                     history: history, beforeBind: beforeBind)
             },
             stop: { await slot.stop() },
             status: { await slot.status() },
@@ -36,12 +37,13 @@ private actor LinkServerSlot {
     private var stopping: Task<Void, Never>?
 
     func start(_ library: LinkLibrary, shareRoot: String, peer: String, protectedDirectories: [String],
-               history: @escaping @Sendable (LinkHistoryEvent) -> Void) async throws(LinkProblem) -> LinkPreparedAudio {
+               history: @escaping @Sendable (LinkHistoryEvent) -> Void,
+               beforeBind: @escaping LinkServerSource.BindingCheck) async throws(LinkProblem) -> LinkPreparedAudio {
         await stop()
         do {
             let started = try await LinkExportServer.start(tracks: library.tracks.map(LinkExportTrack.init),
                                                       playlists: library.playlists.map(LinkExportPlaylist.init),
-                                                      shareRoot: shareRoot, peer: peer, onHistory: { event in
+                                                      shareRoot: shareRoot, peer: peer, beforeBind: beforeBind, onHistory: { event in
                                                           switch event {
                                                           case let .added(id, list): history(.added(id, history: list))
                                                           case let .removed(id, list): history(.removed(id, history: list))
@@ -60,6 +62,8 @@ private actor LinkServerSlot {
             }
             server = started
             return LinkPreparedAudio(audio.paths, retaining: audio.owner)
+        } catch let problem as LinkProblem {
+            throw problem
         } catch {
             throw Self.problem(error)
         }
