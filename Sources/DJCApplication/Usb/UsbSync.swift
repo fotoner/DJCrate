@@ -225,7 +225,7 @@ public final class UsbSync {
     private var keptOrphanCount = 0
     /// 마지막으로 연 때의 포트(체크를 바꿀 때 설정을 저장한다)
     private var ports: UsbSyncPorts?
-    private var saveChain: Task<Bool, Never>?
+    private(set) var pendingPreferenceSave: Task<Bool, Never>?
     private var queuedPlan: UsbSyncQueuedPlan?
 
     public init(volumeKey: String, library: UsbLibrary? = nil) {
@@ -448,18 +448,23 @@ public final class UsbSync {
         queuedPlan = nil
         snapshotLease = nil
         notify(.clearInfo)
-        if let ports { Task { await savePreferences(ports) } }
+        if let ports { enqueuePreferences(ports) }
     }
 
-    /// 연속으로 고른 선택도 누른 차례로 저장해 이전 선택이 나중에 남지 않게 한다.
     @discardableResult
     private func savePreferences(_ ports: UsbSyncPorts) async -> Bool {
-        guard let localDBID = state.localDBID else { return false }
-        guard let files = ports.preferences else { return true }
+        guard let task = enqueuePreferences(ports) else { return state.localDBID != nil }
+        return await task.value
+    }
+
+    /// 다음 클릭을 받기 전에 지금 선택을 캡처하고, 디스크에는 누른 차례로 쓴다.
+    @discardableResult
+    private func enqueuePreferences(_ ports: UsbSyncPorts) -> Task<Bool, Never>? {
+        guard let localDBID = state.localDBID, let files = ports.preferences else { return nil }
         let prefs = UsbSyncPreferences(volumeKey: volumeKey, localDBID: localDBID, selection: selection,
                                        syncPlaylists: syncPlaylists, bindings: state.bindings,
                                        nativeSelectionFingerprint: nativeSelectionFingerprint)
-        let previous = saveChain
+        let previous = pendingPreferenceSave
         let log = ports.log
         let task = Task { @MainActor [weak self] in
             _ = await previous?.value
@@ -471,8 +476,8 @@ public final class UsbSync {
             }
             return true
         }
-        saveChain = task
-        return await task.value
+        pendingPreferenceSave = task
+        return task
     }
 
     // MARK: - SYNC

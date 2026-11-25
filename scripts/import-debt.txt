@@ -4,7 +4,6 @@
 # 빚을 갚으면 그 줄을 지운다(남겨 두면 검사가 "지워도 됨"으로 실패한다). 새 위반은 여기 더하지 말고 고친다.
 # 다시 만들기: scripts/check-imports.py --write-debt
 Tests/DJCApplicationTests/LinkSessionTests.swift	test-sleep	sleep 4곳
-Tests/DJCApplicationTests/UsbSyncFlowTests.swift	test-sleep	sleep 1곳
 Tests/DJCrateTests/AutoReflectionAppTests.swift	test-sleep	sleep 2곳
 Tests/DJCrateTests/CueListRowHeightTests.swift	test-sleep	sleep 1곳
 Tests/DJCrateTests/DraftSaveRecoveryTests.swift	test-sleep	sleep 1곳

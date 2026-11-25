@@ -30,7 +30,6 @@ Tests/DJCApplicationTests/LinkSessionTests.swift	상태 확인	while await sessi
 Tests/DJCApplicationTests/ReflectionSessionRevisionTests.swift	상태 확인	for _ in 0..<2000 where !h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }	4
 Tests/DJCApplicationTests/RekordboxRunWatchTests.swift	상태 확인	while clock.now < deadline { >> if condition() { return true } >> try? await Task.sleep(for: .milliseconds(2)) >> }	1
 Tests/DJCApplicationTests/UndoGroupWriteTests.swift	상태 확인	for _ in 0..<4000 where !h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }	2
-Tests/DJCApplicationTests/UsbSyncFlowTests.swift	상태 확인	for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(5)) }	1
 Tests/DJCStorageTests/PreviewWaveformStoreTests.swift	상태 확인	while reads.withLock({ $0 }) == 0 { try await Task.sleep(for: .milliseconds(5)) }	1
 Tests/DJCrateTests/AsyncFailureGuidanceTests.swift	상태 확인	for _ in 0..<200 where h.deck.audioSourceState == .preparing { try await Task.sleep(for: .milliseconds(10)) }	1
 Tests/DJCrateTests/AudioStartupTests.swift	상태 확인	for _ in 0..<200 where counter.calls < 2 { try await Task.sleep(for: .milliseconds(5)) }	1
