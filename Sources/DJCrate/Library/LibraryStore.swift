@@ -18,6 +18,8 @@ final class LibraryStore {
     }
     /// ⌘Z 단계 목록(덱·태그·재생 목록·합치기·재생 기록이 한 차례로 건다, 컨실 2라운드 A). 맨 위 단계만 판정한다(`UndoSteps`)
     let undoSteps = UndoSteps()
+    /// 태그 초안(평점·곡 색 포함)을 고친 곡을 알린다(덱에 올린 곡이면 자동 저장이 덱 편집으로 기다린다, #295 리뷰 F6)
+    @ObservationIgnored var onTagDraftsEdited: ((Set<String>) -> Void)?
     /// 합치기·재생 기록을 rekordbox에 쓴 횟수: 그 전에 건 그 종류의 ⌘Z 단계는 저장 뒤 되돌리지 않는다(R12, 맨 위가 되면 메뉴가 꺼진다)
     @ObservationIgnored var mergeWriteGeneration = 0
     @ObservationIgnored var historyWriteGeneration = 0
@@ -28,12 +30,27 @@ final class LibraryStore {
     }
     /// 저장 뒤 다시 읽고 쓰기 잠금이 모두 풀린 때: 맨 위 ⌘Z 단계가 되돌릴 수 없게 됐으면 기록을 비워 메뉴를 끈다(아래 단계는 차례가 오면 판정한다)
     func settleUndo() { undoSteps.settle(undoManager) }
+    /// ⌘Z 기록을 비웠거나 미룬 ⌘Z가 무효라 실행하지 않은 이유(#295 E6). 저장 알림을 덮지 않는 알림으로 한 번 알린다
+    static var undoClearedText: String { String(ui: "저장한 뒤라 되돌릴 수 없는 편집이 있어 실행 취소 기록을 비웠으니 필요하면 다시 편집하세요") }
     /// 라이브러리 쪽 ⌘Z 기록을 모두 지운다(복원·곡 넣기처럼 통째로 잠그는 쓰기, 그 밖의 다시 읽기)
     func clearLibraryUndo(in manager: UndoManager? = nil) {
         let manager = manager ?? undoManager
         undoSteps.removeAll(.library, from: manager)
         manager?.removeAllActions(withTarget: self)
         pendingUndo.removeAll()
+        playlists.forgetWrittenSteps()
+    }
+    /// 실행할 수 없는 ⌘Z(맨 위 단계·미룬 ⌘Z): ⌘Z 기록과 미뤄 둔 ⌘Z 요청을 모두 비우고(아래 다른 편집을 실행하지 않는다) 이유를 한 번 알린다(#295 E6).
+    /// 저장 알림을 덮지 않는다(`notify`)
+    func refuseUndo() {
+        undoSteps.removeAll(from: undoManager)
+        pendingUndo.removeAll()
+        playlists.forgetWrittenSteps()
+        notifyUndoCleared()
+    }
+    /// ⌘Z 기록을 비운 이유를 알린다(맨 위 단계를 실행할 수 없어 `UndoSteps`가 비웠을 때도)
+    func notifyUndoCleared() {
+        notify(.notice(text: Self.undoClearedText, kind: .warning))
     }
     /// rekordbox 라이브러리 위치(읽기 출처·쓰기 대상·스냅샷·백업·초안 폴더). 조립 지점이 실행 인자·환경을 한 번 풀어 준다.
     @ObservationIgnored let location: LibraryLocation
@@ -150,6 +167,10 @@ final class LibraryStore {
         playlists.loadRecentPlaylists()
         playlists.loadPlaylistImports()
         undoSteps.isSettled = { [weak self] in self?.undoSettled ?? false }
+        undoSteps.onCleared = { [weak self] in
+            self?.playlists.forgetWrittenSteps()
+            self?.notifyUndoCleared()
+        }
     }
 
     var phase: Phase = .idle

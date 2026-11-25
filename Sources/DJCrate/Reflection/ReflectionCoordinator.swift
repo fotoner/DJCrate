@@ -520,14 +520,14 @@ final class ReflectionCoordinator {
         _ = await serialized({ await session.restore(backup, confirmed: confirmed) }, refused: { self.refusedOnTurn($0) })
     }
 
-    /// 시점 스냅샷 복원(#225): 대상은 쓰기와 같은 곳, 보관 일수는 설정. 복원하면 자동 저장이 멈춘다(R8)
+    /// 시점 스냅샷 복원(#225): 대상은 쓰기와 같은 곳, 보관 일수는 설정. 사용자가 고른 복원이라 자동 저장은 멈추지 않는다(#295 E2)
     func restorePointSnapshot(_ entry: URL, snapshots: URL, changedTracks: Set<String>) async throws -> RekordboxPointRestoreReport {
         let session = session, days = Int(store.settings.value(SettingKeys.pointSnapshotAutoDays))
         let report = try await serialized({
             try await session.restorePointSnapshot(entry, snapshots: snapshots, autoDays: days, now: .now, changedTracks: changedTracks,
                                                    to: session.target)
         }, refused: { throw WriteRefused(reason: $0) })
-        engine?.restored()
+        engine?.recheckJournal()
         return report
     }
 }

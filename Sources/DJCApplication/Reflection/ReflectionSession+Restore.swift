@@ -217,7 +217,8 @@ extension ReflectionSession {
             if !playlistHeld {
                 apply(.playlistImportsReset(playlistEdits.resetImports(contentIDs: contentIDs, draft: state.playlistDraft,
                                                                        rekordbox: state.rekordboxPlaylists, imports: state.playlistImports,
-                                                                       importsLoadFailed: state.playlistImportsLoadFailed)))
+                                                                       importsLoadFailed: state.playlistImportsLoadFailed,
+                                                                       carrying: state.playlistCarriedOrigins)))
             }
         }
         let files = ports.drafts

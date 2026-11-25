@@ -40,8 +40,34 @@ public struct GateScript: Sendable {
     public var duringAdd: (@Sendable () -> Void)?
     /// 미정리 목록을 읽을 때 부른다(그때 쓰기 잠금을 쥐었는지 시험이 본다)
     public var onCleanupLists: (@Sendable () -> Void)?
+    /// 실제로 쓰는 동안(dryRun 아님, 라이브러리 변경을 마치기 전) 부른다: 오래 걸리는 쓰기(`WriteHold`)나 자기 쓰기가 바꾼 파일을 흉내 낸다
+    public var duringWrite: (@Sendable () -> Void)?
+    /// 실제 관문처럼 라이브러리 변경을 마친 자리(미정리 목록을 만드는 자리, 잠금 해제 전)에서 작업의 `afterChanges`를 부른다(#295 E4).
+    /// 실제 관문은 모두 막힌 쓰기도 그 자리를 지난다. 끄면 그 자리에 닿지 않고 돌아온 쓰기를 흉내 낸다
+    public var callsAfterChanges = true
+    /// `afterChanges` 뒤(쓰기 잠금을 푼 뒤에 해당) 부른다: 잠금이 풀린 틈의 바깥 변화를 흉내 낸다
+    public var afterWriteUnlocked: (@Sendable () -> Void)?
 
     public init() {}
+}
+
+/// 관문의 쓰기를 붙잡아 두는 곳(오래 걸리는 쓰기, #295 E4). `hold`가 켜져 있으면 `wait`이 `release()`까지 막는다(관문은 협력 풀 밖에서 불린다)
+public final class WriteHold: Sendable {
+    private let state = Mutex<(on: Bool, waiting: Bool)>((false, false))
+    public init() {}
+    public func hold() { state.withLock { $0.on = true } }
+    public var isWaiting: Bool { state.withLock { $0.waiting } }
+    public func release() { state.withLock { $0.on = false } }
+    /// 붙잡혀 있으면 풀릴 때까지 기다린다(60초 안전망)
+    public func wait() {
+        guard state.withLock({ state -> Bool in
+            guard state.on else { return false }
+            state.waiting = true
+            return true
+        }) else { return }
+        for _ in 0..<60_000 where state.withLock({ $0.on }) { usleep(1_000) }
+        state.withLock { $0.waiting = false }
+    }
 }
 
 /// 관문이 받은 것(메인 밖에서 부르므로 잠금으로 모은다)
@@ -111,6 +137,7 @@ extension RekordboxWriteGate {
                     $0.order.append("write")
                 }
                 if let error = script.writeError ?? script.writeErrorFor?(batch) { throw error }
+                if !dryRun { script.duringWrite?() }
                 var report = script.write ?? script.preview
                 if script.reportsBatchOnly { report = report.restricted(to: batch) }
                 report.dryRun = dryRun
@@ -122,6 +149,10 @@ extension RekordboxWriteGate {
                                                 draftHome: operation.draftHome.path, backupFolder: "write-1",
                                                 written: batch.revisions.written(batch.revisions.tracks.keys), playlistSteps: steps)
                     lists.withLock { $0.append(list) }
+                }
+                if !dryRun {
+                    if script.callsAfterChanges { batch.operation?.afterChanges?.run() }
+                    script.afterWriteUnlocked?()
                 }
                 return report
             },

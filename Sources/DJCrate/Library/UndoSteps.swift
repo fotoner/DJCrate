@@ -27,6 +27,8 @@ final class UndoSteps {
     private weak var observed: UndoManager?
     /// 판정해도 되는지(쓰는 중이거나 쓴 뒤 다시 읽기 전이 아니고 미룬 ⌘Z가 없다). 덱과 라이브러리가 조건을 준다(`LibraryStore.connectWriteLocks`)
     var isSettled: @MainActor () -> Bool = { true }
+    /// 맨 위 단계를 실행할 수 없어 ⌘Z 기록을 비운 뒤 부른다(이유를 알리고 쓴 단계 기록을 비운다, #295 E6)
+    var onCleared: (@MainActor () -> Void)?
 
     /// 단계를 건다(실행 취소 중이면 다시 실행 쪽에 걸린다). 거는 묶음이 열려 있을 때 부른다
     func register(_ manager: UndoManager, kind: Kind, canUndo: @escaping @MainActor () -> Bool, perform: @escaping @MainActor () -> Void) {
@@ -52,6 +54,31 @@ final class UndoSteps {
         guard let top = entries.last(where: { $0.step?.isRedo == false })?.step, !top.canUndo() else { return }
         manager.removeAllActions()
         entries = []
+        onCleared?()
+    }
+
+    /// ⌘Z 기록을 모두 비운다(실행할 수 없는 ⌘Z를 눌렀다·미룬 ⌘Z가 무효, #295 E6). 되돌리는 중(처리기 안)에는 관리자의 기록을 지울 수 없어
+    /// 그 ⌘Z·⇧⌘Z가 끝난 알림에서 비운다
+    func removeAll(from manager: UndoManager?) {
+        guard let manager else { return }
+        if manager.isUndoing || manager.isRedoing {
+            observe(manager)
+            clearsAfterChange = true
+            return
+        }
+        manager.removeAllActions()
+        entries = []
+    }
+
+    /// 되돌리는 중에 비우라고 했다: 그 ⌘Z·⇧⌘Z가 끝나면 비운다
+    private var clearsAfterChange = false
+
+    /// ⌘Z·⇧⌘Z가 끝났다: 되돌리는 중에 비우라고 했으면 비우고, 아니면 새 맨 위를 판정한다
+    private func changed(_ manager: UndoManager?) {
+        guard clearsAfterChange else { return settle(manager, afterChange: true) }
+        clearsAfterChange = false
+        manager?.removeAllActions()
+        entries = []
     }
 
     /// 그 갈래의 단계를 모두 뺀다(곡이 바뀜·통째로 잠그는 쓰기·관리자 바뀜)
@@ -69,7 +96,7 @@ final class UndoSteps {
         observed = manager
         observers = [Notification.Name.NSUndoManagerDidUndoChange, .NSUndoManagerDidRedoChange].map { name in
             NotificationCenter.default.addObserver(forName: name, object: manager, queue: nil) { [weak self, weak manager] _ in
-                MainActor.assumeIsolated { self?.settle(manager, afterChange: true) }
+                MainActor.assumeIsolated { self?.changed(manager) }
             }
         }
     }

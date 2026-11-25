@@ -35561,6 +35561,34 @@
         }
       }
     },
+    "업데이트 전부터 있던 저장 대기 %lld건도 자동으로 저장합니다" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld pending edit from before the update will also be saved automatically"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld pending edits from before the update will also be saved automatically"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップデート前からの保存待ち%lld件も自動で保存します"
+          }
+        }
+      }
+    },
     "업데이트 확인…" : {
       "localizations" : {
         "en" : {
@@ -43235,6 +43263,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存後に新しく編集を作った%lld曲は今の編集を残しました。バックアップの編集は「アクティビティ履歴…」のバックアップフォルダに残っています。"
+          }
+        }
+      }
+    },
+    "저장한 뒤라 되돌릴 수 없는 편집이 있어 실행 취소 기록을 비웠으니 필요하면 다시 편집하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Undo history was cleared because an edit can no longer be undone after saving. Edit again if needed."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存後に取り消せない編集があるため取り消し履歴を消去しました。必要なら編集し直してください"
           }
         }
       }

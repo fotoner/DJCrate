@@ -15,12 +15,17 @@ extension PlaylistEditStore {
     /// 곡 넣기를 되돌린 뒤: 반영 세션이 그 곡의 연결 기록과 초안 편집을 잊어 저장한 결과를 맞춘다
     func applyPlaylistImportsReset(_ reset: EditPlaylists.ImportsReset) {
         if let error = reset.draftError {
+            // 세션은 저장에 실패한 동안 기억한 출처를 더해 저장했다(`ReflectionLibraryState.playlistCarriedOrigins`): 메모리 초안의 식별자 없는 단계 출처를 계속 기억한다
+            unsavedStepOrigins = library.useCases.playlists.carriedAfterFailure(playlistDraft, carrying: unsavedStepOrigins)
             library.notify(.notice(text: String(ui: "재생 목록 편집을 보관하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .warning))
             return
         }
         if let draft = reset.draft {
+            unsavedStepOrigins = []
             playlistDraft = draft
             adoptSavedIdentifiers()
+            // 메모리 초안을 모두 저장했다: 저장 실패 표시와 알림을 거둔다(#295 리뷰 F12)
+            applyPlaylistSave(nil)
             refreshPlaylists()
         }
         if let imports = reset.imports { applyImportsChange(imports) }
@@ -64,15 +69,21 @@ extension PlaylistEditStore {
         guard !playlistDraftNeedsSync else { return }
         let ids = contentIDsByPath ?? Dictionary(library.rows.map { (PlaylistImports.pathKey($0.track.folderPath), $0.track.id) },
                                                  uniquingKeysWith: { first, _ in first })
-        guard let resolution = library.useCases.playlists.resolveImports(playlistImports, draft: playlistDraft, rekordbox: rekordboxPlaylists,
-                                                                 contentIDsByPath: ids, loadFailed: playlistImportsLoadFailed) else { return }
+        let edits = library.useCases.playlists, carrying = unsavedStepOrigins
+        guard let resolution = edits.resolveImports(playlistImports, draft: playlistDraft, rekordbox: rekordboxPlaylists, contentIDsByPath: ids,
+                                                    loadFailed: playlistImportsLoadFailed, carrying: carrying) else { return }
         if let error = resolution.draftError {
+            // 기억한 출처를 더해 저장하려다 실패했다: 메모리 초안의 식별자 없는 단계 출처를 계속 기억한다(#295 리뷰 F10)
+            unsavedStepOrigins = edits.carriedAfterFailure(playlistDraft, carrying: carrying)
             library.notify(.notice(text: String(ui: "재생 목록 편집을 보관하지 못했습니다. DJCrate 데이터 폴더의 쓰기 권한을 확인하세요: \(error.localizedDescription)"), kind: .warning))
             return
         }
         if let draft = resolution.draft {
+            unsavedStepOrigins = []
             playlistDraft = draft
             adoptSavedIdentifiers()
+            // 메모리 초안을 모두 저장했다: 저장 실패 표시와 알림을 거둔다(#295 리뷰 F12)
+            applyPlaylistSave(nil)
             refreshPlaylists()
         }
         guard let imports = resolution.imports, applyImportsChange(imports) else { return }

@@ -36,6 +36,41 @@ public struct EditPlaylists: Sendable {
     @MainActor
     public func saveDraft(_ draft: PlaylistDraft) throws { try drafts.savePlaylistDraft(draft) }
 
+    /// 재생 목록 초안을 저장하되 식별자가 없는 단계 가운데 주어진 자리는 그 출처를 잇는다(⌘Z가 되살린 단계, #295 E6).
+    /// 그 저장을 모르는 포트면 보통 저장이다(되살린 단계는 이 포트의 출처를 받는다)
+    @MainActor
+    public func saveDraft(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>]) throws {
+        guard !freshOrigins.isEmpty, let save = drafts.savePlaylistDraftOrigins else { return try saveDraft(draft) }
+        try save(draft, freshOrigins)
+    }
+
+    /// 재생 목록 초안을 저장하되 식별자가 없는 단계마다 `carried`를 더한다(`DraftStore.savePlaylist(_:freshOrigins:carrying:)`, #295 리뷰 F10)
+    @MainActor
+    public func saveDraft(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>] = [:], carrying carried: Set<DraftOrigin>) throws {
+        try drafts.savePlaylist(draft, freshOrigins: freshOrigins, carrying: carried)
+    }
+
+    /// 그 저장이 실패하면 화면이 기억할 출처(`DraftStore.playlistOriginsAfterFailure`)
+    public func carriedAfterFailure(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>] = [:],
+                                    carrying carried: Set<DraftOrigin>) -> Set<DraftOrigin> {
+        drafts.playlistOriginsAfterFailure(draft, freshOrigins: freshOrigins, carrying: carried)
+    }
+
+    /// 디스크 초안의 단계 출처(식별자 → 출처, #295 E6). ⌘Z 단계가 편집 전·뒤 단계의 출처를 기록한다. 읽지 못하면 빈 사전.
+    /// 단계의 지금 내용 해시가 도장의 해시와 다르면(바깥에서 고쳤다) 모름을 더한다(`PlaylistStepStamping.save`의 바깥 변경 규칙과 같다)
+    public func stepOrigins() -> [UUID: Set<DraftOrigin>] {
+        guard let disk = try? drafts.readPlaylistDraft() else { return [:] }
+        let stamps = drafts.playlistStamps()
+        guard stamps.count == disk.steps.count else { return [:] }
+        var origins: [UUID: Set<DraftOrigin>] = [:]
+        for (step, stamp) in zip(disk.steps, stamps) {
+            guard let id = step.id else { continue }
+            let outside = (try? DraftContentHash(step: step, in: disk)) != stamp.contentHash
+            origins[id] = outside ? stamp.origins.union([.unknown]) : stamp.origins
+        }
+        return origins
+    }
+
     /// 디스크의 재생 목록 초안을 읽는다(없으면 빈 초안, 읽지 못하면 던진다). 앱은 편집 전에 바깥(CLI)에서 바뀌었는지 본다(#260)
     public func loadDraft() throws -> PlaylistDraft { try drafts.readPlaylistDraft() }
 
@@ -97,17 +132,18 @@ public struct EditPlaylists: Sendable {
 
     /// 직접 추가·XML 가져오기 모두 새 스냅샷에서 컬렉션 등록을 확인한 뒤 연결한다: 등록된 곡을 초안에 넣어 저장하고, 그다음 연결 기록을 저장한다.
     /// 초안 저장에 실패하면 연결은 남기며, 연결 저장만 실패하면 다음 읽기에서 중복 없이 다시 확인한다.
+    /// - Parameter carried: 화면이 저장에 실패한 동안 기억한 출처(식별자 없는 단계에 더한다, `saveDraft(_:freshOrigins:carrying:)`)
     /// - Returns: 기다리는 연결이 없거나 기록을 읽지 못했으면 nil
     @MainActor
     public func resolveImports(_ imports: PlaylistImports, draft: PlaylistDraft, rekordbox: PlaylistLayout,
-                               contentIDsByPath: [String: String], loadFailed: Bool) -> ImportsResolution? {
+                               contentIDsByPath: [String: String], loadFailed: Bool, carrying carried: Set<DraftOrigin> = []) -> ImportsResolution? {
         guard !loadFailed, imports.pendingCount > 0 else { return nil }
         var next = imports, nextDraft = draft
         var resolution = ImportsResolution()
         resolution.reasons = next.reconcile(contentIDsByPath: contentIDsByPath, draft: &nextDraft, rekordbox: rekordbox)
         if nextDraft != draft {
             do {
-                try saveDraft(nextDraft)
+                try saveDraft(nextDraft, carrying: carried)
                 resolution.draft = nextDraft
             } catch {
                 resolution.draftError = error
@@ -134,6 +170,11 @@ public struct EditPlaylists: Sendable {
         public var copied: [DraftRevision: URL] = [:]
         /// 사본을 남기지 못해 남긴 단계. 있으면 정리가 끝나지 않았다
         public var copyFailed: Set<DraftRevision> = []
+        /// 이번 쓰기가 rekordbox에 쓴 단계의 식별자(이미 그 모양이라 바꾸지 않은 단계 포함). 정리·사본에 실패해 초안에 남은 단계도 든다.
+        /// 앱의 ⌘Z가 그 편집의 단계가 쓰였는지 본다(#295 E6)
+        public var writtenSteps: Set<UUID> = []
+        /// 이번 쓰기가 만든 목록의 `new:키` → 받은 rekordbox ID(정리하지 못해 아직 옮기지 않은 것 포함, #295 E6)
+        public var writtenIDs: [String: String] = [:]
 
         /// 정리가 모두 끝났다(쓴 단계를 빼고, 남은 단계와 연결 기록의 연결 ID를 옮겨 저장했다).
         /// 끝나지 않았으면 부르는 쪽은 미정리 목록을 지우지 않고 그 대상의 다음 쓰기를 보류한 채 다음 정리 때 다시 한다(R22)
@@ -155,6 +196,7 @@ public struct EditPlaylists: Sendable {
     ///   - memoryUnsaved: 메모리 초안에 저장하지 못한 편집이 있다(`PlaylistEditStore.playlistDraftUnsaved`)
     ///   - entries: 묶음에 읽어 넣은 단계의 판·해시(`written.steps`와 같은 차례, 쓰기 묶음의 `revisions.playlistSteps`).
     ///     비어 있으면 판을 모르는 묶음이라 지금 동작(쓰는 동안 바뀌지 않았을 때 자리로 뺀다)이다
+    /// 이 정리의 저장은 화면이 기억한 출처(`carrying`)를 받지 않는다: 쓰기는 재생 목록 초안 저장에 성공해야 시작하고 쓰는 동안 ⌘Z는 미뤄져, 그새 저장하지 못한 단계의 출처는 사람뿐이다(#295 리뷰 F13)
     @MainActor
     public func finishWrite(_ written: PlaylistDraft, outcomes: [PlaylistOutcome], current: PlaylistDraft,
                             imports: PlaylistImports, importsLoadFailed: Bool,
@@ -167,7 +209,10 @@ public struct EditPlaylists: Sendable {
                 newPlaylistIDs: Self.newPlaylistIDs(written, outcomes: outcomes), backups: backups, backupFolder: backupFolder)
             // 이번에 쓴 단계의 식별자: 메모리 초안에서 이 단계만 뺀다
             let writtenIDs = Set(zip(written.steps, attempts).filter { $0.1.outcome == .written }.compactMap(\.0.id))
-            return cleanUp(cleanup, memory: memoryUnsaved ? (current, writtenIDs) : nil, imports: imports, importsLoadFailed: importsLoadFailed)
+            var result = cleanUp(cleanup, memory: memoryUnsaved ? (current, writtenIDs) : nil, imports: imports, importsLoadFailed: importsLoadFailed)
+            result.writtenSteps = writtenIDs
+            result.writtenIDs = cleanup.newPlaylistIDs
+            return result
         }
         var finished = Self.afterWrite(written, outcomes: outcomes, current: current)
         // 쓰는 동안(또는 1초 바깥 변경 확인 전에) CLI가 디스크 초안 뒤에 더한 편집은 남긴다(#260). 메모리 초안으로 저장하면 사라진다
@@ -176,6 +221,8 @@ public struct EditPlaylists: Sendable {
             finished.draft = kept
         }
         var cleanup = WriteCleanup(draft: finished.draft, ids: finished.ids)
+        cleanup.writtenSteps = Set(zip(written.steps, outcomes).filter { $0.1.status != .blocked }.compactMap(\.0.id))
+        cleanup.writtenIDs = finished.ids
         if let draft = finished.draft {
             do { try saveDraft(draft) } catch { cleanup.draftError = error }
         }
@@ -291,15 +338,16 @@ public struct EditPlaylists: Sendable {
     }
 
     /// 곡 추가를 되돌린 뒤: 되돌린 곡(ContentID)의 연결 기록을 다시 기다리는 연결로 돌리고, 초안에서 그 곡 편집을 잊어 저장한 다음 연결 기록을 저장한다
+    /// - Parameter carried: 화면이 저장에 실패한 동안 기억한 출처(`ReflectionLibraryState.playlistCarriedOrigins`)
     @MainActor
     public func resetImports(contentIDs: Set<String>, draft: PlaylistDraft, rekordbox: PlaylistLayout, imports: PlaylistImports,
-                             importsLoadFailed: Bool) -> ImportsReset {
+                             importsLoadFailed: Bool, carrying carried: Set<DraftOrigin> = []) -> ImportsReset {
         var nextImports = imports, nextDraft = draft
         nextImports.reset(contentIDs: contentIDs)
         nextDraft.forgetContentIDs(contentIDs, rekordbox: rekordbox)
         var reset = ImportsReset(contentIDs: contentIDs)
         do {
-            try saveDraft(nextDraft)
+            try saveDraft(nextDraft, carrying: carried)
             reset.draft = nextDraft
         } catch {
             reset.draftError = error
@@ -321,12 +369,13 @@ public struct EditPlaylists: Sendable {
     }
 
     /// 복원한 뒤 새 스냅샷을 읽고 나서: 그때 쓴 편집을 되돌린 rekordbox 상태에 다시 쌓아 저장하고, 다시 만들 목록의 연결을 되돌려 저장한다
+    /// - Parameter carried: 화면이 저장에 실패한 동안 기억한 출처(다시 쌓은 단계는 모두 식별자가 없어 모두에 더한다)
     @MainActor
     public func restore(_ edits: [PlaylistEdit], onto current: PlaylistDraft, rekordbox: PlaylistLayout, imports: PlaylistImports,
-                        importsLoadFailed: Bool) -> Restored {
+                        importsLoadFailed: Bool, carrying carried: Set<DraftOrigin> = []) -> Restored {
         let rebuilt = Self.restoring(edits, onto: current, rekordbox: rekordbox)
         var draftError: (any Error)?
-        do { try saveDraft(rebuilt.draft) } catch { draftError = error }
+        do { try saveDraft(rebuilt.draft, carrying: carried) } catch { draftError = error }
         var restoredImports = imports
         restoredImports.restoreTargets(createdKeys: rebuilt.createdKeys)
         return Restored(draft: rebuilt.draft, draftError: draftError,

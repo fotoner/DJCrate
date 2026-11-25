@@ -19,6 +19,9 @@ public struct AutoReflectionTiming: Equatable, Sendable {
     public var rowLimit: Int
     /// 처음 몇 번만 성공 토스트를 보인다(R15)
     public var successToasts: Int
+    /// 덱 편집 뒤 저장까지(#295 E3). 덱은 쓰는 곡의 편집을 조용히 버리므로(쓰기 잠금) 덱에서 이어 고치는 동안 쓰기가 끼지 않게 T_edit보다 길게 둔다.
+    /// 라이브러리·태그 편집은 T_edit 그대로다
+    public var deckEditDelay: Duration = .seconds(3)
     /// 바깥 조건(rekordbox 실행·조용함·앱 보류·쓰기 잠금)을 다시 보는 간격. 저장 대기가 있고 그 조건을 기다릴 때만 본다
     public var pollInterval: Duration = .seconds(1)
     /// 기다릴 것이 없을 때 쉬는 길이(편집·요청 신호가 깨운다)
@@ -33,8 +36,8 @@ public struct AutoReflectionTiming: Equatable, Sendable {
         self.successToasts = successToasts
     }
 
-    /// 스펙 가정 절의 값: 3초·10초·30초·50곡·200행·5번
-    public static let standard = Self(editDelay: .seconds(3), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50,
+    /// 스펙 가정 절의 값: 1초·10초·30초·50곡·200행·5번(T_edit는 사용감 값이라 1초로 줄였다, #295 E3)
+    public static let standard = Self(editDelay: .seconds(1), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50,
                                       rowLimit: 200, successToasts: 5)
 }
 
@@ -134,7 +137,7 @@ public struct AutoReflectionRecord: Codable, Equatable, Sendable {
     public enum Stop: String, Codable, Sendable {
         /// 백업을 뜬 뒤 쓰기·검증에 실패해 복구를 마쳤다(R7)
         case afterFailure
-        /// 쓰기 전 백업·복원 시점·중단 기록으로 복원했다(R8)
+        /// 중단 기록으로 복원했다(R8). 사용자가 고른 쓰기 전 백업·복원 시점 복원은 멈추지 않는다(#295 E2)
         case afterRestore
     }
 

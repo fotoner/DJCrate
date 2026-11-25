@@ -240,11 +240,13 @@ when Sources/DJCApplication/Library/DraftStore+Suggestions.swift
 when Sources/DJCDomain/Library/DraftSuggestion.swift
 when Sources/DJCStorage/Drafts/DraftStampStore.swift
 when Sources/DJCStorage/Drafts/StampedDrafts.swift
+when Sources/DJCStorage/Drafts/LegacyDraftAdoption.swift
 when Sources/DJCrate/Diagnostics/DiagnosticRun.swift
 when Sources/DJCrate/Settings/SettingsStore.swift
 suite DJCDomainTests.DraftProvenanceTests
 suite DJCDomainTests.DraftSuggestionTests
 suite DJCStorageTests.DraftStampStoreTests
+suite DJCStorageTests.LegacyDraftAdoptionTests
 suite DJCAdaptersTests.DraftStampLiveTests
 suite DJCApplicationTests.DraftFilesOriginTests
 suite DJCDomainTests.RekordboxWriteJournalTests
@@ -270,6 +272,7 @@ when Sources/djc/CLIComposition.swift
 when Sources/djc/Commands/MainCommands.swift
 when Sources/djc/Commands/PointSnapshotCommand.swift
 suite DJCApplicationTests.AutoReflectionEngineTests
+suite DJCApplicationTests.AutoReflectionWriteWatchTests
 suite DJCApplicationTests.AutoReflectionJournalTests
 suite DJCApplicationTests.AutoReflectionBatchTests
 suite DJCApplicationTests.AutoReflectionOrderTests
@@ -287,6 +290,8 @@ suite DJCApplicationTests.ReflectionSessionConfirmTests
 suite DJCAdaptersTests.AutoReflectionPortsLiveTests
 suite DJCrateTests.AutoReflectionAppTests
 suite DJCrateTests.PlaylistWriteFreezeTests
+suite DJCrateTests.PlaylistUndoDuringWriteTests
+suite DJCrateTests.RestoreKeepsPlaylistDraftTests
 
 # 쓰는 곡만 잠그기(#401, R21): 초안을 쓰는 동안 덱 재생·창 덮개·편집 잠금이 쓰기 종류별로 갈린다. 잠금 값이 여러 파일에 걸쳐 기호 grep이 놓칠 수 있어 경로로 고른다.
 group track-write-lock

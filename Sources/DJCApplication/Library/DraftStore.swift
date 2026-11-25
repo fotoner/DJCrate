@@ -86,6 +86,8 @@ public struct DraftStore: Sendable {
     /// 디스크의 재생 목록 초안(없으면 빈 초안, 읽지 못하면 던진다). 바깥(CLI)에서 바꾼 초안을 받을 때 손상 파일을 빈 초안으로 받지 않게 한다
     public var readPlaylistDraft: @Sendable () throws -> PlaylistDraft
     public var savePlaylistDraft: @MainActor (PlaylistDraft) throws -> Void
+    /// 재생 목록 초안을 저장하되 식별자가 없는 단계 가운데 주어진 자리는 그 출처를 잇는다(⌘Z가 되살린 단계, #295 E6). nil이면 그 출처를 잇지 못한다
+    public var savePlaylistDraftOrigins: (@MainActor (PlaylistDraft, [Int: Set<DraftOrigin>]) throws -> Void)?
     /// 재생 목록 초안 파일 잠금(#260): 앱이 rekordbox에 쓰는 동안 들고 있어 CLI가 초안 파일을 고치지 못하게 한다.
     /// 잡으면 푸는 함수, 다른 실행이 `wait`초 넘게 들고 있으면 nil. 잠금이 없는 구현은 늘 잡는다
     public var lockPlaylistDraft: @Sendable (_ wait: TimeInterval) -> (@Sendable () -> Void)? = { _ in {} }
@@ -129,6 +131,10 @@ public struct DraftStore: Sendable {
     /// 막힌 단계와 쓰는 동안 더한 단계는 남는다. 같은 초안 잠금 안에서 한다
     public var removeWrittenSteps: @Sendable (PlaylistStepCleanup) throws -> PlaylistStepRemoval =
         { PlaylistStepRemoval(notFound: Set($0.written.map(\.revision))) }
+    /// 업데이트 전 곡 초안 이관(#295 E1): 도장 없는 큐·그리드·태그·게인 초안에 사람 편집 출처를 한 번 붙이고 붙인 초안의 키를 돌려준다.
+    /// 표지를 먼저 적고(못 적으면 던지고 아무것도 바꾸지 않는다) 도장을 붙인 뒤 완료를 적는다. 이미 마쳤으면 0. 같은 초안 잠금 안에서 한다.
+    /// 자동 저장하는 실행만 첫 라이브러리 읽기 전에 부른다(`AutoReflection.adoptLegacyDrafts`)
+    public var adoptLegacyDrafts: @Sendable () throws -> [DraftKey] = { [] }
 
     public init(flush: @escaping @Sendable () -> Void,
                 saveRevision: @escaping @Sendable () -> UInt64,
@@ -208,6 +214,27 @@ public struct DraftStore: Sendable {
 }
 
 extension DraftStore {
+    /// 재생 목록 초안을 저장하되 식별자가 없는 단계마다 그 자리의 출처(`freshOrigins`, 없으면 이 포트의 출처)에 `carried`를 더한다(#295 리뷰 F10).
+    /// `carried`는 화면이 저장에 실패한 동안 기억한 출처다: 저장에 실패한 뒤에는 출처를 줄이지 않는다(합집합). 단계 대응을 찾지 않고 식별자 없는 단계 모두에 더한다.
+    /// 이 포트의 출처 밖에 더할 출처가 없으면 더하지 않는다(제안인지가 바뀌지 않는다). 이을 자리가 없거나 출처를 잇는 저장을 모르는 포트면 보통 저장이다
+    @MainActor
+    public func savePlaylist(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>] = [:], carrying carried: Set<DraftOrigin>) throws {
+        var origins = freshOrigins
+        if !carried.subtracting([origin]).isEmpty {
+            for index in draft.steps.indices where draft.steps[index].id == nil {
+                origins[index] = (freshOrigins[index] ?? [origin]).union(carried)
+            }
+        }
+        guard !origins.isEmpty, let save = savePlaylistDraftOrigins else { return try savePlaylistDraft(draft) }
+        try save(draft, origins)
+    }
+
+    /// 그 저장(`savePlaylist(_:freshOrigins:carrying:)`)이 실패하면 화면이 기억할 출처: `carried`에 식별자 없는 단계가 받을 출처를 모두 더한다
+    public func playlistOriginsAfterFailure(_ draft: PlaylistDraft, freshOrigins: [Int: Set<DraftOrigin>] = [:],
+                                            carrying carried: Set<DraftOrigin>) -> Set<DraftOrigin> {
+        draft.steps.indices.filter { draft.steps[$0].id == nil }.reduce(carried) { $0.union(freshOrigins[$1] ?? [origin]) }
+    }
+
     /// 같은 저장소를 다른 출처로 저장하는 포트. 구현이 출처 포트를 새로 만들므로(`originVariant`) 이 포트에 바꿔 넣은 클로저
     /// (시험의 실패 주입 등)는 따라가지 않는다: 실패를 주입하려면 출처 포트를 만든 뒤 그 포트에 바꿔 넣는다.
     /// `originVariant`가 없는 포트(손으로 만든 포트)는 `origin` 표시만 바뀌고 도장은 그 구현을 따른다

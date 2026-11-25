@@ -125,6 +125,8 @@ final class AppComposition {
         }
         // 저장 입구가 엔진 발행 뒤에 바뀐 시트·USB 쓰기를 지금 상태로 다시 본다(S3)
         libraryWindow.liveHolds = { [weak self] in self?.saveBlockingHolds() ?? [] }
+        // 덱에 올린 곡의 태그를 라이브러리에서 고치면 덱 편집으로 기다린다(#295 리뷰 F6)
+        store.onTagDraftsEdited = { [weak self] uuids in self?.tagDraftsEdited(uuids) }
     }
 
     /// 자동 저장 엔진(#403)을 실제 포트로 만든다: 이 Mac의 시계·프로세스 목록·파일 상태·쓰기 잠금, `DJC_HOME`의 기록 파일,
@@ -542,8 +544,10 @@ final class AppComposition {
         LinkCapture.runIfRequested(link: link, store: store)
         DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows, libraryWindow: libraryWindow)
         #endif
-        deck.onDraftChange = { [weak store] uuid, kind, exists in
+        deck.onDraftChange = { [weak store, weak self] uuid, kind, exists in
             store?.draftChanged(trackUUID: uuid, kind: kind, exists: exists)
+            // 덱 편집은 3초 뒤에 저장한다(#295 E3: 쓰는 곡의 덱 편집은 버려지므로 이어 고치는 동안 쓰기가 끼지 않게)
+            self?.autoReflection?.edited(fromDeck: true)
         }
         // DJCrate에서 고친 큐를 LINK로 내어 주는 큐에 옮긴다(#281)
         if let link {
@@ -580,11 +584,31 @@ final class AppComposition {
                 }
             }
         }
+        if first, let autoReflection {
+            // 업데이트 전 곡 초안 이관(#295 E1): 자동 저장하는 실행만, 첫 라이브러리 읽기보다 먼저 한 번(읽은 저장 대기에 출처가 실리게)
+            let adopted = await autoReflection.adoptLegacyDrafts()
+            if adopted > 0 { store.activityLog.record(.notice(Self.legacyAdoptedText(adopted), nil, kind: .success), shown: false) }
+        }
         await store.loadInitial()
         if first, let autoReflection {
             autoReflection.start()
             observeDrafts(for: autoReflection)
         }
+    }
+
+    /// 덱에 올린 곡의 태그(평점·곡 색 포함)를 라이브러리에서 고쳤으면 덱 편집으로 알린다(#295 리뷰 F6): 1초 뒤 쓰기가 그 곡을 잠그면
+    /// 이어서 덱에서 고친 편집이 버려진다. 다른 곡의 태그 편집은 라이브러리 편집(T_edit)이다
+    /// - Returns: 덱 편집으로 알렸는지
+    @discardableResult
+    func tagDraftsEdited(_ uuids: Set<String>) -> Bool {
+        guard let deckUUID = deck.row?.track.uuid, uuids.contains(deckUUID) else { return false }
+        autoReflection?.edited(fromDeck: true)
+        return true
+    }
+
+    /// 업데이트 전 곡 초안을 이관한 활동 기록(#295 E1)
+    static func legacyAdoptedText(_ count: Int) -> String {
+        String(ui: "업데이트 전부터 있던 저장 대기 \(count)건도 자동으로 저장합니다")
     }
 
     /// 앱 수명 동안 도는 일을 시작한다(창의 `.task`가 아니라 조립 지점이 든다: 창을 닫았다 열어도 멈추거나 겹치지 않는다)

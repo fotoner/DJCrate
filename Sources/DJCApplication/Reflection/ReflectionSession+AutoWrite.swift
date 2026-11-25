@@ -147,6 +147,8 @@ extension ReflectionSession {
         case rekordboxRunning
         /// 쓰기 잠금을 걸기 직전에 다시 본 엔진 조건(편집 중·앱 보류 사유)이 어긋났다(쓰지 않았다)
         case held
+        /// 미리 보기·음량 분석 뒤 관문을 부르기 직전에 엔진에 물으니 조용함이 끊겼다(#295 E4: 켜짐·오래된 표본·바깥 변경). 쓰지 않았다
+        case quietLost
         case cancelled
         case failed(any Error)
     }
@@ -154,8 +156,12 @@ extension ReflectionSession {
     /// 고른 묶음을 확인 창 없이 쓴다(R6: 배경에서 묻지 않는다). 쓰는 곡만 잠그고(R21) 덱 재생은 멈추지 않는다.
     /// 미리 보기에서 막힌 초안은 빼고 나머지를 쓴다. 재생 목록 단계가 하나라도 막히면 이번에는 재생 목록을 쓰지 않는다(AR-9).
     /// 결과는 화면에 자동 저장으로 알린다(토스트 없이 활동 기록, R15는 화면 몫). 실패 분류(멈춤·보류·중단)는 엔진이 한다.
-    /// - Parameter mayWrite: 쓰기 잠금을 걸기 직전(같은 메인 액터 구간)에 다시 보는 엔진 조건. false면 쓰지 않는다(R1·R16)
-    public func autoWrite(_ chunk: AutoReflectionChunk, mayWrite: @MainActor () -> Bool = { true }) async -> AutoWriteOutcome {
+    /// - Parameters:
+    ///   - mayWrite: 쓰기 잠금을 걸기 직전(같은 메인 액터 구간)에 다시 보는 엔진 조건. false면 쓰지 않는다(R1·R16)
+    ///   - mayCommit: 미리 보기·음량 분석 뒤 관문을 부르기 직전에 묻는 엔진의 확인 지점(#295 E4). false면 관문을 부르지 않고 `.quietLost`
+    ///   - afterChanges: 관문이 라이브러리 변경을 모두 마친 자리(쓰기 잠금 안)에서 부를 일(#295 E4). 묶음의 작업에 실어 넘긴다
+    public func autoWrite(_ chunk: AutoReflectionChunk, mayWrite: @MainActor () -> Bool = { true },
+                          mayCommit: (@MainActor () async -> Bool)? = nil, afterChanges: DraftWriteProbe? = nil) async -> AutoWriteOutcome {
         guard !ports.lock.isLocked() else { return .busy }
         // 실행 확인은 프로세스 목록을 읽는 막는 일이라 메인 액터 밖에서 한다
         let running = ports.runningApps.isRekordboxRunning
@@ -211,7 +217,8 @@ extension ReflectionSession {
             guard !writable.isEmpty else { return .nothingWritten(unwritten: tracks.union(heldSteps)) }
             // 관문이 쓰기 잠금을 기다리지 않고, 백업 뒤 실패를 그렇게 알리게 한다(R7·R9)
             writable.isAutoSave = true
-            let written = try await writeDraftsFollowingUp(writable, to: target, dryRun: false)
+            if let afterChanges { writable.operation?.afterChanges = afterChanges }
+            let written = try await writeDraftsFollowingUp(writable, to: target, dryRun: false, beforeGate: mayCommit)
             // 전부 아니면 전무 쓰기를 입구가 모두 거절했으면 쓴 것이 없다: 쓴 것으로 알리지 않는다(컨실 G8)
             if writable.commitPolicy == .allOrNothing, Self.writtenRevisions(written.report, batch: writable).isEmpty {
                 return .nothingWritten(unwritten: tracks.union(heldSteps))
@@ -225,6 +232,9 @@ extension ReflectionSession {
         } catch is RekordboxWriteGate.LockBusy {
             stage(nil)
             return .lockBusy
+        } catch is QuietLost {
+            stage(nil)
+            return .quietLost
         } catch {
             stage(nil)
             return .failed(error)
@@ -323,6 +333,9 @@ extension ReflectionSession {
         }
         return revisions
     }
+
+    /// 관문을 부르기 직전 확인 지점(`beforeGate`)이 쓰지 말라고 했다(#295 E4)
+    struct QuietLost: Error {}
 
     // MARK: - 재시작 정리(R22)
 

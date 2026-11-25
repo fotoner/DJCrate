@@ -18,6 +18,8 @@ public struct ReflectionLibraryState: Sendable {
     /// 디스크 재생 목록 초안을 읽지 못해 메모리 초안이 디스크와 같은지 모른다. 새 쓰기 묶음은 재생 목록 초안을 넣지 않고,
     /// 곡 추가 복원은 재생 목록 초안·연결 기록을 건드리지 않는다(옛 메모리로 디스크 초안을 덮지 않게)
     public var playlistDraftNeedsSync: Bool
+    /// 재생 목록 초안 저장에 실패한 동안 화면이 기억한 출처(#295 리뷰 F10). 세션이 메모리 초안을 저장할 때 식별자 없는 단계에 더한다
+    public var playlistCarriedOrigins: Set<DraftOrigin> = []
     /// 이 쓰기 동안 재생 목록 초안 파일 잠금을 쥐고 있다(바깥(CLI)이 쓰는 동안 초안을 고치지 못한다). 쥐지 못했으면(CLI가 잠금을 오래 들고 있다)
     /// 메모리 초안이 디스크와 같다고 믿을 수 없어 이번 쓰기 묶음에서 재생 목록을 뺀다. 잠금이 없는 가짜는 늘 쥔다
     public var playlistDraftFileLocked: Bool

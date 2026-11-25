@@ -171,7 +171,7 @@ struct PlaylistWriteFreezeTests {
                                                                  .rename(playlist: .id("B"), name: "나중 이름")])
         #expect(try store.useCases.playlists.loadDraft() == playlists.playlistDraft, "더한 편집도 바로 저장한다")
         #expect(playlists.playlistProjection.blocked.allSatisfy { $0 == nil }, "쓰는 동안 옛 사본 위에서도 더한 편집이 보인다")
-        #expect(writing.groupingLevel == 0 && !writing.canUndo, "쓰는 동안 한 편집은 실행 취소에 남기지 않는다")
+        #expect(writing.canUndo, "쓰는 동안 한 편집도 편집 순간 실행 취소 단계를 건다(#295 E6)")
 
         // 쓰는 단계는 버리지 않고 더한 단계만 버린다
         playlists.discardPlaylistDraft()

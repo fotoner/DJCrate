@@ -66,7 +66,7 @@ extension ReflectionCoordinator {
                 failed(String(ui: "기록으로 복원하지 못했습니다"), error)
             }
         }, refused: { self.store.showToast(.notice($0, nil)) })
-        if restored { engine?.restored() } else { engine?.recheckJournal() }
+        if restored { engine?.restoredFromJournal() } else { engine?.recheckJournal() }
         // 복원한 master.db는 쓰기 전 백업의 시각을 그대로 가져 "읽은 사본 뒤 바뀜"으로 잡히지 않는다(R11): 복원했으면 늘 새 사본으로 다시 읽는다
         if restored || touched { _ = await store.reloadAfterWrite() } else { await store.refreshIfRekordboxChanged() }
     }

@@ -80,7 +80,7 @@ struct AutoReflectionContractTests {
         #expect(engine.status == .saved && engine.conditions == ReflectionConditions())
         #expect(fakes.locks.taken.isEmpty && fakes.records.saves == 0 && fakes.publishedStatuses.isEmpty)
         #expect(harness.gateCalls.value.order.isEmpty)
-        #expect(AutoReflectionTiming.standard == AutoReflectionTiming(editDelay: .seconds(3), quietDelay: .seconds(10), bulkDelay: .seconds(30),
+        #expect(AutoReflectionTiming.standard == AutoReflectionTiming(editDelay: .seconds(1), quietDelay: .seconds(10), bulkDelay: .seconds(30),
                                                                      bulkTracks: 50, rowLimit: 200, successToasts: 5))
         #expect(EditActivity([.pointerDown]).isEditing && !EditActivity().isEditing)
     }

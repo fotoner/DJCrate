@@ -106,15 +106,18 @@ struct AutoReflectionOrderTests {
         w.fakes.clock.advance(.seconds(1))
         for _ in 0..<2000 where !w.h.previewHold.isWaiting { try await Task.sleep(for: .milliseconds(5)) }
         #expect(w.h.previewHold.isWaiting)
-        // 쓰고 다시 읽는 5초 동안 rekordbox를 지켜보지 못했다(그 사이 켜졌다 꺼졌을 수 있다)
+        // 미리 보는 5초 동안 rekordbox를 지켜보지 못했다(그 사이 켜졌다 꺼졌을 수 있다). 메인 밖 표본 사이 틈이 3초를 넘으면
+        // 미리 본 묶음도 관문으로 보내지 않는다(#295 E4: 마지막 표본이 오래되면 관문 0회)
         w.fakes.clock.advance(.seconds(5))
         w.h.previewHold.release()
         try await w.settle()
-        #expect(w.writes.count == 1)
+        #expect(w.writes.isEmpty, "끊긴 틈 뒤에는 관문으로 가지 않는다")
         try await w.advance(5)
-        #expect(w.writes.count == 1, "조용함을 처음부터 다시 센다")
-        try await w.advance(6)
-        #expect(w.writes.count == 2)
+        #expect(w.writes.isEmpty, "조용함을 처음부터 다시 센다")
+        try await w.advance(5)
+        #expect(w.writes.count >= 1)
+        try await w.advance(1)
+        #expect(w.writes.count == 2, "다시 센 조용함 안에서 남은 묶음도 쓴다")
     }
 
     // MARK: - S10·O5

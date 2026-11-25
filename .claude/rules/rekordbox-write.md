@@ -106,6 +106,7 @@ AGENTS.md "안전 불변식"의 rekordbox 줄을 자세히 적은 규칙이다. 
 - **RBW-44** 저장 뒤 ⌘Z의 여러 곡 역편집 묶음은 다른 편집과 섞지 않는다. 묶음은 `allOrNothing`으로 쓴다. 한 곡이라도 막히면 아무것도 쓰지 않는다(RBW-40의 예외). 백업 전에 알 수 있는 막힘은 백업 전에 거절한다.
 - **RBW-45** 새 큐에 색을 쓰는 것은 저장 뒤 ⌘Z가 되살린 큐(`restoredFrom`)뿐이다. 같은 갈래의 고른 색일 때만 쓴다. 그 밖의 새 큐는 기본 색이다(SAFE-12).
 - **RBW-46** 게인은 base(`gain-draft-bases.json`)가 지금 rekordbox 값과 다르면 막는다. base가 없는 게인 초안은 자동 저장하지 않는다. 실행 경계가 다른 base도 없는 것으로 본다.
+- **RBW-47** 자동 쓰기 동안 엔진은 실행 상태만 메인 밖에서 본다. 관문은 직전 확인 지점(`mayCommit`)을 지나야 부른다. 쓴 뒤 파일 상태는 미정리 목록 콜백에서 잡는다(`DraftWriteOperation.afterChanges`). 이 콜백 자리를 바꾸지 않는다. 이유는 [`docs/rekordbox-internals.md` "자동 쓰기 동안의 조용함"](../../docs/rekordbox-internals.md#자동-쓰기-동안의-조용함2026-11-25-295)에 있다.
 
 ## 바꾼 뒤 확인
 

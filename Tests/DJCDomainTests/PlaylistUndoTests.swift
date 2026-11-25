@@ -105,8 +105,9 @@ struct PlaylistUndoTests {
         let created = Self.layout([("A", "가", ["1", "2"]), ("new:k", "새 목록", [])])
         #expect(PlaylistUndo.reversing(before: base, after: created, current: created, ids: [:]) == .unsupported)
         #expect(PlaylistUndo.reversing(before: created, after: base, current: base, ids: [:]) == .unsupported)
-        let removed = Self.layout([("A", "가", ["1"])])
-        #expect(PlaylistUndo.reversing(before: base, after: removed, current: removed, ids: [:]) == .unsupported)
+        // 곡 빼기와 순서 바꾸기가 섞여 어느 쪽도 다른 쪽의 부분 열이 아니면 되돌리지 않는다
+        let mixedBase = Self.layout([("A", "가", ["1", "2", "3"])]), reordered = Self.layout([("A", "가", ["3", "1"])])
+        #expect(PlaylistUndo.reversing(before: mixedBase, after: reordered, current: reordered, ids: [:]) == .unsupported)
         var folder = Self.layout([("A", "가", ["1", "2"])])
         folder = PlaylistLayout([(PlaylistLayout.Item(id: "F", name: "폴더", isFolder: true), 1),
                                  (PlaylistLayout.Item(id: "A", name: "가", parentID: "F", entries: Self.entries(["1", "2"])), 1)])
@@ -114,6 +115,51 @@ struct PlaylistUndoTests {
                                     (PlaylistLayout.Item(id: "A", name: "가", entries: Self.entries(["1", "2"])), 2)])
         #expect(PlaylistUndo.reversing(before: folder, after: moved, current: moved, ids: [:]) == .unsupported)
         #expect(PlaylistUndo.reversing(before: base, after: base, current: base, ids: [:]) == .unsupported)
+    }
+
+    // MARK: - 곡 빼기와 가운데 넣기(#295 E5): 한쪽이 다른 쪽의 부분 열이면 되돌린다
+
+    /// 편집 전·뒤 곡 열로 역편집을 만들고, 편집 뒤 목록에 얹으면 편집 전 곡 열이 되는지 본다
+    static func reversedTracks(_ old: [String], _ new: [String]) throws -> (edits: [PlaylistEdit], tracks: [String]?) {
+        let before = layout([("A", "가", old)]), after = layout([("A", "가", new)])
+        guard case let .edits(edits) = PlaylistUndo.reversing(before: before, after: after, current: after, ids: [:]) else { return ([], nil) }
+        return (edits, try applying(edits, to: after).item("A")?.trackIDs)
+    }
+
+    @Test func 가운데_곡을_뺀_편집은_끝에_넣고_원래_자리로_옮겨_되돌린다() throws {
+        let result = try Self.reversedTracks(["1", "2", "3"], ["1", "3"])
+        #expect(result.tracks == ["1", "2", "3"])
+        // 넣은 꼬리 구간을 꼬리 자리(번호)로 집어 원래 자리로 옮긴다
+        #expect(result.edits == [.addTracks(playlist: .id("A"), contentIDs: ["2"]),
+                                 .moveTracks(playlist: .id("A"), entries: [PlaylistEntry(trackNo: 3, contentID: "2")], to: 2)])
+    }
+
+    @Test func 여러_자리에서_뺀_곡은_이어진_자리마다_한_단계로_옮기고_끝_자리는_옮기지_않는다() throws {
+        let result = try Self.reversedTracks(["1", "2", "3", "4", "5"], ["1", "4"])
+        #expect(result.tracks == ["1", "2", "3", "4", "5"])
+        #expect(result.edits == [.addTracks(playlist: .id("A"), contentIDs: ["2", "3", "5"]),
+                                 .moveTracks(playlist: .id("A"), entries: [PlaylistEntry(trackNo: 3, contentID: "2"),
+                                                                            PlaylistEntry(trackNo: 4, contentID: "3")], to: 2)])
+    }
+
+    @Test(arguments: [(["1", "2", "1", "3"], ["2", "3"]), (["1", "2", "1", "3"], ["1", "2", "3"]), (["1", "2", "1", "3"], ["2", "1", "3"]),
+                      (["1", "1", "1"], ["1"])])
+    func 같은_곡이_여러_번_든_목록에서_뺀_편집도_곡_수와_차례를_되돌린다(_ old: [String], _ new: [String]) throws {
+        #expect(try Self.reversedTracks(old, new).tracks == old)
+    }
+
+    @Test func 가운데_넣은_곡은_그_자리_항목을_빼서_되돌린다() throws {
+        let result = try Self.reversedTracks(["1", "3"], ["1", "2", "3"])
+        #expect(result.tracks == ["1", "3"])
+        #expect(result.edits == [.removeTracks(playlist: .id("A"), entries: [PlaylistEntry(trackNo: 2, contentID: "2")])])
+        #expect(try Self.reversedTracks(["1", "1"], ["1", "2", "1", "2"]).tracks == ["1", "1"])
+    }
+
+    /// 곡 빼기의 ⌘Z를 쓴 뒤 ⇧⌘Z(역편집의 역편집)는 가운데 넣기를 되돌리는 꼴이라 같은 규칙으로 편집 뒤 모양이 된다
+    @Test func 곡_빼기_역편집의_역편집은_편집_뒤_곡_열이다() throws {
+        let old = ["1", "2", "1", "3"], new = ["1", "3"]
+        let undone = try #require(Self.reversedTracks(old, new).tracks)
+        #expect(try Self.reversedTracks(new, undone).tracks == new)
     }
 
     @Test func 대상이_지금_편집_뒤_모양이_아니면_정할_수_없다() {

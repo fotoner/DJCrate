@@ -105,6 +105,119 @@ struct DraftStampLiveTests {
         #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.human, .link])
     }
 
+    nonisolated static func rated(_ uuid: String) -> TagDraft {
+        var draft = TagDraft(trackUUID: uuid, base: TagFields())
+        draft.fields.rating = "3"
+        return draft
+    }
+
+    /// 도장 폴더를 고칠 수 없게 해 저장을 실패시킨다(돌려준 함수로 되돌린다)
+    static func failingStamps(_ home: URL) throws -> () -> Void {
+        let stamps = DraftStampStore.folder(home: home)
+        try FileManager.default.createDirectory(at: stamps, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: stamps.path)
+        return { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stamps.path) }
+    }
+
+    nonisolated static func rated(_ uuid: String, _ rating: String) -> TagDraft {
+        var draft = TagDraft(trackUUID: uuid, base: TagFields())
+        draft.fields.rating = rating
+        return draft
+    }
+
+    /// 복원이 되살린 초안(`.restored`)의 저장이 실패한 뒤 덱·태그 재시도가 같은 내용을 사람 편집 포트로 다시 저장해도 되살린 출처가 남는다
+    /// (리뷰 F5·F9: 실패한 입력들의 출처에 이번 출처를 더한다. 사람 출처만으로 바뀌지 않는다)
+    @Test func 저장에_실패한_되살린_초안을_같은_내용으로_다시_저장하면_되살린_출처를_잇는다() throws {
+        let folder = try TemporaryFolder()
+        let human = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let restored = human.with(origin: .restored)
+        let unlock = try Self.failingStamps(folder.url)
+        let revived = Self.cue("a")
+        restored.saveCue(revived)
+        restored.saveTags([Self.rated("t")])
+        restored.flush()
+        #expect(human.stamp(DraftKey(.cue, "a")) == nil && human.failures().contains { $0.trackUUID == "a" }, "되살린 저장이 실패했다")
+        unlock()
+        // 덱의 「다시 적용」·태그 재시도: 같은 내용을 사람 편집 포트로 다시 저장한다
+        human.saveCue(revived)
+        human.saveTags([Self.rated("t")])
+        human.flush()
+        #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.restored, .human], "큐: 되살린 출처를 잇는다")
+        #expect(human.stamp(DraftKey(.tag, "t"))?.origins == [.restored, .human], "태그: 되살린 출처를 잇는다")
+        // 사람이 내용을 고쳐 저장하면 그 편집은 사람 출처가 더해진다
+        human.saveCue(Self.cue("a", at: 5))
+        human.flush()
+        #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.restored, .human])
+    }
+
+    /// 저장에 실패한 되살린 초안 위에 사람이 고쳐 저장하면(내용이 다르다) 되살린 출처가 남아 제안이다(리뷰 F9: O8·G5).
+    /// 사람 편집도 실패한 뒤 다시 고쳐 저장해도 같다(실패 기록이 사람 입력으로 덮여도 출처를 잃지 않는다)
+    @Test func 저장에_실패한_되살린_초안_위에_사람이_고쳐_저장해도_제안이다() throws {
+        let folder = try TemporaryFolder()
+        let human = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let restored = human.with(origin: .restored)
+        let unlock = try Self.failingStamps(folder.url)
+        restored.saveCue(Self.cue("a"))
+        restored.saveTags([Self.rated("t", "3")])
+        restored.flush()
+        // 사람 편집도 실패한다(실패 기록의 마지막 입력은 사람 편집이다)
+        human.saveCue(Self.cue("a", at: 3))
+        human.saveTags([Self.rated("t", "4")])
+        human.flush()
+        unlock()
+        human.saveCue(Self.cue("a", at: 5))
+        human.saveTags([Self.rated("t", "5")])
+        human.flush()
+        #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.restored, .human], "큐: 되살린 출처가 남는다")
+        #expect(human.stamp(DraftKey(.tag, "t"))?.origins == [.restored, .human], "태그: 되살린 출처가 남는다")
+        #expect(human.suggestion(DraftKey(.cue, "a")) != nil && human.suggestion(DraftKey(.tag, "t")) != nil)
+    }
+
+    /// 저장에 실패한 사람 편집과 같은 내용을 복원이 다시 저장하면 복원 출처가 더해져 제안이다(리뷰 F9: S6·O9·G6).
+    /// 사람 출처를 물려받아 복원 직후 자동으로 쓰이지 않는다
+    @Test func 저장에_실패한_사람_편집과_같은_내용을_복원이_저장하면_제안이다() throws {
+        let folder = try TemporaryFolder()
+        let human = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        let restored = human.with(origin: .restored)
+        let unlock = try Self.failingStamps(folder.url)
+        human.saveCue(Self.cue("a"))
+        human.saveTags([Self.rated("t", "3")])
+        human.flush()
+        unlock()
+        restored.saveCue(Self.cue("a"))
+        restored.saveTags([Self.rated("t", "3")])
+        restored.flush()
+        #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.human, .restored], "큐: 복원 출처가 더해진다")
+        #expect(human.stamp(DraftKey(.tag, "t"))?.origins == [.human, .restored], "태그: 복원 출처가 더해진다")
+        #expect(human.suggestion(DraftKey(.cue, "a")) != nil && human.suggestion(DraftKey(.tag, "t")) != nil)
+    }
+
+    /// 저장에 성공하면 기억한 출처를 비운다: 실패 없는 보통 저장과 실패를 마친 뒤의 새 곡 저장은 지금처럼 그 포트의 출처다(리뷰 F9)
+    @Test func 저장에_성공한_뒤의_보통_저장은_그_포트의_출처다() throws {
+        let folder = try TemporaryFolder()
+        let human = DraftStore.live(writer: DraftWriter(), home: folder.url, origin: .human)
+        human.saveCue(Self.cue("a"))
+        human.saveCue(Self.cue("a", at: 2))
+        human.saveTags([Self.rated("t", "3")])
+        human.saveTags([Self.rated("t", "4")])
+        human.saveGain(-3, trackUUID: "a")
+        human.flush()
+        #expect(human.stamp(DraftKey(.cue, "a"))?.origins == [.human])
+        #expect(human.stamp(DraftKey(.tag, "t"))?.origins == [.human])
+        #expect(human.stamp(DraftKey(.gain, "a"))?.origins == [.human])
+        // 복원 저장이 한 번 실패했다가 다시 저장돼 성공한 뒤 지운 곡(키)은 그 뒤 사람 편집만 남는다
+        let restored = human.with(origin: .restored)
+        let unlock = try Self.failingStamps(folder.url)
+        restored.saveCue(Self.cue("b"))
+        restored.flush()
+        unlock()
+        restored.saveCue(Self.cue("b"))
+        human.saveCue(CueDraft(trackUUID: "b"))
+        human.saveCue(Self.cue("b", at: 7))
+        human.flush()
+        #expect(human.stamp(DraftKey(.cue, "b"))?.origins == [.human])
+    }
+
     // MARK: 제안 판정(앱·CLI)
 
     @Test func 앱_편집_포트가_저장한_초안은_모든_종류가_제안이_아니다() throws {

@@ -89,8 +89,10 @@ public enum PlaylistStepStamping {
     /// - Parameters:
     ///   - previous: 저장 직전 파일의 초안(읽지 못했으면 빈 초안)
     ///   - entries: 저장 직전 도장 줄
+    ///   - freshOrigins: 식별자가 없는 단계(자리) 가운데 이번 출처 대신 이을 출처가 있는 단계(⌘Z가 되살린 단계, #295 E6). 새 식별자·새 판을
+    ///     받되 출처는 이 값이다
     public static func save(_ incoming: PlaylistDraft, previous: PlaylistDraft, entries: [PlaylistStampEntry], origin: DraftOrigin,
-                            previousUnreadable: Bool = false, newID: () -> UUID,
+                            previousUnreadable: Bool = false, freshOrigins: [Int: Set<DraftOrigin>] = [:], newID: () -> UUID,
                             newRevision: () throws -> DraftRevision) throws -> Result {
         let unique = uniqueIDs(incoming)
         var ids = unique.ids
@@ -104,7 +106,7 @@ public enum PlaylistStepStamping {
             var stamps: [PlaylistStampEntry] = []
             for (index, step) in saved.steps.enumerated() {
                 let id = ids[index]!
-                let origins = (given[index] == nil ? [] : remembered[id]?.origins ?? []).union([origin, .unknown])
+                let origins = (given[index] == nil ? freshOrigins[index] ?? [] : remembered[id]?.origins ?? []).union([origin, .unknown])
                 stamps.append(PlaylistStampEntry(id: id, stamp: DraftStamp(revision: try newRevision(), origins: origins,
                                                                           contentHash: hash(step, in: saved))))
             }
@@ -120,7 +122,8 @@ public enum PlaylistStepStamping {
             let current = hash(step, in: saved)
             guard given[index] != nil else {
                 // 식별자가 없는 단계는 이번 출처가 새로 만든 단계다. 식별자가 겹쳐 비운 단계는 확인할 수 없으니 모름도 더한다
-                let origins: Set<DraftOrigin> = unique.duplicated.contains(index) ? [origin, .unknown] : [origin]
+                let origins: Set<DraftOrigin> = unique.duplicated.contains(index) ? (freshOrigins[index] ?? [origin]).union([.unknown])
+                    : freshOrigins[index] ?? [origin]
                 stamps.append(PlaylistStampEntry(id: id, stamp: DraftStamp(revision: try newRevision(), origins: origins, contentHash: current)))
                 continue
             }

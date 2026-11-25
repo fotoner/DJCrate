@@ -21,6 +21,8 @@ public final class MemoryDrafts: Sendable {
         var merges: [DuplicateMergeDraft] = []
         var revision: UInt64 = 0
         var stamps: [DraftKey: DraftStamp] = [:]
+        /// 업데이트 전 곡 초안 이관을 마쳤다(#295 E1)
+        var adoptedLegacy = false
         /// 재생 목록 단계 도장 줄(실제 저장소의 사이드카와 같다: 단계 식별자별)
         var playlistEntries: [PlaylistStampEntry] = []
         /// 마지막으로 준 판(저장소 전체에서 늘어난다)
@@ -157,6 +159,7 @@ public final class MemoryDrafts: Sendable {
     public func editOutside(_ draft: CueDraft) { state.withLock { $0.cues[draft.trackUUID] = draft } }
     public func editOutside(_ draft: GridDraft) { state.withLock { $0.grids[draft.trackUUID] = draft } }
     public func editOutside(_ draft: TagDraft) { state.withLock { $0.tags[draft.trackUUID] = draft } }
+    public func editOutside(gain: Double, _ uuid: String) { state.withLock { $0.gains[uuid] = gain } }
 
     private func saveArtwork(_ edit: ArtworkEdit, origin: DraftOrigin) {
         state.withLock {
@@ -211,11 +214,12 @@ public final class MemoryDrafts: Sendable {
     }
 
     /// 재생 목록 초안을 통째로 저장한다: 단계 식별자를 맞추고 도장을 갱신한다(실제 저장소와 같은 `PlaylistStepStamping.save`)
-    private func savePlaylist(_ draft: PlaylistDraft, origin: DraftOrigin) {
+    private func savePlaylist(_ draft: PlaylistDraft, origin: DraftOrigin, freshOrigins: [Int: Set<DraftOrigin>] = [:]) {
         state.withLock { state in
             var next = state.lastDraftRevision
             guard let result = try? PlaylistStepStamping.save(draft, previous: state.playlist, entries: state.playlistEntries, origin: origin,
-                                                              newID: { MemoryCueIDs.next() }, newRevision: { next += 1; return DraftRevision(next) }) else { return }
+                                                              freshOrigins: freshOrigins, newID: { MemoryCueIDs.next() },
+                                                              newRevision: { next += 1; return DraftRevision(next) }) else { return }
             state.lastDraftRevision = next
             state.playlist = result.draft
             state.playlistEntries = result.entries
@@ -297,6 +301,24 @@ public final class MemoryDrafts: Sendable {
         }
     }
 
+    /// 업데이트 전 곡 초안 이관(#295 E1)의 메모리 구현: 도장 없는 큐·그리드·태그·게인 초안에 사람 편집 도장을 한 번 붙인다
+    /// (표지·완료 기록의 세부 규칙은 실제 구현 `LegacyDraftAdoption`이 DJCStorageTests에서 본다). 두 번째부터는 빈 배열
+    public func adoptLegacyDrafts() -> [DraftKey] {
+        state.withLock { state in
+            guard !state.adoptedLegacy else { return [] }
+            state.adoptedLegacy = true
+            let keys = state.cues.keys.map { DraftKey(.cue, $0) } + state.grids.keys.map { DraftKey(.grid, $0) }
+                + state.tags.keys.map { DraftKey(.tag, $0) } + state.gains.keys.map { DraftKey(.gain, $0) }
+            var adopted: [DraftKey] = []
+            for key in keys.sorted() where state.stamps[key] == nil {
+                guard let hash = state.currentHash(key) else { continue }
+                state.stamps[key] = state.newStamp(origins: [.human], hash: hash)
+                adopted.append(key)
+            }
+            return adopted
+        }
+    }
+
     /// 이 메모리 초안을 사람 편집으로 읽고 쓰는 포트(앱의 편집 포트와 같다)
     public var store: DraftStore { store(origin: .human) }
 
@@ -350,6 +372,8 @@ public final class MemoryDrafts: Sendable {
         store.removeWritten = { self.removeWritten($0) }
         store.removeWrittenSteps = { self.removeWrittenSteps($0) }
         store.markSuggestions = { self.markSuggestions($0, playlistSteps: $1) }
+        store.adoptLegacyDrafts = { self.adoptLegacyDrafts() }
+        store.savePlaylistDraftOrigins = { draft, origins in self.savePlaylist(draft, origin: origin, freshOrigins: origins) }
         return store
     }
 }

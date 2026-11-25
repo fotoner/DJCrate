@@ -187,6 +187,8 @@ extension DraftWriteBatch {
             for outcome in outcomes where outcome.status == .written {
                 if case let .create(key, _, _, _) = outcome.edit, let id = outcome.playlistID { newIDs[PlaylistRef.new(key).description] = id }
             }
+            // 라이브러리 변경을 모두 마친 자리(쓰기 잠금 안): 자동 저장 엔진이 이때의 파일 상태를 잡는다(#295 E4)
+            operation.afterChanges?.run()
             // 대상 키·백업 폴더는 입구가 채운다
             return DraftCleanupList(operationID: operation.id, target: RekordboxWriteLockKey(device: 0, inode: 0), draftHome: operation.draftHome.path,
                                     backupFolder: "", written: revisions.written(Set(keys)), playlistSteps: tried, newPlaylistIDs: newIDs)

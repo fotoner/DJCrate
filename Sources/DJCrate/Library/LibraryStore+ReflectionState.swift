@@ -24,6 +24,7 @@ extension LibraryStore {
                                deckStagedUUID: deckTrackID.flatMap { rowsByID[$0] }.flatMap { $0.isStaged ? $0.track.uuid : nil },
                                lastError: lastError, pendingHistories: history.pendingHistoryImports)
         state.readSnapshot = snapshotURL
+        state.playlistCarriedOrigins = playlists.unsavedStepOrigins
         return state
     }
 

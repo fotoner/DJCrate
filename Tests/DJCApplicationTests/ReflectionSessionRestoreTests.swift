@@ -238,6 +238,24 @@ struct ReflectionSessionRestoreTests {
         #expect(h.importsSaved.last?.pendingCount == 1, "되돌린 곡은 다시 기다리는 연결이 된다")
     }
 
+    /// 화면이 재생 목록 저장에 실패한 동안 기억한 출처를 세션의 초안 저장도 식별자 없는 단계에 더한다(#295 리뷰 F10)
+    @Test func 곡_넣기를_되돌리는_초안_저장은_화면이_기억한_출처를_더한다() async throws {
+        stageBackup()
+        let rekordbox = PlaylistLayout(rekordbox: [RekordboxPlaylist(id: "P", name: "목록", parentID: "root", seq: 1, isFolder: false,
+                                                                    trackIDs: [])])
+        var draft = PlaylistDraft()
+        _ = try draft.append(.addTracks(playlist: PlaylistRef("P"), contentIDs: ["id-/music/a.mp3", "other"]), rekordbox: rekordbox)
+        h.state.rekordboxPlaylists = rekordbox
+        h.state.playlistDraft = draft
+        h.state.playlistCarriedOrigins = [.cli]
+
+        _ = try await h.session.restoreBackup(addBackup(), to: .copy)
+
+        #expect(h.memory.store.playlistDraft().project(onto: rekordbox).layout.item("P")?.trackIDs == ["other"])
+        let origins = h.memory.store.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+    }
+
     @Test func S9_재생_목록_동기화_실패_중_곡_넣기를_되돌려도_재생_목록_초안과_연결_기록을_건드리지_않고_이유를_알린다() async throws {
         stageBackup()
         let rekordbox = PlaylistLayout(rekordbox: [RekordboxPlaylist(id: "P", name: "목록", parentID: "root", seq: 1, isFolder: false,

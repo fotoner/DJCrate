@@ -184,6 +184,38 @@ struct LibraryUndoAfterSaveTests {
         #expect(try rig.playlistValues() == original)
     }
 
+    enum RemovalKind: CaseIterable { case middle, duplicateAll, duplicateOne }
+
+    /// 재생 목록 곡 빼기(#295 E5): 편집 → 자동 저장 → ⌘Z → 자동 저장 → 곡 개수·순서가 편집 전과 같고, 이어서 ⇧⌘Z → 자동 저장 → 편집 뒤와 같다.
+    /// 같은 곡이 두 번 든 목록에서 그 곡 전체 빼기·한 항목 빼기도 같다
+    @Test(arguments: RemovalKind.allCases)
+    func 곡_빼기를_자동_저장_뒤_되돌리고_다시_하면_편집_전과_뒤와_같다(_ kind: RemovalKind) async throws {
+        let rig = try await Rig(Self.tracks, playlists: [PlaylistSpec(id: "1001", name: "가", seq: 1, contentIDs: ["500", "501", "500", "502"])])
+        let original = try rig.playlistValues()
+        let playlists = rig.store.playlists
+        switch kind {
+        case .middle: playlists.removeTracks([try rig.row(Self.tracks[1])], fromPlaylist: "1001")
+        case .duplicateAll: playlists.removeTracks([try rig.row(Self.tracks[0])], fromPlaylist: "1001")
+        case .duplicateOne:
+            // 같은 곡의 두 번째 항목 하나만 뺀다
+            let item = try #require(playlists.playlistItem("1001"))
+            var draft = playlists.playlistDraft
+            _ = try draft.append(.removeTracks(playlist: .id("1001"), entries: [item.entries[2]]), rekordbox: playlists.rekordboxPlaylists)
+            playlists.setPlaylistDraft(draft, actionName: "재생 목록에서 빼기")
+        }
+        try await rig.autoSave()
+        let edited = try rig.playlistValues()
+        #expect(edited != original)
+        #expect(rig.undo.canUndo, "곡 빼기도 쓴 뒤 ⌘Z가 남는다")
+        rig.undo.undo()
+        try await rig.autoSave()
+        #expect(try rig.playlistValues() == original, "곡 개수·순서가 편집 전과 같다")
+        #expect(rig.undo.canRedo)
+        rig.undo.redo()
+        try await rig.autoSave()
+        #expect(try rig.playlistValues() == edited, "⇧⌘Z 뒤 편집 뒤와 같다")
+    }
+
     /// 새로 만든 목록은 쓰기 결과의 연결 ID로 찾는다. 만들기 자체는 되돌리지 않아(지우기는 범위 밖) 그 ⌘Z는 꺼진다
     @Test func 새로_만든_목록에_넣은_곡은_되돌리고_만들기는_실행_취소가_꺼진다() async throws {
         let rig = try await Rig(Self.tracks, playlists: Self.playlists)
@@ -217,6 +249,22 @@ struct LibraryUndoAfterSaveTests {
         #expect(rig.undo.canUndo, "아래 단계(0 → 3)가 남는다")
         rig.undo.undo()
         #expect(rig.store.tagDrafts[uuid]?.fields.rating == "", "평점 없음(편집 전)")
+        try await rig.autoSave()
+        #expect(try rig.tagValues() == original)
+    }
+
+    /// 연속 두 쓰기가 겹쳐도(앞 쓰기의 다시 읽기를 기다리는 동안 다음 자동 저장) ⌘Z 기록이 남는다(#295 E3: 1초 저장이라 잦다)
+    @Test func 연속_두_쓰기가_겹쳐도_실행_취소_기록이_남는다() async throws {
+        let rig = try await Rig([TrackSpec(id: "500"), TrackSpec(id: "501")])
+        let original = try rig.tagValues()
+        let first = try rig.row(rig.tracks[0]), second = try rig.row(rig.tracks[1])
+        rig.event { rig.store.tags.applyTagEdits([(first, .rating, "3")]) }
+        try await rig.autoSave(reloads: false)
+        rig.event { rig.store.tags.applyTagEdits([(second, .rating, "5")]) }
+        try await rig.autoSave()
+        #expect(rig.undo.canUndo, "겹친 두 쓰기 뒤에도 ⌘Z 기록이 남는다")
+        rig.undo.undo()
+        rig.undo.undo()
         try await rig.autoSave()
         #expect(try rig.tagValues() == original)
     }
