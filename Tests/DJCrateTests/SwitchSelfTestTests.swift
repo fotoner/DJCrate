@@ -84,25 +84,22 @@ struct SwitchSelfTestTests {
         }
 
         var oldBuffer: UInt64?
-        func render() {
+        var uptime = ProcessInfo.processInfo.systemUptime
+        func nextSample() async {
+            // 곡 읽기가 끝난 뒤 가상 시계와 렌더를 함께 전진시킨다. CI의 메인 스레드 부하가 재생 속도를 바꾸지 않는다.
+            await h.deck.loadTask?.value
+            uptime += 0.05
             // 복구 경계의 마지막 버퍼 하나는 도착한다. 그 뒤 위치와 게인 미터만 갱신된다.
             if let fault = h.audio.pendingFault, fault == staleAfter { oldBuffer = mach_absolute_time() }
             h.audio.finishPendingRecovery()
             guard h.audio.isPlaying else { return }
-            h.audio.position += 0.02
+            h.audio.position += 0.05
             h.deck.tick()
             h.audio.meter.update(peak: (0.5, 0.5), rms: (0.3, 0.3), now: ProcessInfo.processInfo.systemUptime)
             h.audio.debugMixerSignalHostTime = oldBuffer ?? mach_absolute_time()
         }
-        let ticks = Task {
-            while !Task.isCancelled {
-                try await Task.sleep(for: .milliseconds(20))
-                render()
-            }
-        }
-        defer { ticks.cancel() }
         var lines: [String] = []
-        let code = await DevSelfTests.switchSelfTestExitCode(store: library, deck: h.deck) {
+        let code = await DevSelfTests.switchSelfTestExitCode(store: library, deck: h.deck, uptime: { uptime }, nextSample: nextSample) {
             lines.append($0)
             print($0)
         }

@@ -57,7 +57,6 @@ Tests/DJCrateTests/LayoutRecomputeTests.swift	사용자 입력 간격	try await 
 Tests/DJCrateTests/LayoutRecomputeTests.swift	사용자 입력 간격	try await Task.sleep(for: .milliseconds(700))	2
 Tests/DJCrateTests/LayoutRecomputeTests.swift	상태 확인	for _ in 0..<300 where deck.draft == nil { try await Task.sleep(for: .milliseconds(10)) }	1
 Tests/DJCrateTests/LibrarySyncTests.swift	상태 확인	while !started.withLock({ $0 }) { try await Task.sleep(for: .milliseconds(10)) }	1
-Tests/DJCrateTests/SwitchSelfTestTests.swift	합성 오디오 신호 간격	while !Task.isCancelled { >> try await Task.sleep(for: .milliseconds(20)) >> render() >> }	1
 Tests/DJCrateTests/LinkBarModelTests.swift	상태 확인	while !model.isConnected, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	2
 Tests/DJCrateTests/LinkBarModelTests.swift	상태 확인	while model.connection != .off, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(2)) }	1
 Tests/DJCrateTests/LoudnessCacheLocationTests.swift	상태 확인	for _ in 0..<100 where !FileManager.default.fileExists(atPath: paths.loudness.path) { >> try await Task.sleep(for: .milliseconds(50)) >> }	1

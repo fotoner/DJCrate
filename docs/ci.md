@@ -230,6 +230,7 @@ Claude Code의 Stop 훅(`scripts/hooks/stop-verify-reminder.py`)은 작업 끝 �
 |---|---|---|---|
 | `DJC_CIPHER_STRESS=1` | 미설정·`0`: cold-open 새 프로세스 4개 | 새 프로세스 100개(`scripts/check.sh --stress`가 켠다, 그 밖의 값은 실패) | `CipherDatabase` 초기화·`CipherLab`·cold-open 경쟁 변경(필수) |
 | `DJC_FULL_RELEASE_COMBINATIONS=1` | `RekordboxTagReleaseTests`의 여러 칸 한 번에 쓰기를 짝 조합 42가지로 | 칸 묶음 26 × 값 종류 3 × 상태 2 = 156가지 전부 | 아티스트·앨범 아티스트·앨범·작곡가·장르 쓰기 순서·행 버리기 규칙을 고칠 때 |
+| `DJC_APPKIT_MINIMIZE_TEST=1` | Apple Music 가져오기 창의 최소화 상태와 복원 요청을 시험한다 | 실제 macOS Dock에서 최소화하고 같은 창과 선택이 돌아오는지 확인한다 | 데스크톱에서 `scripts/check.sh --quick --filter AppleMusicImportWindowTests`와 함께 |
 | `DJC_LAYOUT_RECOMPUTE_TESTS=1` | `LayoutRecomputeTests`(창 크기·여닫기 때 본문 다시 계산 횟수) 스위트 전체를 건너뛴다. 전체 검사도 켜지 않는다 | 실제 창을 띄워(`orderBack`, 활성화·입력 없음) 횟수 상한을 본다 | 관찰 범위·덱 높이·레이아웃을 고칠 때. 다른 UI 시험과 겹치지 않게 단독으로 |
 | `DJC_LAYOUT_BENCHMARK_DB=<사본>` | 꺼짐 | 위 스위트를 그 사본으로 돌리고 `저부하_배치_성능_기록`도 돈다 | 성능 A/B 기록 |
 | `.perfContract` 태그 | 다른 시험과 함께 돈다(`LayoutRecomputeTests`만 위 변수 필요) | — | 관찰 범위를 좁혀 둔 곳이나 이 태그의 시험을 고칠 때. 묶음 전체를 다시 돌린다 |

@@ -6,7 +6,7 @@ import Foundation
 import Testing
 
 /// Apple Music 가져오기 창 열기(#378): 최소화한 창을 같은 메뉴로 다시 열면 새 창이 생기지 않고 그 창이 복원된다.
-/// 실제 창(`NSWindow`)을 창 서버에 올려 최소화한다(최소화한 창은 `isVisible`이 false라 닫힌 창과 구별해야 한다). 창을 만드는 시험이라 한 번에 하나씩 돈다.
+/// 최소화 상태에서 창이 보이지 않는 경우와 실제 데스크톱의 Dock 복원을 같은 열기 동작으로 확인한다.
 @MainActor
 @Suite("Apple Music 가져오기 창 — 최소화·닫은 뒤 다시 열기", .serialized)
 struct AppleMusicImportWindowTests {
@@ -18,9 +18,18 @@ struct AppleMusicImportWindowTests {
     }
 
     @Test func 최소화한_창은_같은_입구로_다시_열면_새_창_없이_그_창이_복원되고_선택을_유지한다() async throws {
+        try await checkReopen { TestWindow(contentViewController: $0) }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["DJC_APPKIT_MINIMIZE_TEST"] == "1"))
+    func 데스크톱_Dock에서_최소화한_창을_다시_연다() async throws {
+        try await checkReopen { NSWindow(contentViewController: $0) }
+    }
+
+    private func checkReopen(makeWindow: (NSViewController) -> NSWindow) async throws {
         _ = NSApplication.shared
         let importer = AppleMusicImportWindow()
-        importer.open(store: store)
+        importer.open(store: store, makeWindow: makeWindow)
         let first = try #require(importer.window)
         defer { for window in openWindows(of: importer) { window.close() } }
         let model = try #require(importer.model)
@@ -33,7 +42,7 @@ struct AppleMusicImportWindowTests {
 
         importer.open(store: store)
         try #require(importer.window === first, "새 창을 만들지 않고 같은 창을 쓴다")
-        let restored = await waitForState(safetyNet: .seconds(20)) { !first.isMiniaturized }
+        let restored = await waitForState(safetyNet: .seconds(20)) { !first.isMiniaturized && first.isVisible }
         #expect(restored, "최소화한 창이 복원돼야 한다")
         #expect(importer.model === model && model.selected == [1, 2] && model.createPlaylists, "고른 곡과 설정이 그대로여야 한다")
         #expect(openWindows(of: importer).count == 1, "열려 있는 창은 하나뿐이어야 한다")
@@ -67,5 +76,22 @@ struct AppleMusicImportWindowTests {
         let second = try #require(importer.window)
         #expect(second !== first && importer.model !== firstModel && importer.model?.selected.isEmpty == true)
         #expect(second.isVisible && openWindows(of: importer).count == 1)
+    }
+}
+
+/// Dock 없는 러너에서도 최소화한 창은 보이지 않고, 복원을 요청해야 최소화가 풀린다.
+@MainActor
+private final class TestWindow: NSWindow {
+    private var minimized = false
+    override var isMiniaturized: Bool { minimized }
+
+    override func miniaturize(_ sender: Any?) {
+        orderOut(sender)
+        minimized = true
+    }
+
+    override func deminiaturize(_ sender: Any?) {
+        minimized = false
+        orderFront(sender)
     }
 }

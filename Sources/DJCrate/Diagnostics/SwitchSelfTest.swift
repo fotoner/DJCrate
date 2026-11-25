@@ -15,13 +15,16 @@ extension DeckAudio: SwitchAudioObservation {}
 
 extension DevSelfTests {
     static func switchSelfTestExitCode(store: LibraryStore, deck: DeckModel,
+                                       uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+                                       nextSample: () async -> Void = { try? await Task.sleep(for: .milliseconds(50)) },
                                        log: (String) -> Void = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }) async -> Int32 {
-        let ok = await runSwitchSelfTest(store: store, deck: deck, log: log)
+        let ok = await runSwitchSelfTest(store: store, deck: deck, uptime: uptime, nextSample: nextSample, log: log)
         log(ok ? "덱 전환 시험 통과" : "덱 전환 시험 실패")
         return ok ? 0 : 1
     }
 
-    private static func runSwitchSelfTest(store: LibraryStore, deck: DeckModel, log: (String) -> Void) async -> Bool {
+    private static func runSwitchSelfTest(store: LibraryStore, deck: DeckModel, uptime: () -> TimeInterval,
+                                          nextSample: () async -> Void, log: (String) -> Void) async -> Bool {
         let rows = store.rows.filter { !$0.track.isStreaming }
         let audio = deck.audio
         guard rows.count >= 2, let engine = audio as? any SwitchAudioObservation else { return false }
@@ -30,10 +33,10 @@ extension DevSelfTests {
         defer { if deck.isPlaying { deck.togglePlay() } }
 
         func until(_ condition: () -> Bool) async -> Bool {
-            let deadline = ContinuousClock.now + .seconds(5)
+            let deadline = uptime() + 5
             while !condition() {
-                guard !Task.isCancelled, ContinuousClock.now < deadline else { return false }
-                try? await Task.sleep(for: .milliseconds(50))
+                guard !Task.isCancelled, uptime() < deadline else { return false }
+                await nextSample()
             }
             return true
         }
@@ -43,7 +46,7 @@ extension DevSelfTests {
         }
         func playing(_ stage: String, playerScheduledAfterStop: Bool? = nil, after action: () -> Void) async -> Bool {
             let position = deck.currentTime
-            let stamp = ProcessInfo.processInfo.systemUptime
+            let stamp = uptime()
             let original = audio.onRecovered
             var recovered = false
             if playerScheduledAfterStop != nil {
@@ -66,7 +69,7 @@ extension DevSelfTests {
             var measureAfter: UInt64?
             let completed = await until {
                 if deck.currentTime < position - 0.1 { rewound = true; return true }
-                let elapsed = ProcessInfo.processInfo.systemUptime - stamp
+                let elapsed = uptime() - stamp
                 guard playerScheduledAfterStop == nil || recovered,
                       engine.isEngineRunning, deck.isPlaying, audio.isPlaying,
                       deck.currentTime > position + 0.15, deck.currentTime <= position + elapsed * deck.rate + 0.2 else { return false }

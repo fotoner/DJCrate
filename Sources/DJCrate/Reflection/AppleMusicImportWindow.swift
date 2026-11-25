@@ -8,7 +8,7 @@ final class AppleMusicImportWindow: NSObject, NSWindowDelegate {
     private(set) var window: NSWindow?
     private(set) var model: AppleMusicImportModel?
 
-    func open(store: LibraryStore) {
+    func open(store: LibraryStore, makeWindow: (NSViewController) -> NSWindow = { NSWindow(contentViewController: $0) }) {
         // 최소화한 창은 isVisible이 false라 닫은 창과 같아 보인다. 새로 만들지 않고 그 창을 되살린다(#378). 닫은 창은 새 창·새 모델로 연다.
         if let window, window.isVisible || window.isMiniaturized {
             if window.isMiniaturized { window.deminiaturize(nil) }
@@ -17,7 +17,7 @@ final class AppleMusicImportWindow: NSObject, NSWindowDelegate {
         }
         let model = AppleMusicImportModel(staging: store.staging, appleMusic: store.useCases.appleMusic,
                                           openGuide: { [weak store] in store?.showIntegrationGuide?($0) })
-        let window = NSWindow(contentViewController: NSHostingController(rootView: AppleMusicImportView(model: model)))
+        let window = makeWindow(NSHostingController(rootView: AppleMusicImportView(model: model)))
         window.title = String(ui: "Apple Music XML 가져오기")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
