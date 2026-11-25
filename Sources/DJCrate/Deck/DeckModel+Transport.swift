@@ -185,7 +185,7 @@ extension DeckModel {
 
     /// 목록은 재생 상태를 유지하며 시작점만 부른다. 같은 위치의 루프를 눌러도 반복은 풀린다.
     func selectCueFromList(_ id: EditableCue.ID) {
-        guard let target = cue(id) else { return }
+        guard let target = cue(id) ?? readOnlyLoops.first(where: { $0.id == id }) else { return }
         selectedCueID = id
         if isLooping { exitLoop() }
         seek(target.time)
@@ -322,8 +322,8 @@ extension DeckModel {
     /// Q/E: 이전·다음 큐(메모리·핫큐)로 간다. 부른 큐는 CUE 지점이 된다(CDJ의 메모리 큐 호출과 같다).
     /// 재생 중이면 거기서 계속 재생하고, 멈춰 있으면 그 자리에서 대기한다(C로 바로 미리 듣기).
     func jumpToCue(forward: Bool) {
-        guard canPlay, let cues = draft?.cues, !cues.isEmpty else { return }
-        let times = cues.sorted { $0.time < $1.time }
+        guard canPlay else { return }
+        let times = displayedCues.sorted { $0.time < $1.time }
         let target: EditableCue?
         if forward {
             target = times.first { $0.time > playhead + Self.cueTolerance }

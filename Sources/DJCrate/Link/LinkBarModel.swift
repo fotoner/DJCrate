@@ -176,7 +176,12 @@ final class LinkBarModel {
                                                   draftCues: input.draftCues, shareRoot: input.shareRoot, peers: state.devices)
             // 기다리는 사이 껐으면(rekordbox 켜짐·끄기) 켜진 것으로 되돌리지 않는다
             guard connection == .connecting else { return }
+            let excluded = await session.excludedByPath
+            guard connection == .connecting else { return }
             connection = .on(tracks: count)
+            if excluded > 0 {
+                notify(String(ui: "일부 음원을 공유할 수 없습니다. 음원 위치와 접근 권한을 확인하세요"), .warning)
+            }
             // 켤 때 내어 준 초안의 큐는 보낸 것으로 치고, 켜는 동안 고친 큐를 보낸다
             sentCues = input.draftCues
             let pending = pendingCues
@@ -378,6 +383,7 @@ enum LinkText {
         case let .portInUse(why): String(ui: "LINK 포트를 열지 못했습니다(\(why)). 그 포트를 쓰는 앱을 끈 뒤 다시 켜세요")
         case .notConnected: String(ui: "LINK를 누른 뒤 곡을 놓으세요")
         case .notJoined: String(ui: "아직 LINK에 참여하는 중입니다. 잠시 뒤 다시 놓으세요")
+        case .unsafeFile: String(ui: "LINK에서 공유할 파일을 확인하지 못했습니다. 음원 위치와 접근 권한을 확인하세요")
         case .trackNotShared: String(ui: "이 곡은 LINK로 내어 주지 않습니다. rekordbox 컬렉션에 있고 파일이 있는 MP3·WAV·AIFF·M4A·FLAC 곡만 실을 수 있습니다")
         case let .playerMissing(number): String(ui: "\(number)번 플레이어가 네트워크에 없습니다. 플레이어를 확인한 뒤 다시 놓으세요")
         case let .notMounted(number): String(ui: "\(number)번 플레이어가 아직 DJCrate 라이브러리를 열지 않았습니다. 잠시 뒤 다시 놓으세요")

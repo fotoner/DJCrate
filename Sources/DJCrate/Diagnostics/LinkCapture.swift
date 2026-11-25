@@ -25,7 +25,10 @@ enum LinkCapture {
         guard arguments.contains(where: { $0.hasPrefix(argument) }) else { return nil }
         let served = Mutex<[UInt32]>([])
         let server = LinkServerSource(
-            start: { library, _, _, _ throws(LinkProblem) in served.withLock { $0 = library.tracks.prefix(3).map(\.id) } },
+            start: { library, _, _, _ throws(LinkProblem) in
+                served.withLock { $0 = library.tracks.prefix(3).map(\.id) }
+                return LinkPreparedAudio(Dictionary(uniqueKeysWithValues: library.tracks.map { ($0.id, $0.path) }))
+            },
             stop: {},
             status: {
                 let ids = served.withLock { $0 }

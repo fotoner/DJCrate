@@ -141,7 +141,7 @@ struct WaveformAccessibilityValue: ViewModifier {
     func body(content: Content) -> some View {
         let time = deck.displayTime
         let value = switch kind {
-        case .zoom: WaveformAccessibility.zoomValue(time: time, grid: deck.grid, cues: deck.draft?.cues ?? [])
+        case .zoom: WaveformAccessibility.zoomValue(time: time, grid: deck.grid, cues: deck.displayedCues)
         case .overview: WaveformAccessibility.overviewValue(time: time, duration: deck.duration, grid: deck.grid)
             + (deck.isAnalyzingSections ? ", " + String(ui: "섹션 분석 중") : "")
         }

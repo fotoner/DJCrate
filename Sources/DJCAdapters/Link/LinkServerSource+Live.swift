@@ -1,5 +1,6 @@
 import DJCApplication
 import DJCDomain
+import DJCEnvironment
 import DJCLink
 import Foundation
 import RekordboxKit
@@ -8,20 +9,24 @@ extension LinkServerSource {
     /// 실제 서버(`LinkExportServer`, DJLinkKit `DJLinkExport`)와 rekordbox 실행 확인. 부를 때마다 서버 자리 하나를 새로 만든다
     public static func live() -> LinkServerSource {
         let slot = LinkServerSlot()
-        return LinkServerSource(
+        let directories = [DJCIdentity.dataDirectory, LibrarySnapshot.rekordboxDirectory, URL.libraryDirectory]
+            .flatMap { [$0.path, $0.resolvingSymlinksInPath().path] }
+        var port = LinkServerSource(
             start: { library, shareRoot, peer, history throws(LinkProblem) in
-                try await slot.start(library, shareRoot: shareRoot, peer: peer, history: history)
+                try await slot.start(library, shareRoot: shareRoot, peer: peer, protectedDirectories: directories, history: history)
             },
             stop: { await slot.stop() },
             status: { await slot.status() },
             load: { player, id throws(LinkProblem) in try await slot.load(player: player, trackID: id) },
             isRekordboxRunning: { LibrarySnapshot.isRekordboxRunning() },
             updatePlaylists: { playlists in await slot.updatePlaylists(playlists.map(LinkExportPlaylist.init)) },
-            substitute: { id, path, fileType in await slot.substitute(id, path: path, fileType: fileType) },
+            substitute: { id, path, fileType throws(LinkProblem) in try await slot.substitute(id, path: path, fileType: fileType) },
             updateCues: { id, cues in
                 await slot.updateCues(id, cues.map { LinkExportCue(positionMs: $0.positionMs, outMs: $0.outMs, hotCue: $0.hotCue, colour: $0.colour) })
             },
             setFileHold: { hold in await slot.setFileHold(hold) })
+        port.protectedDirectories = directories
+        return port
     }
 }
 
@@ -30,11 +35,11 @@ private actor LinkServerSlot {
     private var server: LinkExportServer?
     private var stopping: Task<Void, Never>?
 
-    func start(_ library: LinkLibrary, shareRoot: String, peer: String,
-               history: @escaping @Sendable (LinkHistoryEvent) -> Void) async throws(LinkProblem) {
+    func start(_ library: LinkLibrary, shareRoot: String, peer: String, protectedDirectories: [String],
+               history: @escaping @Sendable (LinkHistoryEvent) -> Void) async throws(LinkProblem) -> LinkPreparedAudio {
         await stop()
         do {
-            server = try await LinkExportServer.start(tracks: library.tracks.map(LinkExportTrack.init),
+            let started = try await LinkExportServer.start(tracks: library.tracks.map(LinkExportTrack.init),
                                                       playlists: library.playlists.map(LinkExportPlaylist.init),
                                                       shareRoot: shareRoot, peer: peer, onHistory: { event in
                                                           switch event {
@@ -46,7 +51,15 @@ private actor LinkServerSlot {
                                                           }
                                                       }, onFileRequest: { request in
                                                           history(.fileRequested(path: request.path, playerModel: request.model))
+                                                      }, cacheDirectory: DJCIdentity.linkAudioDirectory, allowsAudio: {
+                                                          LinkLibrary.allowsAudioPath($0, protectedDirectories: protectedDirectories)
                                                       })
+            guard let audio = await started.preparedAudio() else {
+                await started.stop()
+                throw LinkExportError.unsafeFile
+            }
+            server = started
+            return LinkPreparedAudio(audio.paths, retaining: audio.owner)
         } catch {
             throw Self.problem(error)
         }
@@ -64,8 +77,9 @@ private actor LinkServerSlot {
         await server?.setFileHold(hold)
     }
 
-    func substitute(_ trackID: UInt32, path: String, fileType: UInt8) async {
-        await server?.substitute(trackID: trackID, path: path, fileType: fileType)
+    func substitute(_ trackID: UInt32, path: String, fileType: UInt8) async throws(LinkProblem) {
+        guard let server else { throw .notConnected }
+        do { try await server.substitute(trackID: trackID, path: path, fileType: fileType) } catch { throw Self.problem(error) }
     }
 
     func updatePlaylists(_ playlists: [LinkExportPlaylist]) async {
@@ -99,6 +113,7 @@ private actor LinkServerSlot {
     static func problem(_ error: any Error) -> LinkProblem {
         switch error as? LinkExportError {
         case .noInterface: .noInterface
+        case .unsafeFile: .unsafeFile
         case let .bind(why): .portInUse(why)
         case .notJoined: .notJoined
         case let .playerMissing(number): .playerMissing(number)

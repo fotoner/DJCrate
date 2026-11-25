@@ -37,7 +37,9 @@ struct LinkAudioConverterLiveTests {
         let before = try Data(contentsOf: source)
         let converter = LinkAudioConverter.live(cache: root.appending(path: "cache"))
 
-        let path = try #require(try await converter.convert(source.path))
+        // 캐시 이름용 컬렉션 경로에는 파일이 없다. 변환과 재사용은 합성 사본만으로 동작해야 한다.
+        let original = root.appending(path: "collection/track.flac")
+        let path = try #require(try await converter.convert(source.path, original.path))
         #expect(path.hasSuffix(".wav"))
         let wav = try AVAudioFile(forReading: URL(filePath: path))
         #expect(wav.length == 44_100)
@@ -49,7 +51,7 @@ struct LinkAudioConverterLiveTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.appending(path: "cache").path) == [URL(filePath: path).lastPathComponent])
 
         let modified = try FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date
-        #expect(try await converter.convert(source.path) == path)
+        #expect(try await converter.convert(source.path, original.path) == path)
         #expect(try FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date == modified)
     }
 
@@ -61,11 +63,11 @@ struct LinkAudioConverterLiveTests {
         try Self.tone(alac, format: kAudioFormatAppleLossless)
         try Self.tone(aac, format: kAudioFormatMPEG4AAC)
         let converter = LinkAudioConverter.live(cache: root.appending(path: "cache"))
-        let alacWAV = try #require(try await converter.convert(alac.path))
+        let alacWAV = try #require(try await converter.convert(alac.path, alac.path))
         #expect(alacWAV.hasSuffix(".wav"))
         #expect(try AVAudioFile(forReading: URL(filePath: alacWAV)).fileFormat.settings[AVLinearPCMBitDepthKey] as? Int == 16)
-        #expect(try await converter.convert(aac.path) == nil)
-        #expect(try await converter.convert(root.appending(path: "song.mp3").path) == nil)
+        #expect(try await converter.convert(aac.path, aac.path) == nil)
+        #expect(try await converter.convert(root.appending(path: "song.mp3").path, "song.mp3") == nil)
         // 바꾸기 전에 코덱만 본다(AAC를 놓을 때 "WAV로 바꾼 뒤 싣습니다"를 띄우지 않게, #287)
         #expect(await converter.needsConversion(alac.path))
         #expect(!(await converter.needsConversion(aac.path)))
@@ -82,13 +84,13 @@ struct LinkAudioConverterLiveTests {
         try Self.tone(source, format: kAudioFormatFLAC)
         try Self.tone(other, format: kAudioFormatFLAC)
         let converter = LinkAudioConverter.live(cache: cache)
-        let old = try #require(try await converter.convert(source.path))
-        let kept = try #require(try await converter.convert(other.path))
+        let old = try #require(try await converter.convert(source.path, source.path))
+        let kept = try #require(try await converter.convert(other.path, other.path))
 
         try FileManager.default.removeItem(at: source)
         try Self.tone(source, format: kAudioFormatFLAC)
         try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: source.path)
-        let new = try #require(try await converter.convert(source.path))
+        let new = try #require(try await converter.convert(source.path, source.path))
 
         #expect(new != old)
         #expect(try Set(FileManager.default.contentsOfDirectory(atPath: cache.path))
@@ -102,7 +104,7 @@ struct LinkAudioConverterLiveTests {
         try Data("not audio".utf8).write(to: broken)
         let converter = LinkAudioConverter.live(cache: root.appending(path: "cache"))
         await #expect {
-            _ = try await converter.convert(broken.path)
+            _ = try await converter.convert(broken.path, broken.path)
         } throws: { error in
             if case .conversionFailed = error as? LinkProblem { true } else { false }
         }

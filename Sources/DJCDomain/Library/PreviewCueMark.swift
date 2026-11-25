@@ -11,7 +11,7 @@ public struct PreviewCueMark: Hashable, Sendable {
         if case .hot = cue.kind { hot = true } else { hot = false }
     }
 
-    /// rekordbox 큐 → 눈금. 편집할 수 없는 큐(Kind 4)는 덱 목록처럼 뺀다
+    /// 곡 목록의 미리 보기에는 편집 가능한 종류의 큐만 표시한다.
     public init?(_ cue: Cue) {
         guard let kind = EditableCue.Kind(rekordbox: cue.kind) else { return nil }
         time = Double(cue.inMsec) / 1000

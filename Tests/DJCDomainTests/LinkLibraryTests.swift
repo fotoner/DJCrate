@@ -40,6 +40,18 @@ struct LinkLibraryTests {
         #expect(library.linkID(of: "13") == nil)
     }
 
+    @Test func 보호_경로와_숨김_경로는_컬렉션과_재생_목록에서_뺀다() {
+        let paths = ["/Users/dj/Music/정상.mp3", "/Users/dj/Library/Audio/제외.mp3",
+                     "/Users/dj/개인/.보관/제외.mp3", "relative.mp3", "/Users/dj/Library.mp3"]
+        let rows = paths.enumerated().map { Self.row(String($0.offset), path: $0.element) }
+        let layout = PlaylistLayout([(.init(id: "p", name: "재생 목록", entries: rows.enumerated().map {
+            PlaylistEntry(trackNo: $0.offset + 1, contentID: $0.element.track.id)
+        }), 0)])
+        let library = LinkLibrary.build(rows: rows, playlists: layout)
+        #expect(library.tracks.map(\.contentID) == ["0", "4"])
+        #expect(library.playlists.first?.trackIDs == [1, 2])
+    }
+
     @Test func CDJ_번호로_곡_제목을_찾는다() {
         let library = LinkLibrary.build(rows: [Self.row("10"), Self.row("djc-1"), Self.row("15")], playlists: PlaylistLayout())
         #expect(library.title(ofLinkID: 1) == "곡 10")
