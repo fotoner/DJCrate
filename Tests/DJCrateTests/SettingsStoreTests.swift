@@ -44,6 +44,29 @@ struct SettingsStoreTests {
     }
 
     #if DEBUG
+    @Test(arguments: ["cue-drafts", "logs/session.log", ".dangling"])
+    func 사본_시험은_임시_홈_안의_심볼릭_링크를_거부한다(_ relativePath: String) throws {
+        let scratch = try TemporaryFolder()
+        let home = scratch.url.appending(path: "home")
+        let copy = scratch.url.appending(path: "copy")
+        let external = scratch.url.appending(path: "other")
+        let link = home.appending(path: relativePath)
+        let fm = FileManager.default
+        try fm.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fm.createDirectory(at: copy.appending(path: "share/PIONEER/USBANLZ"), withIntermediateDirectories: true)
+        try Data().write(to: copy.appending(path: "master.db"))
+        try fm.createDirectory(at: external, withIntermediateDirectories: true)
+        let environment = ["DJC_HOME": home.path, "DJC_REKORDBOX_DIR": copy.path]
+        let arguments = ["djcrate", "--write-selftest"]
+
+        try Data().write(to: home.appending(path: "existing.json"))
+        #expect(DevSelfTests.copySelfTestStartupRefusal(arguments: arguments, environment: environment) == nil)
+
+        let destination = relativePath == ".dangling" ? external.appending(path: "missing") : external
+        try fm.createSymbolicLink(at: link, withDestinationURL: destination)
+        #expect(DevSelfTests.copySelfTestStartupRefusal(arguments: arguments, environment: environment)?.contains("DJC_HOME") == true)
+    }
+
     @Test func 사본_시험은_시작할_때_임시_경로와_인자_형식을_확인한다() throws {
         let scratch = try TemporaryFolder()
         let home = scratch.url.appending(path: "home")

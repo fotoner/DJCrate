@@ -71,6 +71,9 @@ extension DevSelfTests {
               }) else {
             return "임시 DJC_HOME과 분석 파일을 실제 파일로 복사한 임시 DJC_REKORDBOX_DIR을 지정하세요"
         }
+        guard copySelfTestHomeHasNoLinks(homePath) else {
+            return "임시 DJC_HOME에는 심볼릭 링크가 없는 확인 가능한 폴더를 지정하세요"
+        }
         let location = LibraryLocation.resolve(arguments: arguments, environment: environment)
         if location.opensExplicitCopy {
             guard let copy = location.explicitCopy, (try? UsbScratchPath.check(copy.path, as: .existingFile)) != nil else {
@@ -85,6 +88,20 @@ extension DevSelfTests {
             return "사본의 스냅샷 폴더를 확인할 수 없습니다"
         }
         return nil
+    }
+
+    /// 초안·캐시·로그가 시험 홈 밖으로 쓰이지 않게 링크를 따라가지 않고 하위 경로를 확인한다.
+    private static func copySelfTestHomeHasNoLinks(_ path: String) -> Bool {
+        var couldReadHome = true
+        guard let entries = FileManager.default.enumerator(at: URL(filePath: path), includingPropertiesForKeys: [], errorHandler: { _, _ in
+            couldReadHome = false
+            return false
+        }) else { return false }
+        for case let entry as URL in entries {
+            var info = stat()
+            guard lstat(entry.path, &info) == 0, info.st_mode & S_IFMT != S_IFLNK else { return false }
+        }
+        return couldReadHome
     }
 
     private static func trackSelfTestPaths(_ argument: String) -> [String] {
