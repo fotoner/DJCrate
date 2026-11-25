@@ -190,12 +190,20 @@ struct UsbStoreTests {
         let host = FakeUsbHost([physical, image])
         host.serve(image, library: UsbTestData.library())
         host.serve(physical, library: UsbTestData.library())
-        let store = UsbTestData.store(host, policy: .diskImagesOnly)
+        let policy = UsbReadPolicy.current(environment: ["DJC_CAP_NO_VOLUMES": "1"], arguments: ["DJCrate"])
+        #expect(UsbReadPolicy.current(environment: ["DJC_CAP_NO_VOLUMES": "0"], arguments: []) == .all)
+        let store = UsbTestData.store(host, policy: policy)
         await store.refresh()
-        #expect(store.volumes.map(\.usbKey) == [image.usbKey])
-        #expect(host.infoCalls == [image.usbKey])
-        #expect(host.libraryCalls == [image.usbKey])
+        #if DEBUG
+        let expected = [image.usbKey]
         #expect(store.shapes[physical.usbKey] == nil)
+        #else
+        let expected = [physical.usbKey, image.usbKey].sorted()
+        #expect(store.shapes[physical.usbKey] == .rekordbox(formats: UsbFormat.defaultSet))
+        #endif
+        #expect(store.volumes.map(\.usbKey).sorted() == expected)
+        #expect(host.infoCalls.sorted() == expected)
+        #expect(host.libraryCalls.sorted() == expected)
         #expect(store.shapes[image.usbKey] == .rekordbox(formats: UsbFormat.defaultSet))
     }
 

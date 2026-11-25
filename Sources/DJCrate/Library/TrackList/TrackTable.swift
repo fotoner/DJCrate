@@ -118,7 +118,7 @@ private struct TrackListView<Source: TrackListSource>: NSViewRepresentable {
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.draggingDestinationFeedbackStyle = .gap
-        table.autosaveName = "djc.trackList.v2"
+        if !DiagnosticRun.isolatesPreferences() { table.autosaveName = "djc.trackList.v2" }
         // 자가 테스트·측정처럼 설정을 저장하지 않는 실행은 칸 배치도 사용자 환경설정에 남기지 않는다(R18)
         let remembers = !PerfProbe.enabled && SettingsStore.persists(arguments: ProcessInfo.processInfo.arguments)
         table.autosaveTableColumns = remembers

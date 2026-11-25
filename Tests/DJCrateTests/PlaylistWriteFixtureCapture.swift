@@ -19,6 +19,12 @@ struct PlaylistWriteFixtureCapture {
         guard let path = ProcessInfo.processInfo.environment["DJC_PLAYLIST_FIXTURE"] else { return }
         let fixture = try RekordboxFixture()
         let root = URL(filePath: path)
+        try populate(fixture, at: root, writeSelfTest: ProcessInfo.processInfo.environment["DJC_PLAYLIST_FIXTURE_WRITE"] == "1",
+                     smart: ProcessInfo.processInfo.environment["DJC_PLAYLIST_FIXTURE_SMART"] == "1")
+        try FileManager.default.copyItem(at: fixture.root, to: root)
+    }
+
+    func populate(_ fixture: RekordboxFixture, at root: URL, writeSelfTest: Bool, smart: Bool = false) throws {
         for (index, title) in ["합성 곡 하나", "합성 곡 둘", "합성 곡 셋", "합성 곡 넷", "합성 곡 다섯", "합성 곡 여섯"].enumerated() {
             var track = TrackSpec(id: String(101 + index))
             track.title = title
@@ -26,6 +32,18 @@ struct PlaylistWriteFixtureCapture {
             if index >= 3 {
                 track.analysisDataPath = "/PIONEER/USBANLZ/\(track.uuid.prefix(3))/\(track.uuid.dropFirst(3))/ANLZ0000.DAT"
                 track.imagePath = ""
+            }
+            if writeSelfTest {
+                // 최종 사본 안의 음원만 가리킨다. 복사한 뒤에도 원래 임시 폴더를 열지 않는다.
+                let name = "selftest-\(index).wav"
+                _ = try AudioFixture.clicks(at: (0..<32).map { Double($0) / 2 }, seconds: 16, in: fixture.audio, name: name)
+                track.folderPath = root.appending(path: "audio/\(name)").path
+                track.fileType = 11
+                track.length = 16
+                if index == 5 {
+                    let beats = AnlzBuilder.beats(bpm: 120, first: 125, count: 32)
+                    try fixture.putAnalysis(for: track, dat: AnlzBuilder.dat(beats: beats), ext: AnlzBuilder.ext(beats: beats))
+                }
             }
             try fixture.add(track)
             if index == 4 { try putArtwork(fixture, track) }
@@ -45,7 +63,6 @@ struct PlaylistWriteFixtureCapture {
         try fixture.add(PlaylistSpec(id: "1001", name: "합성 폴더", seq: 1, isFolder: true))
         try fixture.add(PlaylistSpec(id: "1002", name: "합성 목록", parentID: "1001", seq: 1, contentIDs: ["101", "102"]))
         try fixture.add(PlaylistSpec(id: "1003", name: "맨 위 목록", seq: 2, contentIDs: ["103"]))
-        let smart = ProcessInfo.processInfo.environment["DJC_PLAYLIST_FIXTURE_SMART"] == "1"
         if smart {
             try fixture.add(PlaylistSpec(id: "1004", name: "합성 인텔리전트", seq: 3))
             try fixture.execute("UPDATE djmdPlaylist SET Attribute = 4 WHERE ID = '1004'")
@@ -64,7 +81,6 @@ struct PlaylistWriteFixtureCapture {
         ]).joined(separator: "\r\n")
         try xml.write(to: fixture.root.appending(path: "masterPlaylists6.xml"), atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: fixture.root.appending(path: "share/PIONEER/USBANLZ"), withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: fixture.root, to: root)
     }
 
     /// rekordbox가 분석할 때 만든 것 같은 합성 그림 셋과 `artwork.jpg` 파일 행(동기화 상태 256)

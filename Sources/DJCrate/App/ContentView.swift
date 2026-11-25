@@ -227,7 +227,7 @@ struct ContentView: View {
         app.connect()
         if ProcessInfo.processInfo.arguments.contains("--inspector") { showTagEditor = true }
         // 보기 모드는 머리 줄·본문 잎이 읽는다. 여기서 읽으면 보기를 바꿀 때마다 이 본문이 다시 계산되므로 값만 쓴다
-        if ProcessInfo.processInfo.arguments.contains("--sheet") { UserDefaults.standard.set(true, forKey: SettingKeys.sheetMode.name) }
+        if ProcessInfo.processInfo.arguments.contains("--sheet") { ViewPreferences.defaults.set(true, forKey: SettingKeys.sheetMode.name) }
     }
 }
 

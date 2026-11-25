@@ -269,23 +269,24 @@ final class AppComposition {
     /// 도움말 › 연동 안내(#315). 주 창 포커스와 상관없이 rekordbox 절차로 연다
     func openIntegrationGuide() { windows.integrationGuide.open(file: store.linkedXMLFile, topic: .rekordbox) }
 
-    /// 옛 이름(anicue) 데이터·설정 옮기기. 앱이 시작할 때 목록·덱이 설정을 읽기 전에 한 번 부른다(`DJCrateApp`의 첫 속성)
-    nonisolated static func migrateLegacyData() {
+    /// 옛 이름(anicue) 데이터·설정 옮기기. 앱을 조립해 목록·덱이 설정을 읽기 전에 한 번 부른다.
+    nonisolated static func migrateLegacyData(arguments: [String] = CommandLine.arguments, migrate: () -> Void = { LegacyMigration.run() }) {
         #if DEBUG
         // 합성 사본 자가 테스트가 사용자 폴더·설정을 옮기지 않게 한다.
-        if CommandLine.arguments.contains("--history-selftest") || CommandLine.arguments.contains(where: { $0.hasPrefix("--usb-snapshot-capture=") }) { return }
+        if arguments.contains("--history-selftest") || arguments.contains(where: { $0.hasPrefix("--usb-snapshot-capture=") }) { return }
         #endif
-        // 자동 저장 사본 자가 테스트는 두 빌드 모두 옮기지 않는다(R18)
-        if DiagnosticRun.isAutoReflectSelfTest(arguments: CommandLine.arguments) { return }
-        LegacyMigration.run()
+        // 사본 자가 테스트는 두 빌드 모두 사용자 데이터를 옮기지 않는다.
+        guard !DiagnosticRun.isolatesPreferences(arguments: arguments) else { return }
+        migrate()
     }
 
     /// 실제 앱. 위치는 실행 인자·환경에서 한 번 푼다(`LibraryLocation.resolve`): 초안은 데이터 폴더(`DJC_HOME`을 따른다),
     /// 쓰기·복원 대상은 rekordbox 라이브러리(`DJC_REKORDBOX_DIR`을 따른다)의 master.db와 그 옆 share다(#182: 대상은 이 한 곳에서 정한다).
     static func live() -> AppComposition {
         let info = ProcessInfo.processInfo
+        let copySelfTest = DiagnosticRun.isCopySelfTest(arguments: info.arguments)
         // CLI와 함께 따르는 설정(시점 스냅샷 보관 일수)은 데이터 폴더의 공유 파일에도 적는다
-        let settings = SettingsStore(sharedFile: .live)
+        let settings = SettingsStore(defaults: ViewPreferences.defaults, sharedFile: copySelfTest ? nil : .live)
         let location = LibraryLocation.resolve(arguments: info.arguments, environment: info.environment)
         // 초안 저장 큐는 하나다: 저장소·덱·반영·복구·그리드 추정이 모두 같은 큐로 쓴다(게인 초안은 모든 곡이 파일 하나라 순서가 지켜져야 한다).
         // 앱의 편집 포트는 사람 편집이다(출처는 조립이 정한다, R5)
@@ -307,13 +308,13 @@ final class AppComposition {
         let notice = !info.arguments.contains { $0.contains("selftest") || $0.contains("capture") || $0.hasPrefix("--ui-perf") || $0.hasPrefix("--perf-")
             || $0 == "--autoplay" || $0 == "--scroll-perf" }
         // 앱 자동 업데이트(#59): 쓰는 동안 설치를 미루고 그 사실을 알림으로 보인다
-        let updater = AppUpdater.make(activity: { [weak store] in store?.writeActivity ?? .idle },
-                                      announce: { [weak store] in store?.showToast(.notice($0, nil)) })
+        let updater = copySelfTest ? nil : AppUpdater.make(activity: { [weak store] in store?.writeActivity ?? .idle },
+                                                           announce: { [weak store] in store?.showToast(.notice($0, nil)) })
         // 자동 저장(#403): 릴리스 빌드의 라이브 라이브러리만 자동 저장한다(R18). 그 밖의 실행도 엔진이 쓰기 차례·기록 판정·재시작 정리를 맡는다
         let run = AutoReflectionRun.decide(autoReflectionFacts(arguments: info.arguments, environment: info.environment, location: location))
         return AppComposition(
             settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store, gate: writeGate(arguments: info.arguments)),
-            agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
+            agentTools: copySelfTest ? nil : agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
             updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
                 : linkBar(store: store, deck: deck),
             persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments), dock: .live,
@@ -565,7 +566,7 @@ final class AppComposition {
         if first { startLifetimeTasks() }
         updater?.start()
         rekordboxRun.start()
-        UsbAppSetup.attach(to: store)
+        if !DiagnosticRun.isCopySelfTest() { UsbAppSetup.attach(to: store) }
         // CLI가 앱의 시점 스냅샷 보관 일수를 따르게 공유 파일에 맞춘다
         settings.syncShared()
         // 프로세스 전체의 캐시·임시 파일 정리는 앱만 한다(화면 모델·시험 저장소가 공용 음량 캐시를 자기 곡으로 잘라내지 않게).

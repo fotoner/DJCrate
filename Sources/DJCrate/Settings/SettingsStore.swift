@@ -25,11 +25,11 @@ final class SettingsStore: @unchecked Sendable {
     }
 
     /// 이 실행 인자로 띄운 앱이 설정을 읽고 저장하는지. 자가 테스트·측정·일부 캡처는 기본값으로 돈다(두 빌드 모두).
-    /// 자동 저장 사본 자가 테스트(`--auto-reflect-selftest=<경우>`)는 값과 상관없이 저장하지 않는다(R18)
+    /// 값이 붙는 사본 자가 테스트도 설정을 읽거나 저장하지 않는다.
     static func persists(arguments: [String]) -> Bool {
-        !arguments.contains {
+        !DiagnosticRun.isolatesPreferences(arguments: arguments) && !arguments.contains {
             $0.hasSuffix("-selftest") || $0.hasPrefix("--sidebar-multi-") || $0.hasPrefix("--usb-snapshot-capture=") || $0 == "--autoplay"
-                || $0 == "--scroll-perf" || $0.hasPrefix("--ui-perf=") || $0.hasPrefix(AutoReflectSelfTest.argumentPrefix)
+                || $0 == "--scroll-perf" || $0.hasPrefix("--ui-perf=")
         }
     }
 
@@ -89,8 +89,7 @@ final class SettingsStore: @unchecked Sendable {
         }
     }
 
-    /// 곡 UUID 모음(무시한 제안 등). 자가 테스트 중에도 읽기·쓰기는 한다(화면 상태라서). 설정을 저장하지 않는 실행(`persist` 꺼짐)에서는
-    /// 이 실행 안에서만 기억하고 사용자 환경설정에는 쓰지 않는다(자동 저장 자가 테스트 전후로 환경설정이 같아야 한다, R18).
+    /// 곡 UUID 모음(무시한 제안 등). 설정을 저장하지 않는 실행에서는 이 인스턴스에 쓴 값만 읽는다.
     func strings(_ name: String) -> Set<String> { Set(storedValue(name) as? [String] ?? []) }
 
     func setStrings(_ name: String, _ value: Set<String>) {
@@ -102,6 +101,6 @@ final class SettingsStore: @unchecked Sendable {
     }
 
     private func storedValue(_ name: String) -> Any? {
-        lock.withLock { writtenValues[name] ?? defaults.object(forKey: name) }
+        lock.withLock { writtenValues[name] ?? (persist ? defaults.object(forKey: name) : nil) }
     }
 }

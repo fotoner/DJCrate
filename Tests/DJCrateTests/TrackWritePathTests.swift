@@ -409,6 +409,76 @@ struct TrackWritePathTests {
 
     // MARK: - 반영 확인
 
+    @Test func 기존곡_XML_파일과_확인_결과가_곡별_편집을_보존한다() async throws {
+        let fixture = try RekordboxFixture(), after = try RekordboxFixture()
+        var active = CueSpec(kind: 0, inMsec: 400)
+        active.activeLoop = 1
+        var colored = CueSpec(kind: 1, inMsec: 500)
+        colored.colorTableIndex = 3
+        let cues: [[CueSpec]] = [[], [], [], [active], [colored], [CueSpec(kind: 4, inMsec: 600)]]
+        let reasons = [String(ui: "자동 루프(ActiveLoop) 표시가 있는 큐가 있습니다. XML로는 이 표시를 옮길 수 없습니다"),
+                       String(ui: "색을 지정한 핫큐가 있습니다. rekordbox 색 번호와 XML 색의 대응을 확인하기 전이라 막아 둡니다"),
+                       String(ui: "종류를 모르는 큐(Kind 4)가 있습니다")]
+        var specs: [TrackSpec] = []
+        for (index, original) in cues.enumerated() {
+            var spec = TrackSpec(id: String(101 + index))
+            spec.cues = original
+            spec.title = "합성 XML \(index)"
+            spec.folderPath = fixture.audio.appending(path: "\(index).wav").path
+            if index < 2 { spec.analysisDataPath = "/PIONEER/USBANLZ/xml-\(index)/ANLZ0000.DAT" }
+            try fixture.add(spec)
+            specs.append(spec)
+            // 첫 두 곡의 큐는 같고 그리드만 다르다. 셋째 곡은 큐만 다르다.
+            if index < 3 { spec.cues = [CueSpec(kind: 0, inMsec: index < 2 ? 4000 : 6000)] }
+            try after.add(spec)
+        }
+        let store = await loadedStore(fixture)
+        for spec in specs {
+            saveDraft(cue(spec.uuid, time: 4), in: store)
+            store.draftChanged(trackUUID: spec.uuid, kind: .cue, exists: true)
+        }
+        let grids = specs.prefix(2).map { grid($0.uuid) }
+        for draft in grids {
+            saveDraft(draft, in: store)
+            store.draftChanged(trackUUID: draft.trackUUID, kind: .grid, exists: true)
+        }
+        writer.flush()
+        let xml = fixture.root.appending(path: "existing.xml")
+        let result = try store.exportReflection(rows: store.rows, to: xml)
+        #expect(Set(result.exported.map(\.uuid)) == Set(specs.prefix(3).map(\.uuid)))
+        #expect(Set(result.blocked.map(\.uuid)) == Set(specs.dropFirst(3).map(\.uuid)))
+        for (spec, reason) in zip(specs.dropFirst(3), reasons) {
+            #expect(result.blocked.first { $0.uuid == spec.uuid }?.blockers == [reason])
+        }
+        let document = try RekordboxXMLReader.read(url: xml)
+        #expect(Set(document.tracks.compactMap(\.path)) == Set(specs.prefix(3).map(\.folderPath)))
+        #expect(document.tracks.count == 3 && document.tracks.allSatisfy { $0.marks == [.init(kind: .memory, start: 4, name: "")] })
+        for spec in specs.prefix(2) {
+            #expect(document.tracks.first { $0.path == spec.folderPath }?.tempos == [GridSegment(start: 0, bpm: 120, firstBeatNumber: 3)])
+        }
+        #expect(document.lists.first?.entries == document.tracks.map(\.key))
+
+        // 새 사본 DB에 대응하는 분석 파일은 저장소가 읽는 합성 share에 둔다.
+        for (spec, startMs) in zip(specs.prefix(2), [0.0, 125.0]) {
+            let beats = AnlzBuilder.beats(bpm: 120, first: startMs, count: 30, firstNumber: 3)
+            try fixture.putAnalysis(for: spec, dat: AnlzBuilder.dat(beats: beats), ext: AnlzBuilder.ext(beats: beats))
+        }
+        await store.load(snapshot: after.database)
+        writer.flush()
+        #expect(store.reflectionBatch?.checks[specs[0].id]?.result == .matched)
+        let gridOnly = try #require(store.reflectionBatch?.checks[specs[1].id])
+        #expect(gridOnly.result == .mismatched)
+        #expect(gridOnly.problems == [String(ui: "그리드가 최대 \(125.0, specifier: "%.0f")ms 다릅니다")])
+        #expect(store.reflectionBatch?.checks[specs[2].id]?.result == .mismatched)
+        #expect(CueDraftStore.load(trackUUID: specs[0].uuid, directory: store.draftLocations.cue) == nil)
+        #expect(GridDraftStore.load(trackUUID: specs[0].uuid, directory: store.draftLocations.grid) == nil)
+        for spec in specs.dropFirst() {
+            #expect(CueDraftStore.load(trackUUID: spec.uuid, directory: store.draftLocations.cue)?.cues.first?.time == 4)
+        }
+        #expect(GridDraftStore.load(trackUUID: specs[1].uuid, directory: store.draftLocations.grid) == grids[1])
+        #expect(store.pendingUUIDs == Set(specs.dropFirst().map(\.uuid)))
+    }
+
     @Test func 반영_확인은_저장_실패_기록이_남은_곡의_대기_초안도_정리한다() async throws {
         let fixture = try RekordboxFixture()
         var spec = TrackSpec()

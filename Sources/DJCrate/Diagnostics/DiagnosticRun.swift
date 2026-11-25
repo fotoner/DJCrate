@@ -19,11 +19,26 @@ enum DiagnosticRun {
         return argument.hasSuffix("-selftest") || argument.contains("-capture") || argument.contains("-perf")
             || argument == "--autoplay" || argument.hasPrefix("--reflection-layout=")
             || argument.hasPrefix("--sidebar-multi-write=") || argument.hasPrefix("--edit-layout=")
-            || argument.hasPrefix(AutoReflectSelfTest.argumentPrefix)
+            || copySelfTestOptions.contains(optionName(argument)) || argument.hasPrefix(AutoReflectSelfTest.argumentPrefix)
     }
 
     /// 자동 저장 사본 자가 테스트 실행인지(두 빌드 모두). 옛 데이터 옮기기·창 위치 저장·포커스 가져오기를 하지 않는다
     static func isAutoReflectSelfTest(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
         AutoReflectSelfTest.isRequested(arguments: arguments)
+    }
+
+    static let copySelfTestOptions: Set<String> = ["--track-selftest", "--write-selftest", "--switch-selftest"]
+
+    static func optionName(_ argument: String) -> String {
+        String(argument.prefix { $0 != "=" })
+    }
+
+    static func isCopySelfTest(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        arguments.dropFirst().contains { copySelfTestOptions.contains(optionName($0)) }
+    }
+
+    /// 사본으로 쓰기나 덱 동작을 확인하는 실행에서는 설정·창 위치를 격리한다.
+    static func isolatesPreferences(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        isAutoReflectSelfTest(arguments: arguments) || isCopySelfTest(arguments: arguments)
     }
 }

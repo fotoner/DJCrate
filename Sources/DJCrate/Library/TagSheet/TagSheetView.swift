@@ -45,7 +45,7 @@ struct TagSheetView: NSViewRepresentable {
             }
             table.addTableColumn(tableColumn)
         }
-        table.autosaveName = SheetColumn.autosaveName
+        if !DiagnosticRun.isolatesPreferences() { table.autosaveName = SheetColumn.autosaveName }
         // 자가 테스트·측정처럼 설정을 저장하지 않는 실행은 칸 배치를 사용자 환경설정에 남기지 않는다(R18)
         table.autosaveTableColumns = SettingsStore.persists(arguments: ProcessInfo.processInfo.arguments)
         let scroll = NSScrollView()
