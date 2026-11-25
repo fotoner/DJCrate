@@ -120,6 +120,30 @@ struct TrackListProjectionTests {
         #expect(found("blue hour") == [["1", "2"]] && found("kim lee").isEmpty && found("밤의 드라이브") == [["3"]])
     }
 
+    /// 규칙은 `TrackSearchTests`가 본다(#376). 여기서는 곡 목록·중복 후보 검색이 곡 UUID로 편집 값을 얹는지만 본다.
+    @Test func 곡_목록_검색은_저장_대기_편집_값으로도_찾고_필터는_저장된_값으로만_거른다() {
+        let rows = [Self.row("1", title: "Alpha", rating: 5), Self.row("2", title: "Beta"), Self.row("3", title: "Gamma")]
+        let edits: [String: TrackSearch.DraftEdits] = ["uuid-1": [.title: "Omega"], "uuid-3": [.comment: "Omega 메모"]]
+        func ids(_ search: String, _ filter: TrackFilter = TrackFilter(), _ edits: [String: TrackSearch.DraftEdits] = edits) -> [String] {
+            TrackListProjection.filtered(rows, search: search, filter: filter, draftEdits: edits).map(\.track.id)
+        }
+        #expect(ids("omega") == ["1", "3"])
+        #expect(ids("omega", TrackFilter(minimumRating: 4)) == ["1"], "필터는 편집 값이 아니라 저장된 값으로 거른다")
+        #expect(ids("alpha") == ["1"] && ids("gamma") == ["3"], "저장된 값으로도 계속 찾는다")
+        #expect(ids("omega", TrackFilter(), [:]).isEmpty && ids("") == ["1", "2", "3"])
+    }
+
+    @Test func 중복_후보_검색은_편집_값으로_찾은_곡의_묶음을_남긴다() {
+        let rows = [Self.row("1", title: "Alpha"), Self.row("2", title: "Beta"), Self.row("3", title: "Gamma")]
+        let groups = [["1", "2"], ["3"]]
+        let byID = Self.index(rows)
+        func found(_ search: String, _ edits: [String: TrackSearch.DraftEdits]) -> [[String]] {
+            TrackListProjection.duplicateGroups(groups, members: { $0 }, search: search, rowsByID: byID, draftEdits: edits)
+        }
+        #expect(found("omega", ["uuid-2": [.title: "Omega"]]) == [["1", "2"]])
+        #expect(found("omega", [:]).isEmpty)
+    }
+
     @Test func 덱에_올릴_곡은_표_순서로_첫_곡이다() {
         let rows = [Self.row("1"), Self.row("2"), Self.row("3")]
         let byID = Self.index(rows)

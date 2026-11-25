@@ -120,17 +120,30 @@ extension LibraryStore {
     }
 
     func refreshFiltered() {
+        countFilterRefresh()
+        // 저장 대기 중인 태그 편집도 검색에 걸린다(#376). 검색어에 낱말이 없으면 곡마다 보지 않는다
+        searchedDraftEdits = isSearching ? TrackSearch.edits(of: tagDrafts) : [:]
         defer { recountHiddenStreamingMatches() }
         if sidebar == .duplicates {
             // 검색한 곡의 비교 상대도 남겨 묶음이 한 곡으로 잘리지 않게 한다.
             let groups = TrackListProjection.duplicateGroups(duplicateGroups, members: { $0.tracks.map(\.id) },
-                                                             search: search, rowsByID: rowsByID)
+                                                             search: search, rowsByID: rowsByID, draftEdits: searchedDraftEdits)
             let visible = Set(groups.flatMap { $0.tracks.map(\.id) })
             showRows(sortedBase.filter { visible.contains($0.id) }, duplicateGroups: groups)
             return
         }
-        showRows(TrackListProjection.filtered(sortedBase, search: search, filter: filter))
+        showRows(TrackListProjection.filtered(sortedBase, search: search, filter: filter, draftEdits: searchedDraftEdits))
     }
+
+    /// 태그 초안이 바뀌었다: 검색 중이고 검색 칸의 저장 대기 값이 달라졌을 때만 목록을 다시 거른다(#376).
+    /// 검색어가 없으면 아무것도 하지 않고, 평점·연도처럼 검색이 보지 않는 칸의 편집도 다시 거르지 않는다.
+    func tagDraftsChangedForSearch() {
+        guard isSearching, TrackSearch.edits(of: tagDrafts) != searchedDraftEdits else { return }
+        refreshFiltered()
+    }
+
+    /// 검색어에 낱말이 있는지(공백뿐인 검색어는 모든 곡이 맞는다)
+    private var isSearching: Bool { !TrackSearch.Query(search).isEmpty }
 
     /// 검색이 거를 곡 줄이 있는 화면인지(#338). 머리 줄 검색칸과 편집 › 찾기(⌘F)가 같은 판정을 쓴다.
     /// USB 쓰기 대기는 곡 줄이 아니라 그 볼륨의 쓰기 대기 표라 검색이 걸리지 않는다

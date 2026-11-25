@@ -24,7 +24,9 @@ extension LibraryStore {
             artworkChangeCount += 1
         }
         if !result.clearedTags.isEmpty {
-            for uuid in result.clearedTags { tagDrafts[uuid] = nil }
+            var remaining = tagDrafts
+            for uuid in result.clearedTags { remaining.removeValue(forKey: uuid) }
+            tagDrafts = remaining
             rememberTagSaves(result.clearedTags.map { TagDraft(trackUUID: $0, base: TagFields()) })
             tagRevision += 1
         }

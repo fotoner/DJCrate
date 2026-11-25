@@ -111,4 +111,71 @@ struct TrackSearchTests {
         #expect(row.searchKey == TrackSearch.key(for: track))
         #expect(TrackSearch.Query("blue 밤").matches(key: row.searchKey))
     }
+
+    // MARK: 저장 대기 중인 태그 편집(#376)
+
+    static func draft(of track: Track, _ edit: (inout TagFields) -> Void) -> TagDraft {
+        var draft = TagDraft(track: track)
+        edit(&draft.fields)
+        return draft
+    }
+
+    static func found(_ query: String, in track: Track, edits: TrackSearch.DraftEdits) -> Bool {
+        TrackSearch.Query(query).matches(row: TrackRow(track: track, cues: [], playCount: 0), edits: edits)
+    }
+
+    @Test func 초안이_고친_검색_칸만_편집_값으로_바뀌고_나머지는_곡의_값이다() {
+        let track = Self.track(title: "Old", artist: "Kim", album: "Blue", albumArtist: "Lee", genre: "House",
+                               composer: "Satie", comment: "memo", path: "/music/file.mp3")
+        let draft = Self.draft(of: track) { $0.title = "New"; $0.comment = "" }
+        let edits = TrackSearch.edits(of: draft)
+        #expect(edits == [.title: "New", .comment: ""])
+        let key = TrackSearch.key(for: track, edits: edits)
+        // 고친 칸은 편집 값, 비운 칸은 빈 값, 고치지 않은 칸·파일 이름은 곡의 값이다
+        #expect(TrackSearch.Query("new kim blue lee house satie file.mp3").matches(key: key))
+        #expect(!TrackSearch.Query("old").matches(key: key) && !TrackSearch.Query("memo").matches(key: key))
+        #expect(TrackSearch.key(for: track, edits: [:]) == TrackSearch.key(for: track))
+    }
+
+    @Test func 검색이_보지_않는_칸만_고친_초안은_편집_값이_없다() {
+        let track = Self.track(title: "Old")
+        let draft = Self.draft(of: track) { $0.year = "1999"; $0.rating = "3"; $0.trackNumber = "7"; $0.musicalKey = "8A"; $0.color = "2" }
+        #expect(TrackSearch.edits(of: draft).isEmpty)
+        #expect(TrackSearch.edits(of: ["u1": draft]).isEmpty, "고친 검색 칸이 없는 초안은 사전에 넣지 않는다")
+        // 고친 곡만 든다
+        let titled = Self.draft(of: track) { $0.title = "New" }
+        #expect(TrackSearch.edits(of: ["u1": titled, "u2": draft]) == ["u1": [.title: "New"]])
+    }
+
+    @Test func 원래_값으로_되돌린_칸은_고친_것으로_보지_않는다() {
+        let track = Self.track(title: "Old", comment: "memo")
+        var draft = Self.draft(of: track) { $0.title = "New" }
+        draft.fields.title = "Old"
+        #expect(TrackSearch.edits(of: draft).isEmpty)
+    }
+
+    @Test func 저장된_값_전체나_편집_값_전체로_맞고_둘의_낱말은_섞지_않는다() {
+        let track = Self.track(title: "Alpha", artist: "Kim", comment: "OP 1")
+        let edits: TrackSearch.DraftEdits = [.title: "Omega", .comment: "정리"]
+        #expect(Self.found("omega 정리 kim", in: track, edits: edits), "화면에 보이는 값")
+        #expect(Self.found("alpha op kim", in: track, edits: edits), "저장된 값: 편집으로 곡이 목록에서 빠지지 않는다")
+        #expect(!Self.found("alpha omega", in: track, edits: edits), "저장된 값과 편집 값의 낱말을 섞지 않는다")
+        #expect(!Self.found("omega op", in: track, edits: edits))
+        #expect(!Self.found("omega", in: track, edits: [:]) && Self.found("alpha", in: track, edits: [:]))
+        #expect(Self.found("  ", in: track, edits: edits), "낱말이 없으면 모두 맞는다")
+    }
+
+    @Test func 암호화된_Spotify_곡의_가려진_칸은_편집_값도_찾지_않는다() {
+        let track = Self.track(title: "$A7:v1:암호", artist: "$A7:v1:가수", comment: "남는 코멘트", path: "spotify:track:abc")
+        let edits: TrackSearch.DraftEdits = [.title: "새제목", .artist: "새가수", .comment: "새코멘트"]
+        #expect(!Self.found("새제목", in: track, edits: edits) && !Self.found("새가수", in: track, edits: edits))
+        #expect(Self.found("새코멘트", in: track, edits: edits))
+    }
+
+    @Test func 편집_값도_NFC_소문자로_맞춰_찾는다() {
+        let track = Self.track(title: "곡")
+        let edits: TrackSearch.DraftEdits = [.title: "NEW 한글 제목".decomposedStringWithCanonicalMapping]
+        #expect(Self.found("new 한글", in: track, edits: edits))
+        #expect(Self.found("한글 제목".decomposedStringWithCanonicalMapping, in: track, edits: edits))
+    }
 }

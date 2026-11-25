@@ -67,18 +67,27 @@ public enum TrackListProjection {
 
     /// 검색·필터 거르기. 정렬한 순서를 그대로 둔다. 거를 것이 없으면 받은 배열을 그대로 돌려준다.
     /// 검색 규칙(칸·낱말 AND·NFC)은 `TrackSearch`가, 필터 조건(평점·곡 색·BPM·키·장르)은 `TrackFilter`가 하나로 정한다.
-    public static func filtered(_ sorted: [TrackRow], search: String, filter: TrackFilter) -> [TrackRow] {
+    /// - Parameter draftEdits: 곡 UUID별 저장 대기 중인 검색 칸 편집(#376, `TrackSearch.edits(of:)`). 검색은 저장된 값과 편집 값 둘 다로 찾는다. 필터는 저장된 값으로만 거른다.
+    public static func filtered(_ sorted: [TrackRow], search: String, filter: TrackFilter,
+                                draftEdits: [String: TrackSearch.DraftEdits] = [:]) -> [TrackRow] {
         let query = TrackSearch.Query(search)
         guard !query.isEmpty || !filter.isEmpty else { return sorted }
-        return sorted.filter { row in query.matches(key: row.searchKey) && filter.matches(row) }
+        return sorted.filter { row in
+            query.matches(row: row, edits: draftEdits.isEmpty ? nil : draftEdits[row.track.uuid]) && filter.matches(row)
+        }
     }
 
     /// 중복 후보 검색: 검색한 곡이 든 묶음을 통째로 남긴다(비교 상대가 잘리지 않게).
     public static func duplicateGroups<Group>(_ groups: [Group], members: (Group) -> [String], search: String,
-                                              rowsByID: [TrackRow.ID: TrackRow]) -> [Group] {
+                                              rowsByID: [TrackRow.ID: TrackRow],
+                                              draftEdits: [String: TrackSearch.DraftEdits] = [:]) -> [Group] {
         let query = TrackSearch.Query(search)
         guard !query.isEmpty else { return groups }
-        return groups.filter { group in members(group).contains { rowsByID[$0].map { query.matches(key: $0.searchKey) } == true } }
+        return groups.filter { group in
+            members(group).contains { id in
+                rowsByID[id].map { query.matches(row: $0, edits: draftEdits[$0.track.uuid]) } == true
+            }
+        }
     }
 }
 

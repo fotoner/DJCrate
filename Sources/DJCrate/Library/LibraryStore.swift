@@ -265,6 +265,11 @@ final class LibraryStore {
     @ObservationIgnored private(set) lazy var history = HistoryStore(library: self, archive: useCases.histories)
 
     var search = "" { didSet { if search != oldValue { refreshFiltered() } } }
+    /// 마지막으로 거를 때 본 저장 대기 검색 값(곡 UUID별, #376). 태그 초안이 바뀌었을 때 검색 결과가 달라질 수 있는지 가른다(검색어가 있을 때만 갱신한다)
+    @ObservationIgnored var searchedDraftEdits: [String: TrackSearch.DraftEdits] = [:]
+    /// 검색·필터로 목록을 다시 거른 횟수(시험이 초안 변경마다 목록을 다시 거르지 않는지 센다)
+    @ObservationIgnored private(set) var filterRefreshCount = 0
+    func countFilterRefresh() { filterRefreshCount += 1 }
     var sortOrder = [KeyPathComparator(\TrackRow.importedOn, order: .reverse)] {
         didSet { if !suppressRefresh { refreshBase() } }
     }
@@ -289,7 +294,7 @@ final class LibraryStore {
     private(set) var deckTrackID: String?
 
     /// 초안 상태(메모리). 표의 ✎ 표시는 디스크를 다시 읽지 않고 이것으로 계산한다.
-    var tagDrafts: [String: TagDraft] = [:] { didSet { pendingInputsChanged() } }
+    var tagDrafts: [String: TagDraft] = [:] { didSet { pendingInputsChanged(); tagDraftsChangedForSearch() } }
     /// 태그 편집 조각(인스펙터·태그 시트·목록 칸·덱 제안 줄). 위 태그 초안을 바꾼다. 조각이 이 핵심을 붙들어야 해서 처음 쓸 때 만든다(관찰하지 않는다).
     @ObservationIgnored private(set) lazy var tags = TagEditStore(library: self)
     /// 그림 초안(곡 UUID별, 그림 바이트 없이). 그림 사본은 `ArtworkDraftStore`에 있다(#66).
@@ -742,7 +747,7 @@ final class LibraryStore {
     func recountHiddenStreamingMatches() {
         let conditioned = !TrackSearch.Query(search).isEmpty || isAttributeFiltered
         let matching = displayRows.isEmpty && conditioned && !hiddenStreamingRows.isEmpty
-            ? TrackListProjection.filtered(hiddenStreamingRows, search: search, filter: filter).count : 0
+            ? TrackListProjection.filtered(hiddenStreamingRows, search: search, filter: filter, draftEdits: searchedDraftEdits).count : 0
         if streamingHiddenMatching != matching { streamingHiddenMatching = matching }
     }
 

@@ -2,6 +2,7 @@ import Foundation
 
 /// 곡 검색 규칙 하나(#350). 곡 목록·중복 후보 검색·CLI `djc search`가 같이 쓴다.
 /// 검색 키는 곡 하나당 한 번 만들어 두고(`TrackRow`는 만들 때), 검색어 쪽만 입력마다 새로 계산한다.
+/// 저장 대기 중인 태그 편집이 있는 곡만 편집 값을 얹은 키를 검색 때 만든다(#376).
 public enum TrackSearch {
     /// 키에서 칸을 가르는 글자. 검색어에서는 낱말 경계로 쳐서 낱말 하나가 칸 사이에 걸쳐 맞지 않는다.
     private static let fieldSeparator = "\u{1F}"
@@ -16,12 +17,37 @@ public enum TrackSearch {
     /// 검색 키: 제목·아티스트·앨범·앨범 아티스트·작곡가·코멘트·장르·파일 이름.
     /// rekordbox가 암호화해 둔 Spotify 곡의 제목·아티스트·앨범·앨범 아티스트는 뺀다(`TrackRow`가 화면에 비우는 칸과 같다).
     /// 파일 이름은 폴더를 뺀 이름이다. 스트리밍 곡은 파일이 없어 뺀다.
-    public static func key(for track: Track) -> String {
+    public static func key(for track: Track) -> String { key(for: track, edits: [:]) }
+
+    /// 저장 대기 중인 태그 편집(`DraftEdits`)을 얹은 검색 키(#376). 고친 칸만 편집 값으로 바꾸고 나머지(고치지 않은 칸·파일 이름)는 곡의 값이다.
+    public static func key(for track: Track, edits: DraftEdits) -> String {
         let encrypted = track.title.hasPrefix("$A7:")
-        let fields = [encrypted ? "" : track.title, encrypted ? "" : (track.artist ?? ""), encrypted ? "" : (track.album ?? ""),
-                      encrypted ? "" : (track.albumArtist ?? ""), track.composer ?? "", track.comment, track.genre ?? "",
+        func field(_ key: TagFields.Key, _ stored: String?) -> String { edits[key] ?? stored ?? "" }
+        let fields = [encrypted ? "" : field(.title, track.title), encrypted ? "" : field(.artist, track.artist),
+                      encrypted ? "" : field(.album, track.album), encrypted ? "" : field(.albumArtist, track.albumArtist),
+                      field(.composer, track.composer), field(.comment, track.comment), field(.genre, track.genre),
                       fileName(of: track)]
         return normalized(fields.joined(separator: fieldSeparator))
+    }
+
+    /// 검색 키에 드는 태그 칸. 초안이 이 칸을 고쳤을 때만 검색 키가 달라진다.
+    static let searchedDraftKeys: [TagFields.Key] = [.title, .artist, .album, .albumArtist, .composer, .comment, .genre]
+
+    /// 초안이 고친 검색 칸의 값(저장 대기 값). 고친 칸이 없으면 빈 사전이다.
+    public typealias DraftEdits = [TagFields.Key: String]
+
+    public static func edits(of draft: TagDraft) -> DraftEdits {
+        var edits: DraftEdits = [:]
+        for key in searchedDraftKeys where draft.base[key] != draft.fields[key] { edits[key] = draft.fields[key] }
+        return edits
+    }
+
+    /// 곡 UUID별 저장 대기 검색 값. 검색 칸을 고친 초안만 든다(그 곡만 검색 키를 다시 만든다).
+    public static func edits(of drafts: [String: TagDraft]) -> [String: DraftEdits] {
+        drafts.compactMapValues { draft in
+            let edits = edits(of: draft)
+            return edits.isEmpty ? nil : edits
+        }
     }
 
     /// 폴더를 뺀 파일 이름(확장자 포함). 스트리밍 곡은 빈 글자.
@@ -49,6 +75,12 @@ public enum TrackSearch {
 
         public func matches(_ track: Track) -> Bool {
             isEmpty || matches(key: TrackSearch.key(for: track))
+        }
+
+        /// 표의 줄이 맞는지(#376). 저장된 값 전체로 맞거나, 저장 대기 중인 편집을 얹은 값 전체로 맞으면 맞는다(둘의 낱말을 섞지 않는다).
+        /// 편집으로 곡이 목록에서 빠지지 않게 저장된 값도 계속 본다: 목록 구성은 정렬·필터처럼 rekordbox 값이 정한다.
+        public func matches(row: TrackRow, edits: DraftEdits?) -> Bool {
+            isEmpty || matches(key: row.searchKey) || edits.map { matches(key: TrackSearch.key(for: row.track, edits: $0)) } == true
         }
 
         private static let boundaries = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: TrackSearch.fieldSeparator))
