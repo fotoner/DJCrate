@@ -46,6 +46,25 @@ struct SheetEditingTests {
         #expect(coordinator.rows.map { store.tags.tagDraft(for: $0).fields } == tagsAfterLoad)
     }
 
+    @Test func 빈_앨범_칸의_Option_문자도_편집기에서_그대로_이어진다() throws {
+        let h = SheetEditingHarness()
+        defer { h.window.close() }
+        let album = try #require(SheetColumn.all.firstIndex { $0.key == .album })
+        h.coordinator.select(.init(row: 0, column: album), extend: false)
+        let first = try h.key("a", code: 0, modifiers: .option)
+
+        h.table.keyDown(with: first)
+        let editor = try #require(h.window.firstResponder as? NSTextView)
+        for (character, code, flags): (String, UInt16, NSEvent.ModifierFlags) in [
+            ("b", 11, .option), ("c", 8, .option), ("3", 20, []), ("3", 20, []), ("9", 25, [])
+        ] {
+            editor.keyDown(with: try h.key(character, code: code, modifiers: flags))
+        }
+        #expect(editor.string == "abc339")
+        h.coordinator.finishEditing(commit: true, then: nil)
+        #expect(h.store.tags.tagCell(h.coordinator.rows[0], .album) == "abc339")
+    }
+
     @Test(arguments: ["더블클릭", "Return", "타이핑"])
     func 편집을_시작해도_덱은_유지하고_Esc는_취소한다(_ entry: String) throws {
         let h = SheetEditingHarness()
@@ -234,8 +253,8 @@ private final class SheetEditingHarness {
         return try #require(cell.editingField)
     }
 
-    func key(_ characters: String, code: UInt16) throws -> NSEvent {
-        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+    func key(_ characters: String, code: UInt16, modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
                                      windowNumber: window.windowNumber, context: nil, characters: characters,
                                      charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
     }

@@ -109,9 +109,9 @@ final class SheetTableView: NSTableView, NSViewToolTipOwner {
         case .pageUp: coordinator.move(rows: -20, columns: 0, extend: shift)
         case .pageDown: coordinator.move(rows: 20, columns: 0, extend: shift)
         default:
-            // 글자를 치면 그 글자로 편집을 시작한다(엑셀과 같다).
+            // 한국어 배열의 Option+영문처럼 Option으로 만든 글자도 편집기에 넘긴다.
             if let characters = event.characters, !characters.isEmpty,
-               event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+               event.modifierFlags.intersection([.command, .control]).isEmpty,
                characters.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
                 // 글자를 직접 넣으면 한글 입력기가 조합하지 못한다(ㅎ+ㅏ가 따로 들어감).
                 // 빈 칸으로 편집을 시작하고 같은 키 이벤트를 편집기에 넘겨 입력기가 처리하게 한다.
