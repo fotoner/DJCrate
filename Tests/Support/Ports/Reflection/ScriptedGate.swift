@@ -307,7 +307,12 @@ public final class ScriptedJournal: Sendable {
     /// 실제 관문의 쓰기 잠금을 흉내 낸다(기록을 다루는 일을 차례로 세운다)
     private let operation = NSLock()
 
-    public init(_ verdict: RekordboxJournalVerdict) { state = Mutex(verdict) }
+    private let onContention: @Sendable () -> Void
+
+    public init(_ verdict: RekordboxJournalVerdict, onContention: @escaping @Sendable () -> Void = {}) {
+        state = Mutex(verdict)
+        self.onContention = onContention
+    }
 
     public var verdict: RekordboxJournalVerdict { state.withLock { $0 } }
     /// 중단 기록이 남아 있는지
@@ -319,13 +324,9 @@ public final class ScriptedJournal: Sendable {
     /// 바깥(다른 프로세스)이 기록을 남기거나 지웠다
     public func set(_ verdict: RekordboxJournalVerdict) { state.withLock { $0 = verdict } }
 
-    /// 작업 잠금을 기다린 적이 있는 호출 수(겹친 호출이 잠금 경합에 닿았는지 시험이 본다)
-    public var contended: Int { waits.withLock { $0 } }
-    private let waits = Mutex(0)
-
     func serialized<T>(_ body: () throws -> T) rethrows -> T {
         if !operation.try() {
-            waits.withLock { $0 += 1 }
+            onContention()
             operation.lock()
         }
         defer { operation.unlock() }

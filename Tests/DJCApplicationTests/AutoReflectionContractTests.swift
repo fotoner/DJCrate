@@ -148,12 +148,13 @@ struct AutoReflectionContractTests {
     @Test func 이대로_둔다를_겹쳐_불러도_넘긴_일은_한_번이다() async throws {
         let finding = RekordboxJournalFinding(journal: RekordboxWriteJournal(operationID: "op-1", kind: .counter, entry: .drafts),
                                               changedSince: false, database: RekordboxFileStamp(size: 10, modifiedNanoseconds: 7))
-        let journal = ScriptedJournal(.interrupted(finding))
+        let contended = DispatchSemaphore(value: 0)
+        let journal = ScriptedJournal(.interrupted(finding), onContention: { contended.signal() })
         let calls = GateCalls()
         let gate = RekordboxWriteGate.scripted(GateScript(), calls: calls, journal: journal)
         let target = RekordboxWriteTarget.copy(database: URL(filePath: "/copy/master.db"), shareRoot: nil)
         try await journalKeepOverlapContract(gate, target: target, request: finding.request, journalExists: { journal.exists },
-                                             secondContended: { journal.contended >= 1 })
+                                             secondContended: contended)
         #expect(calls.value.keptJournals == ["op-1"])
     }
 

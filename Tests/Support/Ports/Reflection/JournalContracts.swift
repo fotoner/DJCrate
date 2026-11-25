@@ -50,13 +50,13 @@ public func journalKeepContract(_ gate: RekordboxWriteGate, target: RekordboxWri
 
 /// "이대로 둔다"를 겹쳐 부를 때의 계약(R11): 재확인·넘긴 일·기록 삭제가 한 쓰기 잠금 안에서 일어나, 같은 요청 둘이 겹쳐도
 /// 넘긴 일은 한 번이고 하나는 `.kept`, 다른 하나는 기록이 사라진 뒤라 `.nothing`이다. 대상에 `request`와 맞는 중단 기록이 하나 남아 있어야 한다.
-/// 첫 호출이 넘긴 일 안에서 멈춰 있는 동안 둘째 호출을 띄우고, `secondContended`가 참이 된 뒤(둘째가 쓰기 잠금을 기다린다) 첫째를 풀어 준다.
+/// 첫 호출이 넘긴 일 안에서 멈춰 있는 동안 둘째 호출을 띄우고, 둘째가 쓰기 잠금 경합을 알린 뒤에 첫째를 풀어 준다.
 /// 신호는 잠금 앞이 아니라 잠금 경합에서 와야 한다(잠금 앞 신호면 잠금이 빠져도 통과할 수 있다). 기다림마다 `timeout`을 두고,
-/// 넘기면 첫째를 풀어 준 뒤 실패로 적는다(시험이 멈추지 않게). 두 호출은 협력 풀 밖(GCD)에서 부른다.
+/// 넘기면 첫째를 풀어 준 뒤 실패로 적는다. 한 호출이 막힌 동안 다른 호출도 실행되도록 각자 전용 스레드에서 부른다.
 public func journalKeepOverlapContract(_ gate: RekordboxWriteGate, target: RekordboxWriteTarget, request: RekordboxJournalRequest,
                                        journalExists: @escaping @Sendable () throws -> Bool,
-                                       secondContended: @escaping @Sendable () -> Bool,
-                                       timeout: Duration = .seconds(5)) async throws {
+                                       secondContended: DispatchSemaphore,
+                                       timeout: Duration = .seconds(30)) async throws {
     final class Applied: Sendable {
         let count = Mutex(0)
         var value: Int { count.withLock { $0 } }
@@ -65,7 +65,7 @@ public func journalKeepOverlapContract(_ gate: RekordboxWriteGate, target: Rekor
     let inApply = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
     func keep(blocking: Bool) async -> Result<RekordboxJournalKeep, any Error> {
         await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
+            Thread.detachNewThread {
                 continuation.resume(returning: Result {
                     try gate.keepJournal(target, request) {
                         applied.count.withLock { $0 += 1 }
@@ -78,20 +78,22 @@ public func journalKeepOverlapContract(_ gate: RekordboxWriteGate, target: Rekor
         }
     }
     let seconds = Double(timeout.components.seconds) + Double(timeout.components.attoseconds) / 1e18
-    async let first = keep(blocking: true)
-    let entered = await withCheckedContinuation { continuation in
-        DispatchQueue.global().async { continuation.resume(returning: inApply.wait(timeout: .now() + seconds) == .success) }
+    func signalled(_ semaphore: DispatchSemaphore) async -> Bool {
+        await withCheckedContinuation { continuation in
+            Thread.detachNewThread {
+                continuation.resume(returning: semaphore.wait(timeout: .now() + seconds) == .success)
+            }
+        }
     }
-    guard entered else {
+    async let first = keep(blocking: true)
+    guard await signalled(inApply) else {
         // 첫째가 넘긴 일 전에 끝났거나 던졌다: 결과를 그대로 보고한다
         release.signal()
         Issue.record("첫 호출이 넘긴 일에 들어가지 않았다: \(await first)")
         return
     }
     async let second = keep(blocking: false)
-    let deadline = ContinuousClock.now + timeout
-    while !secondContended(), ContinuousClock.now < deadline { await Task.yield() }
-    guard secondContended() else {
+    guard await signalled(secondContended) else {
         release.signal()
         Issue.record("둘째 호출이 시간 안에 쓰기 잠금 경합에 닿지 않았다: \(await second)")
         _ = await first

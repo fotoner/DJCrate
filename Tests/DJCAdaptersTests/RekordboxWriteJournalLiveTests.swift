@@ -129,8 +129,8 @@ struct RekordboxWriteJournalLiveTests {
     @Test func 겹친_이대로_두기는_한_잠금_안에서_한_번만_한다() async throws {
         let fixture = try RekordboxFixture()
         try interruptedWrite(fixture)
-        let contended = Mutex(false)
-        let gate = RekordboxWriteGate.live(guard: Self.copyGuard(locks: RekordboxWriteLocks(contended: { _ in contended.withLock { $0 = true } })))
+        let contended = DispatchSemaphore(value: 0)
+        let gate = RekordboxWriteGate.live(guard: Self.copyGuard(locks: RekordboxWriteLocks(contended: { _ in contended.signal() })))
         guard case let .interrupted(finding) = try gate.journal(target(fixture), nil) else {
             Issue.record("중단 판정이 아님")
             return
@@ -138,7 +138,7 @@ struct RekordboxWriteJournalLiveTests {
         let file = try journalFile(fixture)
         try await journalKeepOverlapContract(gate, target: target(fixture), request: finding.request,
                                              journalExists: { FileManager.default.fileExists(atPath: file.path) },
-                                             secondContended: { contended.withLock { $0 } })
+                                             secondContended: contended)
     }
 
     // MARK: 자동 저장 묶음(R7·R9)
