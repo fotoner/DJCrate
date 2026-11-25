@@ -6,10 +6,15 @@ import SwiftUI
 @MainActor
 final class AppleMusicImportWindow: NSObject, NSWindowDelegate {
     private(set) var window: NSWindow?
-    private var model: AppleMusicImportModel?
+    private(set) var model: AppleMusicImportModel?
 
     func open(store: LibraryStore) {
-        if let window, window.isVisible { window.makeKeyAndOrderFront(nil); return }
+        // 최소화한 창은 isVisible이 false라 닫은 창과 같아 보인다. 새로 만들지 않고 그 창을 되살린다(#378). 닫은 창은 새 창·새 모델로 연다.
+        if let window, window.isVisible || window.isMiniaturized {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
         let model = AppleMusicImportModel(staging: store.staging, appleMusic: store.useCases.appleMusic,
                                           openGuide: { [weak store] in store?.showIntegrationGuide?($0) })
         let window = NSWindow(contentViewController: NSHostingController(rootView: AppleMusicImportView(model: model)))
