@@ -45,7 +45,7 @@ public enum LinkCueEditResult: Equatable, Sendable {
 }
 
 public extension CueDraft {
-    /// CDJ가 보낸 큐 저장·삭제를 이 초안에 옮긴다. 덱의 MEMORY·핫큐·DELETE와 같은 규칙을 쓴다(메모리 큐는 ±30ms 안이면 같은 큐).
+    /// CDJ가 보낸 큐 저장·삭제를 이 초안에 옮긴다. 메모리 큐는 시작 ±30ms에서 점·루프를 가리고, 루프는 끝 시각과 프레임 환산값을 차례로 확인한다.
     /// 핫큐는 그 칸의 큐를 바꾸고, 있던 큐의 ID·rekordbox 큐 ID를 이어받는다(rekordbox에는 고친 큐로 쓴다).
     /// - Parameter newID: 새 큐의 ID(부르는 쪽이 준다)
     mutating func apply(_ edit: LinkCueEdit, newID: () -> UUID) -> LinkCueEditResult {
@@ -54,7 +54,8 @@ public extension CueDraft {
         let loop = edit.loopEnd.map { EditableCue.Loop(end: $0) }
         switch (kind, edit.deleted) {
         case (.memory, true):
-            guard let cue = memoryCue(near: [edit.time], closestTo: edit.time) else { return .unchanged }
+            let matches = matchingMemory(edit)
+            guard matches.count == 1, let cue = matches.first else { return .unchanged }
             remove(cue.id)
             return .applied
         case let (.hot(slot), true):
@@ -70,17 +71,27 @@ public extension CueDraft {
             place(cue)
             return .applied
         case (.memory, false):
-            switch addMemory(at: edit.time, loop: loop, newID: newID) {
-            case .limitReached: return .memoryLimit
-            case .existing: return .unchanged
-            case let .added(id):
-                if !edit.comment.isEmpty, var cue = cue(id) {
-                    cue.name = edit.comment
-                    place(cue)
-                }
-                if edit.kind == 4, cue(id)?.loop?.active == false { toggleActiveLoop(id) }
-                return .applied
-            }
+            guard matchingMemory(edit).isEmpty else { return .unchanged }
+            guard memoryCount < Self.memoryLimit else { return .memoryLimit }
+            let cue = EditableCue(id: newID(), kind: .memory, time: edit.time, name: edit.comment, loop: loop)
+            place(cue)
+            if edit.kind == 4, loop != nil { toggleActiveLoop(cue.id) }
+            return .applied
+        }
+    }
+
+    private func matchingMemory(_ edit: LinkCueEdit) -> [EditableCue] {
+        let end = edit.outMs.flatMap { $0 > edit.inMs ? Double($0) : nil }
+        func distance(_ cue: EditableCue) -> Double { abs((cue.time * 1000).rounded() - Double(edit.inMs)) }
+        let nearby = cues.filter { $0.kind == .memory && distance($0) <= 30 && ($0.loop != nil) == (end != nil) }
+        let exact = nearby.filter { $0.loop.map { ($0.end * 1000).rounded() } == end }
+        if let closest = exact.map(distance).min() { return exact.filter { distance($0) == closest } }
+        guard let end else { return [] }
+        return nearby.filter { cue in
+            guard let loop = cue.loop else { return false }
+            // 75·150 Hz 끝 프레임은 포함 끝이다. DJLinkKit이 150 Hz 한 칸을 더한 뒤 ms로 올림한다.
+            let frame = floor((loop.end * 1000).rounded() * 3 / 20)
+            return ceil((frame + 1) * 20 / 3) == end || ceil((floor(frame / 2) * 2 + 1) * 20 / 3) == end
         }
     }
 }

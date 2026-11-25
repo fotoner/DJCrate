@@ -117,10 +117,10 @@ extension LibraryStore {
     /// 쓰는 동안은 잠겨 있고 되돌리기 목록도 비어 있어 되돌리기 단위로 남기지 않는다.
     func replaceTagDrafts(_ drafts: [TagDraft]) {
         guard !drafts.isEmpty else { return }
-        for draft in drafts {
-            tagDrafts[draft.trackUUID] = draft.hasChanges ? draft : nil
-            updateEdited(draft.trackUUID)
-        }
+        var updated = tagDrafts
+        for draft in drafts { updated[draft.trackUUID] = draft.hasChanges ? draft : nil }
+        tagDrafts = updated
+        for draft in drafts { updateEdited(draft.trackUUID) }
         rememberTagSaves(drafts)
         tagRevision += 1
         if case .pending = sidebar { refreshBase() }

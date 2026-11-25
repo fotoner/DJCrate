@@ -1,4 +1,4 @@
-import DJCApplication
+@testable import DJCApplication
 import DJCDomain
 import DJCTestKit
 import Foundation
@@ -94,21 +94,25 @@ struct UsbSyncFlowTests {
         let sync = await opened(world)
         #expect(world.box.preferences.saves.isEmpty, "여는 동안은 저장하지 않는다")
         sync.toggle("11")
+        let first = sync.selection
         sync.toggle("11")
+        let second = sync.selection
         sync.toggle("10")
         // 저장은 뒤에서 누른 차례로 한다(앞선 저장이 나중에 남지 않는다)
-        try await waitUntil { world.box.preferences.saves.count == 3 }
+        let lastSave = try #require(sync.pendingPreferenceSave)
+        #expect(await lastSave.value)
         let saved = world.box.preferences.saves
+        #expect(saved.map(\.selection) == [first, second, sync.selection])
         #expect(saved.last?.selection == sync.selection && sync.selection.selectedIDs.isEmpty)
         #expect(saved.allSatisfy { $0.localDBID == UsbSyncWorld.localDBID && $0.volumeKey == "SYNC" && $0.nativeSelectionFingerprint == "native-1" })
     }
 
-    @Test func 설정_폴더가_없으면_저장하지_않는다() async throws {
+    @Test func 설정_폴더가_없으면_저장하지_않는다() async {
         let world = world()
         let sync = session(world)
         await sync.load(world.ports(preferences: false))
         sync.toggle("11")
-        try await Task.sleep(for: .milliseconds(20))
+        #expect(sync.pendingPreferenceSave == nil)
         #expect(world.box.preferences.saves.isEmpty && world.problem == nil)
     }
 
@@ -162,7 +166,7 @@ struct UsbSyncFlowTests {
         #expect(job.database == UsbSyncWorld.copy && job.share == UsbSyncWorld.share, "로컬은 빌린 사본·화면의 share")
         #expect(job.syncSourceContext?.catalogRevision == 1 && job.syncSourceContext?.snapshot?.provenance == UsbSyncWorld.provenance)
         #expect(sync.state.usbSelection == sync.selection && !sync.state.isSyncing)
-        try await waitUntil { !world.box.preferences.saves.isEmpty }
+        #expect(!world.box.preferences.saves.isEmpty)
     }
 
     @Test func 이_계획이_아닌_쓰기_대기_초안이_있으면_새로_계획하지_않는다() async {
@@ -285,10 +289,4 @@ struct UsbSyncFlowTests {
         #expect(world.prompts.isEmpty && !world.calls.contains("import"))
     }
 
-    // MARK: - 도우미
-
-    func waitUntil(_ condition: @MainActor () -> Bool) async throws {
-        for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(5)) }
-        #expect(condition())
-    }
 }

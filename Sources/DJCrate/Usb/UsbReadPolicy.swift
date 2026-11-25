@@ -7,12 +7,14 @@ enum UsbReadPolicy: Equatable, Sendable {
     /// 자가 테스트·시험 실행: 디스크 이미지 볼륨만. 그 밖의 볼륨은 사이드바에 이름도 보이지 않는다
     case diskImagesOnly
 
-    /// DEBUG 빌드에서 `DJC_HOME`이 비어 있지 않거나(임시 폴더로 띄운 시험 실행) `--usb-selftest` 인자가 있으면 `.diskImagesOnly`. 그 밖 `.all`.
+    /// 디버그 실행에서 캡처용 실물 숨김·임시 홈·USB 자가 시험은 디스크 이미지만 읽는다.
     /// RELEASE 빌드는 늘 `.all`(사용자 앱).
     static func current(environment: [String: String] = ProcessInfo.processInfo.environment,
                         arguments: [String] = CommandLine.arguments) -> UsbReadPolicy {
         #if DEBUG
-        if environment["DJC_HOME"]?.isEmpty == false || arguments.contains("--usb-selftest") { return .diskImagesOnly }
+        if environment["DJC_CAP_NO_VOLUMES"] == "1" || environment["DJC_HOME"]?.isEmpty == false || arguments.contains("--usb-selftest") {
+            return .diskImagesOnly
+        }
         #endif
         return .all
     }

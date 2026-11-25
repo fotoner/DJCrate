@@ -39,6 +39,14 @@ struct UsbSelfTestScenarioCapture {
         #expect(passed.hasPrefix("USB 시험 통과"))
         #expect(lines.contains { $0.hasPrefix("USB 시험 provenance: ") })
         #expect(lines.contains { $0.hasPrefix("USB 시험 옮기기 통과") })
-        #expect(try !UsbDiskImage.detach(image: scenario.image.path))
+        // run이 이미지를 뗀 뒤 hdiutil의 이미지 목록으로 확인한다. 여기서 다시 떼면 누수를 가리게 된다.
+        let imagePath = try UsbScratchPath.check(scenario.image.path, as: .existingFile)
+        let info = try SystemToolRunner().run("/usr/bin/hdiutil", ["info", "-plist"])
+        try #require(info.status == 0)
+        let plist = try PropertyListSerialization.propertyList(from: info.stdout, format: nil)
+        let images = try #require((plist as? [String: Any])?["images"] as? [[String: Any]])
+        let mountedPaths = images.compactMap { ($0["image-path"] as? String).flatMap(UsbScratchRoots.realPath) }
+        try #require(!mountedPaths.contains(imagePath))
+        print("USB 시험 분리 확인")
     }
 }

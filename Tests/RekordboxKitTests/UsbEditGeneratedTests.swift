@@ -26,15 +26,19 @@ struct UsbEditGeneratedTests {
         for number in 1...Self.batchCount {
             let before = generator.reference.shape
             // 짝수 씨앗의 두 번째 묶음은 순효과가 없게 만든다(이름 A → B → A, 목록 끝에 곡을 넣고 그 자리를 빼기)
-            let batch = generator.makeBatch(cancelling: seed % 2 == 0 && number == 2, usb: Self.usbIDs(read))
+            // 씨앗 3의 배수의 세 번째 묶음은 USB 곡을 빼고 같은 묶음에서 다시 넣는다(#391)
+            let batch = generator.makeBatch(cancelling: seed % 2 == 0 && number == 2, readding: seed % 3 == 0 && number == 3,
+                                            usb: Self.usbIDs(read))
             let context = "씨앗 \(seed) 묶음 \(number): \(batch.notes.joined(separator: "; ")) | 편집 \(batch.edits)"
             for (id, track) in batch.localUpdates {
                 try env.updateLocal(id, "TrackInfoUpdated = ?, Title = ?, Commnt = ?",
                                     [.text(String(track.infoCount)), .text(track.title), .text(track.comment)])
             }
             let result: UsbEditResult
-            if generator.reference.shape != before {
+            // 다시 넣은 곡은 새 USB ID를 받아 곡 경로 모양이 같아도 쓸 것이 있다
+            if generator.reference.shape != before || batch.readded {
                 stats.effect += 1
+                if batch.readded { stats.readded += 1 }
                 do {
                     let (written, report) = try env.edit(batch.edits)
                     #expect(report.outcome == .written, "\(context)")
@@ -76,7 +80,8 @@ struct UsbEditGeneratedTests {
                 return
             }
         }
-        #expect(stats.effect > 0 && (seed % 2 == 1 || stats.noEffect > 0) && stats.blocked == 0, "씨앗 \(seed) \(stats)")
+        #expect(stats.effect > 0 && (seed % 2 == 1 || stats.noEffect > 0) && (seed % 3 != 0 || stats.readded > 0) && stats.blocked == 0,
+                "씨앗 \(seed) \(stats)")
     }
 
     // MARK: - 기준 모델과 비교
@@ -233,6 +238,8 @@ struct UsbEditGeneratedTests {
 
     struct Stats: CustomStringConvertible {
         var effect = 0, noEffect = 0
+        /// 같은 묶음에서 USB 곡을 빼고 다시 넣은 묶음 수
+        var readded = 0
         /// 편집 결과별 수(`.blocked`는 따로 센다)
         var written = 0, unchanged = 0, blocked = 0, deferred = 0
 
@@ -248,7 +255,7 @@ struct UsbEditGeneratedTests {
         }
 
         var description: String {
-            "순효과 묶음 \(effect)·없는 묶음 \(noEffect), 편집 written \(written)·unchanged \(unchanged)·blocked \(blocked)·deferred \(deferred)"
+            "순효과 묶음 \(effect)(곡 다시 넣기 \(readded))·없는 묶음 \(noEffect), 편집 written \(written)·unchanged \(unchanged)·blocked \(blocked)·deferred \(deferred)"
         }
     }
 
@@ -291,6 +298,8 @@ struct UsbEditGeneratedTests {
             var notes: [String] = []
             /// 계획 전에 로컬 사본에 쓸 곡 정보(갱신 편집의 요청 값)
             var localUpdates: [(id: String, track: LocalTrack)] = []
+            /// 이 묶음에서 USB에서 뺀 곡을 다시 넣었다
+            var readded = false
         }
 
         enum Kind: CaseIterable {
@@ -334,7 +343,7 @@ struct UsbEditGeneratedTests {
         }
 
         /// 묶음 하나를 만든다. 기준 모델·로컬 곡 값은 이 묶음을 적용한 뒤로 바뀐다
-        mutating func makeBatch(cancelling: Bool, usb: UsbIDs) -> Batch {
+        mutating func makeBatch(cancelling: Bool, readding: Bool, usb: UsbIDs) -> Batch {
             knownTracks = usb.tracks.filter { reference.tracks[$0.key] != nil }
             knownLists = Dictionary(uniqueKeysWithValues: reference.lists.keys.compactMap { handle in
                 usb.lists[reference.namePath(handle)].map { (handle, $0) }
@@ -342,6 +351,8 @@ struct UsbEditGeneratedTests {
             (created, added, removed, refreshed, moved, batch) = ([], [], [], [], [], Batch())
             if cancelling {
                 cancellingEdits()
+            } else if readding {
+                readdingEdits()
             } else {
                 // 첫 묶음은 폴더 하나로 시작한다(폴더가 없으면 옮기기·폴더 안 만들기를 만들 수 없다)
                 if reference.folders.isEmpty { create(folder: true) }
@@ -387,18 +398,22 @@ struct UsbEditGeneratedTests {
         /// ID를 아는 곡(묶음 시작에 USB에 있었고 이 묶음에서 빼거나 다시 넣지 않은 곡)
         var usableTracks: [String] { knownTracks.keys.filter { reference.tracks[$0] != nil && !added.contains($0) }.sorted() }
 
-        mutating func addTracks() -> Bool {
-            // 같은 묶음에서 USB에서 뺀 곡은 다시 넣지 않는다. 지금 엔진은 계획을 통과시키고 쓰기 사전 확인이 분석 파일 셋을
-            // destinationExists로 거부한다(#391). #391을 고치면 이 제외를 푼다
-            let candidates = (Self.exported + Self.extra).filter { reference.tracks[Self.path($0)] == nil && !removed.contains(Self.path($0)) }
+        /// `onlyRemoved`면 이 묶음에서 뺀 곡만 후보로 한다
+        mutating func addTracks(onlyRemoved: Bool = false) -> Bool {
+            // 같은 묶음에서 USB에서 뺀 곡도 다시 넣을 수 있다(#391). 같은 경로로 새 ID를 받는다. 뺀 곡이 있으면 절반은 그중에서 고른다
+            let candidates = (Self.exported + Self.extra).filter {
+                reference.tracks[Self.path($0)] == nil && (!onlyRemoved || removed.contains(Self.path($0)))
+            }
             guard !candidates.isEmpty else { return false }
+            let again = candidates.filter { removed.contains(Self.path($0)) }
             let lists = reference.trackLists
             // 목록에 넣을 때는 한 곡만(여러 곡의 목록 순서는 엔진의 계획 순서라 기준 모델이 정하지 않는다)
             let target = lists.isEmpty || random.below(2) == 0 ? nil : random.pick(lists)
-            var picked = [random.pick(candidates)]
+            var picked = [random.pick(!again.isEmpty && random.below(2) == 0 ? again : candidates)]
             if target == nil, candidates.count > 1, random.below(2) == 0 { picked.append(random.pick(candidates.filter { $0 != picked[0] })) }
             for id in picked {
                 let path = Self.path(id)
+                if removed.contains(path) { batch.readded = true }
                 reference.tracks[path] = Shape.Track(title: local[id]!.title, comment: local[id]!.comment)
                 added.insert(path)
                 if let target { reference.lists[target]!.entries.append(path) }
@@ -503,6 +518,18 @@ struct UsbEditGeneratedTests {
             batch.localUpdates.append((id, local[id]!))
             append(.refreshTracks(usbContentIDs: [knownTracks[path]!], parts: [.info]), "곡 정보 갱신 \(id) → '\(local[id]!.title)'")
             return true
+        }
+
+        /// 곡 빼기 → 그 곡 다시 넣기(목록을 주거나 안 줌)를 앞에 두고, 나머지는 보통 편집으로 채운다. 뺄 곡이 없으면 보통 묶음이 된다
+        mutating func readdingEdits() {
+            if reference.folders.isEmpty { create(folder: true) }
+            if removeTracks() { _ = addTracks(onlyRemoved: true) }
+            for _ in 0..<(1 + random.below(2)) {
+                let kinds = Kind.allCases, start = kinds.firstIndex(of: random.pick(Kind.weighted))!
+                for offset in kinds.indices {
+                    if apply(kinds[(start + offset) % kinds.count]) { break }
+                }
+            }
         }
 
         /// 순효과가 없는 묶음: 이름 A → B → A, 그 사이에 목록 끝에 곡을 넣고 그 자리를 다시 뺀다

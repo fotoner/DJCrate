@@ -54,6 +54,9 @@ requested_mode=$mode
 # 릴리스 앱 빌드는 릴리스 검사(인자 없음·--release)에만 둔다. 넓힌 --changed는 전체 시험까지 돌되 이것은 뺀다.
 release_build=0
 if [[ "$mode" == full || "$mode" == release ]]; then release_build=1; fi
+# GitHub 러너에서 디스크 이미지 연결·해제를 확인하기 전에는 로컬 전체 검사에만 둔다(#389).
+usb_selftest=0
+if [[ "$requested_mode" == full && "${GITHUB_ACTIONS:-}" != true ]]; then usb_selftest=1; fi
 
 # --changed: 바꾼 파일에서 시험을 고른다(scripts/affected-tests.py). 고른 범위·이유를 먼저 보인다.
 plan_scope="" plan_filter="" plan_targets="" plan_test_targets="" plan_products="" plan_checks="" plan_widen="" plan_base=""
@@ -91,7 +94,7 @@ reuse_environment=$(env | grep '^DJC_' | grep -vE '^DJC_(HOME|REKORDBOX_DIR|CHEC
     | LC_ALL=C sort || true)
 reuse_cover=$(print -r -- "v1|$reuse_tree|$(toolchain_id)|$reuse_environment" | /usr/bin/shasum -a 256 | cut -d ' ' -f1)
 # 릴리스 앱 빌드를 뺀 넓힌 --changed 통과를 인자 없는 전체 검사가 재사용하지 않게 키에 넣는다.
-reuse_key=$(print -r -- "v1|$mode|$test_filter|$plan_base|$reuse_cover|release=$release_build" | /usr/bin/shasum -a 256 | cut -d ' ' -f1)
+reuse_key=$(print -r -- "v1|$mode|$test_filter|$plan_base|$reuse_cover|release=$release_build|usb=$usb_selftest" | /usr/bin/shasum -a 256 | cut -d ' ' -f1)
 if [[ -n "$reuse_tree" && "$mode" != stress ]] && (( ! no_reuse )) && [[ -f "$log_root/pass-history" ]]; then
     full_covers=0
     if [[ "$requested_mode" == changed ]]; then full_covers=1; fi
@@ -495,6 +498,16 @@ require_filtered_tests() {
     fi
 }
 
+require_usb_selftest() {
+    local marker
+    for marker in 'USB 시험 통과' 'USB 시험 옮기기 통과' 'USB 시험 분리 확인'; do
+        if ! grep -E "^$marker( |$)" "$log_dir/usb-selftest.log"; then
+            print -r -- "USB 자가 테스트 통과 줄이 없습니다: $marker" >&2
+            return 1
+        fi
+    done
+}
+
 PROF=.build/out/Products/Debug/codecov/default.profdata
 coverage() {
 local only=${1-}
@@ -676,5 +689,13 @@ if [[ "$mode" == full || "$mode" == coverage ]]; then
 elif [[ "$mode" == quick || "$mode" == stress ]]; then
     run_stage "관련 테스트 실행(빌드 생략)" test swift test --skip-build --enable-code-coverage --filter "$test_filter"
     run_stage "필터 결과(1개 이상 완료)" filter-result require_filtered_tests
+fi
+if (( usb_selftest )); then
+    usb_scratch=$(mktemp -d "${TMPDIR:-/tmp}/djc-usb-selftest.XXXXXX")
+    print -r -- "▸ USB 이미지 자가 테스트 임시 폴더: $usb_scratch"
+    DJC_USB_SELFTEST_SCRATCH="$usb_scratch" run_stage "USB 이미지 자가 테스트" usb-selftest \
+        swift test --skip-build --enable-code-coverage --filter UsbSelfTestScenarioCapture
+    run_stage "USB 자가 테스트 결과" usb-selftest-result require_usb_selftest
+    rm -rf -- "$usb_scratch"
 fi
 echo "▸ 통과: $mode"

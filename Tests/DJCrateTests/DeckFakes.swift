@@ -112,8 +112,29 @@ final class FakeDeckAudio: DeckAudioEngine {
     /// 덱 조작 기록(실제는 오디오 사건 기록 파일). 재생 순서 기록(`log`)과 섞지 않는다.
     var events: [String] = []
     func recordEvent(_ message: String) { events.append(message) }
-    func debugStopEngine() {}
-    func debugConfigurationChange() {}
+    enum Fault: String { case engineStop = "engine stop", configurationChange = "configuration change" }
+    var ignoredFault: Fault?
+    var missingRecoveryCallback: Fault?
+    private(set) var pendingFault: Fault?
+    var isEngineRunning: Bool { isPlaying && pendingFault == nil }
+    var debugMixerSignalHostTime: UInt64 = 0
+
+    func debugStopEngine() { requestFault(.engineStop) }
+    func debugConfigurationChange() { requestFault(.configurationChange) }
+
+    private func requestFault(_ fault: Fault) {
+        log.append(fault.rawValue)
+        guard ignoredFault != fault else { return }
+        pendingFault = fault
+        if fault == .configurationChange { isPlaying = false }
+    }
+
+    func finishPendingRecovery() {
+        guard let fault = pendingFault else { return }
+        pendingFault = nil
+        isPlaying = true
+        if missingRecoveryCallback != fault { onRecovered?() }
+    }
 }
 
 extension DeckStorage {

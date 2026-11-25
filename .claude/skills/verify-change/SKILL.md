@@ -12,22 +12,21 @@ description: 작업이 끝났다고 말하기 전에 바꾼 것을 확인하고 
 | 단계 | 언제 | 명령 | 보는 것 |
 |---|---|---|---|
 | 편집 중 | 시험을 쓰고 고칠 때마다 | `scripts/check.sh --quick --filter '^DJCDomainTests\.LoopPlannerTests/'` | 그 시험의 빨강 → 초록 |
-| 작업 끝·합치기 | "됐다"고 말하기 전 한 번, `dev`에 합치기 직전, PR·`dev` 푸시 CI | `scripts/check.sh --changed` | 바꾼 파일에 닿는 시험·검사 전부 통과 |
-| 릴리스 | `main`·`release/*` CI, 수동 실행, 사용자 요청 | `scripts/check.sh` | 릴리스 빌드·번역·전체 시험·커버리지(쓰기 80%·코어 60%) |
+| 작업 끝·합치기 | "됐다"고 말하기 전 한 번, `dev`에 합치기 직전 | `scripts/check.sh --changed` | 바꾼 파일에 닿는 시험·검사 전부 통과 |
+| 릴리스 | 로컬 릴리스 준비, 사용자 요청 | `scripts/check.sh` | [전체 검사 범위](../../../docs/ci.md#로컬-검증-운영) |
 | 특수 | SQLCipher 초기화·`CipherLab`·cold-open | `scripts/check.sh --stress` | `.claude/rules/cipher.md` |
 
 - 편집 중 필터는 Suite 하나나 시험 하나로 좁힌다.
 - 타깃 이름으로 앵커하면(`'^<타깃>\.<Suite>/'`) 그 타깃의 시험만 돈다.
 - `Tests`처럼 거의 모든 시험에 맞는 필터로 전체를 대신하지 않는다.
-- 로컬 전체 검사는 릴리스 준비, 사용자 요청, `--changed`가 넓힐 때만 돌린다. `dev`에 합칠 때는 `--changed`로 충분하다.
-- `--changed`가 놓칠 수 있는 회귀는 릴리스 전체 검사가 잡는다. 기호 grep이 닿지 않는 코드가 그렇다. 예: 프로토콜로만 닿는 구현, 전역 함수, 다른 타입을 거친 동작 변화.
+- 실행 범위와 선택 검사의 한계는 [docs/ci.md의 CI 구성](../../../docs/ci.md#ci-구성)에 있다.
 
 ## 작업 끝 확인 순서
 
 1. 파트 워크트리처럼 `dev`와의 merge-base가 작업 시작점이 아니면, 작업 전에 `git write-tree`로 시작 트리를 뜬다.
 2. 무거운 실행이 다른 작업과 겹칠 수 있으면 명령을 `lockf /tmp/djc-heavy.lock`으로 감싼다. 예: `lockf /tmp/djc-heavy.lock scripts/check.sh --changed`.
 3. `scripts/check.sh --changed`를 돌린다. 1에서 뜬 트리가 있으면 `--base <트리 해시>`를 준다.
-   - 이 명령과 `scripts/test-check.py`는 2분을 넘기 쉽다. Bash 도구 기본 timeout은 120초다. 그래서 배경으로 돌린다. 앞에서 돌릴 때는 timeout을 600초로 준다.
+   - 긴 검사 명령의 실행 시간은 [HAR-36](../../rules/harness.md#고친-뒤-돌릴-검사)을 따른다.
 4. 출력 끝의 `── 검사 요약 ──` 블록을 읽는다. 읽는 법은 아래 "끝 요약 읽기"에 있다.
 5. 종료 코드 3이나 4가 나오면 바로 멈춘다. 그 사실을 사용자에게 알린다.
 6. 요약 끝에 `⚠ 남은 필수 검사: …`가 있으면 그 검사를 돌린다. 돌리지 않으면 돌리지 않았다고 보고한다.

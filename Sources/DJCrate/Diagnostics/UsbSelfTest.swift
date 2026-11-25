@@ -64,7 +64,7 @@ enum UsbSelfTest {
     private static func run(store: LibraryStore) async {
         let environment = ProcessInfo.processInfo.environment
         if await BlockingWork.run(qos: .default, { LibrarySnapshot.isRekordboxRunning() }) {
-            finish(0, "USB 시험 건너뜀: rekordbox 켜짐")
+            finish(2, "USB 시험 건너뜀: rekordbox 켜짐")
         }
         if let refusal = launchRefusal(arguments: CommandLine.arguments, environment: environment) { finish(2, refusal) }
         guard UsbReadPolicy.current() == .diskImagesOnly else { finish(2, "USB 시험 실패: 읽기 정책이 diskImagesOnly가 아닙니다") }

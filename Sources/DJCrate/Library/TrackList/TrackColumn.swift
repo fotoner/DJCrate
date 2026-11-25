@@ -70,7 +70,7 @@ struct TrackColumn {
     /// 저장된 배치를 읽은 직후 한 번만: 옛 기본 폭(66) 그대로인 평점 칸을 새 기본 폭으로 넓힌다(#65).
     /// 한 번 했다는 표시를 남기므로 그 뒤 사용자가 일부러 66으로 줄여도 덮어쓰지 않는다(좁아도 칸이 숫자로 줄여 보여 읽힌다).
     /// - Parameter remember: 했다는 표시를 남길지(성능 측정 때는 칸 배치를 저장하지 않으므로 남기지 않는다)
-    @MainActor static func migrateRatingWidth(in table: NSTableView, defaults: UserDefaults = .standard, remember: Bool = true) {
+    @MainActor static func migrateRatingWidth(in table: NSTableView, defaults: UserDefaults = ViewPreferences.defaults, remember: Bool = true) {
         guard !defaults.bool(forKey: ratingWidthMigratedKey) else { return }
         if let column = table.tableColumns.first(where: { $0.identifier.rawValue == "rating" }),
            let width = migratedRatingWidth(saved: column.width) {
@@ -86,7 +86,7 @@ struct TrackColumn {
 
     /// 갱신 상태 칸을 한 번만 키 칸 바로 뒤로 옮긴다. 그 뒤로는 사용자가 옮긴 자리를 지킨다(칸 배치와 함께 자동 저장된다). 칸을 만든 직후 부른다.
     /// - Parameter remember: 했다는 표시를 남길지(성능 측정 때는 칸 배치를 저장하지 않으므로 남기지 않는다)
-    @MainActor static func placeUsbSyncColumn(in table: NSTableView, defaults: UserDefaults = .standard, remember: Bool = true) {
+    @MainActor static func placeUsbSyncColumn(in table: NSTableView, defaults: UserDefaults = ViewPreferences.defaults, remember: Bool = true) {
         guard !defaults.bool(forKey: usbSyncColumnPlacedKey) else { return }
         if let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == usbSyncID }),
            let key = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "key" }) {
@@ -188,44 +188,45 @@ struct TrackColumn {
     /// 저장된 칸 배치에 없던 새 칸을 한 번만 제자리로 옮긴다(그 뒤로는 사용자가 옮긴 대로). 칸을 만든 직후 부른다.
     /// - Parameter remember: 옮겼다는 표시를 환경설정에 남길지(설정을 저장하지 않는 실행·측정은 남기지 않는다, R18)
     @MainActor static func placeNewColumns(in table: NSTableView, remember: Bool = true) {
+        let defaults = ViewPreferences.defaults
         // 저장된 칸 배치에는 새 "형식" 칸이 없어서 끝으로 밀린다. 한 번만 BPM 옆으로 옮긴다(그 뒤로는 사용자가 옮긴 대로).
         let indexKey = "djc.trackList.indexColumnPlaced"
-        if !UserDefaults.standard.bool(forKey: indexKey),
+        if !defaults.bool(forKey: indexKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "index" }) {
             table.moveColumn(from, toColumn: 0)
-            if remember { UserDefaults.standard.set(true, forKey: indexKey) }
+            if remember { defaults.set(true, forKey: indexKey) }
         }
         let albumKey = "djc.trackList.albumColumnPlaced"
-        if !UserDefaults.standard.bool(forKey: albumKey),
+        if !defaults.bool(forKey: albumKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "album" }),
            let artist = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "artist" }) {
             table.moveColumn(from, toColumn: from > artist ? artist + 1 : artist)
-            if remember { UserDefaults.standard.set(true, forKey: albumKey) }
+            if remember { defaults.set(true, forKey: albumKey) }
         }
         let tempoKey = "djc.trackList.tempoColumnPlaced"
-        if !UserDefaults.standard.bool(forKey: tempoKey),
+        if !defaults.bool(forKey: tempoKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "tempo" }),
            let bpm = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "bpm" }) {
             table.moveColumn(from, toColumn: from > bpm ? bpm + 1 : bpm)
-            if remember { UserDefaults.standard.set(true, forKey: tempoKey) }
+            if remember { defaults.set(true, forKey: tempoKey) }
         }
         let placedKey = "djc.trackList.formatColumnPlaced"
-        if !UserDefaults.standard.bool(forKey: placedKey),
+        if !defaults.bool(forKey: placedKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "format" }),
            let bpm = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "bpm" }) {
             table.moveColumn(from, toColumn: from > bpm ? bpm + 1 : bpm)
-            if remember { UserDefaults.standard.set(true, forKey: placedKey) }
+            if remember { defaults.set(true, forKey: placedKey) }
         }
         let previewKey = "djc.trackList.previewColumnPlaced"
-        if !UserDefaults.standard.bool(forKey: previewKey),
+        if !defaults.bool(forKey: previewKey),
            let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "preview" }),
            let title = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) {
             table.moveColumn(from, toColumn: from > title ? title + 1 : title)
-            if remember, !PerfProbe.enabled { UserDefaults.standard.set(true, forKey: previewKey) }
+            if remember, !PerfProbe.enabled { defaults.set(true, forKey: previewKey) }
         }
         // 새 태그 칸(#88)도 저장된 배치에는 없어 끝으로 밀린다. 한 번만 앨범 옆으로 옮긴다(처음엔 숨김).
         let tagKey = "djc.trackList.tagColumnsPlaced"
-        if !UserDefaults.standard.bool(forKey: tagKey) {
+        if !defaults.bool(forKey: tagKey) {
             var anchor = "album"
             for id in ["albumArtist", "composer", "year", "trackNumber"] {
                 if let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == id }),
@@ -234,11 +235,11 @@ struct TrackColumn {
                 }
                 anchor = id
             }
-            if remember { UserDefaults.standard.set(true, forKey: tagKey) }
+            if remember { defaults.set(true, forKey: tagKey) }
         }
         // 평점·곡 색 칸(#65)도 저장된 배치에는 없어 끝으로 밀린다. 한 번만 키 칸 뒤로 옮긴다.
         let ratingKey = "djc.trackList.ratingColorColumnsPlaced"
-        if !UserDefaults.standard.bool(forKey: ratingKey) {
+        if !defaults.bool(forKey: ratingKey) {
             var anchor = "key"
             for id in ["rating", "color"] {
                 if let from = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == id }),
@@ -247,7 +248,7 @@ struct TrackColumn {
                 }
                 anchor = id
             }
-            if remember, !PerfProbe.enabled { UserDefaults.standard.set(true, forKey: ratingKey) }
+            if remember, !PerfProbe.enabled { defaults.set(true, forKey: ratingKey) }
         }
     }
 }

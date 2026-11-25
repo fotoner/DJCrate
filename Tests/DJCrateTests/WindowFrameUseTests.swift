@@ -18,7 +18,8 @@ struct WindowFrameUseTests {
         #expect(use != .restoreAndSave, "\(extra)")
     }
 
-    @Test(arguments: [["--resize-perf=all"], ["--playlist-recovery-selftest"], ["--auto-reflect-selftest=save"]])
+    @Test(arguments: [["--resize-perf=all"], ["--playlist-recovery-selftest"], ["--auto-reflect-selftest=save"],
+                      ["--track-selftest=/tmp/fixture.wav"], ["--write-selftest"], ["--switch-selftest"]])
     func 기본_크기로_도는_진단_실행은_창_위치를_읽지도_않는다(_ extra: [String]) {
         #expect(DJCrateApp.windowFrameUse(arguments: ["DJCrate"] + extra) == .none)
     }

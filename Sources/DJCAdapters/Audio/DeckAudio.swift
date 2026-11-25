@@ -5,6 +5,9 @@ import AppKit
 import Accelerate
 import AVFoundation
 import QuartzCore
+#if DEBUG
+import Synchronization
+#endif
 
 /// 덱 재생 엔진.
 ///
@@ -332,6 +335,8 @@ public final class DeckAudio {
         hasPendingJump = false
         clickNode?.stop()
         isPlaying = false
+        // 이어 재생을 기다리는 동안 화면 틱도 이 자리에서 멈춰야 한다.
+        pausedPosition = position
         reconnectOutput()
         resume(at: position, attempt: 1)
     }
@@ -626,12 +631,7 @@ public final class DeckAudio {
         }
         // 그래프를 넘겨받기 전이면 넘겨받을 때 다시 부른다(`adopt`).
         guard let graph else { return }
-        let stretching = keyLock && rate != 1
-        let resampling = !keyLock && rate != 1
-        graph.timePitch.rate = Float(stretching ? rate : 1)
-        graph.varispeed.rate = Float(resampling ? rate : 1)
-        graph.timePitch.bypass = !stretching
-        graph.varispeed.bypass = !resampling
+        graph.applyRate(rate, keyLock: keyLock)
         latency = currentLatency()
         updateJumpLead()
     }
@@ -728,11 +728,39 @@ public final class DeckAudio {
 
     private var tapInstalled = false
 
+    #if DEBUG
+    private final class MixerSignal: Sendable {
+        let hostTime = Atomic<UInt64>(0)
+    }
+    private let switchSignal = ProcessInfo.processInfo.arguments.contains("--switch-selftest") ? MixerSignal() : nil
+    /// 메인 믹서에서 마지막으로 소리가 난 버퍼의 렌더 시각. 장치 밖에서 들리는 소리는 측정하지 않는다.
+    public var debugMixerSignalHostTime: UInt64 { switchSignal?.hostTime.load(ordering: .relaxed) ?? 0 }
+
+    nonisolated private static func switchMixerTap(_ signal: MixerSignal) -> @Sendable (AVReadOnlyAudioPCMBuffer, AVAudioTime) -> Void {
+        let log = silenceLogger()
+        return { @Sendable buffer, time in
+            log(buffer, time)
+            guard time.isHostTimeValid else { return }
+            for channel in 0..<Int(buffer.format.channelCount) {
+                guard case let .float(samples) = buffer.channelData(channel) else { continue }
+                if samples.withUnsafeBufferPointer({ $0.contains { $0.isFinite && $0 != 0 } }) {
+                    signal.hostTime.store(time.hostTime, ordering: .relaxed)
+                    return
+                }
+            }
+        }
+    }
+    #endif
+
     /// 메인 믹서 출력이 무음↔소리로 바뀌는 순간을 기록한다. 재생 예정 시각과 비교해 시작 지연을 잰다.
     private func installDebugTap() {
         guard !tapInstalled, let engine else { return }
         tapInstalled = true
-        try! engine.mainMixerNode.installAudioTap(onBus: 0, bufferSize: 512, format: nil, tapProvider: Self.silenceLogger())
+        var tap = Self.silenceLogger()
+        #if DEBUG
+        if let switchSignal { tap = Self.switchMixerTap(switchSignal) }
+        #endif
+        try! engine.mainMixerNode.installAudioTap(onBus: 0, bufferSize: 512, format: nil, tapProvider: tap)
     }
 
     /// 미터 탭: 버퍼마다 채널 피크·RMS를 잰다.

@@ -12,7 +12,7 @@ struct CueListView: View {
     private var filter: CueListFilter {
         CueListFilter(rawValue: storedFilter.value) ?? .all
     }
-    private var visibleCues: [EditableCue] { (deck.draft?.cues ?? []).filter(filter.includes) }
+    private var visibleCues: [EditableCue] { deck.displayedCues.filter(filter.includes) }
     private var changedCueIDs: Set<EditableCue.ID> {
         Set((deck.draft?.changes ?? []).compactMap { change in
             switch change {
@@ -24,7 +24,7 @@ struct CueListView: View {
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
-        let cues = deck.draft?.cues ?? []
+        let cues = deck.displayedCues
         let hotCount = cues.filter { if case .hot = $0.kind { true } else { false } }.count
         let changedIDs = changedCueIDs
         let segmentHeight = CGFloat(TextScale.length(28, scale: textScale))
@@ -57,7 +57,22 @@ struct CueListView: View {
             .accessibilityLabel(.ui("큐 목록 보기"))
             List(selection: $deck.selectedCueID) {
                 ForEach(visibleCues) { cue in
-                    CueRow(deck: deck, cue: cue, expectedTrackUUID: deck.row?.track.uuid, scrollerWidth: gutter.width)
+                    Group {
+                        if deck.readOnlyLoops.contains(where: { $0.id == cue.id }), let loop = cue.loop {
+                            Button { deck.selectCueFromList(cue.id) } label: {
+                                HStack {
+                                    Label(.ui("활성 루프"), systemImage: "repeat.circle.fill")
+                                        .foregroundStyle(UIColors.loop.color)
+                                    Text(verbatim: "\(cue.time.clockText)–\(loop.end.clockText)").monospacedDigit()
+                                    Text(cue.name).lineLimit(1)
+                                }
+                                .font(.scaled(.caption, textScale))
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            CueRow(deck: deck, cue: cue, expectedTrackUUID: deck.row?.track.uuid, scrollerWidth: gutter.width)
+                        }
+                    }
                         .tag(cue.id)
                         // 선택색은 List가 그리도록 두고, 선택하지 않은 초안 행만 물들인다.
                         .listRowBackground(changedIDs.contains(cue.id) && deck.selectedCueID != cue.id

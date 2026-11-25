@@ -103,7 +103,7 @@ struct AutoPointSnapshotRunnerTests {
     /// 앱에 있는 개발용 실행 인자(자가 테스트·측정·화면 캡처). 90초 뒤 디스크 일이 끼면 안 되는 실행들이다.
     nonisolated static let diagnosticArguments = [
         "--resize-perf=all", "--resize-perf=width,height", "--ui-perf=all", "--ui-perf=sidebar,sort", "--ui-perf-capture=/tmp/x", "--scroll-perf",
-        "--write-selftest", "--flip-selftest", "--usb-selftest", "--edit-selftest", "--itunes-selftest", "--loop-selftest",
+        "--track-selftest=/tmp/a.wav,/tmp/b.wav", "--write-selftest", "--flip-selftest", "--usb-selftest", "--edit-selftest", "--itunes-selftest", "--loop-selftest",
         "--metronome-jump-selftest", "--key-routing-selftest", "--playlist-recovery-selftest", "--hotcue-click-selftest",
         "--xml-export-capture=/tmp/x", "--usb-migrate-capture=/tmp/x", "--async-guidance-capture=/tmp/x",
         "--search-layout-captures=/tmp/x", "--paused-hotcue-captures=/tmp/x", "--perf-capture=/tmp/x", "--autoplay", "--reflection-layout=/tmp/x",

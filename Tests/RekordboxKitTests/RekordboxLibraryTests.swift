@@ -58,6 +58,37 @@ struct RekordboxLibraryTests {
         #expect(track.importedOn == "2026-01-01" && !track.isDeleted)
     }
 
+    @Test func 클라우드_원본_경로_후보와_DB_곡_식별_경로를_가른다() throws {
+        // #353: 실제 rekordbox XML과 대조하기 전에는 이 후보를 파일 열기나 쓰기 식별에 쓰지 않는다.
+        let fixture = try RekordboxFixture()
+        let normal = "/fixture/Music/source.mp3"
+        let cases: [(stored: String, original: String, candidate: Bool)] = [
+            ("/contents_123/renamed.mp3", normal, true), ("/fixture/local.mp3", normal, false),
+            ("/contents_12a/song.mp3", normal, false), ("/CONTENTS_12/song.mp3", normal, false),
+            ("/contents_/song.mp3", normal, false), ("/contents_12/", normal, false),
+            ("/contents_12/song.mp3", #"C:\Music\song.mp3"#, false), ("/contents_12/song.mp3", "", false),
+            ("/contents_12/song.mp3", "//server/share/song.mp3", false),
+        ]
+        for (index, item) in cases.enumerated() {
+            let id = String(index + 1)
+            var spec = TrackSpec(id: id)
+            spec.folderPath = item.stored
+            try fixture.add(spec)
+            try fixture.execute("UPDATE djmdContent SET OrgFolderPath = ?, rb_data_status = 257 WHERE ID = ?", [.text(item.original), .text(id)])
+        }
+        let tracks = try RekordboxLibrary.load(snapshot: fixture.database).tracks
+        let rows = try fixture.rows("SELECT ID, FolderPath, OrgFolderPath FROM djmdContent")
+        for (index, item) in cases.enumerated() {
+            let id = String(index + 1)
+            let row = try #require(rows.first { $0["ID"] == id })
+            let folder = try #require(row["FolderPath"]), original = row["OrgFolderPath"] ?? ""
+            let matches = folder.range(of: #"^/contents_[0-9]+/[^/]"#, options: .regularExpression) != nil
+                && original.hasPrefix("/") && !original.hasPrefix("//")
+            #expect((matches ? original : nil) == (item.candidate ? normal : nil))
+            #expect(tracks.first { $0.id == id }?.folderPath == item.stored)
+        }
+    }
+
     @Test func 큐는_삭제_행을_빼고_재생_이력은_센다() throws {
         let (fixture, live, _) = try makeLibrary()
         let library = try RekordboxLibrary.load(snapshot: fixture.database)

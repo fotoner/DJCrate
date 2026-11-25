@@ -5,6 +5,13 @@ import SwiftUI
 /// 실행 파일(`DJCrateExecutable/main.swift`)의 진입점. 본체를 라이브러리로 두어 실행 파일과 테스트가 컴파일 결과를 함께 쓴다.
 @MainActor
 package func runDJCrate() {
+    #if DEBUG
+    let info = ProcessInfo.processInfo
+    if let refusal = DevSelfTests.copySelfTestStartupRefusal(arguments: info.arguments, environment: info.environment) {
+        FileHandle.standardError.write(Data((refusal + " · 종료 코드 2\n").utf8))
+        exit(2)
+    }
+    #endif
     DJCrateApp.main()
 }
 
@@ -67,10 +74,10 @@ struct DJCrateApp: App {
     }
 
     /// 이 실행이 주 창 위치를 어떻게 쓰는지. 진단 실행(자가 테스트·측정·캡처, `DiagnosticRun`)은 사용자 환경설정에 남기지 않는다(R18).
-    /// 크기 측정·재생 목록 복구·자동 저장 자가 테스트는 정해진 기본 크기로 돌아 사용자의 창 위치를 읽지도 않는다
+    /// 크기 측정·재생 목록 복구·사본 자가 테스트는 정해진 기본 크기로 돌아 사용자의 창 위치를 읽지도 않는다
     static func windowFrameUse(arguments: [String]) -> WindowFrameUse {
         if arguments.contains(where: { $0.hasPrefix("--resize-perf") }) || arguments.contains("--playlist-recovery-selftest")
-            || DiagnosticRun.isAutoReflectSelfTest(arguments: arguments) { return .none }
+            || DiagnosticRun.isolatesPreferences(arguments: arguments) { return .none }
         return DiagnosticRun.isActive(arguments: arguments) ? .restoreOnly : .restoreAndSave
     }
 
@@ -118,15 +125,15 @@ struct DJCrateApp: App {
                     // ⌘Q 때 대기 중인 대상 편집을 저장하고 끈다(R17)
                     appDelegate.quitAutoSave = composition.quitAutoSaveLink()
                     #if DEBUG
-                    // 쓰기 시험(`--write-selftest`)도 키 입력 없이 스토어로만 돌아 사용 중인 앱의 포커스를 가져오지 않는다
-                    if !ResizePerfSelfTest.isRequested, !DiagnosticRun.isAutoReflectSelfTest(),
+                    // 사본 자가 테스트는 사용 중인 앱의 포커스를 가져오지 않는다
+                    if !ResizePerfSelfTest.isRequested, !DiagnosticRun.isolatesPreferences(),
                        !ProcessInfo.processInfo.arguments.contains("--playlist-recovery-selftest"),
-                       !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--write-selftest" || $0 == "--quit-wait-selftest" || $0 == "--history-selftest" }) {
+                       !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--async-guidance-capture=") || $0.hasPrefix("--usb-migrate-capture=") || $0 == "--key-routing-selftest" || $0 == "--quit-wait-selftest" || $0 == "--history-selftest" }) {
                         NSApplication.shared.activate()
                     }
                     #else
-                    // 자동 저장 자가 테스트 인자를 준 릴리스 실행도 진단 실행이라 포커스를 가져오지 않는다(R18)
-                    if !DiagnosticRun.isAutoReflectSelfTest() { NSApplication.shared.activate() }
+                    // 사본 자가 테스트 인자를 준 릴리스 실행도 진단 실행이다.
+                    if !DiagnosticRun.isolatesPreferences() { NSApplication.shared.activate() }
                     #endif
                     await app.start()
                 }
@@ -186,7 +193,7 @@ private struct MainWindowFrame: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            // 자동 저장 자가 테스트는 분할 보기 칸 크기도 사용자 환경설정에 남기지 않는다(창에 붙는 첫 순간부터, R18)
+            // 사본 자가 테스트는 분할 보기 칸 크기도 사용자 환경설정에 남기지 않는다(창에 붙는 첫 순간부터)
             ViewPreferences.stopSplitViewAutosave(in: window)
             // SwiftUI가 기본 크기를 잡은 뒤 저장된 프레임을 적용한다.
             DispatchQueue.main.async { [weak self] in

@@ -61,6 +61,8 @@ public struct LinkLibrary: Equatable, Sendable {
 
     public private(set) var tracks: [Track] = []
     public private(set) var playlists: [Playlist] = []
+    public private(set) var excludedByPath = 0
+    private var rowsByID: [UInt32: Int] = [:]
     private var idsByContent: [String: UInt32] = [:]
 
     public init() {}
@@ -71,11 +73,16 @@ public struct LinkLibrary: Equatable, Sendable {
     /// 그 음원 경로를 쓰는 첫 곡의 CDJ 번호(CDJ가 NFS로 읽으려 한 파일이 어느 곡인지 찾는다). 내어 준 곡의 음원이 아니면 nil
     public func linkID(ofPath path: String) -> UInt32? { tracks.first { $0.path == path }?.id }
 
-    /// 그 CDJ 번호로 내어 준 곡. 번호는 1부터 차례로 매기므로 자리로 찾는다
-    public func track(linkID id: UInt32) -> Track? {
-        let index = Int(id) - 1
-        guard tracks.indices.contains(index), tracks[index].id == id else { return nil }
-        return tracks[index]
+    /// 사본 준비에서 빠진 곡이 있어도 연결을 시작할 때 매긴 번호를 지킨다.
+    public func track(linkID id: UInt32) -> Track? { rowsByID[id].map { tracks[$0] } }
+
+    public mutating func retainPreparedTracks(_ ids: Set<UInt32>) {
+        let before = tracks.count
+        tracks.removeAll { !ids.contains($0.id) }
+        excludedByPath += before - tracks.count
+        idsByContent = idsByContent.filter { ids.contains($0.value) }
+        rowsByID = Dictionary(uniqueKeysWithValues: tracks.enumerated().map { ($0.element.id, $0.offset) })
+        for i in playlists.indices { playlists[i].trackIDs.removeAll { !ids.contains($0) } }
     }
 
     /// 그 CDJ 번호로 내어 준 곡의 제목
@@ -95,11 +102,16 @@ public struct LinkLibrary: Equatable, Sendable {
     /// 스마트 재생 목록은 규칙을 옮기지 않으므로 뺀다. iTunes 재생 목록이 있으면 맨 위 "iTunes" 폴더에 넣는다(`setPlaylists`)
     /// - Parameter draftCues: 큐 초안이 있는 곡(rekordbox 곡 ID)의 큐. rekordbox 큐 대신 내어 준다(CDJ에서 찍은 큐가 다시 켜도 남게, #280)
     public static func build(rows: [TrackRow], playlists layout: PlaylistLayout, iTunes: [SyncedITunesLibrary.Node] = [],
-                             draftCues: [String: [DJCDomain.Cue]] = [:]) -> LinkLibrary {
+                             draftCues: [String: [DJCDomain.Cue]] = [:], protectedDirectories: [String] = []) -> LinkLibrary {
         var library = LinkLibrary()
-        for row in rows where isShareable(row) && library.idsByContent[row.track.id] == nil {
+        for row in rows where isLocalAudio(row) && library.idsByContent[row.track.id] == nil {
+            guard allowsAudioPath(row.track.folderPath, protectedDirectories: protectedDirectories) else {
+                library.excludedByPath += 1
+                continue
+            }
             guard let fileType = fileType(ofExtension: row.track.fileExtension) else { continue }
             let id = UInt32(library.tracks.count + 1)
+            library.rowsByID[id] = library.tracks.count
             library.idsByContent[row.track.id] = id
             library.tracks.append(track(row, id: id, fileType: fileType, cues: draftCues[row.track.id] ?? row.cues))
         }
@@ -122,7 +134,28 @@ public struct LinkLibrary: Equatable, Sendable {
     }
 
     /// LINK로 내어 줄 수 있는 곡: rekordbox 컬렉션에 들어 있고(추가 대기·USB 곡이 아님), 지우지 않았고, 이 Mac에 파일이 있는 곡
-    public static func isShareable(_ row: TrackRow) -> Bool {
+    public static func isShareable(_ row: TrackRow, protectedDirectories: [String] = []) -> Bool {
+        isLocalAudio(row) && allowsAudioPath(row.track.folderPath, protectedDirectories: protectedDirectories)
+    }
+
+    /// 파일 하나만 고른다. 실제 파일이 가리키는 경로도 서버를 열기 전에 같은 규칙으로 확인한다.
+    public static func allowsAudioPath(_ path: String, protectedDirectories: [String]) -> Bool {
+        guard path.hasPrefix("/"), !path.contains("\\"), !path.utf8.contains(0) else { return false }
+        let parts = path.dropFirst().split(separator: "/", omittingEmptySubsequences: false)
+        guard let leaf = parts.last, !parts.contains(where: { $0.isEmpty || $0.hasPrefix(".") }),
+              fileType(ofExtension: (String(leaf) as NSString).pathExtension) != nil else { return false }
+        let folders = parts.dropLast().map { $0.lowercased() }
+        if folders.first == "library" || folders.first == "system" { return false }
+        if folders.first == "users", folders.dropFirst(2).first == "library" { return false }
+        if let pioneer = folders.firstIndex(of: "pioneer"), UsbLayout.isNeverRead(folders[pioneer...].joined(separator: "/")) { return false }
+        let lower = path.lowercased()
+        return !protectedDirectories.contains {
+            let root = $0.lowercased().split(separator: "/").joined(separator: "/")
+            return root.isEmpty || lower == "/" + root || lower.hasPrefix("/" + root + "/")
+        }
+    }
+
+    private static func isLocalAudio(_ row: TrackRow) -> Bool {
         !row.isStaged && !row.isUsb && !row.track.isDeleted && !row.track.isStreaming && !row.fileMissing
             && fileType(ofExtension: row.track.fileExtension) != nil
     }

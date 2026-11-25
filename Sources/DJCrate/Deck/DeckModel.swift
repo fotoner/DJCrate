@@ -20,7 +20,23 @@ final class DeckModel {
     /// LINK로 CDJ가 실은 곡(rekordbox 곡 ID, #278). 덱에 올리지 않는다
     @ObservationIgnored var cdjLoadedTrackIDs: Set<String> = []
 
-    var row: TrackRow?
+    var row: TrackRow? {
+        didSet {
+            guard row?.track.uuid != oldValue?.track.uuid || row?.cues != oldValue?.cues else { return }
+            readOnlyLoops = (row?.cues ?? []).filter(\.isActiveMemoryLoop).map { cue in
+                EditableCue(id: storage.drafts.newCueID(), sourceID: cue.id, kind: .memory,
+                            time: Double(cue.inMsec) / 1000, name: cue.name,
+                            loop: .init(end: Double(cue.outMsec) / 1000, active: true,
+                                        beats: EditableCue.Loop.beats(beatLoopSize: cue.beatLoopSize)))
+            }
+        }
+    }
+    /// 목록·파형·큐 이동은 Kind 4도 함께 본다. 끌기·키보드 편집·저장은 초안의 큐만 받는다(#361).
+    private(set) var readOnlyLoops: [EditableCue] = []
+    var displayedCues: [EditableCue] {
+        let edited = draft?.cues ?? []
+        return readOnlyLoops.isEmpty ? edited : (edited + readOnlyLoops).sorted { $0.time < $1.time }
+    }
     var waveform: Waveform? { didSet { refreshColorWaveform() } }
     var colorWaveform: ColorWaveformRaster?
     @ObservationIgnored var colorWaveformTask: Task<Void, Never>?

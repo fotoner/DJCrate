@@ -102,7 +102,7 @@ paths:
 
 ## 판정
 
-- **TEST-30** 시험은 걸린 시간으로 판정하지 않는다(#149, #153, #154). 순서·상태·신호로 판정한다.
+- **TEST-30** 시험은 걸린 시간으로 판정하지 않는다(#149, #153, #154). 순서·상태·신호로 판정한다. `check-imports.py`가 실시간 sleep을 검사한다. 기존 허용 사유와 곳 수는 `scripts/test-sleep-allow.txt`에 있다.
 - **TEST-31** 기다릴 때는 `waitForState`(`Tests/DJCrateTests/StateWaiting.swift`)로 상태를 기다린다.
 - **TEST-32** `waitForState`의 안전망(300초)은 시험이 멈추지 않게 할 뿐이다. 구현이 틀려 판정이 오지 않을 때를 위한 장치다.
 - **TEST-33** 실제 마우스·키 상태처럼 시험 밖 상태를 읽는 곳은 주입한다. 그 값은 시험이 정한다(`TrackListCoordinator.isMouseDown`).

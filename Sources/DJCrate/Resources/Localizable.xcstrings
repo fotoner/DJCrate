@@ -6143,6 +6143,22 @@
         }
       }
     },
+    "LINK에서 공유할 파일을 확인하지 못했습니다. 음원 위치와 접근 권한을 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINK could not verify a file for sharing. Check its location and access permissions."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LINKで共有するファイルを確認できません。音源の場所とアクセス権を確認してください。"
+          }
+        }
+      }
+    },
     "MASTER" : {
       "localizations" : {
         "en" : {
@@ -40025,6 +40041,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "一部の曲を保存しました"
+          }
+        }
+      }
+    },
+    "일부 음원을 공유할 수 없습니다. 음원 위치와 접근 권한을 확인하세요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Some tracks could not be shared. Check their file locations and access permissions."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一部の音源を共有できません。ファイルの場所とアクセス権を確認してください。"
           }
         }
       }

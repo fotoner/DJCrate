@@ -25,7 +25,7 @@ public final class DeckAudioGraph: @unchecked Sendable {
     /// 메트로놈 클릭 형식(48kHz 스테레오). 클릭 버퍼와 clickNode 연결이 같은 형식이어야 한다.
     static let clickSampleRate = 48_000.0
 
-    let engine = AVAudioEngine()
+    let engine: AVAudioEngine
     let trackNode = AVAudioPlayerNode()
     /// 곡 게인(오토게인·트림). 대역은 쓰지 않고 전역 게인만 쓴다(−96…+24dB).
     let gainUnit = AVAudioUnitEQ(numberOfBands: 1)
@@ -39,7 +39,8 @@ public final class DeckAudioGraph: @unchecked Sendable {
     /// 실제 출력 장치에 잇는다. coreaudiod를 기다리다 끝나지 않을 수 있어 메인 스레드에서 부르지 않는다.
     public static func make() -> DeckAudioGraph? { DeckAudioGraph() }
 
-    private init() {
+    init(engine: AVAudioEngine = AVAudioEngine()) {
+        self.engine = engine
         for node in [trackNode, gainUnit, trackMixer, clickNode, subMixer, varispeed, timePitch] as [AVAudioNode] { engine.attach(node) }
         gainUnit.bands[0].bypass = true
         // 옛 API도 잘못된 연결은 예외로 종료했다. 같은 형식·자동 믹서 버스를 쓰고 실패를 숨기지 않는다.
@@ -48,5 +49,14 @@ public final class DeckAudioGraph: @unchecked Sendable {
         try! engine.connectNode(varispeed, to: timePitch, format: nil)
         // 여기서 출력 장치 IO 유닛이 생긴다(coreaudiod가 응답하지 않으면 멈추는 곳).
         try! engine.connectNode(timePitch, to: engine.mainMixerNode, format: nil)
+    }
+
+    func applyRate(_ rate: Double, keyLock: Bool) {
+        let stretching = keyLock && rate != 1
+        let resampling = !keyLock && rate != 1
+        timePitch.rate = Float(stretching ? rate : 1)
+        varispeed.rate = Float(resampling ? rate : 1)
+        timePitch.bypass = !stretching
+        varispeed.bypass = !resampling
     }
 }

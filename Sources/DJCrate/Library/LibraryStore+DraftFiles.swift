@@ -74,9 +74,15 @@ extension LibraryStore {
         let carried = playlists.unsavedStepOrigins
         let recovery = useCases.watch.recoverMoved(moved, memoryTags: previousTags ?? tagDrafts, memoryPlaylist: previousPlaylist ?? playlists.playlistDraft,
                                                    carrying: carried)
+        let savedTags = recovery.resavedTags
+        if !savedTags.isEmpty {
+            var updated = tagDrafts
+            for draft in savedTags { updated[draft.trackUUID] = draft }
+            tagDrafts = updated
+        }
         for step in recovery.steps {
             switch step {
-            case let .keepTag(draft): tagDrafts[draft.trackUUID] = draft
+            case .keepTag: break
             case let .clearCue(uuid):
                 draftCueCounts[uuid] = nil
                 draftChanged(trackUUID: uuid, kind: .cue, exists: false)
@@ -86,8 +92,8 @@ extension LibraryStore {
                 updateEdited(uuid)
             }
         }
-        if !recovery.resavedTags.isEmpty {
-            rememberTagSaves(recovery.resavedTags)
+        if !savedTags.isEmpty {
+            rememberTagSaves(savedTags)
             tagRevision += 1
         }
         if let gains = recovery.gainDraftUUIDs { applyGainDraftUUIDs(gains) }

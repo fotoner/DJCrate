@@ -9,6 +9,8 @@
                  주석·문자열 안은 보지 않는다.
   test-defaults  시험은 UserDefaults(suiteName:)을 직접 만들지 않고 TestDefaults(DJCTestKit)를 쓴다
                  (사용자 ~/Library/Preferences에 plist를 남기지 않게, adv4 T6).
+  test-sleep     시험에서 실시간 sleep 뒤 결과를 판정하지 않는다(TEST-30). 순서·신호 또는 waitForState를 쓴다.
+                 상태 확인 간격·취소 재료·입력 간격 등 기존 실시간 대기는 test-sleep-allow.txt의 코드 줄과 곳 수로 한정한다.
   view-task      앱의 SwiftUI 뷰 파일(View를 채택한 타입이 든 파일)은 Task를 시작하지 않고(Task {…}·Task(…) {…}·Task.detached)
                  await하지 않는다. 화면 모델의 메서드를 부른다(MVVM, Ledger "뷰 본문에서 로직·Task 시작 금지").
                  허용: 수명 수식어 .task {…}·.task(id:) {…}의 본문이 `await 받는쪽.메서드(인자)` 하나뿐인 것(받는 쪽은 self가 아닌 값,
@@ -45,8 +47,15 @@ DEBT = ROOT / "scripts/import-debt.txt"
 
 # 프로젝트 모듈 전부(이 밖의 import는 시스템·외부 모듈이라 보지 않는다). SQLCipher도 이 저장소가 고른 의존이라 본다.
 INFRA = {"RekordboxKit", "DJCStorage", "DJCAnalysis", "DJCEnvironment", "DJCLink"}
-# DJLinkKit 패키지(Pro DJ Link, #268)의 제품. DJCLink만 import한다(외부 패키지 타입과 네트워크 코드가 다른 모듈로 번지지 않게).
-DJLINK_MODULES = {"DJLinkKit", "DJLinkControl", "DJLinkPassive", "DJLinkExport", "DJLinkExportModel", "DJLinkExportProtocol"}
+# DJLinkKit 0.1.6의 Package.swift 타깃 전부. 버전을 올릴 때 목록을 맞춘다(LNK-7).
+DJLINK_MODULES = {
+    "DJLinkKit", "DJLinkControl", "DJLinkPassive", "CPcap", "djlink",
+    "DJLinkExport", "DJLinkExportSupport", "DJLinkExportProtocol", "DJLinkExportNFS", "DJLinkExportDBServer",
+    "DJLinkExportModel", "DJLinkExportANLZ", "DJLinkExportTestSupport", "DJLinkTestSupport",
+    "DJLinkKitTests", "DJLinkControlTests", "DJLinkPassiveTests", "DJLinkExportProtocolTests",
+    "DJLinkExportNFSTests", "DJLinkExportDBServerTests", "DJLinkExportModelTests", "DJLinkExportANLZTests",
+    "DJLinkExportTests", "djlinkTests",
+}
 CORE = {"DJCDomain", "DJCApplication"}
 EVERYTHING_BELOW_APP = CORE | INFRA | {"DJCAdapters"}
 TEST_KITS = {"DJCTestKit", "RekordboxFixtures"}
@@ -59,8 +68,8 @@ ALLOWED = {
     "RekordboxKit": {"DJCDomain", "DJCEnvironment", "SQLCipher"},
     "DJCStorage": {"DJCDomain", "DJCEnvironment", "RekordboxKit"},
     "DJCAnalysis": {"DJCDomain", "DJCEnvironment"},
-    # DJLinkExportModel·DJLinkExportProtocol은 제품이 아니지만 DJLinkExport가 쓰는 형(`Library`·`Cue`·`LinkAddress`)이 거기 있다(#273)
-    "DJCLink": {"DJLinkKit", "DJLinkExport", "DJLinkExportModel", "DJLinkExportProtocol"},
+    # 서버와 형을 제공하는 내부 타깃은 LinkExportServer가 직접 쓴다(LNK-7).
+    "DJCLink": {"DJLinkKit", "DJLinkExport", "DJLinkExportDBServer", "DJLinkExportModel", "DJLinkExportProtocol"},
     "DJCAdapters": EVERYTHING_BELOW_APP - {"DJCAdapters"},
     # 앱·CLI의 화면 모델·뷰·명령은 유스케이스와 도메인만. 조립 지점·자가 테스트·실험 명령은 아래 FILE_EXCEPTIONS.
     "DJCrate": {"DJCApplication", "DJCDomain"},
@@ -167,6 +176,12 @@ AWAIT = re.compile(r"\bawait\b")
 TASK_MODIFIER = re.compile(r"\.task\s*(?=[({])")
 MODEL_CALL_HEAD = re.compile(r"\s*await\s+(?!self\b)[A-Za-z_]\w*(?:\s*\??\.\s*[A-Za-z_]\w*)+\s*(?=\()")
 COUNTED = re.compile(r"^(.*) (\d+)곳$")
+TEST_SLEEP = re.compile(
+    r"\b(?:Task(?:\s*<[^<>\n]+>)?|Thread|(?:Continuous|Suspending)Clock\s*\(\s*\))\s*\.\s*sleep\s*\("
+    r"|\.\s*sleep\s*\(\s*(?:for|until)\s*:"
+    r"|\b(?:Darwin|Glibc)\s*\.\s*(?:sleep|usleep|nanosleep)\s*\("
+    r"|(?<![.\w])(?:sleep|usleep|nanosleep)\s*\("
+)
 TEST_DEFAULTS_HELPER = "Tests/Support/Kit/TestDefaults.swift"
 TEST_DEFAULTS = re.compile(r"\bUserDefaults\s*\(\s*suiteName\s*:")
 
@@ -426,9 +441,57 @@ def view_task_counts(code):
     return tasks, awaits
 
 
+def read_sleep_allowance(root):
+    allowed = Counter()
+    path = root / "scripts/test-sleep-allow.txt"
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.split("\t")
+            if len(fields) != 4 or not all(fields) or re.fullmatch(r"[1-9][0-9]*", fields[-1]) is None:
+                raise PackageError(f"시험 대기 허용 줄 모양이 틀렸습니다(파일<TAB>사유<TAB>코드<TAB>곳 수): {line}")
+            relative, _, statement, count = fields
+            allowed[relative, statement] += int(count)
+    return allowed
+
+
+def sleep_contexts(code, patterns):
+    """여러 줄에 걸친 상태 확인은 반복 조건과 본문이 함께 맞을 때만 허용한다."""
+    numbered = [(index, " ".join(line.split())) for index, line in enumerate(code.splitlines()) if line.strip()]
+    lines = [line for _, line in numbered]
+    matched = {}
+    for pattern in patterns:
+        parts = pattern.split(" >> ")
+        for start, line in enumerate(lines):
+            if line == parts[0] and lines[start:start + len(parts)] == parts:
+                for index, statement in numbered[start:start + len(parts)]:
+                    if TEST_SLEEP.search(statement):
+                        matched[index] = pattern
+    return matched
+
+
+def test_sleep_statements(code, patterns=()):
+    # 줄 번호나 들여쓰기가 바뀌어도 같은 대기다. 주석·문자열을 걷어낸 뒤 호출을 센다.
+    contexts = sleep_contexts(code, patterns) if patterns else {}
+    for match in TEST_SLEEP.finditer(code):
+        line_start = code.rfind("\n", 0, match.start()) + 1
+        prefix = code[line_start:match.start()]
+        if re.search(r"\bfunc\s*$", prefix):
+            continue
+        line_end = code.find("\n", match.end())
+        statement = code[line_start:] if line_end == -1 else code[line_start:line_end]
+        yield contexts.get(code.count("\n", 0, line_start), " ".join(statement.split()))
+
+
 def violations(root=ROOT):
     found, unknown, orphans, problems = set(), set(), set(), []
     called, outside = {}, []
+    sleep_allowance = read_sleep_allowance(root)
+    sleep_patterns = {}
+    for relative, statement in sleep_allowance:
+        if " >> " in statement:
+            sleep_patterns.setdefault(relative, []).append(statement)
     targets = package_targets(root)
     files = sorted(p for top in ("Sources", "Tests") for p in (root / top).rglob("*.swift"))
     used_in_folder = {folder: set() for folder in BROAD_FOLDERS}
@@ -471,7 +534,21 @@ def violations(root=ROOT):
                 found.add((relative, "view-task", f"await {awaits}곳"))
         if relative.startswith("Tests/") and relative != TEST_DEFAULTS_HELPER and TEST_DEFAULTS.search(code):
             found.add((relative, "test-defaults", "UserDefaults(suiteName:)"))
+        if relative.startswith("Tests/"):
+            sleeps = 0
+            for statement in test_sleep_statements(code, sleep_patterns.get(relative, ())):
+                key = (relative, statement)
+                if sleep_allowance[key]:
+                    sleep_allowance[key] -= 1
+                else:
+                    sleeps += 1
+            if sleeps:
+                found.add((relative, "test-sleep", f"sleep {sleeps}곳"))
         write_entry_calls(relative, text, called, outside)
+    for (relative, statement), count in sorted(sleep_allowance.items()):
+        if count:
+            problems.append(f"더는 쓰지 않는 시험 대기 허용 줄({count}곳): {relative}: {statement}. "
+                            "scripts/test-sleep-allow.txt에서 빼세요")
     # 예외 목록을 지금 모양에 맞춘다(타깃이 있는 자리만 본다)
     for relative in ASSEMBLY_FILES:
         if module_of(relative, targets) is not None and not (root / relative).is_file():
@@ -517,7 +594,7 @@ def read_debt():
 
 
 def counted(entry):
-    """곳 수를 적은 빚 줄(view-task)이면 ((파일, 규칙, 종류), 곳 수), 아니면 (None, None)"""
+    """곳 수를 적은 빚 줄이면 ((파일, 규칙, 종류), 곳 수), 아니면 (None, None)"""
     match = COUNTED.match(entry[2])
     return ((entry[0], entry[1], match.group(1)), int(match.group(2))) if match else (None, None)
 
@@ -566,7 +643,7 @@ def exception_table(root=ROOT):
 
 HEADER = """# 모듈 경계 규칙의 빚 목록(scripts/check-imports.py). 지금 남은 위반을 고정한다.
 # 줄: 파일<TAB>규칙<TAB>대상. 규칙: import(허용 밖 프로젝트 모듈), api(핵심부의 직접 호출), test-defaults(시험의 UserDefaults(suiteName:)),
-# view-task(뷰 파일의 Task 시작·await, 대상에 곳 수: 늘면 새 위반, 줄면 이 줄을 고친다).
+# view-task(뷰 파일의 Task 시작·await), test-sleep(시험의 실시간 sleep). 곳 수가 늘면 새 위반, 줄면 이 줄을 고친다.
 # 빚을 갚으면 그 줄을 지운다(남겨 두면 검사가 "지워도 됨"으로 실패한다). 새 위반은 여기 더하지 말고 고친다.
 # 다시 만들기: scripts/check-imports.py --write-debt
 """
@@ -576,7 +653,7 @@ def main(arguments):
     try:
         found, unknown, orphans, problems = violations()
     except PackageError as error:
-        print(f"✘ 패키지 타깃을 읽지 못했습니다: {error}")
+        print(f"✘ 모듈 경계 검사 입력을 읽지 못했습니다: {error}")
         return 1
     for relative in sorted(orphans):
         print(f"✘ 어느 타깃에도 속하지 않는 Swift 파일입니다: {relative}. 폴더를 옮겼으면 Package.swift의 타깃 경로를 고치세요")
@@ -597,7 +674,7 @@ def main(arguments):
     debt = read_debt()
     new = sorted(found - debt)
     paid = sorted(debt - found)
-    # 곳 수를 적은 줄(view-task)은 같은 파일·종류끼리 짝지어 늘었는지 줄었는지 알린다
+    # 곳 수를 적은 줄은 같은 파일·종류끼리 짝지어 늘었는지 줄었는지 알린다
     now_counts = {key: (entry, count) for entry in new for key, count in [counted(entry)] if key}
     debt_counts = {key: (entry, count) for entry in paid for key, count in [counted(entry)] if key}
     grew, shrank = [], []
