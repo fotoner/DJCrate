@@ -22,6 +22,7 @@ extension LibraryStore {
     ///     앱 데이터 폴더(`DJCPaths.userData`)를 나눠 쓸 시험은 그 값을 준다
     ///   - location: 실행 인자·환경 대신 직접 만든 위치(쓰기 대상·백업·초안 폴더는 위 인자가 덮는다)
     ///   - takeLiveSnapshot: 스냅샷 뜨기(주지 않으면 이 프로세스의 rekordbox 폴더에서 뜬다)
+    ///   - draftOrigin: 이 저장소의 편집 출처(기본은 모름). 앱처럼 사람 편집으로 쌓아야 자동 저장 대상이 되는 시험은 `.human`을 준다
     ///   - ports: 라이브러리 포트(실제 구현)를 바꾼다(메모리 라이브러리·가짜 Music 등)
     static func test(settings: SettingsStore = SettingsStore(defaults: TestDefaults.make("library-store")),
                      activityLog: ActivityLog? = nil,
@@ -43,6 +44,7 @@ extension LibraryStore {
                      location: LibraryLocation? = nil,
                      takeLiveSnapshot: (@Sendable (Bool) throws -> URL)? = nil,
                      writer: DraftWriter = DraftWriter(),
+                     draftOrigin: DraftOrigin = .unknown,
                      launch: LibraryLaunchOptions = LibraryLaunchOptions(),
                      ports: ((inout LibraryPorts) -> Void)? = nil) -> LibraryStore {
         let home = draftHome ?? freshTestFolder("drafts")
@@ -52,7 +54,9 @@ extension LibraryStore {
         location.backupDirectory = backupDirectory ?? freshTestFolder("backups")
         location.draftHome = home
         location.movesDamagedDrafts = movesDamagedDrafts ?? (draftHome != nil)
-        var drafts = DraftStore.live(writer: writer, home: home)
+        var drafts = DraftStore.live(writer: writer, home: home, origin: draftOrigin)
+        // 앱 조립 지점과 같이 이번 실행의 rekordbox 실행 경계를 든다(R23, 게인 base)
+        drafts.runEpoch = RekordboxRunEpoch(session: UUID().uuidString)
         if let saveTagDrafts { drafts.saveTags = { saveTagDrafts($0) } }
         if let playlistDraftSaver {
             // 가짜 저장이 받은 초안을 디스크 초안으로 읽게 한다: 편집 전 바깥 변경 확인(#260)이 쓰지 않은 파일을 바깥 변경으로 보지 않게
@@ -65,6 +69,22 @@ extension LibraryStore {
             drafts.readPlaylistDraft = { try saved.value ?? read() }
         }
         if let mergeDraftSaver { drafts.saveMergeDrafts = { try mergeDraftSaver($0) } }
+        // 출처 포트(복원이 되살린 초안, `DraftStore.with(origin:)`)도 같은 가짜 저장을 쓴다. 실제 구현은 출처 포트를 새로 만들어
+        // 이 포트에 바꿔 넣은 클로저를 따라가지 않기 때문이다(도장은 출처 포트의 것을 쓴다)
+        let tags = saveTagDrafts != nil, playlists = playlistDraftSaver != nil, merges = mergeDraftSaver != nil
+        if tags || playlists || merges {
+            let injected = drafts, variant = drafts.originVariant
+            drafts.originVariant = { origin in
+                var port = variant?(origin) ?? injected
+                if tags { port.saveTags = injected.saveTags }
+                if playlists {
+                    port.savePlaylistDraft = injected.savePlaylistDraft
+                    port.readPlaylistDraft = injected.readPlaylistDraft
+                }
+                if merges { port.saveMergeDrafts = injected.saveMergeDrafts }
+                return port
+            }
+        }
         let places = DraftLocations(home: home)
         // 라이브러리 포트는 조립 지점과 같은 실제 구현이다. 시험이 `ports`로 일부(라이브러리 읽기·Music 등)를 바꾼다.
         var libraryPorts = LibraryPorts.live(location: location, drafts: drafts,
@@ -132,9 +152,12 @@ extension LibraryStore {
     /// 시험: 곡 넣기를 되돌린 뒤 반영 세션이 하는 연결 기록·초안 편집 잊기(`EditPlaylists.resetImports`)와 화면 맞추기
     func resetPlaylistImports(contentIDs: Set<String>) {
         guard !contentIDs.isEmpty else { return }
-        applyReflection(.playlistImportsReset(useCases.playlists.resetImports(contentIDs: contentIDs, draft: playlists.playlistDraft,
-                                                                               rekordbox: playlists.rekordboxPlaylists, imports: playlists.playlistImports,
-                                                                               importsLoadFailed: playlists.playlistImportsLoadFailed)))
+        // 세션처럼 화면 상태(`reflectionState`)를 읽어 넘긴다
+        let state = reflectionState()
+        applyReflection(.playlistImportsReset(useCases.playlists.resetImports(contentIDs: contentIDs, draft: state.playlistDraft,
+                                                                               rekordbox: state.rekordboxPlaylists, imports: state.playlistImports,
+                                                                               importsLoadFailed: state.playlistImportsLoadFailed,
+                                                                               carrying: state.playlistCarriedOrigins)))
     }
 
     /// 시험: 쓴 뒤·복원 뒤 반영 세션이 하는 태그 초안 저장(`ReflectionSession.replaceTagDrafts`, 넘길 초안이 있을 때만)과 화면 맞추기

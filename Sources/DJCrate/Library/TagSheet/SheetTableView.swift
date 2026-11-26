@@ -23,6 +23,8 @@ final class SheetTableView: NSTableView, NSViewToolTipOwner {
     func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
         let hitRow = row(at: point), hitColumn = column(at: point)
         guard let coordinator, coordinator.rows.indices.contains(hitRow), let spec = coordinator.spec(atColumn: hitColumn) else { return "" }
+        // 앨범아트 칸은 그림만 있어 알릴 글자가 없다(읽기 전용 이유도 필요 없다)
+        if spec.id == SheetColumn.artworkID { return "" }
         let text = coordinator.text(row: hitRow, column: hitColumn)
         guard let reason = TrackListTagEditing.unavailableReason(coordinator.rows[hitRow], key: spec.key) else { return text }
         return text.isEmpty ? reason : text + "\n" + reason
@@ -71,14 +73,15 @@ final class SheetTableView: NSTableView, NSViewToolTipOwner {
     /// 오른쪽 클릭: 고른 범위 밖이면 그 칸으로 커서를 옮기고(엑셀처럼) 덱에 불러오기 메뉴를 띄운다.
     override func menu(for event: NSEvent) -> NSMenu? {
         guard let coordinator, let position = position(for: event) else { return nil }
-        if !coordinator.isSelected(position) { coordinator.select(position, extend: false) }
+        if !coordinator.isInSelection(position) { coordinator.select(position, extend: false) }
         return coordinator.contextMenu(forRow: position.row)
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let coordinator, let position = position(for: event) else { return }
         autoscroll(with: event)
-        if position != coordinator.cursor { coordinator.select(position, extend: true) }
+        // 앨범아트 열 위는 옆 칸으로 맞춰 견준다(같은 칸이면 이벤트마다 다시 선택하지 않는다)
+        if coordinator.clamped(position) != coordinator.cursor { coordinator.select(position, extend: true) }
     }
 
     override func keyDown(with event: NSEvent) {
@@ -106,9 +109,9 @@ final class SheetTableView: NSTableView, NSViewToolTipOwner {
         case .pageUp: coordinator.move(rows: -20, columns: 0, extend: shift)
         case .pageDown: coordinator.move(rows: 20, columns: 0, extend: shift)
         default:
-            // 글자를 치면 그 글자로 편집을 시작한다(엑셀과 같다).
+            // 한국어 배열의 Option+영문처럼 Option으로 만든 글자도 편집기에 넘긴다.
             if let characters = event.characters, !characters.isEmpty,
-               event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+               event.modifierFlags.intersection([.command, .control]).isEmpty,
                characters.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
                 // 글자를 직접 넣으면 한글 입력기가 조합하지 못한다(ㅎ+ㅏ가 따로 들어감).
                 // 빈 칸으로 편집을 시작하고 같은 키 이벤트를 편집기에 넘겨 입력기가 처리하게 한다.

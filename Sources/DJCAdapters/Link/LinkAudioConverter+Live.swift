@@ -9,13 +9,13 @@ import RekordboxKit
 extension LinkAudioConverter {
     /// FLAC·ALAC를 같은 샘플의 WAV로 바꿔 `cache` 폴더에 둔다(#277). 원본은 읽기만 한다.
     /// 무손실 형식은 인코더 지연이 0이라(`RekordboxTimeline.predictedOffset`) 처음부터 끝까지 그대로 옮기면 큐·그리드 시각이 같다.
-    /// 같은 원본(경로·크기·수정 시각)은 한 번만 바꾸고 다시 쓴다. 다 쓴 뒤에 이름을 바꿔 반쯤 쓴 파일을 내어 주지 않는다(`EditRenderer`).
+    /// 사본의 내용과 수정 시각이 같으면 그 곡의 WAV를 다시 쓴다. 다 쓴 뒤에 이름을 바꿔 반쯤 쓴 파일을 내어 주지 않는다(`EditRenderer`).
     /// 원본이 바뀌어 새로 바꾸면 그 원본의 옛 변환본을 지운다(#287).
     /// - Parameter cache: 바꾼 WAV를 둘 폴더(`DJCCachePaths.linkAudio`). 내어 주는 곡과 다른 뿌리 폴더에 있어도 서버가 원본 이름으로 내어 준다
     public static func live(cache: URL) -> LinkAudioConverter {
-        LinkAudioConverter(convert: { path throws(LinkProblem) in
+        LinkAudioConverter(convert: { input, original throws(LinkProblem) in
             let result = await BlockingWork.run(qos: .userInitiated) { () -> Result<String?, LinkProblem> in
-                Result { () throws(LinkProblem) -> String? in try convertIfNeeded(path, cache: cache) }
+                Result { () throws(LinkProblem) -> String? in try convertIfNeeded(input, original: original, cache: cache) }
             }
             return try result.get()
         }, needsConversion: { path in
@@ -25,12 +25,12 @@ extension LinkAudioConverter {
     }
 
     /// 바꿔야 하면 바꾼 WAV 경로, 아니면 nil
-    static func convertIfNeeded(_ path: String, cache: URL) throws(LinkProblem) -> String? {
+    static func convertIfNeeded(_ path: String, original: String, cache: URL) throws(LinkProblem) -> String? {
         let source = URL(filePath: path)
         guard needsConversion(source) else { return nil }
         let name: CacheName
         do {
-            name = try cacheName(source)
+            name = try cacheName(source, original: original)
         } catch {
             throw .conversionFailed(String(ui: "음원 파일을 읽지 못했습니다"))
         }
@@ -67,7 +67,7 @@ extension LinkAudioConverter {
         }
     }
 
-    /// 변환본 이름 `<원본 이름 40자>-<경로 열쇠>-<판 열쇠>.wav`. 원본이 바뀌면(크기·수정 시각) 판 열쇠만 달라져 새로 바꾸고,
+    /// 변환본 이름 `<원본 이름 40자>-<경로 열쇠>-<판 열쇠>.wav`. 사본이 바뀌면(내용·수정 시각) 판 열쇠만 달라져 새로 바꾸고,
     /// 같은 앞부분(`prefix`)으로 옛 판을 찾아 지운다
     struct CacheName: Equatable {
         /// 원본 이름과 경로 열쇠까지(`-`로 끝난다)
@@ -76,13 +76,18 @@ extension LinkAudioConverter {
         var file: String { "\(prefix)\(version).wav" }
     }
 
-    /// 원본 경로·크기·수정 시각으로 지은 이름
-    static func cacheName(_ source: URL) throws -> CacheName {
-        let values = try source.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-        let path = source.standardizedFileURL.path
-        let version = "\(values.fileSize ?? 0)\n\(values.contentModificationDate?.timeIntervalSince1970 ?? 0)"
-        return CacheName(prefix: "\(source.deletingPathExtension().lastPathComponent.prefix(40))-\(digest(path, bytes: 8))-",
-                         version: digest(path + "\n" + version, bytes: 6))
+    /// 원본 경로는 캐시 이름에만 쓴다. 캐시가 승인 사본과 같은 내용인지 판정할 때도 그 사본만 읽는다.
+    static func cacheName(_ source: URL, original: String) throws -> CacheName {
+        let values = try source.resourceValues(forKeys: [.contentModificationDateKey])
+        let name = ((original as NSString).lastPathComponent as NSString).deletingPathExtension
+        var version = SHA256()
+        version.update(data: Data(String(values.contentModificationDate?.timeIntervalSince1970 ?? 0).utf8))
+        version.update(data: Data([0]))
+        let handle = try FileHandle(forReadingFrom: source)
+        defer { try? handle.close() }
+        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty { version.update(data: chunk) }
+        return CacheName(prefix: "\(name.prefix(40))-\(digest(original, bytes: 8))-",
+                         version: version.finalize().map { String(format: "%02x", $0) }.joined())
     }
 
     private static func digest(_ text: String, bytes: Int) -> String {

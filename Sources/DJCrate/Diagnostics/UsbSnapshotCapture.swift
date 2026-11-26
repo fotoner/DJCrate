@@ -176,7 +176,7 @@ enum UsbSnapshotCapture {
 
         func show(_ prompt: ReflectionPrompt) -> Bool {
             let file: String?
-            if prompt.title == String(ui: "스냅샷 뒤의 기기 변경을 버릴까요?") {
+            if prompt.title == String(ui: "동기화 뒤의 기기 변경을 버릴까요?") {
                 devicePrompts += 1
                 file = "device-changes-consent"
             } else if prompt.title.hasPrefix("USB를 ‘") {

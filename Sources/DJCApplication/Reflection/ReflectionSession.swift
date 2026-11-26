@@ -75,6 +75,23 @@ public struct ReflectionSession {
     // MARK: - 공통
 
     func lock(_ locked: Bool) { ports.lock.set(locked, true) }
+
+    /// 초안을 쓰는 동안의 잠금(R21): 쓰는 묶음에 든 곡의 편집만 막고 덱 재생·사이드바·목록·다른 곡 편집은 그대로 둔다.
+    /// 라이브러리는 쓰는 중으로 묶어(`set(true, false)`) 다른 쓰기·읽기와 겹치지 않게 하되 덱은 잠그지 않아 재생을 멈추지 않는다.
+    /// 곡이 없는 묶음(재생 목록·재생 기록만)도 초안 쓰기 표시로 곡 단위 쓰기가 된다. 재생 목록·재생 기록 편집은 쓰는 중이라 막는다(재생 목록 얼리기는 #402).
+    /// 곡과 초안 쓰기를 먼저 정해야 쓰는 중으로 바뀌는 순간에도 통째 잠금이 한 틱 켜지지 않는다.
+    func lockDraftWrite(tracks: Set<String>) {
+        ports.lock.setTracks(tracks)
+        ports.lock.setDraftWriting(true)
+        ports.lock.set(true, false)
+    }
+
+    /// `lockDraftWrite`를 푼다. 쓰는 중을 먼저 풀고 초안 쓰기·곡을 비운다(곡이 먼저 비면 통째 잠금이 한 틱 켜진다)
+    func unlockDraftWrite() {
+        ports.lock.set(false, false)
+        ports.lock.setDraftWriting(false)
+        ports.lock.setTracks([])
+    }
     func stage(_ stage: WriteStage?) { ports.lock.stage(stage) }
     func apply(_ change: ReflectionLibraryChange) { ports.library.apply(change) }
 
@@ -82,16 +99,17 @@ public struct ReflectionSession {
     var playlistEdits: EditPlaylists { EditPlaylists(imports: ports.playlistImports, drafts: ports.drafts) }
 
     /// 태그 초안을 통째로 바꿔 저장하고(변경이 없는 초안은 파일째 지운다) 화면이 메모리를 맞추게 한다
-    func replaceTagDrafts(_ tags: [TagDraft]) {
-        ports.drafts.saveTags(tags)
+    /// - Parameter store: 저장할 포트(복원이 되살린 초안은 그 출처의 포트). 주지 않으면 세션의 초안 저장소
+    func replaceTagDrafts(_ tags: [TagDraft], in store: DraftStore? = nil) {
+        (store ?? ports.drafts).saveTags(tags)
         apply(.tagDrafts(tags))
     }
 
     /// 합치기 초안을 이것으로 바꿔 저장하고 화면이 메모리를 맞추게 한다. 쓰기·복원은 이미 끝났으니 저장 실패는 화면이 경고로만 알린다
     /// (실패로 바꾸면 되돌리기 안내까지 잃는다).
-    func replaceMergeDrafts(_ merges: [DuplicateMergeDraft]) {
+    func replaceMergeDrafts(_ merges: [DuplicateMergeDraft], in store: DraftStore? = nil) {
         do {
-            try ports.drafts.saveMergeDrafts(merges)
+            try (store ?? ports.drafts).saveMergeDrafts(merges)
             apply(.mergeDrafts(merges, failure: nil, moved: location.movesDamagedDrafts ? ports.drafts.takeMovedFiles() : []))
         } catch {
             apply(.mergeDrafts(merges, failure: error, moved: []))
@@ -157,41 +175,46 @@ public struct ReflectionSession {
 // MARK: - 문구
 
 extension ReflectionSession {
+    /// 디스크 재생 목록 초안을 확인하지 못해(`ReflectionLibraryState.canWritePlaylists`가 아니다) 이번 저장·복원이 재생 목록을 건드리지 않았다는 이유
+    public static var playlistSyncHeldText: String {
+        String(ui: "재생 목록 편집을 확인하지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요.")
+    }
+
     public static var playlistSaveFailureText: String {
-        String(ui: "재생 목록 초안을 저장하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 쓰기를 다시 시도하세요.")
+        String(ui: "재생 목록 편집을 보관하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 저장을 다시 시도하세요.")
     }
 
     public static var snapshotRefusedMessage: String {
-        String(ui: "명시한 사본(--db)으로 연 창에서는 스냅샷을 뜨지 않습니다. --db 없이 다시 여세요")
+        String(ui: "명시한 사본(--db)으로 연 창에서는 rekordbox와 동기화하지 않습니다. --db 없이 다시 여세요")
     }
 
     public static func reloadFailureText(restoring: Bool) -> String {
         restoring ? String(ui: "rekordbox는 복원했지만 라이브러리를 다시 읽지 못했으니 ‘rekordbox와 동기화’(⌘R)로 다시 읽은 뒤 편집을 이어 가세요.")
-            : String(ui: "rekordbox에는 썼지만 라이브러리를 다시 읽지 못했으니 ‘rekordbox와 동기화’(⌘R)로 다시 읽은 뒤 편집을 이어 가세요.")
+            : String(ui: "rekordbox에는 저장했지만 라이브러리를 다시 읽지 못했으니 ‘rekordbox와 동기화’(⌘R)로 다시 읽은 뒤 편집을 이어 가세요.")
     }
 
     public static func keptDraftsText(_ count: Int) -> String {
-        String(ui: "쓴 뒤 새로 만든 초안이 있는 \(count)곡은 지금 초안을 남겼고, 백업의 초안은 ‘활동 기록…’의 백업 폴더에 남아 있습니다.")
+        String(ui: "저장한 뒤 새로 만든 편집이 있는 \(count)곡은 지금 편집을 남겼고, 백업의 편집은 ‘활동 기록…’의 백업 폴더에 남아 있습니다.")
     }
 
     public static func artworkRestoreFailureText(_ count: Int) -> String {
-        String(ui: "rekordbox는 복원했지만 앨범아트 초안 \(count)곡을 되살리지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 그 곡의 앨범아트를 다시 고르세요.")
+        String(ui: "rekordbox는 복원했지만 앨범아트 편집 \(count)곡을 되살리지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 그 곡의 앨범아트를 다시 고르세요.")
     }
 
     /// 넣기 끝에 백업 폴더에 추가 목록을 남기지 못했을 때(#202). 넣기 자체는 끝났다.
     public static var stagedBackupFailureText: String {
-        String(ui: "rekordbox에는 넣었지만 추가 목록을 백업에 저장하지 못해 ‘쓰기 전으로 복원…’으로 되돌려도 곡이 추가 목록으로 돌아오지 않으니, 되돌렸다면 음원을 다시 추가하세요.")
+        String(ui: "rekordbox에는 넣었지만 추가 목록을 백업에 보관하지 못해 ‘저장 전으로 복원…’으로 되돌려도 곡이 추가 목록으로 돌아오지 않으니, 되돌렸다면 음원을 다시 추가하세요.")
     }
 
     /// 넣기 끝에 추가한 곡의 초안 사본을 백업 폴더에 남기지 못한 곡이 있을 때(#202). 그 초안은 되돌릴 때 이어질 유일한 사본이라 지우지 않는다.
     public static func stagedDraftsBackupFailureText(_ count: Int) -> String {
-        String(ui: "추가한 곡 \(count)곡의 초안을 백업에 저장하지 못해 연결되지 않은 초안으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리지 마세요.")
+        String(ui: "추가한 곡 \(count)곡의 편집을 백업에 보관하지 못해 연결되지 않은 편집으로 남겼으니, 되돌려 곡이 추가 목록으로 돌아올 때 이어지도록 저장 대기 목록의 ‘연결되지 않은 편집’ 옆 ‘보기…’에서 버리지 마세요.")
     }
 
     /// 되돌린 새 곡에 남아 있던 초안을 지우지 않고 남긴 곡이 있을 때(#197·#202)
     public static func keptNewTrackDraftsText(_ count: Int, kinds: [AddedTrackDrafts.Kind]) -> String? {
         guard count > 0 else { return nil }
         let labels = kinds.map(\.label).joined(separator: "·")
-        return String(ui: "넣은 곡에 남아 있던 \(labels) 초안 \(count)곡은 지우지 않고 연결되지 않은 초안으로 남겼습니다. 필요 없으면 쓰기 대기 목록의 ‘연결되지 않은 초안’ 옆 ‘보기…’에서 버리세요.")
+        return String(ui: "넣은 곡에 남아 있던 \(labels) 편집 \(count)곡은 지우지 않고 연결되지 않은 편집으로 남겼습니다. 필요 없으면 저장 대기 목록의 ‘연결되지 않은 편집’ 옆 ‘보기…’에서 버리세요.")
     }
 }

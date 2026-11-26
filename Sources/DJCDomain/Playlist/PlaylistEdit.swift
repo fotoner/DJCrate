@@ -65,3 +65,26 @@ public enum PlaylistEdit: Hashable, Sendable, Codable {
         }
     }
 }
+
+public extension PlaylistRef {
+    /// 새 목록(`new:키`)이면 쓴 뒤 받은 rekordbox ID로 바꾼다(`ids`: `new:키` → ID). 그 밖은 그대로다
+    func remapped(_ ids: [String: String]) -> PlaylistRef {
+        if case .new = self, let id = ids[description] { .id(id) } else { self }
+    }
+}
+
+public extension PlaylistEdit {
+    /// 대상과 목적지(만들기의 부모, 옮기기의 폴더)의 새 목록 키를 받은 ID로 바꾼 편집. 만들기 자신의 키는 그대로다
+    func remapped(_ ids: [String: String]) -> PlaylistEdit {
+        switch self {
+        case let .create(key, name, isFolder, parent): .create(key: key, name: name, isFolder: isFolder, parent: parent.remapped(ids))
+        case let .rename(playlist, name): .rename(playlist: playlist.remapped(ids), name: name)
+        case let .move(playlist, into): .move(playlist: playlist.remapped(ids), into: into.remapped(ids))
+        case let .reorder(playlist, index): .reorder(playlist: playlist.remapped(ids), index: index)
+        case let .delete(playlist): .delete(playlist: playlist.remapped(ids))
+        case let .addTracks(playlist, contentIDs): .addTracks(playlist: playlist.remapped(ids), contentIDs: contentIDs)
+        case let .removeTracks(playlist, entries): .removeTracks(playlist: playlist.remapped(ids), entries: entries)
+        case let .moveTracks(playlist, entries, to): .moveTracks(playlist: playlist.remapped(ids), entries: entries, to: to)
+        }
+    }
+}

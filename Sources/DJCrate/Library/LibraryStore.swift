@@ -14,7 +14,43 @@ final class LibraryStore {
     }
 
     @ObservationIgnored weak var undoManager: UndoManager? {
-        didSet { if oldValue !== undoManager { oldValue?.removeAllActions(withTarget: self) } }
+        didSet { if oldValue !== undoManager { clearLibraryUndo(in: oldValue) } }
+    }
+    /// ⌘Z 단계 목록(덱·태그·재생 목록·합치기·재생 기록이 한 차례로 건다, 컨실 2라운드 A). 맨 위 단계만 판정한다(`UndoSteps`)
+    let undoSteps = UndoSteps()
+    /// 태그 초안(평점·곡 색 포함)을 고친 곡을 알린다(덱에 올린 곡이면 자동 저장이 덱 편집으로 기다린다, #295 리뷰 F6)
+    @ObservationIgnored var onTagDraftsEdited: ((Set<String>) -> Void)?
+    /// 합치기·재생 기록을 rekordbox에 쓴 횟수: 그 전에 건 그 종류의 ⌘Z 단계는 저장 뒤 되돌리지 않는다(R12, 맨 위가 되면 메뉴가 꺼진다)
+    @ObservationIgnored var mergeWriteGeneration = 0
+    @ObservationIgnored var historyWriteGeneration = 0
+    /// ⌘Z 맨 위 단계를 판정해도 되는지: 쓰는 중이거나 쓴 뒤 다시 읽기가 끝나지 않았거나(rekordbox 값이 아직 옛 사본) 미룬 ⌘Z가 있으면 아니다
+    var undoSettled: Bool {
+        !libraryBusy && lockedTracks.isEmpty && writtenAwaitingReload.isEmpty && !draftWriteReadPending && tagsWrittenAwaitingReload.isEmpty
+            && playlists.playlistEditsAwaitingReload.isEmpty && !playlists.isEditBlocked && pendingUndo.isEmpty
+    }
+    /// 저장 뒤 다시 읽고 쓰기 잠금이 모두 풀린 때: 맨 위 ⌘Z 단계가 되돌릴 수 없게 됐으면 기록을 비워 메뉴를 끈다(아래 단계는 차례가 오면 판정한다)
+    func settleUndo() { undoSteps.settle(undoManager) }
+    /// ⌘Z 기록을 비웠거나 미룬 ⌘Z가 무효라 실행하지 않은 이유(#295 E6). 저장 알림을 덮지 않는 알림으로 한 번 알린다
+    static var undoClearedText: String { String(ui: "저장한 뒤라 되돌릴 수 없는 편집이 있어 실행 취소 기록을 비웠으니 필요하면 다시 편집하세요") }
+    /// 라이브러리 쪽 ⌘Z 기록을 모두 지운다(복원·곡 넣기처럼 통째로 잠그는 쓰기, 그 밖의 다시 읽기)
+    func clearLibraryUndo(in manager: UndoManager? = nil) {
+        let manager = manager ?? undoManager
+        undoSteps.removeAll(.library, from: manager)
+        manager?.removeAllActions(withTarget: self)
+        pendingUndo.removeAll()
+        playlists.forgetWrittenSteps()
+    }
+    /// 실행할 수 없는 ⌘Z(맨 위 단계·미룬 ⌘Z): ⌘Z 기록과 미뤄 둔 ⌘Z 요청을 모두 비우고(아래 다른 편집을 실행하지 않는다) 이유를 한 번 알린다(#295 E6).
+    /// 저장 알림을 덮지 않는다(`notify`)
+    func refuseUndo() {
+        undoSteps.removeAll(from: undoManager)
+        pendingUndo.removeAll()
+        playlists.forgetWrittenSteps()
+        notifyUndoCleared()
+    }
+    /// ⌘Z 기록을 비운 이유를 알린다(맨 위 단계를 실행할 수 없어 `UndoSteps`가 비웠을 때도)
+    func notifyUndoCleared() {
+        notify(.notice(text: Self.undoClearedText, kind: .warning))
     }
     /// rekordbox 라이브러리 위치(읽기 출처·쓰기 대상·스냅샷·백업·초안 폴더). 조립 지점이 실행 인자·환경을 한 번 풀어 준다.
     @ObservationIgnored let location: LibraryLocation
@@ -50,11 +86,22 @@ final class LibraryStore {
     let activityLog: ActivityLog
     @ObservationIgnored var feedback: AppFeedback
     @ObservationIgnored var writeTask: Task<Void, Never>?
+    /// 엔진의 차례를 받아 지금 쓰기를 실행하는 작업(미리 보기 포함). 차례를 기다리는 다른 쓰기 작업은 아니다
+    @ObservationIgnored var previewingWriteTask: Task<Void, Never>?
+    /// 자동 저장이 지금 쓰는 쓰기 하나만 취소하고 true(자동 저장이 쓰는 중이 아니면 false). 엔진을 붙인 조립 지점이 건다.
+    /// 인자는 사용자가 [취소]·Esc로 멈췄는지(앱 종료는 false)
+    @ObservationIgnored var cancelAutoWrite: (@MainActor (_ byUser: Bool) -> Bool)?
+    /// 자동 저장 엔진이 아직 디스크에 남기지 못한 기록 저장(없으면 nil). 앱을 끄는 길이 끝나기를 기다린다. 엔진을 붙인 조립 지점이 건다
+    @ObservationIgnored var pendingAutoRecordSave: (@MainActor () -> Task<Void, Never>?)?
     @ObservationIgnored var previewWarmTask: Task<Void, Never>?
 
-    func cancelWritePreparation() {
+    /// - Parameter byUser: 사용자가 [취소]·Esc로 멈췄다(기본). 앱 종료가 멈추는 것은 false: 자동 저장 판을 취소한 것으로 남기지 않는다
+    func cancelWritePreparation(byUser: Bool = true) {
         guard writeStage?.cancellable == true else { return }
-        writeTask?.cancel()
+        // 지금 미리 보기를 실행하는 쓰기 하나에만 전달한다: 엔진의 차례를 받은 수동 쓰기 작업이거나, 자동 저장이 쓰는 쓰기다.
+        // 엔진 차례를 기다리는 다른 쓰기 작업(보관한 저장·곡 메뉴의 바로 넣기 등)은 취소 대상으로 등록되지 않았으므로 건드리지 않는다
+        if let task = previewingWriteTask { return task.cancel() }
+        _ = cancelAutoWrite?(byUser)
     }
 
     @ObservationIgnored let settings: SettingsStore
@@ -86,6 +133,11 @@ final class LibraryStore {
     /// 지금 보는 목록에서 '스트리밍 곡 숨기기' 때문에 뺀 줄 수. 0이 아니면 보이는 줄 번호가 목록 순서와 다르니 끌어 옮기지 않는다.
     /// (고치는 곳: `LibraryStore+List`)
     private(set) var streamingHiddenInView = 0
+    /// 목록이 검색·필터 때문에 비었을 때, 숨긴 스트리밍 줄 가운데 같은 검색·필터에 맞는 줄 수(#348). 0이 아니면 빈 목록 안내가 [스트리밍 곡 보이기]를 바로 내놓는다.
+    /// 보이는 줄이 있거나 검색·필터가 없으면 따지지 않고 0이다. (고치는 곳: `LibraryStore+List`)
+    private(set) var streamingHiddenMatching = 0
+    /// 지금 보는 목록에서 숨긴 줄(`streamingHiddenMatching`을 셀 때만 읽는다)
+    @ObservationIgnored private(set) var hiddenStreamingRows: [TrackRow] = []
     /// 지금 보는 목록에서 숨긴 줄의 ID(재생 기록의 반복 행처럼 곡 ID와 다른 줄 ID도 선택에서 뺀다)
     @ObservationIgnored private(set) var hiddenStreamingRowIDs: Set<TrackRow.ID> = []
 
@@ -114,6 +166,11 @@ final class LibraryStore {
         refreshWriteBackups()
         playlists.loadRecentPlaylists()
         playlists.loadPlaylistImports()
+        undoSteps.isSettled = { [weak self] in self?.undoSettled ?? false }
+        undoSteps.onCleared = { [weak self] in
+            self?.playlists.forgetWrittenSteps()
+            self?.notifyUndoCleared()
+        }
     }
 
     var phase: Phase = .idle
@@ -208,6 +265,11 @@ final class LibraryStore {
     @ObservationIgnored private(set) lazy var history = HistoryStore(library: self, archive: useCases.histories)
 
     var search = "" { didSet { if search != oldValue { refreshFiltered() } } }
+    /// 마지막으로 거를 때 본 저장 대기 검색 값(곡 UUID별, #376). 태그 초안이 바뀌었을 때 검색 결과가 달라질 수 있는지 가른다(검색어가 있을 때만 갱신한다)
+    @ObservationIgnored var searchedDraftEdits: [String: TrackSearch.DraftEdits] = [:]
+    /// 검색·필터로 목록을 다시 거른 횟수(시험이 초안 변경마다 목록을 다시 거르지 않는지 센다)
+    @ObservationIgnored private(set) var filterRefreshCount = 0
+    func countFilterRefresh() { filterRefreshCount += 1 }
     var sortOrder = [KeyPathComparator(\TrackRow.importedOn, order: .reverse)] {
         didSet { if !suppressRefresh { refreshBase() } }
     }
@@ -223,6 +285,8 @@ final class LibraryStore {
     @ObservationIgnored var unloadsDeckAfterWrite = false
     /// 스냅샷을 새로 읽었을 때(USB 갱신 상태의 로컬 짝짓기 키를 다시 읽는다)
     @ObservationIgnored var onSnapshotLoaded: ((URL) -> Void)?
+    /// 연동 안내 창(#315)을 연다. 메뉴·결과 줄 링크·Apple Music 가져오기 창이 같은 입구를 쓴다(조립 지점이 실제 창을 잇는다. 없으면 열지 않는다)
+    @ObservationIgnored var showIntegrationGuide: ((IntegrationGuide.Topic) -> Void)?
     var allowsLibrarySync: (() -> Bool)?
     private(set) var isSynchronizingLibrary = false
     var canSynchronizeLibrary: Bool { !isLoading && !isSynchronizingLibrary && !libraryBusy && (allowsLibrarySync?() ?? true) }
@@ -230,7 +294,7 @@ final class LibraryStore {
     private(set) var deckTrackID: String?
 
     /// 초안 상태(메모리). 표의 ✎ 표시는 디스크를 다시 읽지 않고 이것으로 계산한다.
-    var tagDrafts: [String: TagDraft] = [:] { didSet { pendingInputsChanged() } }
+    var tagDrafts: [String: TagDraft] = [:] { didSet { pendingInputsChanged(); tagDraftsChangedForSearch() } }
     /// 태그 편집 조각(인스펙터·태그 시트·목록 칸·덱 제안 줄). 위 태그 초안을 바꾼다. 조각이 이 핵심을 붙들어야 해서 처음 쓸 때 만든다(관찰하지 않는다).
     @ObservationIgnored private(set) lazy var tags = TagEditStore(library: self)
     /// 그림 초안(곡 UUID별, 그림 바이트 없이). 그림 사본은 `ArtworkDraftStore`에 있다(#66).
@@ -239,10 +303,20 @@ final class LibraryStore {
     @ObservationIgnored var artworkFileRows: [String: [ArtworkFileRow]] = [:]
     /// rekordbox 곡 색 목록(이름·순서, #65). 라이브러리에서 읽지 못하면 rekordbox 기본 여덟 색이다.
     var trackColors: [TrackColor] = TrackColor.rekordboxDefaults
-    /// 목록 거르기: 평점 이 별 수 이상(0이면 끔)과 곡 색(nil이면 끔). rekordbox 값(초안 전)으로 거른다(정렬과 같다).
-    var minimumRating = 0 { didSet { if minimumRating != oldValue { refreshFiltered() } } }
-    var colorFilter: String? { didSet { if colorFilter != oldValue { refreshFiltered() } } }
-    var isAttributeFiltered: Bool { minimumRating > 0 || colorFilter != nil }
+    /// 목록 필터(#65·#351): 평점·곡 색 여러 개·BPM 범위·키·장르. 조건끼리 AND이고 rekordbox 값(초안 전)으로 거른다(정렬과 같다).
+    /// 판정은 `DJCDomain`의 `TrackFilter` 한 곳이다(CLI `djc search --bpm/--key`와 같다). 뷰는 조건마다 아래 값으로 고친다.
+    var filter = TrackFilter() { didSet { if filter != oldValue { refreshFiltered() } } }
+    /// 평점이 이 별 수 이상(0이면 끔)
+    var minimumRating: Int {
+        get { filter.minimumRating }
+        set { filter.minimumRating = newValue }
+    }
+    /// 고른 곡 색 번호(비면 끔)
+    var colorFilters: Set<String> {
+        get { filter.colorIDs }
+        set { filter.colorIDs = newValue }
+    }
+    var isAttributeFiltered: Bool { !filter.isEmpty }
     /// 그림 초안을 고친 횟수. 백그라운드 읽기 사이에 고쳤으면 읽은 초안 대신 디스크를 다시 읽는다.
     @ObservationIgnored var artworkChangeCount = 0
     @ObservationIgnored var recoveryMemoryInput: ((String, DraftRecoveryKind) -> RecoveryDraft?)?
@@ -331,8 +405,9 @@ final class LibraryStore {
         notify(toast)
     }
 
-    /// 지금 알림을 덮어도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만
-    private var canReplaceToast: Bool {
+    /// 지금 알림을 덮어도 되는지: 없거나, 곧 사라지는 성공 알림(되돌리기·동작 단추 없음)일 때만.
+    /// 사용자가 누르지 않은 알림(읽기 실패·자동 저장 결과 등)이 이 값으로 덮을지 정한다
+    var canReplaceToast: Bool {
         guard let toast else { return true }
         return toast.kind == .success && toast.undoBackup == nil && toast.action == nil
     }
@@ -357,17 +432,84 @@ final class LibraryStore {
         didSet {
             // 시작 횟수와 끝난 뒤 백업 확인은 libraryBusy, ⌘Z 기록 비우기와 덱 내리기는 editsFrozen이 하는 일이다.
             if isWritingRekordbox, !oldValue { rekordboxWriteCount += 1 }
-            if isWritingRekordbox { undoManager?.removeAllActions(withTarget: self) }
+            // 통째로 잠그는 쓰기(복원·곡 넣기/빼기·iTunes 동기화)만 ⌘Z 기록을 지운다. 초안 쓰기 뒤 ⌘Z는 지금 rekordbox 값 위의 역편집이 된다(R12)
+            if isWritingRekordbox, !isTrackScopedWrite { clearLibraryUndo() }
             // 쓰기·되돌리기 실패 때도 백업이 남거나 정리될 수 있다.
             if oldValue && !isWritingRekordbox { refreshWriteBackups() }
             if oldValue && !isWritingRekordbox, unloadsDeckAfterWrite { unloadDeckForCDJ() }
         }
     }
     /// 라이브러리 내부 배타: 읽기·복원·USB·iTunes·자동 시점 스냅샷·재생 목록 복구·곡 추가 목록이 쓰기와 겹치지 않게 막는다. 초안 파일 잠금(flock)도 이 동안 든다.
-    /// 사이드바·상세를 통째로 막는 줄도 이 값이다(안쪽에 가드가 없는 조작을 막아 준다). 판단이 어려운 자리는 이 값을 읽는다(나중에 편집 잠금만 풀 때 잘못 풀리지 않게).
+    /// 판단이 어려운 자리는 이 값을 읽는다(편집 잠금만 풀 때 잘못 풀리지 않게). 재생 목록·재생 기록 편집은 이 값이 아니라
+    /// `playlists.isEditBlocked`가 가른다: 초안 쓰기가 재생 목록 단계를 얼려 둔 동안(#402)만 받는다.
     var libraryBusy: Bool { isWritingRekordbox }
-    /// 편집 잠금: 덱 큐·그리드·게인, 태그·그림·재생 목록 편집, 키 입력, ⌘Z 기록, 덱 재생·곡 올리기를 막는다. 풀어 갈 값이다.
-    var editsFrozen: Bool { isWritingRekordbox }
+    /// 통째 편집 잠금: 덱 큐·그리드·게인, 태그·그림 편집, 키 입력, ⌘Z 기록, 덱 재생·곡 올리기를 막는다.
+    /// 초안을 쓰는 동안(`isTrackScopedWrite`)은 걸지 않는다. 그때는 `isEditLocked(_:)`가 쓰는 곡만 막는다(R21).
+    var editsFrozen: Bool { isWritingRekordbox && !isTrackScopedWrite }
+    /// 초안을 쓰는 중(쓰기 포트 `WriteLock.setDraftWriting`): 쓰는 곡 집합이 비어도(재생 목록·재생 기록만 쓰는 묶음) 곡 단위 쓰기다.
+    /// 복원·곡 넣기·빼기·iTunes 동기화는 이 표시를 켜지 않아 통째로 잠근다.
+    private(set) var isDraftWrite = false
+    /// 곡 단위로 쓰는 중인가: 초안을 쓰거나 쓰는 곡이 정해져 있다. 통째 편집 잠금과 창 덮개를 걸지 않는다.
+    var isTrackScopedWrite: Bool { isDraftWrite || !lockedTracks.isEmpty }
+    func setDraftWriting(_ writing: Bool) { isDraftWrite = writing }
+    /// 곡 단위 편집 잠금(R21): 쓰는 묶음에 든 곡. 이 곡의 편집만 막고 덱 재생·사이드바·목록·다른 곡 편집은 그대로다.
+    /// 쓰기 포트(`WriteLock.setTracks`)가 쓰기 시작 전에 정하고 쓰기가 끝나면 비운다. 비어 있지 않으면 곡 단위로 쓰는 중이라 창 덮개를 띄우지 않고 편집 잠금을 통째로 걸지 않는다.
+    /// 복원·곡 넣기·빼기·iTunes 동기화는 비어 있어 통째로 잠근다. 재생 목록만 쓰는 묶음은 곡이 없어도 `isDraftWrite`라 곡 단위 쓰기다.
+    private(set) var lockedTracks: Set<String> = [] {
+        didSet {
+            guard lockedTracks != oldValue else { return }
+            onLockedTracks?(lockedTracks)
+            pendingUndo.flush()
+            settleUndo()
+        }
+    }
+    /// 이 곡의 편집을 막는지: 통째 편집 잠금이거나 쓰는 묶음에 든다. 곡 편집(덱·태그·그림·목록 칸)이 읽는다.
+    func isEditLocked(_ trackUUID: String) -> Bool { editsFrozen || lockedTracks.contains(trackUUID) }
+    /// 쓰는 동안 창 전체를 덮는 진행 카드를 띄울지. 곡 단위로 쓰는 동안에는 단계만 알리고 덮지 않는다(R21). 종료 기다림 안내는 따로 뜬다.
+    var showsWriteOverlay: Bool { writeStage != nil && !isTrackScopedWrite }
+    /// 곡 단위로 쓰는 동안 취소할 수 있는 단계(사본 만들기·음량 재기)인지. 덮개 대신 상태 줄 칩이 단계와 [취소]를 보이고(`ReflectionStatusModel.preparingStage`)
+    /// 보이는 [취소]가 Esc도 받는다. 취소할 수 없는 단계의 진행도 상태 줄이 보인다.
+    var showsWriteProgressChip: Bool { isWritingRekordbox && isTrackScopedWrite && writeStage?.cancellable == true }
+    func setLockedTracks(_ uuids: Set<String>) { lockedTracks = uuids }
+    /// 태그 ⌘Z 단계가 가리키는 곡의 기준이 바뀐 횟수(곡별). 저장한 곡·기준값이 옮겨진 곡의 단계는 건너뛰어 옛 기준의 초안을 되살리지 않는다.
+    /// 저장 뒤 읽기가 다른 곡의 ⌘Z 기록까지 지우지 않게 하려고, 기록을 통째로 지우는 대신 곡별로 무효로 만든다.
+    @ObservationIgnored var tagUndoGeneration: [String: Int] = [:]
+    func invalidateTagUndo<S: Sequence>(_ uuids: S) where S.Element == String {
+        for uuid in uuids { tagUndoGeneration[uuid, default: 0] += 1 }
+    }
+    /// 태그를 rekordbox에 쓴 횟수(곡별, R12). 단계를 만든 뒤 늘었으면 그 곡의 ⌘Z는 지금 rekordbox 값 위의 역편집이 된다(`TagUndo`)
+    @ObservationIgnored var tagWriteGeneration: [String: Int] = [:]
+    func noteTagsWritten<S: Sequence>(_ uuids: S) where S.Element == String {
+        for uuid in uuids { tagWriteGeneration[uuid, default: 0] += 1 }
+    }
+    /// 쓰는 동안 누른 ⌘Z 요청 줄(덱·태그·재생 목록 공통, 컨실 S6·O3). 잠금이 풀리거나 쓴 뒤 다시 읽으면 앞에서부터 실행한다
+    let pendingUndo = PendingUndoRequests()
+    /// 이 곡의 태그 ⌘Z를 지금 실행하지 않고 미룰지: 쓰는 중이거나 쓴 뒤 새 rekordbox 값을 아직 다시 읽지 못했다(컨실 S5·G4)
+    func defersTagUndo(_ uuid: String) -> Bool { isEditLocked(uuid) || tagsWrittenAwaitingReload.contains(uuid) }
+    /// 태그를 rekordbox에 썼지만 아직 새 사본으로 다시 읽지 못한 곡(다음 성공한 초안 쓰기 뒤 읽기가 쓴 횟수를 올린다)
+    @ObservationIgnored var tagsWrittenAwaitingReload: Set<String> = []
+    /// 저장 뒤 ⌘Z가 여러 곡의 역편집을 만들었다(R12): 자동 저장이 한 번에 전부 쓰거나 전부 쓰지 않게 대기열에 넣는다(조립 지점이 엔진에 잇는다)
+    @ObservationIgnored var onUndoAfterSave: ((ReflectionUndoEdit) -> Void)?
+    /// 곡 단위 잠금이 바뀌었다(덱 쪽 복사본을 맞춘다, `connectWriteLocks`)
+    var onLockedTracks: ((Set<String>) -> Void)?
+    /// 쓰기 잠금을 덱에 잇는다: 통째 잠금은 재생도 멈추고(`editsFrozen`), 곡 단위 잠금은 그 곡의 편집만 막는다(`lockedTracks`).
+    /// 앱 조립 지점과 시험이 같은 연결을 쓴다.
+    func connectWriteLocks(to deck: DeckModel) {
+        // 쓰는 동안 누른 ⌘Z 요청은 덱과 라이브러리가 한 줄로 누른 차례를 지킨다(컨실 O3)
+        deck.pendingUndo = pendingUndo
+        // ⌘Z 단계도 한 목록에 건 차례대로 둔다: 맨 위가 덱이든 태그·재생 목록이든 같은 규칙으로 판정한다(컨실 2라운드 A)
+        deck.undoSteps = undoSteps
+        undoSteps.isSettled = { [weak self, weak deck] in (self?.undoSettled ?? false) && (deck?.undoSettled ?? true) }
+        onWriteLock = { [weak deck] in deck?.editsFrozen = $0 }
+        onLockedTracks = { [weak deck] in deck?.lockedTracks = $0 }
+        onWrittenAwaitingReload = { [weak deck] in deck?.writePending = $0 }
+        onRekordboxWritten = { [weak deck, weak self] uuids in
+            // 처음부터 다시 불러오지 않고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다(소리·파형은 그대로).
+            // 쓴 큐의 새 ID를 함께 넘겨 덱이 같은 큐에 같은 ID를 잇는다(저장 뒤 ⌘Z, R12)
+            guard let deck, let uuid = deck.row?.track.uuid, uuids.contains(uuid) else { return }
+            deck.refreshAfterWrite(self?.rowsByUUID[uuid], cueIDs: self?.writtenCueIDs[uuid] ?? [:])
+        }
+    }
     /// 종료 판단: 앱 끄기와 업데이트 설치를 미룬다(`writeActivity`의 rekordbox 단계, #300).
     var quitBlocked: Bool { isWritingRekordbox }
     /// 쓰는 동안 든 재생 목록 초안 파일 잠금을 푸는 함수(#260)
@@ -384,12 +526,21 @@ final class LibraryStore {
     let quitWait = QuitWaitModel()
     /// rekordbox에 쓰거나 되돌린 곡(UUID). 덱이 그 곡이면 다시 읽는다. 새 스냅샷을 읽은 뒤에만 부른다(#175).
     var onRekordboxWritten: ((Set<String>) -> Void)?
+    /// 쓴 큐의 새 rekordbox ID(곡 → 초안 큐 ID → 새 큐 ID, #405). 다시 읽은 뒤 덱에 넘기고 지운다
+    @ObservationIgnored var writtenCueIDs: [String: [String: String]] = [:]
     /// 성공한 라이브러리 읽기 수(쓰기 뒤 다시 읽기가 실제로 끝났는지 본다)
     @ObservationIgnored private(set) var completedLoadCount = 0
     /// 라이브러리를 읽을 때마다(성공) 라이브러리 곡·추가한 곡의 음원 경로를 받는다. 앱은 조립 지점이 캐시 정리를 붙인다(시험은 없다).
     @ObservationIgnored var onLibraryLoaded: ((Set<String>) -> Void)?
     /// rekordbox에 쓰거나 되돌렸지만 아직 새 스냅샷으로 다시 읽지 못한 곡. 다음 읽기가 성공하면 덱에 알린다.
-    @ObservationIgnored var writtenAwaitingReload: Set<String> = []
+    /// 덱은 이 집합의 곡을 새 스냅샷을 받아 새 기준값을 적용할 때까지 편집하지 못한다(다시 읽기에 실패해도 다음 성공한 읽기까지, `onWrittenAwaitingReload`).
+    @ObservationIgnored var writtenAwaitingReload: Set<String> = [] {
+        didSet { if writtenAwaitingReload != oldValue { onWrittenAwaitingReload?(writtenAwaitingReload) } }
+    }
+    @ObservationIgnored var onWrittenAwaitingReload: ((Set<String>) -> Void)?
+    /// 초안 쓰기 뒤 읽기 대기: 초안을 쓴 뒤 다시 읽기를 시작했고 아직 성공한 읽기가 없다. 읽기가 실패해 쓰기 잠금·초안 쓰기 표시가 먼저 꺼져도,
+    /// 다음에 성공한 읽기(창을 다시 활성화한 자동 읽기 포함)가 다른 곡의 ⌘Z 기록을 지우지 않게 한다. 재생 목록·재생 기록만 쓴 경우도 같다.
+    @ObservationIgnored var draftWriteReadPending = false
     /// 종료를 기다리느라 쓴 뒤 다시 읽기를 미뤘다(#305). 종료를 취소하면 한 번 이어서 읽는다. 읽은 뒤 알릴 곡·쌓을 편집은 위 값들이 들고 있다.
     @ObservationIgnored var reloadPostponedForQuit = false
     /// 마지막 쓰기·복원은 끝났지만 뒤따른 일(초안 정리·다시 읽기·복원 충돌)에 남은 경고. 쓰기 결과와 나눠 알린다.
@@ -564,7 +715,7 @@ final class LibraryStore {
 
     /// CDJ가 덱의 곡을 실었다: 덱 곡 ID와 함께 내린다. rekordbox에 쓰는 동안이면 끝난 뒤에 내린다(#278)
     func unloadDeckForCDJ() {
-        guard !editsFrozen else {
+        guard !libraryBusy else {
             unloadsDeckAfterWrite = true
             return
         }
@@ -587,7 +738,17 @@ final class LibraryStore {
     func applyListBase(_ visible: TrackListProjection.Visible) {
         if streamingHiddenInView != visible.hiddenCount { streamingHiddenInView = visible.hiddenCount }
         hiddenStreamingRowIDs = visible.hiddenIDs
+        hiddenStreamingRows = visible.hiddenRows
         sortedBase = sortOrder.isEmpty ? visible.rows : visible.rows.sorted(using: sortOrder)
+    }
+
+    /// 목록이 검색·필터 때문에 비었으면 숨긴 스트리밍 줄 가운데 같은 검색·필터에 맞는 줄을 센다(#348).
+    /// 판정은 곡 목록과 같은 함수(`TrackListProjection.filtered`)다. 보이는 줄이 있거나 검색·필터가 없으면 세지 않는다(입력마다 부르는 곳이라 비었을 때만 센다).
+    func recountHiddenStreamingMatches() {
+        let conditioned = !TrackSearch.Query(search).isEmpty || isAttributeFiltered
+        let matching = displayRows.isEmpty && conditioned && !hiddenStreamingRows.isEmpty
+            ? TrackListProjection.filtered(hiddenStreamingRows, search: search, filter: filter, draftEdits: searchedDraftEdits).count : 0
+        if streamingHiddenMatching != matching { streamingHiddenMatching = matching }
     }
 
     /// 표에 보일 줄(검색·거르기 뒤)과 중복 후보 묶음

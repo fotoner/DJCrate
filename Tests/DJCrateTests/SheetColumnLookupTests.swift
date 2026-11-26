@@ -39,8 +39,8 @@ struct SheetColumnLookupTests {
             window.contentView = scroll
             coordinator.update(rows: rows, revision: 0)
             if moved {
-                // comment → 1번째, file → 2번째, key → 3번째 자리로
-                for (target, id) in ["comment", "file", "key"].enumerated() { move(id, to: target + 1) }
+                // 맨 앞 앨범아트·번호 열은 두고, comment → 2번째, file → 3번째, key → 4번째 자리로
+                for (target, id) in ["comment", "file", "key"].enumerated() { move(id, to: target + 2) }
             }
             window.contentView?.layoutSubtreeIfNeeded()
         }
@@ -62,17 +62,22 @@ struct SheetColumnLookupTests {
         let h = Harness(rows: Self.rows())
         defer { h.window.close() }
         // 화면 순서가 정말 달라졌다
-        #expect(h.table.tableColumns.map(\.identifier.rawValue).prefix(4) == ["index", "comment", "file", "key"])
+        #expect(h.table.tableColumns.map(\.identifier.rawValue).prefix(5) == ["thumb", "index", "comment", "file", "key"])
         for (c, tableColumn) in h.table.tableColumns.enumerated() {
             let spec = try #require(SheetColumn.all.first { $0.id == tableColumn.identifier.rawValue })
             for row in 0..<2 {
                 #expect(h.coordinator.editableKey(row: row, column: c) == spec.key, "\(spec.id) 줄 \(row)")
                 let expected: String = switch spec.id {
                 case "index": "\(row + 1)"
-                case "file": (h.coordinator.rows[row].track.folderPath as NSString).lastPathComponent
+                case "file": h.coordinator.rows[row].track.folderPath
                 default: spec.key.map { h.store.tags.tagCell(h.coordinator.rows[row], $0) } ?? ""
                 }
                 #expect(h.coordinator.text(row: row, column: c) == expected, "\(spec.id) 줄 \(row)")
+                if spec.id == SheetColumn.artworkID {
+                    // 앨범아트 열은 글자 칸이 아니라 곡 목록과 같은 그림 칸이다
+                    #expect(h.coordinator.tableView(h.table, viewFor: tableColumn, row: row) is ThumbnailCell)
+                    continue
+                }
                 let cell = try #require(h.coordinator.tableView(h.table, viewFor: tableColumn, row: row) as? SheetCell)
                 #expect(cell.label.stringValue == expected && cell.label.accessibilityLabel() == spec.title, "\(spec.id) 줄 \(row)")
             }
@@ -169,8 +174,8 @@ struct SheetColumnLookupTests {
             (view as? SheetTableView) ?? view.subviews.lazy.compactMap { find($0) }.first
         }
         let table = try #require(find(controller.view))
-        // 평점·곡 색 열(#65)을 더하며 "v3"로 올렸다
-        #expect(table.autosaveName == "djc.tagSheet.v3")
+        // 평점·곡 색 열(#65)을 더하며 "v3", 앨범아트 열(#352)을 맨 앞에 더하며 "v4"로 올렸다
+        #expect(table.autosaveName == "djc.tagSheet.v4")
         #expect(table.tableColumns.map(\.identifier.rawValue) == SheetColumn.all.map(\.id))
     }
 }

@@ -399,7 +399,7 @@ struct UsbNativePendingLifecycleTests {
                                          database: f.host.database, share: f.host.share)
         #expect(await pending.preview() == nil)
         #expect(await pending.write(reusing: nil) == false)
-        #expect(f.host.toast?.detail == String(ui: "동기화 초안의 원본을 다시 준비해야 하므로 쓰기 대기 목록에서 초안을 버린 뒤 USB 동기화 창을 새로고침하세요"))
+        #expect(f.host.toast?.detail == String(ui: "동기화 편집의 원본을 다시 준비해야 하므로 쓰기 대기 목록에서 편집을 버린 뒤 USB 동기화 창을 새로고침하세요"))
         #expect(f.service.current.calls.isEmpty && f.service.current.fileOperations == 0)
         #expect(f.usb.draftEdits[f.volume.usbKey] == f.edits)
     }

@@ -38,7 +38,7 @@ struct UsbPendingView: View {
                         }
                         .buttonStyle(.borderless)
                         .disabled(model.isBusy)
-                        .help(.ui("이 편집을 초안에서 뺍니다"))
+                        .help(.ui("이 편집 빼기"))
                         .accessibilityLabel(.ui("\(row.id)번 편집 빼기"))
                     }
                 }
@@ -83,7 +83,7 @@ struct UsbPendingView: View {
             Button(.ui("USB에 쓰기…")) { model.writeTapped() }
                 .disabled(!list.canWrite || model.isPreviewing)
                 .help(list.writeHelp)
-            Button(.ui("초안 버리기"), role: .destructive) {
+            Button(.ui("편집 버리기"), role: .destructive) {
                 model.discardTapped()
             }
             .disabled(list.rows.isEmpty || model.isBusy)

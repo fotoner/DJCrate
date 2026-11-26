@@ -140,7 +140,7 @@ struct LibraryWriteBlockTests {
         #expect(LibraryWriteBlock.schema.reason == "rekordbox DB 구조가 DJCrate가 확인한 모양과 다르니 DJCrate 업데이트를 확인하세요")
         #expect(LibraryWriteBlock.counters.reason == "rekordbox 변경 카운터가 클라우드 동기화 카운터보다 작으니 rekordbox를 켜서 동기화를 끝낸 뒤 종료하세요")
         // 칩이 「쓸 수 없음」이라 단정하므로 쓰기 확인 창 문장(「쓰기가 막힐 수 있으니」)과 달리 단정한다
-        #expect(LibraryWriteBlock.backupFolder.reason == "쓰기 전 백업을 만들 폴더에 쓸 수 없으니 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요")
+        #expect(LibraryWriteBlock.backupFolder.reason == "저장 전 백업을 만들 폴더에 쓸 수 없으니 DJCrate 데이터 폴더의 쓰기 권한을 확인하세요")
         #expect(LibraryWriteBlock.backupFolder.reason != ReflectionPrompts.noBackupText)
         for block in [LibraryWriteBlock.unsupportedVersion("7.3.1"), .schema, .counters, .backupFolder] {
             #expect(!block.reason.contains("\n") && block.reason.count <= 75)

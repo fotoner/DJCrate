@@ -47,6 +47,42 @@ struct LibraryReadTests {
         #expect(try read.search(query: "", filter: .emptyComment).tracks.map(\.id) == ["102"])
     }
 
+    /// 규칙은 `TrackSearchTests`가 촘촘히 본다. 여기서는 CLI 검색이 DB에서 읽은 칸으로 그 규칙을 쓰는지만 본다(TEST-8).
+    @Test func 검색은_앨범_앨범_아티스트_작곡가_파일_이름까지_찾고_낱말을_모두_맞춘다() throws {
+        let fixture = try fixture()
+        // 한글 파일 이름은 NFD로 저장된 채 들어온다(macOS 파일 시스템)
+        let nfd = "밤의 드라이브.flac".decomposedStringWithCanonicalMapping
+        try fixture.insert("djmdArtist", ["ID": .text("a2"), "Name": .text("합성 작곡가")])
+        try fixture.insert("djmdArtist", ["ID": .text("a3"), "Name": .text("합성 앨범 아티스트")])
+        try fixture.insert("djmdAlbum", ["ID": .text("al1"), "Name": .text("Blue Hour"), "AlbumArtistID": .text("a3")])
+        try fixture.execute("UPDATE djmdContent SET AlbumID = 'al1', ComposerID = 'a2' WHERE ID = '101'")
+        try fixture.execute("UPDATE djmdContent SET FolderPath = '/synthetic/\(nfd)' WHERE ID = '102'")
+        let read = try reader(fixture)
+        func ids(_ query: String, bpm: ClosedRange<Double>? = nil) throws -> [String] { try read.search(query: query, bpm: bpm).tracks.map(\.id) }
+        #expect(try ids("blue hour") == ["101"])
+        #expect(try ids("합성 앨범 아티스트") == ["101"])
+        #expect(try ids("합성 작곡가") == ["101"])
+        #expect(try ids("드라이브") == ["102"] && ids("밤의 드라이브.flac") == ["102"])
+        // 낱말은 칸을 가로질러 모두 맞아야 한다
+        #expect(try ids("시험 합성") == ["101"] && ids("alpha beta").isEmpty)
+        #expect(try ids("alpha blue", bpm: 120...130) == ["101"] && ids("alpha blue", bpm: 129...130).isEmpty)
+    }
+
+    /// 판정표는 `TrackFilterTests`가 본다. 여기서는 CLI 검색이 DB의 키·BPM 칸으로 그 판정을 쓰는지만 본다(TEST-8).
+    @Test func 키는_Camelot으로_바꿔_비교해_음이름으로_저장된_곡도_찾는다() throws {
+        let fixture = try fixture()
+        try fixture.insert("djmdKey", ["ID": .text("k2"), "ScaleName": .text("Am")])
+        try fixture.execute("UPDATE djmdContent SET KeyID = 'k2' WHERE ID = '102'")
+        let read = try reader(fixture)
+        func ids(key: String?, bpm: ClosedRange<Double>? = nil) throws -> [String] { try read.search(query: "", bpm: bpm, key: key).tracks.map(\.id) }
+        // 101은 8A로, 102는 Am으로 저장돼 있다: 어느 표기로 물어도 둘 다 같은 키다
+        #expect(try ids(key: "8A") == ["101", "102"] && ids(key: "8a") == ["101", "102"] && ids(key: "Am") == ["101", "102"])
+        #expect(try ids(key: "9A").isEmpty && ids(key: "Atonal").isEmpty)
+        #expect(try ids(key: nil) == ["101", "102"])
+        // BPM이 없는 곡(102)은 BPM 범위에 맞지 않는다
+        #expect(try ids(key: "8A", bpm: 120...130) == ["101"])
+    }
+
     @Test func 빈_코멘트_필터는_프리셋_없이_쓰고_규칙_밖_필터는_프리셋을_요구한다() throws {
         let read = try reader(try fixture())
         #expect(try read.search(query: "", filter: .emptyComment).tracks.map(\.id) == ["102"])
@@ -110,8 +146,43 @@ struct LibraryReadTests {
         #expect(drafts.first?["contentID"] == nil)
         #expect(drafts.last?["contentID"] as? String == "101")
         #expect(drafts.last?["kinds"] as? [String] == ["gain"])
-        #expect(Set(try #require(drafts.last).keys) == ["trackUUID", "contentID", "title", "kinds"])
+        // 기존 칸은 그대로이고 출처 칸(`origins`·`suggestions`)이 더해진다(R5). 도장 없는 옛 게인 초안은 출처를 모른다
+        #expect(Set(try #require(drafts.last).keys) == ["trackUUID", "contentID", "title", "kinds", "origins", "suggestions"])
+        #expect(drafts.last?["origins"] as? [String: [String]] == ["gain": ["unknown"]])
+        #expect(drafts.last?["suggestions"] as? [String: String] == ["gain": "unknown_origin"])
         #expect(try read.track(id: "101").drafts.gain)
+    }
+
+    /// R5: `djc drafts` JSON이 초안 종류마다 출처와 제안 사유를 보인다. 사람 편집만 든 초안은 사유가 없다(자동 저장 대상)
+    @Test func 초안_JSON은_종류마다_출처와_제안_사유를_보인다() throws {
+        let fixture = try fixture()
+        let home = fixture.root.appending(path: "home"), places = DraftLocations(home: home)
+        func cue(_ time: Double) -> CueDraft {
+            var draft = CueDraft(trackUUID: "track-101")
+            draft.cues = [EditableCue(kind: .memory, time: time)]
+            return draft
+        }
+        var tag = TagDraft(trackUUID: "track-101", base: TagFields())
+        tag.fields.comment = "코멘트"
+        let grid = GridDraft(trackUUID: "track-101", base: [GridSegment(start: 0.1, bpm: 120, firstBeatNumber: 1)],
+                             segments: [GridSegment(start: 0.2, bpm: 124, firstBeatNumber: 1)])
+        try StampedDrafts.saveCue(cue(1), directory: places.cue, origin: .cli)
+        try StampedDrafts.saveTag(tag, directory: places.tags, origin: .human)
+        try StampedDrafts.saveGrid(grid, directory: places.grid, origin: .human)
+        // 그리드 파일만 바깥에서 고쳤다(도장은 그대로)
+        var edited = grid
+        edited.segments = [GridSegment(start: 0.3, bpm: 130, firstBeatNumber: 1)]
+        try GridDraftStore.save(edited, directory: places.grid)
+        try Data(#"{"track-101":-3}"#.utf8).write(to: places.gain)
+        let before = try Data(contentsOf: places.tags.appending(path: "track-101.json"))
+        let read = try reader(fixture)
+        let data = try json("drafts", read.drafts())
+        let record = try #require((data["drafts"] as? [[String: Any]])?.first)
+        #expect(record["kinds"] as? [String] == ["cue", "grid", "gain", "tag"])
+        #expect(record["origins"] as? [String: [String]] == ["cue": ["cli"], "grid": ["human"], "gain": ["unknown"], "tag": ["human"]])
+        #expect(record["suggestions"] as? [String: String] == ["cue": "not_human", "grid": "content_changed", "gain": "unknown_origin"])
+        // 읽기는 초안과 도장을 바꾸지 않는다
+        #expect(try Data(contentsOf: places.tags.appending(path: "track-101.json")) == before)
     }
 
     @Test func 최신_스냅샷만_선택한다() throws {

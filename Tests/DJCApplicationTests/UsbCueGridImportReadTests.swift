@@ -86,7 +86,7 @@ struct UsbCueGridImportReadTests {
         ports.update { $0.stamps[dat] = newer }
         let changed = try read(ports)
         #expect(changed.rows.first?.grid == nil && changed.rows.first?.cues != nil)
-        #expect(changed.rows.first?.reasons == [String(ui: "로컬 분석 파일이 스냅샷 뒤에 바뀌었으니 새 스냅샷을 뜬 뒤 그리드를 가져오세요.")])
+        #expect(changed.rows.first?.reasons == [String(ui: "로컬 분석 파일이 동기화 뒤에 바뀌었으니 ‘rekordbox와 동기화’를 한 뒤 그리드를 가져오세요.")])
     }
 
     @Test("OneLibrary 기기 큐 행이 있는 곡은 큐를 가져오지 않는다")

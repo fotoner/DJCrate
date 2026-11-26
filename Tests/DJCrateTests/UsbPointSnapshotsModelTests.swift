@@ -156,7 +156,7 @@ struct UsbPointSnapshotsModelTests {
     @Test func 스냅샷_뒤_새_DB는_막힘_한_문장으로_알리고_확인_없이_멈춘다() async {
         let scene = Scene()
         await scene.usb.refresh()
-        let reason = String(ui: "스냅샷 뒤 새 DB가 생겨 되돌릴 수 없으니, 그 DB를 만든 쓰기를 `djc usb-restore`로 먼저 되돌리세요")
+        let reason = String(ui: "복원 시점 뒤 새 DB가 생겨 되돌릴 수 없으니, 그 DB를 만든 쓰기를 `djc usb-restore`로 먼저 되돌리세요")
         scene.ports.state.withLock {
             $0.blocks = [.init(code: "pointSnapshotNewDatabase", scope: .volume, message: "스냅샷 뒤 새 DB가 생겼습니다. usb-restore를 먼저 하세요")]
         }
@@ -201,7 +201,7 @@ struct UsbPointSnapshotsModelTests {
         let model = scene.model
         await model.restore(scene.ports.entry())
         #expect(scene.prompter.shown.count == 2)
-        #expect(scene.prompter.shown.last?.title == String(ui: "스냅샷 뒤의 기기 변경을 버릴까요?"))
+        #expect(scene.prompter.shown.last?.title == String(ui: "동기화 뒤의 기기 변경을 버릴까요?"))
         #expect(scene.ports.state.withLock { $0.calls }.filter { $0 == "write" }.count == 1)
         #expect(model.undoBackup != nil)
         let job = UsbExportJob(database: URL(filePath: "/private/tmp/djc-fixture/copy.db"), share: URL(filePath: "/private/tmp/djc-fixture/share"),

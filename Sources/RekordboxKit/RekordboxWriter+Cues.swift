@@ -19,6 +19,8 @@ extension RekordboxWriter {
         var insertedIDs: Set<String>
         /// 새로 넣은 큐의 탐색 칸: InMpegFrame·InMpegAbs·OutMpegFrame·OutMpegAbs·InPointSeekInfo·OutPointSeekInfo(NULL은 "NULL")
         var insertedSeek: [String: [String]] = [:]
+        /// 새로 넣은 큐의 색 칸: Color·ColorTableIndex(NULL은 "NULL"). 옮긴 큐는 이어받은 색, 되살린 큐는 지우기 전 색(#405)
+        var insertedColors: [String: [String]] = [:]
         /// 건드리지 않은 JSON 객체 원문
         var untouchedJSON: [String: String]
         var cueUSN: Int
@@ -93,7 +95,7 @@ extension RekordboxWriter {
             } else {
                 // 분석 전 곡(Analysed 0)은 rekordbox도 BitRate 0으로 넣는다(VBR 표시가 아님)
                 guard content.bitRate > 0 || content.analysed == 0, !rows.contains(where: { $0.inMpegFrame != 0 }) else {
-                    throw block(String(ui: "파일은 CBR MP3인데 rekordbox에는 VBR처럼(비트레이트 0·MPEG 위치) 적혀 있어 직접 쓰지 않습니다"))
+                    throw block(String(ui: "파일은 CBR MP3인데 rekordbox에는 VBR처럼(비트레이트 0·MPEG 위치) 적혀 있어 직접 저장하지 않습니다"))
                 }
             }
         case 4, 11:
@@ -104,9 +106,9 @@ extension RekordboxWriter {
             }
             flac = table
         default:
-            throw block(String(ui: "이 파일 형식(FileType \(content.fileType))은 아직 직접 쓰지 않습니다"))
+            throw block(String(ui: "이 파일 형식(FileType \(content.fileType))은 아직 직접 저장하지 않습니다"))
         }
-        guard flac != nil || !rows.contains(where: \.hasSeekInfo) else { throw block(String(ui: "탐색 위치가 적힌 큐가 있어 아직 직접 쓰지 않습니다")) }
+        guard flac != nil || !rows.contains(where: \.hasSeekInfo) else { throw block(String(ui: "탐색 위치가 적힌 큐가 있어 아직 직접 저장하지 않습니다")) }
 
         // contentCue(JSON)
         var cueRecords: [(id: String, cues: String?, deleted: Bool)] = []
@@ -138,7 +140,7 @@ extension RekordboxWriter {
         // 초안을 시작할 때와 rekordbox 큐가 같아야 한다.
         let current = rows.map(\.cue).compactMap(EditableCue.init)
         guard key(current, withSource: true) == key(draft.base, withSource: true) else {
-            throw block(String(ui: "초안을 만든 뒤 rekordbox에서 이 곡의 큐가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
+            throw block(String(ui: "편집을 만든 뒤 rekordbox에서 이 곡의 큐가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
         }
 
         // 바꿀 것
@@ -229,6 +231,9 @@ extension RekordboxWriter {
         var newObjects: [CueJSON.Object] = []
         var insertedIDs: Set<String> = []
         var insertedSeek: [String: [String]] = [:]
+        var insertedColors: [String: [String]] = [:]
+        /// 초안 큐 ID → 새 큐 ID(결과로 돌려준다, #405)
+        var cueIDs: [String: String] = [:]
         for (cue, replacing) in inserts.sorted(by: { $0.cue.time < $1.cue.time }) {
             let id = try newCueID(db)
             let uuid = UUID().uuidString.lowercased()
@@ -242,9 +247,16 @@ extension RekordboxWriter {
             var color = loop == nil ? -1 : 255
             var colorTableIndex: Int? = loop == nil ? nil : 0
             if let old = replacing, (old.kind == 0) == (kind == 0),
-               (old.color.map { $0 != -1 && $0 != 255 } ?? false) || (old.colorTableIndex ?? 0) > 0 {
+               EditableCue.ColorMark.isPicked(color: old.color, tableIndex: old.colorTableIndex) {
                 color = old.color ?? -1
                 colorTableIndex = old.colorTableIndex
+            } else if replacing == nil, cue.sourceID == nil, cue.restoredFrom != nil, let mark = cue.color, mark.memory == (kind == 0),
+                      EditableCue.ColorMark.isPicked(color: mark.color, tableIndex: mark.tableIndex) {
+                // 저장 뒤 ⌘Z가 지운 큐를 되살린 새 큐(`restoredFrom`, #405)만 rekordbox가 적어 두었던 색 두 칸을 그대로 쓴다.
+                // 확인한 모양은 옮긴 큐가 고른 색을 이어받는 것(같은 칸, 같은 갈래)뿐이다: 그 밖의 새 큐와 고르지 않은 색(자동 큐 255·0 등)은
+                // 기본 색이다(컨실 S9·S10, SAFE-12)
+                color = mark.color ?? -1
+                colorTableIndex = mark.tableIndex
             }
             let comment: String? = cue.name.isEmpty ? (loop == nil ? nil : "") : cue.name
             let activeLoop: Int? = loop.map { $0.active ? 1 : 0 }
@@ -281,6 +293,8 @@ extension RekordboxWriter {
             ]))
             insertedIDs.insert(id)
             insertedSeek[id] = [mp.inFrame, mp.inAbs, mp.outFrame, mp.outAbs].map(String.init) + [inSeek ?? "NULL", outSeek ?? "NULL"]
+            insertedColors[id] = [String(color), colorTableIndex.map(String.init) ?? "NULL"]
+            cueIDs[cue.id.uuidString] = id
         }
         let kept = zip(objectIDs, objects).filter { !removedIDs.contains($0.0) }
         let json = CueJSON.serialize(kept.map(\.1) + newObjects)
@@ -318,9 +332,10 @@ extension RekordboxWriter {
             untouchedIDs: untouched,
             insertedIDs: insertedIDs,
             insertedSeek: insertedSeek,
+            insertedColors: insertedColors,
             untouchedJSON: Dictionary(uniqueKeysWithValues: kept.map { ($0.0, CueJSON.serialize([$0.1])) }),
             cueUSN: cueUSN, contentUSN: contentUSN)
         return (Outcome(trackUUID: draft.trackUUID, title: content.title, status: .written, reason: nil,
-                        removed: removals.count, added: inserts.count), content.id, expectation)
+                        removed: removals.count, added: inserts.count, cueIDs: cueIDs), content.id, expectation)
     }
 }

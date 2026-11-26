@@ -11,6 +11,8 @@ public struct BarRange: Codable, Hashable, Sendable, CustomStringConvertible {
     }
 
     public var count: Int { last - first + 1 }
+    /// 마디 수(0마디 곡 머리는 세지 않는다. 화면의 「N마디」)
+    public var barCount: Int { last - max(first, 1) + 1 }
     public var description: String { first == last ? "\(first)" : "\(first)-\(last)" }
 
     /// "1-16,1-16,17-64" → 구간 목록. 빈칸은 무시하고, "5"는 5마디 하나다.

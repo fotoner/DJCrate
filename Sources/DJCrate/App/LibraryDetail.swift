@@ -17,8 +17,8 @@ struct LibraryDetail: View {
     let listActionBar: ListActionBarModel
     /// 주 창 화면 모델(머리 줄 검색칸 포커스 요청·연결되지 않은 초안 시트·파일 끌어 놓기). 본문은 읽지 않고 넘긴다
     let window: LibraryWindowModel
-    @AppStorage(SettingKeys.waveformHeight.name) private var waveformHeight = SettingKeys.waveformHeight.defaultValue
-    @AppStorage(SettingKeys.sheetMode.name) private var sheetMode = SettingKeys.sheetMode.defaultValue
+    @AppStorage(SettingKeys.waveformHeight.name, store: ViewPreferences.store) private var waveformHeight = SettingKeys.waveformHeight.defaultValue
+    @AppStorage(SettingKeys.sheetMode.name, store: ViewPreferences.store) private var sheetMode = SettingKeys.sheetMode.defaultValue
     @State private var sidebarAutoCollapse = SidebarVisibility()
     @State private var widthClass = DeckWidthClass(width: 1400)
     @State private var layout = LibraryLayoutMetrics()
@@ -46,6 +46,8 @@ struct LibraryDetail: View {
                         .frame(minWidth: 0, maxWidth: .infinity, minHeight: DeckLayout.minimumLibraryHeight, maxHeight: .infinity)
                 } else if case let .usb(.pending(volumeKey)) = store.sidebar, let usb = store.usb {
                     UsbPendingView(store: store, usb: usb, volumeKey: volumeKey)
+                        // USB 쓰기는 쓰는 동안 라이브러리 사본과 겹치지 않게 막는다(곡 단위로 쓰는 동안 상세 전체를 막지 않으므로 여기서 막는다)
+                        .disabled(store.libraryBusy)
                         .id(volumeKey)
                         .frame(minWidth: 0, maxWidth: .infinity, minHeight: DeckLayout.minimumLibraryHeight, maxHeight: .infinity)
                 } else if showsSheet {

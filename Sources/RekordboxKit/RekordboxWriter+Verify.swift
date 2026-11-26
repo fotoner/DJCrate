@@ -21,7 +21,7 @@ extension RekordboxWriter {
             throw fail(String(ui: "큐 행 구성이 다릅니다"))
         }
         let editable = rows.map(\.cue).compactMap(EditableCue.init)
-        guard key(editable, withSource: false) == expected.editable else { throw fail(String(ui: "큐 위치·종류가 초안과 다릅니다")) }
+        guard key(editable, withSource: false) == expected.editable else { throw fail(String(ui: "큐 위치·종류가 편집과 다릅니다")) }
         // 새 큐의 탐색 칸(VBR MP3 MPEG 위치·FLAC SeekInfo)이 계산한 값 그대로인지
         for (id, seek) in expected.insertedSeek {
             var stored: [String] = []
@@ -29,6 +29,12 @@ extension RekordboxWriter {
                 SELECT InMpegFrame, InMpegAbs, OutMpegFrame, OutMpegAbs, InPointSeekInfo, OutPointSeekInfo FROM djmdCue WHERE ID = ?
                 """, [.text(id)]) { r in stored = (0..<6).map { r.string(Int32($0)) ?? "NULL" } }
             guard stored == seek else { throw fail(String(ui: "새 큐의 탐색 위치가 계산과 다릅니다")) }
+        }
+        // 새 큐의 색 칸(옮긴 큐가 이어받은 색·되살린 큐의 지우기 전 색·기본 색)이 정한 값 그대로인지
+        for (id, colors) in expected.insertedColors {
+            var stored: [String] = []
+            try db.query("SELECT Color, ColorTableIndex FROM djmdCue WHERE ID = ?", [.text(id)]) { r in stored = (0..<2).map { r.string(Int32($0)) ?? "NULL" } }
+            guard stored == colors else { throw fail(String(ui: "새 큐의 색이 편집과 다릅니다")) }
         }
 
         var records: [(cues: String?, count: Int?, usn: Int?)] = []
@@ -80,7 +86,12 @@ extension RekordboxWriter {
 
     /// 파일 전체 무결성(SQLite 구조 + SQLCipher 페이지 인증).
     static func checkIntegrity(of database: URL) throws {
-        let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
+        let snapshot = try WriteReadSnapshot(database)
+        defer { snapshot.close() }
+        try checkIntegrity(snapshot.db)
+    }
+
+    static func checkIntegrity(_ db: CipherDatabase) throws {
         var quick: [String] = []
         try db.query("PRAGMA quick_check") { quick.append($0.string(0) ?? "") }
         guard quick == ["ok"] else { throw DJCError.writeVerificationFailed(String(ui: "무결성 검사 실패: \(quick.prefix(3).joined(separator: " / "))")) }

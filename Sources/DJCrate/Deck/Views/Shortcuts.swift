@@ -27,7 +27,7 @@ struct ShortcutsList: View {
                 row([String(ui: "더블클릭")], String(ui: "곡 목록: 고른 곡 덱에 불러오기 (덱으로 끌어다 놓아도 됨)"))
                 row(["⌘", "→"], String(ui: "곡 목록·태그 시트: 고른 곡 덱에 불러오기"))
                 row(["Return"], String(ui: "곡 목록: 고른 곡의 태그 칸 고치기 (고른 줄의 칸을 한 번 더 눌러도 됨, 키 칸은 누른 뒤 Return·더블클릭으로 메뉴)"))
-                row(["⇧", "⌘", "E"], String(ui: "rekordbox에 쓰기"))
+                row(["⌘", "S"], String(ui: "rekordbox에 저장"))
                 row(["⌘", "I"], String(ui: "태그 편집"))
                 row(["⌘", "O"], String(ui: "곡 추가"))
                 row(["⌘", "R"], String(ui: "rekordbox와 동기화"))

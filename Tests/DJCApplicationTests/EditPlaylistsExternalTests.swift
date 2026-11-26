@@ -38,7 +38,7 @@ struct EditPlaylistsExternalTests {
         var written = PlaylistDraft()
         _ = try written.append(.create(key: "k", name: "새 목록", isFolder: false, parent: .root), rekordbox: Self.rekordbox)
         var other = PlaylistDraft()
-        _ = try other.append(.rename(playlist: .id("P"), name: "다른 초안"), rekordbox: Self.rekordbox)
+        _ = try other.append(.rename(playlist: .id("P"), name: "다른 편집"), rekordbox: Self.rekordbox)
         try memory.store.savePlaylistDraft(other)
         let outcome = PlaylistOutcome(edit: written.steps[0].edit, playlistID: "900", name: "새 목록", status: .written)
 

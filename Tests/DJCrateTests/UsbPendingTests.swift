@@ -71,7 +71,7 @@ struct UsbPendingTests {
         outcomes[8] = .unchanged
         outcomes[2] = .deferred("Device Library가 막혀 파일 지우기를 미뤘습니다")
         let summary = UsbTestData.editSummary(editCount: 9, outcomes: outcomes,
-                                              skipped: [.init(message: "rekordbox 분석이 스냅샷 뒤에 바뀌었습니다. 새 스냅샷을 뜬 뒤 다시 시도하세요", count: 1)],
+                                              skipped: [.init(message: "rekordbox 분석이 동기화 뒤에 바뀌었습니다. ‘rekordbox와 동기화’를 한 뒤 다시 시도하세요", count: 1)],
                                               formats: [.init(format: .oneLibrary, written: true, blocked: nil),
                                                         .init(format: .deviceLibrary, written: false, blocked: "CDJ가 쓴 기록·목록이 있어 Device Library는 아직 고칠 수 없습니다")],
                                               removals: 4, deferred: ["Device Library가 막혀 파일 지우기를 미뤘습니다"],

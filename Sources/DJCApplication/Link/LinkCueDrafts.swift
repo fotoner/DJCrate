@@ -8,9 +8,11 @@ public actor LinkCueDrafts {
     private let edits: EditDraftFiles
     private let flush: @Sendable () -> Void
 
-    /// - Parameter flush: 앱이 맡은 초안 저장이 디스크에 닿을 때까지 기다린다
+    /// - Parameters:
+    ///   - edits: 초안 파일 입구. CDJ가 보낸 편집은 조립이 무엇을 정했든 LINK 출처로 저장한다(R5: 사람 편집이 아니라 제안이다)
+    ///   - flush: 앱이 맡은 초안 저장이 디스크에 닿을 때까지 기다린다
     public init(edits: EditDraftFiles, flush: @escaping @Sendable () -> Void) {
-        self.edits = edits
+        self.edits = edits.with(origin: .link)
         self.flush = flush
     }
 

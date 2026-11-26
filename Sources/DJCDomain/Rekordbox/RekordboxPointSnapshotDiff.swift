@@ -63,7 +63,7 @@ public struct RekordboxPointSnapshotDiff: Sendable, Equatable {
 
     /// 클라우드 동기화가 스냅샷 뒤에 진행된 라이브러리에 붙이는 한 줄(#229 확인 전이라 막지 않고 알린다)
     public static var cloudSyncNote: String {
-        String(ui: "이 스냅샷 뒤에 클라우드 동기화가 있었습니다. rekordbox를 켜면 동기화가 복원한 내용 일부를 다시 바꿀 수 있습니다.")
+        String(ui: "이 복원 시점 뒤에 클라우드 동기화가 있었습니다. rekordbox를 켜면 동기화가 복원한 내용 일부를 다시 바꿀 수 있습니다.")
     }
 
     /// 요약 줄(복원하면 일어나는 일로). 바뀐 것이 없으면 빈 배열

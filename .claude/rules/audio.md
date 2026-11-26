@@ -52,8 +52,9 @@ paths:
   - `--jump-audio-selftest`
   - `--flip-selftest`
   - `--metronome-selftest`
-  - `--switch-selftest`
-- **AUD-19** 오디오 실행은 빌드와 나눠서 한다. 본인이 잡은 `/tmp/djc-audio.lock` 안에서 5분 이하로 끝낸다.
+  - `--switch-selftest`는 곡 전환과 일시정지를 시험한다. 엔진 정지와 출력 변경 뒤에는 재생 위치와 새 미터 신호를 확인한다.
+  - 템포 +8%의 출력 프레임 수와 키 고정 켬·끔의 음높이는 `DeckTempoRenderTests`에서 합성 램프 WAV를 오프라인 렌더해 확인한다.
+- **AUD-19** 소리를 내는 실행은 [docs/ci.md의 실행 잠금](../../docs/ci.md#잠금과-동시-실행)을 따른다.
 
 ## 더 보기
 

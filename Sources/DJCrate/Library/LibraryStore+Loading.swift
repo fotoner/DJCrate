@@ -129,7 +129,13 @@ extension LibraryStore {
                            started: ContinuousClock.Instant) {
         let opened = read.opened, loaded = read.opened.loaded
         let snapshot = read.snapshot, generation = read.generation, synchronizingDrafts = read.synchronizingDrafts
-        undoManager?.removeAllActions(withTarget: self)
+        // 초안 쓰기 뒤 읽기(쓰는 곡이 없는 재생 목록·재생 기록만 쓰는 묶음 포함)는 저장한 곡과 기준값이 옮겨진 곡의 태그 ⌘Z 단계만 무효로 한다(아래).
+        // 다른 곡을 저장 중에 고친 ⌘Z는 남긴다. 그 밖의 읽기는 ⌘Z 기록을 통째로 지운다: 쓰는 동안 바뀐 것은 태그뿐이다
+        // (합치기는 `libraryBusy`로 막혀 쓰기 시작 때 이미 지웠다. 쓰는 동안 한 재생 목록 편집은 실행 취소에 남기지 않는다)
+        // 쓰기 잠금이 먼저 꺼진 뒤에 성공한 읽기도 같다: 초안 쓰기 뒤 읽기 대기(`draftWriteReadPending`)가 읽기가 성공할 때까지 남는다.
+        let keepsUndo = !synchronizingDrafts && (isDraftWrite || draftWriteReadPending) && playlists.playlistEditsAwaitingReload.isEmpty
+        draftWriteReadPending = false
+        if !keepsUndo { clearLibraryUndo() }
         applyLoadedRows(from: loaded)
         let previousTags = tagDrafts, previousPlaylist = playlists.playlistDraft
         // 읽는 동안 사용자가 편집했거나 저장에 실패한 입력은 디스크의 오래된 값으로 덮지 않는다. 동기화면 충돌하지 않는 초안의 base를
@@ -139,6 +145,18 @@ extension LibraryStore {
                                                        artworkChanged: artworkChanges != artworkChangeCount)
         let conflicts = reconciled.tags.conflicts
         tagDrafts = reconciled.tags.tags
+        if keepsUndo {
+            // 기준값을 옮긴 곡과 이 읽기가 태그 초안을 바꾼 곡은 무효로 한다. 읽기 실패 사이 바깥(CLI)이 저장한 초안을 다음 읽기가
+            // 외부 변경 감시보다 먼저 받아들이면 그 곡의 옛 ⌘Z가 새 초안을 이전 값으로 덮는다. 초안이 그대로인 곡의 ⌘Z는 남긴다.
+            // 저장한 곡의 ⌘Z는 지우지 않고 지금 rekordbox 값 위의 역편집으로 바꾼다(R12, `TagUndo`)
+            var stale = Set(reconciled.tags.rebased.map(\.trackUUID))
+            for uuid in Set(previousTags.keys).union(tagDrafts.keys) where previousTags[uuid] != tagDrafts[uuid] { stale.insert(uuid) }
+            invalidateTagUndo(stale)
+            // 실제로 쓴 곡은 무효 처리(바깥 새 초안)와 따로 쓴 횟수를 올린다: 그 곡이 "이미 쓴 곡"으로 남아 여러 곡 단계는 그 곡의 역편집을
+            // 만들 수 없으면 단계 전체를 끈다(남은 곡만 되돌리지 않는다, 컨실 3라운드 E)
+            noteTagsWritten(tagsWrittenAwaitingReload)
+        }
+        tagsWrittenAwaitingReload = []
         rememberTagSaves(reconciled.tags.rebased)
         tagRevision += 1
         setDraftMarks(cue: loaded.cueDraftUUIDs, grid: loaded.gridDraftUUIDs, gain: loaded.gainDraftUUIDs)
@@ -176,6 +194,8 @@ extension LibraryStore {
         verifyReflection()
         refreshBase()
         markLoadSucceeded()
+        // 저장 뒤 다시 읽었다: 새 rekordbox 값을 기다리던 ⌘Z 요청을 실행한다(컨실 S5). 맨 위 단계 판정은 쓴 곡을 덱에 넘긴 뒤에 한다(아래)
+        pendingUndo.flush()
         refreshUnlinkedDrafts()
         warmPreviewWaveforms(loaded.rows)
         if failedTagSaves().isEmpty { clearLibraryError() } else { reportLibraryError(DraftSaveFailure.tagSaveMessage, kind: .failure) }
@@ -183,7 +203,7 @@ extension LibraryStore {
             showToast(conflicts == 0
                 ? AppToast(title: String(ui: "현재 rekordbox 내용을 불러왔습니다"))
                 : AppToast(kind: .warning, title: String(ui: "태그 충돌을 확인하세요"),
-                           detail: String(ui: "같은 칸이 바뀐 \(conflicts)곡의 초안을 보존했습니다. 곡 정보에서 현재 값과 초안을 확인하세요.")))
+                           detail: String(ui: "같은 칸이 바뀐 \(conflicts)곡의 편집을 보존했습니다. 곡 정보에서 현재 값과 편집을 확인하세요.")))
         }
         useCases.log("라이브러리 로드 \(ContinuousClock.now - started) · \(rows.count)곡")
         // 동기화 중 시작한 드래그는 메모리에만 있을 수 있어 덱을 덮지 않는다.
@@ -194,6 +214,8 @@ extension LibraryStore {
             }
             deliverWrittenAfterReload()
         }
+        // 쓴 곡을 넘겨 다시 읽기 대기가 풀린 뒤 맨 위 ⌘Z 단계를 판정한다: 되돌릴 수 없게 됐으면 메뉴를 끈다(R12, 컨실 3라운드 G17)
+        if keepsUndo { settleUndo() }
         checkMissingFiles()
         applyLaunchSelection()
         staging.runLaunchStagingTest()

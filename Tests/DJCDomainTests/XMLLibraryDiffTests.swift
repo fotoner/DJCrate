@@ -197,6 +197,21 @@ struct XMLLibraryDiffTests {
         #expect(XMLLibraryDiff.compute(xml: Doc(tracks: xml), library: Doc(tracks: library)).tracks.isEmpty)
     }
 
+    @Test func 태그_글자는_앞뒤_탭만_다르면_같다() {
+        // rekordbox 7.2.18은 앞뒤에 탭이 든 이름·장르를 탭 없이 내보냈다(#258). 어느 쪽에 탭이 있어도 차이로 세지 않는다.
+        let library = [track("101", "/a.mp3", title: "\t제목\t", tags: [.genre: "\tAnime", .artist: "A", .comment: "코멘트"])]
+        let trimmed = [track("1", "/a.mp3", title: "제목", tags: [.genre: "Anime", .artist: "A\t", .comment: "\t코멘트"])]
+        #expect(XMLLibraryDiff.compute(xml: Doc(tracks: trimmed), library: Doc(tracks: library)).tracks.isEmpty)
+
+        // 앞뒤 스페이스와 가운데 공백은 다른 글자다(rekordbox는 앞뒤 스페이스를 그대로 둔다).
+        // 탭을 빼는 것은 비교에서만이다. 바뀐 칸의 XML 값은 탭까지 그대로 넘긴다(초안·가져오기 시트가 이 값을 쓴다).
+        let changed = [track("1", "/a.mp3", title: "제 목", tags: [.genre: "\t새 장르 ", .artist: "A "])]
+        let result = XMLLibraryDiff.compute(xml: Doc(tracks: changed), library: Doc(tracks: library))
+        #expect(result.tracks.first?.tags == [.init(key: .title, library: "\t제목\t", xml: "제 목"),
+                                              .init(key: .artist, library: "A", xml: "A "),
+                                              .init(key: .genre, library: "\tAnime", xml: "\t새 장르 ")])
+    }
+
     // MARK: 재생 목록
 
     func node(_ name: String, id: String? = nil, _ entries: [String]) -> Doc.Node { Doc.Node(name: name, id: id, entries: entries) }

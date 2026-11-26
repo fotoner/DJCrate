@@ -69,24 +69,24 @@ extension DevSelfTests {
             let backup = DJCPaths.userData.appending(path: "synthetic-backup")
             store.lastWriteBackup = backup
             // 화면 배치를 언어별로 보려고 실제 알림처럼 번역되는 문구를 쓴다.
-            let title = String(ui: "일부 곡을 썼습니다")
+            let title = String(ui: "일부 곡을 저장했습니다")
             let detail = String(ui: "합성 데이터의 화면 배치 시험입니다")
             if argument.contains("activity-") {
                 // 같은 안내 두 번(합친 횟수), 성공 안내, 실패 결과를 앞에 둔다. 경고 알림은 아래에서 맨 위 항목이 된다.
-                for _ in 0..<2 { store.showToast(.notice(String(ui: "rekordbox가 켜져 있어 쓰지 않았습니다"), ReflectionPrompts.quitRekordboxText)) }
+                for _ in 0..<2 { store.showToast(.notice(String(ui: "rekordbox가 켜져 있어 저장하지 않았습니다"), ReflectionPrompts.quitRekordboxText)) }
                 store.showToast(AppToast(title: String(ui: "현재 rekordbox 내용을 불러왔습니다")))
-                store.activityLog.record(WriteResult(kind: .failure, title: String(ui: "rekordbox에 쓰지 않았습니다"), text: detail))
+                store.activityLog.record(WriteResult(kind: .failure, title: String(ui: "rekordbox에 저장하지 않았습니다"), text: detail))
             }
             // 쓰기 상태 장면은 알림 없는 상태 줄(`status-`)과 같은 바탕이다
             let statusScene = writeScene != nil ? "status-" : ["status-", "unread-", "popover-", "open-"].first(where: argument.contains)
             if let statusScene {
                 if statusScene != "status-" {
                     store.activityLog.record(AppToast(title: String(ui: "현재 rekordbox 내용을 불러왔습니다")))
-                    store.activityLog.record(WriteResult(kind: .failure, title: String(ui: "rekordbox에 쓰지 않았습니다"), text: detail))
+                    store.activityLog.record(WriteResult(kind: .failure, title: String(ui: "rekordbox에 저장하지 않았습니다"), text: detail))
                     store.activityLog.record(AppToast.notice(String(ui: "USB에서 재생 기록 \(1)개를 가져왔습니다"), "LAYOUT-USB", kind: .success, isUsb: true),
                                              shown: false)
                 }
-                let quit = AppToast.notice(String(ui: "rekordbox가 켜져 있어 쓰지 않았습니다"), ReflectionPrompts.quitRekordboxText)
+                let quit = AppToast.notice(String(ui: "rekordbox가 켜져 있어 저장하지 않았습니다"), ReflectionPrompts.quitRekordboxText)
                 if statusScene == "open-" {
                     store.showToast(quit)
                 } else if statusScene != "status-" {
@@ -169,7 +169,7 @@ extension DevSelfTests {
             if argument.contains("locked-") || argument.contains("reload-") {
                 store.dismissToast()
                 store.setWriteLock(true)
-                store.writeStage = argument.contains("reload-") ? .reloadingLibrary : WriteStage(String(ui: "rekordbox에 쓰는 중…"))
+                store.writeStage = argument.contains("reload-") ? .reloadingLibrary : WriteStage(String(ui: "rekordbox에 저장하는 중…"))
             }
             if let capture = args.first(where: { $0.hasPrefix("--reflection-capture=") }) {
                 try? await Task.sleep(for: .milliseconds(500))

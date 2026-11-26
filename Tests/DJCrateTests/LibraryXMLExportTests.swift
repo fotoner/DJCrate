@@ -62,7 +62,7 @@ struct LibraryXMLExportTests {
         let message = try #require(store.activityLog.latest)
         #expect(message.kind == .success)
         #expect(message.text.contains("export.xml") && message.text.contains("뺀 것: 스트리밍 곡 1"))
-        #expect(message.text.contains("쓰지 않은 초안은 넣지 않았습니다"))
+        #expect(message.text.contains("저장하지 않은 편집은 넣지 않았습니다"))
         #expect(try Data(contentsOf: fixture.database) == before, "라이브러리 사본은 바뀌지 않는다")
         #expect(LibraryMenuAction.exportLibraryXML.isEnabled(in: LibraryWindowModel(store: store)), "끝나면 다시 켜진다")
     }
@@ -79,7 +79,7 @@ struct LibraryXMLExportTests {
         store.staging.exportLibraryXML(to: out, shareRoot: fixture.shareRoot)
         await store.staging.xmlExportTask?.value
         let xml = try String(contentsOf: out, encoding: .utf8)
-        #expect(xml.contains(#"Name="합성 곡 A""#) && !xml.contains("초안"))
+        #expect(xml.contains(#"Name="합성 곡 A""#) && !xml.contains("저장 대기"))
     }
 
     @Test func rekordbox_폴더와_연동_파일_자리는_거부하고_아무것도_쓰지_않는다() async throws {

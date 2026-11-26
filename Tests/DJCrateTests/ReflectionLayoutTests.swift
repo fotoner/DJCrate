@@ -147,7 +147,7 @@ struct ReflectionLayoutTests {
             return NSHostingController(rootView: card).sizeThatFits(in: CGSize(width: 1800, height: 900)).width
         }
         let preview = width(WriteStage(String(ui: "미리 보기 2/2단계 · 바꿀 내용을 검사하는 중…"), completed: 1, total: 2, cancellable: true))
-        let writing = width(WriteStage(String(ui: "rekordbox에 쓰는 중…")))
+        let writing = width(WriteStage(String(ui: "rekordbox에 저장하는 중…")))
         // 내용 최대 폭 400pt(글자 배율만큼) + 좌우 여백 28pt씩
         let limit = TextScale.length(400, scale: scale) + 56
         #expect(preview <= limit)
@@ -205,7 +205,7 @@ struct ReflectionLayoutTests {
     /// 확인 창에서 걷어 낸 "끝날 때까지 rekordbox를 켜지 마세요"는 쓰는 동안의 진행 카드가 한 번만 보인다(#310).
     /// 아직 쓰기 전인 취소할 수 있는 단계는 켜지 말라고 하지 않는다.
     @Test(arguments: [false, true]) func 진행_카드는_안내를_한_번만_보인다(_ cancellable: Bool) {
-        let stage = WriteStage(cancellable ? "바꿀 내용을 확인하는 중…" : "rekordbox에 쓰는 중…", cancellable: cancellable)
+        let stage = WriteStage(cancellable ? "바꿀 내용을 확인하는 중…" : "rekordbox에 저장하는 중…", cancellable: cancellable)
         let texts = Self.strings(in: WritingStageCard(stage: stage, onCancel: {}).body)
         #expect(texts.contains(stage.text), "본문에서 글을 읽을 수 있다: \(texts)")
         #expect(texts.filter { $0 == stage.notice }.count == 1, "\(texts)")

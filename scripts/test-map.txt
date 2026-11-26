@@ -47,6 +47,14 @@ suite RekordboxKitTests.RekordboxBackupPruneTests
 suite RekordboxKitTests.RekordboxRestoreChainTests
 suite RekordboxKitTests.RekordboxRestoreFailureTests
 suite RekordboxKitTests.RekordboxWriterGoldenTests
+suite RekordboxKitTests.RekordboxWriteJournalFlowTests
+suite RekordboxKitTests.RekordboxWriteJournalEdgeTests
+suite RekordboxKitTests.RekordboxWriteJournalHardeningTests
+suite RekordboxKitTests.RekordboxWriteJournalBoundaryTests
+suite RekordboxKitTests.RekordboxWriteStagingTests
+suite RekordboxKitTests.RekordboxWriteLockTests
+suite RekordboxKitTests.RekordboxBackupRetentionTests
+suite DJCAdaptersTests.RekordboxWriteJournalLiveTests
 suite DJCrateTests.RestoreTargetTests
 suite djcTests.CLIRefusalTests
 suite djcTests.CLIWriteTargetTests
@@ -91,6 +99,16 @@ suite djcTests.UsbSettingLabTests
 suite djcTests.UsbPlanLabTests
 suite djcTests.UsbExportCommandTests
 suite djcTests.CLIRefusalTests
+
+# USB 수정 생성 조합(#383): 편집 계획·모델 적용·두 형식 작성기를 바꾸면 생성한 편집 묶음으로 기준 모델과 형식 불변식을 함께 본다.
+# 이 시험은 재료(UsbEditFixture.edit·plan)를 거쳐 엔진에 닿아 계획기 내부 타입의 기호 grep에 걸리지 않는다.
+group usb-edit-generated
+when Sources/RekordboxKit/Usb/Write/UsbEdit*
+when Sources/RekordboxKit/Usb/Write/OneLibraryWriter*
+when Sources/RekordboxKit/Usb/Write/Pdb*
+when Sources/RekordboxKit/Usb/Write/UsbExportAssembly*
+when Sources/RekordboxKit/Usb/Write/UsbWriter*
+suite RekordboxKitTests.UsbEditGeneratedTests
 
 # djc 명령·실험 도구는 시험이 .build/debug/djc 프로세스를 명령 문자열로 띄워 닿는다(기호 grep이 못 찾음) → djcTests 전체.
 # DJCAdapters의 실제 구현(.live)도 CLI가 같은 것을 프로세스 안에서 쓴다.
@@ -147,7 +165,7 @@ suite DJCDomainTests.LogPathsTests
 
 # 쓰기 커버리지 그룹: scripts/check.sh 커버리지 awk의 쓰기 정규식과 같은 파일(test-check.py가 맞대어 본다).
 # 그룹 80%는 이 세 타깃 전체로 잰다. Write/ 아래는 정규식이 허용하는 자리라 maybe로 둔다.
-group write-coverage
+group write-coverage-rekordbox
 when Sources/RekordboxKit/RekordboxWriter**
 when Sources/RekordboxKit/RekordboxGridWriter**
 when Sources/RekordboxKit/RekordboxCompatibility**
@@ -158,14 +176,25 @@ maybe Sources/RekordboxKit/Write/RekordboxGridWriter**
 maybe Sources/RekordboxKit/Write/RekordboxCompatibility**
 maybe Sources/RekordboxKit/Write/RekordboxTrackWriter**
 maybe Sources/RekordboxKit/Write/RekordboxTrackAdd**
-when Sources/RekordboxKit/Usb/Write/**
 when Sources/DJCApplication/Reflection/RekordboxWriteGate.swift
 when Sources/DJCAdapters/Reflection/RekordboxWriteGate+Live.swift
+check write-coverage
+target RekordboxKitTests
+target DJCApplicationTests
+target DJCAdaptersTests
+require 사본에서 djc compat을 돌리고, djc cue-write --db <스냅샷 사본> --dry-run의 바꾸기 전후 결과를 비교합니다(RBW-38)
+require 그리드를 바꿨으면 djc lab grid-write-test를 사본에서 돌립니다(RBW-38)
+require --write-selftest로 사본의 쓰기 흐름을 확인합니다(app-selftest, RBW-38)
+
+group write-coverage-usb
+when Sources/RekordboxKit/Usb/Write/**
 when Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift
 check write-coverage
 target RekordboxKitTests
 target DJCApplicationTests
 target DJCAdaptersTests
+require usb-image-check로 디스크 이미지 쓰기 전 과정을 확인합니다(USB-48)
+require --usb-selftest로 앱의 USB 흐름을 확인합니다(app-selftest, USB-49)
 
 # 화면 관찰 범위(#129·#137·#138). LayoutRecomputeTests는 환경 변수가 있어야 돈다.
 group observation
@@ -204,6 +233,126 @@ suite DJCApplicationTests.LinkFileHoldTests
 suite DJCApplicationTests.LinkDiscoveryTests
 suite DJCrateTests.LinkBarModelTests
 
+# 자동 저장 계약(#398): 쓰기 기록·미정리 목록·자동 저장 기록 형식(다른 실행이 읽는다), 초안 출처·판·해시, 진단 실행 인자.
+# 형식 값은 반환값·JSON으로만 닿아 기호 grep이 놓칠 수 있어 경로로 고른다.
+group autosave-contract
+when Sources/DJCDomain/Common/DraftProvenance.swift
+when Sources/DJCDomain/Rekordbox/RekordboxWriteJournal.swift
+when Sources/DJCDomain/Rekordbox/RekordboxWriteLockKey.swift
+when Sources/DJCDomain/Rekordbox/RekordboxWriteHooks.swift
+when Sources/DJCDomain/Reflection/DraftCleanupList.swift
+when Sources/DJCDomain/Reflection/PlaylistStepCopy.swift
+when Sources/DJCApplication/Reflection/AutoReflection*.swift
+when Sources/DJCApplication/Reflection/ReflectionHold.swift
+when Sources/DJCApplication/Reflection/RekordboxJournalValues.swift
+when Sources/DJCApplication/Library/MemoryDrafts.swift
+when Sources/DJCApplication/Library/MemoryDraftFiles.swift
+when Sources/DJCApplication/Library/DraftStore+Suggestions.swift
+when Sources/DJCDomain/Library/DraftSuggestion.swift
+when Sources/DJCStorage/Drafts/DraftStampStore.swift
+when Sources/DJCStorage/Drafts/StampedDrafts.swift
+when Sources/DJCStorage/Drafts/LegacyDraftAdoption.swift
+when Sources/DJCrate/Diagnostics/DiagnosticRun.swift
+when Sources/DJCrate/Settings/SettingsStore.swift
+suite DJCDomainTests.DraftProvenanceTests
+suite DJCDomainTests.DraftSuggestionTests
+suite DJCStorageTests.DraftStampStoreTests
+suite DJCStorageTests.LegacyDraftAdoptionTests
+suite DJCAdaptersTests.DraftStampLiveTests
+suite DJCApplicationTests.DraftFilesOriginTests
+suite DJCDomainTests.RekordboxWriteJournalTests
+suite DJCApplicationTests.AutoReflectionContractTests
+suite DJCApplicationTests.PortContractTests
+suite DJCrateTests.AutoReflectSelfTestRunTests
+
+# 자동 저장 엔진(#403, R1~R22 호출부): 엔진 판정·세션의 자동 쓰기·판 지정 정리·재시작 정리와 앱 연결(수명·보류 사유·쓰기 차례).
+# 엔진은 조립 지점·조정자·저장소 상태를 클로저로 받아 기호 grep이 놓칠 수 있어 경로로 고른다.
+group autosave-engine
+when Sources/DJCApplication/Reflection/AutoReflection*.swift
+when Sources/DJCApplication/Reflection/ReflectionSession*.swift
+when Sources/DJCApplication/Reflection/AutoPointSnapshotRunner.swift
+when Sources/DJCApplication/Reflection/RestoredDrafts.swift
+when Sources/DJCApplication/Reflection/WriteConfirmPolicy.swift
+when Sources/DJCApplication/Reflection/ReflectionPrompts.swift
+when Sources/DJCAdapters/Reflection/AutoReflectionPorts+Live.swift
+when Sources/DJCrate/App/AppComposition.swift
+when Sources/DJCrate/App/ContentView.swift
+when Sources/DJCrate/Reflection/ReflectionCoordinator.swift
+when Sources/DJCrate/Library/PlaylistEditStore.swift
+when Sources/djc/CLIComposition.swift
+when Sources/djc/Commands/MainCommands.swift
+when Sources/djc/Commands/PointSnapshotCommand.swift
+suite DJCApplicationTests.AutoReflectionEngineTests
+suite DJCApplicationTests.AutoReflectionWriteWatchTests
+suite DJCApplicationTests.AutoReflectionJournalTests
+suite DJCApplicationTests.AutoReflectionBatchTests
+suite DJCApplicationTests.AutoReflectionOrderTests
+suite DJCApplicationTests.AutoReflectionRecordTests
+suite DJCApplicationTests.AutoReflectionStopTests
+suite DJCApplicationTests.ReflectionSessionResumeCleanupTests
+suite DJCApplicationTests.ReflectionSessionTrackAddCleanupTests
+suite djcTests.CLICleanupBeforeWriteTests
+suite DJCApplicationTests.AutoReflectionPlanTests
+suite DJCApplicationTests.ReflectionSessionRevisionTests
+suite DJCApplicationTests.ReflectionSessionWriteTests
+suite DJCApplicationTests.ReflectionSessionTrackTests
+suite DJCApplicationTests.ReflectionSessionRestoreTests
+suite DJCApplicationTests.ReflectionSessionConfirmTests
+suite DJCAdaptersTests.AutoReflectionPortsLiveTests
+suite DJCrateTests.AutoReflectionAppTests
+suite DJCrateTests.PlaylistWriteFreezeTests
+suite DJCrateTests.PlaylistUndoDuringWriteTests
+suite DJCrateTests.RestoreKeepsPlaylistDraftTests
+
+# 쓰는 곡만 잠그기(#401, R21): 초안을 쓰는 동안 덱 재생·창 덮개·편집 잠금이 쓰기 종류별로 갈린다. 잠금 값이 여러 파일에 걸쳐 기호 grep이 놓칠 수 있어 경로로 고른다.
+group track-write-lock
+when Sources/DJCrate/Library/LibraryStore.swift
+when Sources/DJCrate/Library/LibraryStore+ReflectionState.swift
+when Sources/DJCrate/Library/TagEditStore.swift
+when Sources/DJCrate/Library/LibraryStore+Artwork.swift
+when Sources/DJCrate/Library/ArtworkInspectorModel.swift
+when Sources/DJCrate/Deck/DeckModel.swift
+when Sources/DJCrate/App/ContentView.swift
+when Sources/DJCrate/Library/LibraryStore+Loading.swift
+when Sources/DJCrate/Library/LibraryStore+Deck.swift
+when Sources/DJCrate/Library/TagInspectorModel.swift
+when Sources/DJCrate/Deck/DeckModel+Loading.swift
+when Sources/DJCApplication/Library/StageTracks.swift
+when Sources/DJCApplication/Reflection/ReflectionSession.swift
+when Sources/DJCApplication/Reflection/ReflectionSession+Write.swift
+suite DJCrateTests.TrackWriteLockTests
+suite DJCrateTests.TrackWriteLockFollowUpTests
+suite DJCApplicationTests.StageTracksTests
+suite DJCrateTests.WriteLockSplitTests
+suite DJCrateTests.WriteLockPolicyTests
+suite DJCrateTests.ArtworkInspectorModelTests
+suite DJCrateTests.TagInspectorModelTests
+suite DJCApplicationTests.ReflectionSessionWriteTests
+
+# 재생 목록 얼리기·쓴 뒤 정리(#402, R21·R22): 쓰는 동안 재생 목록 편집은 쓰는 단계와 합치지 않고 뒤에 쌓고, 쓴 뒤에는 쓴 단계만 판으로 빼며 연결 ID를 옮긴다.
+# 얼림 값이 화면 가드(사이드바·메뉴·기록·머리 줄)에 걸쳐 기호 grep이 놓칠 수 있어 경로로 고른다.
+group playlist-write-freeze
+when Sources/DJCDomain/Playlist/**
+when Sources/DJCApplication/Library/EditPlaylists*.swift
+when Sources/DJCrate/Library/PlaylistEditStore*.swift
+when Sources/DJCrate/Library/HistoryStore.swift
+when Sources/DJCrate/App/PlaylistSidebar*.swift
+when Sources/DJCrate/App/PlaylistCommands.swift
+when Sources/DJCrate/App/ListActionBarModel.swift
+suite DJCDomainTests.PlaylistDraftTests
+suite DJCDomainTests.PlaylistDraftFreezeTests
+suite DJCApplicationTests.EditPlaylistsCleanupTests
+suite DJCApplicationTests.EditPlaylistsFlowTests
+suite DJCApplicationTests.EditPlaylistsExternalTests
+suite DJCApplicationTests.EditPlaylistsBatchTests
+suite DJCApplicationTests.EditPlaylistsTests
+suite DJCrateTests.PlaylistWriteFreezeTests
+suite DJCrateTests.PlaylistEditingTests
+suite DJCrateTests.ExternalPlaylistDraftTests
+suite DJCrateTests.PlaylistImportIntegrationTests
+suite DJCrateTests.PlaylistSidebarModelTests
+suite DJCrateTests.TrackWriteLockTests
+
 # 번역 카탈로그·화면 문구 검사 도구
 group localization
 when Sources/**/*.xcstrings
@@ -234,3 +383,32 @@ none
 # djcTests는 .build/debug/djc 프로세스를 띄운다. --changed는 소스 타깃 전체(제품 포함)를 먼저 빌드하므로 따로 빌드하지 않지만,
 # 고른 범위에 제품을 적어 둔다.
 needs djcTests djc
+
+# 상태 줄·⌘S·중단 알림·조용한 성공(#404, R3·R11·R15·R19): 엔진 상태(조건)를 R3 표의 줄로 읽어 칩·저장 단추·⌘S가 달라지는 연결이다.
+# 줄 고르기는 DJCApplication의 `ReflectionStatusRow`, 글·단추는 앱의 `ReflectionStatusModel`·`LibraryMenuAction`이 읽으므로 경로로 고른다.
+group status-bar-autosave
+when Sources/DJCrate/App/ReflectionStatusModel.swift
+when Sources/DJCrate/App/ReflectionStatusLine.swift
+when Sources/DJCrate/App/StatusBar.swift
+when Sources/DJCrate/App/LibraryMenuAction.swift
+when Sources/DJCrate/App/FieldEditingState.swift
+when Sources/DJCrate/App/LibraryWindowModel.swift
+when Sources/DJCrate/App/ReflectionSaveEntry.swift
+when Sources/DJCrate/App/ListActionBarModel.swift
+when Sources/DJCrate/App/ListHeaderActions+Modes.swift
+when Sources/DJCrate/Library/TrackList/TrackListActions.swift
+when Sources/DJCrate/Reflection/ReflectionCoordinator*.swift
+when Sources/DJCApplication/Reflection/AutoReflectionStatus.swift
+when Sources/DJCDomain/Settings/SettingKeys.swift
+suite DJCApplicationTests.ReflectionStatusRowTests
+suite DJCApplicationTests.AutoReflectionContractTests
+suite DJCrateTests.ReflectionStatusRowsModelTests
+suite DJCrateTests.ReflectionSaveCommandTests
+suite DJCrateTests.ReflectionSaveEntryTests
+suite DJCrateTests.ListActionBarModelTests
+suite DJCrateTests.ListHeaderActionsTests
+suite DJCApplicationTests.AutoReflectionJournalTests
+suite DJCrateTests.ReflectionAutoWriteToastTests
+suite DJCrateTests.ReflectionJournalActionTests
+suite DJCrateTests.AutoSaveHasNoSwitchTests
+suite DJCrateTests.ReflectionStatusModelTests

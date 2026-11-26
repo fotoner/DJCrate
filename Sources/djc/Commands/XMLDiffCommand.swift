@@ -167,19 +167,19 @@ enum XMLDiffCommand {
         let result = try CLIComposition.live.library(home: home).importXML
             .makeDraftsNow(report, selection: XMLImportDrafts.Selection(kinds: kinds))
         let saved: [XMLImportDrafts.Kind: Int] = [.cue: result.cues, .grid: result.grids, .tag: result.tags, .playlist: result.playlists]
-        var lines = [String(ui: "초안을 만들었습니다: 큐 \(saved[.cue, default: 0]) · 그리드 \(saved[.grid, default: 0]) · 태그 \(saved[.tag, default: 0]) · 재생 목록 \(saved[.playlist, default: 0])")]
+        var lines = [String(ui: "편집을 만들었습니다: 큐 \(saved[.cue, default: 0]) · 그리드 \(saved[.grid, default: 0]) · 태그 \(saved[.tag, default: 0]) · 재생 목록 \(saved[.playlist, default: 0])")]
         if appRunning, request.kinds.contains(.grid) {
             lines.append(String(ui: "DJCrate가 켜져 있습니다: 덱에 올린 곡의 그리드 초안은 덱 편집이 덮을 수 있으니 그 곡을 덱에 다시 불러오세요"))
         }
         let skipped = result.skipped
-        if !skipped.isEmpty { lines.append(String(ui: "기존 초안이 있어 건너뛴 것 \(skipped.count)")) }
+        if !skipped.isEmpty { lines.append(String(ui: "기존 편집이 있어 건너뛴 것 \(skipped.count)")) }
         for note in skipped.prefix(request.limit) { lines.append("• \(note.kind.label) · \(note.subject): \(note.reason)") }
-        if !result.losses.isEmpty { lines.append(String(ui: "초안에 담지 못한 차이 \(result.losses.count)")) }
+        if !result.losses.isEmpty { lines.append(String(ui: "편집에 담지 못한 차이 \(result.losses.count)")) }
         for note in result.losses.prefix(request.limit) { lines.append("• \(note.kind.label) · \(note.subject): \(note.reason)") }
         if skipped.count > request.limit || result.losses.count > request.limit {
             lines.append(String(ui: "일부 줄은 줄였습니다. --limit으로 늘려 보세요"))
         }
-        lines.append(String(ui: "rekordbox에는 아직 쓰지 않았습니다. DJCrate의 rekordbox에 쓰기에서 미리 보고 쓰세요"))
+        lines.append(String(ui: "rekordbox에는 아직 저장하지 않았습니다. DJCrate에서 미리 보고 rekordbox에 저장하세요"))
         return lines
     }
 

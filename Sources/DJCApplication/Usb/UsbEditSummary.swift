@@ -121,7 +121,7 @@ public struct UsbEditSummary: Equatable, Sendable {
 
     /// 이 USB에 초안이 없다
     public static func noDraft(isTestVolume: Bool) -> UsbEditSummary {
-        UsbEditSummary(editCount: 0, outcomes: [:], stopping: [String(ui: "이 USB에 쌓인 초안이 없습니다. 편집을 먼저 더하세요")], skipped: [],
+        UsbEditSummary(editCount: 0, outcomes: [:], stopping: [String(ui: "이 USB에 쌓인 편집이 없습니다. 편집을 먼저 더하세요")], skipped: [],
                        formats: [], removals: 0, deferred: [], notes: [], warnings: [], rules: [], hasChanges: false,
                        isTestVolume: isTestVolume, formatDrift: false)
     }

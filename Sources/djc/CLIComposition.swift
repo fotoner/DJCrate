@@ -20,7 +20,8 @@ struct CLIComposition: Sendable {
 
     init(environment: [String: String]) {
         location = .resolve(arguments: [], environment: environment)
-        drafts = .live(writer: DraftWriter(), home: location.draftHome)
+        // CLI가 저장하는 초안의 출처는 CLI다(R5: 앱이 제안으로 본다)
+        drafts = .live(writer: DraftWriter(), home: location.draftHome, origin: .cli)
         writeGate = .live()
     }
 
@@ -61,10 +62,12 @@ struct CLIComposition: Sendable {
         var drafts = drafts
         if let home {
             location.draftHome = home
-            drafts = .live(writer: DraftWriter(), home: home)
+            drafts = .live(writer: DraftWriter(), home: home, origin: .cli)
         }
-        return LibraryUseCases(ports: .live(location: location, drafts: drafts,
-                                            batches: .live(url: DraftLocations(home: location.draftHome).reflection)))
+        var ports = LibraryPorts.live(location: location, drafts: drafts, batches: .live(url: DraftLocations(home: location.draftHome).reflection))
+        // `djc draft`·XML 가져오기가 곡별 초안 파일에 쓰는 초안도 CLI 출처다
+        ports.draftFiles = .live(home: location.draftHome, origin: .cli)
+        return LibraryUseCases(ports: ports)
     }
 
     /// 곡 파트 분석(`djc analyze`): 사본을 주지 않으면 위치 값의 스냅샷 폴더에서 최신 스냅샷을 읽는다
@@ -91,24 +94,29 @@ struct CLIComposition: Sendable {
         for name in ["cue-drafts", "grid-drafts", "tag-drafts", "playlist-drafts.json"] {
             let url = home.appending(path: name)
             guard url.resolvingSymlinksInPath().standardizedFileURL == url.standardizedFileURL else {
-                throw ReadFailure("invalid_arguments", String(ui: "초안 폴더나 파일의 심볼릭 링크를 해제하세요"))
+                throw ReadFailure("invalid_arguments", String(ui: "편집 폴더나 파일의 심볼릭 링크를 해제하세요"))
             }
         }
         return home
     }
+
+    /// 쓰기 입구와 같은 쓰기 잠금(R9). 쓰기 전 정리가 이 잠금 아래에서 기록을 판정한다(`cleanUpBeforeWrite`)
+    var writeLock: RekordboxWriteLock { .live() }
 
     /// 라이브 판정(`RekordboxWriteGuard`)을 바꿔 시험하는 명령의 관문(시점 스냅샷 복원)
     func writeGate(guard writeGuard: RekordboxWriteGuard) -> RekordboxWriteGate { .live(guard: writeGuard) }
 
     /// rekordbox 쓰기 명령의 반영 세션: 앱과 같은 유스케이스, 같은 관문·백업 폴더·초안 저장소. CLI는 화면이 없어 잠금·다시 읽기·결과 알리기가 없고,
     /// 확인은 플래그가 곧 동의다. 쓴 초안 정리·복원 때 되살리기는 하지 않는다(`liveCLI`, 앱과 다름, 사용자 결정 2026-10-10).
+    /// 다만 앱이 남긴 미정리 목록은 쓰기 전에 마저 정리한다(R22, `cleanUpBeforeWrite`). 그 정리가 새 목록의 연결 ID를 옮기므로 연결 기록은 데이터 폴더의 파일이다
     /// - Parameter gate: 라이브 판정을 바꿔 시험하는 명령만 준다(시점 스냅샷 복원)
     @MainActor
     func reflection(gate: RekordboxWriteGate? = nil) -> ReflectionSession {
         ReflectionSession(location: location,
                           ports: ReflectionPorts(gate: gate ?? writeGate, backups: .live(), drafts: drafts, snapshots: .live(location), audio: .measuring,
                                                  library: .none, reload: .none, lock: .none, confirmation: .agreeing, results: .none,
-                                                 runningApps: .live, playlistImports: .none),
+                                                 runningApps: .live,
+                                                 playlistImports: .live(url: DraftLocations(home: location.draftHome).playlistImports)),
                           options: .liveCLI)
     }
 }

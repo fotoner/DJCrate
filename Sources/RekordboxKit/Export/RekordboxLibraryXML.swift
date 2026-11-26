@@ -12,7 +12,9 @@ import Foundation
 ///
 /// 넣지 않는 것(rekordbox가 XML에 어떻게 넣는지 확인하지 못했거나 이 형식에 칸이 없다):
 /// 인텔리전트 재생 목록·My Tag·핫큐 색(Red·Green·Blue)·앨범 아티스트·Grouping·Mix·DateModified·LastPlayed·스트리밍 곡·
-/// 쓰지 않은 초안. Rating·Colour는 곡 행에 칸이 생기면(#65) `Entry.extraAttributes`로 연결한다.
+/// 쓰지 않은 초안. Colour는 rekordbox 색과의 대응을 확인하면 `Entry.extraAttributes`로 연결한다. Rating은 곡 행의 별 수로 쓴다(#258).
+///
+/// 표시 칸(`Tonality`·글자 칸 앞뒤 탭·`Rating`)은 rekordbox 7.2.18이 내보낸 XML과 같게 쓴다(`LibraryXMLDisplay`, #258).
 public enum RekordboxLibraryXML {
     /// TRACK에 덧붙일 속성 한 칸
     public struct Attribute: Sendable, Equatable {
@@ -43,7 +45,7 @@ public enum RekordboxLibraryXML {
         public var extras: Extras
         public var marks: [Reflection.Mark]
         public var tempos: [GridSegment]
-        /// 이 내보내기가 아직 모르는 칸(#65의 Rating·Colour)을 Location 뒤에 그대로 붙인다.
+        /// 이 내보내기가 아직 모르는 칸(Colour)을 Location 뒤에 그대로 붙인다.
         public var extraAttributes: [Attribute] = []
 
         public init(trackKey: Int, track: Track, extras: Extras, marks: [Reflection.Mark], tempos: [GridSegment],
@@ -141,7 +143,7 @@ public enum RekordboxLibraryXML {
             let tempos = shareRoot.flatMap { gridPaths.map { !$0.contains(XMLTrackMatching.key(track.folderPath).lowercased()) } == true ? nil : RekordboxShare.analysisURL(track.analysisDataPath, root: $0) }
                 .flatMap { try? BeatGrid.load(anlz: $0) }
                 .map(tempoSegments(from:)) ?? []
-            // #65: 별점·곡 색(Rating·Colour)은 곡 행에 칸이 생기면 여기서 `extraAttributes`로 연결한다.
+            // 곡 색(Colour)은 rekordbox 색과의 대응을 확인하면 여기서 `extraAttributes`로 연결한다.
             entries.append(Entry(trackKey: keys[track.id] ?? 0, track: track, extras: extras[track.id] ?? Extras(),
                                  marks: marks, tempos: tempos))
         }

@@ -34,7 +34,7 @@ public enum UsbPointSnapshot {
         if [directory, paths.sessions].contains(where: { UsbSnapshot.isInside($0.path, root: root.url.path) })
             || isProtected(mountPoint, writeGuard.protectedRoots) {
             throw refused("protectedPath",
-                          String(ui: "DJCrate 데이터 폴더나 rekordbox 라이브러리와 겹치는 볼륨은 USB 스냅샷을 뜨지 않습니다. USB 볼륨을 고르세요"))
+                          String(ui: "DJCrate 데이터 폴더나 rekordbox 라이브러리와 겹치는 볼륨은 USB 복원 시점을 남기지 않습니다. USB 볼륨을 고르세요"))
         }
         // 볼륨 정보를 읽기 전에 루트를 붙잡는다: 읽은 볼륨 번호가 붙잡은 볼륨의 것인지 아래에서 본다(쓰기 절차의 열기와 같은 순서)
         let hold = try fileSystem.holdVolume(root.url)
@@ -58,7 +58,7 @@ public enum UsbPointSnapshot {
         // 라이브러리 DB가 없는 스냅샷은 되돌릴 수 없다(되돌리기가 DB를 지우지 않는다)
         guard UsbPointSnapshotRules.databaseOrder.contains(where: { found[$0] != nil }) else {
             throw refused("pointSnapshotNoDatabase",
-                          String(ui: "이 USB에는 라이브러리 DB가 없어 스냅샷을 남기지 않았습니다. rekordbox나 DJCrate로 내보낸 USB를 고르세요"))
+                          String(ui: "이 USB에는 라이브러리 DB가 없어 복원 시점을 남기지 않았습니다. rekordbox나 DJCrate로 내보낸 USB를 고르세요"))
         }
 
         let fm = FileManager.default
@@ -223,7 +223,7 @@ public enum UsbPointSnapshot {
     public static func setPinned(_ pinned: Bool, _ entry: Entry, in directory: URL) throws -> Entry {
         let folder = try owned(entry, in: directory)
         guard var metadata = metadata(in: folder) else {
-            throw refused("pointSnapshotUnreadable", String(ui: "USB 스냅샷 정보(snapshot.json)를 읽지 못했습니다. 스냅샷 목록을 다시 본 뒤 고르세요"))
+            throw refused("pointSnapshotUnreadable", String(ui: "USB 복원 시점 정보(snapshot.json)를 읽지 못했습니다. 복원 시점 목록을 다시 본 뒤 고르세요"))
         }
         metadata.pinned = pinned
         try save(metadata, in: folder)
@@ -234,7 +234,7 @@ public enum UsbPointSnapshot {
     public static func delete(_ entry: Entry, in directory: URL) throws {
         let folder = try owned(entry, in: directory)
         if metadata(in: folder)?.pinned == true {
-            throw refused("pointSnapshotPinned", String(ui: "고정한 USB 스냅샷은 지우지 않습니다. 고정을 푼 뒤 지우세요"))
+            throw refused("pointSnapshotPinned", String(ui: "고정한 USB 복원 시점은 지우지 않습니다. 고정을 푼 뒤 지우세요"))
         }
         try FileManager.default.removeItem(at: folder)
     }
@@ -245,7 +245,7 @@ public enum UsbPointSnapshot {
         guard let base = UsbScratchRoots.realPath(volumeFolder.path), let real = UsbScratchRoots.realPath(entry.url.path),
               (real as NSString).deletingLastPathComponent == base, !entry.id.hasPrefix("."),
               (try? FileManager.default.attributesOfItem(atPath: real))?[.type] as? FileAttributeType == .typeDirectory else {
-            throw refused("pointSnapshotOutside", String(ui: "USB 스냅샷 폴더 밖의 항목은 고치지 않습니다. 목록에서 스냅샷을 고르세요"))
+            throw refused("pointSnapshotOutside", String(ui: "USB 복원 시점 폴더 밖의 항목은 고치지 않습니다. 목록에서 복원 시점을 고르세요"))
         }
         return entry.url
     }
@@ -305,7 +305,7 @@ public enum UsbPointSnapshot {
     }
 
     static var rekordboxRunning: UsbError {
-        refused("rekordboxRunning", String(ui: "rekordbox가 켜져 있어 USB 스냅샷을 남기지 않았습니다. rekordbox를 완전히 종료한 뒤 다시 시도하세요"))
+        refused("rekordboxRunning", String(ui: "rekordbox가 켜져 있어 USB 복원 시점을 남기지 않았습니다. rekordbox를 완전히 종료한 뒤 다시 시도하세요"))
     }
 
     static var tempFilesPresent: UsbError {
@@ -314,7 +314,7 @@ public enum UsbPointSnapshot {
 
     static var unreadable: UsbError {
         refused("pointSnapshotUnreadable",
-                String(ui: "USB 라이브러리 폴더에 링크나 일반 파일이 아닌 것이 있어 스냅샷을 남기지 않았습니다. USB를 확인한 뒤 다시 시도하세요"))
+                String(ui: "USB 라이브러리 폴더에 링크나 일반 파일이 아닌 것이 있어 복원 시점을 남기지 않았습니다. USB를 확인한 뒤 다시 시도하세요"))
     }
 
     static var unreadableForRestore: UsbError {
@@ -324,6 +324,6 @@ public enum UsbPointSnapshot {
 
     static var sourceChanged: UsbError {
         refused("sourceChangedDuringCopy",
-                String(ui: "스냅샷을 뜨는 동안 USB 파일이 바뀌어 그 스냅샷은 버렸습니다. 다른 프로그램이 USB를 쓰지 않는지 확인한 뒤 다시 시도하세요"))
+                String(ui: "복원 시점을 남기는 동안 USB 파일이 바뀌어 그 복원 시점은 버렸습니다. 다른 프로그램이 USB를 쓰지 않는지 확인한 뒤 다시 시도하세요"))
     }
 }

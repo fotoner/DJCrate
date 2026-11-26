@@ -98,11 +98,12 @@ extension EditPlaylists {
     /// 이름(`name:`)은 그 차례 모양에서 찾는다. 편집이 기대는 rekordbox 목록 상태는 초안이 `base`로 적는다.
     /// - Parameters:
     ///   - contentIDs: rekordbox 컬렉션의 곡. 주면 그 밖의 곡을 넣는 요청을 막는다
+    ///   - frozen: 지금 rekordbox에 쓰고 있는 단계의 식별자(R21). 그 단계는 합치지 않고 새 편집은 뒤에 쌓는다
     ///   - newKey: 새 목록 열쇠(`new:키`)
     public static func planning(_ requests: [PlaylistEditRequest], onto draft: PlaylistDraft, rekordbox: PlaylistLayout,
-                                contentIDs: Set<String>? = nil, allOrNothing: Bool = false, newKey: () -> String) -> Batch {
+                                contentIDs: Set<String>? = nil, allOrNothing: Bool = false, frozen: Set<UUID> = [], newKey: () -> String) -> Batch {
         var current = draft
-        var layout = draft.project(onto: rekordbox).layout
+        var layout = draft.project(onto: rekordbox, frozen: frozen).layout
         var aliases: [String: String] = [:]
         var outcomes: [BatchOutcome] = []
         for request in requests {
@@ -112,9 +113,9 @@ extension EditPlaylists {
                 if !outcome.edits.isEmpty {
                     // 요청 하나의 편집은 모두 쌓거나 하나도 쌓지 않는다
                     var next = current
-                    for edit in outcome.edits { try next.append(edit, rekordbox: rekordbox) }
+                    for edit in outcome.edits { try next.append(edit, rekordbox: rekordbox, frozen: frozen) }
                     current = next
-                    layout = current.project(onto: rekordbox).layout
+                    layout = current.project(onto: rekordbox, frozen: frozen).layout
                     if case let .create(_, _, _, _, alias?, _) = request, let id = outcome.playlistID { aliases[alias] = id }
                 }
                 outcome.status = outcome.edits.isEmpty ? .unchanged : .stacked
@@ -128,7 +129,7 @@ extension EditPlaylists {
         }
         let refused = allOrNothing && outcomes.contains { $0.status == .skipped }
         return Batch(draft: refused ? draft : current, outcomes: outcomes, aliases: aliases,
-                     layout: refused ? draft.project(onto: rekordbox).layout : layout, refused: refused)
+                     layout: refused ? draft.project(onto: rekordbox, frozen: frozen).layout : layout, refused: refused)
     }
 }
 

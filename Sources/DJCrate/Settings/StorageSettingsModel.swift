@@ -87,7 +87,7 @@ final class StorageSettingsModel {
     }
 
     nonisolated static func busyReason(writingRekordbox: Bool, writingUsb: Bool) -> String? {
-        if writingRekordbox { return String(ui: "rekordbox에 쓰는 중에는 비울 수 없습니다. 쓰기가 끝난 뒤 비우세요") }
+        if writingRekordbox { return String(ui: "rekordbox에 저장하는 중에는 비울 수 없습니다. 저장이 끝난 뒤 비우세요") }
         if writingUsb { return String(ui: "USB에 쓰는 중에는 비울 수 없습니다. 쓰기가 끝난 뒤 비우세요") }
         return nil
     }
@@ -102,7 +102,7 @@ final class StorageSettingsModel {
         backups = result.1
         clearable = Dictionary(uniqueKeysWithValues: result.2.map { ($0.kind, $0.freedBytes) })
         autoSnapshotNote = result.3 ? nil
-            : String(ui: "DJCrate 데이터 폴더가 rekordbox와 다른 디스크라 자동 시점 스냅샷을 남기지 않습니다(라이브러리 전체를 매일 복사하지 않게).")
+            : String(ui: "DJCrate 데이터 폴더가 rekordbox와 다른 디스크라 자동 복원 시점을 남기지 않습니다(라이브러리 전체를 매일 복사하지 않게).")
     }
 
     /// 비우기 단추가 마지막으로 시작한 일. 설정 창을 닫아도 끝까지 간다. 시험은 이것을 기다린다

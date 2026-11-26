@@ -7,7 +7,7 @@ import SwiftUI
 /// 목록은 메뉴를 그리고 대상 곡을 고를 뿐 그 흐름을 직접 부르지 않는다. 실제 묶음은 `live(store:reflection:)`이고 조립 지점(`AppComposition`)이 만든다.
 @MainActor
 struct TrackListActions {
-    /// 고른 곡의 초안만 rekordbox에 쓴다(재생 목록 초안은 ⇧⌘E·쓰기 대기 목록에서)
+    /// 고른 곡의 초안만 rekordbox에 쓴다(재생 목록 초안은 ⌘S·쓰기 대기 목록에서)
     var writeDrafts: @MainActor ([TrackRow]) -> Void
     /// 고른 곡의 초안으로 XML을 만든다
     var exportDraftsXML: @MainActor ([TrackRow]) -> Void
@@ -27,14 +27,20 @@ struct TrackListActions {
     var removeFromUsbPlaylist: @MainActor (_ rows: [TrackRow], _ volumeKey: String, _ playlist: Int) -> Void
     /// 로컬에서 더 고친 USB 곡을 갱신하는 초안
     var refreshUsbTracks: @MainActor (_ rows: [TrackRow], _ volumeKey: String) -> Void
+    /// 곡 메뉴에 저장 항목을 보일지(R3 표: 자동 저장이 멈췄거나 스스로 저장하지 않을 편집이 남았을 때만). 엔진이 없으면 늘 보인다
+    var showsSave: @MainActor () -> Bool = { true }
 }
 
 extension TrackListActions {
     /// 앱의 쓰기(`reflection`)·추가 목록·XML 창과 USB 편집(`LibraryStore.usbEdits`)에 잇는다.
     /// 쓰기를 붙이지 않았거나(nil) USB 편집을 붙이지 않았으면 그 동작은 아무것도 하지 않는다.
-    static func live(store: LibraryStore, reflection: ReflectionCoordinator? = nil) -> TrackListActions {
+    static func live(store: LibraryStore, reflection: ReflectionCoordinator? = nil, window: LibraryWindowModel? = nil) -> TrackListActions {
         TrackListActions(
-            writeDrafts: { reflection?.startWrite(rows: $0, playlists: false) },
+            // 엔진이 있으면 다른 저장 단추와 같은 저장 입구(R3 표)로 실행한다
+            writeDrafts: { rows in
+                if let window, window.saveRow != nil { window.requestSave(.rows(rows, playlists: false), reflection: reflection) }
+                else { reflection?.startWrite(rows: rows, playlists: false) }
+            },
             exportDraftsXML: { ReflectionPanels.export(store: store, rows: $0) },
             addToRekordbox: { reflection?.startAddTracks(rows: $0) },
             deleteFromRekordbox: { reflection?.startDeleteTracks(rows: $0) },
@@ -55,7 +61,8 @@ extension TrackListActions {
             refreshUsbTracks: { rows, volumeKey in
                 guard let edits = store.usbEdits else { return }
                 Task { await edits.refreshLocalChanges(volumeKey: volumeKey, rows: rows) }
-            })
+            },
+            showsSave: { window?.showsSaveButton ?? true })
     }
 }
 

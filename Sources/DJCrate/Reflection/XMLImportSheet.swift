@@ -51,7 +51,7 @@ struct XMLImportSheet: View {
 
         list.frame(maxWidth: .infinity, maxHeight: .infinity)
 
-        Text(.ui("고른 차이만 초안으로 만들며, 이미 초안이 있는 곡·목록은 덮지 않습니다."))
+        Text(.ui("고른 차이만 편집으로 만들며, 이미 편집이 있는 곡·목록은 덮지 않습니다."))
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         HStack {
@@ -62,7 +62,7 @@ struct XMLImportSheet: View {
             Spacer()
             if model.isMakingDrafts { ProgressView().controlSize(.small) }
             Button(.ui("취소")) { dismiss() }.keyboardShortcut(.cancelAction)
-            Button(.ui("초안으로 만들기")) { model.startDrafts() }
+            Button(.ui("편집으로 만들기")) { model.startDrafts() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!model.canMakeDrafts)
         }
@@ -120,14 +120,14 @@ struct XMLImportSheet: View {
         if let failure = result.failure {
             Label(failure, systemImage: "exclamationmark.triangle").foregroundStyle(UIColors.warning.color)
         } else {
-            Text(verbatim: String(ui: "초안을 만들었습니다: 큐 \(result.cues) · 그리드 \(result.grids) · 태그 \(result.tags) · 재생 목록 \(result.playlists)"))
+            Text(verbatim: String(ui: "편집을 만들었습니다: 큐 \(result.cues) · 그리드 \(result.grids) · 태그 \(result.tags) · 재생 목록 \(result.playlists)"))
                 .font(.headline)
         }
         let notes = result.skipped.map { ($0, true) } + result.losses.map { ($0, false) }
         if notes.isEmpty {
             Spacer()
         } else {
-            Text(verbatim: String(ui: "기존 초안이 있어 건너뛴 것 \(result.skipped.count) · 초안에 담지 못한 차이 \(result.losses.count)"))
+            Text(verbatim: String(ui: "기존 편집이 있어 건너뛴 것 \(result.skipped.count) · 편집에 담지 못한 차이 \(result.losses.count)"))
                 .font(.callout).foregroundStyle(.secondary)
             List(Array(notes.enumerated()), id: \.offset) { _, entry in
                 let (note, skipped) = entry

@@ -237,7 +237,7 @@ struct TrackListTagEditTests {
         let title = try #require(h.cell(row: 0, column: "title"))
         #expect(title.text == "새 제목")
         #expect(title.showsDraftMark)
-        #expect(spoken(title) == "새 제목, 초안")
+        #expect(spoken(title) == "새 제목, 저장 대기")
         let artist = try #require(h.cell(row: 0, column: "artist"))
         #expect(!artist.showsDraftMark)
         #expect(spoken(artist) == "A")

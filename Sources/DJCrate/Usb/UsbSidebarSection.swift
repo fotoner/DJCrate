@@ -248,7 +248,7 @@ struct UsbSidebarSection: View {
 
     @ViewBuilder private func migrationButtons(_ volume: UsbSidebarVolume) -> some View {
         if usb.volume(volume.id) != nil, usb.pointSnapshots != nil {
-            Button(.ui("USB 시점 스냅샷…")) { store.usbCoordinator?.openPointSnapshots(volumeKey: volume.id) }
+            Button(.ui("USB 복원 시점…")) { store.usbCoordinator?.openPointSnapshots(volumeKey: volume.id) }
                 .disabled(usb.activeWrite != nil)
         }
         if volume.showsMigration {
@@ -417,7 +417,7 @@ struct UsbSidebarMenu: View {
                     store.usbCoordinator?.startWriteDraft(volumeKey: key, database: store.snapshotURL, share: store.shareRoot)
                 }
                 .disabled(actions.usb.volume(key) == nil || (actions.usb.draftCounts[key] ?? 0) == 0)
-                Button(.ui("초안 버리기"), role: .destructive) { actions.start(.discardDraft(volumeKey: key)) }
+                Button(.ui("편집 버리기"), role: .destructive) { actions.start(.discardDraft(volumeKey: key)) }
                     .disabled((actions.usb.draftCounts[key] ?? 0) == 0)
             }
         }
@@ -434,7 +434,7 @@ struct UsbSidebarMenu: View {
     private var refreshButton: some View {
         let count = actions.updatableTracks(volumeKey: key).count
         let reason = count == 0 ? nil : actions.refreshBlockReason(volumeKey: key)
-        return Button(.ui("로컬 변경을 USB에 반영 (\(count)곡)")) { actions.start(.refreshLocalChanges(volumeKey: key)) }
+        return Button(.ui("로컬 변경을 USB에 쓰기 (\(count)곡)")) { actions.start(.refreshLocalChanges(volumeKey: key)) }
             .disabled(count == 0 || reason != nil)
             .help(reason ?? String(ui: "갱신 가능한 곡을 쓰기 대기에 더합니다"))
     }

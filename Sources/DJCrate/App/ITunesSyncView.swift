@@ -68,7 +68,7 @@ struct ITunesSyncView: View {
                 Text(message).font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                Text(.ui("선택한 목록을 rekordbox와 DJCrate에 동일하게 반영합니다. 먼저 rekordbox를 종료하세요."))
+                Text(.ui("선택한 목록을 rekordbox와 DJCrate에 동일하게 저장합니다. 먼저 rekordbox를 종료하세요."))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button(.ui("취소")) { dismiss() }.keyboardShortcut(.cancelAction)

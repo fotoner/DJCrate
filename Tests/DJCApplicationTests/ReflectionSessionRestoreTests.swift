@@ -28,9 +28,9 @@ struct ReflectionSessionRestoreTests {
     }
 
     @Test func 시점_복원_뒤의_옛_백업은_묻지_않고_이유만_알린다() async {
-        h.pointRefusal = "시점 스냅샷으로 복원해서"
+        h.pointRefusal = "복원 시점으로 복원해서"
         let outcome = await h.session.restore(backup(), confirmed: true)
-        #expect(outcome.notice?.title == "복원하지 않았습니다" && outcome.notice?.text == "시점 스냅샷으로 복원해서")
+        #expect(outcome.notice?.title == "복원하지 않았습니다" && outcome.notice?.text == "복원 시점으로 복원해서")
         #expect(h.prompts.isEmpty && h.locks.isEmpty && h.gateCalls.value.restores.isEmpty)
     }
 
@@ -144,7 +144,10 @@ struct ReflectionSessionRestoreTests {
         h.backupDrafts.artworks = [ArtworkEdit(draft: ArtworkDraft(trackUUID: "w", change: .delete, base: ArtworkBase(imagePath: "")), image: nil)]
         let session = h.session
         var ports = session.ports
-        ports.drafts.saveArtwork = { _ in throw FixtureFailure() }
+        // 되살린 초안은 "복원이 되살림" 출처의 포트로 저장한다(R8): 실패는 그 출처 포트에 넣는다(`DraftStore.with(origin:)`)
+        var restored = ports.drafts.with(origin: .restored)
+        restored.saveArtwork = { _ in throw FixtureFailure() }
+        ports.drafts.originVariant = { [restored] _ in restored }
         _ = try await ReflectionSession(location: session.location, ports: ports, options: session.options).restoreBackup(backup(), to: .copy)
         #expect(h.followUp == [ReflectionSession.artworkRestoreFailureText(1)])
     }
@@ -233,6 +236,47 @@ struct ReflectionSessionRestoreTests {
 
         #expect(h.memory.store.playlistDraft().project(onto: rekordbox).layout.item("P")?.trackIDs == ["other"])
         #expect(h.importsSaved.last?.pendingCount == 1, "되돌린 곡은 다시 기다리는 연결이 된다")
+    }
+
+    /// 화면이 재생 목록 저장에 실패한 동안 기억한 출처를 세션의 초안 저장도 식별자 없는 단계에 더한다(#295 리뷰 F10)
+    @Test func 곡_넣기를_되돌리는_초안_저장은_화면이_기억한_출처를_더한다() async throws {
+        stageBackup()
+        let rekordbox = PlaylistLayout(rekordbox: [RekordboxPlaylist(id: "P", name: "목록", parentID: "root", seq: 1, isFolder: false,
+                                                                    trackIDs: [])])
+        var draft = PlaylistDraft()
+        _ = try draft.append(.addTracks(playlist: PlaylistRef("P"), contentIDs: ["id-/music/a.mp3", "other"]), rekordbox: rekordbox)
+        h.state.rekordboxPlaylists = rekordbox
+        h.state.playlistDraft = draft
+        h.state.playlistCarriedOrigins = [.cli]
+
+        _ = try await h.session.restoreBackup(addBackup(), to: .copy)
+
+        #expect(h.memory.store.playlistDraft().project(onto: rekordbox).layout.item("P")?.trackIDs == ["other"])
+        let origins = h.memory.store.playlistStamps().map(\.origins)
+        #expect(origins == [[.cli, .human]], "\(origins)")
+    }
+
+    @Test func S9_재생_목록_동기화_실패_중_곡_넣기를_되돌려도_재생_목록_초안과_연결_기록을_건드리지_않고_이유를_알린다() async throws {
+        stageBackup()
+        let rekordbox = PlaylistLayout(rekordbox: [RekordboxPlaylist(id: "P", name: "목록", parentID: "root", seq: 1, isFolder: false,
+                                                                    trackIDs: [])])
+        var draft = PlaylistDraft()
+        _ = try draft.append(.addTracks(playlist: PlaylistRef("P"), contentIDs: ["id-/music/a.mp3", "other"]), rekordbox: rekordbox)
+        try h.memory.store.savePlaylistDraft(draft)
+        h.state.rekordboxPlaylists = rekordbox
+        h.state.playlistDraft = draft
+        var imports = PlaylistImports()
+        imports.addFiles(["/music/a.mp3"], to: PlaylistRef("P"))
+        h.state.playlistImports = imports
+        // 디스크 재생 목록 초안을 읽지 못해 화면은 메모리 초안을 믿을 수 없다(`PlaylistEditStore.playlistDraftNeedsSync`)
+        h.state.playlistDraftNeedsSync = true
+
+        _ = try await h.session.restoreBackup(addBackup(), to: .copy)
+
+        #expect(h.memory.store.playlistDraft() == draft, "디스크 재생 목록 초안은 그대로다")
+        #expect(h.importsSaved.isEmpty && !h.changeNames.contains { $0.hasPrefix("imports reset") }, "초안도 연결 기록도 건드리지 않는다")
+        #expect(h.followUp == ["재생 목록 편집을 확인하지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요."])
+        #expect(h.state.staged.map(\.uuid) == ["a", "b", "k"], "추가 목록 복원은 그대로 한다")
     }
 
     @Test func 곡_넣기를_되돌려도_넣은_뒤_새_곡에_만든_초안은_지우지_않고_알린다() async throws {

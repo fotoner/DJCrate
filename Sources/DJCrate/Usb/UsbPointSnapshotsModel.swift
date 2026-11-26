@@ -55,7 +55,7 @@ final class UsbPointSnapshotsModel: Identifiable {
             }
             self.name = ""
             await refresh()
-            show(String(ui: "USB 시점 스냅샷을 남겼습니다."))
+            show(String(ui: "USB 복원 시점을 남겼습니다."))
         } catch { show(error) }
     }
 
@@ -73,7 +73,7 @@ final class UsbPointSnapshotsModel: Identifiable {
 
     func delete(_ entry: UsbPointSnapshotEntry) async {
         guard !isBusy, !entry.metadata.pinned else { return }
-        guard coordinator.prompter.show(ReflectionPrompt(title: String(ui: "USB 시점 스냅샷을 지울까요?"),
+        guard coordinator.prompter.show(ReflectionPrompt(title: String(ui: "USB 복원 시점을 지울까요?"),
                                                          text: String(ui: "‘\(entry.displayName)’을 지우면 되살릴 수 없습니다."),
                                                          confirm: String(ui: "지우기"), destructive: true)) else { return }
         isWorking = true
@@ -82,7 +82,7 @@ final class UsbPointSnapshotsModel: Identifiable {
         do {
             try await BlockingWork.run { try snapshots.delete(entry) }
             await refresh()
-            show(String(ui: "USB 시점 스냅샷을 지웠습니다."))
+            show(String(ui: "USB 복원 시점을 지웠습니다."))
         } catch { show(error) }
     }
 
@@ -91,7 +91,7 @@ final class UsbPointSnapshotsModel: Identifiable {
         isWorking = true
         defer { isWorking = false }
         if await coordinator.restorePointSnapshot(volume, entry: entry, snapshots: snapshots) {
-            show(String(ui: "USB를 시점 스냅샷으로 되돌렸습니다."))
+            show(String(ui: "USB를 복원 시점으로 되돌렸습니다."))
         }
         await refresh()
     }
@@ -100,7 +100,7 @@ final class UsbPointSnapshotsModel: Identifiable {
         guard !isBusy, canUseVolume else { return }
         isWorking = true
         defer { isWorking = false }
-        if await coordinator.undoPointRestore(volume) { show(String(ui: "USB 시점 스냅샷 되돌리기를 취소했습니다.")) }
+        if await coordinator.undoPointRestore(volume) { show(String(ui: "USB 복원 시점 되돌리기를 취소했습니다.")) }
     }
 
     private func show(_ text: String) { message = text; isError = false }

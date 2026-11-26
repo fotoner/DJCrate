@@ -13,7 +13,7 @@ extension RekordboxWriter {
     static func resolveKeyID(_ name: String, db: CipherDatabase, block: (String) -> Blocked) throws -> String {
         guard !name.isEmpty else { return "0" }
         guard KeyNotation.camelotNames.contains(name) else {
-            throw block(String(ui: "키는 1A~12B 중에서 고르거나 비운 뒤 rekordbox에 쓰세요"))
+            throw block(String(ui: "키는 1A~12B 중에서 고르거나 비운 뒤 rekordbox에 저장하세요"))
         }
         var live: [String] = [], deleted = 0
         try db.query("SELECT ID, rb_local_deleted FROM djmdKey WHERE ScaleName = ?", [.text(name)]) { row in
@@ -24,7 +24,7 @@ extension RekordboxWriter {
         }
         guard let id = live.first else {
             throw block(deleted > 0
-                ? String(ui: "rekordbox 키 목록의 '\(name)' 줄이 모두 삭제 표시라 쓸 수 없습니다. rekordbox에서 이 곡의 키를 직접 고르세요")
+                ? String(ui: "rekordbox 키 목록의 '\(name)' 줄이 모두 삭제 표시라 저장할 수 없습니다. rekordbox에서 이 곡의 키를 직접 고르세요")
                 : String(ui: "rekordbox 키 목록에 '\(name)' 줄이 없습니다. rekordbox에서 이 곡의 키를 직접 고르세요"))
         }
         // '0'·빈 ID는 키 없음과 겹친다

@@ -46,8 +46,8 @@ struct UsbEditActions {
     enum Text {
         static var appendedTitle: String { String(ui: "USB 쓰기 대기에 더했습니다") }
         static var notAppendedTitle: String { String(ui: "USB 쓰기 대기에 더하지 않았습니다") }
-        static var draftFailedTitle: String { String(ui: "USB 초안을 고치지 못했습니다") }
-        static var discardActionName: String { String(ui: "USB 초안 버리기") }
+        static var draftFailedTitle: String { String(ui: "USB 편집을 고치지 못했습니다") }
+        static var discardActionName: String { String(ui: "USB 편집 버리기") }
         static var nothingNewerTitle: String { String(ui: "로컬에서 더 고친 곡이 없습니다") }
         static var removedFromQueueTitle: String { String(ui: "USB 쓰기 대기에서 뺐습니다") }
         static var changedQueueTitle: String { String(ui: "USB 쓰기 대기를 고쳤습니다") }

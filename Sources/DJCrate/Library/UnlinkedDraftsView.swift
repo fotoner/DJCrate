@@ -9,12 +9,12 @@ struct UnlinkedDraftsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(.ui("연결되지 않은 초안")).font(.title2.bold())
-            Text(.ui("지금 rekordbox 라이브러리와 추가 목록에 없는 곡의 초안입니다. rekordbox에서 뺀 곡이나 다른 라이브러리에서 만든 초안일 수 있으니 필요 없는 것만 골라 버리세요."))
+            Text(.ui("연결되지 않은 편집")).font(.title2.bold())
+            Text(.ui("지금 rekordbox 라이브러리와 추가 목록에 없는 곡의 편집입니다. rekordbox에서 뺀 곡이나 다른 라이브러리에서 만든 편집일 수 있으니 필요 없는 것만 골라 버리세요."))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if model.drafts.isEmpty {
-                Text(.ui("연결되지 않은 초안이 없습니다.")).foregroundStyle(.secondary)
+                Text(.ui("연결되지 않은 편집이 없습니다.")).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(model.drafts) { draft in
@@ -35,18 +35,18 @@ struct UnlinkedDraftsView: View {
                     .disabled(!model.canChooseAll)
                 Spacer()
                 Button(.ui("닫기")) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(.ui("선택한 초안 버리기…")) { model.askDiscard() }
+                Button(.ui("선택한 편집 버리기…")) { model.askDiscard() }
                     .disabled(!model.canDiscard)
             }
         }
         .padding(24)
         .frame(width: 560, height: 460)
         .onAppear { model.reload() }
-        .alert(Text(verbatim: String(ui: "선택한 \(model.selected.count)곡의 초안을 버릴까요?")), isPresented: $model.confirming) {
-            Button(.ui("초안 버리기"), role: .destructive) { model.discard() }
+        .alert(Text(verbatim: String(ui: "선택한 \(model.selected.count)곡의 편집을 버릴까요?")), isPresented: $model.confirming) {
+            Button(.ui("편집 버리기"), role: .destructive) { model.discard() }
             Button(.ui("취소"), role: .cancel) {}
         } message: {
-            Text(.ui("큐·그리드·게인·태그 초안을 모두 버리며 되돌릴 수 없습니다."))
+            Text(.ui("큐·그리드·게인·태그 편집을 모두 버리며 되돌릴 수 없습니다."))
         }
     }
 

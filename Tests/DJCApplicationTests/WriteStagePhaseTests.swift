@@ -23,7 +23,7 @@ struct WriteStagePhaseTests {
 
     @Test func 취소할_수_있는_단계는_취소_단계이고_쓰는_단계는_끊지_않는다() {
         #expect(WriteStage("미리 보기", cancellable: true).phase == .cancellable)
-        #expect(WriteStage("rekordbox에 쓰는 중…").phase == .writing)
+        #expect(WriteStage("rekordbox에 저장하는 중…").phase == .writing)
         #expect(WriteStage.reloadingLibrary.phase == .readingBack)
         // 취소할 수 있으면 다시 읽기 표시가 있어도 취소 단계가 먼저다(아직 쓰지 않았다)
         #expect(WriteStage("읽기", cancellable: true, readsBack: true).phase == .cancellable)

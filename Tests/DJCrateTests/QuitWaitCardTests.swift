@@ -14,7 +14,7 @@ struct QuitWaitCardTests {
     @Test(arguments: [1.0, 1.4]) func 단계_카드는_종료_안내가_들어가도_최대_폭_안에_뜬다(_ scale: Double) {
         _ = NSApplication.shared
         func size(_ wait: QuitWait?) -> CGSize {
-            let card = WritingStageCard(stage: WriteStage("rekordbox에 쓰는 중…"), quitWait: wait, onCancel: {}).environment(\.textScale, scale)
+            let card = WritingStageCard(stage: WriteStage("rekordbox에 저장하는 중…"), quitWait: wait, onCancel: {}).environment(\.textScale, scale)
             return NSHostingController(rootView: card).sizeThatFits(in: CGSize(width: 1800, height: 900))
         }
         let plain = size(nil), waiting = size(Self.wait)
@@ -31,7 +31,7 @@ struct QuitWaitCardTests {
         #expect(section.width <= 400 + 56 && section.height > 0)
     }
 
-    @Test func 기다림_문구는_쓰기_용어를_쓴다() {
-        #expect(QuitWait.title.contains("쓰는 중") && !QuitWait.title.contains("저장"))
+    @Test func 기다림_문구는_저장_용어를_쓴다() {
+        #expect(QuitWait.title.contains("저장하는 중") && !QuitWait.title.contains("쓰"))
     }
 }

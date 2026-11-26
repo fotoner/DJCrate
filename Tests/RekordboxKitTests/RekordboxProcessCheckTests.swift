@@ -124,14 +124,14 @@ struct RekordboxProcessCheckTests {
         process.executableURL = URL(filePath: "/bin/sh")
         process.arguments = ["-c", "exec '\(executable.path)' 600"]
         try process.run()
-        defer {
-            process.terminate()
-            process.waitUntilExit()
-        }
         #expect(await Self.wait { RekordboxProcessList.names()?.contains(name) == true })
         #expect(RekordboxProcessCheck.run(URL(filePath: "/usr/bin/pgrep"), ["-x", name], timeout: Self.patient) == .exited(0))
         #expect(process.isRunning, "찾은 것이 끝난 프로세스가 아니다")
         #expect(RekordboxProcessCheck.run(URL(filePath: "/usr/bin/pgrep"), ["-x", name + "x"], timeout: Self.patient) == .exited(1))
+        // 끝나기를 `waitUntilExit`로 막고 기다리지 않는다: await 뒤 다른 협력 스레드의 런 루프에서 끝 알림을 못 받고 멈춰
+        // 협력 스레드를 붙잡아 다른 시험까지 세웠다(CI 멈춤, 종료 코드 124). 놓아주며 기다린다
+        process.terminate()
+        #expect(await Self.wait { !process.isRunning })
     }
 
     /// /bin/sleep을 가리키는 고유한 이름(16바이트 안)의 링크. 셸이 링크 경로로 exec하면 프로세스 이름이 링크 이름이라 그 프로세스만 찾는다

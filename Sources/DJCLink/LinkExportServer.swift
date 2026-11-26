@@ -175,6 +175,7 @@ public struct LinkExportPlayer: Equatable, Sendable {
 public enum LinkExportError: Error, Equatable, Sendable {
     /// 그 장치로 가는 네트워크 인터페이스를 찾지 못함
     case noInterface(peer: String)
+    case unsafeFile
     /// 포트를 열지 못함(rekordbox·nfsd가 쓰는 중 등). DJLinkKit의 설명
     case bind(String)
     /// 아직 네트워크에 참여하지 못함
@@ -192,27 +193,46 @@ public final class LinkExportServer: Sendable {
     private let export: LinkExport
     private let source: ExportSource
 
-    private init(export: LinkExport, source: ExportSource) {
+    @DJLinkActor private var files: LinkExportFiles?
+    private let cacheDirectory: String
+
+    @DJLinkActor private init(export: LinkExport, source: ExportSource, files: LinkExportFiles, cacheDirectory: String) {
+        self.files = files
+        self.cacheDirectory = cacheDirectory
         self.export = export
         self.source = source
     }
 
+    /// 세션에서 확인하고 보관한 음원 사본. WAV 변환과 코덱 확인은 이 파일만 읽는다.
+    public func preparedAudio() async -> (paths: [UInt32: String], owner: any Sendable)? {
+        await Task { @DJLinkActor in self.files.map { ($0.audioPaths, $0) } }.value
+    }
+
     /// 곡 하나를 다른 파일로 내어 준다(CDJ가 못 읽는 형식을 바꾼 WAV 등). CDJ는 곡 정보의 경로·형식으로 파일을 찾아 읽는다.
-    /// NFS는 서버를 띄울 때 연 폴더(`exportRoots`) 안만 찾으므로, 새 파일이 그 밖이면 곡 정보의 경로는 원본 그대로 두고 원본 이름으로 내어 준다
-    public func substitute(trackID: UInt32, path: String, fileType: UInt8) async {
-        await Task { @DJLinkActor [source, export] in
-            // 이미 그 곡 정보를 받은 CDJ는 곡 번호별로 기억한 옛 경로로 찾는다(CDJ-2000nexus 실기). 그 이름으로도 WAV를 내어 준다
-            guard let original = source.substitute(trackID: trackID, path: path, fileType: fileType) else { return }
-            export.redirect_file(original, to: path)
+    /// 캐시의 WAV 파일 하나만 기존 파일 이름에 연결한다. 폴더를 추가로 열지 않는다.
+    public func substitute(trackID: UInt32, path: String, fileType: UInt8) async throws {
+        try await Task { @DJLinkActor [self] in
+            var info = stat()
+            guard fileType == 11, let files, files.audioPaths[trackID] != nil,
+                  let file = files.convertedWAV(path, cache: cacheDirectory) else { throw LinkExportError.unsafeFile }
+            guard stat(file, &info) == 0, let size = UInt64(exactly: info.st_size),
+                  let original = source.substitute(trackID: trackID, fileType: fileType, size: size) else {
+                try? FileManager.default.removeItem(atPath: file)
+                throw LinkExportError.unsafeFile
+            }
+            export.redirect_file(original, to: file)
         }.value
     }
 
     /// 플레이어의 파일 요청(이 Mac의 경로, 기종 이름)을 보류할지 묻는 함수를 건다. true면 답하지 않아 플레이어가 같은 요청을 다시 보낸다(#277).
     /// DJLinkKit 액터에서 NFS 답을 하는 도중에 부르므로 짧게 끝나야 한다
     public func setFileHold(_ hold: @escaping @Sendable (_ path: String, _ playerModel: String) -> Bool) async {
-        await Task { @DJLinkActor [export] in
+        await Task { @DJLinkActor [self] in
+            guard let originals = files?.originalByAlias else { return }
             // DJLinkKit은 "지금 답할지"를 묻는다(보류의 반대)
-            export.gate_files { path, player in !hold(path, player?.name ?? "") }
+            export.gate_files { path, player in
+                originals[path].map { !hold($0, player?.name ?? "") } ?? true
+            }
         }.value
     }
 
@@ -228,24 +248,37 @@ public final class LinkExportServer: Sendable {
 
     /// 곡과 재생 목록으로 서버를 띄운다. `peer`(보이는 CDJ 하나의 주소)로 가는 인터페이스에 참여한다.
     /// 시험 프로세스에서는 DJLinkKit이 소켓을 만들지 않고 바로 실패한다.
+    /// - Parameter beforeBind: 파일을 준비한 뒤 포트를 열기 직전에 호출한다. 던진 오류를 그대로 돌려준다.
     /// - Parameter onHistory: CDJ가 재생 기록에 곡을 넣거나 뺄 때(rekordbox의 LINK HISTORY). DJLinkKit 액터에서 부른다
     /// - Parameter onFileRequest: 플레이어가 파일을 찾거나 처음부터 읽을 때. DJLinkKit 액터에서 NFS 답을 하는 도중에 부르므로 짧게 끝낸다
     public static func start(tracks: [LinkExportTrack], playlists: [LinkExportPlaylist], shareRoot: String, peer: String,
+                             beforeBind: @escaping @Sendable () throws -> Void,
                              onHistory: @escaping @Sendable (LinkExportHistoryEvent) -> Void = { _ in },
-                             onFileRequest: @escaping @Sendable (LinkExportFileRequest) -> Void = { _ in }) async throws -> LinkExportServer {
-        try await Task { @DJLinkActor in
+                             onFileRequest: @escaping @Sendable (LinkExportFileRequest) -> Void = { _ in },
+                             cacheDirectory: URL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Music/DJCrate/LINK"),
+                             allowsAudio: @escaping @Sendable (String) -> Bool = { _ in true }) async throws -> LinkExportServer {
+        let files = try LinkExportFiles(tracks: tracks, shareRoot: shareRoot, protected: LinkExportFiles.protectedDirectories(),
+                                        allowsAudio: allowsAudio)
+        return try await Task { @DJLinkActor in
             guard let address = try? LinkAddress(peer), let interface = interface(toward: address) else {
                 throw LinkExportError.noInterface(peer: peer)
             }
-            let source = ExportSource(library: library(tracks: tracks, playlists: playlists), shareRoot: shareRoot,
-                                      tracks: tracks, onHistory: onHistory)
+            let library = library(tracks: files.tracks, playlists: playlists)
+            var names = StrColumn()
+            for track in files.tracks { names.push(((files.originalByAlias[track.path] ?? "") as NSString).lastPathComponent) }
+            library.file_name = names
+            let source = ExportSource(library: library, shareRoot: files.directory, tracks: files.tracks, onHistory: onHistory)
+            let announcements = RecentAnnouncements.recent()
+            try beforeBind()
             do {
                 // 장치 찾기가 방금 들은 알림을 넘겨 CDJ의 다음 알림(약 2초 간격)을 기다리지 않고 바로 참여한다
-                let export = try await LinkExport.start(source, interface, seedAnnouncements: RecentAnnouncements.recent())
+                let export = try await LinkExport.start(source, interface, seedAnnouncements: announcements)
+                let originals = files.originalByAlias
                 export.observe_files { path, player in
-                    onFileRequest(LinkExportFileRequest(path: path, player: player.map { Int($0.number) }, model: player?.name ?? ""))
+                    guard let original = originals[path] else { return }
+                    onFileRequest(LinkExportFileRequest(path: original, player: player.map { Int($0.number) }, model: player?.name ?? ""))
                 }
-                return LinkExportServer(export: export, source: source)
+                return LinkExportServer(export: export, source: source, files: files, cacheDirectory: cacheDirectory.path)
             } catch let error as LinkError {
                 throw LinkExportError.bind(error.description)
             }
@@ -263,7 +296,10 @@ public final class LinkExportServer: Sendable {
 
     /// 서버를 내리고 포트를 모두 돌려준다.
     public func stop() async {
-        await Task { @DJLinkActor [export] in await export.stop() }.value
+        await Task { @DJLinkActor [self] in
+            await export.stop()
+            files = nil
+        }.value
     }
 
     public func status() async -> LinkExportStatus {
@@ -356,20 +392,33 @@ public final class LinkExportServer: Sendable {
         var colour: UInt8
     }
 
-    /// CDJ의 큐 저장·삭제를 내어 주는 큐 목록에 옮긴다(#280). 덱·초안과 같은 규칙: 메모리 큐는 ±30ms 안이면 같은 큐,
-    /// 핫큐는 그 칸을 바꾸고, 활성 루프(Kind 4)는 하나만 둔다. 시각 차례로 돌려준다
+    /// CDJ의 큐 저장·삭제를 내어 주는 큐 목록에 옮긴다(#280). 메모리 큐는 시작 ±30ms에서 점과 루프를 구별한다.
+    /// 루프는 정확한 끝을 우선하며 프레임 환산 후보가 여럿이면 보존한다. 핫큐는 칸별로, 활성 루프는 곡당 하나만 둔다. 시각 차례로 돌려준다
     static func editedCues(_ cues: [ServedCue], deleted: Bool, kind: UInt8, inMs: UInt32, outMs: UInt32) -> [ServedCue] {
         let memory: Set<UInt8> = [0, 4]
-        func near(_ cue: ServedCue) -> Bool { memory.contains(cue.kind) && abs(Int64(cue.positionMs) - Int64(inMs)) <= 30 }
+        let end = outMs > inMs ? outMs : 0
         var next = cues
         if memory.contains(kind) {
+            func distance(_ i: Int) -> Int64 { abs(Int64(cues[i].positionMs) - Int64(inMs)) }
+            let nearby = cues.indices.filter {
+                memory.contains(cues[$0].kind) && distance($0) <= 30 && (cues[$0].outMs > cues[$0].positionMs) == (end > 0)
+            }
+            let exact = nearby.filter { end == 0 || cues[$0].outMs == end }
+            let matches: [Int]
+            if let closest = exact.map(distance).min() {
+                matches = exact.filter { distance($0) == closest }
+            } else {
+                matches = nearby.filter { i in
+                    // 초안과 같은 규칙. 구형 CDJ는 75·150 Hz의 포함 끝을 150 Hz 한 칸 뒤로 환산한다.
+                    let frame = Int64(cues[i].outMs) * 3 / 20
+                    return ((frame + 1) * 20 + 2) / 3 == end || ((frame / 2 * 2 + 1) * 20 + 2) / 3 == end
+                }
+            }
             if deleted {
-                let closest = next.indices.filter { near(next[$0]) }
-                    .min { abs(Int64(next[$0].positionMs) - Int64(inMs)) < abs(Int64(next[$1].positionMs) - Int64(inMs)) }
-                if let closest { next.remove(at: closest) }
+                if matches.count == 1, let index = matches.first { next.remove(at: index) }
                 return next
             }
-            guard !next.contains(where: near) else { return cues }
+            guard matches.isEmpty, next.filter({ memory.contains($0.kind) }).count < 10 else { return cues }
             if kind == 4 { for i in next.indices where next[i].kind == 4 { next[i].kind = 0 } }
             next.append(ServedCue(kind: kind, positionMs: inMs, outMs: outMs > inMs ? outMs : 0, colour: 0))
         } else {
@@ -390,17 +439,6 @@ public final class LinkExportServer: Sendable {
     /// 띄운 뒤에는 늘지 않는다(#287)
     static func exportRoots(trackPaths: [String]) -> Set<String> {
         Set(trackPaths.compactMap(exportRoot(of:)))
-    }
-
-    /// 그 파일을 NFS가 찾을 수 있는지(연 폴더 안인지)
-    static func isExported(_ path: String, roots: Set<String>) -> Bool {
-        exportRoot(of: path).map(roots.contains) ?? false
-    }
-
-    /// 바꿔 끼울 때 곡 정보에 줄 경로. 새 파일을 NFS가 찾을 수 있으면 그 경로, 아니면 원본 경로(서버가 원본 이름으로 새 파일을 내어 준다).
-    /// 음악 폴더 밖(외장 디스크 등)의 곡만 내어 주면 `~/Music` 아래 변환본은 연 폴더 밖이다(#287)
-    static func servedPath(original: String, substitute: String, roots: Set<String>) -> String {
-        isExported(substitute, roots: roots) ? substitute : original
     }
 
     private static func exportRoot(of path: String) -> String? {
@@ -452,8 +490,6 @@ private final class ExportSource: Source {
     private let root: String
     private var details: [String: DJLinkExportModel.TrackDetails]
     private let onHistory: @Sendable (LinkExportHistoryEvent) -> Void
-    /// 서버를 띄울 때 NFS가 연 폴더(띄운 곡 경로로 정해진다)
-    private let exportRoots: Set<String>
     /// 서버가 연 재생 기록 번호(서버를 띄운 동안 하나)
     private var historySession: UInt32 = 0
 
@@ -461,7 +497,6 @@ private final class ExportSource: Source {
         snapshot = library
         root = shareRoot
         self.onHistory = onHistory
-        exportRoots = LinkExportServer.exportRoots(trackPaths: tracks.map(\.path))
         var details: [String: DJLinkExportModel.TrackDetails] = [:]
         for (row, track) in tracks.enumerated() {
             func id(_ column: [UInt32]) -> UInt32 { column.indices.contains(row) ? column[row] : 0 }
@@ -490,21 +525,19 @@ private final class ExportSource: Source {
 
     /// - Returns: 바꾸기 전 원본 경로. 그 곡이 없으면 nil
     @discardableResult
-    func substitute(trackID: UInt32, path: String, fileType: UInt8) -> String? {
+    func substitute(trackID: UInt32, fileType: UInt8, size: UInt64) -> String? {
         let current = snapshot
         guard let row = current.row_of_id(UInt64(trackID)) else { return nil }
         // 같은 음원을 가리키는 곡이 여럿이면 경로·형식·곡 정보를 모두 함께 바꾼다(경로만 바뀐 곡이 WAV를 FLAC 형식으로 내보내지 않게)
         let paths = (0..<current.folder_path.len()).map { current.folder_path.get($0) }
         let targets = LinkExportServer.substitutionTargets(paths: paths, ids: current.ids, of: Int(row))
         let original = paths[Int(row)]
-        // 새 파일이 연 폴더 밖이면 CDJ가 그 경로를 찾지 못한다. 그때는 경로를 원본 그대로 두고 형식만 바꾼다(원본 이름으로 새 파일을 내어 준다)
-        let served = LinkExportServer.servedPath(original: original, substitute: path, roots: exportRoots)
         let next = current.clone()
-        if served != original { next.map_folder_paths { $0 == original ? served : $0 } }
         for target in targets {
             if next.file_type.indices.contains(target.row) { next.file_type[target.row] = fileType }
+            if next.file_size.indices.contains(target.row) { next.file_size[target.row] = size }
             guard var detail = details[target.id] else { continue }
-            detail.path = served
+            detail.file_size = size
             detail.file_type = UInt32(fileType)
             details[target.id] = detail
         }
@@ -556,9 +589,11 @@ private final class ExportSource: Source {
         }
         let out = cue.out_ms ?? 0
         let next = LinkExportServer.editedCues(served, deleted: deleted, kind: cue.kind, inMs: cue.in_ms, outMs: out)
-        snapshot.set_cues_of(row, next.enumerated().map { index, cue in
-            DJLinkExportModel.Cue(id: UInt32(index + 1), position_ms: cue.positionMs, out_ms: cue.outMs, kind: cue.kind, colour: cue.colour)
-        })
+        if served != next {
+            snapshot.set_cues_of(row, next.enumerated().map { index, cue in
+                DJLinkExportModel.Cue(id: UInt32(index + 1), position_ms: cue.positionMs, out_ms: cue.outMs, kind: cue.kind, colour: cue.colour)
+            })
+        }
         onHistory(.cue(trackID: track, edit: LinkExportCueEdit(deleted: deleted, kind: Int(cue.kind), inMs: cue.in_ms,
                                                                outMs: out > cue.in_ms ? out : nil, comment: cue.comment)))
         return true

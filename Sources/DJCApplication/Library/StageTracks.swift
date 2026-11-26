@@ -98,7 +98,7 @@ public struct StageTracks: Sendable {
             if !stagedIDs.isEmpty { parts.append(String(ui: "이미 추가한 \(stagedIDs.count)곡을 골랐습니다")) }
             if failed > 0 { parts.append(String(ui: "\(failed)곡은 읽지 못함")) }
             if linksPlaylists {
-                parts.append(String(ui: "컬렉션에 들어간 곡은 재생 목록 초안에 연결합니다. 목록은 ‘rekordbox에 쓰기’로 만듭니다."))
+                parts.append(String(ui: "컬렉션에 들어간 곡은 재생 목록 편집에 연결합니다. 목록은 ‘rekordbox에 저장’으로 만듭니다."))
             }
             return (parts.joined(separator: " · "), failed > 0)
         }
@@ -289,13 +289,15 @@ public struct StageTracks: Sendable {
 
     /// 초안이 없는 곡의 그리드를 추정해 그리드 초안(rekordbox 시간축)으로 저장한다. 추정은 메인 밖에서 하고,
     /// 덱에서 이미 만든 초안(저장 대기 입력 포함)을 덮지 않게 확인과 저장은 메인 액터에서 붙여 한다(덱도 메인 액터에서 초안을 저장한다).
+    /// - Parameter canSave: 저장 직전(메인 액터)에 다시 묻는다. 거짓이면 저장하지 않고 건너뛴다. 추정하는 동안 그 곡이 rekordbox에 쓰는 묶음에 든 경우다(R21)
     @MainActor
-    public func estimateGrid(_ item: GridJobItem) async -> GridEstimation {
+    public func estimateGrid(_ item: GridJobItem, canSave: @MainActor () -> Bool = { true }) async -> GridEstimation {
         if let existing = drafts.currentGrid(item.uuid) { return .existing(bpm: existing.segments.first?.bpm) }
         let url = URL(filePath: item.path)
         guard files.exists(item.path), let estimate = try? await analysis.estimateGrid(url, item.uuid) else { return .skipped }
         // 추정하는 동안 덱에서 초안을 만들었으면 덮지 않는다.
         guard drafts.currentGrid(item.uuid) == nil else { return .skipped }
+        guard canSave() else { return .skipped }
         let draft = GridDraft(trackUUID: item.uuid, base: [], segments: estimate.segments).shifted(by: analysis.timelineOffset(url))
         // 바로 뒤 키 찾기·덱이 디스크의 초안을 읽으니 저장을 끝낸다. 실패해도 입력은 저장 큐에 남는다.
         drafts.saveGrid(draft)

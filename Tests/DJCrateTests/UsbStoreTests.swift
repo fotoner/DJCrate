@@ -126,7 +126,7 @@ struct UsbStoreTests {
                               arguments: ["DJCrate", "--db", "/tmp/x/m.db"], environment: environment, takeLiveSnapshot: take)
         }
         let store = makeStore(environment: ["DJC_HOME": "/tmp/x/home"])
-        let refused = "명시한 사본(--db)으로 연 창에서는 스냅샷을 뜨지 않습니다. --db 없이 다시 여세요"
+        let refused = "명시한 사본(--db)으로 연 창에서는 rekordbox와 동기화하지 않습니다. --db 없이 다시 여세요"
         func isRefusal(_ error: any Error) -> Bool {
             if case let DJCError.writeRefused(message)? = error as? DJCError { message == refused } else { false }
         }
@@ -155,7 +155,7 @@ struct UsbStoreTests {
         #expect(row.isUsb && row.track.uuid.hasPrefix(UsbLibraryRows.idPrefix))
         var draft = TagDraft(track: row.track)
         draft.base.comment = "예전 코멘트"
-        draft.fields.comment = "내 초안"
+        draft.fields.comment = "내 편집"
         #expect(draft.conflictingKeys(with: TagFields(track: row.track)).contains(.comment))
         var saves = 0
         let store = LibraryStore.test(settings: SettingsStore(defaults: TestDefaults.make("usbtag"), persist: false),
@@ -190,12 +190,20 @@ struct UsbStoreTests {
         let host = FakeUsbHost([physical, image])
         host.serve(image, library: UsbTestData.library())
         host.serve(physical, library: UsbTestData.library())
-        let store = UsbTestData.store(host, policy: .diskImagesOnly)
+        let policy = UsbReadPolicy.current(environment: ["DJC_CAP_NO_VOLUMES": "1"], arguments: ["DJCrate"])
+        #expect(UsbReadPolicy.current(environment: ["DJC_CAP_NO_VOLUMES": "0"], arguments: []) == .all)
+        let store = UsbTestData.store(host, policy: policy)
         await store.refresh()
-        #expect(store.volumes.map(\.usbKey) == [image.usbKey])
-        #expect(host.infoCalls == [image.usbKey])
-        #expect(host.libraryCalls == [image.usbKey])
+        #if DEBUG
+        let expected = [image.usbKey]
         #expect(store.shapes[physical.usbKey] == nil)
+        #else
+        let expected = [physical.usbKey, image.usbKey].sorted()
+        #expect(store.shapes[physical.usbKey] == .rekordbox(formats: UsbFormat.defaultSet))
+        #endif
+        #expect(store.volumes.map(\.usbKey).sorted() == expected)
+        #expect(host.infoCalls.sorted() == expected)
+        #expect(host.libraryCalls.sorted() == expected)
         #expect(store.shapes[image.usbKey] == .rekordbox(formats: UsbFormat.defaultSet))
     }
 

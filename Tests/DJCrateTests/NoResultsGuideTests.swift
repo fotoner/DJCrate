@@ -53,4 +53,19 @@ struct NoResultsGuideTests {
         let texts = [guide.title, guide.description, guide.filterNote, guide.footnote].compactMap { $0 }
         for text in texts { #expect(!text.contains("거르기") && !text.contains("초안")) }
     }
+
+    @Test func 숨긴_스트리밍_곡이_맞으면_스트리밍_곡_보이기를_함께_보이고_문구는_그대로다() throws {
+        let search = try #require(NoResultsGuide(search: "없는 곡", isFiltered: false, hasUnwrittenEdits: false, hiddenStreamingMatches: 2))
+        #expect(search.offersShowStreaming && search.offersClearSearch && !search.offersClearFilter)
+        #expect(search.title == "‘없는 곡’에 맞는 곡을 찾지 못했습니다" && search.description == "검색어를 다시 확인해 주세요")
+        let filter = try #require(NoResultsGuide(search: "", isFiltered: true, hasUnwrittenEdits: false, hiddenStreamingMatches: 1))
+        #expect(filter.offersShowStreaming && filter.offersClearFilter)
+        #expect(filter.title == "조건에 맞는 곡이 없습니다")
+        // 숨긴 곡이 맞지 않으면 단추를 더하지 않는다
+        for none in [0, -1] {
+            let guide = try #require(NoResultsGuide(search: "곡", isFiltered: true, hasUnwrittenEdits: false, hiddenStreamingMatches: none))
+            #expect(!guide.offersShowStreaming)
+        }
+        #expect(NoResultsGuide(search: "", isFiltered: false, hasUnwrittenEdits: false, hiddenStreamingMatches: 3) == nil)
+    }
 }

@@ -29,6 +29,7 @@ struct LinkSessionTests {
         let loadProblem = Mutex<LinkProblem?>(nil)
         /// 켜면 서버 띄우기를 시험이 풀어 줄 때까지 멈춘다(그 사이 끄기를 끼워 넣는다)
         let holdsStart = Mutex(false)
+        let holdsPreparation = Mutex(false)
         let held = Mutex<CheckedContinuation<Void, Never>?>(nil)
 
         /// 켜면 rekordbox 확인을 시험이 풀어 줄 때까지 막는다(확인은 메인 밖 스레드에서 돈다)
@@ -42,12 +43,17 @@ struct LinkSessionTests {
 
         var source: LinkServerSource {
             LinkServerSource(
-                start: { [self] library, root, peer, history throws(LinkProblem) in
+                start: { [self] library, root, peer, history, beforeBind throws(LinkProblem) in
+                    if holdsPreparation.withLock({ $0 }) {
+                        await withCheckedContinuation { continuation in held.withLock { $0 = continuation } }
+                    }
+                    try beforeBind()
                     self.history.withLock { $0 = history }
                     if holdsStart.withLock({ $0 }) {
                         await withCheckedContinuation { continuation in held.withLock { $0 = continuation } }
                     }
                     started.withLock { $0.append((library, root, peer)) }
+                    return LinkPreparedAudio(Dictionary(uniqueKeysWithValues: library.tracks.map { ($0.id, $0.path) }))
                 },
                 stop: { [self] in stopped.withLock { $0 += 1 } },
                 status: { LinkServerStatus(deviceNumber: 17, players: [2: LinkPlayerState(isPlaying: true, loadedTrackID: 2),
@@ -77,6 +83,88 @@ struct LinkSessionTests {
         #expect(start.shareRoot == "/share")
         #expect(start.peer == Self.cdj2.address)
         #expect(await session.isConnected)
+    }
+
+    @Test func 실행이_보호하는_폴더의_음원은_서버_포트에_넘기지_않는다() async throws {
+        let fake = Fake()
+        var port = fake.source
+        port.protectedDirectories = ["/fixture/data", "/fixture/rekordbox"]
+        let session = LinkSession(source: port)
+        let rows = [Self.row("1", path: "/fixture/data/one.mp3"), Self.row("2", path: "/fixture/rekordbox/two.wav"),
+                    Self.row("3", path: "/fixture/data-other/three.wav")]
+        let count = try await session.connect(rows: rows, playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        #expect(count == 1 && fake.started.withLock { $0.first?.library.tracks.map(\.contentID) } == ["3"])
+        #expect(await session.excludedByPath == 2)
+    }
+
+    @Test func 서버가_준비한_곡만_번호를_유지하고_사본으로_코덱을_확인하고_변환한다() async throws {
+        let fake = Fake()
+        let input = "/session/audio-2.flac", original = "/collection/good.flac"
+        let observed = Mutex<[String]>([])
+        let members = Mutex<[[UInt32]]>([])
+        var source = fake.source
+        source.start = { _, _, _, _, _ throws(LinkProblem) in LinkPreparedAudio([2: input]) }
+        source.updatePlaylists = { lists in members.withLock { $0 = lists.map(\.trackIDs) } }
+        let converter = LinkAudioConverter(convert: { copy, name throws(LinkProblem) in
+            observed.withLock { $0.append(copy) }
+            #expect(name == original)
+            return "/cache/output.wav"
+        }, needsConversion: { copy in
+            observed.withLock { $0.append(copy) }
+            return true
+        })
+        let session = LinkSession(source: source, converter: converter)
+        let rows = [Self.row("a"), Self.row("b", path: original)]
+        let layout = PlaylistLayout([(.init(id: "s", name: "목록", entries: [
+            PlaylistEntry(trackNo: 1, contentID: "a"), PlaylistEntry(trackNo: 2, contentID: "b"),
+            PlaylistEntry(trackNo: 3, contentID: "b")]), 0)])
+        #expect(try await session.connect(rows: rows, playlists: layout, shareRoot: "/share", peers: [Self.cdj2]) == 1)
+        #expect(await session.excludedByPath == 1)
+        #expect(await session.mayConvert(contentID: "b"))
+        try await session.load(contentID: "b", player: 2)
+        await #expect(throws: LinkProblem.trackNotShared) { try await session.load(contentID: "a", player: 2) }
+        await session.updatePlaylists(layout, iTunes: [])
+        #expect(observed.withLock { $0 } == [input, input])
+        #expect(members.withLock { $0 } == [[2, 2]])
+        #expect(fake.loaded.withLock { $0.map(\.id) } == [2])
+        #expect(await session.status()?.players[2]?.contentID == "b")
+    }
+
+    @Test func 변환_중에_꺼도_읽는_사본은_변환이_끝날_때_정리한다() async throws {
+        final class Lease: Sendable {
+            let release: @Sendable () -> Void
+            init(release: @escaping @Sendable () -> Void) { self.release = release }
+            deinit { release() }
+        }
+        let released = Mutex(false), gate = Mutex<CheckedContinuation<Void, Never>?>(nil)
+        var source = Fake().source
+        source.start = { _, _, _, _, _ throws(LinkProblem) in
+            LinkPreparedAudio([1: "/session/song.flac"], retaining: Lease { released.withLock { $0 = true } })
+        }
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
+            await withCheckedContinuation { continuation in gate.withLock { $0 = continuation } }
+            return "/cache/song.wav"
+        })
+        try await session.connect(rows: [Self.row("1", path: "/music/song.flac")], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        let load = Task { try await session.load(contentID: "1", player: 2) }
+        while gate.withLock({ $0 == nil }) { await Task.yield() }
+        await session.disconnect()
+        #expect(!released.withLock { $0 })
+        gate.withLock { $0?.resume(); $0 = nil }
+        await #expect(throws: LinkProblem.notConnected) { try await load.value }
+        #expect(released.withLock { $0 })
+    }
+
+    @Test func 준비한_곡이_없으면_연결을_정리하고_안내한다() async {
+        let fake = Fake()
+        var source = fake.source
+        source.start = { _, _, _, _, _ throws(LinkProblem) in LinkPreparedAudio([:]) }
+        let session = LinkSession(source: source)
+        await #expect(throws: LinkProblem.unsafeFile) {
+            try await session.connect(rows: [Self.row("1")], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        }
+        #expect(fake.stopped.withLock { $0 } == 1)
+        #expect(!(await session.isConnected))
     }
 
     @Test func rekordbox가_켜져_있으면_서버를_띄우지_않는다() async {
@@ -132,7 +220,7 @@ struct LinkSessionTests {
         var source = fake.source
         source.substitute = { id, path, type in swapped.withLock { $0.append((id, path, type)) } }
         source.setFileHold = { hold in gate.withLock { $0 = hold } }
-        let converter = LinkAudioConverter { path throws(LinkProblem) in
+        let converter = LinkAudioConverter { path, _ throws(LinkProblem) in
             conversions.withLock { $0 += 1 }
             return path.hasSuffix(".flac") ? "/Users/dj/Music/DJCrate/LINK/x.wav" : nil
         }
@@ -167,7 +255,7 @@ struct LinkSessionTests {
         let gate = Mutex<(open: Bool, waiting: [CheckedContinuation<Void, Never>])>((false, []))
         var source = fake.source
         source.substitute = { _, _, _ in swapped.withLock { $0 += 1 } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             conversions.withLock { $0 += 1 }
             await withCheckedContinuation { continuation in
                 let now = gate.withLock { state in
@@ -222,7 +310,7 @@ struct LinkSessionTests {
             order.withLock { $0.append("싣기") }
             try await load(player, id)
         }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             await withCheckedContinuation { continuation in
                 let now = converting.withLock { state in
                     if state.open { return true }
@@ -266,7 +354,7 @@ struct LinkSessionTests {
         let swapped = Mutex<[UInt32]>([])
         var source = fake.source
         source.substitute = { id, _, _ in swapped.withLock { $0.append(id) } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             "/Users/dj/Music/DJCrate/LINK/x.wav"
         })
         try await session.connect(rows: [Self.row("10", path: "/Users/dj/Music/a.flac"), Self.row("20", path: "/Users/dj/Music/a.flac")],
@@ -285,7 +373,7 @@ struct LinkSessionTests {
         let gate = Mutex<CheckedContinuation<Void, Never>?>(nil)
         var source = fake.source
         source.substitute = { _, _, _ in swapped.withLock { $0 += 1 } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             await withCheckedContinuation { continuation in gate.withLock { $0 = continuation } }
             return "/Users/dj/Music/DJCrate/LINK/x.wav"
         })
@@ -310,7 +398,7 @@ struct LinkSessionTests {
         let swapped = Mutex(0)
         var source = fake.source
         source.substitute = { _, _, _ in swapped.withLock { $0 += 1 } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             conversions.withLock { $0 += 1 }
             return "/Users/dj/Music/DJCrate/LINK/x.wav"
         })
@@ -333,7 +421,7 @@ struct LinkSessionTests {
         let gate = Mutex<(@Sendable (String, String) -> Bool)?>(nil)
         var source = fake.source
         source.setFileHold = { hold in gate.withLock { $0 = hold } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { path throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { path, _ throws(LinkProblem) in
             // 바꾸는 사이 CDJ가 같은 원본을 찾아 서버가 답을 미뤘다
             _ = gate.withLock { $0 }?(path, "CDJ-2000nexus")
             throw .conversionFailed("깨진 파일")
@@ -359,7 +447,7 @@ struct LinkSessionTests {
         var source = fake.source
         source.substitute = { id, path, type in swapped.withLock { $0.append((id, path, type)) } }
         source.setFileHold = { hold in gate.withLock { $0 = hold } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { path throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { path, _ throws(LinkProblem) in
             conversions.withLock { $0 += 1 }
             heldWhileConverting.withLock { $0 = gate.withLock { $0 }?(path, "CDJ-2000nexus") }
             return "/Users/dj/Music/DJCrate/LINK/x.wav"
@@ -392,7 +480,7 @@ struct LinkSessionTests {
         let gate = Mutex<(@Sendable (String, String) -> Bool)?>(nil)
         var source = fake.source
         source.setFileHold = { hold in gate.withLock { $0 = hold } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { path throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { path, _ throws(LinkProblem) in
             // 바꾸는 사이 CDJ가 상한보다 오래 다시 물어 서버가 원본으로 답했다
             let hold = gate.withLock { $0 }
             _ = hold?(path, "CDJ-2000nexus")
@@ -413,7 +501,7 @@ struct LinkSessionTests {
         var source = fake.source
         let swapped = Mutex(0)
         source.substitute = { _, _, _ in swapped.withLock { $0 += 1 } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { path throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { path, _ throws(LinkProblem) in
             conversions.withLock { $0.append(path) }
             // AAC .m4a는 바꿀 필요가 없다
             return nil
@@ -439,7 +527,7 @@ struct LinkSessionTests {
     @Test func 백그라운드에서_바꾸지_못하면_곡_이름과_이유를_알린다() async throws {
         let fake = Fake()
         let events = Mutex<[LinkBackgroundConversion]>([])
-        let session = LinkSession(source: fake.source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: fake.source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             throw .conversionFailed("깨진 파일")
         }, backgroundConversion: { event in events.withLock { $0.append(event) } })
         try await session.connect(rows: [Self.row("20", path: "/Users/dj/Music/20.flac")], playlists: PlaylistLayout(), shareRoot: "/share",
@@ -455,7 +543,7 @@ struct LinkSessionTests {
         let fake = Fake()
         let conversions = Mutex(0)
         let events = Mutex<[LinkBackgroundConversion]>([])
-        let session = LinkSession(source: fake.source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: fake.source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             conversions.withLock { $0 += 1 }
             throw .conversionFailed("깨진 파일")
         }, backgroundConversion: { event in events.withLock { $0.append(event) } })
@@ -483,7 +571,7 @@ struct LinkSessionTests {
         let events = Mutex<[LinkBackgroundConversion]>([])
         var source = fake.source
         source.setFileHold = { hold in gate.withLock { $0 = hold } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             await withCheckedContinuation { continuation in converting.withLock { $0 = continuation } }
             throw .conversionFailed("깨진 파일")
         }, backgroundConversion: { event in events.withLock { $0.append(event) } })
@@ -514,7 +602,7 @@ struct LinkSessionTests {
         var source = fake.source
         source.substitute = { id, _, _ in swapped.withLock { $0.append(id) } }
         source.setFileHold = { hold in gate.withLock { $0 = hold } }
-        let session = LinkSession(source: source, converter: LinkAudioConverter { _ throws(LinkProblem) in
+        let session = LinkSession(source: source, converter: LinkAudioConverter { _, _ throws(LinkProblem) in
             conversions.withLock { $0 += 1 }
             await withCheckedContinuation { continuation in
                 let now = converting.withLock { state in
@@ -556,7 +644,7 @@ struct LinkSessionTests {
     @Test func AAC_m4a는_바꾼다고_알리지_않는다() async throws {
         // #287: .m4a는 코덱을 열어 봐야 ALAC인지 안다. AAC를 처음 놓을 때 "WAV로 바꾼 뒤 싣습니다"가 떴다
         let fake = Fake()
-        let session = LinkSession(source: fake.source, converter: LinkAudioConverter(convert: { path throws(LinkProblem) in
+        let session = LinkSession(source: fake.source, converter: LinkAudioConverter(convert: { path, _ throws(LinkProblem) in
             path.hasSuffix("alac.m4a") ? "/Users/dj/Music/DJCrate/LINK/x.wav" : nil
         }, needsConversion: { path in path.hasSuffix("alac.m4a") }))
         try await session.connect(rows: [Self.row("10", path: "/Users/dj/Music/aac.m4a"), Self.row("20", path: "/Users/dj/Music/alac.m4a")],
@@ -646,6 +734,33 @@ struct LinkSessionTests {
         await #expect(throws: LinkProblem.notConnected) { try await session.load(contentID: "10", player: 2) }
     }
 
+    @Test(arguments: [false, true])
+    func 사본_준비_중에_끄거나_rekordbox가_시작하면_포트를_열지_않는다(rekordboxStarts: Bool) async {
+        let fake = Fake()
+        fake.holdsPreparation.withLock { $0 = true }
+        let session = LinkSession(source: fake.source)
+        let connecting = Task {
+            try await session.connect(rows: [Self.row("10")], playlists: PlaylistLayout(), shareRoot: "/share", peers: [Self.cdj2])
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(300))
+        while !fake.isHolding, ContinuousClock.now < deadline { await Task.yield() }
+        #expect(fake.isHolding)
+        let disconnecting: Task<Void, Never>?
+        if rekordboxStarts {
+            fake.rekordbox.withLock { $0 = true }
+            disconnecting = nil
+        } else {
+            disconnecting = Task { await session.disconnect() }
+            while await session.currentGeneration < 2, ContinuousClock.now < deadline { await Task.yield() }
+        }
+        fake.releaseStart()
+        await #expect(throws: rekordboxStarts ? LinkProblem.rekordboxRunning : .cancelled) { try await connecting.value }
+        await disconnecting?.value
+        #expect(fake.started.withLock { $0.isEmpty })
+        #expect(fake.stopped.withLock { $0 } == 0)
+        #expect(!(await session.isConnected))
+    }
+
     @Test func 켜는_도중에_끄면_띄운_서버를_바로_내리고_켜지지_않는다() async throws {
         let fake = Fake()
         fake.holdsStart.withLock { $0 = true }
@@ -694,8 +809,8 @@ struct LinkSessionTests {
         fake.holdsStart.withLock { $0 = true }
         // 앞 켜기의 띄우기가 포트 충돌로 실패하는 경우
         let failing = LinkServerSource(
-            start: { library, root, peer, history throws(LinkProblem) in
-                try await fake.source.start(library, root, peer, history)
+            start: { library, root, peer, history, beforeBind throws(LinkProblem) in
+                _ = try await fake.source.start(library, root, peer, history, beforeBind)
                 throw .portInUse("UDP 50000")
             },
             stop: fake.source.stop, status: fake.source.status, load: fake.source.load,

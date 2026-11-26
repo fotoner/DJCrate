@@ -33,7 +33,7 @@ struct DeckSuggestionsTests {
             .key("8B", fromFileTag: false), .key("8B", fromFileTag: true),
         ]
         for item in items {
-            #expect(item.applyHelp.contains("초안"), "\(item.kind): \(item.applyHelp)")
+            #expect(item.applyHelp.contains("편집"), "\(item.kind): \(item.applyHelp)")
             #expect(item.dismissHelp.contains("제안을 더 보이지 않습니다"), "\(item.kind): \(item.dismissHelp)")
         }
         #expect(items[0].detail == "rekordbox 오토게인이 이 파일의 실제 음량과 5.7dB 다릅니다")
@@ -49,7 +49,7 @@ struct DeckSuggestionsTests {
             .key("8B", fromFileTag: false), .key("8B", fromFileTag: true),
         ]
         for item in items {
-            #expect(!item.applyHelp.contains("쓰기 전까지"), "\(item.kind): \(item.applyHelp)")
+            #expect(!item.applyHelp.contains("저장하기 전까지"), "\(item.kind): \(item.applyHelp)")
             #expect(!item.applyHelp.contains("rekordbox에는"), "\(item.kind): \(item.applyHelp)")
             #expect(!item.applyHelp.contains("음원 파일은 바꾸지"), "\(item.kind): \(item.applyHelp)")
             #expect(item.applyHelp.count <= 40, "\(item.kind): \(item.applyHelp)")

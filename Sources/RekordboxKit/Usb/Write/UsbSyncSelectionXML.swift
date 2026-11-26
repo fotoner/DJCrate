@@ -25,7 +25,7 @@ public enum UsbSyncSelectionXML {
             case .missingPlaylist:
                 String(ui: "USB 동기화 목록의 최종 번호를 찾지 못했습니다. 쓰기 결과를 다시 읽은 뒤 동기화하세요")
             case .missingSourceNode:
-                String(ui: "masterPlaylists6.xml에서 동기화할 목록을 찾지 못했습니다. rekordbox를 한 번 켰다가 종료하고 새 스냅샷을 읽은 뒤 동기화하세요")
+                String(ui: "masterPlaylists6.xml에서 동기화할 목록을 찾지 못했습니다. rekordbox를 한 번 켰다가 종료하고 ‘rekordbox와 동기화’를 한 뒤 동기화하세요")
             case .contractMismatch:
                 String(ui: "USB 동기화 파일이 확인한 형식과 다릅니다. rekordbox에서 다시 동기화한 뒤 읽으세요")
             case .verificationFailed:

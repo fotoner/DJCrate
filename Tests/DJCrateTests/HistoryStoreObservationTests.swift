@@ -1,4 +1,5 @@
 @testable import DJCrate
+import DJCApplication
 import DJCDomain
 import Observation
 import SwiftUI
@@ -66,6 +67,22 @@ struct HistoryStoreObservationTests {
         #expect(observes({ _ = SidebarHistoryRow(history: store.history, item: item).body }) { store.history.archivedHistories = [archived] })
         // 곡 수는 컬렉션 짝을 읽는 기록 줄이 센다
         #expect(observes({ _ = SidebarHistoryRow(history: store.history, item: item).body }) { store.rowsByID = ["1": row("1")] })
+    }
+
+    @Test(.tags(.perfContract)) func USB_기록_줄은_LINK_세션이_열려도_다시_계산하지_않고_LINK_기록_줄만_다시_계산한다() throws {
+        // 같은 세션 이름으로 한 번만 열 수 있어(닫은 세션은 다시 열리지 않는다) 줄마다 저장소를 따로 만든다
+        func rowObserves(link: Bool) throws -> Bool {
+            let store = store()
+            var archived = UsbHistoryWriteTests.archived("row", ["1"], sequence: 1)
+            if link { archived.source = LinkHistory.source(session: "live") }
+            store.history.archivedHistories = [archived]
+            let item = try #require(item(archived.id, in: store.history.historyTree))
+            return observes({ _ = SidebarHistoryRow(history: store.history, item: item).body }) {
+                store.history.recordLinkPlay(LinkPlay(contentID: "not-in-collection", linkID: 1, session: 1), session: "live")
+            }
+        }
+        #expect(try !rowObserves(link: false))
+        #expect(try rowObserves(link: true))
     }
 
     @Test(.tags(.perfContract)) func 같은_기록을_다시_넣거나_결과가_같은_다시_계산은_트리·숨김·쓰기_대기를_다시_쓰지_않는다() {

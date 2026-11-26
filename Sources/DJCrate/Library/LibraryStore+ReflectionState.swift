@@ -15,13 +15,17 @@ extension LibraryStore {
 
     /// 세션이 읽는 지금 상태(메모리 초안·표시·추가 목록)
     func reflectionState() -> ReflectionLibraryState {
-        ReflectionLibraryState(rows: rowsByUUID, cueDraftUUIDs: cueDraftUUIDs, gridDraftUUIDs: gridDraftUUIDs, gainDraftUUIDs: gainDraftUUIDs,
+        var state = ReflectionLibraryState(rows: rowsByUUID, cueDraftUUIDs: cueDraftUUIDs, gridDraftUUIDs: gridDraftUUIDs, gainDraftUUIDs: gainDraftUUIDs,
                                tagDrafts: tagDrafts, artworkDrafts: artworkDrafts, mergeDrafts: mergeDrafts, playlistDraft: playlists.playlistDraft,
-                               playlistDraftUnsaved: playlists.playlistDraftUnsaved, rekordboxPlaylists: playlists.rekordboxPlaylists,
+                               playlistDraftUnsaved: playlists.playlistDraftUnsaved, playlistDraftNeedsSync: playlists.playlistDraftNeedsSync,
+                               playlistDraftFileLocked: playlistDraftUnlock != nil, rekordboxPlaylists: playlists.rekordboxPlaylists,
                                playlistImports: playlists.playlistImports, playlistImportsLoadFailed: playlists.playlistImportsLoadFailed, unreadableDraftKinds: unreadableDraftKinds, failedTagSaves: failedTagSaves(),
                                staged: staging.staged, estimatingGrids: staging.gridJob != nil, iTunesSelection: isITunesSelection,
                                deckStagedUUID: deckTrackID.flatMap { rowsByID[$0] }.flatMap { $0.isStaged ? $0.track.uuid : nil },
                                lastError: lastError, pendingHistories: history.pendingHistoryImports)
+        state.readSnapshot = snapshotURL
+        state.playlistCarriedOrigins = playlists.unsavedStepOrigins
+        return state
     }
 
     /// 세션이 알린 결과로 메모리 초안·표시를 맞춘다
@@ -32,9 +36,12 @@ extension LibraryStore {
                 if cueCounts { draftCueCounts[uuid] = nil }
                 draftChanged(trackUUID: uuid, kind: DeckModel.DraftKind(kind), exists: false)
             }
+        case let .cueIDsWritten(ids): writtenCueIDs.merge(ids) { old, new in old.merging(new) { _, latest in latest } }
+        case let .tagsWritten(uuids): tagsWrittenAwaitingReload.formUnion(uuids)
         case let .tagDrafts(drafts): replaceTagDrafts(drafts)
         case let .mergeDrafts(drafts, failure, moved): applyMergeDraftsAfterWrite(drafts, failure: failure, moved: moved)
         case let .playlistWritten(cleanup): playlists.applyPlaylistWrite(cleanup)
+        case let .playlistWriteFrozen(draft, histories): playlists.freezeWrite(draft, histories: histories)
         case let .artworkCleared(uuids, failed): clearWrittenArtwork(uuids, failed: failed)
         case let .artworkRestored(drafts, touched): showRestoredArtwork(drafts, touched: touched)
         case let .unstaged(uuids): _ = staging.unstage(uuids: uuids)
@@ -60,7 +67,9 @@ extension LibraryStore {
         }
     }
 
-    /// 쓰는 동안 잠근다. `deck`이면 덱도 재생을 멈추고 조작을 막는다(iTunes 동기화는 덱을 잠그지 않는다).
+    /// 쓰는 동안 라이브러리를 쓰는 중으로 묶는다(`libraryBusy`·종료 판단). `deck`이면 덱도 재생을 멈추고 조작을 막는다(iTunes 동기화는 덱을 잠그지 않는다).
+    /// 초안을 쓸 때는 곡 단위 잠금(`lockedTracks`, 쓰기 포트 `setTracks`)을 먼저 정한 뒤 `deck: false`로 부른다: 그러면 편집 잠금이 통째로 걸리지 않고(`editsFrozen`)
+    /// 덮개도 뜨지 않으며 쓰는 곡만 막힌다(R21).
     func setWriteLock(_ locked: Bool, deck: Bool = true) {
         if locked {
             // 쓰는 동안 CLI가 재생 목록 초안 파일을 고치지 못하게 잡고(#260), 그 전에 바깥에서 바뀐 초안을 먼저 받는다(1초 확인을 기다리지 않게)
@@ -71,9 +80,16 @@ extension LibraryStore {
         } else {
             playlistDraftUnlock?()
             playlistDraftUnlock = nil
+            // 쓰기를 마쳤거나 멈췄다: 얼려 둔 재생 목록 단계를 푼다(다음 쓰기가 다시 얼린다, #402)
+            playlists.thawWrite()
         }
         isWritingRekordbox = locked
         if deck { onWriteLock?(locked) }
+        // 쓰는 동안 눌러 미뤄 둔 재생 목록 ⌘Z를 다시 올리고, 저장 뒤 되돌릴 수 없게 된 단계를 뺀다(R12)
+        if !locked {
+            pendingUndo.flush()
+            settleUndo()
+        }
         // 종료를 기다리느라 미룬 다시 읽기는 종료를 취소했는데 쓰기 잠금이 아직 걸려 있었을 때 여기서 이어 한다(#305)
         if !locked { resumePostponedReload() }
     }
@@ -91,6 +107,7 @@ extension LibraryStore {
 
     /// 쓰기·복원 뒤 조용히 다시 읽는다. 쓴 곡은 새 스냅샷을 읽은 뒤 덱에 알리고, 되살린 재생 목록 편집은 읽은 뒤 쌓는다(읽지 못하면 다음 읽기 뒤에).
     func reloadAfterWrite(written: Set<String>, playlistEdits: [PlaylistEdit]) async -> Bool {
+        if isDraftWrite { draftWriteReadPending = true }
         writtenAwaitingReload.formUnion(written)
         playlists.playlistEditsAwaitingReload += playlistEdits
         return await reloadAfterWrite()
@@ -100,10 +117,10 @@ extension LibraryStore {
     /// 쓰는 동안은 잠겨 있고 되돌리기 목록도 비어 있어 되돌리기 단위로 남기지 않는다.
     func replaceTagDrafts(_ drafts: [TagDraft]) {
         guard !drafts.isEmpty else { return }
-        for draft in drafts {
-            tagDrafts[draft.trackUUID] = draft.hasChanges ? draft : nil
-            updateEdited(draft.trackUUID)
-        }
+        var updated = tagDrafts
+        for draft in drafts { updated[draft.trackUUID] = draft.hasChanges ? draft : nil }
+        tagDrafts = updated
+        for draft in drafts { updateEdited(draft.trackUUID) }
         rememberTagSaves(drafts)
         tagRevision += 1
         if case .pending = sidebar { refreshBase() }

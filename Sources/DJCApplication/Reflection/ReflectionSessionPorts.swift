@@ -21,6 +21,8 @@ public struct ReflectionPorts {
     public var runningApps: RunningApps
     /// 재생 목록 연결 기록(쓴 뒤 새 목록 ID 잇기·곡 넣기를 되돌린 뒤 잊기)
     public var playlistImports: PlaylistImportsStore
+    /// 대기 중인 여러 곡 역편집 묶음(R12): 자동 저장과 ⌘S가 묶음 밖 편집과 섞지 않고 전부 아니면 전무로 쓴다
+    public var undoGroups = ReflectionUndoGroups()
 
     public init(gate: RekordboxWriteGate, backups: RekordboxBackups, drafts: DraftStore, snapshots: SnapshotTaker, audio: TrackAudioReader,
                 library: ReflectionLibrary, reload: LibraryReloader, lock: WriteLock, confirmation: UserConfirmation,
@@ -59,6 +61,16 @@ public struct WriteLock {
     public var set: @MainActor (_ locked: Bool, _ deck: Bool) -> Void
     /// 쓰기 단계 안내(nil이면 지운다)
     public var stage: @MainActor @Sendable (WriteStage?) -> Void
+    /// 곡 단위 편집 잠금(R21): 쓰는 묶음에 든 곡의 편집만 막는다(빈 집합이면 푼다). 덱 재생·사이드바·목록·다른 곡 편집은 그대로다.
+    /// 기본값은 아무것도 하지 않는다. 초안을 쓸 때는 곡을 먼저 정하고(`setTracks`) `setDraftWriting(true)` 뒤 `set(true, false)`로 쓰는 중을 켠다.
+    /// 풀 때는 `set(false, false)`, `setDraftWriting(false)`, `setTracks([])` 순서다(사이에 통째 잠금이 한 틱도 켜지지 않게).
+    /// 곡 단위 자동 저장도 이 순서를 따른다: 세션의 `lockDraftWrite(tracks:)`·`unlockDraftWrite()`를 쓴다. 곡 집합이 비고 초안 쓰기 표시도 없으면 통째 잠금이다.
+    public var setTracks: @MainActor (Set<String>) -> Void = { _ in }
+    /// 지금 편집을 막은 곡
+    public var lockedTracks: @MainActor () -> Set<String> = { [] }
+    /// 초안을 쓰는 중(곡 집합이 비어도 통째 편집 잠금·창 덮개를 걸지 않는다). 재생 목록·재생 기록만 쓰는 묶음이 곡 없이도 곡 단위 쓰기가 되게 한다.
+    /// 재생 목록·재생 기록 편집은 이 동안도 쓰는 중(`isLocked`)으로 막는다(재생 목록 얼리기는 #402). 기본값은 아무것도 하지 않는다
+    public var setDraftWriting: @MainActor (Bool) -> Void = { _ in }
 
     public init(isLocked: @escaping @MainActor () -> Bool, set: @escaping @MainActor (Bool, Bool) -> Void,
                 stage: @escaping @MainActor @Sendable (WriteStage?) -> Void) {
@@ -148,6 +160,9 @@ public struct ReflectionLibrary {
     /// 보존본의 저장은 USB 가져오기와 한 줄로 서야 해서(같은 파일을 겹쳐 쓰지 않게) 보존본을 든 화면 쪽이 그 줄에 세운다.
     /// 표시를 저장하지 못하면 알릴 문장을 돌려준다(rekordbox 쓰기는 끝났다)
     public var recordHistories: @MainActor ([RekordboxHistoryOutcome]) async -> String?
+    /// 읽은 사본이 쓰기 대상 라이브 DB와 같은지(메인 밖에서 부른다, `LoadLibrary.isLatest`). 같을 때만 곡 넣기 정리가 새 곡이 없다고 확정한다.
+    /// 모르는 곳(CLI·시험)은 거짓이다
+    public var readIsLatest: @Sendable (URL) -> Bool = { _ in false }
 
     public init(state: @escaping @MainActor () -> ReflectionLibraryState, apply: @escaping @MainActor (ReflectionLibraryChange) -> Void,
                 retryTagSaves: @escaping @MainActor () -> Void, preserveDamagedDrafts: @escaping @MainActor () -> [DamagedDraftFile],
@@ -189,6 +204,13 @@ public struct RekordboxBackups: Sendable {
     public var saveDraft: @Sendable (RekordboxBackupDraft, _ backup: URL) throws -> Void
     /// 백업에 남은 참고 경고(경로가 예상과 달라 남긴 분석 파일, 복원 결과에 적는다). 없으면 nil
     public var fileWarning: @Sendable (_ backup: URL) -> String?
+    /// 자동 저장의 백업 조건(R13): 백업 폴더가 대상 master.db와 같은 볼륨이라 클론이 되는지, 여유 공간이
+    /// `RekordboxBackupCondition.requiredFreeSpace` 이상인지. 기본값은 모름(자동 저장은 보류한다). 실제 판정은 W1-A가 붙인다
+    public var autoSaveCondition: @Sendable (_ backups: URL, _ database: URL) -> RekordboxBackupCondition = { _, _ in .unknown }
+    /// 백업 솎기에서 뺄 백업 폴더(백업 루트 기준 상대 경로, R22·R11). 그 백업 루트에 남은 미정리 목록이 가리키는 폴더
+    /// (`DraftCleanupList.protectedBackupFolders`)다: 다시 켠 뒤 정리가 바깥에서 고친 재생 목록 단계의 사본을 그 폴더에 남기기 때문이다.
+    /// 솎기(쓰기 입구의 `prune`, W1-A)가 지우기 전에 묻고, 목록이 지워질 때까지 그 폴더를 남긴다. 기본값은 빈 집합(지금 동작)이다
+    public var protectedFolders: @Sendable (_ backups: URL) throws -> Set<String> = { _ in [] }
 
     public init(list: @escaping @Sendable (URL) -> [RekordboxWriteBackup], laterCount: @escaping @Sendable (URL, URL) -> Int,
                 pointRestoreRefusal: @escaping @Sendable (URL, URL) -> String?, drafts: @escaping @Sendable (URL) -> RekordboxBackupDrafts,

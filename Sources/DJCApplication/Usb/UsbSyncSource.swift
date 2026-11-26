@@ -98,7 +98,7 @@ public struct UsbSyncSource: Sendable, Equatable {
             case .missing:
                 ("syncSourceTrackMissing", String(ui: "로컬 라이브러리에서 찾지 못한 곡이라 USB에 넣지 않았습니다. 라이브러리를 새로고침한 뒤 다시 동기화하세요"))
             case .staged:
-                ("syncTrackStaged", String(ui: "아직 rekordbox 컬렉션에 넣지 않은 곡이라 USB에 넣지 않았습니다. rekordbox에 쓴 뒤 다시 동기화하세요"))
+                ("syncTrackStaged", String(ui: "아직 rekordbox 컬렉션에 넣지 않은 곡이라 USB에 넣지 않았습니다. rekordbox에 저장한 뒤 다시 동기화하세요"))
             case .usb:
                 ("syncTrackOnUsbOnly", String(ui: "USB에만 있는 곡이라 다시 넣지 않았습니다. 로컬 컬렉션의 곡으로 목록을 고친 뒤 다시 동기화하세요"))
             case .streaming:

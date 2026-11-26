@@ -3,7 +3,7 @@ import DJCDomain
 import SwiftUI
 
 /// 막힌 초안 복구 시트(#232): 곡·종류별, 재생 목록별 줄 하나씩. 줄마다 차이 요약 한 줄을 보고
-/// "내 편집 유지·다시 적용 / 현재값 사용 / 나중에"를 고른 뒤 [저장]으로 한 번에 저장한다. 취소하면 아무것도 바꾸지 않는다.
+/// "내 편집 유지·다시 적용 / 현재값 사용 / 나중에"를 고른 뒤 [N줄 적용]으로 한 번에 적용한다(rekordbox에는 쓰지 않고 편집만 고친다). 취소하면 아무것도 바꾸지 않는다.
 struct RecoverySheetView: View {
     let model: RecoverySheetModel
     /// 줄 목록의 높이 한계(내용에 맞추되 시트가 화면을 넘지 않게 한다. 넘으면 목록이 스크롤된다)
@@ -31,19 +31,15 @@ struct RecoverySheetView: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// 상태는 건수 머리글과 줄이 말한다(도입문 없음, #316). 건수는 "나중에"로 둔 줄도 센다.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(.ui("막힌 초안의 현재값 비교")).font(.title2.bold())
-            Text(.ui("초안을 만든 뒤 rekordbox에서 바뀌어 쓸 수 없는 항목입니다. 줄마다 고른 뒤 [저장]을 누르면 한 번에 반영하고, ‘나중에’로 둔 줄은 초안을 그대로 둡니다."))
-                .font(.callout).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        Text(.ui("rekordbox에서 바뀐 편집 \(model.lines.count)건")).font(.title2.bold())
     }
 
     private var footer: some View {
         HStack(spacing: 12) {
             if model.discardCount > 0 {
-                Label(.ui("‘현재값 사용’·‘초안 버리기’로 고른 줄은 내 편집을 버립니다."), systemImage: WarningMark.symbol)
+                Label(.ui("‘현재값 사용’·‘편집 버리기’로 고른 줄은 내 편집을 버립니다."), systemImage: WarningMark.symbol)
                     .font(.callout).foregroundStyle(UIColors.warning.color)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -52,7 +48,7 @@ struct RecoverySheetView: View {
             Button(model.hasSaved ? String(ui: "닫기") : String(ui: "취소")) { model.cancel() }
                 .keyboardShortcut(.cancelAction)
                 .disabled(model.isSaving)
-            Button(.ui("저장")) { model.startSave() }
+            Button(.ui("\(model.applyCount)줄 적용")) { model.startSave() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!model.canSave)
         }
@@ -86,7 +82,7 @@ private struct RecoveryLineView: View {
                 Label { Text(verbatim: reason).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: WarningMark.symbol) }
                     .font(.callout).foregroundStyle(UIColors.warning.color)
             case .saved:
-                Label(.ui("저장했습니다"), systemImage: "checkmark.circle.fill").font(.callout).foregroundStyle(.green)
+                Label(.ui("적용했습니다"), systemImage: "checkmark.circle.fill").font(.callout).foregroundStyle(.green)
                 if let note = line.resultNote { Text(verbatim: note).font(.callout).foregroundStyle(.secondary) }
             case .ready:
                 ready

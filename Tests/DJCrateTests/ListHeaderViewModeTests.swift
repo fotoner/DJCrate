@@ -23,10 +23,10 @@ struct ListHeaderViewModeTests {
     @Test func 쓰는_동안은_전환이_막히고_쓰기가_끝난_뒤_다시_시도하라고_알린다() {
         let store = loadedStore()
         store.isWritingRekordbox = true
-        #expect(store.viewModeBlockReason == "rekordbox 쓰기가 끝난 뒤 다시 시도하세요")
+        #expect(store.viewModeBlockReason == "rekordbox 저장이 끝난 뒤 다시 시도하세요")
         // 쓰는 동안이 USB·중복 후보 이유보다 먼저다(툴바 때와 같은 순서)
         store.sidebar = .duplicates
-        #expect(store.viewModeBlockReason == "rekordbox 쓰기가 끝난 뒤 다시 시도하세요")
+        #expect(store.viewModeBlockReason == "rekordbox 저장이 끝난 뒤 다시 시도하세요")
     }
 
     @Test func USB_곡은_읽기_전용이라_전환이_막힌다() {

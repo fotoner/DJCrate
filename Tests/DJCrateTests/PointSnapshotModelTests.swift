@@ -48,7 +48,7 @@ struct PointSnapshotModelTests {
         let model = model(fixture, clock: Date().addingTimeInterval(1))
         await model.create()
         await model.refresh()
-        #expect(model.rows.map(\.kind) == [RekordboxPointSnapshot.Kind.manual.title, "복원 직전 백업", "쓰기 전 백업"],
+        #expect(model.rows.map(\.kind) == [RekordboxPointSnapshot.Kind.manual.title, "복원 직전 백업", "저장 전 백업"],
                 "\(model.rows.map { ($0.kind, $0.date.timeIntervalSince1970) })")
         let backupRow = try #require(model.rows.first { $0.entry == nil })
         await model.setPinned(true, backupRow)
@@ -158,7 +158,7 @@ struct PointSnapshotModelTests {
 
     @Test func 쓰는_중에는_막는다() async throws {
         let fixture = try RekordboxFixture()
-        let model = model(fixture, busy: "rekordbox에 쓰는 중입니다")
+        let model = model(fixture, busy: "rekordbox에 저장하는 중입니다")
         await model.create()
         #expect(model.isError && model.rows.isEmpty)
     }
@@ -204,7 +204,7 @@ struct PointSnapshotModelTests {
         let points = PointSnapshots(database: folder.appending(path: "master.db"), shareRoot: nil, directory: folder,
                                     backupDirectory: folder, files: .live(guard: Self.copyGuard), backups: .live())
         let model = PointSnapshotModel(store: store, reflection: ReflectionCoordinator.test(store: store), points: points)
-        #expect(model.blockReason == "Mac을 끄는 중이라 rekordbox에 쓰지 않았습니다. 다시 켠 뒤 쓰세요")
+        #expect(model.blockReason == "Mac을 끄는 중이라 rekordbox에 저장하지 않았습니다. 다시 켠 뒤 저장하세요")
         store.isPoweringOff = false
         #expect(model.blockReason == nil)
     }
@@ -298,7 +298,7 @@ struct PointSnapshotModelTests {
         let quiet = PointSnapshotModel.restoreConfirmation(entry, diff: diff)
         #expect(!quiet.text.contains(RekordboxPointSnapshotDiff.cloudSyncNote))
         // 되돌려도 초안은 남는다는 약속과 파괴 확인 단추(창 원문)
-        #expect(quiet.text.contains("초안은 그대로") && quiet.destructive && quiet.confirm == "이 시점으로 복원")
+        #expect(quiet.text.contains("편집은 그대로") && quiet.destructive && quiet.confirm == "이 시점으로 복원")
         diff.currentCloudUpdateCount = 120
         let prompt = PointSnapshotModel.restoreConfirmation(entry, diff: diff)
         #expect(prompt.text.contains(RekordboxPointSnapshotDiff.cloudSyncNote))

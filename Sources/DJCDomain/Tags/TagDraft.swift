@@ -180,26 +180,26 @@ public struct TagDraft: Codable, Equatable, Sendable {
     /// 쓰기 전 확인할 문제.
     public var issues: [String] {
         var issues: [String] = []
-        if !fields.year.isEmpty, Int(fields.year) == nil { issues.append(String(ui: "연도를 숫자로 고친 뒤 rekordbox에 쓰세요")) }
-        if !fields.trackNumber.isEmpty, Int(fields.trackNumber) == nil { issues.append(String(ui: "트랙 번호를 숫자로 고친 뒤 rekordbox에 쓰세요")) }
-        if fields.title.trimmingCharacters(in: .whitespaces).isEmpty { issues.append(String(ui: "제목을 입력한 뒤 rekordbox에 쓰세요")) }
+        if !fields.year.isEmpty, Int(fields.year) == nil { issues.append(String(ui: "연도를 숫자로 고친 뒤 rekordbox에 저장하세요")) }
+        if !fields.trackNumber.isEmpty, Int(fields.trackNumber) == nil { issues.append(String(ui: "트랙 번호를 숫자로 고친 뒤 rekordbox에 저장하세요")) }
+        if fields.title.trimmingCharacters(in: .whitespaces).isEmpty { issues.append(String(ui: "제목을 입력한 뒤 rekordbox에 저장하세요")) }
         for key in [TagFields.Key.year, .trackNumber] where changedKeys.contains(key) {
             if let value = Int(fields[key]), value < 0 {
-                issues.append(String(ui: "\(key.label)를 0 이상으로 고친 뒤 rekordbox에 쓰세요"))
+                issues.append(String(ui: "\(key.label)를 0 이상으로 고친 뒤 rekordbox에 저장하세요"))
             }
         }
         // 키는 고쳤을 때만 이름을 본다: 읽은 키가 옛 표기(Em)나 삭제 표시 줄의 이름이어도 다른 칸은 쓸 수 있어야 한다.
         if changedKeys.contains(.musicalKey), !fields.musicalKey.isEmpty, !KeyNotation.camelotNames.contains(fields.musicalKey) {
-            issues.append(String(ui: "키는 1A~12B 중에서 고르거나 비운 뒤 rekordbox에 쓰세요"))
+            issues.append(String(ui: "키는 1A~12B 중에서 고르거나 비운 뒤 rekordbox에 저장하세요"))
         }
         if changedKeys.contains(.rating), TrackRating.accepted(fields.rating) != fields.rating {
-            issues.append(String(ui: "평점은 별 1~5개 중에서 고르거나 비운 뒤 rekordbox에 쓰세요"))
+            issues.append(String(ui: "평점은 별 1~5개 중에서 고르거나 비운 뒤 rekordbox에 저장하세요"))
         }
         if changedKeys.contains(.color), !fields.color.isEmpty, !TrackColor.ids.contains(fields.color) {
-            issues.append(String(ui: "곡 색은 rekordbox의 여덟 색 중에서 고르거나 비운 뒤 rekordbox에 쓰세요"))
+            issues.append(String(ui: "곡 색은 rekordbox의 여덟 색 중에서 고르거나 비운 뒤 rekordbox에 저장하세요"))
         }
         if changedKeys.contains(.albumArtist), fields.album.isEmpty, !fields.albumArtist.isEmpty {
-            issues.append(String(ui: "앨범이 없는 곡에는 앨범 아티스트를 쓸 수 없으니 앨범을 입력하거나 앨범 아티스트 초안을 되돌리세요"))
+            issues.append(String(ui: "앨범이 없는 곡에는 앨범 아티스트를 저장할 수 없으니 앨범을 입력하거나 앨범 아티스트 편집을 되돌리세요"))
         }
         return issues
     }

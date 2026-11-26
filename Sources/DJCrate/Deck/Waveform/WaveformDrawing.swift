@@ -102,7 +102,7 @@ struct DrawState {
         sections = deck.analysis?.sections ?? []
         energies = deck.sectionEnergies
         suggestions = deck.suggestions
-        cues = deck.draft?.cues ?? []
+        cues = deck.displayedCues
         selected = deck.selectedCueID
         playhead = deck.currentTime
         cuePoint = deck.cuePoint

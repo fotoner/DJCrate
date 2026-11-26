@@ -10,7 +10,7 @@ import Testing
 struct WriteResultTests {
     typealias Fixture = ReflectionPresenterTests
 
-    @Test(arguments: ["쓰기", "넣기", "빼기", "되돌리기"])
+    @Test(arguments: ["저장", "넣기", "빼기", "되돌리기"])
     func 결과는_토스트를_닫고_재시작해도_열린다(operation: String) async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -20,7 +20,7 @@ struct WriteResultTests {
         let backupURL = URL(filePath: "/tmp/fixture-write-backup"), restoreSafetyBackup = URL(filePath: "/tmp/fixture-before-restore")
         var expected: [String]
         switch operation {
-        case "쓰기":
+        case "저장":
             let preview = Fixture.preview(cues: [Fixture.outcome("written", .written), Fixture.outcome("blocked", .blocked, reason: "큐가 바뀜")],
                                           grids: [Fixture.outcome("grid", .blocked, reason: "분석 전")],
                                           analyses: [Fixture.outcome("analysis", .written), Fixture.outcome("analysis-blocked", .blocked, reason: "ALAC")])
@@ -52,7 +52,7 @@ struct WriteResultTests {
             tracks.deleted = [Fixture.track("deleted")]
             let backup = RekordboxWriter.Backup(url: backupURL, createdAt: .now, isWrite: true, report: nil, trackReport: tracks)
             presenter.publish(.restored(backup, saved: restoreSafetyBackup, fileWarning: nil, followUp: []))
-            expected = ["쓰기 전 상태로 복원했습니다", "곡 deleted"]
+            expected = ["저장 전 상태로 복원했습니다", "곡 deleted"]
         }
         store.dismissToast()
         // 다시 연 활동 기록에도 결과 한 건이 그대로 있다(#296)
@@ -63,7 +63,7 @@ struct WriteResultTests {
         #expect(result.kind == (operation == "되돌리기" ? .success : .warning))
         if operation == "되돌리기" { #expect(result.backups.contains(restoreSafetyBackup)) }
         // 경고 알림의 둘째 줄(무엇을 쓰지 않았는지)도 다시 열 때 그대로다(#147).
-        let shortfall = ["쓰기": "큐 1곡 · 그리드 1곡 · 분석 1곡은 쓰지 않았습니다", "넣기": "2곡은 넣지 않았습니다", "빼기": "1곡은 빼지 않았습니다"]
+        let shortfall = ["저장": "큐 1곡 · 그리드 1곡 · 분석 1곡은 저장하지 않았습니다", "넣기": "2곡은 넣지 않았습니다", "빼기": "1곡은 빼지 않았습니다"]
         if let shortfall = shortfall[operation] { #expect(result.toast.detail?.hasPrefix(shortfall) == true) }
     }
 
@@ -79,15 +79,15 @@ struct WriteResultTests {
         actual.gridOutcomes?.removeAll { $0.status != .written }
         let one = WriteResult.written(actual, preview: predicted)
         #expect(one.kind == .warning)
-        #expect(one.title == "rekordbox에 썼습니다 · 큐 2곡 · 그리드 1곡 · 재생 목록 1건")
-        #expect(one.toast.detail == "그리드 1곡은 쓰지 않았습니다 — " + reason)
+        #expect(one.title == "rekordbox에 저장했습니다 · 큐 2곡 · 그리드 1곡 · 재생 목록 1건")
+        #expect(one.toast.detail == "그리드 1곡은 저장하지 않았습니다 — " + reason)
 
         predicted.outcomes.append(Fixture.outcome("5", .blocked, reason: "초안을 만든 뒤 rekordbox에서 큐가 바뀌었습니다"))
         actual.playlistOutcomes = [set, Fixture.playlistOutcome(.create(key: "e", name: " ", isFolder: false, parent: .root), " ", .blocked,
                                                                 reason: "이름을 적어 주세요")]
         let many = WriteResult.written(actual, preview: predicted)
         #expect(many.kind == .warning)
-        #expect(many.toast.detail == "큐 1곡 · 그리드 1곡 · 재생 목록 1건은 쓰지 않았습니다", "이유가 여럿이면 [결과 보기] 단추가 안내하므로 글로 되풀이하지 않는다")
+        #expect(many.toast.detail == "큐 1곡 · 그리드 1곡 · 재생 목록 1건은 저장하지 않았습니다", "이유가 여럿이면 [결과 보기] 단추가 안내하므로 글로 되풀이하지 않는다")
     }
 
     /// #147: 쓴 항목에 붙은 참고 사유(경로가 예상과 달라 분석 파일을 남김)만 있으면 성공으로 보이고, 사유는 결과에 남긴다.
@@ -130,7 +130,7 @@ struct WriteResultTests {
 
         report.added[0].cueReason = "큐가 바뀜"
         let all = WriteResult.tracks(report, preview: preview, adding: true, withoutAnalysis: ["a": "ALAC"])
-        #expect(all.toast.detail == "1곡은 넣지 않았습니다 · 1곡은 분석 없이 넣었습니다 · 1곡의 큐는 쓰지 않았습니다")
+        #expect(all.toast.detail == "1곡은 넣지 않았습니다 · 1곡은 분석 없이 넣었습니다 · 1곡의 큐는 저장하지 않았습니다")
     }
 
     @Test func 태그_결과도_곡마다_남긴다() {
@@ -138,8 +138,8 @@ struct WriteResultTests {
         let predicted = preview.report
         preview.report.tagOutcomes = [Fixture.tagOutcome("t", .written)]
         let result = WriteResult.written(preview.report, preview: predicted)
-        #expect(result.title == "rekordbox에 썼습니다 · 태그 1곡" && result.kind == .warning)
-        #expect(result.text.contains("• 곡 t — 태그 쓰기 완료") && result.text.contains("• 곡 x — 태그 쓰지 않음: 바뀜"))
+        #expect(result.title == "rekordbox에 저장했습니다 · 태그 1곡" && result.kind == .warning)
+        #expect(result.text.contains("• 곡 t — 태그 저장 완료") && result.text.contains("• 곡 x — 태그 저장하지 않음: 바뀜"))
         let backup = RekordboxWriter.Backup(url: URL(filePath: "/tmp/b"), createdAt: .now, isWrite: true, report: preview.report)
         #expect(WriteResult.restored(backup, saved: URL(filePath: "/tmp/s")).text.contains("• 곡 t"))
     }
@@ -157,7 +157,7 @@ struct WriteResultTests {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let history = ActivityLog(url: folder)
-        let result = WriteResult(kind: .success, title: "쓴 결과", text: "전체 내용")
+        let result = WriteResult(kind: .success, title: "저장한 결과", text: "전체 내용")
         history.record(result)
         #expect(history.latest?.result == result)
         #expect(history.storageError != nil)
@@ -172,7 +172,7 @@ struct WriteResultTests {
             cancelled = Task.isCancelled
         }
         while suspended == nil { await Task.yield() }
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         store.cancelWritePreparation()
         suspended?.resume()
         await store.writeTask?.value
@@ -182,7 +182,7 @@ struct WriteResultTests {
     @Test func 실패_결과도_토스트를_닫은_뒤_남는다() {
         let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { _ in }))
         ReflectionPresenter(store: store, prompter: ScriptedPrompter())
-            .publish(.failed(title: "rekordbox에 쓰지 않았습니다", error: FixtureFailure(), exclusions: []))
+            .publish(.failed(title: "rekordbox에 저장하지 않았습니다", error: FixtureFailure(), exclusions: []))
         store.dismissToast()
         #expect(store.activityLog.latest?.result?.kind == .failure)
         #expect(store.activityLog.latest?.result?.text == AppErrorMessage.message(for: FixtureFailure()))
@@ -196,10 +196,10 @@ struct WriteResultTests {
             ReflectionPresenterTests.playlistOutcome(.rename(playlist: .id("3"), name: "같음"), "같음", .unchanged),
         ]
         let result = WriteResult.written(report, preview: report)
-        #expect(result.kind == .warning && result.title == "rekordbox에 썼습니다 · 재생 목록 1건")
+        #expect(result.kind == .warning && result.title == "rekordbox에 저장했습니다 · 재생 목록 1건")
         #expect(result.text.components(separatedBy: "\n") == [
-            "• 목록 — 재생 목록 쓰기 완료: 1곡 빼기",
-            "• 폴더 — 재생 목록 쓰지 않음(지우기): rekordbox에서 지운 목록입니다",
+            "• 목록 — 재생 목록 저장 완료: 1곡 빼기",
+            "• 폴더 — 재생 목록 저장하지 않음(지우기): rekordbox에서 지운 목록입니다",
             "• 같음 — 재생 목록 변경 없음(이름 바꾸기)",
         ])
     }

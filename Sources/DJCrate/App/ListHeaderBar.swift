@@ -37,7 +37,7 @@ struct ListHeaderBar: View {
 
 /// 머리 줄 왼쪽 끝 검색칸. 검색어와 포커스 요청은 이 뷰의 본문만 읽는다. 부모 본문에서 `Binding`을 만들어 넘기면 부모가
 /// 검색어·표시 줄 변화에 걸려 다시 계산됐다(변경 추적으로 확인). 그래서 부모는 저장소와 화면 모델만 넘기고 읽지 않는다.
-/// 검색 범위(제목·아티스트·코멘트)와 키 동작(Esc는 지우고 목록으로, Return은 목록으로, 한글 조합)은 툴바 검색칸 때와 같다.
+/// 검색 칸과 낱말 규칙(`TrackSearch`)은 곡 목록·중복 후보·CLI와 같다. 키 동작(Esc는 지우고 목록으로, Return은 목록으로, 한글 조합)은 툴바 검색칸 때와 같다.
 struct ListSearchField: View {
     /// 넉넉할 때의 폭, 폭이 모자랄 때 줄이는 폭, 마지막 수단의 폭(`ListHeaderLayout`이 이 차례로 줄인다)
     static let width: CGFloat = 240
@@ -51,7 +51,7 @@ struct ListSearchField: View {
     var body: some View {
         let _ = PerfProbe.body(Self.self)
         SearchFieldRepresentable(text: store.search, focusRequest: window.searchFocusRequest,
-                                 prompt: String(ui: "제목·아티스트·코멘트"), isEnabled: isEnabled) { store.search = $0 }
+                                 prompt: String(ui: "목록 검색"), isEnabled: isEnabled) { store.search = $0 }
             .frame(minWidth: Self.minimumWidth, idealWidth: Self.width, maxWidth: Self.width)
             .selfTestFrame("listHeader.search")
     }

@@ -51,16 +51,16 @@ enum ReflectionChip: Equatable {
     /// 칩 글자. 이유가 있으면 이유를 앞에 두고 「 · 」로 쓰기 대기 수를 잇는다
     var title: String {
         switch self {
-        case .clean: return String(ui: "쓰기 대기 없음")
+        case .clean: return String(ui: "저장됨")
         case let .pending(items, playlistEdits, reason):
             let count = PendingWriteCount(items: items, playlistEdits: playlistEdits).text
             guard let reason else { return count }
             return String(ui: "\(reason.text) · \(count)")
         case let .blocked(_, items, playlistEdits):
-            let blocked = String(ui: "rekordbox에 쓸 수 없음")
+            let blocked = String(ui: "rekordbox에 저장할 수 없음")
             let count = PendingWriteCount(items: items, playlistEdits: playlistEdits)
             return count.isEmpty ? blocked : String(ui: "\(blocked) · \(count.text)")
-        case .writing: return String(ui: "rekordbox에 쓰는 중…")
+        case .writing: return String(ui: "rekordbox에 저장하는 중…")
         }
     }
 
@@ -96,7 +96,7 @@ struct ReflectionLastWrite: Equatable {
     /// 「마지막 쓰기 14:02 · 백업 있음」. 오늘이 아니면 월·일을 함께 적는다
     func text(now: Date = .now, calendar: Calendar = .current) -> String {
         let when = date.formatted(Self.timeFormat(includesDate: !calendar.isDate(date, inSameDayAs: now)))
-        return hasBackup ? String(ui: "마지막 쓰기 \(when) · 백업 있음") : String(ui: "마지막 쓰기 \(when)")
+        return hasBackup ? String(ui: "마지막 저장 \(when) · 백업 있음") : String(ui: "마지막 저장 \(when)")
     }
 }
 
@@ -110,6 +110,10 @@ struct DockBadge {
 /// 창 아래 상태 줄의 rekordbox 쓰기 상태 화면 모델(#324): 칩(쓰기 대기 없음·쓰기 대기 N건·재생 목록 편집 N건·쓰는 중), 보조 글(마지막 쓰기),
 /// 상태 팝오버의 단추, Dock 배지. 저장소의 쓰기 대기 수·재생 목록 초안·쓰기 중·활동 기록을 관찰해 스스로 고친다. 뷰는 읽기만 한다.
 /// 새 쓰기 경로는 없다. 팝오버 단추와 [쓰기]는 메뉴 막대와 같은 `LibraryMenuAction`을 같은 조건으로 부른다.
+///
+/// 자동 저장(#404, R3): 엔진이 있는 앱은 엔진이 알린 상태·조건(`AutoReflectionFeed`)을 R3 표의 줄 순서(`ReflectionStatusRow.first`)로 읽어
+/// 칩 글자(`line`)·저장 단추(`showsWriteButton`)·대량 유예 [취소]·중단 알림 단추(`journalActions`)를 정한다. 아래 #324~#327 설명은 엔진이 없는 조립
+/// (화면 시험·진단 실행)이 그대로 따른다: 저장 대기가 있으면 [저장]이 보이고 켜짐·꺼짐 이유가 칩에 붙는다.
 ///
 /// rekordbox 켜짐·꺼짐(#326): 감지 서비스의 판정(`runState`)을 쓰기 대기의 이유로 붙인다(켜져 있습니다·Agent·끝나는 중·꺼졌습니다).
 /// 강조는 켜짐(또는 Agent만)→꺼짐 **전이**에서만 시작한다. 전이 직후 `settleDelay` 동안은 「끝나는 중…」이고 [지금 쓰기] 강조를 미룬다.
@@ -136,7 +140,7 @@ final class ReflectionStatusModel {
         let action: LibraryMenuAction
         var id: LibraryMenuAction { action }
         var title: String
-        /// 단축키 안내(⇧⌘E). 단축키는 메뉴 막대가 맡으므로 단추에 달지 않고 글자로만 보인다
+        /// 단축키 안내(⌘S). 단축키는 메뉴 막대가 맡으므로 단추에 달지 않고 글자로만 보인다
         var shortcutHint: String?
         var isEnabled: Bool
         /// 막힌 이유(메뉴 막대 항목의 툴팁과 같은 문장)
@@ -159,7 +163,8 @@ final class ReflectionStatusModel {
     @ObservationIgnored var sleep: @Sendable (Duration) async throws -> Void
     /// 켜짐→꺼짐 전이 뒤 확인 시간. 시험이 바꿔 끼운다
     @ObservationIgnored var settleSleep: @Sendable (Duration) async throws -> Void
-    @ObservationIgnored private var showsWriting = false
+    /// 쓰기 단계가 1초 넘게 이어졌다(「쓰는 중」을 보인다). 칩 글자가 이 값을 읽으므로 관찰한다
+    private(set) var showsWriting = false
     @ObservationIgnored private var writingDelayTask: Task<Void, Never>?
     /// 마지막으로 안 켜짐·꺼짐 판정(모름은 넣지 않는다). 켜짐→꺼짐 전이를 알아보는 데 쓴다
     @ObservationIgnored private var lastKnownRun: RekordboxRunState?
@@ -189,6 +194,96 @@ final class ReflectionStatusModel {
         self.settleSleep = settleSleep
     }
 
+    // MARK: - R3 표(엔진 상태, #404)
+
+    /// 중단 알림의 단추
+    enum JournalAction: Equatable {
+        /// 기록으로 복원…
+        case restore
+        /// 이대로 두기…
+        case keep
+
+        var title: String {
+            switch self {
+            case .restore: String(ui: "기록으로 복원…")
+            case .keep: String(ui: "이대로 두기…")
+            }
+        }
+    }
+
+    /// 엔진이 알린 상태. 엔진이 없는 조립(화면 시험·진단)은 nil이라 지금 동작 그대로다(저장 대기가 있으면 저장 단추)
+    private var feed: AutoReflectionFeed? { window.autoFeed }
+
+    /// 지금 R3 표에서 드는 줄. 엔진이 없으면 자동 저장하지 않는 실행으로 본다(6번 줄: 저장 대기가 있을 때 단추)
+    var saveRow: ReflectionStatusRow {
+        if let row = window.saveRow { return row }
+        return ReflectionStatusRow.first(ReflectionConditions(holds: store.writeBlock.map { [.unwritable($0)] } ?? [], writing: isWriting,
+                                                              hasPending: !store.pendingWriteSummary.isEmpty))
+    }
+
+    /// 저장 단추와 ⌘S가 하는 일
+    var saveCommand: ReflectionSaveCommand { saveRow.saveCommand }
+
+    /// 상태 줄 칩이 보이는 것(R3 표의 "상태 줄" 칸)
+    var line: ReflectionStatusLine {
+        if let stage = preparingStage {
+            let progress = stage.completed.flatMap { done in stage.total.map { " \(done)/\($0)" } } ?? ""
+            return ReflectionStatusLine(title: stage.text + progress, symbol: .writing)
+        }
+        guard let feed, let conditions = window.saveConditions else { return legacyLine }
+        var line = ReflectionStatusText.line(status: feed.status, conditions: conditions, row: saveRow, count: store.pendingWriteSummary,
+                                             showsWriting: showsWriting)
+        // 재생 목록 초안을 디스크와 맞추지 못했거나 보관하지 못한 동안은 재생 목록 편집을 쓰지 못한다(엔진은 이유 둘을 한 '확인 필요'로 보낸다).
+        // 이 줄이 이유를 한 번 말한다: ⌘S가 이 편집만 있을 때도 같은 안내를 보인다(`ReflectionSession.write`)
+        if saveRow == .leftover, store.playlists.playlistDraftNeedsSync || store.playlists.playlistDraftUnsaved {
+            line.details.append(ReflectionSession.playlistSaveFailureText)
+        }
+        return line
+    }
+
+    /// 엔진이 없는 조립의 칩(#324~#327 그대로)
+    private var legacyLine: ReflectionStatusLine {
+        switch chip {
+        case .clean: ReflectionStatusLine(title: chip.title, symbol: .saved)
+        case .pending: ReflectionStatusLine(title: chip.title, symbol: .pending)
+        case .blocked: ReflectionStatusLine(title: chip.title, symbol: .warning, help: chip.blockReason)
+        case .writing: ReflectionStatusLine(title: chip.title, symbol: .writing)
+        }
+    }
+
+    /// 대량 유예 중이면 남은 초(「N초 뒤 저장 · [취소]」, R14)
+    var graceSecondsLeft: Int? {
+        if let feed, case let .grace(seconds) = feed.status { return seconds }
+        return nil
+    }
+
+    /// 대량 유예의 [취소]. 초안은 남고 다음 편집이나 ⌘S까지 자동 저장하지 않는다
+    func cancelGrace() { reflection?.cancelGrace() }
+
+    /// 곡 단위로 쓰기 전 취소할 수 있는 단계(사본 만들기·바꿀 내용 확인·음량 재기). 1초 넘게 이어지면 칩이 이 단계를 보이고 옆에 [취소]를 둔다.
+    /// 목록과 상태 줄 사이에 진행 띠를 끼우던 때는 띠가 뜨고 질 때마다 목록 높이가 바뀌어 저장마다 목록이 출렁였다
+    var preparingStage: WriteStage? {
+        guard showsWriting, store.showsWriteProgressChip else { return nil }
+        return store.writeStage
+    }
+
+    /// 준비 단계의 [취소]. 보이는 동안 Esc도 같다
+    func cancelPreparation() { store.cancelWritePreparation() }
+
+    /// 중단 알림의 단추(R11): 보통은 복원이 먼저다. 백업 뒤 rekordbox에서 라이브러리가 바뀌었으면 이대로 두기를 먼저 보인다
+    var journalActions: [JournalAction] {
+        guard let conditions = window.saveConditions, saveRow == .interrupted else { return [] }
+        return conditions.interruptedChangedSince ? [.keep, .restore] : [.restore, .keep]
+    }
+
+    func perform(_ action: JournalAction) {
+        isPresented = false
+        switch action {
+        case .restore: reflection?.startRestoreJournal()
+        case .keep: reflection?.startKeepJournal()
+        }
+    }
+
     // MARK: - 읽는 값
 
     /// 칩 옆 보조 글. 마지막 쓰기가 없으면 nil(숨긴다)
@@ -196,12 +291,8 @@ final class ReflectionStatusModel {
 
     /// 곡 대기와 재생 목록 편집이 함께 있으면 팝오버가 편집 건수를 덧붙인다(쓸 수 없을 때도 같다)
     var extraLine: String? {
-        let items: Int, playlistEdits: Int
-        switch chip {
-        case let .pending(count, edits, _), let .blocked(_, count, edits): (items, playlistEdits) = (count, edits)
-        case .clean, .writing: return nil
-        }
-        guard items > 0, playlistEdits > 0 else { return nil }
+        let items = store.pendingWriteCount, playlistEdits = store.playlists.playlistDraft.steps.count
+        guard line.symbol != .writing, items > 0, playlistEdits > 0 else { return nil }
         return String(ui: "재생 목록 편집 \(playlistEdits)건")
     }
 
@@ -211,33 +302,50 @@ final class ReflectionStatusModel {
         return phase == .writing || phase == .readingBack
     }
 
-    /// 칩 옆 [쓰기] 단추를 보일 때: 쓰기 대기가 있을 때. 쓸 수 없을 때는 보이지 않는다(화면 표시만, 메뉴·팝오버 항목은 지금 판단 그대로)
-    var showsWriteButton: Bool { chip.isPending }
+    /// 칩이 진행을 보일 때: 실제로 쓰는 중이거나, 곡 단위 쓰기의 취소할 수 있는 준비 단계다(통째로 잠그는 쓰기의 준비는 창 덮개가 보인다)
+    private var showsProgress: Bool { isWriting || store.showsWriteProgressChip }
+
+    /// 칩 옆 [저장] 단추를 보일 때. 엔진이 있으면 R3 표의 줄이 정한다(자동 저장이 멈췄거나 스스로 저장하지 않을 편집이 남았을 때만).
+    /// 엔진이 없으면 지금처럼 쓰기 대기가 있을 때(쓸 수 없을 때는 보이지 않는다, 화면 표시만, 메뉴·팝오버 항목은 지금 판단 그대로)
+    var showsWriteButton: Bool {
+        // 쓰기를 준비하는 동안에는 [저장] 대신 [취소]다
+        guard preparingStage == nil else { return false }
+        return feed == nil ? chip.isPending : saveRow.showsSaveButton
+    }
 
     /// rekordbox가 꺼진 것을 확인해 [지금 쓰기]를 강조할 때(#326). 단추는 같고 글자와 모양만 다르다
-    var emphasizesWrite: Bool { chip.reason == .rekordboxStopped }
+    /// 엔진이 있으면 꺼진 것을 확인한 뒤 저장은 자동 저장이 맡으므로 강조하지 않는다(단추가 보이는 줄은 이 신호와 상관없다)
+    var emphasizesWrite: Bool { feed == nil && chip.reason == .rekordboxStopped }
 
     /// 칩 옆 단추 글자. 강조할 때만 「지금 쓰기」다. 둘 다 같은 명령(`LibraryMenuAction.reflect`)을 같은 조건으로 부른다
-    var writeButtonTitle: String { emphasizesWrite ? String(ui: "지금 쓰기") : String(ui: "쓰기") }
+    var writeButtonTitle: String { emphasizesWrite ? String(ui: "지금 저장") : String(ui: "저장") }
 
     /// 팝오버에 붙이는 할 일 한 줄. 켜진 것을 끈 뒤 쓰라고 알린다(#326). rekordboxAgent는 끄는 방법을 확인하지 않았으므로 끄라고만 쓴다
     var todoLine: String? {
         switch chip.reason {
-        case .rekordboxRunning: String(ui: "rekordbox를 끈 뒤 쓰세요")
-        case .agentRunning: String(ui: "rekordboxAgent를 종료한 뒤 쓰세요")
+        case .rekordboxRunning: String(ui: "rekordbox를 끈 뒤 저장하세요")
+        case .agentRunning: String(ui: "rekordboxAgent를 종료한 뒤 저장하세요")
         case .rekordboxStopping, .rekordboxStopped, nil: nil
         }
     }
 
-    /// 팝오버 상태 아래 글(차례대로): 쓸 수 없는 이유(맨 위), 할 일, 함께 있는 재생 목록 편집 건수, 마지막 쓰기
-    var popoverLines: [String] { [chip.blockReason, todoLine, extraLine, lastWriteText].compactMap { $0 } }
+    /// 팝오버 상태 아래 글(차례대로): 쓸 수 없는 이유(맨 위), 할 일, 함께 있는 재생 목록 편집 건수, 마지막 쓰기.
+    /// 엔진이 있으면 칩이 말한 이유의 전문과 함께 걸린 다른 이유가 이유 자리에 온다
+    var popoverLines: [String] {
+        guard feed != nil else { return [chip.blockReason, todoLine, extraLine, lastWriteText].compactMap { $0 } }
+        return (line.details + [extraLine, lastWriteText].compactMap { $0 })
+    }
+
+    /// 팝오버 맨 위 글
+    var popoverTitle: String { line.title }
 
     /// 메뉴 막대 「rekordbox에 쓰기」와 같은 활성 조건
     var canWrite: Bool { LibraryMenuAction.reflect.isEnabled(in: window) }
     var writeDisabledReason: String? { LibraryMenuAction.reflect.disabledReason(in: window) }
 
+    /// 팝오버 단추. 엔진이 있으면 저장 항목도 저장 단추처럼 R3 표의 줄(6~8번)에서만 보인다(다른 줄은 ⌘S가 이유를 보인다)
     var items: [Item] {
-        Self.popoverActions.map { action in
+        Self.popoverActions.filter { $0 != .reflect || feed == nil || showsWriteButton }.map { action in
             Item(action: action, title: action.title, shortcutHint: action.shortcut.map(Self.hint),
                  isEnabled: action.isEnabled(in: window), disabledReason: action.disabledReason(in: window))
         }
@@ -274,7 +382,7 @@ final class ReflectionStatusModel {
 
     /// 저장소 값에서 상태를 다시 읽는다. 바뀐 값만 쓴다(같은 값을 다시 쓰면 상태 줄이 쓸데없이 다시 그려진다)
     func refresh() {
-        updateWritingDelay(isWriting)
+        updateWritingDelay(showsProgress)
         let count = store.pendingWriteCount
         let playlistEdits = store.playlists.playlistDraft.steps.count
         let run = runState()
@@ -296,6 +404,7 @@ final class ReflectionStatusModel {
             _ = store.pendingWriteCount
             _ = store.playlists.playlistDraft.steps.count
             _ = store.rekordboxWritePhase
+            _ = store.showsWriteProgressChip
             _ = store.hasWriteBackup
             _ = store.activityLog.entries
             _ = store.writeBlock
@@ -381,7 +490,7 @@ final class ReflectionStatusModel {
         let sleep = sleep
         writingDelayTask = Task { [weak self] in
             do { try await sleep(Self.writingDelay) } catch { return }
-            guard let self, !Task.isCancelled, isWriting else { return }
+            guard let self, !Task.isCancelled, showsProgress else { return }
             showsWriting = true
             writingDelayTask = nil
             refresh()

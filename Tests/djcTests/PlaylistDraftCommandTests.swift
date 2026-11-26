@@ -138,7 +138,7 @@ struct PlaylistDraftCommandTests {
         let text = try cli.run(["playlist", "apply", "--file", file.path], fixture: fixture, json: false)
         let lines = String(decoding: text.stdout, as: UTF8.self)
         #expect(text.status == 0)
-        #expect(lines.contains("쌓은 편집 5") && lines.contains("✗ #6 rename ‘자동’ (903)") && lines.contains("rekordbox에는 아직 쓰지 않았습니다"))
+        #expect(lines.contains("쌓은 편집 5") && lines.contains("✗ #6 rename ‘자동’ (903)") && lines.contains("rekordbox에는 아직 저장하지 않았습니다"))
     }
 }
 

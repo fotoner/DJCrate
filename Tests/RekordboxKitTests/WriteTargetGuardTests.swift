@@ -41,7 +41,7 @@ struct WriteTargetGuardTests {
             _ = try RekordboxWriter.write(drafts: [WriteGuardTests().draft(track)], to: alias,
                                           dryRun: condition == "dryRun", backups: copy.backups, guard: writeGuard)
         }
-        let expected = ["running": "켜져", "wal": "WAL", "version": "7.3.0", "dryRun": "스냅샷"]
+        let expected = ["running": "켜져", "wal": "WAL", "version": "7.3.0", "dryRun": "읽은 사본"]
         #expect(reason?.contains(expected[condition]!) == true)
         #expect(try FileManager.default.contentsOfDirectory(atPath: copy.backups.path).isEmpty)
     }

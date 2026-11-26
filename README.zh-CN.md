@@ -7,7 +7,7 @@
 > [!WARNING]
 > DJCrate 目前仍处于 **测试版**（0.x）阶段，可能会出现意料之外的问题。
 >
-> DJCrate 在写入 rekordbox 之前，会自动备份整个资料库。如果写入后出现问题，请通过菜单栏 rekordbox › [Restore Before Write…]（恢复到写入前）或帮助菜单中的同名项进行还原。如果问题仍然存在，请通过 [Issues](https://github.com/fotoner/DJCrate/issues) 联系我们。
+> DJCrate 在保存到 rekordbox 之前，会自动备份整个资料库。如果保存后出现问题，请通过菜单栏 rekordbox › [Restore Before Save…]（恢复到保存前）或帮助菜单中的同名项进行还原。如果问题仍然存在，请通过 [Issues](https://github.com/fotoner/DJCrate/issues) 联系我们。
 >
 > DJCrate 依据 [GPL-2.0-or-later 许可证](LICENSE)按“原样”提供。对于使用过程中发生的任何数据丢失或损害，开发者不承担责任。
 
@@ -20,20 +20,20 @@ DJCrate 是一款 macOS 应用，无需启动 rekordbox 即可编辑 rekordbox 7
 
 ## 安全原则
 
-- 所有编辑都先保存为草稿。只有点击 [Write to rekordbox] 时才会写入 rekordbox，快捷键为 ⇧⌘E。
-- rekordbox 或 rekordboxAgent 正在运行时，绝不写入。
-- 只在已验证的版本（7.2.x）和数据库结构上写入。
-- 写入前备份整个资料库，在一个事务中完成写入，然后重新读取进行校验。
-- 可以通过 [Restore Before Write…] 还原。
-- 只执行已逐字段确认与 rekordbox 中相同编辑结果一致的写入。其余写入一律阻止，并在界面上显示原因。
+- 所有编辑都先保留为待保存。只有点击 [Save to rekordbox] 时才会保存到 rekordbox，快捷键为 ⌘S。
+- rekordbox 或 rekordboxAgent 正在运行时，绝不保存。
+- 只在已验证的版本（7.2.x）和数据库结构上保存。
+- 保存前备份整个资料库，在一个事务中完成保存，然后重新读取进行校验。
+- 可以通过 [Restore Before Save…] 还原。
+- 只执行已逐字段确认与 rekordbox 中相同编辑结果一致的保存。其余保存一律阻止，并在界面上显示原因。
 
-![Pending rekordbox Writes（待写入 rekordbox）列表与标签检查器。橙色标记表示尚未写入的字段（合成测试数据）](docs/images/readme/en/write-pending.png)
+![Pending rekordbox Saves（待保存到 rekordbox）列表与标签检查器。橙色标记表示尚未保存的字段（合成测试数据）](docs/images/readme/en/write-pending.png)
 
 ## 安装与运行
 
 预先构建的应用（测试版，Apple Silicon）可在 [GitHub Releases](https://github.com/fotoner/DJCrate/releases) 下载。下载后的安装步骤见[发布文档](docs/releasing.md#설치)。
 
-应用会自动检查新版本并提示。只有在验证签名后才会安装更新；正在写入 rekordbox 或 USB 时会推迟安装。可在 Settings › [Updates]（设置 › 更新）中选择自动检查与自动安装。v0.1.0 没有此功能，请手动下载并安装一次下一个版本。
+应用会自动检查新版本并提示。只有在验证签名后才会安装更新；正在保存到 rekordbox 或写入 USB 时会推迟安装。可在 Settings › [Updates]（设置 › 更新）中选择自动检查与自动安装。v0.1.0 没有此功能，请手动下载并安装一次下一个版本。
 
 从源码构建需要：
 
@@ -47,13 +47,13 @@ scripts/build-app.sh --install        # /Applications/DJCrate.app
 swift build -c release --product djc  # .build/release/djc
 ```
 
-1. 点击工具栏中的 ⟳ [Sync with rekordbox]（与 rekordbox 同步），创建资料库的副本（快照）。快捷键为 ⌘R。此时 rekordbox 可以保持打开。
-2. 在 Deck 和曲目列表中编辑。编辑过的曲目会带有待写入标记，并汇集到侧边栏的 [Pending rekordbox Writes]（待写入 rekordbox）中。
+1. 点击工具栏中的 ⟳ [Sync with rekordbox]（与 rekordbox 同步），创建资料库的副本。快捷键为 ⌘R。此时 rekordbox 可以保持打开。
+2. 在 Deck 和曲目列表中编辑。编辑过的曲目会带有待保存标记，并汇集到侧边栏的 [Pending rekordbox Saves]（待保存到 rekordbox）中。
 3. 完全退出 rekordbox 和 rekordboxAgent。
-4. 点击 [Write to rekordbox]。DJCrate 会先在副本上试写。只有存在被阻止或被略过的内容时，才会先在确认对话框中列出这些项目；否则直接写入。
-5. 如需还原，请点击结果通知中的 [Restore Before Write]（恢复到写入前）。
+4. 点击 [Save to rekordbox]。DJCrate 会先在副本上试保存。只有存在被阻止或被略过的内容时，才会先在确认对话框中列出这些项目；否则直接保存。
+5. 如需还原，请点击结果通知中的 [Restore Before Save]（恢复到保存前）。
 
-副本、草稿和备份保存在 `~/Library/Application Support/DJCrate/`。其中包含云端令牌，请勿分享。
+副本、编辑和备份保管在 `~/Library/Application Support/DJCrate/`。其中包含云端令牌，请勿分享。
 
 ## 功能
 
@@ -65,12 +65,12 @@ swift build -c release --product djc  # .build/release/djc
 | 曲目编辑与 Flip（实验性） | 将按小节剪接的编辑版本，或记录了 Hot Cue 跳转与 Loop 演奏的编辑版本渲染为 WAV，并加入资料库 |
 | 播放列表 | 创建播放列表与文件夹、重命名、移动、删除、添加与移除曲目、调整顺序。可在侧边栏中按住 ⌘ 或 ⇧ 点击，一次删除或移动多个 |
 | 播放历史 | 浏览播放历史，并由历史生成播放列表。保存 CDJ、XDJ 留在 USB 上的历史，再将其加入 rekordbox 的播放历史 |
-| XML | 供 rekordbox 导入的联动 XML、整个资料库的 XML 导出（只读）、导入 rekordbox XML（先预览差异，再生成草稿）、导入 Apple Music XML |
+| XML | 供 rekordbox 导入的联动 XML、整个资料库的 XML 导出（只读）、导入 rekordbox XML（先预览差异，再添加为编辑）、导入 Apple Music XML |
 | USB（实验性） | 读取、导出、编辑与同步 OneLibrary 和 Device Library；为旧 USB 添加 OneLibrary。只有在 [Export to USB]（导出到 USB）面板或写入确认对话框中确认写入后，才会写入实体 USB（写入前备份，写入后校验） |
-| 还原 | 恢复到写入前、还原点（每天自动创建一次、与当前比较、还原到该时间点）、修复被阻止的草稿 |
+| 还原 | 恢复到保存前、还原点（每天自动创建一次、与当前比较、还原到该时间点）、修复被阻止的编辑 |
 | 更新 | 在 GitHub Releases 上查找新版本并提示，验证签名后安装。Settings › [Updates]（设置 › 更新） |
 | 实验室 | 显示智能播放列表（只读）。在 Settings › [Labs]（设置 › 实验室）中开启 |
-| CLI 与智能体 | 使用 `djc` 浏览资料库，并创建 Cue、标签与播放列表草稿。还提供 XML、USB 和还原点相关命令。适用于 Claude Code 与 Codex 的[技能](skills/djcrate/SKILL.md)和 `djc` 可在 Settings › [AI Agents]（设置 › AI 智能体）中安装与更新 |
+| CLI 与智能体 | 使用 `djc` 浏览资料库，并创建 Cue、标签与播放列表编辑。还提供 XML、USB 和还原点相关命令。适用于 Claude Code 与 Codex 的[技能](skills/djcrate/SKILL.md)和 `djc` 可在 Settings › [AI Agents]（设置 › AI 智能体）中安装与更新 |
 
 ![Tag Sheet（标签表）与播放列表树（合成测试数据）](docs/images/readme/en/tag-sheet.png)
 

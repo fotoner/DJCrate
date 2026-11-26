@@ -47,7 +47,10 @@ struct ReflectionSessionHistoryTests {
         // 다시 읽기 전에 쓴 기록 ID를 남긴다(다시 읽지 못해도 같은 기록을 또 쓰지 않게)
         #expect(h.recordedHistories == [[Self.outcome("a", .written)]])
         #expect(h.log.first("record histories")! < h.log.first("reload")!)
-        #expect(h.locks == ["true", "false"])
+        // 쓸 곡이 없는 묶음(재생 기록만)은 곡을 정할 수 없어 편집을 통째로 막되 덱은 잠그지 않는다
+        // 재생 기록만 쓰는 묶음도 곡이 없을 뿐 초안 쓰기라 통째 편집 잠금을 걸지 않는다(R21). 곡·초안 쓰기를 먼저 정하고 쓰는 중으로 바꾸며,
+        // 풀 때는 쓰는 중을 먼저 풀고 초안 쓰기·곡을 비운다(사이에 통째 편집 잠금이 한 틱 켜지지 않게)
+        #expect(h.locks == ["곡 -", "초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false", "곡 -"] && h.trackLocks == [[], []])
     }
 
     @Test func 막힌_재생_기록이_있으면_확인_창에_이유를_보이고_쓸_수_있는_것만_쓴다() async throws {
@@ -57,12 +60,12 @@ struct ReflectionSessionHistoryTests {
                                        cues: [H.outcome("x", .written)])
         #expect(await h.session.write(rows: [H.row("x")]).name == "written")
         let prompt = try #require(h.prompts.first)
-        #expect(prompt.title == "큐 1곡을 rekordbox에 쓸까요?")
-        #expect(prompt.details == ["쓰지 않는 것 1:", "• HISTORY b: 재생 기록 쓰기를 아직 열지 않았습니다"])
+        #expect(prompt.title == "큐 1곡을 rekordbox에 저장할까요?")
+        #expect(prompt.details == ["저장하지 않는 것 1:", "• HISTORY b: 재생 기록 쓰기를 아직 열지 않았습니다"])
         #expect(h.gateCalls.value.writes.first?.drafts.map(\.trackUUID) == ["x"] && h.gateCalls.value.writes.first?.histories == [])
         // 함께 쓸 수 있으면 제목에 함께 센다
         let both = Self.report([Self.outcome("a", .written), Self.outcome("b", .blocked, reason: "이유")], cues: [H.outcome("x", .written)])
-        #expect(ReflectionPrompts.confirmation(both).title == "큐 1곡 · 재생 기록 1건을 rekordbox에 쓸까요?")
+        #expect(ReflectionPrompts.confirmation(both).title == "큐 1곡 · 재생 기록 1건을 rekordbox에 저장할까요?")
     }
 
     @Test func 재생_기록이_모두_막히면_창_없이_쓰지_않는다() async {
@@ -74,7 +77,7 @@ struct ReflectionSessionHistoryTests {
 
     @Test func 곡을_골라_쓰는_메뉴는_재생_기록을_넣지_않는다() async {
         h.state.pendingHistories = [Self.history("a")]
-        #expect(await h.session.write(rows: [H.row("a")], playlists: false).notice?.title == "쓸 초안이 없습니다")
+        #expect(await h.session.write(rows: [H.row("a")], playlists: false).notice?.title == "저장할 편집이 없습니다")
         #expect(h.gateCalls.value.previews.isEmpty)
         pendingCue("x")
         h.script.preview = H.report(cues: [H.outcome("x", .written)])

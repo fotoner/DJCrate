@@ -4,7 +4,7 @@ import Foundation
 public enum ITunesSelectionError: Error, LocalizedError {
     case invalidFile
     public var errorDescription: String? {
-        String(ui: "iTunes 동기화 정보를 읽을 수 없습니다. rekordbox에서 iTunes 목록을 다시 동기화한 뒤 새 스냅샷을 뜨세요.")
+        String(ui: "iTunes 동기화 정보를 읽을 수 없습니다. rekordbox에서 iTunes 목록을 다시 동기화한 뒤 ‘rekordbox와 동기화’를 하세요.")
     }
 }
 
@@ -31,7 +31,7 @@ public struct ITunesLibrarySnapshot: Codable, Equatable, Sendable {
         public var message: String? {
             switch self {
             case .ready: nil
-            case .loading: String(ui: "새 스냅샷을 뜨고 있습니다")
+            case .loading: String(ui: "rekordbox와 동기화하는 중입니다")
             case .stale: String(ui: "iTunes 목록 갱신에 실패해 이전 사본을 표시합니다. Music 접근 권한과 rekordbox의 iTunes 읽기 설정을 확인한 뒤 새로고침하세요.")
             case .notCaptured: String(ui: "이 사본에는 캡처한 iTunes 목록이 없습니다")
             case .unavailable: String(ui: "iTunes 목록을 읽지 못했으니 Music 접근 권한과 rekordbox의 iTunes 읽기 설정을 확인한 뒤 새로고침하세요.")

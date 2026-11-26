@@ -24,7 +24,7 @@ final class RelocateModel: Identifiable {
 
     /// 경로 바꾸기 쓰기를 막아 둔 이유(버튼 옆에 그대로 보인다).
     static var writeBlockedReason: String {
-        String(ui: "경로 바꾸기 쓰기 규칙을 rekordbox 실험으로 아직 확인하지 않아 막아 두었으니, 지금은 rekordbox의 Relocate로 직접 연결하세요.")
+        String(ui: "경로 바꾸기 저장 규칙을 rekordbox 실험으로 아직 확인하지 않아 막아 두었으니, 지금은 rekordbox의 Relocate로 직접 연결하세요.")
     }
 
     let tracks: [Track]

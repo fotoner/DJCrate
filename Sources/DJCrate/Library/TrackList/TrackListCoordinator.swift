@@ -141,8 +141,9 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
                 replaceRows(table)
                 applySelection(selection, table: table, scroll: true)
             } else {
-                // 순서는 같고 내용만 바뀜(새 스냅샷): 보이는 줄만 다시 그린다.
-                reloadVisible(table)
+                // 순서는 같고 내용만 바뀜(저장 뒤 새 사본 등): 만들어 둔 줄의 칸을 제자리에서 다시 채운다.
+                // `reloadData(forRowIndexes:)`는 칸을 떼었다 붙여 파형·그림이 비었다가 다시 그려지고 스크롤 막대가 떠서 저장마다 목록이 깜박였다
+                refillRows(table)
             }
         } else if edited != self.edited {
             let changed = edited.symmetricDifference(self.edited)
@@ -225,6 +226,11 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
             table.noteNumberOfRowsChanged()
         }
         syncing = false
+        refillRows(table)
+    }
+
+    /// 만들어 둔 줄(보이는 줄과 미리 준비한 줄)의 칸을 지금 줄로 제자리에서 다시 채운다
+    private func refillRows(_ table: NSTableView) {
         let columns = table.tableColumns.map(\.identifier.rawValue)
         table.enumerateAvailableRowViews { rowView, index in
             guard rows.indices.contains(index) else { return }
@@ -251,7 +257,10 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
 
     /// rekordbox에 쓰기 시작하면 고치던 칸을 닫는다(쓰는 동안에는 초안을 바꾸지 않는다).
     func updateWriteLock(_ locked: Bool) {
-        if locked { cancelEditing() }
+        if locked { cancelEditing(); return }
+        // 곡 단위로 쓰기 시작하면 고치던 칸의 곡이 쓰는 곡일 때만 닫는다(R21). 다른 곡의 칸은 그대로 고친다
+        guard let edit = inlineEdit, edit.session.targets.contains(where: { store.isEditLocked($0.track.uuid) }) else { return }
+        cancelEditing()
     }
 
     /// USB 목록도 컬렉션과 같은 칸 배치(보이는 칸·순서·폭)를 쓴다. 다른 점은 갱신 상태 칸이 USB 목록에서만 보이는 것뿐이다(#256).

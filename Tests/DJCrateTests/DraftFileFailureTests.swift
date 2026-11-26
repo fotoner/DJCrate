@@ -130,7 +130,7 @@ struct DraftFileFailureTests {
         writer.save(gain: -3, trackUUID: uuid, url: url, completion: { failure in reported.withLock { $0 = failure } })
         writer.flush()
         let failure = try #require(reported.withLock { $0 })
-        #expect(failure.kind == .gain && failure.message.contains("게인 초안을 저장하지 못했습니다."))
+        #expect(failure.kind == .gain && failure.message.contains("게인 편집을 보관하지 못했습니다."))
         #expect(writer.failures(in: places).contains(failure))
         #expect(writer.unsavedUUIDs(in: places).contains(uuid))
         #expect(writer.pendingGain(trackUUID: uuid, url: url) == .some(-3))

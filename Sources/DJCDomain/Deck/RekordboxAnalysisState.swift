@@ -14,11 +14,11 @@ public enum RekordboxAnalysisState: Sendable, Equatable {
         switch self {
         case .notAnalyzed(let attaches):
             (String(ui: "rekordbox 분석 전"), attaches
-                ? String(ui: "그리드 초안을 쓰면 이 미분석 곡에 파형·그리드·오토게인 분석 파일을 붙입니다.")
-                : String(ui: "rekordbox가 이 곡을 아직 분석하지 않았습니다. rekordbox에서 트랙 분석을 먼저 해야 그리드를 쓸 수 있습니다"))
+                ? String(ui: "그리드 편집을 저장하면 이 미분석 곡에 파형·그리드·오토게인 분석 파일을 붙입니다.")
+                : String(ui: "rekordbox가 이 곡을 아직 분석하지 않았습니다. rekordbox에서 트랙 분석을 먼저 해야 그리드를 저장할 수 있습니다"))
         case .waveformMissing:
             (String(ui: "rekordbox 분석 전 · 파형 없음"),
-             String(ui: "rekordbox 분석이 끝나지 않은 곡입니다(파형 파일 없음). rekordbox에서 트랙 분석을 다시 해야 그리드를 쓸 수 있습니다"))
+             String(ui: "rekordbox 분석이 끝나지 않은 곡입니다(파형 파일 없음). rekordbox에서 트랙 분석을 다시 해야 그리드를 저장할 수 있습니다"))
         case .ready:
             nil
         }

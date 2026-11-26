@@ -165,13 +165,15 @@ extension RekordboxLibraryXML {
     /// TRACK 한 곡. 칸 순서는 rekordbox 형식 문서의 순서를 따르고, 넣지 않는 칸(Grouping·DateModified·LastPlayed·Mix 등)은 건너뛴다.
     static func trackLines(_ entry: Entry) -> [String] {
         let track = entry.track, extras = entry.extras
+        // 글자 칸은 앞뒤 탭을 뺀다(#258, `Name`·`Genre`는 확인, 나머지 글자 칸은 추정). 스페이스는 그대로 둔다.
+        let text = LibraryXMLDisplay.text
         var attributes: [(String, String)] = [
             ("TrackID", "\(entry.trackKey)"),
-            ("Name", track.title),
-            ("Artist", track.artist ?? ""),
-            ("Composer", track.composer ?? ""),
-            ("Album", track.album ?? ""),
-            ("Genre", track.genre ?? ""),
+            ("Name", text(track.title)),
+            ("Artist", text(track.artist ?? "")),
+            ("Composer", text(track.composer ?? "")),
+            ("Album", text(track.album ?? "")),
+            ("Genre", text(track.genre ?? "")),
             ("Kind", RekordboxXML.kind(forExtension: (track.folderPath as NSString).pathExtension)),
         ]
         if let size = extras.fileSize { attributes.append(("Size", "\(size)")) }
@@ -185,11 +187,13 @@ extension RekordboxLibraryXML {
         if let added = extras.dateAdded ?? track.importedOn { attributes.append(("DateAdded", added)) }
         if let bitrate = track.bitrateKbps { attributes.append(("BitRate", "\(bitrate)")) }
         if let rate = extras.sampleRate { attributes.append(("SampleRate", "\(rate)")) }
-        attributes += [("Comments", track.comment), ("PlayCount", "\(extras.playCount)"),
+        // Rating은 모든 곡에 적는다(0도). 칸 순서는 PlayCount 다음, Location 앞이다.
+        attributes += [("Comments", text(track.comment)), ("PlayCount", "\(extras.playCount)"),
+                       ("Rating", "\(LibraryXMLDisplay.rating(stars: track.rating))"),
                        ("Location", RekordboxXML.location(forPath: track.folderPath))]
-        if let remixer = extras.remixer { attributes.append(("Remixer", remixer)) }
-        if let key = track.key, !key.isEmpty { attributes.append(("Tonality", key)) }
-        if let label = extras.label { attributes.append(("Label", label)) }
+        if let remixer = extras.remixer { attributes.append(("Remixer", text(remixer))) }
+        if let key = track.key, !key.isEmpty { attributes.append(("Tonality", LibraryXMLDisplay.tonality(key))) }
+        if let label = extras.label { attributes.append(("Label", text(label))) }
         attributes += entry.extraAttributes.map { ($0.name, $0.value) }
 
         let open = "    <TRACK " + attributes.map { "\($0.0)=\"\(attribute($0.1))\"" }.joined(separator: " ")

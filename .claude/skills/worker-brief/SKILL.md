@@ -32,20 +32,17 @@ description: 서브에이전트·다른 세션·워커에게 DJCrate 구현·리
 - 실제 rekordbox 라이브러리·DJCrate 사용자 폴더에 쓰지 않는다. 시험·실험은 DJC_REKORDBOX_DIR=<사본>, DJC_HOME=$(mktemp -d)
 - 실물 USB(/Volumes/*)에 쓰지 않는다. USB 쓰기 시험은 djc lab usb-image 디스크 이미지에만
 - DB 사본·스냅샷·백업(클라우드 토큰)을 출력·커밋·로그에 넣지 않는다
-- 쓰기 관문(RekordboxWriter.write·restore, RekordboxTrackWriter.add·delete, UsbWriter.write, UsbPhysicalWriteGate)의 위치·동작을 바꾸지 않는다
+- 쓰기 관문(RekordboxWriteGuard·UsbPhysicalWriteGate)을 우회하거나 약하게 하지 않는다. 쓰기 입구(RekordboxWriter.write·restore, RekordboxTrackWriter.add·delete, UsbWriter.write·recover·restore)는 옮기지 않는다
 
 ## 검증
 - 편집 중: scripts/check.sh --quick --filter '^<타깃>\.<Suite>/'(TDD, 빨간색 먼저)
 - 끝: scripts/check.sh --changed --base <작업 전 git write-tree 해시>  (전체 검사는 <조정자가 / 하지 않음>)
 - 추가: <앱 자가 테스트·디스크 이미지 확인이 필요하면 그 인자>
-- 같은 checkout 빌드 동시 실행 금지. 무거운 실행은 lockf /tmp/djc-heavy.lock, 소리는 /tmp/djc-audio.lock, 창은 /tmp/djc-gui.lock
+- 실행 잠금은 docs/ci.md "잠금과 동시 실행"을 따른다.
 - 긴 출력은 파일로 받고(> <로그 경로> 2>&1) 필요한 줄만 grep
 
 ## 보고(<보고서 경로>, 한국어, 짧게)
-1. 바꾼 것: 파일 이동표, 새 타입·포트, 지운 시험 → 대체 시험
-2. 확인한 것: 실행한 명령, 필터와 그 범위가 바꾼 영향을 덮는 근거, 통과·실패 수, 종료 코드, 시간(같은 기계 부하 uptime 함께)
-3. 남은 것: 다음 단계로 넘길 것, 발견한 버그(고치지 않음), 결정이 필요한 것
-4. 다른 파트와 겹칠 수 있는 파일과 그 안에서 바꾼 부분
+verify-change의 "보고 형식"을 쓰고, 검증 시간·기계 부하와 다른 파트가 함께 고친 파일·구간도 적는다.
 마지막 응답에도 요약.
 
 ## 진행 기록

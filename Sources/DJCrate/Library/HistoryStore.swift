@@ -6,7 +6,7 @@ import Observation
 /// 재생 기록(#43, 기능 조각): rekordbox Histories처럼 연 › 월 › 기록 트리에 rekordbox 기록과 USB에서 보존한 기기 기록을 섞는다.
 /// 사이드바 기록 칸·머리 줄 오른쪽 구성·사이드바 메뉴·반영(`pendingHistoryImports`·`recordWrittenHistories`)이 쓴다.
 /// USB 기록은 USB를 읽을 때(`UsbStore.onLibraryEvaluated`) 유스케이스 `ArchiveUsbHistories`가 DJCrate 데이터 폴더(`usb-histories/`)에 보존하고
-/// (USB에는 쓰지 않는다), 다른 초안처럼 "rekordbox 쓰기 대기"에 올려(`pendingHistories`) rekordbox에 쓰기(⇧⌘E) 때 반영 세션이
+/// (USB에는 쓰지 않는다), 다른 초안처럼 "rekordbox 쓰기 대기"에 올려(`pendingHistories`) rekordbox에 저장(⌘S) 때 반영 세션이
 /// rekordbox Histories에 넣는다. 보존의 줄 세우기·채택·실패 알림은 그 유스케이스가 정하고, 이 조각은 결과를 화면 상태에 넣는다(#251).
 /// 핵심 `LibraryStore`의 `history` 속성이다. 곡·사이드바·알림·쓰기 잠금·되돌리기는 핵심 것을 읽는다(`library`).
 @MainActor
@@ -58,7 +58,7 @@ final class HistoryStore {
     @ObservationIgnored var historyFoldersSeeded = false
     /// rekordbox 쓰기 대기에 오른 보존 기록(#43, `HistoryWriteQueue.pending`, 가져온 차례). 라이브러리를 읽은 뒤에만 고르고
     /// (rekordbox에 이미 쓴 기록인지 모르는 동안 올리지 않게), 기록·보존본이 바뀔 때만 다시 계산한다(#141).
-    /// 사이드바 배지·기록 줄 표시·쓰기 대기 바·rekordbox에 쓰기(⇧⌘E)가 이것을 쓴다
+    /// 사이드바 배지·기록 줄 표시·쓰기 대기 바·rekordbox에 저장(⌘S)가 이것을 쓴다
     private(set) var pendingHistories: [ArchivedHistory] = []
     /// 쓰기 대기 기록 ID(사이드바 기록 줄이 대기 표시를 고른다)
     private(set) var pendingHistoryIDs: Set<String> = []
@@ -202,8 +202,13 @@ final class HistoryStore {
         openLinkSessions = []
     }
 
-    /// 그 LINK 기록이 연결 중이라 아직 쓰기 대기에 오르지 않았는지(사이드바 도움말)
-    func isOpenLinkHistory(_ history: ArchivedHistory) -> Bool { LinkHistory.isOpen(history, openSessions: openLinkSessions) }
+    /// 그 보존 기록의 rekordbox 저장 상태(사이드바 기록 줄의 표시·툴팁, #311).
+    /// USB 기록 줄이 LINK 세션 변화를 읽지 않게 연결 중 세션은 LINK 기록일 때만 읽는다
+    func archivedStatus(_ history: ArchivedHistory) -> ArchivedHistoryStatus {
+        ArchivedHistoryStatus.of(history, isPending: pendingHistoryIDs.contains(history.id),
+                                 openLinkSessions: history.source.isLink ? openLinkSessions : [],
+                                 rekordboxHasHistory: { historyIndex[$0] != nil })
+    }
 
     /// CDJ가 LINK 재생 기록에 넣거나 뺀 곡을 그 세션 기록에 반영한다(보존만 한다. rekordbox에는 쓰기 대기로 올린다).
     /// 원본 키는 채택한 스냅샷에서 그 곡 자신의 것을 쓴다(`LinkHistory.entry`)
@@ -274,10 +279,13 @@ final class HistoryStore {
 
     /// 보존 기록을 rekordbox 쓰기 대기에서 빼거나 다시 넣는다(보존본은 그대로). 편집 › 실행 취소로 되돌린다.
     /// 화면 상태는 바로 바꾸고 파일 저장은 보존 줄에 세운다. 저장하지 못하면 유스케이스가 알린다(다시 켜면 옛 상태로 읽힌다)
-    func setHistoriesExcluded(_ ids: [String], excluded: Bool) {
-        guard !library.editsFrozen else { return }
+    /// - Parameter registersUndo: 실행 취소 단계를 건다. 쓰는 동안 눌러 미뤘다가 실행하는 ⌘Z는 걸지 않는다(그 뒤 ⇧⌘Z는 다시 하지 않는다)
+    func setHistoriesExcluded(_ ids: [String], excluded: Bool, registersUndo: Bool = true) {
+        // 쓰는 동안은 재생 목록 얼리기가 켜져 있을 때만 받는다. 쓰고 있는 기록은 저장 대기에서 빼지 못한다(이미 쓰고 있다)
+        guard !library.playlists.isEditBlocked else { return }
+        let ids = excluded ? ids.filter { !library.playlists.writingHistories.contains($0) } : ids
         let changedIDs = archive.exclude(ids, excluded: excluded)
-        guard !changedIDs.isEmpty, let undoManager = library.undoManager else { return }
+        guard registersUndo, !changedIDs.isEmpty, let undoManager = library.undoManager else { return }
         // 한 이벤트 안에서 여러 번 바꿔도 각각 한 단계로 남긴다(태그·덱 초안과 같다)
         let grouping = !undoManager.isUndoing && !undoManager.isRedoing
         let groupsByEvent = undoManager.groupsByEvent
@@ -285,22 +293,41 @@ final class HistoryStore {
             undoManager.groupsByEvent = false
             undoManager.beginUndoGrouping()
         }
-        // 되돌리기 대상은 핵심이다(쓰기 잠금이 핵심 대상으로 되돌리기를 지운다)
-        undoManager.registerUndo(withTarget: library) { target in
-            guard !target.editsFrozen else { return }
-            target.history.setHistoriesExcluded(changedIDs, excluded: !excluded)
+        // 재생 기록은 저장 뒤 되돌릴 수 없다(R12): 기록을 쓰면 그 전 단계는 실행할 수 없어 맨 위가 되면 ⌘Z가 꺼진다(`recordWrittenHistories`)
+        let generation = library.historyWriteGeneration
+        library.undoSteps.register(undoManager, kind: .library, canUndo: { [weak library] in library?.historyWriteGeneration == generation }) { [weak library] in
+            library?.history.undoExclusion(changedIDs, excluded: !excluded, generation: generation)
         }
-        undoManager.setActionName(excluded ? String(ui: "rekordbox 쓰기 대기에서 빼기") : String(ui: "rekordbox 쓰기 대기에 넣기"))
+        undoManager.setActionName(excluded ? String(ui: "rekordbox 저장 대기에서 빼기") : String(ui: "rekordbox 저장 대기에 넣기"))
         if grouping {
             undoManager.endUndoGrouping()
             undoManager.groupsByEvent = groupsByEvent
         }
     }
 
+    /// 재생 기록 저장 대기 넣기·빼기의 ⌘Z. 쓰는 중이면(편집을 받지 않거나 그 기록을 쓰는 중) 누른 요청으로 미뤘다가 쓰기 뒤 단계를 다시 걸지 않고
+    /// 실행한다. 꺼낼 때 쓰기 세대가 달라졌으면(그새 기록을 썼다) 실행하지 않고 ⌘Z 기록을 비우며 이유를 알린다(#295 E6)
+    private func undoExclusion(_ ids: [String], excluded: Bool, generation: Int, deferred: Bool = false) {
+        let blocked: @MainActor (LibraryStore) -> Bool = { library in
+            library.playlists.isEditBlocked || !library.playlists.writingHistories.isDisjoint(with: ids)
+        }
+        if blocked(library) {
+            guard !deferred, library.undoManager?.isRedoing != true else { return }
+            library.pendingUndo.append(ready: { [weak library] in library.map { !blocked($0) } ?? true }) { [weak library] in
+                library?.history.undoExclusion(ids, excluded: excluded, generation: generation, deferred: true)
+            }
+            return
+        }
+        guard library.historyWriteGeneration == generation else { return library.refuseUndo() }
+        setHistoriesExcluded(ids, excluded: excluded, registersUndo: !deferred)
+    }
+
     /// rekordbox에 쓴(또는 최신 대상에 이미 있던) 보존 기록에 rekordbox 기록 ID를 남긴다(반영 세션이 쓴 뒤 다시 읽기 전에 부른다).
     /// 다시 읽을 때까지는 쓴 ID를 rekordbox에 있는 것으로 봐(`historyIDsAwaitingReload`) 다시 읽지 못해도 같은 기록을 또 쓰지 않는다.
     /// - Returns: 표시를 저장하지 못했을 때 알릴 문장(rekordbox 쓰기는 끝났다)
     func recordWrittenHistories(_ outcomes: [RekordboxHistoryOutcome]) async -> String? {
-        await archive.markWritten(outcomes)
+        // 기록을 썼다: 저장 대기 넣기·빼기 ⌘Z는 끈다(저장 뒤 되돌릴 수 없는 종류, R12)
+        if outcomes.contains(where: { $0.status == .written }) { library.historyWriteGeneration += 1 }
+        return await archive.markWritten(outcomes)
     }
 }

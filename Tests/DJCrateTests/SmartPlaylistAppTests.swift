@@ -159,7 +159,7 @@ struct SmartPlaylistAppTests {
         let store = await Self.makeStore(fixture, lab: true)
         #expect(store.playlists.blockSmartPlaylistEdit("S1"))
         let message = try #require(store.activityLog.latest)
-        #expect(message.text == "인텔리전트 재생 목록은 아직 쓰지 않습니다(rekordbox에서 고치세요)")
+        #expect(message.text == "인텔리전트 재생 목록은 아직 저장하지 않습니다(rekordbox에서 고치세요)")
         // 일반 목록은 막지 않는다
         let notices = store.noticeCount
         #expect(!store.playlists.blockSmartPlaylistEdit("P"))

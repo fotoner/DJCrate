@@ -53,14 +53,25 @@ final class AppComposition {
     /// 덱 단축키(창이 처음 나타날 때 붙인다)
     let keys = KeyRouter()
     private var connected = false
+    /// 자동 저장 엔진(#403). 실제 앱만 둔다(화면 시험 조립은 nil이라 지금처럼 ⌘S로만 쓴다). 반영 조정자의 쓰기도 이 엔진의 차례를 받는다
+    private(set) var autoReflection: AutoReflection?
+    /// 입력 중인 칸(R19): 미확정 값이 있으면 자동 저장을 미룬다(엔진 편집 활동). 엔진이 있을 때만 둔다
+    /// 앱 수명 동안 도는 일(바깥 초안 감시·자동 시점 스냅샷·자동 저장 판정). 창이 아니라 조립 지점이 수명을 든다(창을 닫았다 열어도 하나만 돈다)
+    private var lifetimeTasks: [Task<Void, Never>] = []
+    /// 앱이 끝나기 직전 알림(수명 동안 도는 일을 멈춘다)
+    private var terminationObserver: (any NSObjectProtocol)?
+    /// 자동 시점 스냅샷 실행기 하나(자동 저장 앞의 스냅샷과 하루 한 번 스냅샷이 같은 실행기를 써 겹쳐 뜨지 않는다)
+    private lazy var snapshotRunner = autoPointSnapshots()
 
     /// - Parameters:
     ///   - persistsActivityReadMark: 상태 줄의 읽음 기준을 설정에 남길지. 진단 실행(캡처·자가 테스트)은 사용자 설정을 바꾸지 않게 거짓이다
     ///   - dock: Dock 아이콘 배지. 실제 앱만 붙인다(화면 시험은 Dock을 건드리지 않는다)
     ///   - rekordboxRun: 실행 감지 서비스. 주지 않으면(화면 시험) 프로세스 목록을 읽지 않는 자리(`.none`)를 둔다
+    ///   - autoReflection: 자동 저장 실행 조건(R18)과 기록 폴더. 주면 엔진을 만들어 반영 조정자에 잇는다(실제 앱). 화면 시험은 주지 않는다
     init(settings: SettingsStore, store: LibraryStore, deck: DeckModel, windows: AppWindows, reflection: ReflectionCoordinator,
          agentTools: AgentToolsSettingsModel? = nil, agentNoticeEnabled: Bool = false, updater: AppUpdater? = nil, link: LinkBarModel? = nil,
-         persistsActivityReadMark: Bool = true, dock: DockBadge = .none, rekordboxRun: RekordboxRunModel? = nil) {
+         persistsActivityReadMark: Bool = true, dock: DockBadge = .none, rekordboxRun: RekordboxRunModel? = nil,
+         autoReflection: (run: AutoReflectionRun, home: URL)? = nil) {
         self.link = link
         self.rekordboxRun = rekordboxRun ?? RekordboxRunModel(source: .none)
         self.settings = settings
@@ -72,11 +83,23 @@ final class AppComposition {
         self.reflection = reflection
         self.agentTools = agentTools
         self.agentNoticeEnabled = agentNoticeEnabled
-        trackListActions = .live(store: store, reflection: reflection)
+        libraryWindow = LibraryWindowModel(store: store)
+        // 곡 메뉴·머리 줄의 저장 단추도 주 창 모델의 같은 저장 입구와 R3 표의 줄을 쓴다(#404)
+        trackListActions = .live(store: store, reflection: reflection, window: libraryWindow)
         tagInspector = TagInspectorModel(store: store)
         playlistSidebar = PlaylistSidebarModel(playlists: store.playlists)
         listActionBar = ListActionBarModel(store: store)
-        libraryWindow = LibraryWindowModel(store: store)
+        listActionBar.window = libraryWindow
+        // 엔진이 있는 실제 앱만: ⌘S·상태 줄이 엔진 상태를 R3 표의 줄로 읽고(#404), 입력 중인 칸을 지켜본다(R19)
+        if autoReflection != nil {
+            libraryWindow.autoFeed = reflection.autoFeed
+            let input = FieldEditingState.live()
+            // 인스펙터 칸은 포커스를 잃은 뒤 다음 갱신에서 확정한다: 그 확정이 끝나기를 ⌘S가 기다린다
+            input.hasPendingCommit = { [tagInspector] in tagInspector.hasPendingInput }
+            // 초안을 편집하지 않는 보조 창의 칸은 세지 않는다(컨실 3라운드 G18)
+            input.countsWindow = { [windows] window in !windows.isAuxiliary(window) }
+            libraryWindow.fieldEditing = input
+        }
         statusBar = StatusBarModel(log: store.activityLog, settings: persistsActivityReadMark ? settings : SettingsStore(persist: false))
         // 칩의 이유(켜짐·꺼짐)는 감지 서비스를 읽는 연결을 여기서 한다. 화면 시험의 조립(`.none`)은 늘 모름이라 칩이 바뀌지 않는다
         let run = self.rekordboxRun
@@ -85,8 +108,152 @@ final class AppComposition {
         statusBar.write = writeStatus
         writeStatus.start()
         libraryWindow.agentTools = agentTools
+        store.showIntegrationGuide = { [weak store, windows] topic in
+            guard let store else { return }
+            windows.integrationGuide.open(file: store.linkedXMLFile, topic: topic)
+        }
         statusBar.showLog = { [weak window = libraryWindow] in window?.showActivityLog(selecting: $0) }
         libraryWindow.activityLogSeen = { [weak bar = statusBar] in bar?.markSeen() }
+        if let autoReflection {
+            let engine = makeAutoReflection(run: autoReflection.run, home: autoReflection.home)
+            self.autoReflection = engine
+            reflection.engine = engine
+            // ⌘S가 확정하는 입력 감지기 하나가 자동 저장도 미룬다(R19): 입력 중 여부를 엔진의 편집 활동으로 옮긴다
+            libraryWindow.fieldEditing.onChange = { [weak engine] editing in engine?.setActivity(FieldEditingState.activity(editing: editing)) }
+            // 저장 뒤 ⌘Z가 만든 여러 곡 역편집은 한 번에 전부 쓰거나 전부 쓰지 않는다(R12)
+            store.onUndoAfterSave = { [weak engine] edit in engine?.enqueue(.undo(edit)) }
+        }
+        // 저장 입구가 엔진 발행 뒤에 바뀐 시트·USB 쓰기를 지금 상태로 다시 본다(S3)
+        libraryWindow.liveHolds = { [weak self] in self?.saveBlockingHolds() ?? [] }
+        // 덱에 올린 곡의 태그를 라이브러리에서 고치면 덱 편집으로 기다린다(#295 리뷰 F6)
+        store.onTagDraftsEdited = { [weak self] uuids in self?.tagDraftsEdited(uuids) }
+    }
+
+    /// 자동 저장 엔진(#403)을 실제 포트로 만든다: 이 Mac의 시계·프로세스 목록·파일 상태·쓰기 잠금, `DJC_HOME`의 기록 파일,
+    /// 쓰기 잠금 아래의 자동 시점 스냅샷, 이 앱의 보류 사유(USB·LINK·읽기·시트·편집 중), 칩 상태는 반영 조정자의 알림판으로
+    private func makeAutoReflection(run: AutoReflectionRun, home: URL) -> AutoReflection {
+        let lock = RekordboxWriteLock.live()
+        let feed = reflection.autoFeed
+        let ports = AutoReflectionPorts(
+            clock: .live, runState: { RekordboxRunState.live() }, quietStamps: { LibraryQuietStamps.live($0) }, writeLock: lock,
+            records: .live(home: home),
+            pointSnapshot: { [weak self] in
+                guard let self else { return .satisfied }
+                let session = reflection.session
+                return await snapshotRunner.gate(lock: lock, journal: session.ports.gate.journal, target: session.target)
+            },
+            appHolds: { [weak self] in self?.autoReflectionHolds() ?? [.shuttingDown] },
+            publish: { status, conditions in feed.update(status, conditions) })
+        return AutoReflection(session: reflection.session, ports: ports, run: run)
+    }
+
+    /// 저장을 막는 앱 상태(R3 3번 줄): 막힌 초안 비교 창·가져오기 시트·USB 쓰기. 엔진 발행보다 늦게 바뀔 수 있어 저장 입구가 이 값을 다시 읽는다.
+    /// 덱 편집 같은 재생 중 바뀌는 값은 읽지 않는다(상태 줄·메뉴가 읽는 값이다)
+    func saveBlockingHolds() -> Set<ReflectionHold> {
+        var holds: Set<ReflectionHold> = []
+        if store.writesBlockedBySheet { holds.insert(.blockedDraftsOpen) }
+        if libraryWindow.xmlImport.preview != nil || store.usb?.syncSheet != nil { holds.insert(.importSheetOpen) }
+        if let usb = store.usb, usb.activeWrite != nil || !usb.busyVolumes.isEmpty || usb.exportSheet != nil { holds.insert(.usbBusy) }
+        return holds
+    }
+
+    /// 앱 쪽 보류 사유(R16·R20)와 편집 중 신호(R1·R19). 엔진이 판정할 때마다 읽는다
+    func autoReflectionHolds() -> Set<ReflectionHold> {
+        var holds: Set<ReflectionHold> = []
+        // 쓸 수 없음(#327: 지원 밖 버전·DB 구조·카운터 로컬 < 클라우드(R20)·백업 폴더)
+        if let block = store.writeBlock { holds.insert(.unwritable(block)) }
+        if store.isPoweringOff { holds.insert(.shuttingDown) }
+        if store.isLoading { holds.insert(.libraryReading) }
+        holds.formUnion(saveBlockingHolds())
+        if link?.isServing == true { holds.insert(.linkServer) }
+        // 시점 스냅샷 창에서 뜨는 중(뜨는 동안 라이브러리가 바뀌면 그 스냅샷을 버린다, R16)
+        if windows.pointSnapshots.isWorking { holds.insert(.pointSnapshot) }
+        // 편집 중: 입력기 조합·마우스 누름·끌기·덱 큐 끌기·곡 편집 창이나 시트가 열림(자동 저장은 입력을 확정하지 않고 미룬다).
+        // 미확정 칸(R19)은 엔진 편집 활동으로 따로 온다: 끝 알림 없이 사라진 칸은 여기서 솎는다
+        libraryWindow.fieldEditing.revalidate()
+        let app = NSApplication.shared
+        let composing = (app.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() == true
+        let pointer = NSEvent.pressedMouseButtons != 0
+        let editor = windows.trackEdit.window?.isVisible == true || app.keyWindow?.attachedSheet != nil
+        let deckEditing = deck.hasUncommittedCueEdits || deck.cueDragBase != nil || deck.gridDragBase != nil
+        if Self.isEditingHold(composing: composing, pointer: pointer, editor: editor, deckEditing: deckEditing, quitWaiting: store.quitWait.isWaiting) {
+            holds.insert(.editing)
+        }
+        return holds
+    }
+
+    /// 편집 중 보류인지. 종료를 기다리는 동안의 입력기 조합·마우스 누름([종료 취소]를 누르거나 메뉴로 종료를 고름)은 순간 신호라 편집이 아니다
+    /// (R17, 컨실 2라운드 I: ⌘Q가 입력 칸을 확정한다). 곡 편집 창·시트와 덱 편집은 종료 대기 중에도 편집이다
+    static func isEditingHold(composing: Bool, pointer: Bool, editor: Bool, deckEditing: Bool, quitWaiting: Bool) -> Bool {
+        (composing || pointer) && !quitWaiting || editor || deckEditing
+    }
+
+    /// 자동 저장 실행 조건(R18)에 넣는 값: 빌드·인자·명시한 사본·진단 실행, 자가 테스트면 쓰기 전 확인 자리(링크를 푼 경로)
+    static func autoReflectionFacts(arguments: [String], environment: [String: String], location: LibraryLocation) -> AutoReflectionRun.Facts {
+        #if DEBUG
+        let release = false
+        #else
+        let release = true
+        #endif
+        let selfTest = AutoReflectSelfTest.isRequested(arguments: arguments)
+        // 자가 테스트 인자는 진단 실행이지만, 디버그 빌드의 자가 테스트는 그 확인을 따로 한다(`decide`)
+        let diagnostic = DiagnosticRun.isActive(arguments: arguments) && !selfTest
+        return AutoReflectionRun.Facts(isReleaseBuild: release, arguments: arguments, opensExplicitCopy: location.opensExplicitCopy,
+                                       isDiagnosticRun: diagnostic,
+                                       selfTestPlaces: selfTest ? selfTestPlaces(location: location, environment: environment) : nil)
+    }
+
+    /// 자가 테스트가 쓰기 전에 확인하는 자리(R18). `DJC_HOME`이 없으면 nil(자가 테스트로 보지 않는다)
+    static func selfTestPlaces(location: LibraryLocation, environment: [String: String]) -> AutoReflectionRun.SelfTestPlaces? {
+        selfTestPlaces(location: location, environment: environment, live: LibrarySnapshot.realRekordboxDirectory, userData: DJCIdentity.userSupportDirectory)
+    }
+
+    /// - Parameters:
+    ///   - live: 실제 rekordbox 폴더, `userData`: DJCrate 사용자 폴더(시험은 임시 폴더의 자리를 준다)
+    static func selfTestPlaces(location: LibraryLocation, environment: [String: String], live: URL, userData: URL) -> AutoReflectionRun.SelfTestPlaces? {
+        guard let home = environment["DJC_HOME"], !home.isEmpty else { return nil }
+        var resolved = true
+        func real(_ url: URL) -> URL {
+            if let path = Self.resolvedPath(url) { return path }
+            resolved = false
+            return url.standardizedFileURL
+        }
+        let target = real(location.rekordboxDirectory)
+        // 임시 폴더는 사용자 임시 영역($TMPDIR)과 /tmp 가운데 대상이 든 곳
+        let roots = [real(FileManager.default.temporaryDirectory), real(URL(filePath: "/tmp"))]
+        let temporary = roots.first { target.path.hasPrefix($0.path + "/") } ?? roots[0]
+        // 분석 폴더 사슬(share → PIONEER → USBANLZ)은 단계마다 실제 폴더여야 한다(SAFE-8: 링크·없는 단계가 있으면 쓰지 않는다)
+        let share = location.shareRoot ?? location.rekordboxDirectory.appending(path: "share")
+        let shareParent = real(share.deletingLastPathComponent())
+        let chain = ["", "PIONEER", "PIONEER/USBANLZ"].map { shareParent.appending(path: share.lastPathComponent).appending(path: $0) }
+        let analysisIsLink = chain.contains { folder in
+            var info = stat()
+            return lstat(folder.path, &info) != 0 || (info.st_mode & S_IFMT) != S_IFDIR
+        }
+        return AutoReflectionRun.SelfTestPlaces(target: target, database: real(location.database), analysisRoot: real(share),
+                                                home: real(URL(filePath: home)), temporaryRoot: temporary,
+                                                liveRekordbox: real(live), userData: real(userData), analysisIsLink: analysisIsLink,
+                                                resolved: resolved)
+    }
+
+    /// 링크를 푼 경로. 아직 없는 경로는 가장 가까운 존재하는 조상까지 풀고 나머지를 붙인다(없는 DJC_HOME 아래로 링크가 이어지지 않게).
+    /// 건너뛴 단계가 있기는 한데 풀리지 않으면(끊긴 링크·읽기 실패) nil
+    static func resolvedPath(_ url: URL) -> URL? {
+        var path = url.standardizedFileURL.path
+        var rest: [String] = []
+        while true {
+            if let resolved = realpath(path, nil) {
+                defer { free(resolved) }
+                return rest.reduce(URL(filePath: String(cString: resolved))) { $0.appending(path: $1) }
+            }
+            var info = stat()
+            // 있는데 풀리지 않는 단계(끊긴 링크 등)는 그 너머를 모른다
+            guard lstat(path, &info) != 0, errno == ENOENT else { return nil }
+            let parent = (path as NSString).deletingLastPathComponent
+            guard parent != path, !parent.isEmpty else { return nil }
+            rest.insert((path as NSString).lastPathComponent, at: 0)
+            path = parent
+        }
     }
 
     /// 이미 만든 저장소·덱으로 주 창을 띄울 때(화면 시험). 설정은 저장소의 것, 창은 새로 만들고 쓰기는 실제 관문으로 잇는다.
@@ -99,24 +266,33 @@ final class AppComposition {
     /// 업데이트 설치 뒤 다시 켜려고 앱을 끄는 중인지(읽으면 표시를 지운다). 켜진 채 종료 시트(#326)가 이 종료는 묻지 않는다. 업데이트 도구가 없으면 거짓이다
     func consumeUpdateRelaunch() -> Bool { updater?.consumeRelaunchMark() ?? false }
 
-    /// 옛 이름(anicue) 데이터·설정 옮기기. 앱이 시작할 때 목록·덱이 설정을 읽기 전에 한 번 부른다(`DJCrateApp`의 첫 속성)
-    nonisolated static func migrateLegacyData() {
+    /// 도움말 › 연동 안내(#315). 주 창 포커스와 상관없이 rekordbox 절차로 연다
+    func openIntegrationGuide() { windows.integrationGuide.open(file: store.linkedXMLFile, topic: .rekordbox) }
+
+    /// 옛 이름(anicue) 데이터·설정 옮기기. 앱을 조립해 목록·덱이 설정을 읽기 전에 한 번 부른다.
+    nonisolated static func migrateLegacyData(arguments: [String] = CommandLine.arguments, migrate: () -> Void = { LegacyMigration.run() }) {
         #if DEBUG
         // 합성 사본 자가 테스트가 사용자 폴더·설정을 옮기지 않게 한다.
-        if CommandLine.arguments.contains("--history-selftest") || CommandLine.arguments.contains(where: { $0.hasPrefix("--usb-snapshot-capture=") }) { return }
+        if arguments.contains("--history-selftest") || arguments.contains(where: { $0.hasPrefix("--usb-snapshot-capture=") }) { return }
         #endif
-        LegacyMigration.run()
+        // 사본 자가 테스트는 두 빌드 모두 사용자 데이터를 옮기지 않는다.
+        guard !DiagnosticRun.isolatesPreferences(arguments: arguments) else { return }
+        migrate()
     }
 
     /// 실제 앱. 위치는 실행 인자·환경에서 한 번 푼다(`LibraryLocation.resolve`): 초안은 데이터 폴더(`DJC_HOME`을 따른다),
     /// 쓰기·복원 대상은 rekordbox 라이브러리(`DJC_REKORDBOX_DIR`을 따른다)의 master.db와 그 옆 share다(#182: 대상은 이 한 곳에서 정한다).
     static func live() -> AppComposition {
         let info = ProcessInfo.processInfo
+        let copySelfTest = DiagnosticRun.isCopySelfTest(arguments: info.arguments)
         // CLI와 함께 따르는 설정(시점 스냅샷 보관 일수)은 데이터 폴더의 공유 파일에도 적는다
-        let settings = SettingsStore(sharedFile: .live)
+        let settings = SettingsStore(defaults: ViewPreferences.defaults, sharedFile: copySelfTest ? nil : .live)
         let location = LibraryLocation.resolve(arguments: info.arguments, environment: info.environment)
         // 초안 저장 큐는 하나다: 저장소·덱·반영·복구·그리드 추정이 모두 같은 큐로 쓴다(게인 초안은 모든 곡이 파일 하나라 순서가 지켜져야 한다).
-        let drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome)
+        // 앱의 편집 포트는 사람 편집이다(출처는 조립이 정한다, R5)
+        var drafts = DraftStore.live(writer: DraftWriter(), home: location.draftHome, origin: .human)
+        // rekordbox 실행 경계(R23): 엔진이 켜짐·꺼짐을 넘기고 게인 base에 함께 적는다. 앱을 켤 때마다 새 이름이라 그 전 실행의 base는 모름이다
+        drafts.runEpoch = RekordboxRunEpoch(session: UUID().uuidString)
         let places = DraftLocations(home: location.draftHome)
         var ports = LibraryPorts.live(location: location, drafts: drafts, batches: .live(url: places.reflection))
         // USB 기기 재생 기록 보존(#43)은 앱만 붙인다(시험 저장소·CLI는 보존하지 않는다)
@@ -132,14 +308,26 @@ final class AppComposition {
         let notice = !info.arguments.contains { $0.contains("selftest") || $0.contains("capture") || $0.hasPrefix("--ui-perf") || $0.hasPrefix("--perf-")
             || $0 == "--autoplay" || $0 == "--scroll-perf" }
         // 앱 자동 업데이트(#59): 쓰는 동안 설치를 미루고 그 사실을 알림으로 보인다
-        let updater = AppUpdater.make(activity: { [weak store] in store?.writeActivity ?? .idle },
-                                      announce: { [weak store] in store?.showToast(.notice($0, nil)) })
-        return AppComposition(settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store),
-                              agentTools: agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
-                              updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
-                                  : linkBar(store: store, deck: deck),
-                              persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments), dock: .live,
-                              rekordboxRun: RekordboxRunModel(source: .live(workspace: NSWorkspace.shared.notificationCenter)))
+        let updater = copySelfTest ? nil : AppUpdater.make(activity: { [weak store] in store?.writeActivity ?? .idle },
+                                                           announce: { [weak store] in store?.showToast(.notice($0, nil)) })
+        // 자동 저장(#403): 릴리스 빌드의 라이브 라이브러리만 자동 저장한다(R18). 그 밖의 실행도 엔진이 쓰기 차례·기록 판정·재시작 정리를 맡는다
+        let run = AutoReflectionRun.decide(autoReflectionFacts(arguments: info.arguments, environment: info.environment, location: location))
+        return AppComposition(
+            settings: settings, store: store, deck: deck, windows: AppWindows(), reflection: reflection(store: store, gate: writeGate(arguments: info.arguments)),
+            agentTools: copySelfTest ? nil : agentTools(arguments: info.arguments, settings: settings), agentNoticeEnabled: notice,
+            updater: updater, link: DiagnosticRun.isActive(arguments: info.arguments) ? diagnosticLink(arguments: info.arguments, store: store)
+                : linkBar(store: store, deck: deck),
+            persistsActivityReadMark: !DiagnosticRun.isActive(arguments: info.arguments), dock: .live,
+            rekordboxRun: RekordboxRunModel(source: .live(workspace: NSWorkspace.shared.notificationCenter)),
+            autoReflection: (run, location.draftHome))
+    }
+
+    /// 앱의 쓰기 관문. 디버그 빌드의 자동 저장 자가 테스트 실행만 자가 테스트가 미리 보기를 붙잡을 수 있는 관문을 쓴다(⌘Q 저장 시험, R17)
+    static func writeGate(arguments: [String]) -> RekordboxWriteGate {
+        #if DEBUG
+        if DiagnosticRun.isAutoReflectSelfTest(arguments: arguments) { return SelfTestWriteGate.live() }
+        #endif
+        return .live()
     }
 
     /// 자가 테스트·측정·캡처 실행의 LINK 막대: 장치 찾기를 붙이지 않는다(LNK-6). LINK 캡처만 포트 없는 가상 장치를 보인다
@@ -231,23 +419,32 @@ final class AppComposition {
                            prompter: any ReflectionPrompter = AlertPrompter(), runningApps: RunningApps = .live,
                            options: ReflectionSession.Options = .liveApp) -> ReflectionCoordinator {
         let presenter = ReflectionPresenter(store: store, prompter: prompter)
-        let library = ReflectionLibrary(state: { [weak store] in store?.reflectionState() ?? ReflectionLibraryState() },
+        var library = ReflectionLibrary(state: { [weak store] in store?.reflectionState() ?? ReflectionLibraryState() },
                                         apply: { [weak store] in store?.applyReflection($0) },
                                         retryTagSaves: { [weak store] in store?.retryFailedTagSaves() },
                                         preserveDamagedDrafts: { [weak store] in store?.preserveDamagedDraftFiles() ?? [] },
                                         savePlaylistDraft: { [weak store] in store?.playlists.ensurePlaylistDraftSaved() ?? true },
                                         recordHistories: { [weak store] in await store?.history.recordWrittenHistories($0) })
+        // 곡 넣기 정리가 새 곡이 없다고 확정해도 되는지: 읽은 사본이 쓰기 대상 라이브 DB와 같다(R22)
+        let load = store.useCases.load, location = store.location
+        library.readIsLatest = { snapshot in load.isLatest(snapshot, location: location) }
         // Mac을 끄는 중·종료를 기다리는 중에는 세션도 새 쓰기를 시작하지 않는다(바쁨으로 답한다, #300)
-        let lock = WriteLock(isLocked: { [weak store] in store.map { $0.libraryBusy || $0.writeRefusal != nil } ?? false },
+        // 수동 입구는 종료 대기 중 `writeRefusal`로 거절한다. ⌘Q가 기다리는 엔진의 자동 저장만 이 잠금을 지난다(R17)
+        var lock = WriteLock(isLocked: { [weak store] in store.map { $0.libraryBusy || $0.isPoweringOff || $0.quitWait.refusesWrites } ?? false },
                              set: { [weak store] locked, deck in store?.setWriteLock(locked, deck: deck) },
                              stage: { [weak store] in store?.writeStage = $0 })
+        lock.setTracks = { [weak store] in store?.setLockedTracks($0) }
+        lock.lockedTracks = { [weak store] in store?.lockedTracks ?? [] }
+        lock.setDraftWriting = { [weak store] in store?.setDraftWriting($0) }
         // 반영 세션은 라이브러리와 같은 초안 저장 큐·스냅샷 뜨기·연결 기록을 쓴다(라이브러리 유스케이스 묶음에서 받는다).
         let ports = ReflectionPorts(gate: gate, backups: backups, sharing: store.useCases, audio: audio, library: library,
                                     reload: LibraryReloader(reload: { [weak store] written, edits in
                                         await store?.reloadAfterWrite(written: written, playlistEdits: edits) ?? false
                                     }, postpone: { [weak store] written, edits in
                                         // 종료를 기다리는 중이면 쓴 뒤 다시 읽기를 미루고 쓰기 결과를 먼저 남긴다(#305)
-                                        store?.postponeReloadForQuit(written: written, playlistEdits: edits) ?? false
+                                        // ⌘Q가 엔진의 자동 저장을 기다리는 동안은 미루지 않는다: 다음 묶음이 새 사본으로 판정해야 한다(R17)
+                                        guard let store, !store.quitWait.allowsAutoSave else { return false }
+                                        return store.postponeReloadForQuit(written: written, playlistEdits: edits)
                                     }),
                                     lock: lock,
                                     // 확인 창이 떠 있는 동안은 아직 아무것도 쓰지 않았다: 종료 판정이 이 때를 가른다(#300)
@@ -256,8 +453,13 @@ final class AppComposition {
                                         choose: { [weak store] prompt in store?.whileAwaitingConfirmation { prompter.choose(prompt) } ?? prompter.choose(prompt) }),
                                     results: ReflectionResults { presenter.publish($0) }, runningApps: runningApps)
         let session = ReflectionSession(location: store.location, ports: ports, options: options)
-        store.music.write = { try await session.syncITunes($0) }
-        return ReflectionCoordinator(session: session, store: store, prompter: prompter)
+        let coordinator = ReflectionCoordinator(session: session, store: store, prompter: prompter)
+        // iTunes 동기화 쓰기도 조정자를 거쳐 엔진의 차례로 한다. 조정자를 약하게 잡는다(조정자가 저장소를 든다)
+        store.music.write = { [weak coordinator] change in
+            guard let coordinator else { return try await session.syncITunes(change) }
+            return try await coordinator.syncITunes(change)
+        }
+        return coordinator
     }
 
     /// 전에 잰 음량, 없으면 재서 캐시에 남긴다(재지 못하면 nil). 분석 붙이기와 곡 넣기가 같이 쓴다.
@@ -326,12 +528,7 @@ final class AppComposition {
         deck.onStagedGridChange = { [weak store] uuid, bpm in store?.staging.stagedGridChanged(uuid: uuid, bpm: bpm) }
         deck.onCueDraftChange = { [weak store] draft in store?.cueDraftChanged(draft) }
         deck.onReanalyze = { [weak store] uuid in store?.tags.restoreKeySuggestion(uuid: uuid) }
-        store.onWriteLock = { [weak deck] locked in deck?.editsFrozen = locked }
-        store.onRekordboxWritten = { [weak deck, weak store] uuids in
-            // 처음부터 다시 불러오지 않고 초안·그리드·게인만 새 rekordbox 값으로 맞춘다(소리·파형은 그대로).
-            guard let deck, let uuid = deck.row?.track.uuid, uuids.contains(uuid) else { return }
-            deck.refreshAfterWrite(store?.rowsByUUID[uuid])
-        }
+        store.connectWriteLocks(to: deck)
         keys.install(deck: deck, store: store, windows: windows)
         let editLinks = EditWindowLinks(deck: deck, store: store, reflection: reflection, writer: Self.renderEdit(store: store),
                                         makeAudio: { EditAudioPlayer() },
@@ -348,8 +545,10 @@ final class AppComposition {
         LinkCapture.runIfRequested(link: link, store: store)
         DevSelfTests.runKeyRoutingSelfTestIfRequested(store: store, deck: deck, windows: windows, libraryWindow: libraryWindow)
         #endif
-        deck.onDraftChange = { [weak store] uuid, kind, exists in
+        deck.onDraftChange = { [weak store, weak self] uuid, kind, exists in
             store?.draftChanged(trackUUID: uuid, kind: kind, exists: exists)
+            // 덱 편집은 3초 뒤에 저장한다(#295 E3: 쓰는 곡의 덱 편집은 버려지므로 이어 고치는 동안 쓰기가 끼지 않게)
+            self?.autoReflection?.edited(fromDeck: true)
         }
         // DJCrate에서 고친 큐를 LINK로 내어 주는 큐에 옮긴다(#281)
         if let link {
@@ -361,14 +560,21 @@ final class AppComposition {
     }
 
     /// 창을 띄운 뒤: rekordbox 실행 감지를 돌리고, 사이드바 USB 절을 붙이고, 읽을 때마다 도는 캐시 정리를 붙이고, 라이브러리를 처음 읽는다.
+    /// 바깥 초안 감시·자동 시점 스냅샷은 앱 수명 동안 돌린다. 첫 읽기 뒤 자동 저장 엔진을 시작한다(기록 판정·재시작 정리 뒤 남은 편집을 R1대로 저장)
     func start() async {
+        let first = lifetimeTasks.isEmpty
+        if first { startLifetimeTasks() }
         updater?.start()
         rekordboxRun.start()
-        UsbAppSetup.attach(to: store)
+        if !DiagnosticRun.isCopySelfTest() { UsbAppSetup.attach(to: store) }
         // CLI가 앱의 시점 스냅샷 보관 일수를 따르게 공유 파일에 맞춘다
         settings.syncShared()
         // 프로세스 전체의 캐시·임시 파일 정리는 앱만 한다(화면 모델·시험 저장소가 공용 음량 캐시를 자기 곡으로 잘라내지 않게).
-        store.onLibraryLoaded = { paths in Self.maintainCaches(keeping: paths) }
+        store.onLibraryLoaded = { [weak self] paths in
+            Self.maintainCaches(keeping: paths)
+            // 다시 읽은 라이브러리로 미룬 곡 넣기 정리를 다시 한다(R22)
+            self?.autoReflection?.libraryReloaded()
+        }
         // 옛 AI 에이전트 설치본 알림(#262)은 읽기를 기다리지 않는다. 다른 알림을 덮지 않는다
         if agentNoticeEnabled, let agentTools {
             Task { [store] in
@@ -379,7 +585,82 @@ final class AppComposition {
                 }
             }
         }
+        if first, let autoReflection {
+            // 업데이트 전 곡 초안 이관(#295 E1): 자동 저장하는 실행만, 첫 라이브러리 읽기보다 먼저 한 번(읽은 저장 대기에 출처가 실리게)
+            let adopted = await autoReflection.adoptLegacyDrafts()
+            if adopted > 0 { store.activityLog.record(.notice(Self.legacyAdoptedText(adopted), nil, kind: .success), shown: false) }
+        }
         await store.loadInitial()
+        if first, let autoReflection {
+            autoReflection.start()
+            observeDrafts(for: autoReflection)
+        }
+    }
+
+    /// 덱에 올린 곡의 태그(평점·곡 색 포함)를 라이브러리에서 고쳤으면 덱 편집으로 알린다(#295 리뷰 F6): 1초 뒤 쓰기가 그 곡을 잠그면
+    /// 이어서 덱에서 고친 편집이 버려진다. 다른 곡의 태그 편집은 라이브러리 편집(T_edit)이다
+    /// - Returns: 덱 편집으로 알렸는지
+    @discardableResult
+    func tagDraftsEdited(_ uuids: Set<String>) -> Bool {
+        guard let deckUUID = deck.row?.track.uuid, uuids.contains(deckUUID) else { return false }
+        autoReflection?.edited(fromDeck: true)
+        return true
+    }
+
+    /// 업데이트 전 곡 초안을 이관한 활동 기록(#295 E1)
+    static func legacyAdoptedText(_ count: Int) -> String {
+        String(ui: "업데이트 전부터 있던 저장 대기 \(count)건도 자동으로 저장합니다")
+    }
+
+    /// 앱 수명 동안 도는 일을 시작한다(창의 `.task`가 아니라 조립 지점이 든다: 창을 닫았다 열어도 멈추거나 겹치지 않는다)
+    private func startLifetimeTasks() {
+        lifetimeTasks = [
+            Task { [weak self] in await self?.watchExternalDrafts() },
+            Task { [weak self] in await self?.runAutoPointSnapshots() },
+        ]
+        // 앱이 끝나기 직전에 멈춘다(끝나는 동안 새 판정·감시가 디스크 일을 시작하지 않게)
+        terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                                                     queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stopLifetimeTasks() }
+        }
+    }
+
+    /// 앱을 끌 때 수명 동안 도는 일과 자동 저장 판정을 멈춘다. 앱이 실제로 끝나기 직전(`willTerminate`)에만 부른다:
+    /// 종료 판정이 그 전에 쓰던 자동 저장(미리 보기 포함)을 끝까지 기다리므로 진행 중인 저장을 취소하지 않는다(R17)
+    func stopLifetimeTasks() {
+        lifetimeTasks.forEach { $0.cancel() }
+        autoReflection?.stop()
+    }
+
+    /// ⌘Q 저장(R17)을 엔진에 잇는다: 입력 칸 확정(⌘S와 같다), 엔진의 ⌘Q 저장·취소, 시스템 종료의 새 쓰기 막기.
+    /// 엔진이 없으면 자동 저장하지 않는 실행이다. 자동 저장하지 않는 실행도 시스템 종료 때 엔진을 멈춰 세운다
+    func quitAutoSaveLink() -> QuitAutoSaveLink {
+        guard let engine = autoReflection else { return QuitAutoSaveLink() }
+        let store = store, window = libraryWindow
+        return QuitAutoSaveLink(
+            autoSaves: { engine.run.autoSaves },
+            // 수동 쓰기는 엔진의 차례를 받아 "지금 미리 보기를 실행하는 작업"으로 등록된다. 등록되지 않은 엔진의 쓰기는 자동 저장이다
+            autoWriting: { engine.isWriting && store.previewingWriteTask == nil },
+            commitInput: { await window.commitInputBeforeQuit() },
+            prepare: { await engine.prepareToQuit() },
+            cancel: { engine.cancelQuit() },
+            shutdown: { $0 ? engine.shutdown() : engine.cancelShutdown() })
+    }
+
+    /// 저장 대기(곡 초안 표시·태그·재생 목록 초안)가 바뀔 때마다 엔진에 알린다(마지막 편집 뒤 T_edit를 다시 센다, R1)
+    private func observeDrafts(for engine: AutoReflection) {
+        let store = store
+        withObservationTracking {
+            _ = store.pendingUUIDs
+            _ = store.draftCueCounts
+            _ = store.playlists.playlistDraft
+        } onChange: { [weak self, weak engine] in
+            Task { @MainActor in
+                guard let self, let engine else { return }
+                engine.edited()
+                self.observeDrafts(for: engine)
+            }
+        }
     }
 
     /// 시점 스냅샷 창의 유스케이스: 대상은 반영과 같은 곳(저장소의 rekordbox DB·share), 스냅샷은 데이터 폴더, 백업은 저장소의 백업 폴더
@@ -424,10 +705,18 @@ final class AppComposition {
         AutoPointSnapshotRunner(store: store, snapshots: DJCPaths.pointSnapshots, files: .live())
     }
 
-    /// 주 창이 떠 있는 동안 자동 시점 스냅샷을 돌린다(창이 사라지면 `.task`가 취소한다)
-    func runAutoPointSnapshots() async { await autoPointSnapshots().loop() }
+    /// 앱이 켜져 있는 동안 하루 한 번 자동 시점 스냅샷을 돌린다(취소되면 끝). 자동 저장 엔진이 있으면 쓰기 잠금 아래에서 뜬다(R13)
+    func runAutoPointSnapshots() async {
+        guard let autoReflection else { return await snapshotRunner.loop() }
+        let session = autoReflection.session, lock = autoReflection.ports.writeLock
+        do { try await Task.sleep(for: AutoPointSnapshotRunner.firstDelay) } catch { return }
+        while !Task.isCancelled {
+            _ = await snapshotRunner.gate(lock: lock, journal: session.ports.gate.journal, target: session.target)
+            do { try await Task.sleep(for: AutoPointSnapshotRunner.interval) } catch { return }
+        }
+    }
 
-    /// 주 창이 떠 있는 동안 CLI·다른 앱이 바꾼 초안 파일을 다시 읽는다(창이 사라지면 `.task`가 취소해 멈춘다).
+    /// 앱이 켜져 있는 동안 CLI·다른 앱이 바꾼 초안 파일을 다시 읽는다(취소되면 멈춘다).
     func watchExternalDrafts(every interval: Duration = .seconds(1)) async {
         while !Task.isCancelled {
             // 끄는 중인 큐·그리드는 손을 놓아 저장한 뒤에 다시 읽는다.
@@ -458,6 +747,15 @@ final class AppWindows {
     let flip = FlipWindow()
     let pointSnapshots = PointSnapshotWindow(points: AppComposition.pointSnapshots(store:))
     let appleMusicImport = AppleMusicImportWindow()
+    let integrationGuide = IntegrationGuideWindow()
+
+    /// 초안을 편집하지 않는 보조 창인지(곡 편집·Flip·복원 시점·Apple Music 가져오기·연동 안내·설정·단축키). 입력 감지기가 이 창의 칸을 세지 않는다(컨실 3라운드 G18)
+    func isAuxiliary(_ window: NSWindow?) -> Bool {
+        guard let window else { return false }
+        let auxiliary = [trackEdit.window, flip.window, pointSnapshots.window, appleMusicImport.window, integrationGuide.window,
+                         SettingsWindow.current, ShortcutsWindow.current]
+        return auxiliary.contains { $0 === window }
+    }
 }
 
 extension EnvironmentValues {

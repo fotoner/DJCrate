@@ -13,7 +13,7 @@ rekordbox 라이브러리와 사용자 데이터를 절대 깨뜨리지 않는�
 - **SAFE-1** IMPORTANT: rekordbox나 rekordboxAgent가 켜져 있으면 라이브러리와 USB에 **절대 쓰지 않는다**.
 - **SAFE-2** 라이브러리는 RekordboxKit 쓰기 입구로만 바꾼다. 입구는 `RekordboxWriter.write`·`restore`와 `RekordboxTrackWriter.add`·`delete`다.
 - **SAFE-3** 모든 쓰기 입구는 관문 `RekordboxWriteGuard`를 먼저 지난다.
-- **SAFE-4** 앱과 CLI는 반영 세션 `ReflectionSession`으로만 쓴다. 이 세션이 포트 `RekordboxWriteGate`로 입구를 부른다.
+- **SAFE-4** 앱과 CLI는 반영 세션 `ReflectionSession`으로만 쓴다. 이 세션이 포트 `RekordboxWriteGate`로 입구를 부른다. 실험 명령(`Lab/`)과 `TrackSelfTest`(곡 지우기)는 사본에서 관문을 지나 입구를 직접 부를 수 있다.
 - **SAFE-5** 그 밖의 코드는 `master.db`와 분석 파일을 직접 고치지 않는다.
 - **SAFE-6** 라이브 DB와 음원은 읽기 전용이다. 읽기는 스냅샷 사본(`LibrarySnapshot`)에서 한다.
 - **SAFE-7** 시험과 실험의 쓰기는 **사본에만** 한다. `DJC_REKORDBOX_DIR=<사본 폴더>`와 `DJC_HOME=<임시 폴더>`를 준다.
@@ -55,16 +55,15 @@ TDD로 일한다. 버그는 실패하는 시험으로 먼저 재현한 뒤 고�
 | 단계 | 언제 | 명령 |
 |---|---|---|
 | 편집 중 | 시험을 쓰고 고칠 때 | `scripts/check.sh --quick --filter '<Suite>'`(시험·Suite 하나) |
-| 작업 끝 | "됐다"고 말하기 전, `dev` 합치기 직전, PR·`dev` CI | `scripts/check.sh --changed`(바꾼 파일에 닿는 시험·검사만) |
-| 릴리스 | `main`·`release/*` CI, 수동 실행, 사용자 요청 | `scripts/check.sh`(릴리스 빌드·번역·전체 시험·커버리지 쓰기 80%·코어 60%) |
+| 작업 끝 | "됐다"고 말하기 전, `dev` 합치기 직전 | `scripts/check.sh --changed` |
+| 릴리스 | 로컬 릴리스 준비, 사용자 요청 | `scripts/check.sh` |
 | 특수 | SQLCipher 초기화(`CipherDatabase`)·`CipherLab`·cold-open 경쟁 | `scripts/check.sh --stress`도 반드시 통과 |
 
 - `swift test`를 직접 돌리면 `DJC_HOME`과 `DJC_REKORDBOX_DIR`을 임시 폴더로 준다.
 - `scripts/check.sh`가 종료 코드 3이나 4를 내면 작업을 멈춘 뒤 사용자에게 알린다. 3은 실제 rekordbox 파일이, 4는 DJCrate 사용자 폴더·로그 폴더·환경설정이 바뀌었다는 뜻이다.
 - 같은 checkout에서 Swift 빌드·시험·성능 측정을 동시에 돌리지 않는다(잠금: `docs/ci.md`).
 - 같은 작업 트리에서 통과한 검사는 다시 돌리지 않는다(`--no-reuse`).
-- 결과는 추측하지 않는다. 끝 요약·종료 코드·로그 폴더로 보고한다.
-- `--changed`가 놓친 회귀는 릴리스 전체 검사가 잡는다(넓히기·보고: 스킬 `verify-change`).
+- CI 실행 범위는 [docs/ci.md의 CI 구성](docs/ci.md#ci-구성), 완료 보고는 스킬 `verify-change`를 따른다.
 - 소리·실제 UI·rekordbox 쓰기 전 과정은 스킬 `app-selftest`로, USB 쓰기 전 과정은 스킬 `usb-image-check`로 확인한다.
 
 ## 지도
@@ -73,7 +72,7 @@ TDD로 일한다. 버그는 실패하는 시험으로 먼저 재현한 뒤 고�
 |---|---|
 | 기능(사용자용) | `README.md`, `docs/features.md` |
 | 구조·경계 규칙·설계 이유, 새 코드를 둘 곳, 데이터 폴더 | `docs/architecture.md` |
-| 화면 모델·뷰(MVVM 패턴) | `docs/mvvm.md` |
+| 화면 모델·뷰(MVVM) | `docs/mvvm.md` |
 | rekordbox 형식·쓰기 규칙(실험으로 확인한 사실) | `docs/rekordbox-internals.md` |
 | USB 형식·쓰기 | `docs/usb-internals.md` |
 | 검증 단계·`check.sh` 모드·선택 실행 장치·CI·측정 기준 | `docs/ci.md` |
@@ -110,7 +109,7 @@ TDD로 일한다. 버그는 실패하는 시험으로 먼저 재현한 뒤 고�
 
 ## 핵심 설계 결정
 
-- 편집은 모두 **초안**으로 쌓는다. rekordbox에는 반영 때만 쓴다. 초안은 큐, 그리드, 게인, 태그, 앨범아트, 재생 목록이다.
+- 편집은 모두 **초안**으로 쌓는다. 자동 저장·⌘S만 rekordbox에 쓴다. 초안은 큐, 그리드, 게인, 태그, 앨범아트, 재생 목록이다.
 - 초안은 만들 때의 rekordbox 상태(`base`)를 든다. 그 뒤 rekordbox에서 바뀐 곡은 쓰지 않는다.
 - 덱과 초안의 시각은 모두 **rekordbox 시간축**이다. 이 시간축은 음원 시각 + 인코더 지연(`RekordboxTimeline.predictedOffset`)이다. 파형만 음원 시간축이라 `timelineOffset`만큼 당겨 그린다.
 - 새 곡은 미리 보기를 거쳐 컬렉션에 직접 넣는다. 호환 경로인 rekordbox XML(Import To Collection)로 넘길 수도 있다.
@@ -123,7 +122,7 @@ TDD로 일한다. 버그는 실패하는 시험으로 먼저 재현한 뒤 고�
 - 화면 문구는 `String(ui:)`·`.ui(…)`로 쓴다. en·ja 번역, 용어표, `…` 규칙은 `.claude/rules/ui-strings.md`를 따른다.
 - 사용자에게 보이는 막힘·오류 이유는 한국어 한 문장으로 쓴다. 무엇을 하면 되는지까지 쓴다. 예: "rekordbox에서 트랙 분석을 먼저 한 뒤 쓰세요".
 - 주석은 "왜"를 짧게 한국어로 쓴다. 둘레 코드의 주석 밀도와 말투에 맞춘다.
-- Swift 6 엄격 동시성을 쓴다. 오디오 탭·렌더 콜백은 메인 액터 밖(`nonisolated static`)에서 만든다. 메인 액터 격리를 물려받으면 오디오 스레드에서 죽는다.
+- Swift 6 엄격 동시성을 쓴다. 오디오 콜백은 [.claude/rules/audio.md](.claude/rules/audio.md) AUD-10을 따른다.
 
 ## 저장소 규칙
 

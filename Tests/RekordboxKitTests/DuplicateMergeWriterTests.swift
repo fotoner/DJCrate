@@ -153,7 +153,7 @@ struct DuplicateMergeWriterTests {
         let base = try #require(try RekordboxWriter.currentTags(db: db, contentID: "300"))
         db.close()
         var tag = TagDraft(trackUUID: "u300", base: base)
-        tag.fields.title = "태그 초안"
+        tag.fields.title = "태그 편집"
         try fixture.execute("UPDATE djmdContent SET Title = '바뀐 제목' WHERE ID = '300'")
         let report = try RekordboxWriter.write(drafts: [], tags: [tag], merges: [merge], to: fixture.database,
                                               dryRun: false, backups: fixture.backups, shareRoot: fixture.shareRoot)

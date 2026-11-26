@@ -66,11 +66,11 @@ struct ListHeaderActionsTests {
     }
 
     @Test func 쓰기_이름은_고른_곡이면_고른_N곡_아니면_전체_N곡이고_함께_쓰는_건수가_붙는다() {
-        #expect(Actions.writeTitle(selected: false, tracks: 12, playlistEdits: 0, histories: 0) == "전체 12곡 쓰기")
-        #expect(Actions.writeTitle(selected: true, tracks: 3, playlistEdits: 0, histories: 0) == "고른 3곡 쓰기")
-        #expect(Actions.writeTitle(selected: false, tracks: 0, playlistEdits: 2, histories: 0) == "전체 0곡 쓰기 (재생 목록 2건)")
-        #expect(Actions.writeTitle(selected: false, tracks: 5, playlistEdits: 0, histories: 4) == "전체 5곡 쓰기 (재생 기록 4건)")
-        #expect(Actions.writeTitle(selected: true, tracks: 3, playlistEdits: 2, histories: 1) == "고른 3곡 쓰기 (재생 목록 2건 · 재생 기록 1건)")
+        #expect(Actions.writeTitle(selected: false, tracks: 12, playlistEdits: 0, histories: 0) == "전체 12곡 저장")
+        #expect(Actions.writeTitle(selected: true, tracks: 3, playlistEdits: 0, histories: 0) == "고른 3곡 저장")
+        #expect(Actions.writeTitle(selected: false, tracks: 0, playlistEdits: 2, histories: 0) == "전체 0곡 저장 (재생 목록 2건)")
+        #expect(Actions.writeTitle(selected: false, tracks: 5, playlistEdits: 0, histories: 4) == "전체 5곡 저장 (재생 기록 4건)")
+        #expect(Actions.writeTitle(selected: true, tracks: 3, playlistEdits: 2, histories: 1) == "고른 3곡 저장 (재생 목록 2건 · 재생 기록 1건)")
     }
 
     @Test func 쓰기_단추는_쓸_것이_하나도_없거나_쓰는_중이거나_비교_창이_열려_있으면_막는다() {
@@ -106,9 +106,9 @@ struct ListHeaderActionsTests {
         }
         store.sidebar = .pending
         #expect(store.displayRows.count == 2)
-        #expect(model.actions.primary?.title == "전체 2곡 쓰기")
+        #expect(model.actions.primary?.title == "전체 2곡 저장")
         store.selection = [drafted.id]
-        #expect(model.actions.primary?.title == "고른 1곡 쓰기")
+        #expect(model.actions.primary?.title == "고른 1곡 저장")
         // 이름이 말하는 곡이 실제로 부르는 곡이다
         #expect(model.pendingTargets.map(\.id) == [drafted.id])
         withExtendedLifetime(fixture) {}
@@ -130,7 +130,7 @@ struct ListHeaderActionsTests {
         store.selection = [elsewhere.id]
         store.sidebar = .pending
         #expect(!store.displayRows.contains { $0.id == elsewhere.id })
-        #expect(model.actions.primary?.title == "전체 2곡 쓰기")
+        #expect(model.actions.primary?.title == "전체 2곡 저장")
         #expect(model.actions.primary?.isEnabled == true)
         #expect(Set(model.pendingTargets.map(\.id)) == [drafted.id, other.id])
         withExtendedLifetime(fixture) {}
@@ -138,13 +138,13 @@ struct ListHeaderActionsTests {
 
     @Test func 검색이나_필터로_좁힌_쓰기_대기는_고른_곡이_없으면_보이는_N곡이다() {
         // 고른 곡이 없으면 단추는 보이는 곡만 쓴다(메뉴·상태 줄의 쓰기는 쓰기 대기 전체). 좁혔을 때 「전체」라고 하지 않는다
-        #expect(Actions.writeTitle(selected: false, narrowed: true, tracks: 4, playlistEdits: 0, histories: 0) == "보이는 4곡 쓰기")
-        #expect(Actions.writeTitle(selected: false, narrowed: true, tracks: 4, playlistEdits: 1, histories: 0) == "보이는 4곡 쓰기 (재생 목록 1건)")
+        #expect(Actions.writeTitle(selected: false, narrowed: true, tracks: 4, playlistEdits: 0, histories: 0) == "보이는 4곡 저장")
+        #expect(Actions.writeTitle(selected: false, narrowed: true, tracks: 4, playlistEdits: 1, histories: 0) == "보이는 4곡 저장 (재생 목록 1건)")
         // 고른 곡이 있으면 좁혔어도 고른 곡이다
-        #expect(Actions.writeTitle(selected: true, narrowed: true, tracks: 2, playlistEdits: 0, histories: 0) == "고른 2곡 쓰기")
+        #expect(Actions.writeTitle(selected: true, narrowed: true, tracks: 2, playlistEdits: 0, histories: 0) == "고른 2곡 저장")
         let narrowed = Actions.pending(selected: false, narrowed: true, tracks: 4, playlistEdits: 1, histories: [], unlinkedDrafts: 0,
                                        restore: .init(isEnabled: true, help: "복원"), locks: .init())
-        #expect(narrowed.primary?.compactTitle == "보이는 4곡 쓰기")
+        #expect(narrowed.primary?.compactTitle == "보이는 4곡 저장")
     }
 
     @Test func 쓰기_대기에서_검색으로_좁히면_이름이_보이는_곡_수를_말하고_그_곡을_쓴다() async throws {
@@ -161,10 +161,10 @@ struct ListHeaderActionsTests {
         store.sidebar = .pending
         store.search = drafted.track.title
         #expect(store.displayRows.map(\.id) == [drafted.id])
-        #expect(model.actions.primary?.title == "보이는 1곡 쓰기")
+        #expect(model.actions.primary?.title == "보이는 1곡 저장")
         #expect(model.pendingTargets.map(\.id) == [drafted.id])
         store.search = ""
-        #expect(model.actions.primary?.title == "전체 2곡 쓰기")
+        #expect(model.actions.primary?.title == "전체 2곡 저장")
         withExtendedLifetime(fixture) {}
     }
 
@@ -196,32 +196,32 @@ struct ListHeaderActionsTests {
     @Test func 쓰기_대기_메뉴는_재생_기록_재생_목록_초안_XML_복원을_상황에_맞게_담는다() {
         let histories = [Actions.HistoryMenu.Entry(id: "h1", name: "기록 가"), .init(id: "h2", name: "기록 나")]
         let full = Actions.pending(selected: false, tracks: 2, playlistEdits: 3, histories: histories, unlinkedDrafts: 0,
-                                   restore: .init(isEnabled: true, help: "라이브러리 전체를 마지막 쓰기 전 백업으로 복원합니다."), locks: .init())
-        #expect(titles(full) == ["재생 기록 2건", "재생 목록 초안 버리기", "XML 만들기", "쓰기 전으로 복원…"])
+                                   restore: .init(isEnabled: true, help: "라이브러리 전체를 마지막 저장 전 백업으로 복원합니다."), locks: .init())
+        #expect(titles(full) == ["재생 기록 2건", "재생 목록 편집 버리기", "XML 만들기", "저장 전으로 복원…"])
         guard case let .histories(menu) = full.menu.first else { Issue.record("재생 기록 하위 메뉴가 먼저 와야 한다"); return }
         #expect(menu.entries.map(\.name) == ["기록 가", "기록 나"])
-        #expect(menu.excludeAll.title == "모두 rekordbox 쓰기 대기에서 빼기")
+        #expect(menu.excludeAll.title == "모두 rekordbox 저장 대기에서 빼기")
         #expect(menu.excludeAll.action == .excludePendingHistories)
         // 재생 기록 메뉴의 툴팁(라벨을 되풀이하며 틀린 말을 하던 "USB 재생 기록")은 없다
         #expect(menu.excludeAll.help == nil)
-        #expect(menuCommand(full, "재생 목록 초안 버리기")?.help == "⌘Z로 되돌릴 수 있습니다.")
+        #expect(menuCommand(full, "재생 목록 편집 버리기")?.help == "⌘Z로 되돌릴 수 있습니다.")
         #expect(menuCommand(full, "XML 만들기")?.help == nil)
         // 복원은 결과 범위를 툴팁으로 남기고, 늘 확인 창이 뜨는 항목이라 …가 붙는다
-        #expect(menuCommand(full, "쓰기 전으로 복원…")?.help == "라이브러리 전체를 마지막 쓰기 전 백업으로 복원합니다.")
-        #expect(menuCommand(full, "쓰기 전으로 복원…")?.action == .restoreLatest)
+        #expect(menuCommand(full, "저장 전으로 복원…")?.help == "라이브러리 전체를 마지막 저장 전 백업으로 복원합니다.")
+        #expect(menuCommand(full, "저장 전으로 복원…")?.action == .restoreLatest)
 
         let bare = Actions.pending(selected: false, tracks: 2, playlistEdits: 0, histories: [], unlinkedDrafts: 0,
                                    restore: .init(isEnabled: false, help: "복원할 백업이 없습니다."), locks: .init())
-        #expect(titles(bare) == ["XML 만들기", "쓰기 전으로 복원…"])
-        #expect(menuCommand(bare, "쓰기 전으로 복원…")?.isEnabled == false)
-        #expect(menuCommand(bare, "쓰기 전으로 복원…")?.help == "복원할 백업이 없습니다.")
+        #expect(titles(bare) == ["XML 만들기", "저장 전으로 복원…"])
+        #expect(menuCommand(bare, "저장 전으로 복원…")?.isEnabled == false)
+        #expect(menuCommand(bare, "저장 전으로 복원…")?.help == "복원할 백업이 없습니다.")
 
         let frozen = Actions.pending(selected: false, tracks: 2, playlistEdits: 3, histories: histories, unlinkedDrafts: 0,
                                      restore: .init(isEnabled: true, help: ""), locks: .init(busy: true, editsFrozen: true))
-        #expect(menuCommand(frozen, "재생 목록 초안 버리기")?.isEnabled == false)
+        #expect(menuCommand(frozen, "재생 목록 편집 버리기")?.isEnabled == false)
         guard case let .histories(frozenMenu) = frozen.menu.first else { Issue.record("재생 기록 하위 메뉴"); return }
         #expect(frozenMenu.excludeAll.isEnabled == false)
-        #expect(menuCommand(frozen, "쓰기 전으로 복원…")?.isEnabled == false)
+        #expect(menuCommand(frozen, "저장 전으로 복원…")?.isEnabled == false)
         // XML 만들기는 곡이 없을 때만 막는다
         let noTracks = Actions.pending(selected: false, tracks: 0, playlistEdits: 1, histories: [], unlinkedDrafts: 0,
                                        restore: .init(isEnabled: true, help: ""), locks: .init())
@@ -238,7 +238,7 @@ struct ListHeaderActionsTests {
                                    restore: .init(isEnabled: true, help: ""), locks: .init())
         #expect(some.status?.kind == .hint)
         #expect(some.status?.symbol == "questionmark.folder")
-        #expect(some.status?.title == "연결되지 않은 초안 4곡")
+        #expect(some.status?.title == "연결되지 않은 편집 4곡")
         #expect(some.status?.command?.title == "보기…")
         #expect(some.status?.command?.action == .openUnlinkedDrafts)
         let busy = Actions.pending(selected: false, tracks: 1, playlistEdits: 0, histories: [], unlinkedDrafts: 4,
@@ -279,7 +279,7 @@ struct ListHeaderActionsTests {
     @Test func 재생_목록은_막힌_초안이면_경고와_비교_단추_초안이면_표시와_버리기_단추를_보인다() {
         let blocked = Actions.playlist(id: "P", isDraft: true, blockedReason: "곡이 사라졌습니다", hiddenStreaming: nil, canCompare: true, locks: .init())
         #expect(blocked.status?.kind == .warning)
-        #expect(blocked.status?.title == "이 목록의 초안 일부를 쓸 수 없습니다: 곡이 사라졌습니다")
+        #expect(blocked.status?.title == "이 목록의 편집 일부를 저장할 수 없습니다: 곡이 사라졌습니다")
         #expect(blocked.primary?.title == "현재 목록 비교…")
         #expect(blocked.primary?.action == .comparePlaylist("P"))
         #expect(blocked.primary?.isEnabled == true)
@@ -287,8 +287,8 @@ struct ListHeaderActionsTests {
 
         let draft = Actions.playlist(id: "P", isDraft: true, blockedReason: nil, hiddenStreaming: nil, canCompare: true, locks: .init())
         #expect(draft.status?.kind == .draft)
-        #expect(draft.status?.title == "쓰기 전 목록 초안")
-        #expect(draft.primary?.title == "이 목록의 초안 버리기")
+        #expect(draft.status?.title == "저장 전 목록 편집")
+        #expect(draft.primary?.title == "이 목록의 편집 버리기")
         #expect(draft.primary?.action == .discardPlaylistDraft("P"))
         #expect(draft.primary?.help == "⌘Z로 되돌릴 수 있습니다.")
         let frozen = Actions.playlist(id: "P", isDraft: true, blockedReason: nil, hiddenStreaming: nil, canCompare: true, locks: .init(busy: true, editsFrozen: true))
@@ -307,7 +307,7 @@ struct ListHeaderActionsTests {
         // 초안이 있어도 한 화면에 상태는 하나다: 순서를 못 바꾸는 이유(숨김)가 초안 표시보다 앞선다. 초안 버리기 단추는 그대로 있다
         let both = Actions.playlist(id: "P", isDraft: true, blockedReason: nil, hiddenStreaming: 2, canCompare: true, locks: .init())
         #expect(both.status?.kind == .hidden)
-        #expect(both.primary?.title == "이 목록의 초안 버리기")
+        #expect(both.primary?.title == "이 목록의 편집 버리기")
         // 막힌 초안은 할 일이 있는 막힘이라 숨김보다 앞선다
         let blocked = Actions.playlist(id: "P", isDraft: true, blockedReason: "x", hiddenStreaming: 2, canCompare: true, locks: .init())
         #expect(blocked.status?.kind == .warning)
@@ -315,7 +315,7 @@ struct ListHeaderActionsTests {
 
     @Test func USB는_편집을_받으면_반영_단추와_쓰기_대기_메뉴_읽기만_하면_잠금_표시다() {
         let editing = Actions.usb(volumeKey: "합성", editing: (updatable: 3, blockReason: nil, draftCount: 5), playlistMismatch: false)
-        #expect(editing.primary?.title == "로컬 변경을 USB에 반영 (3곡)")
+        #expect(editing.primary?.title == "로컬 변경을 USB에 쓰기 (3곡)")
         #expect(editing.primary?.action == .refreshUsbLocalChanges("합성"))
         #expect(editing.primary?.isEnabled == true)
         #expect(titles(editing) == ["USB 쓰기 대기 (5건)"])
@@ -404,7 +404,7 @@ struct ListHeaderActionsTests {
         let model = ListActionBarModel(store: store)
         #expect(model.actions.status == nil)
         store.unlinkedDraftUUIDs = ["a", "b", "c"]
-        #expect(model.actions.status?.title == "연결되지 않은 초안 3곡")
+        #expect(model.actions.status?.title == "연결되지 않은 편집 3곡")
         #expect(model.actions.status?.command?.action == .openUnlinkedDrafts)
     }
 
@@ -413,7 +413,7 @@ struct ListHeaderActionsTests {
         #expect(grid.primary?.title == "이 목록 그리드 추정 (7곡)")
         #expect(grid.primary?.action == .estimateGrids)
         #expect(grid.primary?.isEnabled == true)
-        #expect(grid.primary?.help == "rekordbox가 분석하지 않은 곡의 BPM·박 위치를 추정해 그리드 초안으로 저장합니다.")
+        #expect(grid.primary?.help == "rekordbox가 분석하지 않은 곡의 BPM·박 위치를 추정해 그리드 편집으로 보관합니다.")
         #expect(grid.menu.isEmpty && grid.status == nil)
         #expect(Actions.gridEstimate(count: 0, blocked: true).primary?.isEnabled == false)
     }
@@ -436,7 +436,7 @@ struct ListHeaderActionsTests {
             .staged(selected: true, count: 2, canRemove: true, canExportXML: true, importedCount: 1, locks: .init(sheetBlocked: true)),
             .staged(selected: false, count: 2, canRemove: true, canExportXML: true, importedCount: 1, locks: .init()),
             .pending(selected: true, tracks: 2, playlistEdits: 1, histories: histories, unlinkedDrafts: 1,
-                     restore: .init(isEnabled: true, help: "라이브러리 전체를 마지막 쓰기 전 백업으로 복원합니다."), locks: .init()),
+                     restore: .init(isEnabled: true, help: "라이브러리 전체를 마지막 저장 전 백업으로 복원합니다."), locks: .init()),
             .playlist(id: "P", isDraft: true, blockedReason: nil, hiddenStreaming: 1, canCompare: true, locks: .init()),
             .usb(volumeKey: "합성", editing: (updatable: 1, blockReason: nil, draftCount: 1), playlistMismatch: false),
             .missingFiles(volumes: [], checking: false, hasMissing: true, canFindInFolder: true),
@@ -531,8 +531,8 @@ struct ListHeaderActionsTests {
 
     @Test func 쓰기_대기에_재생_기록만_있으면_건수는_위_쓰기_단추_이름에_맡기고_한_줄만_안내한다() {
         let message = notice(sidebar: .pending, pendingHistories: 3)
-        #expect(message.title == "쓸 곡 초안이 없습니다")
-        #expect(message.description == "위 쓰기 단추로 재생 기록을 rekordbox에 넣습니다.")
+        #expect(message.title == "저장할 곡 편집이 없습니다")
+        #expect(message.description == "위 저장 단추로 재생 기록을 rekordbox에 넣습니다.")
         #expect(!(message.description ?? "").contains("3"))
     }
 

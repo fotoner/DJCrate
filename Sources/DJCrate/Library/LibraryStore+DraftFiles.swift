@@ -34,7 +34,7 @@ extension LibraryStore {
     static func damagedDraftText(_ count: Int, stagedList: Bool = false) -> String {
         var sentences: [String] = []
         if count > 0 {
-            sentences.append(String(ui: "초안 파일 \(count)개를 읽지 못해 DJCrate 데이터 폴더의 damaged-drafts에 옮겨 두었으니 필요한 곡의 초안을 다시 만드세요."))
+            sentences.append(String(ui: "편집 파일 \(count)개를 읽지 못해 DJCrate 데이터 폴더의 damaged-drafts에 옮겨 두었으니 필요한 곡의 편집을 다시 만드세요."))
         }
         if stagedList {
             sentences.append(String(ui: "추가한 곡 목록 파일을 읽지 못해 DJCrate 데이터 폴더의 damaged-drafts에 옮겨 두었으니 추가했던 곡 파일을 다시 추가하세요."))
@@ -71,10 +71,18 @@ extension LibraryStore {
                           previousPlaylist: PlaylistDraft? = nil, reporting: Bool = true) {
         guard !moved.isEmpty else { return }
         if reporting { reportDamagedDrafts(moved) }
-        let recovery = useCases.watch.recoverMoved(moved, memoryTags: previousTags ?? tagDrafts, memoryPlaylist: previousPlaylist ?? playlists.playlistDraft)
+        let carried = playlists.unsavedStepOrigins
+        let recovery = useCases.watch.recoverMoved(moved, memoryTags: previousTags ?? tagDrafts, memoryPlaylist: previousPlaylist ?? playlists.playlistDraft,
+                                                   carrying: carried)
+        let savedTags = recovery.resavedTags
+        if !savedTags.isEmpty {
+            var updated = tagDrafts
+            for draft in savedTags { updated[draft.trackUUID] = draft }
+            tagDrafts = updated
+        }
         for step in recovery.steps {
             switch step {
-            case let .keepTag(draft): tagDrafts[draft.trackUUID] = draft
+            case .keepTag: break
             case let .clearCue(uuid):
                 draftCueCounts[uuid] = nil
                 draftChanged(trackUUID: uuid, kind: .cue, exists: false)
@@ -84,14 +92,19 @@ extension LibraryStore {
                 updateEdited(uuid)
             }
         }
-        if !recovery.resavedTags.isEmpty {
-            rememberTagSaves(recovery.resavedTags)
+        if !savedTags.isEmpty {
+            rememberTagSaves(savedTags)
             tagRevision += 1
         }
         if let gains = recovery.gainDraftUUIDs { applyGainDraftUUIDs(gains) }
         if let playlist = recovery.playlist {
+            // 저장에 실패한 동안 기억한 출처를 더해 저장했다: 성공하면 비우고, 실패하면 계속 기억한다(#295 리뷰 F10)
+            playlists.unsavedStepOrigins = playlist.error == nil ? []
+                : useCases.playlists.carriedAfterFailure(playlist.draft, carrying: carried)
             playlists.playlistDraft = playlist.draft
             playlists.applyPlaylistSave(playlist.error)
+            // 저장이 준 단계 식별자를 받는다(다음 저장이 식별자 없는 단계를 새 사람 단계로 다시 쓰지 않게, #295 리뷰 F11)
+            if playlist.error == nil { playlists.adoptSavedIdentifiers() }
             playlists.refreshPlaylists()
         }
     }

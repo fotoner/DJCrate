@@ -167,7 +167,7 @@ struct UsbHistoryAppTests {
         defer { try? FileManager.default.removeItem(at: scratch) }
         let fixture = try historyFixture()
         let store = try await Self.libraryStore(fixture, histories: Self.histories(scratch))
-        store.showToast(.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        store.showToast(.notice("rekordbox가 켜져 있어 저장하지 않았습니다", nil))
         let warning = try #require(store.toast)
         let (host, _) = Self.host()
         let usb = UsbTestData.store(host, local: Self.localKeys())

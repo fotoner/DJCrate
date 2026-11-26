@@ -44,7 +44,7 @@ public enum DuplicateMerge {
         let members = [keeping] + removing
         guard !removing.isEmpty, Set(members.map(\.contentID)).count == members.count,
               Set(members.map(\.trackUUID)).count == members.count else {
-            throw Blocked(String(ui: "서로 다른 곡을 골라 합치기 초안을 다시 만드세요"))
+            throw Blocked(String(ui: "서로 다른 곡을 골라 합치기 편집을 다시 만드세요"))
         }
         guard members.allSatisfy({ $0.duration.isFinite && $0.duration > 0 && $0.offset.isFinite && $0.offset >= 0
             && abs($0.duration - keeping.duration) <= 0.020000001 }) else {
@@ -71,7 +71,8 @@ public enum DuplicateMerge {
                 if cue.loop?.active == true, draft.cues.contains(where: { $0.loop?.active == true }) {
                     throw Blocked(String(ui: "서로 다른 활성 루프가 있습니다. 활성 루프를 하나로 정한 뒤 다시 합치세요"))
                 }
-                cue.id = newID(); cue.sourceID = nil
+                // 되살린 표시(#405)도 옮기지 않는다: 쓰기가 그 표시로 원래 색을 쓰는데, 큐 색은 옮기지 않는다(SAFE-12)
+                cue.id = newID(); cue.sourceID = nil; cue.restoredFrom = nil
                 draft.cues.append(cue)
             }
         }

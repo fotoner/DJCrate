@@ -147,7 +147,7 @@ public enum UsbLibraryDiff {
 
     /// 편집 전후 합친 모델(`before`·`after`)에서 같은 곡·공유 표 행, 곧 편집이 건드리지 않은 행이 `format`에 다시 쓴 모델(`written`)에서
     /// 그 형식을 읽은 원래 모델(`original`)과 달라진 곳(#238: 두 형식 값이 다른 행을 다른 형식 값으로 덮지 않았는지).
-    /// 값이 같아도 편집이 다시 쓴 곡(`forgetDeviceLibraryValues`)은 건드린 행이다.
+    /// 값이 같아도 편집 전후의 Device Library 값(`deviceLibraryValues`)이 달라진 행은 건드린 행이다.
     /// 원래 그 형식에 없던 행이 생긴 것(`onlyRight`)은 편집이 가리키게 되어 넣은 한 형식 행이라 세지 않는다(#234)
     public static func untouchedRowChanges(in format: UsbFormat, original: UsbLibrary, before: UsbLibrary, after: UsbLibrary,
                                            written: UsbLibrary) -> [Difference] {

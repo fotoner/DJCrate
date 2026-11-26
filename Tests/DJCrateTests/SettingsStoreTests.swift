@@ -1,3 +1,4 @@
+import DJCAdapters
 import DJCApplication
 @testable import DJCrate
 import DJCDomain
@@ -9,6 +10,111 @@ import Testing
 @MainActor
 struct SettingsStoreTests {
     static func freshDefaults() -> UserDefaults { TestDefaults.make("settings") }
+
+    @Test(arguments: [["--track-selftest=/tmp/fixture.wav"], ["--track-selftest", "/tmp/fixture.wav"],
+                      ["--write-selftest"], ["--switch-selftest"]])
+    func 사본_자가시험이_사용자_설정과_공유_설정에_접근하지_않는다(_ arguments: [String]) throws {
+        let (name, defaults) = TestDefaults.suite("copy-selftest-settings")
+        defer { defaults.removePersistentDomain(forName: name) }
+        let directory = try TemporaryFolder()
+        let file = directory.url.appending(path: "shared.json")
+        defaults.set(0.3, forKey: SettingKeys.volume.name)
+        defaults.set(["original"], forKey: SettingKeys.dismissedGainSuggestions)
+        let store = SettingsStore(defaults: defaults, persist: SettingsStore.persists(arguments: ["djcrate"] + arguments),
+                                  sharedFile: .live(file: file))
+        #expect(store.value(SettingKeys.volume) == SettingKeys.volume.defaultValue)
+        #expect(store.strings(SettingKeys.dismissedGainSuggestions).isEmpty)
+        store.set(SettingKeys.volume, 0.1)
+        store.setStrings(SettingKeys.dismissedGainSuggestions, ["fixture"])
+        store.syncShared()
+        #expect(store.strings(SettingKeys.dismissedGainSuggestions) == ["fixture"])
+        #expect(defaults.double(forKey: SettingKeys.volume.name) == 0.3)
+        #expect(defaults.stringArray(forKey: SettingKeys.dismissedGainSuggestions) == ["original"])
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+
+    @Test(arguments: [["--track-selftest=/tmp/fixture.wav"], ["--track-selftest", "/tmp/fixture.wav"],
+                      ["--write-selftest"], ["--switch-selftest"]])
+    func 사본_시험은_옛_데이터_이관을_부르지_않는다(_ arguments: [String]) {
+        var calls = 0
+        AppComposition.migrateLegacyData(arguments: ["djcrate"] + arguments) { calls += 1 }
+        #expect(calls == 0)
+        AppComposition.migrateLegacyData(arguments: ["djcrate"]) { calls += 1 }
+        #expect(calls == 1)
+    }
+
+    #if DEBUG
+    @Test(arguments: ["cue-drafts", "logs/session.log", ".dangling"])
+    func 사본_시험은_임시_홈_안의_심볼릭_링크를_거부한다(_ relativePath: String) throws {
+        let scratch = try TemporaryFolder()
+        let home = scratch.url.appending(path: "home")
+        let copy = scratch.url.appending(path: "copy")
+        let external = scratch.url.appending(path: "other")
+        let link = home.appending(path: relativePath)
+        let fm = FileManager.default
+        try fm.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fm.createDirectory(at: copy.appending(path: "share/PIONEER/USBANLZ"), withIntermediateDirectories: true)
+        try Data().write(to: copy.appending(path: "master.db"))
+        try fm.createDirectory(at: external, withIntermediateDirectories: true)
+        let environment = ["DJC_HOME": home.path, "DJC_REKORDBOX_DIR": copy.path]
+        let arguments = ["djcrate", "--write-selftest"]
+
+        try Data().write(to: home.appending(path: "existing.json"))
+        #expect(DevSelfTests.copySelfTestStartupRefusal(arguments: arguments, environment: environment) == nil)
+
+        let destination = relativePath == ".dangling" ? external.appending(path: "missing") : external
+        try fm.createSymbolicLink(at: link, withDestinationURL: destination)
+        #expect(DevSelfTests.copySelfTestStartupRefusal(arguments: arguments, environment: environment)?.contains("DJC_HOME") == true)
+    }
+
+    @Test func 사본_시험은_시작할_때_임시_경로와_인자_형식을_확인한다() throws {
+        let scratch = try TemporaryFolder()
+        let home = scratch.url.appending(path: "home")
+        let copy = scratch.url.appending(path: "copy")
+        let share = copy.appending(path: "share")
+        let analysis = share.appending(path: "PIONEER/USBANLZ")
+        let db = copy.appending(path: "master.db")
+        let audio = scratch.url.appending(path: "fixture audio.wav")
+        let fm = FileManager.default
+        try fm.createDirectory(at: home, withIntermediateDirectories: true)
+        try fm.createDirectory(at: analysis, withIntermediateDirectories: true)
+        try Data().write(to: db)
+        try Data().write(to: audio)
+
+        let env = ["DJC_HOME": home.path, "DJC_REKORDBOX_DIR": copy.path]
+        func refusal(_ arguments: [String], _ environment: [String: String]) -> String? {
+            DevSelfTests.copySelfTestStartupRefusal(arguments: ["djcrate"] + arguments, environment: environment)
+        }
+        let track = "--track-selftest=\(audio.path)"
+        #expect(refusal([], [:]) == nil)
+        #expect(refusal([track], env) == nil)
+        #expect(refusal(["--write-selftest", "--db", db.path], env) == nil)
+        #expect(refusal(["--switch-selftest"], env) == nil)
+        #expect(refusal([track], [:]) != nil)
+        #expect(refusal([track], env.merging(["DJC_DB": db.path]) { _, new in new }) != nil)
+        #expect(refusal(["--track-selftest", audio.path], env)?.contains("--track-selftest=<임시 음원 경로,…>") == true)
+        #expect(refusal(["--track-selftest="], env) != nil)
+        #expect(refusal(["--write-selftest=other"], env) != nil)
+        #expect(refusal(["--switch-selftest", "--db", copy.path], env) != nil)
+        #expect(refusal(["--write-selftest", "--switch-selftest"], env) != nil)
+
+        let snapshots = copy.appending(path: "djc-snapshots")
+        try fm.createSymbolicLink(at: snapshots, withDestinationURL: home)
+        #expect(refusal([track], env) != nil)
+        try fm.removeItem(at: snapshots)
+        let movedShare = scratch.url.appending(path: "share")
+        try fm.moveItem(at: share, to: movedShare)
+        try fm.createSymbolicLink(at: share, withDestinationURL: movedShare)
+        #expect(refusal([track], env) != nil)
+    }
+
+    @Test(arguments: ["--audio-selftest", "--stale-cue-selftest", "--analysis-play-selftest", "--grid-selftest", "--key-selftest"])
+    func 옛_진단_옵션은_덱_전환_안내를_돌려준다(_ old: String) {
+        let refusal = DevSelfTests.copySelfTestStartupRefusal(arguments: ["djcrate", old], environment: [:])
+        #expect(refusal?.contains(old) == true)
+        #expect(refusal?.contains("--switch-selftest") == true)
+    }
+    #endif
 
     /// 쓰기 뒤에도 이전 값을 돌려주는 저장소로 영속화 지연을 결정적으로 재현한다.
     private final class StaleDefaults: UserDefaults, @unchecked Sendable {

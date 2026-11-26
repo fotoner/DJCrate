@@ -31,11 +31,14 @@ struct AppToast: Identifiable, Equatable {
         case ejectUsb(volumeKey: String)
         /// 옛 AI 에이전트 스킬·djc 링크를 이 앱에 맞추기(#262)
         case updateAgentTools
+        /// 연동 안내 창의 해당 쪽 열기. XML 만들기 결과 줄이 가져오는 순서를 글로 다시 쓰지 않고 이 링크만 둔다(#315)
+        case openIntegrationGuide(IntegrationGuide.Topic)
 
         var title: String {
             switch self {
             case .ejectUsb: String(ui: "꺼내기")
             case .updateAgentTools: String(ui: "모두 갱신")
+            case .openIntegrationGuide: String(ui: "가져오는 방법")
             }
         }
     }
@@ -144,7 +147,7 @@ struct AppToastView: View {
                 Button(action.title, action: onAction).controlSize(ControlSize.small.scaled(textScale)).focused($focus, equals: .action)
             }
             if let onUndo, toast.undoBackup != nil {
-                Button(.ui("쓰기 전으로 복원"), action: onUndo)
+                Button(.ui("저장 전으로 복원"), action: onUndo)
                     .controlSize(ControlSize.small.scaled(textScale))
                     // 무엇을 하는지는 단추 이름이 말한다. 툴팁은 안전 조건만 둔다
                     .help(.ui("rekordbox를 먼저 종료하세요"))
@@ -177,7 +180,8 @@ struct AppToastView: View {
 
 }
 
-/// rekordbox에 쓰는 동안 창 전체를 덮어 다른 조작을 막는다. 종료를 기다리는 중이면(#300) 카드 안에 안내와 [종료 취소]를 넣는다.
+/// 통째로 잠그는 rekordbox 쓰기(복원·곡 넣기·빼기)와 준비 단계 동안 창 전체를 덮어 다른 조작을 막는다. 종료를 기다리는 중이면(#300) 카드 안에 안내와 [종료 취소]를 넣는다.
+/// 초안을 쓰는 동안(곡 단위 잠금, R21)은 띄우지 않는다(`LibraryStore.showsWriteOverlay`).
 struct WritingOverlay: View {
     let stage: WriteStage
     var quitWait: QuitWait?

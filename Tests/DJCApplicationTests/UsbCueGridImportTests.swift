@@ -57,7 +57,7 @@ struct UsbCueGridImportTests {
     @Test func 평점_색_코멘트는_가져오지_않고_큐와_그리드만_가져온다() {
         #expect(UsbCueGridDraftImport.Part.allCases == [.cue, .grid])
         let summary = UsbCueGridImportSummary(cueCount: 1, gridCount: 2, skippedCount: 3)
-        #expect(summary.message == "큐 1곡·그리드 2곡을 초안으로 가져왔습니다. 3곡은 건너뛰었습니다.")
+        #expect(summary.message == "큐 1곡·그리드 2곡을 편집으로 가져왔습니다. 3곡은 건너뛰었습니다.")
     }
 
     @Test func 일정_그리드는_로컬_기준으로_초안을_만든다() throws {

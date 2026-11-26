@@ -101,12 +101,12 @@ extension RekordboxWriter {
     static func checkMerge(_ draft: DuplicateMergeDraft, db: CipherDatabase) throws -> CueDraft {
         try checkMergeReferences(draft.removing, db: db)
         guard !draft.removing.isEmpty, try mergeFingerprint(draft.members.map(\.contentID), db: db) == draft.base else {
-            throw DuplicateMerge.Blocked(String(ui: "합치기 초안 뒤 곡·큐·재생 목록·음원이 바뀌었습니다. 초안을 버리고 다시 만드세요"))
+            throw DuplicateMerge.Blocked(String(ui: "합치기 편집 뒤 곡·큐·재생 목록·음원이 바뀌었습니다. 편집을 버리고 다시 만드세요"))
         }
         let target = try mergeMember(draft.keeping.contentID, db: db)
         let sources = try draft.removing.map { try mergeMember($0.contentID, db: db) }
         guard target.trackUUID == draft.keeping.trackUUID, zip(sources, draft.removing).allSatisfy({ $0.trackUUID == $1.trackUUID }) else {
-            throw DuplicateMerge.Blocked(String(ui: "서로 다른 곡을 골라 합치기 초안을 다시 만드세요"))
+            throw DuplicateMerge.Blocked(String(ui: "서로 다른 곡을 골라 합치기 편집을 다시 만드세요"))
         }
         return try DuplicateMerge.cues(keeping: target, removing: sources)
     }

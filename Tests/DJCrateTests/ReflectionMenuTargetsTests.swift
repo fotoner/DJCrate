@@ -45,7 +45,7 @@ struct ReflectionMenuTargetsTests {
         writer.flush()
         #expect(!store.pendingUUIDs.contains(row.track.uuid) && store.testDrafts.unsavedUUIDs().contains(row.track.uuid))
         #expect(store.writeTargets([row]).map(\.id) == [row.id])
-        #expect(menu(store, rows: [row]).contains("선택한 곡 rekordbox에 쓰기 (1곡)"))
+        #expect(menu(store, rows: [row]).contains("선택한 곡 rekordbox에 저장 (1곡)"))
     }
 
     @Test func 빼기_항목은_세션의_빼기_대상과_같은_곡_수를_보인다() {

@@ -16,7 +16,7 @@ struct ContentView: View {
     private var window: LibraryWindowModel { app.libraryWindow }
     /// 저장된 창 프레임을 적용했는지. 그 전의 기본 크기 폭으로는 사이드바를 접지 않는다(#119).
     var windowFrameRestored = true
-    @AppStorage(SettingKeys.showTagEditor.name) private var showTagEditor = SettingKeys.showTagEditor.defaultValue
+    @AppStorage(SettingKeys.showTagEditor.name, store: ViewPreferences.store) private var showTagEditor = SettingKeys.showTagEditor.defaultValue
     /// 이름에 점이 들어 `@AppStorage`로 두면 창 프레임 자동 저장 같은 다른 설정이 바뀔 때마다 본문을 다시 계산한다(#138).
     @State private var sidebarVisible = ObservedSetting(SettingKeys.sidebarVisible)
     /// 인스펙터 내용을 그릴지. 닫혀 있어도 SwiftUI가 내용을 계속 계산해, 곡을 고를 때마다 입력 칸을 새로 만들고
@@ -40,9 +40,9 @@ struct ContentView: View {
         let _ = PerfProbe.body(Self.self)
         NavigationSplitView(columnVisibility: columnVisibility) {
             Sidebar(store: store, playlistSidebar: app.playlistSidebar)
-                // 안쪽에 가드가 없는 조작(추가 목록 제거, USB 편집 메뉴)도 이 줄이 막아 준다. 그래서 libraryBusy다.
-                // 편집 잠금만 푸는 PR은 그 조작에 가드를 더한 뒤 이 줄을 editsFrozen으로 바꾼다(#301).
-                .disabled(store.libraryBusy)
+                // 통째로 잠글 때(복원·곡 넣기·빼기·재생 목록만 쓰는 묶음)만 막는다. 곡 단위로 쓰는 동안은 사이드바가 그대로 된다(R21).
+                // 안쪽 조작은 각자 가드를 든다: 읽기·쓰기·USB·추가 목록은 libraryBusy, 재생 목록·재생 기록 편집도 libraryBusy, 곡 편집은 곡 단위 잠금
+                .disabled(store.editsFrozen)
                 .navigationSplitViewColumnWidth(min: 210, ideal: 230)
         } detail: {
             detail
@@ -52,7 +52,9 @@ struct ContentView: View {
                     if let link = app.link { LinkBar(model: link) }
                 }
                 // 창 맨 아래 상태 줄(#298). LINK 막대처럼 상세 열 안에 둔다: 사이드바를 접어도 상세 열은 늘 있고,
-                // 분할 화면 전체 아래에 붙이면 열의 화면이 막대를 덮었다(#274). 읽지 않은 수는 상태 줄만 읽는다
+                // 분할 화면 전체 아래에 붙이면 열의 화면이 막대를 덮었다(#274). 읽지 않은 수는 상태 줄만 읽는다.
+                // 곡 단위로 쓰는 동안 취소할 수 있는 단계(R21)의 진행·[취소]도 이 줄의 쓰기 상태 칩이 보인다. 목록과 상태 줄 사이에
+                // 띠를 끼우던 때는 띠가 뜨고 질 때마다 목록 높이가 바뀌어 저장마다 목록이 출렁였다
                 .safeAreaInset(edge: .bottom, spacing: 0) { StatusBar(model: app.statusBar) }
                 // 본문(덱·목록)에 바로 붙이면 인스펙터를 연 뒤 임시 높이의 본문 사본이 생겨, 창 크기를 바꿀 때마다
                 // 크기 측정이 진짜 본문과 번갈아 와서 본문을 두 번씩 다시 계산했다(#138). 상세 열 전체에 붙인다.
@@ -62,8 +64,8 @@ struct ContentView: View {
                 }
                 .task(id: showTagEditor) { await InspectorReveal.follow(showTagEditor, shown: $inspectorContentShown) }
                 .modifier(LibraryWindowTitle(store: store))
-                // 안쪽 가드가 없는 조작을 막아 주므로 libraryBusy다(사이드바와 같다).
-                .disabled(store.libraryBusy)
+                // 사이드바와 같다: 통째로 잠글 때만 상세(덱·목록·인스펙터)를 막는다
+                .disabled(store.editsFrozen)
                 // 덱을 가리지 않게 아래에 띄운다(#122). 목록 위 오류·안내 줄도 모두 이 알림으로 옮겼다(#307).
                 // 덮개는 아래 덧댄 상태 줄의 자리를 모르므로 그 높이만큼 올린다(#298)
                 .overlay(alignment: .bottom) {
@@ -81,10 +83,12 @@ struct ContentView: View {
                     }
                 }
                 .animation(reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.35), value: store.toast?.id)
+
         }
-        // rekordbox·USB에 쓰는 동안은 창 전체를 덮어 다른 조작을 막는다.
+        // 통째로 잠그는 rekordbox 쓰기(복원·곡 넣기·빼기)와 USB 쓰기는 창 전체를 덮어 다른 조작을 막는다.
+        // 곡 단위로 쓰는 동안(R21)은 덮지 않는다: 진행 단계는 `writeStage`가 들고, 종료를 기다리는 안내만 아래 갈래에서 뜬다.
         .overlay {
-            if let stage = store.writeStage {
+            if let stage = store.writeStage, store.showsWriteOverlay {
                 WritingOverlay(stage: stage, quitWait: store.quitWait.current, onCancel: { store.cancelWritePreparation() },
                                onCancelQuit: { store.quitWait.cancel() }).transition(.opacity)
             } else if let write = store.usb?.activeWrite {
@@ -134,10 +138,7 @@ struct ContentView: View {
             deck.undoManager = undoManager
             store.undoManager = undoManager
         }
-        // CLI·다른 앱이 바꾼 초안 파일을 1초마다 다시 읽는다
-        .task { await app.watchExternalDrafts() }
-        // 하루 한 번 자동 시점 스냅샷(#228): rekordbox가 꺼져 있고 라이브러리가 바뀌었으면 뒤에서 조용히 남긴다
-        .task { await app.runAutoPointSnapshots() }
+        // 바깥 초안 감시·자동 시점 스냅샷·자동 저장은 앱 수명 동안 조립 지점이 돌린다(`AppComposition.start`)
         // Pro DJ Link 장치 알림을 받기만 한다(#272). 화면 시험·자가 테스트 조립에는 없다
         .task { await app.link?.watch() }
         // rekordbox에서 곡을 지우거나 고치고 돌아오면 새로 읽는다(옛 목록에 지워진 곡이 남지 않게)
@@ -195,7 +196,7 @@ struct ContentView: View {
                 } label: {
                     Label(.ui("태그 편집"), systemImage: "tag")
                 }
-                .help(store.editsFrozen ? String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") : String(ui: "태그 편집 (⌘I)"))
+                .help(store.editsFrozen ? String(ui: "rekordbox 저장이 끝난 뒤 다시 시도하세요") : String(ui: "태그 편집 (⌘I)"))
                 .disabled(store.editsFrozen)
             }
             ToolbarItem(id: "snapshot") {
@@ -217,7 +218,7 @@ struct ContentView: View {
         app.connect()
         if ProcessInfo.processInfo.arguments.contains("--inspector") { showTagEditor = true }
         // 보기 모드는 머리 줄·본문 잎이 읽는다. 여기서 읽으면 보기를 바꿀 때마다 이 본문이 다시 계산되므로 값만 쓴다
-        if ProcessInfo.processInfo.arguments.contains("--sheet") { UserDefaults.standard.set(true, forKey: SettingKeys.sheetMode.name) }
+        if ProcessInfo.processInfo.arguments.contains("--sheet") { ViewPreferences.defaults.set(true, forKey: SettingKeys.sheetMode.name) }
     }
 }
 
@@ -246,7 +247,8 @@ struct EmptyLibraryOverlay: View {
     }
 
     private func noResults(_ guide: NoResultsGuide) -> some View {
-        NoResultsView(guide: guide, clearSearch: { store.search = "" }, clearFilter: { store.clearAttributeFilters() })
+        NoResultsView(guide: guide, clearSearch: { store.search = "" }, clearFilter: { store.clearAttributeFilters() },
+                      showStreaming: { store.showHiddenStreaming() })
     }
 
     @ViewBuilder private var message: some View {

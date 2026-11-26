@@ -15,6 +15,14 @@ public struct DraftFiles: Sendable {
     /// 재생 목록 초안 파일(없으면 빈 초안, 읽지 못하면 던진다: CLI `djc draft playlist`가 손상 파일을 덮지 않게)
     public var readPlaylist: @Sendable () throws -> PlaylistDraft
     public var savePlaylist: @Sendable (PlaylistDraft) throws -> Void
+    /// 지금 파일의 재생 목록 초안이 `expected`와 같을 때만 `draft`를 저장한다(CLI가 계획한 원본의 재확인과 저장을 한 번에). 다르면 저장하지 않고 false.
+    /// 실제 구현은 쓴 뒤 정리(판 지정 삭제)와 같은 초안 잠금 안에서 하므로 재확인과 저장 사이에 정리가 끼어들어 쓴 단계를 되살리지 못한다(R22).
+    /// nil이면(잠금이 없는 가짜) `savePlaylist(_:ifCurrentIs:)`가 `readPlaylist`로 읽어 견준 뒤 `savePlaylist`로 저장한다
+    public var savePlaylistIfUnchanged: (@Sendable (_ expected: PlaylistDraft, _ draft: PlaylistDraft) throws -> Bool)?
+    /// 재생 목록 초안 파일을 단계 식별자를 채워 읽는다(CLI가 단계를 쌓기 전에). 식별자 없는 옛 파일의 기존 단계는 식별자와 모름 도장을 받아
+    /// 파일에 적힌다(건드리지 않은 기존 단계에 CLI 출처가 붙지 않게 한다, R5). 쓰기가 없는 미리 보기는 `readPlaylist`로 읽는다.
+    /// nil이면(도장이 없는 가짜) `readPlaylist`와 같다
+    public var readPlaylistIdentified: (@Sendable () throws -> PlaylistDraft)?
     /// 재생 목록 초안 파일 잠금(#260): 잡으면 푸는 함수, 앱이 rekordbox에 쓰는 중이거나 다른 실행이 들고 있으면 nil.
     /// 읽기·계획·저장을 이 잠금 안에서 한다. 잠금이 없는 구현은 늘 잡는다
     public var lockPlaylist: @Sendable () -> (@Sendable () -> Void)? = { {} }
@@ -27,6 +35,12 @@ public struct DraftFiles: Sendable {
     public var isPlainPath: @Sendable (_ kind: XMLImportDrafts.Kind, _ trackUUID: String) -> Bool
     /// 초안에 새로 들이는 큐의 ID(`DraftStore.newCueID`와 같은 규칙)
     public var newCueID: @Sendable () -> UUID
+    /// 이 포트로 저장하는 초안의 출처(R5, CLI는 CLI·AI·스킬은 agent). 정하지 않으면 모름이다. 실제 구현은 W1-B(#400)
+    public var origin: DraftOrigin = .unknown
+    /// 곡 초안의 도장(출처·판·저장한 때의 해시). 없거나 모르면 nil(기본값: 모름)
+    public var stamp: @Sendable (DraftKey) -> DraftStamp? = { _ in nil }
+    /// 같은 초안 폴더를 쓰되 출처만 다른 포트를 만든다(LINK 큐 편집). nil이면 `origin`만 바꾼 같은 포트다
+    public var originVariant: (@Sendable (DraftOrigin) -> DraftFiles)?
 
     public init(exists: @escaping @Sendable (_ kind: XMLImportDrafts.Kind, _ trackUUID: String) -> Bool,
                 saveCue: @escaping @Sendable (CueDraft) throws -> Void,
@@ -54,5 +68,41 @@ public struct DraftFiles: Sendable {
         self.removeTag = removeTag
         self.isPlainPath = isPlainPath
         self.newCueID = newCueID
+    }
+}
+
+extension DraftFiles {
+    /// 같은 초안 폴더를 그 출처로 저장하는 포트. `originVariant`가 없는 포트(손으로 만든 포트)는 `origin` 표시만 바뀌고 도장은 그 구현을 따른다
+    public func with(origin: DraftOrigin) -> DraftFiles {
+        if let originVariant { return originVariant(origin) }
+        var copy = self
+        copy.origin = origin
+        return copy
+    }
+}
+
+/// 재생 목록 초안 파일을 읽지 못했다(형식 오류·손상). 잠금·저장 오류와 구분한다: CLI는 이것을 `invalid_draft`로, 잠금·저장 오류를 `draft_io_failed`로 알린다
+public struct DraftFilesUnreadable: Error, Sendable {
+    public init() {}
+}
+
+extension DraftFiles {
+    /// 지금 파일의 재생 목록 초안이 `expected`와 같을 때만 저장한다. 같은 초안 잠금 안에서 하는 구현이 있으면 그것을 쓴다(`savePlaylistIfUnchanged`)
+    public func savePlaylist(_ draft: PlaylistDraft, ifCurrentIs expected: PlaylistDraft) throws -> Bool {
+        if let savePlaylistIfUnchanged { return try savePlaylistIfUnchanged(expected, draft) }
+        let current: PlaylistDraft
+        do { current = try readPlaylist() } catch { throw DraftFilesUnreadable() }
+        guard current == expected else { return false }
+        try savePlaylist(draft)
+        return true
+    }
+}
+
+extension DraftFiles {
+    /// 재생 목록 초안 파일을 단계 식별자를 채워 읽는다(`readPlaylistIdentified`, 없으면 `readPlaylist`).
+    /// 식별자·도장을 적지 못하면 식별자 없는 초안을 돌려주지 않고 던진다. 읽지 못한 파일은 `DraftFilesUnreadable`이다
+    public func readPlaylistWithIdentifiers() throws -> PlaylistDraft {
+        if let readPlaylistIdentified { return try readPlaylistIdentified() }
+        do { return try readPlaylist() } catch { throw DraftFilesUnreadable() }
     }
 }

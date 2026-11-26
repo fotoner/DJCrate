@@ -137,6 +137,23 @@ struct StageTracksTests {
         #expect(racing.grid("s3")?.segments.first?.bpm == 99)
     }
 
+    /// 추정하는 동안 그 곡이 쓰는 묶음에 들었으면(화면이 잠금을 알려 준다) 결과를 저장하지 않는다. 저장은 메인 액터에서 잠금을 다시 확인한 뒤에 한다.
+    @MainActor
+    @Test func 추정하는_동안_곡이_잠기면_저장하지_않고_건너뛴다() async {
+        let drafts = MemoryDrafts()
+        let writable = Mutex(true)
+        let stage = Self.stage(files: Files(existing: ["/m/a.mp3"]), drafts: drafts.store, estimate: Self.estimate, offset: 0.026,
+                               onEstimate: { writable.withLock { $0 = false } })
+        let item = GridJobItem(uuid: "s1", path: "/m/a.mp3", staged: false)
+        #expect(await stage.estimateGrid(item, canSave: { writable.withLock { $0 } }) == .skipped)
+        #expect(drafts.grid("s1") == nil, "잠긴 곡에는 그리드 초안을 만들지 않는다")
+        // 잠기지 않았으면 저장한다(나중에 다시 하면 된다)
+        writable.withLock { $0 = true }
+        let again = Self.stage(files: Files(existing: ["/m/a.mp3"]), drafts: drafts.store, estimate: Self.estimate, offset: 0.026)
+        #expect(await again.estimateGrid(item, canSave: { writable.withLock { $0 } }) == .saved(bpm: 125, confident: true, failure: nil))
+        #expect(drafts.grid("s1") != nil)
+    }
+
     @MainActor
     @Test func 키는_태그가_먼저이고_없으면_추정하고_파일이_없으면_다음에_다시_본다() async {
         let track = StagedTrack(uuid: "s1", path: "/m/a.mp3", title: "a", duration: 120, addedOn: "2026-10-09")

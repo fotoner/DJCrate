@@ -53,7 +53,7 @@ final class PointSnapshotModel {
                   busyReason: { [weak store] in
                       // Mac을 끄는 중이거나 종료를 기다리는 중에는 새 쓰기를 시작하지 않는다(#300)
                       if let refusal = store?.writeRefusal { return refusal }
-                      return store?.libraryBusy == true ? String(ui: "rekordbox에 쓰는 중입니다. 쓰기가 끝난 뒤 다시 누르세요") : nil
+                      return store?.libraryBusy == true ? String(ui: "rekordbox에 저장하는 중입니다. 저장이 끝난 뒤 다시 누르세요") : nil
                   },
                   // 복원까지 실패한 경고창을 확인하기 전에는 앱을 끄지 않는다(#300)
                   whileAcknowledging: { [weak store] ask in store?.whileAwaitingAcknowledgement(ask) ?? ask() },
@@ -95,7 +95,7 @@ final class PointSnapshotModel {
         let result = await points.load()
         rows = result.rows
         if let selection, !rows.contains(where: { $0.id == selection }) { self.selection = nil }
-        cloneNote = result.canClone ? nil : String(ui: "DJCrate 데이터 폴더가 rekordbox와 다른 디스크라 스냅샷마다 라이브러리 전체를 복사합니다.")
+        cloneNote = result.canClone ? nil : String(ui: "DJCrate 데이터 폴더가 rekordbox와 다른 디스크라 복원 시점마다 라이브러리 전체를 복사합니다.")
     }
 
     func create() async {
@@ -108,7 +108,7 @@ final class PointSnapshotModel {
             newName = ""
             await refresh()
             selection = PointSnapshotRow.pointID(entry)
-            show(String(ui: "시점 스냅샷을 남겼습니다."), error: false)
+            show(String(ui: "복원 시점을 남겼습니다."), error: false)
         } catch {
             AppErrorMessage.log(error)
             show(AppErrorMessage.message(for: error), error: true)
@@ -134,7 +134,7 @@ final class PointSnapshotModel {
         case .cancelled: break
         case .deleted:
             await refresh()
-            show(String(ui: "시점 스냅샷을 지웠습니다."), error: false)
+            show(String(ui: "복원 시점을 지웠습니다."), error: false)
         case let .failed(error):
             show(AppErrorMessage.message(for: error), error: true)
         }
@@ -182,7 +182,7 @@ final class PointSnapshotModel {
             comparedID = nil
             await refresh()
             selection = row.id
-            show(String(ui: "‘\(entry.displayName)’ 시점으로 복원했습니다. 복원 전 상태는 ‘복원 직전’ 스냅샷(\(report.beforeRestore.metadata.createdAt.formatted(date: .omitted, time: .shortened)))으로 남겼습니다."),
+            show(String(ui: "‘\(entry.displayName)’ 시점으로 복원했습니다. 복원 전 상태는 ‘복원 직전’ 복원 시점(\(report.beforeRestore.metadata.createdAt.formatted(date: .omitted, time: .shortened)))으로 남겼습니다."),
                  error: false)
         case let .failed(error):
             AppErrorMessage.log(error)

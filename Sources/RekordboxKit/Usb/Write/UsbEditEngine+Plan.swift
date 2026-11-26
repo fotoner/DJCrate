@@ -36,7 +36,7 @@ extension UsbEditEngine {
         if let selection = selections.first {
             guard let localDatabase, try UsbLocalSource(database: localDatabase).localDBID() == selection.draft.localDBID else {
                 let block = UsbBlock(code: "syncSelectionLibraryChanged", scope: .volume,
-                                     message: String(ui: "동기화 선택을 만든 로컬 라이브러리와 현재 사본이 다릅니다. 새 스냅샷을 읽고 동기화하세요"))
+                                     message: String(ui: "동기화 선택을 만든 로컬 라이브러리와 현재 사본이 다릅니다. ‘rekordbox와 동기화’를 한 뒤 다시 동기화하세요"))
                 result.blocks = [block]
                 result.outcomes = edits.indices.map { ($0 + 1, .blocked(block)) }
                 return result

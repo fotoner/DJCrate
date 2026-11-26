@@ -72,10 +72,14 @@ struct LinkBarModelTests {
 
     static let own = LinkDevice(number: 17, name: "DJCrate", kind: .rekordbox, address: "169.254.1.2")
 
+    nonisolated static func audioPaths(_ library: LinkLibrary) -> LinkPreparedAudio {
+        LinkPreparedAudio(Dictionary(uniqueKeysWithValues: library.tracks.map { ($0.id, $0.path) }))
+    }
+
     static func connectable(notes: NotesBox, problem: LinkProblem? = nil,
                             updated: @escaping @Sendable (UInt32, [LinkLibrary.Cue]) async -> Void = { _, _ in }) -> LinkBarModel {
         let source = LinkServerSource(
-            start: { _, _, _, _ throws(LinkProblem) in },
+            start: { library, _, _, _, _ throws(LinkProblem) in Self.audioPaths(library) },
             stop: {},
             status: { LinkServerStatus(deviceNumber: 17, mounted: ["169.254.86.192"]) },
             load: { _, _ throws(LinkProblem) in if let problem { throw problem } },
@@ -97,7 +101,10 @@ struct LinkBarModelTests {
     @Test func 변환본을_비우는_동안_켜면_다_비운_뒤에_내어_주고_켠_동안은_비우기를_시작하지_않는다() async throws {
         // #287 PR 리뷰: 비우기가 내어 주는지 한 번만 보면, 비우는 사이 켠 LINK가 CDJ에 내어 준 변환본을 지운다
         let started = Mutex(0)
-        let source = LinkServerSource(start: { _, _, _, _ throws(LinkProblem) in started.withLock { $0 += 1 } }, stop: {},
+        let source = LinkServerSource(start: { library, _, _, _, _ throws(LinkProblem) in
+            started.withLock { $0 += 1 }
+            return Self.audioPaths(library)
+        }, stop: {},
                                       status: { LinkServerStatus(deviceNumber: 17) }, load: { _, _ throws(LinkProblem) in },
                                       isRekordboxRunning: { false })
         let row = TrackRow(track: Track(id: "10", uuid: "u10", title: "곡", artist: nil, album: nil, albumArtist: nil, genre: nil,
@@ -142,7 +149,7 @@ struct LinkBarModelTests {
         // 재생 목록 초안을 얹은 모양을 내어 준다. 추가 대기 곡(djc-)은 rekordbox 분석 파일이 없어 목록에서도 빠진다
         let sent = Mutex<[[String]]>([])
         let source = LinkServerSource(
-            start: { _, _, _, _ throws(LinkProblem) in }, stop: {}, status: { LinkServerStatus(deviceNumber: 17) },
+            start: { library, _, _, _, _ throws(LinkProblem) in Self.audioPaths(library) }, stop: {}, status: { LinkServerStatus(deviceNumber: 17) },
             load: { _, _ throws(LinkProblem) in }, isRekordboxRunning: { false },
             updatePlaylists: { playlists in sent.withLock { $0.append(playlists.map { "\($0.name):\($0.trackIDs.count)" }) } })
         func row(_ id: String) -> TrackRow {
@@ -209,7 +216,10 @@ struct LinkBarModelTests {
         let sent = Mutex<[[String]]>([])
         let gate = Mutex<CheckedContinuation<Void, Never>?>(nil)
         let source = LinkServerSource(
-            start: { _, _, _, _ throws(LinkProblem) in await withCheckedContinuation { c in gate.withLock { $0 = c } } },
+            start: { library, _, _, _, _ throws(LinkProblem) in
+                await withCheckedContinuation { c in gate.withLock { $0 = c } }
+                return Self.audioPaths(library)
+            },
             stop: {}, status: { LinkServerStatus(deviceNumber: 17) }, load: { _, _ throws(LinkProblem) in },
             isRekordboxRunning: { false }, updatePlaylists: { playlists in sent.withLock { $0.append(playlists.map(\.name)) } })
         let layout = LayoutBox()
@@ -232,7 +242,7 @@ struct LinkBarModelTests {
         let sent = Mutex<[[String]]>([])
         let blocker = Blocker()
         let source = LinkServerSource(
-            start: { _, _, _, _ throws(LinkProblem) in }, stop: {}, status: { LinkServerStatus(deviceNumber: 17) },
+            start: { library, _, _, _, _ throws(LinkProblem) in Self.audioPaths(library) }, stop: {}, status: { LinkServerStatus(deviceNumber: 17) },
             load: { _, _ throws(LinkProblem) in }, isRekordboxRunning: { false },
             updatePlaylists: { playlists in
                 await blocker.pass()
@@ -262,7 +272,7 @@ struct LinkBarModelTests {
         let sent = Mutex<[[String]]>([])
         let blocker = Blocker()
         let source = LinkServerSource(
-            start: { _, _, _, _ throws(LinkProblem) in }, stop: {}, status: { LinkServerStatus(deviceNumber: 17) },
+            start: { library, _, _, _, _ throws(LinkProblem) in Self.audioPaths(library) }, stop: {}, status: { LinkServerStatus(deviceNumber: 17) },
             load: { _, _ throws(LinkProblem) in }, isRekordboxRunning: { false },
             updatePlaylists: { playlists in
                 await blocker.pass()
@@ -295,7 +305,10 @@ struct LinkBarModelTests {
         let sent = Mutex<[[UInt32]]>([])
         let gate = Mutex<CheckedContinuation<Void, Never>?>(nil)
         let source = LinkServerSource(
-            start: { _, _, _, _ throws(LinkProblem) in await withCheckedContinuation { c in gate.withLock { $0 = c } } },
+            start: { library, _, _, _, _ throws(LinkProblem) in
+                await withCheckedContinuation { c in gate.withLock { $0 = c } }
+                return Self.audioPaths(library)
+            },
             stop: {}, status: { LinkServerStatus(deviceNumber: 17) }, load: { _, _ throws(LinkProblem) in },
             isRekordboxRunning: { false }, updateCues: { _, cues in sent.withLock { $0.append(cues.map(\.positionMs)) } })
         let row = TrackRow(track: Track(id: "10", uuid: "u10", title: "곡", artist: nil, album: nil, albumArtist: nil, genre: nil,
@@ -372,7 +385,7 @@ struct LinkBarModelTests {
     @Test func 켤_때_iTunes_목록을_읽는_중이었으면_다_읽은_뒤_켜_둔_서버에_넣는다() async throws {
         let updated = Mutex<[[LinkLibrary.Playlist]]>([])
         let source = LinkServerSource(
-            start: { _, _, _, _ throws(LinkProblem) in }, stop: {}, status: { LinkServerStatus(deviceNumber: 17) },
+            start: { library, _, _, _, _ throws(LinkProblem) in Self.audioPaths(library) }, stop: {}, status: { LinkServerStatus(deviceNumber: 17) },
             load: { _, _ throws(LinkProblem) in }, isRekordboxRunning: { false },
             updatePlaylists: { playlists in updated.withLock { $0.append(playlists) } })
         let row = TrackRow(track: Track(id: "10", uuid: "u10", title: "곡", artist: nil, album: nil, albumArtist: nil, genre: nil,
@@ -402,7 +415,7 @@ struct LinkBarModelTests {
         let reports = NotesBox()
         let box = LoadedBox()
         let source = LinkServerSource(
-            start: { _, _, _, _ throws(LinkProblem) in }, stop: {},
+            start: { library, _, _, _, _ throws(LinkProblem) in Self.audioPaths(library) }, stop: {},
             status: { LinkServerStatus(deviceNumber: 17, players: [2: LinkPlayerState(loadedTrackID: box.id)]) },
             load: { _, _ throws(LinkProblem) in }, isRekordboxRunning: { false })
         let row = TrackRow(track: Track(id: "10", uuid: "u10", title: "곡", artist: nil, album: nil, albumArtist: nil, genre: nil,

@@ -120,27 +120,36 @@ extension LibraryStore {
     }
 
     func refreshFiltered() {
+        countFilterRefresh()
+        // 저장 대기 중인 태그 편집도 검색에 걸린다(#376). 검색어에 낱말이 없으면 곡마다 보지 않는다
+        searchedDraftEdits = isSearching ? TrackSearch.edits(of: tagDrafts) : [:]
+        defer { recountHiddenStreamingMatches() }
         if sidebar == .duplicates {
             // 검색한 곡의 비교 상대도 남겨 묶음이 한 곡으로 잘리지 않게 한다.
             let groups = TrackListProjection.duplicateGroups(duplicateGroups, members: { $0.tracks.map(\.id) },
-                                                             search: search, rowsByID: rowsByID)
+                                                             search: search, rowsByID: rowsByID, draftEdits: searchedDraftEdits)
             let visible = Set(groups.flatMap { $0.tracks.map(\.id) })
             showRows(sortedBase.filter { visible.contains($0.id) }, duplicateGroups: groups)
             return
         }
-        showRows(TrackListProjection.filtered(sortedBase, search: search, minimumRating: minimumRating, color: colorFilter))
+        showRows(TrackListProjection.filtered(sortedBase, search: search, filter: filter, draftEdits: searchedDraftEdits))
     }
 
-    /// 평점·곡 색 거르기(#65). USB 곡도 같은 칸(평점·색)으로 거른다.
-    nonisolated static func matchesAttributes(_ row: TrackRow, minimumRating: Int, color: String?) -> Bool {
-        TrackListProjection.matchesAttributes(row, minimumRating: minimumRating, color: color)
+    /// 태그 초안이 바뀌었다: 검색 중이고 검색 칸의 저장 대기 값이 달라졌을 때만 목록을 다시 거른다(#376).
+    /// 검색어가 없으면 아무것도 하지 않고, 평점·연도처럼 검색이 보지 않는 칸의 편집도 다시 거르지 않는다.
+    func tagDraftsChangedForSearch() {
+        guard isSearching, TrackSearch.edits(of: tagDrafts) != searchedDraftEdits else { return }
+        refreshFiltered()
     }
+
+    /// 검색어에 낱말이 있는지(공백뿐인 검색어는 모든 곡이 맞는다)
+    private var isSearching: Bool { !TrackSearch.Query(search).isEmpty }
 
     /// 검색이 거를 곡 줄이 있는 화면인지(#338). 머리 줄 검색칸과 편집 › 찾기(⌘F)가 같은 판정을 쓴다.
     /// USB 쓰기 대기는 곡 줄이 아니라 그 볼륨의 쓰기 대기 표라 검색이 걸리지 않는다
     var listIsSearchable: Bool { if case .usb(.pending) = sidebar { false } else { true } }
 
-    /// 평점·곡 색 필터가 거를 곡 줄이 있는 화면인지(#339). 머리 줄 필터 단추·칩과 같은 판정을 쓴다.
+    /// 필터가 거를 곡 줄이 있는 화면인지(#339). 머리 줄 필터 단추·칩과 같은 판정을 쓴다.
     /// 중복 후보는 묶음째 보여 주고(`refreshFiltered`), USB 쓰기 대기는 곡 줄이 아니라 볼륨의 쓰기 대기 표라 필터가 걸리지 않는다
     var listIsFilterable: Bool {
         switch sidebar {
@@ -151,23 +160,28 @@ extension LibraryStore {
 
     /// 켜진 조건의 칩(머리 줄)
     var attributeFilterChips: AttributeFilterChips {
-        AttributeFilterChips(minimumRating: minimumRating, colorFilter: colorFilter, colors: trackColors)
+        AttributeFilterChips(filter: filter, colors: trackColors)
     }
 
     /// 칩 하나를 끈다: 그 조건만 꺼지고 다른 조건과 검색은 그대로다.
     /// 칩을 누른 사이 다른 곳에서 값이 바뀌었으면(지금 켜진 조건이 칩의 조건과 다르면) 건드리지 않는다
     func clearAttributeFilter(_ condition: AttributeFilterChip.Condition) {
         switch condition {
-        case let .rating(count): if min(minimumRating, 5) == count { minimumRating = 0 }
-        case let .color(id): if colorFilter == id { colorFilter = nil }
+        case let .bpm(range): if filter.bpm == range { filter.bpm = nil }
+        case let .key(key): if filter.key == key { filter.key = nil }
+        case let .genre(genre): if filter.genre == genre { filter.genre = nil }
+        case let .rating(count): if min(filter.minimumRating, 5) == count { filter.minimumRating = 0 }
+        case let .color(id): filter.colorIDs.remove(id)
         }
     }
 
-    /// 켜진 조건을 모두 끈다(검색은 그대로). 필터 메뉴의 「끄기」·결과 없음 안내의 [필터 끄기]·줄인 칩이 함께 쓴다
+    /// 켜진 조건을 모두 끈다(검색은 그대로). 필터 창의 「모든 필터 끄기」·결과 없음 안내의 [필터 끄기]가 함께 쓴다
     func clearAttributeFilters() {
-        minimumRating = 0
-        colorFilter = nil
+        filter = TrackFilter()
     }
+
+    /// 필터 창의 장르 고르기에 보일 이름: 지금 목록(검색·필터 전)의 곡이 가진 장르
+    var genreChoices: [String] { TrackFilter.genreChoices(in: sortedBase) }
 
     /// 태그 시트로 보이는 화면인지(#339). 태그 시트는 편집 화면이라 중복 후보·USB(읽기 전용) 목록에서는 곡 목록으로 보인다.
     /// 목록 본문(`LibraryDetail`)과 머리 줄의 ⓘ(초안 범례)가 같은 판정을 쓴다
@@ -176,7 +190,7 @@ extension LibraryStore {
     /// 목록 | 태그 시트 전환을 막는 이유(막히지 않았으면 nil). 조건과 문구는 툴바에 있던 보기 전환 그대로다(#339).
     /// 메뉴 보기 › 목록·태그 시트(⌘1·⌘2)는 이 판정이 아니라 쓰는 동안 잠금(`editsFrozen`)만 본다
     var viewModeBlockReason: String? {
-        if editsFrozen { return String(ui: "rekordbox 쓰기가 끝난 뒤 다시 시도하세요") }
+        if editsFrozen { return String(ui: "rekordbox 저장이 끝난 뒤 다시 시도하세요") }
         if isUsbSelection { return String(ui: "USB 곡은 읽기 전용이니 로컬 라이브러리에서 태그를 편집하세요") }
         if sidebar == .duplicates { return String(ui: "중복 후보에서는 태그 시트를 열 수 없으니 전체 목록에서 곡을 고르세요") }
         return nil
@@ -190,7 +204,7 @@ extension LibraryStore {
         case let .history(id): history.historyIndex[id].map(historyTitle) ?? history.archivedHistoryIndex[id].map(history.displayName) ?? String(ui: "재생 기록")
         case .duplicates: String(ui: "중복 후보")
         case .staged: String(ui: "추가한 곡")
-        case .pending: String(ui: "rekordbox 쓰기 대기")
+        case .pending: String(ui: "rekordbox 저장 대기")
         case let .usb(target): usb?.title(for: target) ?? "USB"
         }
     }

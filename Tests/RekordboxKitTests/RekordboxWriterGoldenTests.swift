@@ -27,6 +27,58 @@ struct RekordboxWriterGoldenTests {
 
     // MARK: 큐
 
+    @Test(arguments: [false, true])
+    func WAL_라이브러리에서_큐를_저장한_다음_자동_저장을_막는_공유_메모리가_남지_않는다(existingSHM: Bool) throws {
+        let fixture = try RekordboxFixture()
+        let tracks = [TrackSpec(id: "301"), TrackSpec(id: "302")]
+        for track in tracks { try fixture.add(track) }
+        let mode = try fixture.session { try $0.rows("PRAGMA journal_mode=WAL") }
+        try #require(mode.first?["journal_mode"] == "wal")
+        let shm = fixture.database.path + "-shm"
+        if existingSHM {
+            // 이전 설치본의 검증 연결이 남긴 실제 SQLite 곁 파일을 재현한다.
+            _ = try fixture.rows("SELECT count(*) FROM djmdCue")
+        }
+        try #require(FileManager.default.fileExists(atPath: shm) == existingSHM)
+
+        for track in tracks {
+            var draft = CueDraft(trackUUID: track.uuid, rekordboxCues: track.rekordboxCues)
+            draft.place(EditableCue(kind: .memory, time: 12))
+            let report = try write(fixture, drafts: [draft])
+            #expect(report.written.count == 1)
+            #expect(!FileManager.default.fileExists(atPath: shm))
+        }
+        let positions = try fixture.rows("SELECT ContentID, InMsec FROM djmdCue WHERE InMsec = 12000 ORDER BY ContentID")
+        #expect(positions.compactMap { $0["ContentID"] } == tracks.map(\.id))
+    }
+
+    @Test func 읽기_전용_백업의_WAL에만_있는_변경도_원본을_건드리지_않고_검증한다() throws {
+        let fixture = try RekordboxFixture()
+        let track = TrackSpec()
+        try fixture.add(track)
+        let backup = fixture.backups.appending(path: "master.db")
+        try fixture.session { writer in
+            _ = try writer.rows("PRAGMA journal_mode=WAL")
+            try writer.execute("PRAGMA wal_autocheckpoint=0")
+            try writer.execute("UPDATE djmdContent SET Rating=5 WHERE ID=?", [.text(track.id)])
+            for suffix in ["", "-wal"] {
+                let file = URL(filePath: backup.path + suffix)
+                try FileManager.default.copyItem(at: URL(filePath: fixture.database.path + suffix), to: file)
+                try FileManager.default.setAttributes([.posixPermissions: 0o400], ofItemAtPath: file.path)
+            }
+        }
+        let wal = URL(filePath: backup.path + "-wal")
+        let originalWAL = try Data(contentsOf: wal)
+        try #require(!originalWAL.isEmpty)
+        let snapshot = try WriteReadSnapshot(backup)
+        defer { snapshot.close() }
+        let rating = try RekordboxWriter.scalar(snapshot.db, "SELECT Rating FROM djmdContent WHERE ID=?", [.text(track.id)])
+        #expect(rating == 5)
+        try RekordboxWriter.checkIntegrity(snapshot.db)
+        #expect(try Data(contentsOf: wal) == originalWAL)
+        #expect(!FileManager.default.fileExists(atPath: backup.path + "-shm"))
+    }
+
     @Test func 메모리_큐를_더하면_rekordbox_7이_새로_찍은_큐와_같은_모양() throws {
         let fixture = try RekordboxFixture(localUpdateCount: 1000)
         var track = TrackSpec()

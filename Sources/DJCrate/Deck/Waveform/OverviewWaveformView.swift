@@ -57,7 +57,7 @@ struct OverviewAccessibilityMarkers: ViewModifier {
 
     func body(content: Content) -> some View {
         let duration = max(deck.duration, 1)
-        let cues = WaveformAccessibility.cueMarkers(deck.draft?.cues ?? [])
+        let cues = WaveformAccessibility.cueMarkers(deck.displayedCues)
         let sections = WaveformAccessibility.sectionMarkers(deck.sectionEnergies.map { (start: $0.span.start, score: $0.score) })
         let keys = WaveformAccessibility.keyChangeMarkers(deck.keySegments.map { (start: $0.start, name: deck.keyName(for: $0)) })
         let suggestions = WaveformAccessibility.suggestionMarkers(deck.suggestions)
@@ -111,7 +111,7 @@ struct OverviewStaticLayer: View {
         let mode = deck.waveformColorMode
         let energies = deck.sectionEnergies
         let suggestions = deck.suggestions
-        let cues = deck.draft?.cues ?? []
+        let cues = deck.displayedCues
         let instantLoop = deck.instantLoop
         let selected = deck.selectedCueID
         let cuePoint = deck.cuePoint

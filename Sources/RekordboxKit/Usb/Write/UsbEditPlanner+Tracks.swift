@@ -7,7 +7,7 @@ extension UsbEditPlanner {
     func requireLocal() throws -> (database: CipherDatabase, share: URL, snapshot: Date) {
         guard let share, let snapshotTakenAt else {
             throw UsbEditBlocked(block: UsbBlock(code: "localLibraryMissing", scope: .volume,
-                                                 message: String(ui: "로컬 라이브러리 사본이 없어 곡을 더하거나 갱신할 수 없습니다. --db로 스냅샷 사본을 주세요")))
+                                                 message: String(ui: "로컬 라이브러리 사본이 없어 곡을 더하거나 갱신할 수 없습니다. --db로 읽은 사본을 주세요")))
         }
         return (try requireLocalDatabase(), share, snapshotTakenAt)
     }
@@ -16,7 +16,7 @@ extension UsbEditPlanner {
     func requireLocalDatabase() throws -> CipherDatabase {
         guard let localDatabase else {
             throw UsbEditBlocked(block: UsbBlock(code: "localLibraryMissing", scope: .volume,
-                                                 message: String(ui: "로컬 라이브러리 사본이 없어 USB 편집을 계획하지 못했습니다. --db로 스냅샷 사본을 주세요")))
+                                                 message: String(ui: "로컬 라이브러리 사본이 없어 USB 편집을 계획하지 못했습니다. --db로 읽은 사본을 주세요")))
         }
         guard let version = localAppVersion, (try? RekordboxCompatibility.checkApp(version: version)) != nil else {
             let shown = localAppVersion ?? String(ui: "찾지 못함")
@@ -101,7 +101,7 @@ extension UsbEditPlanner {
         if rewritesAnalysis, let modified = UsbExportCandidates.analysisFiles(share: share, path: row.analysisDataPath).modified,
            modified > snapshot {
             throw UsbEditBlocked(block: UsbBlock(code: "analysisNewerThanSnapshot", scope: .track("usb:\(id)"),
-                                                 message: String(ui: "rekordbox 분석이 스냅샷 뒤에 바뀌었습니다. 새 스냅샷을 뜬 뒤 다시 시도하세요")))
+                                                 message: String(ui: "rekordbox 분석이 동기화 뒤에 바뀌었습니다. ‘rekordbox와 동기화’를 한 뒤 다시 시도하세요")))
         }
         try checkAudio(track, row: row)
         var updated = track
@@ -362,7 +362,7 @@ extension UsbEditPlanner {
         let found = Set(candidates.map(\.localContentID))
         for id in wanted where !found.contains(id) {
             planned.trackBlocks.append(UsbBlock(code: "localTrackMissing", scope: .track(id),
-                                                message: String(ui: "스냅샷에서 이 곡을 찾지 못했습니다. 새 스냅샷을 뜬 뒤 다시 내보내세요")))
+                                                message: String(ui: "읽은 사본에서 이 곡을 찾지 못했습니다. ‘rekordbox와 동기화’를 한 뒤 다시 내보내세요")))
         }
         // 파일 이름 정제·번호 꼬리도 같은 짝으로 본다(동기화마다 곡이 중복해 늘지 않게)
         let pairs = try localPairs(for: wanted, database: database)
@@ -416,6 +416,7 @@ extension UsbEditPlanner {
         }
         let staged = try UsbExportAssembly.stageTracks(model: model, plan: plan, localDatabase: database, into: &planned.files,
                                                        progress: progress, isCancelled: isCancelled)
+        try reuseRemovedAnalysisFiles(for: plan, in: &planned.files)
         let newIDs = Set(plan.tracks.map(\.contentID))
         var upsert = UsbTrackUpsert()
         upsert.added = model.library.tracks.filter { newIDs.contains($0.id) }.map { track in
@@ -443,6 +444,56 @@ extension UsbEditPlanner {
         planned.rules = plan.requiredRules.union(staged.rules).union([.editAddTracks])
         planned.warnings += plan.warnings + staged.warnings
         record(plan, candidates: candidates)
+    }
+
+    /// 같은 묶음에서 USB 곡을 빼고 같은 경로로 다시 넣을 때의 분석 파일(#391). 새 곡은 같은 PPTH의 번호를 다시 쓰므로(`UsbAnalysisSlot.choose`)
+    /// 빼는 곡의 분석 파일 자리와 같다. 새 곡이 그 파일을 가리키니 곡 빼기도 그 파일을 지우지 않는다. 그런데 새 곡의 분석 파일을 만들기로
+    /// 두면 쓰기 사전 확인이 이미 있는 파일과 겹쳐 destinationExists로 거부한다.
+    /// 그래서 이 묶음에서 뺀 곡의 파일이고 PPTH가 새 곡 경로 그대로인 파일만 바꾼다. 내용이 같으면 쓰지 않고, 다르면 쓰기 절차가 해시와
+    /// PPTH를 다시 확인하는 덮어쓰기로 둔다(되돌릴 때 백업에서 복원). 다른 곡이 쓰는 파일과 그 밖에 이미 있는 파일은 만들기 그대로 두어
+    /// 쓰기 사전 확인이 그대로 막는다
+    func reuseRemovedAnalysisFiles(for plan: UsbExportPlan, in files: inout UsbExportAssembly.Context) throws {
+        let creates = files.writes.indices.filter { files.writes[$0].disposition == .create && UsbPath.isAnalysis(files.writes[$0].destination) }
+        guard !creates.isEmpty else { return }
+        // 지금(빼기를 적용한 뒤) 두 형식 어디서도 가리키지 않지만 편집 전에는 곡이 가리키던 분석 파일(충돌 키 → 그 곡)
+        var stillReferenced = Set(UsbEditEngine.references(working).map(\.key))
+        if working.hasDeviceLibraryValues {
+            stillReferenced.formUnion(UsbEditEngine.references(working.projected(to: .deviceLibrary)).map(\.key))
+        }
+        var removed: [String: UsbTrack] = [:]
+        var previousReferences = UsbEditEngine.references(source.current)
+        if source.current.hasDeviceLibraryValues {
+            previousReferences += UsbEditEngine.references(source.current.projected(to: .deviceLibrary))
+        }
+        for (key, _, reference) in previousReferences where !stillReferenced.contains(key) {
+            if case let .analysis(track) = reference { removed[key] = track }
+        }
+        guard !removed.isEmpty else { return }
+        // 새 곡마다 분석 파일 셋의 줄기(확장자 뺀 충돌 키) → 새 곡 경로(PPTH)
+        var paths: [String: String] = [:]
+        for track in plan.tracks {
+            paths[UsbLayout.collisionKey(String(UsbLayout.nfc(Self.relative(track.analysisPath)).dropLast(4)))] = track.contentsPath
+        }
+        var identical: [Int] = []
+        for index in creates {
+            let write = files.writes[index]
+            guard UsbWriter.isSafeRelativePath(write.destination), let owner = removed[UsbLayout.collisionKey(write.destination)],
+                  let contentsPath = paths[UsbLayout.collisionKey(String(write.destination.dropLast(4)))],
+                  UsbLayout.nfc(owner.path) == UsbLayout.nfc(contentsPath) else { continue }
+            let url = root.url.appending(path: write.destination)
+            guard let info = try fileSystem.stat(url), info.kind == .file,
+                  UsbExportAssembly.ppthReader(try fileSystem.read(url, maxBytes: Int(info.size))).map(UsbLayout.nfc) == UsbLayout.nfc(contentsPath)
+            else { continue }
+            let hash = try fileSystem.sha256(url, uncached: true)
+            if hash == write.sha256 {
+                identical.append(index)
+            } else {
+                files.writes[index].disposition = .overwrite
+                files.writes[index].expectedExistingPPTH = contentsPath
+                files.writes[index].expectedExistingSHA256 = hash
+            }
+        }
+        for index in identical.reversed() { files.writes.remove(at: index) }
     }
 
     /// 곡 더하기가 볼 USB 상태. 처음에는 USB를 훑어 만들고, 그 뒤로는 이번 묶음에서 더한 곡을 반영한다.

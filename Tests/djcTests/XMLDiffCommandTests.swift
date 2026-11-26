@@ -129,7 +129,7 @@ struct XMLDiffCommandTests {
         let request = XMLDiffCommand.Request(database: fixture.database, xml: url, share: nil, draft: true)
         let report = try XMLDiffCommand.report(request)
         let lines = try XMLDiffCommand.makeDrafts(report, request: request, home: home).joined(separator: "\n")
-        #expect(lines.contains("초안을 만들었습니다: 큐 1 · 그리드 0 · 태그 1 · 재생 목록 1"))
+        #expect(lines.contains("편집을 만들었습니다: 큐 1 · 그리드 0 · 태그 1 · 재생 목록 1"))
         let tag = try JSONDecoder().decode(TagDraft.self, from: Data(contentsOf: home.appending(path: "tag-drafts/\(uuid).json")))
         #expect(tag.base.title == "시험 곡" && tag.fields.title == "새 제목")
         let cue = try JSONDecoder().decode(CueDraft.self, from: Data(contentsOf: home.appending(path: "cue-drafts/\(uuid).json")))
@@ -139,9 +139,9 @@ struct XMLDiffCommandTests {
 
         // 다시 가져오면 덮지 않고 건너뛴다
         let again = try XMLDiffCommand.makeDrafts(report, request: request, home: home).joined(separator: "\n")
-        #expect(again.contains("초안을 만들었습니다: 큐 0 · 그리드 0 · 태그 0 · 재생 목록 0"))
-        #expect(again.contains("이 곡에 큐 초안이 이미 있어 덮지 않았습니다"))
-        #expect(again.contains("같은 이름의 목록이 재생 목록 초안에 이미 있어 덮지 않았습니다"))
+        #expect(again.contains("편집을 만들었습니다: 큐 0 · 그리드 0 · 태그 0 · 재생 목록 0"))
+        #expect(again.contains("이 곡에 큐 편집이 이미 있어 덮지 않았습니다"))
+        #expect(again.contains("같은 이름의 목록이 재생 목록 편집에 이미 있어 덮지 않았습니다"))
         let kept = try JSONDecoder().decode(TagDraft.self, from: Data(contentsOf: home.appending(path: "tag-drafts/\(uuid).json")))
         #expect(kept == tag)
     }
@@ -171,7 +171,7 @@ struct XMLDiffCommandTests {
         let home = fixture.root.appending(path: "home")
         let request = XMLDiffCommand.Request(database: fixture.database, xml: url, share: nil, draft: true, kinds: [.tag])
         let lines = try XMLDiffCommand.makeDrafts(try XMLDiffCommand.report(request), request: request, home: home)
-        #expect(lines.joined(separator: "\n").contains("초안을 만들었습니다: 큐 0 · 그리드 0 · 태그 1 · 재생 목록 0"))
+        #expect(lines.joined(separator: "\n").contains("편집을 만들었습니다: 큐 0 · 그리드 0 · 태그 1 · 재생 목록 0"))
         #expect(!FileManager.default.fileExists(atPath: home.appending(path: "cue-drafts").path))
     }
 
@@ -186,8 +186,8 @@ struct XMLDiffCommandTests {
         let request = XMLDiffCommand.Request(database: fixture.database, xml: url, share: nil, draft: true)
         let lines = try XMLDiffCommand.makeDrafts(try XMLDiffCommand.report(request), request: request, home: home, appRunning: true)
             .joined(separator: "\n")
-        #expect(lines.contains("초안을 만들었습니다: 큐 0 · 그리드 0 · 태그 1 · 재생 목록 1"))
-        #expect(!lines.contains("재생 목록 초안은 만들지 않았습니다"))
+        #expect(lines.contains("편집을 만들었습니다: 큐 0 · 그리드 0 · 태그 1 · 재생 목록 1"))
+        #expect(!lines.contains("재생 목록 편집은 만들지 않았습니다"))
         #expect(lines.contains("덱에 올린 곡"))
         #expect(FileManager.default.fileExists(atPath: home.appending(path: "playlist-drafts.json").path))
     }

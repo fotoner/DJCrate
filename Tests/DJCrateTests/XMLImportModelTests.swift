@@ -152,7 +152,7 @@ struct XMLImportModelTests {
         fake.makeResult = .failure(CocoaError(.fileWriteNoPermission))
         let model = try await opened(fake)
         let result = await model.makeDrafts(try #require(model.preview), selection: .all)
-        #expect(result.failure?.hasPrefix("초안을 만들지 못했습니다: ") == true)
+        #expect(result.failure?.hasPrefix("편집을 만들지 못했습니다: ") == true)
         #expect(model.result?.failure == result.failure && fake.refreshed == 0)
     }
 

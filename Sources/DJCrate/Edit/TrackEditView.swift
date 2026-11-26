@@ -11,6 +11,8 @@ struct TrackEditView: View {
     /// 두 줄의 처음 누르기·끌기 상태(끄는 중 모습을 캡처할 때)
     var sourcePointer = EditPointer()
     var outputPointer = EditPointer()
+    /// 결과 줄에 마우스를 올린 모양(핸들을 캡처할 때)
+    var outputHover: EditHover? = nil
     /// 두 줄 자리(편집 창 좌표). 원곡에서 고른 구간을 결과 줄로 끌어 넣을 때 쓴다.
     @State private var sourceFrame = CGRect.zero
     @State private var outputFrame = CGRect.zero
@@ -44,7 +46,7 @@ struct TrackEditView: View {
                 Divider().padding(.vertical, 4)
                 OutputLaneBar(model: model)
                 VStack(spacing: 3) {
-                    EditOutputStrip(model: model, pointer: outputPointer) { outputFrame = $0 }
+                    EditOutputStrip(model: model, pointer: outputPointer, hover: outputHover) { outputFrame = $0 }
                         .frame(minHeight: 140, maxHeight: 260)
                     EditZoomBar(model: model, lane: .output)
                 }
@@ -75,6 +77,13 @@ private struct EditHeader: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(model.row.title).font(.title3.bold()).lineLimit(1)
                 Text(model.row.artist).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 8)
+                if model.blockedReason == nil {
+                    // 커서·핸들·실시간 값으로 보이지 않는 조작만 접어 둔다(눈금으로 재생선, 확대).
+                    InfoPopoverButton(label: String(ui: "조작법"),
+                                      lines: [String(ui: "위 눈금을 누르거나 끌면 재생선을 옮깁니다"), String(ui: "세로 휠·핀치·= 키로 확대합니다")],
+                                      symbol: "questionmark.circle")
+                }
             }
             if let layout = model.layout {
                 let notes = [
@@ -157,7 +166,7 @@ private struct SourceLaneBar: View {
             }
             Spacer(minLength: 8)
             if let selection = model.selection, let layout = model.layout {
-                let bars = String(ui: "\(selection.last - max(selection.first, 1) + 1)마디")
+                let bars = String(ui: "\(selection.barCount)마디")
                 let start = layout.start(ofBar: selection.first).clockText, end = layout.end(ofBar: selection.last).clockText
                 Text(selection.first == 0
                      ? String(ui: "고른 구간 마디 \(selection.description) · \(bars) + 곡 머리 · \(start)–\(end)")
@@ -165,7 +174,8 @@ private struct SourceLaneBar: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            } else {
+            } else if model.entries.isEmpty {
+                // 빈 화면의 첫 행동 한 줄(STR-24). 클립이 생기면 파형 위 십자 커서가 대신한다.
                 Text(.ui("파형을 끌어 마디 구간을 고르세요"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -241,7 +251,7 @@ private struct ClipInspector: View {
                 BarField(label: String(ui: "끝 마디"), value: entry.range.last, range: max(1, entry.range.first)...max(1, layout.count)) {
                     model.setLast(entry.id, $0)
                 }
-                let bars = String(ui: "\(entry.range.last - max(entry.range.first, 1) + 1)마디")
+                let bars = String(ui: "\(entry.range.barCount)마디")
                 let start = layout.start(ofBar: entry.range.first).clockText, end = layout.end(ofBar: entry.range.last).clockText
                 Text(entry.range.first == 0 ? String(ui: "\(bars) + 곡 머리 · 원곡 \(start)–\(end)") : String(ui: "\(bars) · 원곡 \(start)–\(end)"))
                     .font(.caption.monospacedDigit())
@@ -260,9 +270,6 @@ private struct ClipInspector: View {
                 }
                 .buttonStyle(.borderless)
             } else {
-                Text(.ui("클립을 누르면 고르고, 끌면 순서를 바꾸고, 가장자리를 끌면 마디 단위로 다듬습니다. 위 눈금을 누르거나 끌면 재생선을 옮깁니다"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
         }

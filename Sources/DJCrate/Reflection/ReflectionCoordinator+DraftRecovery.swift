@@ -11,7 +11,7 @@ extension ReflectionCoordinator {
         guard !requests.isEmpty, store.recoverySheet == nil else { return }
         let model = RecoverySheetModel(host: store, requests: requests, anchor: anchor)
         if staleOnly {
-            store.writeStage = WriteStage(String(ui: "막힌 초안을 rekordbox의 현재값과 비교하는 중…"))
+            store.writeStage = WriteStage(String(ui: "막힌 편집을 rekordbox의 현재값과 비교하는 중…"))
             await model.load()
             store.writeStage = nil
             model.keepOnlyStale()
@@ -43,7 +43,7 @@ extension ReflectionCoordinator {
     /// 시트가 열려 있는 동안은 쓰기 등 다른 쓰기 입구도 막는다(`writeTask`가 시트가 닫힐 때까지 남는다).
     private func presentRecovery(requests: [RecoveryRequest], anchor: RecoverySheetAnchor) {
         if store.recoverySheet != nil {
-            store.showToast(.notice(String(ui: "막힌 초안 비교가 이미 열려 있습니다"), String(ui: "열려 있는 비교 창에서 저장하거나 취소한 뒤 다시 여세요.")))
+            store.showToast(.notice(String(ui: "막힌 편집 비교가 이미 열려 있습니다"), String(ui: "열려 있는 비교 창에서 적용하거나 취소한 뒤 다시 여세요.")))
             return
         }
         guard !requests.isEmpty, !store.isRecoveringDraft, !store.libraryBusy, store.writeTask == nil else { return }

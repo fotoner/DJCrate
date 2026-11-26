@@ -106,7 +106,7 @@ public enum PointSnapshotRefusal: Error, Equatable, Sendable {
     public var message: String {
         switch self {
         case let .busy(reason): reason
-        case .pinned: String(ui: "고정한 시점 스냅샷은 지우지 않습니다. 고정을 푼 뒤 지우세요")
+        case .pinned: String(ui: "고정한 복원 시점은 지우지 않습니다. 고정을 푼 뒤 지우세요")
         case .rekordboxRunning: String(ui: "rekordbox가 켜져 있어 복원하지 않았습니다. rekordbox를 완전히 종료한 뒤 다시 누르세요")
         }
     }
@@ -169,7 +169,7 @@ public struct PointSnapshots: Sendable {
         let writes = writeBackups().map { backup in
             PointSnapshotRow(source: .backup(backup.url, isWrite: backup.isWrite), date: backup.createdAt,
                              name: Self.backupTitles(backup).prefix(3).joined(separator: ", "),
-                             kind: backup.isWrite ? String(ui: "쓰기 전 백업") : String(ui: "복원 직전 백업"),
+                             kind: backup.isWrite ? String(ui: "저장 전 백업") : String(ui: "복원 직전 백업"),
                              bytes: files.size(backup.url))
         }
         return (points + writes).sorted { $0.date > $1.date }
@@ -199,7 +199,7 @@ public struct PointSnapshots: Sendable {
     /// `pin <ID>`처럼 고른 스냅샷(폴더 이름 또는 겹치지 않는 이름)
     public func find(_ key: String) throws -> RekordboxPointSnapshotEntry {
         guard let entry = files.find(key, directory) else {
-            throw DJCError.writeRefused(String(ui: "시점 스냅샷 ‘\(key)’을 찾지 못했습니다. djc snapshot-point list로 ID를 확인하세요"))
+            throw DJCError.writeRefused(String(ui: "복원 시점 ‘\(key)’을 찾지 못했습니다. djc snapshot-point list로 ID를 확인하세요"))
         }
         return entry
     }
@@ -245,8 +245,8 @@ public struct PointSnapshots: Sendable {
     /// 지우기 확인 창. 이름이 없는 스냅샷은 시각으로 부른다
     public static func deleteConfirmation(_ entry: RekordboxPointSnapshotEntry) -> ReflectionPrompt {
         let title = entry.metadata.name.isEmpty ? entry.metadata.createdAt.formatted(date: .abbreviated, time: .shortened) : entry.metadata.name
-        return ReflectionPrompt(title: String(ui: "시점 스냅샷 ‘\(title)’을 지울까요?"),
-                                text: String(ui: "지운 스냅샷은 되살릴 수 없습니다. rekordbox 라이브러리는 그대로입니다."),
+        return ReflectionPrompt(title: String(ui: "복원 시점 ‘\(title)’을 지울까요?"),
+                                text: String(ui: "지운 복원 시점은 되살릴 수 없습니다. rekordbox 라이브러리는 그대로입니다."),
                                 confirm: String(ui: "지우기"), destructive: true)
     }
 
@@ -297,7 +297,7 @@ public struct PointSnapshots: Sendable {
     public static func restoreConfirmation(_ entry: RekordboxPointSnapshotEntry, diff: RekordboxPointSnapshotDiff) -> ReflectionPrompt {
         let when = entry.metadata.createdAt.formatted(date: .abbreviated, time: .shortened)
         var lines = [String(ui: "rekordbox 라이브러리 전체(DB·재생 목록·분석 파일·앨범아트)를 \(when) 시점으로 되돌립니다. 그 뒤 rekordbox와 DJCrate에서 바꾼 것은 사라집니다."),
-                     String(ui: "지금 상태는 ‘복원 직전’ 스냅샷으로 남겨 다시 되돌릴 수 있습니다. DJCrate 초안은 그대로 둡니다.")]
+                     String(ui: "지금 상태는 ‘복원 직전’ 복원 시점으로 남겨 다시 되돌릴 수 있습니다. DJCrate 편집은 그대로 둡니다.")]
         if diff.isEmpty { lines.append(String(ui: "지금 라이브러리와 다른 곳이 없습니다.")) }
         if diff.cloudSyncedSince(entry) { lines.append("⚠︎ " + RekordboxPointSnapshotDiff.cloudSyncNote) }
         var details = diff.summary

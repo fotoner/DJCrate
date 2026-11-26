@@ -137,7 +137,7 @@ public enum RekordboxCompatibility {
         let majorMinor = parts.prefix(2).joined(separator: ".")
         guard parts.count >= 2, verifiedAppVersions.contains(majorMinor) else {
             let verified = verifiedAppVersions.sorted().map { "\($0).x" }.joined(separator: ", ")
-            throw DJCError.writeRefused(String(ui: "rekordbox \(version)는 DJCrate가 쓰기를 확인하지 않은 버전입니다(확인: \(verified))"))
+            throw DJCError.writeRefused(String(ui: "rekordbox \(version)는 DJCrate가 저장을 확인하지 않은 버전입니다(확인: \(verified))"))
         }
     }
 
@@ -163,6 +163,10 @@ public struct RekordboxWriteGuard: Sendable {
     public var isLive: @Sendable (URL) -> Bool
     public var isRekordboxRunning: @Sendable () -> Bool
     public var appVersion: @Sendable () -> String?
+    /// 단계마다의 실패 주입·진단용 시각 훅·재확인 흉내(R10·R11). 실제 실행은 아무것도 하지 않는다
+    public var hooks: RekordboxWriteHooks = .none
+    /// 프로세스 사이 쓰기 잠금(R9). 시험은 잠금 폴더·경합 알림을 바꿔 넣는다
+    public var locks: RekordboxWriteLocks = .system
     private let liveDirectories: [URL]
     /// 시험 프로세스에서 쓰기·복원을 거부할 폴더. 실제 rekordbox 폴더는 늘 들어 있고, 시험은 합성 폴더를 더해 입구마다 막히는지 본다.
     private let protectedInTests: [URL]
@@ -208,6 +212,15 @@ public struct RekordboxWriteGuard: Sendable {
         return share
     }
 
+    /// 쓰기 잠금을 잡기 전의 대상 확인(R9): 대상·share 경계만 본다. 라이브 확인(rekordbox 실행·-wal·버전)은 잠금을 잡은 뒤
+    /// `checkLive`로 한다(기다리는 동안 켜진 rekordbox나 다른 쓰기의 체크포인트 전 -wal을 잠금 밖에서 보지 않게). 시험 실행은 잠그지 않으니
+    /// 라이브면 여기서 바로 거절한다.
+    func checkTargetsBeforeLock(_ database: URL, shareRoot: URL?, dryRun: Bool) throws -> URL? {
+        let share = try resolveShareRoot(database, shareRoot: shareRoot)
+        if dryRun, isLive(database) { try checkLive(database, dryRun: true) }
+        return share
+    }
+
     /// 복원도 같은 대상 경계를 쓰되, 비상 복원의 버전 검사 예외는 유지한다.
     func resolveShareRoot(_ database: URL, shareRoot: URL?) throws -> URL? {
         try refuseProtectedInTests([database, shareRoot])
@@ -227,7 +240,7 @@ public struct RekordboxWriteGuard: Sendable {
     func refuseProtectedInTests(_ targets: [URL?], isTest: Bool = TestProcess.isRunning) throws {
         guard isTest else { return }
         for target in targets.compactMap({ $0 }) where protectedInTests.contains(where: { Self.contains(target, in: $0) }) {
-            throw DJCError.writeRefused(String(ui: "시험 중에는 실제 rekordbox 라이브러리에 쓰지 않습니다. DJC_REKORDBOX_DIR로 사본 폴더를 주세요"))
+            throw DJCError.writeRefused(String(ui: "시험 중에는 실제 rekordbox 라이브러리에 저장하지 않습니다. DJC_REKORDBOX_DIR로 사본 폴더를 주세요"))
         }
     }
 
@@ -260,7 +273,7 @@ public struct RekordboxWriteGuard: Sendable {
 
     /// 라이브 DB면 rekordbox가 꺼져 있고 WAL이 비었고 확인한 버전이어야 한다.
     func checkLive(_ database: URL, dryRun: Bool) throws {
-        guard !dryRun else { throw DJCError.writeRefused(String(ui: "미리 보기는 스냅샷 사본으로만 합니다")) }
+        guard !dryRun else { throw DJCError.writeRefused(String(ui: "미리 보기는 읽은 사본으로만 합니다")) }
         guard !isRekordboxRunning() else {
             throw DJCError.writeRefused(String(ui: "rekordbox가 켜져 있습니다. rekordbox를 완전히 종료한 뒤 다시 시도하세요"))
         }

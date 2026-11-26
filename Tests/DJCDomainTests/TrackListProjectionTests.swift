@@ -1,13 +1,15 @@
 import DJCDomain
+import Foundation
 import Testing
 
 /// 곡 목록 투영(사이드바 대상 → 보이는 줄)과 선택 규칙. `LibraryStore`가 메인 스레드에서 그대로 부른다.
 @Suite("곡 목록 투영")
 struct TrackListProjectionTests {
     static func row(_ id: String, title: String = "곡", rating: Int = 0, color: String? = nil, path: String? = nil,
-                    comment: String = "", cues: [Cue] = []) -> TrackRow {
-        TrackRow(track: Track(id: id, uuid: "uuid-\(id)", title: "\(title) \(id)", artist: "가수", album: nil, albumArtist: nil,
-                              genre: nil, composer: nil, releaseYear: nil, trackNumber: nil, key: nil, bpm: 120, lengthSeconds: 30,
+                    comment: String = "", cues: [Cue] = [], artist: String? = "가수", album: String? = nil,
+                    albumArtist: String? = nil, composer: String? = nil, genre: String? = nil, key: String? = nil, bpm: Double? = 120) -> TrackRow {
+        TrackRow(track: Track(id: id, uuid: "uuid-\(id)", title: "\(title) \(id)", artist: artist, album: album, albumArtist: albumArtist,
+                              genre: genre, composer: composer, releaseYear: nil, trackNumber: nil, key: key, bpm: bpm, lengthSeconds: 30,
                               folderPath: path ?? "/x/\(id).mp3", comment: comment, importedOn: nil, analysisDataPath: nil,
                               imagePath: nil, isDeleted: false, rating: rating, colorID: color),
                  cues: cues, playCount: 0)
@@ -47,8 +49,9 @@ struct TrackListProjectionTests {
         let base = [Self.row("1"), Self.row("2", path: "spotify:track:2"), Self.row("3")]
         let hidden = TrackListProjection.hidingStreaming(base, hide: true)
         #expect(hidden.rows.map(\.track.id) == ["1", "3"] && hidden.hiddenIDs == ["2"])
+        #expect(hidden.hiddenRows.map(\.track.id) == ["2"], "숨긴 줄도 돌려준다(검색·필터가 맞는지 같은 판정으로 보려고, #348)")
         let shown = TrackListProjection.hidingStreaming(base, hide: false)
-        #expect(shown.rows.count == 3 && shown.hiddenIDs.isEmpty && shown.hiddenCount == 0)
+        #expect(shown.rows.count == 3 && shown.hiddenIDs.isEmpty && shown.hiddenCount == 0 && shown.hiddenRows.isEmpty)
     }
 
     @Test func 숨긴_수는_같은_곡이_두_번_든_재생_목록에서_줄마다_센다() {
@@ -61,11 +64,39 @@ struct TrackListProjectionTests {
     @Test func 검색과_평점과_곡_색으로_거른다() {
         let rows = [Self.row("1", title: "Alpha", rating: 2, color: "1"), Self.row("2", title: "Beta", rating: 4, color: "7"),
                     Self.row("3", title: "alphabet", rating: 5)]
-        #expect(TrackListProjection.filtered(rows, search: "  ALPHA ", minimumRating: 0, color: nil).map(\.track.id) == ["1", "3"])
-        #expect(TrackListProjection.filtered(rows, search: "", minimumRating: 4, color: nil).map(\.track.id) == ["2", "3"])
-        #expect(TrackListProjection.filtered(rows, search: "alpha", minimumRating: 3, color: nil).map(\.track.id) == ["3"])
-        #expect(TrackListProjection.filtered(rows, search: "", minimumRating: 0, color: "7").map(\.track.id) == ["2"])
-        #expect(TrackListProjection.filtered(rows, search: "", minimumRating: 0, color: nil) == rows)
+        #expect(TrackListProjection.filtered(rows, search: "  ALPHA ", filter: TrackFilter()).map(\.track.id) == ["1", "3"])
+        #expect(TrackListProjection.filtered(rows, search: "", filter: TrackFilter(minimumRating: 4)).map(\.track.id) == ["2", "3"])
+        #expect(TrackListProjection.filtered(rows, search: "alpha", filter: TrackFilter(minimumRating: 3)).map(\.track.id) == ["3"])
+        #expect(TrackListProjection.filtered(rows, search: "", filter: TrackFilter(colorIDs: ["7"])).map(\.track.id) == ["2"])
+        #expect(TrackListProjection.filtered(rows, search: "", filter: TrackFilter()) == rows)
+    }
+
+    /// 판정표는 `TrackFilterTests`가 촘촘히 본다. 여기서는 곡 목록이 그 판정을 검색과 함께 쓰는지만 본다(TEST-8).
+    @Test func 곡_목록_거르기는_필터_판정과_검색을_함께_쓴다() {
+        let rows = [Self.row("1", title: "Alpha", genre: "House", key: "Am", bpm: 126), Self.row("2", title: "Alpha", genre: "Techno", key: "8A", bpm: 126),
+                    Self.row("3", title: "Beta", genre: "house", key: "9A", bpm: 126), Self.row("4", title: "Alpha", genre: "House", key: "3B", bpm: 126),
+                    Self.row("5", title: "Alpha", genre: "House", key: "8A", bpm: nil)]
+        func ids(_ search: String, _ filter: TrackFilter) -> [String] { TrackListProjection.filtered(rows, search: search, filter: filter).map(\.track.id) }
+        let filter = TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("8A", mode: .compatible), genre: "house")
+        #expect(ids("", filter) == ["1", "3"])
+        #expect(ids("alpha", filter) == ["1"])
+        #expect(ids("alpha", TrackFilter(key: KeyCondition("8A"))) == ["1", "2", "5"])
+    }
+
+    /// 규칙은 `TrackSearchTests`가 촘촘히 본다. 여기서는 곡 목록 거르기가 그 규칙을 쓰는지만 본다(TEST-8).
+    @Test func 곡_목록_검색은_검색_규칙을_쓴다() {
+        let nfd = "밤의 드라이브.mp3".decomposedStringWithCanonicalMapping
+        let rows = [Self.row("1", title: "Alpha", artist: "Kim", album: "Blue Hour"), Self.row("2", title: "Alpha", artist: "Lee"),
+                    Self.row("3", path: "/음악/\(nfd)"), Self.row("4", composer: "Satie")]
+        func ids(_ search: String) -> [String] {
+            TrackListProjection.filtered(rows, search: search, filter: TrackFilter()).map(\.track.id)
+        }
+        #expect(ids("blue hour") == ["1"] && ids("satie") == ["4"])
+        #expect(ids("밤의 드라이브") == ["3"])
+        #expect(ids("alpha kim") == ["1"] && ids("alpha lee kim").isEmpty)
+        // 낱말 검색에 평점·곡 색 조건이 함께 걸린다
+        #expect(TrackListProjection.filtered([Self.row("5", title: "Alpha", rating: 5, album: "Blue Hour")], search: "alpha blue",
+                                             filter: TrackFilter(minimumRating: 4)).map(\.track.id) == ["5"])
     }
 
     @Test func 중복_후보_검색은_비교_상대도_남긴다() {
@@ -74,6 +105,43 @@ struct TrackListProjectionTests {
         let byID = Self.index(rows)
         #expect(TrackListProjection.duplicateGroups(groups, members: { $0 }, search: "beta", rowsByID: byID) == [["1", "2"]])
         #expect(TrackListProjection.duplicateGroups(groups, members: { $0 }, search: " ", rowsByID: byID) == groups)
+    }
+
+    @Test func 중복_후보_검색도_같은_검색_규칙을_쓴다() {
+        let nfd = "밤의 드라이브.mp3".decomposedStringWithCanonicalMapping
+        let rows = [Self.row("1", title: "Alpha", artist: "Kim", album: "Blue Hour"), Self.row("2", title: "Alpha", artist: "Lee"),
+                    Self.row("3", path: "/음악/\(nfd)")]
+        let groups = [["1", "2"], ["3"]]
+        let byID = Self.index(rows)
+        func found(_ search: String) -> [[String]] {
+            TrackListProjection.duplicateGroups(groups, members: { $0 }, search: search, rowsByID: byID)
+        }
+        // 앨범 칸, 낱말 AND(한 곡이 낱말을 모두 가져야 한다: 묶음 안 다른 곡과 나눠 가질 수 없다), NFD 파일 이름
+        #expect(found("blue hour") == [["1", "2"]] && found("kim lee").isEmpty && found("밤의 드라이브") == [["3"]])
+    }
+
+    /// 규칙은 `TrackSearchTests`가 본다(#376). 여기서는 곡 목록·중복 후보 검색이 곡 UUID로 편집 값을 얹는지만 본다.
+    @Test func 곡_목록_검색은_저장_대기_편집_값으로도_찾고_필터는_저장된_값으로만_거른다() {
+        let rows = [Self.row("1", title: "Alpha", rating: 5), Self.row("2", title: "Beta"), Self.row("3", title: "Gamma")]
+        let edits: [String: TrackSearch.DraftEdits] = ["uuid-1": [.title: "Omega"], "uuid-3": [.comment: "Omega 메모"]]
+        func ids(_ search: String, _ filter: TrackFilter = TrackFilter(), _ edits: [String: TrackSearch.DraftEdits] = edits) -> [String] {
+            TrackListProjection.filtered(rows, search: search, filter: filter, draftEdits: edits).map(\.track.id)
+        }
+        #expect(ids("omega") == ["1", "3"])
+        #expect(ids("omega", TrackFilter(minimumRating: 4)) == ["1"], "필터는 편집 값이 아니라 저장된 값으로 거른다")
+        #expect(ids("alpha") == ["1"] && ids("gamma") == ["3"], "저장된 값으로도 계속 찾는다")
+        #expect(ids("omega", TrackFilter(), [:]).isEmpty && ids("") == ["1", "2", "3"])
+    }
+
+    @Test func 중복_후보_검색은_편집_값으로_찾은_곡의_묶음을_남긴다() {
+        let rows = [Self.row("1", title: "Alpha"), Self.row("2", title: "Beta"), Self.row("3", title: "Gamma")]
+        let groups = [["1", "2"], ["3"]]
+        let byID = Self.index(rows)
+        func found(_ search: String, _ edits: [String: TrackSearch.DraftEdits]) -> [[String]] {
+            TrackListProjection.duplicateGroups(groups, members: { $0 }, search: search, rowsByID: byID, draftEdits: edits)
+        }
+        #expect(found("omega", ["uuid-2": [.title: "Omega"]]) == [["1", "2"]])
+        #expect(found("omega", [:]).isEmpty)
     }
 
     @Test func 덱에_올릴_곡은_표_순서로_첫_곡이다() {

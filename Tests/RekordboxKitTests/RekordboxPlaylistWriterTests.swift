@@ -498,7 +498,7 @@ struct RekordboxPlaylistWriterTests {
                                                backups: fixture.backups)
         #expect(report.playlistOutcomes?.map(\.status) == [.blocked, .written])
         #expect(report.playlistBlocked.first?.name == "목록")
-        #expect(report.playlistBlocked.first?.reason == "초안을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 초안을 버리세요.")
+        #expect(report.playlistBlocked.first?.reason == "편집을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 편집을 버리세요.")
         #expect(try entries(fixture, "70").map { $0["ContentID"] } == ["101", "102", "105"])
         #expect(try row(fixture, "80")["Name"] == "새 이름")
         // 백업에는 쓴 편집만 둔다(되돌리면 초안으로 살린다)

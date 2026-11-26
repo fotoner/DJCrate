@@ -15,6 +15,17 @@ final class ReflectionHarness {
     let previewHold = PreviewHold()
     let gateCalls = GateCalls()
     var script = GateScript()
+    /// 가짜 관문이 드는 쓰기 기록(주면 세션을 몇 번 만들어도 같은 기록을 본다. 시험이 바깥에서 기록을 남기는 경우를 흉내 낸다)
+    var journal: ScriptedJournal?
+    /// 다른 곳(CLI)이 재생 목록 초안 파일 잠금을 쥐었다
+    let playlistLockHeld = LockedFlag()
+    /// 디스크 재생 목록 초안을 읽지 못한다(던지는 읽기는 던지고, 접는 읽기는 빈 초안)
+    let playlistReadFails = LockedFlag()
+    /// 화면이 읽은 사본이 쓰기 대상 라이브 DB와 같다(그 뒤 라이브 DB가 바뀌지 않았다)
+    let readIsLatest = LockedFlag()
+    /// 켜면 재생 목록 초안 파일 잠금을 기다리는 사이 앱의 재생 목록 저장이 실패한다(잡은 뒤 화면 상태가 저장하지 못함이 된다)
+    let playlistSaveFailsDuringLock = LockedFlag()
+    private let playlistUnsavedByLock = LockedFlag()
     /// 라이브러리 화면 상태(세션이 읽는다). `apply`가 받은 변경 가운데 상태에 남는 것(태그·합치기·추가 목록 등)은 여기에도 반영한다.
     var state = ReflectionLibraryState()
     var changes: [ReflectionLibraryChange] = []
@@ -25,8 +36,13 @@ final class ReflectionHarness {
     var answer = true
     var choice: ReflectionChoice = .confirm
     var locked = false
-    /// (잠금, 덱도) 차례
+    /// 쓰기 잠금을 걸거나 풀 때마다 부른다(잠금 직후 상태가 바뀌는 경우를 흉내 낸다: 초안 파일 잠금 시도·동기화)
+    var onLock: (@MainActor (Bool) -> Void)?
+    var lockedTrackSet: Set<String> = []
+    /// 잠금을 건 차례: "true"·"false"(쓰는 중, 덱도 잠그면 접미 없음, 덱 빼면 " (덱 빼고)")와 "곡 a,b"(곡 단위 잠금, 비면 "곡 -")가 한 줄에 섞여 선후를 본다
     var locks: [String] = []
+    /// 곡 단위 편집 잠금이 정해진 차례(R21: 쓰는 묶음에 든 곡, 비면 푼 것)
+    var trackLocks: [Set<String>] = []
     var stages: [WriteStage?] = []
     /// 단계를 알릴 때마다 부른다(그 순간 화면 상태를 본다)
     var onStage: (@MainActor (WriteStage?) -> Void)?
@@ -56,7 +72,11 @@ final class ReflectionHarness {
     var pointRefusal: String? { get { backupsMemory.refusal } set { backupsMemory.refusal = newValue } }
     var updateCount: Int { get { backupsMemory.updateCount } set { backupsMemory.updateCount = newValue } }
     var preserved: [DamagedDraftFile] = []
+    /// 태그 저장을 다시 해 볼 때 한다(저장하지 못한 태그 초안이 이때 보관되는 것을 흉내 낸다)
+    var onRetryTagSaves: (@MainActor () -> Void)?
     var playlistSaves = true
+    /// 재생 목록 초안을 다시 저장하면 저장하지 못한 표시(`playlistDraftUnsaved`)를 푼다
+    var playlistSaveClearsUnsaved = false
     var unsaved: Set<String> = []
     var saveFailures: [DraftSaveFailure] = []
     /// 관문이 쓴 뒤(초안을 정리할 때) 생기는 저장 실패
@@ -64,6 +84,16 @@ final class ReflectionHarness {
     var failingArtworkRemovals: Set<String> = []
     /// 합치기 초안 저장이 실패한다
     var failingMergeSave = false
+    /// 쓴 뒤 판 지정 삭제(`removeWritten`)가 던진다(초안 잠금을 잡지 못함 등). 메인 밖에서 불려 잠금으로 든다
+    let removeWrittenFails = LockedFlag()
+    /// 이 곡의 큐·그리드·태그 초안 저장이 실패한다(출처 포트 포함: 곡 넣기 정리가 새 곡에 옮기는 저장)
+    let failingDraftSaves = LockedStrings()
+    /// 출처 포트로 큐 초안을 저장한 뒤 부른다(옮기는 동안 바깥에서 생긴 일을 흉내 낸다)
+    var onVariantCueSave: (@Sendable (CueDraft) -> Void)?
+    var failingRemoveWritten: Bool {
+        get { removeWrittenFails.value }
+        set { removeWrittenFails.value = newValue }
+    }
     /// 세션이 저장한 재생 목록 연결 기록(차례대로)
     var importsSaved: [PlaylistImports] = []
     /// 세션이 화면에 넘긴 재생 기록 결과(쓴 기록·이미 있던 기록, #43, 차례대로)와 그때 돌려줄 표시 저장 경고
@@ -83,20 +113,31 @@ final class ReflectionHarness {
     }
 
     var session: ReflectionSession {
-        ReflectionSession(location: location, ports: ports, options: options)
+        var ports = ports
+        // 여러 곡 역편집 묶음 보관소는 하네스가 하나 든다(앱은 조정자 하나에 하나)
+        ports.undoGroups = undoGroups
+        return ReflectionSession(location: location, ports: ports, options: options)
     }
+
+    /// 여러 곡 역편집 묶음(R12): 세션을 부를 때마다 같은 보관소를 넣는다
+    let undoGroups = ReflectionUndoGroups()
 
     var ports: ReflectionPorts {
         ReflectionPorts(gate: gate, backups: backups, drafts: drafts, snapshots: snapshots, audio: audio,
                         library: ReflectionLibrary(state: { self.libraryState }, apply: { self.apply($0) },
-                                                   retryTagSaves: { self.log.record("retry tag saves") },
+                                                   retryTagSaves: { self.log.record("retry tag saves"); self.onRetryTagSaves?() },
                                                    preserveDamagedDrafts: { self.log.record("preserve damaged"); return self.preserved },
-                                                   savePlaylistDraft: { self.log.record("save playlist"); return self.playlistSaves },
+                                                   savePlaylistDraft: {
+                                                       self.log.record("save playlist")
+                                                       // 켜면 다시 저장했을 때 저장하지 못한 표시가 풀린다(앱의 재생 목록 화면 모델과 같다)
+                                                       if self.playlistSaves, self.playlistSaveClearsUnsaved { self.state.playlistDraftUnsaved = false }
+                                                       return self.playlistSaves
+                                                   },
                                                    recordHistories: { outcomes in
                                                        self.log.record("record histories")
                                                        self.recordedHistories.append(outcomes)
                                                        return self.historyMarkWarning
-                                                   }),
+                                                   }).readingLatest { [readIsLatest] _ in readIsLatest.value },
                         reload: LibraryReloader(reload: { written, edits in
                             self.log.record("reload")
                             self.reloads.append((written, edits))
@@ -108,13 +149,7 @@ final class ReflectionHarness {
                             self.postponed.append((written, edits))
                             return true
                         }),
-                        lock: WriteLock(isLocked: { self.locked }, set: { locked, deck in
-                            self.locked = locked
-                            self.locks.append("\(locked)\(deck ? "" : " (덱 빼고)")")
-                        }, stage: {
-                            self.stages.append($0)
-                            self.onStage?($0)
-                        }),
+                        lock: lock,
                         confirmation: UserConfirmation(confirm: { prompt in
                             self.prompts.append(prompt)
                             self.onPrompt?()
@@ -133,9 +168,30 @@ final class ReflectionHarness {
                         }))
     }
 
+    private var lock: WriteLock {
+        var lock = WriteLock(isLocked: { self.locked }, set: { locked, deck in
+            self.locked = locked
+            self.locks.append("\(locked)\(deck ? "" : " (덱 빼고)")")
+            self.onLock?(locked)
+        }, stage: {
+            self.stages.append($0)
+            self.onStage?($0)
+        })
+        lock.setTracks = { tracks in
+            self.lockedTrackSet = tracks
+            self.trackLocks.append(tracks)
+            self.locks.append("곡 " + (tracks.isEmpty ? "-" : tracks.sorted().joined(separator: ",")))
+        }
+        lock.lockedTracks = { self.lockedTrackSet }
+        lock.setDraftWriting = { writing in self.locks.append("초안 쓰기 \(writing)") }
+        return lock
+    }
+
     private var libraryState: ReflectionLibraryState {
         var current = state
         if !reloadSucceeds { current.lastError = reloadError }
+        if current.readSnapshot == nil { current.readSnapshot = URL(filePath: "/snapshots/master-2026-11-24T000000.db") }
+        if playlistUnsavedByLock.value { current.playlistDraftUnsaved = true }
         return current
     }
 
@@ -176,10 +232,61 @@ final class ReflectionHarness {
             if failingMerge { throw FixtureFailure() }
             try saveMerges(merges)
         }
+        let lockHeld = playlistLockHeld, log = log
+        let failsDuringLock = playlistSaveFailsDuringLock, unsavedByLock = playlistUnsavedByLock
+        store.lockPlaylistDraft = { _ in
+            if lockHeld.value { return nil }
+            if failsDuringLock.value { unsavedByLock.value = true }
+            log.record("playlist lock")
+            return { log.record("playlist unlock") }
+        }
+        let readFails = playlistReadFails, readPlaylist = store.readPlaylistDraft, loadPlaylist = store.playlistDraft
+        store.readPlaylistDraft = {
+            if readFails.value { throw FixtureFailure() }
+            return try readPlaylist()
+        }
+        store.playlistDraft = { readFails.value ? PlaylistDraft() : loadPlaylist() }
+        let savePlaylist = store.savePlaylistDraft
+        store.savePlaylistDraft = { draft in
+            log.record("playlist save")
+            try savePlaylist(draft)
+        }
+        // 저장 실패 주입은 출처 포트에도 건다(출처 포트는 저장소가 새로 만든다)
+        let failing = failingDraftSaves, onVariantCueSave = onVariantCueSave
+        store = Self.failingSaves(store, failing: failing, hook: nil)
+        if let variant = store.originVariant {
+            store.originVariant = { origin in Self.failingSaves(variant(origin), failing: failing, hook: onVariantCueSave) }
+        }
+        let removeWritten = store.removeWritten, removeFails = removeWrittenFails
+        store.removeWritten = { written in
+            if removeFails.value { throw FixtureFailure() }
+            return try removeWritten(written)
+        }
         return store
     }
 
-    private var gate: RekordboxWriteGate { .scripted(script, calls: gateCalls, hold: previewHold) }
+    /// 그 곡의 큐·그리드·태그 저장을 실패하게 한 포트(`hook`은 큐를 저장한 뒤 부른다)
+    nonisolated static func failingSaves(_ port: DraftStore, failing: LockedStrings, hook: (@Sendable (CueDraft) -> Void)?) -> DraftStore {
+        var port = port
+        let saveCue = port.saveCue, saveGrid = port.saveGrid, saveTags = port.saveTags
+        port.saveCue = { draft, completion in
+            guard !failing.contains(draft.trackUUID) else {
+                return completion(DraftSaveFailure(kind: .cue, trackUUID: draft.trackUUID, revision: 0, reason: "합성 실패"))
+            }
+            saveCue(draft, completion)
+            hook?(draft)
+        }
+        port.saveGrid = { draft, completion in
+            guard !failing.contains(draft.trackUUID) else {
+                return completion(DraftSaveFailure(kind: .grid, trackUUID: draft.trackUUID, revision: 0, reason: "합성 실패"))
+            }
+            saveGrid(draft, completion)
+        }
+        port.saveTags = { drafts in saveTags(drafts.filter { !failing.contains($0.trackUUID) }) }
+        return port
+    }
+
+    private var gate: RekordboxWriteGate { .scripted(script, calls: gateCalls, hold: previewHold, journal: journal) }
 
     private var backups: RekordboxBackups { backupsMemory.port }
 
@@ -272,9 +379,12 @@ final class ReflectionHarness {
         changes.map { change in
             switch change {
             case let .draftsCleared(kind, uuids, counts): "cleared \(kind) \(uuids.sorted())\(counts ? " counts" : "")"
+            case let .cueIDsWritten(ids): "cue ids \(ids.keys.sorted())"
+            case let .tagsWritten(uuids): "tags written \(uuids)"
             case let .tagDrafts(drafts): "tags \(drafts.map(\.trackUUID).sorted())"
             case let .mergeDrafts(drafts, failure, _): "merges \(drafts.map(\.id))\(failure == nil ? "" : " failed")"
             case .playlistWritten: "playlist written"
+            case let .playlistWriteFrozen(draft, histories): "frozen \(draft.steps.count) histories \(histories.count)"
             case let .artworkCleared(uuids, failed): "artwork cleared \(uuids) failed \(failed)"
             case let .artworkRestored(drafts, touched): "artwork restored \(drafts.keys.sorted()) touched \(touched)"
             case let .unstaged(uuids): "unstaged \(uuids.sorted())"
@@ -300,3 +410,27 @@ final class ReflectionHarness {
 }
 
 struct FixtureFailure: Error, CustomStringConvertible { var description = "합성 실패" }
+
+/// 메인 밖에서도 읽는 시험 스위치
+final class LockedStrings: Sendable {
+    private let state = Mutex<Set<String>>([])
+    func insert(_ value: String) { state.withLock { _ = $0.insert(value) } }
+    func contains(_ value: String) -> Bool { state.withLock { $0.contains(value) } }
+}
+
+final class LockedFlag: Sendable {
+    private let state = Mutex(false)
+    var value: Bool {
+        get { state.withLock { $0 } }
+        set { state.withLock { $0 = newValue } }
+    }
+}
+
+extension ReflectionLibrary {
+    /// 읽은 사본이 쓰기 대상 라이브 DB와 같은지 보는 판정을 바꾼 포트
+    func readingLatest(_ judge: @escaping @Sendable (URL) -> Bool) -> Self {
+        var library = self
+        library.readIsLatest = judge
+        return library
+    }
+}

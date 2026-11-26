@@ -1,6 +1,6 @@
 import Foundation
 
-/// 곡 목록 투영: 사이드바 대상이 보여 줄 줄 → 스트리밍 숨기기 → (정렬은 화면 모델) → 검색·평점·곡 색 거르기.
+/// 곡 목록 투영: 사이드바 대상이 보여 줄 줄 → 스트리밍 숨기기 → (정렬은 화면 모델) → 검색·필터 거르기.
 /// 입출력 없이 읽어 둔 곡 행만으로 계산한다. 화면 모델은 필터·검색·정렬이 바뀔 때만 부른다.
 public enum TrackListProjection {
     /// 사이드바 대상이 보여 줄 줄(숨기기·정렬 전)
@@ -53,6 +53,8 @@ public enum TrackListProjection {
         public var hiddenIDs: Set<TrackRow.ID>
         /// 숨긴 줄 수(안내 문구). 같은 곡이 두 번 든 재생 목록은 ID가 하나라도 두 줄로 센다
         public var hiddenCount = 0
+        /// 숨긴 줄 그 자체. 검색·필터가 비운 목록에서 숨긴 곡이 맞는지 같은 판정(`filtered`)으로 볼 때 쓴다(#348)
+        public var hiddenRows: [TrackRow] = []
     }
 
     public static func hidingStreaming(_ base: [TrackRow], hide: Bool) -> Visible {
@@ -60,36 +62,32 @@ public enum TrackListProjection {
         let hidden = base.filter { $0.track.isStreaming }
         guard !hidden.isEmpty else { return Visible(rows: base, hiddenIDs: []) }
         return Visible(rows: StreamingVisibility.visible(base, hidingStreaming: true) { $0.track }, hiddenIDs: Set(hidden.map(\.id)),
-                       hiddenCount: hidden.count)
+                       hiddenCount: hidden.count, hiddenRows: hidden)
     }
 
-    /// 검색어를 비교할 모양(앞뒤 공백을 떼고 소문자)
-    public static func needle(_ search: String) -> String {
-        search.trimmingCharacters(in: .whitespaces).lowercased()
-    }
-
-    /// 검색·평점·곡 색 거르기. 정렬한 순서를 그대로 둔다. 거를 것이 없으면 받은 배열을 그대로 돌려준다.
-    public static func filtered(_ sorted: [TrackRow], search: String, minimumRating: Int, color: String?) -> [TrackRow] {
-        let needle = needle(search)
-        let attributes = minimumRating > 0 || color != nil
-        guard !needle.isEmpty || attributes else { return sorted }
+    /// 검색·필터 거르기. 정렬한 순서를 그대로 둔다. 거를 것이 없으면 받은 배열을 그대로 돌려준다.
+    /// 검색 규칙(칸·낱말 AND·NFC)은 `TrackSearch`가, 필터 조건(평점·곡 색·BPM·키·장르)은 `TrackFilter`가 하나로 정한다.
+    /// - Parameter draftEdits: 곡 UUID별 저장 대기 중인 검색 칸 편집(#376, `TrackSearch.edits(of:)`). 검색은 저장된 값과 편집 값 둘 다로 찾는다. 필터는 저장된 값으로만 거른다.
+    public static func filtered(_ sorted: [TrackRow], search: String, filter: TrackFilter,
+                                draftEdits: [String: TrackSearch.DraftEdits] = [:]) -> [TrackRow] {
+        let query = TrackSearch.Query(search)
+        guard !query.isEmpty || !filter.isEmpty else { return sorted }
         return sorted.filter { row in
-            (needle.isEmpty || row.searchKey.contains(needle))
-                && (!attributes || matchesAttributes(row, minimumRating: minimumRating, color: color))
+            query.matches(row: row, edits: draftEdits.isEmpty ? nil : draftEdits[row.track.uuid]) && filter.matches(row)
         }
-    }
-
-    /// 평점·곡 색 거르기(#65). rekordbox 값(초안 전)으로 거른다. USB 곡도 같은 칸으로 거른다.
-    public static func matchesAttributes(_ row: TrackRow, minimumRating: Int, color: String?) -> Bool {
-        row.track.rating >= minimumRating && (color.map { row.track.colorID == $0 } ?? true)
     }
 
     /// 중복 후보 검색: 검색한 곡이 든 묶음을 통째로 남긴다(비교 상대가 잘리지 않게).
     public static func duplicateGroups<Group>(_ groups: [Group], members: (Group) -> [String], search: String,
-                                              rowsByID: [TrackRow.ID: TrackRow]) -> [Group] {
-        let needle = needle(search)
-        guard !needle.isEmpty else { return groups }
-        return groups.filter { group in members(group).contains { rowsByID[$0]?.searchKey.contains(needle) == true } }
+                                              rowsByID: [TrackRow.ID: TrackRow],
+                                              draftEdits: [String: TrackSearch.DraftEdits] = [:]) -> [Group] {
+        let query = TrackSearch.Query(search)
+        guard !query.isEmpty else { return groups }
+        return groups.filter { group in
+            members(group).contains { id in
+                rowsByID[id].map { query.matches(row: $0, edits: draftEdits[$0.track.uuid]) } == true
+            }
+        }
     }
 }
 

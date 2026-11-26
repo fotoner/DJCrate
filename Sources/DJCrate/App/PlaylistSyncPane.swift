@@ -25,6 +25,14 @@ struct PlaylistSyncSelectionControls<Node: PlaylistSyncNode> {
     let identifier: (Node) -> String
 }
 
+/// 목록 줄에 마우스를 올리면 나오는 글. 뜻이 있는 것부터 하나만 고른다.
+enum PlaylistSyncRowHelp {
+    /// 막힘 이유, 비활성 이유, 흐린 줄의 뜻 순서이고 모두 없으면 이름(길어서 잘릴 때 전체를 본다)
+    static func text(issue: String?, lockedReason: String?, hint: String?, name: String) -> String {
+        issue ?? lockedReason ?? hint ?? name
+    }
+}
+
 struct PlaylistSyncPane<Node: PlaylistSyncNode, Header: View>: View {
     let tree: [Node]
     let isLoading: Bool
@@ -32,13 +40,18 @@ struct PlaylistSyncPane<Node: PlaylistSyncNode, Header: View>: View {
     let selection: PlaylistSyncSelectionControls<Node>?
     /// 동기화에 이어지지 않은 USB 목록처럼 흐리게 보일 칸
     let dimmed: (Node) -> Bool
-    /// 칸 옆에 작게 붙일 설명(동기화 후 미리 보기의 "새로 만듦"·"옮김")
+    /// 칸 옆에 작게 붙일 표시(동기화 후 미리 보기의 "새로 만듦"·"옮김"·"지움")
     let note: (Node) -> String?
+    /// 흐린 칸에 마우스를 올리면 나오는 뜻
+    let hint: (Node) -> String?
+    /// 선택을 바꿀 수 없게 잠근 이유(없으면 잠기지 않았거나 잠깐 막힌 것). 잠기면 칸과 체크에 이 이유가 툴팁으로 뜬다
+    let lockedReason: String?
     @ViewBuilder let header: () -> Header
 
     init(tree: [Node], isLoading: Bool = false, emptyMessage: String,
          selection: PlaylistSyncSelectionControls<Node>? = nil, dimmed: @escaping (Node) -> Bool = { _ in false },
-         note: @escaping (Node) -> String? = { _ in nil },
+         note: @escaping (Node) -> String? = { _ in nil }, hint: @escaping (Node) -> String? = { _ in nil },
+         lockedReason: String? = nil,
          @ViewBuilder header: @escaping () -> Header) {
         self.tree = tree
         self.isLoading = isLoading
@@ -46,6 +59,8 @@ struct PlaylistSyncPane<Node: PlaylistSyncNode, Header: View>: View {
         self.selection = selection
         self.dimmed = dimmed
         self.note = note
+        self.hint = hint
+        self.lockedReason = lockedReason
         self.header = header
     }
 
@@ -56,8 +71,9 @@ struct PlaylistSyncPane<Node: PlaylistSyncNode, Header: View>: View {
                 OutlineGroup(tree, children: \.children) { node in
                     HStack {
                         Label(node.name, systemImage: node.isFolder ? "folder" : "music.note.list")
-                            .lineLimit(1).help(node.syncIssue ?? node.name)
-                            .foregroundStyle(dimmed(node) ? .secondary : .primary)
+                            .lineLimit(1)
+                            .help(PlaylistSyncRowHelp.text(issue: node.syncIssue, lockedReason: lockedReason, hint: hint(node), name: node.name))
+                            .foregroundStyle(dimmed(node) || lockedReason != nil ? .secondary : .primary)
                         if let note = note(node) {
                             Text(verbatim: note).font(.caption).foregroundStyle(.secondary)
                         }
@@ -70,6 +86,7 @@ struct PlaylistSyncPane<Node: PlaylistSyncNode, Header: View>: View {
                             PlaylistSyncCheckbox(name: node.name, state: selection.state(node),
                                                  identifier: selection.identifier(node)) { selection.toggle(node) }
                                 .frame(width: 18, height: 18)
+                                .help(lockedReason ?? "")
                         }
                     }
                 }

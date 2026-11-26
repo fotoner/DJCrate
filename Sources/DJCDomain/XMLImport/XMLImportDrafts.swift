@@ -114,7 +114,7 @@ public enum XMLImportDrafts {
             guard let source = sources[change.libraryKey] else {
                 for kind in wanted {
                     plan.skipped.append(Note(kind: kind, libraryKey: change.libraryKey, subject: change.title,
-                                             reason: String(ui: "곡을 라이브러리에서 찾지 못했습니다. 스냅샷을 새로 뜬 뒤 다시 가져오세요")))
+                                             reason: String(ui: "곡을 라이브러리에서 찾지 못했습니다. ‘rekordbox와 동기화’를 한 뒤 다시 가져오세요")))
                 }
                 continue
             }
@@ -155,10 +155,10 @@ public enum XMLImportDrafts {
 
     public static func existingReason(_ kind: Kind) -> String {
         switch kind {
-        case .cue: String(ui: "이 곡에 큐 초안이 이미 있어 덮지 않았습니다. 그 초안을 쓰거나 버린 뒤 다시 가져오세요")
-        case .grid: String(ui: "이 곡에 그리드 초안이 이미 있어 덮지 않았습니다. 그 초안을 쓰거나 버린 뒤 다시 가져오세요")
-        case .tag: String(ui: "이 곡에 태그 초안이 이미 있어 덮지 않았습니다. 그 초안을 쓰거나 버린 뒤 다시 가져오세요")
-        case .playlist: String(ui: "이 목록에 재생 목록 초안이 이미 있어 덮지 않았습니다. 그 초안을 쓰거나 버린 뒤 다시 가져오세요")
+        case .cue: String(ui: "이 곡에 큐 편집이 이미 있어 덮지 않았습니다. 그 편집을 저장하거나 버린 뒤 다시 가져오세요")
+        case .grid: String(ui: "이 곡에 그리드 편집이 이미 있어 덮지 않았습니다. 그 편집을 저장하거나 버린 뒤 다시 가져오세요")
+        case .tag: String(ui: "이 곡에 태그 편집이 이미 있어 덮지 않았습니다. 그 편집을 저장하거나 버린 뒤 다시 가져오세요")
+        case .playlist: String(ui: "이 목록에 재생 목록 편집이 이미 있어 덮지 않았습니다. 그 편집을 저장하거나 버린 뒤 다시 가져오세요")
         }
     }
 
@@ -175,6 +175,11 @@ public enum XMLImportDrafts {
         let duration = Double(source.track.lengthSeconds)
         func outside(_ mark: XMLLibrary.Mark) -> Bool { mark.start < 0 || mark.start > duration || (mark.end ?? 0) > duration }
         let outsideReason = String(ui: "곡 길이를 벗어난 큐는 넣지 않았습니다")
+        // 활성 메모리 루프(Kind 4)는 편집 대상이 아니라 base에 없다. 그래도 라이브러리 쪽 비교에는 메모리 루프로 들어 있으므로(`Reflection.marks`)
+        // 같은 자리의 XML 메모리 루프는 새 큐가 아니다. 더하면 rekordbox에 저장할 때 같은 자리에 루프가 하나 더 생긴다.
+        var activeLoops = source.cues.filter(\.isActiveMemoryLoop).map {
+            XMLLibrary.Mark(kind: .memory, start: Double($0.inMsec) / 1000, end: Double($0.outMsec) / 1000, name: $0.name)
+        }
         var cues = pairs.same.map { base[$0.library] } + pairs.keptAuto.map { base[$0] }
         for (x, l) in pairs.modified {
             let mark = change.xml[x]
@@ -198,7 +203,23 @@ public enum XMLImportDrafts {
             }
             cues.append(cue)
         }
-        for mark in XMLLibraryDiff.sorted(pairs.added.map { change.xml[$0] }) {
+        var added = XMLLibraryDiff.sorted(pairs.added.map { change.xml[$0] })
+        // 끝·이름까지 같은 루프는 이미 있는 큐다. 이것부터 일대일로 짝짓는다. 시작 시각만으로 먼저 짝지으면 같은 자리의 새 루프가
+        // 활성 메모리 루프를 가로채, 그 루프가 새 메모리 루프로 한 번 더 들어간다.
+        for i in activeLoops.indices.reversed() {
+            if let j = added.firstIndex(where: { XMLLibraryDiff.sameMark(activeLoops[i], $0) }) {
+                added.remove(at: j)
+                activeLoops.remove(at: i)
+            }
+        }
+        for mark in added {
+            if mark.kind == .memory, mark.end != nil,
+               let i = activeLoops.firstIndex(where: { abs($0.start - mark.start) < XMLLibraryDiff.timeTolerance }) {
+                // 같은 자리인데 끝·이름이 다르다. 그 활성 메모리 루프는 편집할 수 없어 바뀐 값을 넣지 못한다.
+                activeLoops.remove(at: i)
+                loss(String(ui: "활성 메모리 루프는 아직 편집할 수 없어 넣지 않았습니다"))
+                continue
+            }
             if outside(mark) {
                 loss(outsideReason)
                 continue
@@ -225,12 +246,12 @@ public enum XMLImportDrafts {
 
     static func gridDraft(_ change: XMLLibraryDiff.GridChange, source: TrackSource, loss: (String) -> Void) -> GridDraft? {
         guard let grid = source.grid, !grid.beats.isEmpty else {
-            loss(String(ui: "분석 파일의 그리드가 없는 곡은 그리드 초안을 만들 수 없습니다. rekordbox에서 트랙 분석을 먼저 한 뒤 다시 가져오세요"))
+            loss(String(ui: "분석 파일의 그리드가 없는 곡은 그리드 편집을 만들 수 없습니다. rekordbox에서 트랙 분석을 먼저 한 뒤 다시 가져오세요"))
             return nil
         }
         let duration = Double(source.track.lengthSeconds)
         guard GridEditEligibility.reconstructionErrorMilliseconds(of: grid, duration: duration) <= 2 else {
-            loss(String(ui: "이 곡의 그리드는 구간으로 다룰 수 없어 그리드 초안을 만들지 않았습니다. 덱에서 그리드를 직접 고치세요"))
+            loss(String(ui: "이 곡의 그리드는 구간으로 다룰 수 없어 그리드 편집을 만들지 않았습니다. 덱에서 그리드를 직접 고치세요"))
             return nil
         }
         let segments = change.xml.sorted { $0.start < $1.start }
@@ -238,12 +259,12 @@ public enum XMLImportDrafts {
             $0.start.isFinite && $0.start < duration && GridDraft.bpmRange.contains($0.bpm) && (1...4).contains($0.firstBeatNumber)
         } && zip(segments, segments.dropFirst()).allSatisfy { $0.start < $1.start }
         guard valid else {
-            loss(String(ui: "XML 그리드의 BPM·박 번호·시작이 쓸 수 있는 범위를 벗어나 그리드 초안을 만들지 않았습니다"))
+            loss(String(ui: "XML 그리드의 BPM·박 번호·시작이 쓸 수 있는 범위를 벗어나 그리드 편집을 만들지 않았습니다"))
             return nil
         }
         // 쓰기는 경계의 반 박 안쪽 박을 새 구간 첫 박으로 대체한다. 덱의 변속 지점 넣기(`addTempoChange(at:)`)와 같은 간격을 요구한다.
         guard zip(segments, segments.dropFirst()).allSatisfy({ $1.start - $0.start > 60 / $0.bpm / 2 + 0.001 }) else {
-            loss(String(ui: "XML 그리드의 변속 지점이 앞 구간과 반 박 안쪽으로 붙어 있어 그리드 초안을 만들지 않았습니다. 덱에서 그리드를 직접 고치세요"))
+            loss(String(ui: "XML 그리드의 변속 지점이 앞 구간과 반 박 안쪽으로 붙어 있어 그리드 편집을 만들지 않았습니다. 덱에서 그리드를 직접 고치세요"))
             return nil
         }
         var draft = GridDraft(trackUUID: source.track.uuid, grid: grid)
@@ -318,7 +339,7 @@ public enum XMLImportDrafts {
                 switch change.kind {
                 case .changed:
                     guard let id = change.libraryID, let item = layout.item(id), item.holdsTracks else {
-                        note(String(ui: "목록을 라이브러리에서 찾지 못했습니다. 스냅샷을 새로 뜬 뒤 다시 가져오세요"))
+                        note(String(ui: "목록을 라이브러리에서 찾지 못했습니다. ‘rekordbox와 동기화’를 한 뒤 다시 가져오세요"))
                         continue
                     }
                     if draft.base[id] != nil || draft.steps.contains(where: { $0.edit.playlist == .id(id) }) {
@@ -370,7 +391,7 @@ public enum XMLImportDrafts {
                     }
                     if !existing.isEmpty {
                         plan.skipped.append(Note(kind: .playlist, libraryKey: nil, subject: subject,
-                                                 reason: String(ui: "같은 이름의 목록이 재생 목록 초안에 이미 있어 덮지 않았습니다")))
+                                                 reason: String(ui: "같은 이름의 목록이 재생 목록 편집에 이미 있어 덮지 않았습니다")))
                         continue
                     }
                     let key = newKey()

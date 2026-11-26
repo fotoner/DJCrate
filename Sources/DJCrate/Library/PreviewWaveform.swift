@@ -206,16 +206,12 @@ final class PreviewWaveformCell: NSTableCellView {
         next.scale = Double(window?.backingScaleFactor ?? 2)
         next.volume = source.volume
         guard request != next else { return }
-        // 크기만 바뀌면(칸 너비 조절) 새 그림이 올 때까지 옛 그림을 늘려 둔다(깜박이지 않게).
-        let resizedOnly = request.map { old in
-            var old = old
-            old.size = next.size
-            old.scale = next.scale
-            return old == next
-        } ?? false
+        // 같은 곡이면(칸 너비 조절, 저장 뒤 새 사본, 선택·모양새·눈금 변경) 새 그림이 올 때까지 옛 그림을 둔다.
+        // 저장할 때마다 다시 읽은 사본 경로가 바뀌어 보이는 칸이 모두 비었다가 다시 그려지며 목록이 깜박였다
+        let sameTrack = request.map { $0.url == next.url && $0.trackKey == next.trackKey && $0.audioURL == next.audioURL && $0.volume == next.volume } ?? false
         request = next
         task?.cancel()
-        if !resizedOnly { show(nil) }
+        if !sameTrack { show(nil) }
         task = Task(priority: .utility) { [weak self, cache] in
             let image = await cache.image(for: next)
             guard !Task.isCancelled, let self, self.request == next else { return }

@@ -66,7 +66,7 @@ extension UsbEditPlanner {
         for localID in Self.unique(localIDs) {
             guard pairs.present.contains(localID) else {
                 throw UsbEditBlocked(block: UsbBlock(code: "localTrackMissing", scope: .track(localID),
-                                                     message: String(ui: "동기화할 곡이 로컬 스냅샷에 없어 목록을 바꾸지 않았습니다. 새 스냅샷을 뜬 뒤 다시 동기화하세요")))
+                                                     message: String(ui: "동기화할 곡이 읽은 사본에 없어 목록을 바꾸지 않았습니다. ‘rekordbox와 동기화’를 한 뒤 다시 동기화하세요")))
             }
             let matches = pairs.matches[localID] ?? []
             guard !pairs.ambiguous.contains(localID), matches.count <= 1 else {

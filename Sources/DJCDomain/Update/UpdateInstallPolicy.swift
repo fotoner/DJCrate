@@ -62,7 +62,7 @@ public enum UpdateInstallDecision: Equatable, Sendable {
     public var waitMessage: String? {
         switch self {
         case .proceed: nil
-        case .waitForRekordbox: String(ui: "rekordbox에 쓰는 중이라 업데이트 설치를 미룹니다. 쓰기가 끝나면 이어서 설치합니다")
+        case .waitForRekordbox: String(ui: "rekordbox에 저장하는 중이라 업데이트 설치를 미룹니다. 저장이 끝나면 이어서 설치합니다")
         case .waitForUsb: String(ui: "USB에 쓰는 중이라 업데이트 설치를 미룹니다. 쓰기가 끝나면 이어서 설치합니다")
         }
     }

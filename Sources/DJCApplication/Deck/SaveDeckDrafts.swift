@@ -28,8 +28,9 @@ public struct SaveDeckDrafts: Sendable {
         drafts.removeGrid(uuid, completion: completion)
     }
 
-    public func saveGain(_ gain: Double?, trackUUID: String, completion: @escaping @Sendable (DraftSaveFailure?) -> Void) {
-        drafts.saveGain(gain, trackUUID, completion)
+    /// - Parameter base: 초안을 만들 때 본 rekordbox 오토게인(R23). 있으면 자동 저장 대상이고, 쓸 때 지금 rekordbox 값과 견준다
+    public func saveGain(_ gain: Double?, base: Double? = nil, trackUUID: String, completion: @escaping @Sendable (DraftSaveFailure?) -> Void) {
+        drafts.saveGain(gain, base: base, trackUUID: trackUUID, completion: completion)
     }
 
     /// 실패한 마지막 입력(저장이든 지우기든)을 그대로 다시 저장한다

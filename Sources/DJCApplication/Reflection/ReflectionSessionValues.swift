@@ -15,6 +15,14 @@ public struct ReflectionLibraryState: Sendable {
     public var playlistDraft: PlaylistDraft
     /// 재생 목록 초안 저장에 실패해 메모리 초안이 디스크보다 최신이다(#174)
     public var playlistDraftUnsaved: Bool
+    /// 디스크 재생 목록 초안을 읽지 못해 메모리 초안이 디스크와 같은지 모른다. 새 쓰기 묶음은 재생 목록 초안을 넣지 않고,
+    /// 곡 추가 복원은 재생 목록 초안·연결 기록을 건드리지 않는다(옛 메모리로 디스크 초안을 덮지 않게)
+    public var playlistDraftNeedsSync: Bool
+    /// 재생 목록 초안 저장에 실패한 동안 화면이 기억한 출처(#295 리뷰 F10). 세션이 메모리 초안을 저장할 때 식별자 없는 단계에 더한다
+    public var playlistCarriedOrigins: Set<DraftOrigin> = []
+    /// 이 쓰기 동안 재생 목록 초안 파일 잠금을 쥐고 있다(바깥(CLI)이 쓰는 동안 초안을 고치지 못한다). 쥐지 못했으면(CLI가 잠금을 오래 들고 있다)
+    /// 메모리 초안이 디스크와 같다고 믿을 수 없어 이번 쓰기 묶음에서 재생 목록을 뺀다. 잠금이 없는 가짜는 늘 쥔다
+    public var playlistDraftFileLocked: Bool
     /// 스냅샷에서 읽은 rekordbox 재생 목록(초안을 얹기 전)
     public var rekordboxPlaylists: PlaylistLayout
     /// 재생 목록 연결 기록(메모리)과 그 파일을 읽지 못했는지(그러면 저장하지 않는다)
@@ -35,10 +43,12 @@ public struct ReflectionLibraryState: Sendable {
     public var lastError: String?
     /// rekordbox 쓰기 대기에 오른 USB 재생 기록의 쓰기 입력(#43, 가져온 차례). 곡을 고르지 않아도 쓸 것이 있다
     public var pendingHistories: [HistoryImport]
+    /// 지금 목록을 읽은 사본(없으면 nil). 곡 넣기 정리가 새 곡이 없다고 확정해도 되는지 본다(`ReflectionLibrary.readIsLatest`)
+    public var readSnapshot: URL?
 
     public init(rows: [String: TrackRow] = [:], cueDraftUUIDs: Set<String> = [], gridDraftUUIDs: Set<String> = [], gainDraftUUIDs: Set<String> = [],
                 tagDrafts: [String: TagDraft] = [:], artworkDrafts: [String: ArtworkDraft] = [:], mergeDrafts: [DuplicateMergeDraft] = [],
-                playlistDraft: PlaylistDraft = PlaylistDraft(), playlistDraftUnsaved: Bool = false,
+                playlistDraft: PlaylistDraft = PlaylistDraft(), playlistDraftUnsaved: Bool = false, playlistDraftNeedsSync: Bool = false, playlistDraftFileLocked: Bool = true,
                 rekordboxPlaylists: PlaylistLayout = PlaylistLayout(), playlistImports: PlaylistImports = PlaylistImports(),
                 playlistImportsLoadFailed: Bool = false, unreadableDraftKinds: [String: Set<WritePart>] = [:], failedTagSaves: Set<String> = [], staged: [StagedTrack] = [],
                 estimatingGrids: Bool = false, iTunesSelection: Bool = false, deckStagedUUID: String? = nil, lastError: String? = nil,
@@ -52,6 +62,8 @@ public struct ReflectionLibraryState: Sendable {
         self.mergeDrafts = mergeDrafts
         self.playlistDraft = playlistDraft
         self.playlistDraftUnsaved = playlistDraftUnsaved
+        self.playlistDraftNeedsSync = playlistDraftNeedsSync
+        self.playlistDraftFileLocked = playlistDraftFileLocked
         self.rekordboxPlaylists = rekordboxPlaylists
         self.playlistImports = playlistImports
         self.playlistImportsLoadFailed = playlistImportsLoadFailed
@@ -65,6 +77,10 @@ public struct ReflectionLibraryState: Sendable {
         self.pendingHistories = pendingHistories
     }
 
+    /// 이번 쓰기 묶음에 재생 목록 초안을 넣어도 되는지: 디스크 초안을 확인했고(`playlistDraftNeedsSync` 아님) 쓰는 동안 초안 파일 잠금을 쥐고 있다.
+    /// 쓰기 잠금을 건 뒤(초안 파일 잠금 시도·동기화 뒤)에 읽어야 한다
+    public var canWritePlaylists: Bool { !playlistDraftNeedsSync && playlistDraftFileLocked }
+
     /// 반영 대기 초안이 있는 곡(큐·그리드·게인·태그·앨범아트 초안, 합치기 초안에 묶인 곡)
     public var pendingUUIDs: Set<String> {
         cueDraftUUIDs.union(gridDraftUUIDs).union(gainDraftUUIDs).union(tagDrafts.keys).union(artworkDrafts.keys)
@@ -77,6 +93,11 @@ public struct ReflectionLibraryState: Sendable {
 public enum ReflectionLibraryChange: Sendable {
     /// 큐·그리드·게인 초안을 지웠다(초안 파일은 세션이 지웠다): 표시를 끈다. `cueCounts`면 큐 개수 표시도 지운다
     case draftsCleared(DraftSaveKind, [String], cueCounts: Bool)
+    /// 큐를 쓴 곡마다 쓰기가 새로 넣은 큐: 초안 큐 ID(UUID 문자열) → 새 rekordbox 큐 ID(#405, R12). 덱이 다시 읽을 때 같은 큐에 같은 ID를 이어
+    /// 저장 뒤 ⌘Z가 쓴 큐를 찾는다. 다시 읽기 전에 알린다
+    case cueIDsWritten([String: [String: String]])
+    /// 태그를 rekordbox에 쓴 곡(#405, R12): 다시 읽은 뒤 그 곡의 태그 ⌘Z는 지금 rekordbox 값 위의 역편집이 된다. 다시 읽기 전에 알린다
+    case tagsWritten([String])
     /// 태그 초안을 통째로 바꿨다(쓴 뒤 비운 초안·되살린 초안, 세션이 저장했다). 변경이 없는 초안은 메모리에서 지운다.
     /// 저장 실패는 화면이 맡긴 저장으로 센다(`failedTagSaves`)
     case tagDrafts([TagDraft])
@@ -85,6 +106,9 @@ public enum ReflectionLibraryChange: Sendable {
     case mergeDrafts([DuplicateMergeDraft], failure: (any Error)?, moved: [DamagedDraftFile])
     /// 쓴 재생 목록 편집을 초안에서 빼 저장했고(막힌 편집은 남긴다), 새로 만든 목록의 새 rekordbox ID를 연결 기록에 이어 저장했다
     case playlistWritten(EditPlaylists.WriteCleanup)
+    /// 쓰기 묶음을 만들었다(R21): 묶음의 재생 목록 단계와 재생 기록(보존 기록 ID)을 얼려 쓰는 동안 들어온 재생 목록 편집을 뒤에 쌓게 한다.
+    /// 쓰기 잠금을 풀 때 화면이 푼다
+    case playlistWriteFrozen(PlaylistDraft, histories: Set<String>)
     /// 쓴 곡의 앨범아트 초안 파일을 지웠다(`failed`곡은 지우지 못했다): 메모리 초안을 지우고 그 곡의 그림을 새로 읽게 한다
     case artworkCleared([String], failed: Int)
     /// 백업의 앨범아트 초안을 되살렸다(파일은 세션이 저장했다). `touched`는 그 백업이 그림을 쓴 곡(새로 읽게 한다)
@@ -126,6 +150,8 @@ public enum ReflectionOutcome: Sendable {
     /// 미리 보기 단계에서 취소했다(아무것도 쓰지 않았다)
     case cancelled
     case written(RekordboxWriteReport, preview: RekordboxWriteReport, followUp: [String])
+    /// 자동 저장이 썼다(#403). 확인 창 없이 쓴 결과라 화면은 활동 기록에만 남긴다(토스트 없음)
+    case autoWritten(RekordboxWriteReport, followUp: [String])
     /// 미리 보니 쓸 것이 없다(막혔거나 제외). 고른 곡(`targets`)의 막힌 초안은 화면이 복구 시트로 고치게 한다(#232)
     case nothingWritable(WritePreview, targets: [TrackRow])
     case added(RekordboxTrackWriteReport, preview: TrackAddPreview, followUp: [String])

@@ -37,6 +37,12 @@ final class ArtworkInspectorModel {
     /// rekordbox에 쓰는 동안(단추를 막는다)
     var isLocked: Bool { library.editsFrozen }
 
+    /// 이 곡들 가운데 쓰는 곡이 있는지(단추를 막는다)
+    func isLocked(rows: [TrackRow]) -> Bool { rows.contains { library.isEditLocked($0.track.uuid) } }
+
+    /// 쓰는 묶음에 든 곡은 뺀다(R21: 쓰는 곡의 그림만 막고 다른 곡은 고친다). 통째 잠금이면 모두 뺀다.
+    private func unlocked(_ rows: [TrackRow]) -> [TrackRow] { rows.filter { !library.isEditLocked($0.track.uuid) } }
+
     // MARK: - 초안 만들기
 
     /// 고른 그림 파일로 넣기·바꾸기 초안을 만든다. 읽지 못하거나 확인하지 않은 그림이면 초안을 만들지 않고 알린다.
@@ -49,7 +55,8 @@ final class ArtworkInspectorModel {
     }
 
     func setArtwork(_ image: Data, name: String?, rows: [TrackRow]) {
-        guard !library.editsFrozen else { return }
+        let all = rows, rows = unlocked(rows)
+        guard !library.editsFrozen, !rows.isEmpty || all.isEmpty else { return }
         let edits: [ArtworkEdit]
         do {
             edits = try artwork.setEdits(image: image, name: name,
@@ -63,7 +70,8 @@ final class ArtworkInspectorModel {
 
     /// 그림 지우기 초안. 그림이 없는 곡은 남은 넣기 초안만 버린다. 실패는 한 번에 센다(뒤 단계가 앞 단계의 실패 안내를 지우지 않게).
     func deleteArtwork(rows: [TrackRow]) {
-        guard !library.editsFrozen else { return }
+        let all = rows, rows = unlocked(rows)
+        guard !library.editsFrozen, !rows.isEmpty || all.isEmpty else { return }
         let targets = editable(rows)
         let withArtwork = targets.filter(hasArtwork)
         let saved = save(withArtwork.map {
@@ -75,7 +83,8 @@ final class ArtworkInspectorModel {
 
     /// 초안 버리기(그림)
     func discardDrafts(rows: [TrackRow]) {
-        guard !library.editsFrozen else { return }
+        let all = rows, rows = unlocked(rows)
+        guard !library.editsFrozen, !rows.isEmpty || all.isEmpty else { return }
         finish(failed: remove(rows))
     }
 

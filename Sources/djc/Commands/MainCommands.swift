@@ -10,13 +10,13 @@ enum MainCommands {
         CacheCommand.command,
         Command("report", "[--db PATH] [--files] [--comment-preset none|anisong] [--json]", String(ui: "라이브러리 현황(기본: 최신 스냅샷)"), report),
         Command("analyze", String(ui: "<파일|ContentID> [--db PATH]"), String(ui: "곡 파트 분석(ContentID면 기존 큐와 비교)"), analyze),
-        Command("reflection-dry-run", "[--out <파일.xml>] [--overwrite]", String(ui: "초안으로 반영 계획을 만들어 XML을 지정한 곳에만 쓴다(rekordbox는 그대로)"), reflectionDryRun),
-        Command("cue-write", String(ui: "--db <사본.db> [--dry-run] [--uuid U] | --live"), String(ui: "큐 초안을 rekordbox DB에 직접 쓴다"), cueWrite),
+        Command("reflection-dry-run", "[--out <파일.xml>] [--overwrite]", String(ui: "초안으로 저장 계획을 만들어 XML을 지정한 곳에만 쓴다(rekordbox는 그대로)"), reflectionDryRun),
+        Command("cue-write", String(ui: "--db <사본.db> [--dry-run] [--uuid U] | --live"), String(ui: "큐 초안을 rekordbox DB에 직접 저장한다"), cueWrite),
         Command("track-add", String(ui: "--db <사본.db> [--share <분석 뿌리>] [--analyze] [--dry-run] <음원…> | --live …"),
                 String(ui: "음원을 rekordbox 컬렉션에 넣는다(--analyze면 그리드·파형·오토게인까지, 기본은 사본)"), trackAdd),
         Command("track-delete", String(ui: "--db <사본.db> [--share <분석 뿌리>] [--dry-run] <ContentID…> | --live …"), String(ui: "곡을 rekordbox 컬렉션에서 뺀다(음원 파일은 그대로)"), trackDelete),
         Command("playlist-write", String(ui: "--db <사본.db> [--dry-run] <편집.json>"),
-                String(ui: "재생 목록 편집(JSON 배열)을 사본 DB와 그 옆 masterPlaylists6.xml에 쓴다(라이브 라이브러리는 거부)"), playlistWrite),
+                String(ui: "재생 목록 편집(JSON 배열)을 사본 DB와 그 옆 masterPlaylists6.xml에 저장한다(라이브 라이브러리는 거부)"), playlistWrite),
         Command("rekordbox-restore", String(ui: "[--backup <폴더> (--db <사본> | --live) [--share <폴더>]]"), String(ui: "백업으로 되돌린다"), rekordboxRestore),
         XMLExportCommand.command,
         XMLDiffCommand.command,
@@ -62,7 +62,7 @@ enum MainCommands {
         let plans = try export.dryRunPlans(snapshotDirectory: composition.location.snapshotDirectory)
         for (plan, cueChanges) in plans.map({ ($0.plan, $0.cueChanges) }) {
             print(String(ui: "• \(plan.title.prefix(30)) · 큐 변경 \(cueChanges) · 그리드 변경 \(String(plan.gridChanged)) · 표시 \(plan.beforeMarks.count)→\(plan.marks.count) · ") +
-                  (plan.isEligible ? String(ui: "반영 가능") : plan.blockers.isEmpty ? String(ui: "변경 없음") : String(ui: "막힘: \(plan.blockers.joined(separator: " / "))")))
+                  (plan.isEligible ? String(ui: "저장 가능") : plan.blockers.isEmpty ? String(ui: "변경 없음") : String(ui: "막힘: \(plan.blockers.joined(separator: " / "))")))
         }
         if let out = value(after: "--out", in: args) {
             try export.writeDryRun(plans.map(\.plan), to: URL(filePath: out))
@@ -77,6 +77,8 @@ enum MainCommands {
         guard var target = RekordboxWriteTarget.cli(args) else { throw UsageError() }
         target.shareRoot = nil
         let composition = CLIComposition.live
+        // 앱이 쓴 뒤 정리 전에 멈춰 남은 미정리 목록이 있으면 그 정리를 먼저 한다(R22: 앱이 이미 쓴 초안을 다시 쓰지 않게). 초안은 그 뒤에 읽는다
+        if !args.contains("--dry-run") { try await composition.reflection().cleanUpBeforeWrite(to: target, lock: composition.writeLock) }
         let uuids = value(after: "--uuid", in: args).map { $0.components(separatedBy: ",") } ?? composition.drafts.cueDraftUUIDs().sorted()
         let drafts = uuids.compactMap(composition.drafts.cueDraft)
         // 앱과 같은 반영 세션. 쓴 초안은 지우지 않는다(앱과 다름, 사용자 결정 2026-10-10: 세션 옵션 `liveCLI`가 끈다).
@@ -85,7 +87,7 @@ enum MainCommands {
             let mark = switch outcome.status { case .written: "✓"; case .blocked: "✗"; case .unchanged: "·" }
             print(String(ui: "\(mark) \(outcome.title.prefix(34)) — 지움 \(outcome.removed) · 넣음 \(outcome.added)\(outcome.reason.map { " · \($0)" } ?? "")"))
         }
-        print(String(ui: "\(report.dryRun ? String(ui: "미리 보기(되돌림)") : String(ui: "씀")) · 쓴 곡 \(report.written.count) · 막힌 곡 \(report.blocked.count) · 백업 \(report.backup ?? String(ui: "없음"))"))
+        print(String(ui: "\(report.dryRun ? String(ui: "미리 보기(되돌림)") : String(ui: "씀")) · 저장한 곡 \(report.written.count) · 막힌 곡 \(report.blocked.count) · 백업 \(report.backup ?? String(ui: "없음"))"))
     }
 
     /// 인자 가운데 옵션(과 그 값)을 뺀 나머지
@@ -115,7 +117,8 @@ enum MainCommands {
             case let .failed(file, error): print("✗ \(file) — \(error)")
             }
         }
-        // 앱의 곡 넣기와 같은 반영 세션(추가 목록 없이 받은 계획으로 바로 넣는 단계)
+        // 앱의 곡 넣기와 같은 반영 세션(추가 목록 없이 받은 계획으로 바로 넣는 단계). 쓰기 전에 그 대상의 미정리 목록을 먼저 정리한다(R22)
+        if !args.contains("--dry-run") { try await CLIComposition.live.reflection().cleanUpBeforeWrite(to: target, lock: CLIComposition.live.writeLock) }
         let report = try CLIComposition.live.reflection().addTracks(TrackAddBatch(plans: prepared.plans, analyses: prepared.analyses), to: target,
                                                                     dryRun: args.contains("--dry-run"))
         for o in report.added { print("\(o.written ? "✓" : "✗") \(o.title.prefix(40))\(o.contentID.map { " · ID \($0)" } ?? "")\(o.reason.map { " · \($0)" } ?? "")") }
@@ -128,6 +131,7 @@ enum MainCommands {
         guard let target = RekordboxWriteTarget.cli(args) else { throw UsageError() }
         let ids = operands(args, valued: ["--db", "--share"])
         guard !ids.isEmpty else { throw UsageError() }
+        if !args.contains("--dry-run") { try await CLIComposition.live.reflection().cleanUpBeforeWrite(to: target, lock: CLIComposition.live.writeLock) }
         let report = try CLIComposition.live.reflection().deleteTracks(ids, from: target, dryRun: args.contains("--dry-run"))
         for o in report.deleted { print("\(o.written ? "✓" : "✗") \(o.title.prefix(40)) · ID \(o.contentID ?? "")\(o.reason.map { " · \($0)" } ?? "")") }
         print(String(ui: "\(report.dryRun ? String(ui: "미리 보기(되돌림)") : String(ui: "뺌")) · \(report.deleted.filter(\.written).count)곡 · 지운 파일(분석·앨범아트) \(report.removedFiles.count)개 · 백업 \(report.backup ?? String(ui: "없음"))"))
@@ -141,7 +145,7 @@ enum MainCommands {
         let database = URL(filePath: path)
         let real = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Pioneer/rekordbox/master.db")
         guard database.resolvingSymlinksInPath().standardizedFileURL.path != real.resolvingSymlinksInPath().standardizedFileURL.path else {
-            throw DJCError.writeRefused(String(ui: "playlist-write는 사본에만 씁니다. rekordbox 라이브러리는 앱의 반영으로 쓰세요"))
+            throw DJCError.writeRefused(String(ui: "playlist-write는 사본에만 저장합니다. rekordbox 라이브러리는 앱에서 저장하세요"))
         }
         let edits = try JSONDecoder().decode([PlaylistEdit].self, from: Data(contentsOf: URL(filePath: file)))
         // 반영 세션의 재생 목록 편집 쓰기(관문 묶음). 백업은 사본 옆 `backups/`
@@ -151,7 +155,7 @@ enum MainCommands {
             let mark = switch o.status { case .written: "✓"; case .blocked: "✗"; case .unchanged: "·" }
             print("\(mark) \(o.name.prefix(34))\(o.playlistID.map { " · ID \($0)" } ?? "")\(o.reason.map { " · \($0)" } ?? "")")
         }
-        print(String(ui: "\(report.dryRun ? String(ui: "미리 보기(되돌림)") : String(ui: "씀")) · 쓴 편집 \(report.playlistWritten.count) · 막힌 편집 \(report.playlistBlocked.count) · 카운터 \(report.finalUpdateCount.map(String.init) ?? "-") · 백업 \(report.backup ?? String(ui: "없음"))"))
+        print(String(ui: "\(report.dryRun ? String(ui: "미리 보기(되돌림)") : String(ui: "씀")) · 저장한 편집 \(report.playlistWritten.count) · 막힌 편집 \(report.playlistBlocked.count) · 카운터 \(report.finalUpdateCount.map(String.init) ?? "-") · 백업 \(report.backup ?? String(ui: "없음"))"))
     }
 
     /// 백업으로 되돌린다. 기본은 --db 사본. 라이브 DB는 --live(rekordbox가 꺼져 있어야 한다). 백업 목록은 인자 없이.
@@ -166,6 +170,8 @@ enum MainCommands {
         }
         // 앱과 같은 반영 세션. 초안은 되살리지 않는다(앱과 다름, 사용자 결정 2026-10-10: 세션 옵션 `liveCLI`가 끈다). 백업은 폴더만 안다.
         let backup = RekordboxWriteBackup(url: URL(filePath: folder), createdAt: .distantPast, isWrite: true)
+        // 복원 전에도 남은 미정리 목록을 먼저 정리한다(R22). 복원은 고치는 쓰기라 정리를 마치지 못해도 막지 않는다
+        _ = await CLIComposition.live.reflection().judgeAndResumeCleanups(lock: CLIComposition.live.writeLock, waits: true, for: target)
         let saved = try await CLIComposition.live.reflection().restoreBackup(backup, to: target)
         print(String(ui: "되돌림 완료 · 되돌리기 전 상태 백업: \(saved.path)"))
     }

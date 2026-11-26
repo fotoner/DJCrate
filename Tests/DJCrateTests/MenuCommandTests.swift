@@ -37,13 +37,15 @@ struct MenuCommandTests {
         #expect(LibraryMenuAction.rekordboxActions == [.reflect, .pending, .activityLog, .restore, .pointSnapshots, .removeTracks])
         // 편집 메뉴의 찾기(⌘F, #338)
         #expect(LibraryMenuAction.editActions == [.find])
-        #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions + LibraryMenuAction.editActions == LibraryMenuAction.allCases)
+        // 도움말 메뉴에만 있는 연동 안내(#315)
+        #expect(LibraryMenuAction.fileActions + LibraryMenuAction.rekordboxActions + LibraryMenuAction.editActions + [.integrationGuide] == LibraryMenuAction.allCases)
     }
 
     @Test func 도움말_메뉴의_쓰기_전으로_복원은_rekordbox_메뉴와_같은_명령이다() throws {
         // 도움말 메뉴는 rekordbox 메뉴의 항목을 그대로 다시 보인다(새 경로 없음). 이름·켜짐 조건·꺼진 이유가 같다.
-        #expect(LibraryMenuAction.helpActions == [.restore])
+        #expect(LibraryMenuAction.helpActions == [.integrationGuide, .restore])
         #expect(LibraryMenuAction.rekordboxActions.contains(.restore))
+        let restoreActions = LibraryMenuAction.helpActions.filter { $0 != .integrationGuide }
         let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let commands = try String(contentsOf: root.appending(path: "Sources/DJCrate/App/AppCommands.swift"), encoding: .utf8)
         // 등록 줄이 도움말 그룹(`CommandGroup(replacing: .help)`) 안에 있어야 한다. 다른 메뉴로 옮기면 실패한다
@@ -55,31 +57,36 @@ struct MenuCommandTests {
             if commands[index] == "}" { depth -= 1; if depth == 0 { helpEnd = index; break } }
         }
         let helpGroup = commands[helpStart.lowerBound..<helpEnd]
-        #expect(helpGroup.contains("ForEach(LibraryMenuAction.helpActions, id: \\.self) { libraryButton($0) }"), "도움말 메뉴도 rekordbox 메뉴와 같은 libraryButton으로 항목을 만든다")
+        #expect(helpGroup.contains("ForEach(LibraryMenuAction.helpActions, id: \\.self) { helpButton($0) }"), "도움말 메뉴 항목은 helpButton으로 만든다")
+        // 복원은 rekordbox 메뉴와 같은 libraryButton(같은 이름·켜짐 조건)이고, 연동 안내만 주 창 포커스와 상관없이 조립 지점이 준 동작으로 연다(#315)
+        let helpButtonStart = try #require(commands.range(of: "private func helpButton("))
+        let helpButton = commands[helpButtonStart.lowerBound...].prefix(400)
+        #expect(helpButton.contains("case .integrationGuide") && helpButton.contains("openIntegrationGuide()"))
+        #expect(helpButton.contains("libraryButton(action)"))
 
         let backups = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: backups) }
         let store = LibraryStore.test(activityLog: ActivityLog(url: nil), saveTagDrafts: { _ in }, backupDirectory: backups)
         let window = LibraryWindowModel(store: store)
-        for action in LibraryMenuAction.helpActions {
-            #expect(action.menuTitle(in: window) == "쓰기 전으로 복원…")
+        for action in restoreActions {
+            #expect(action.menuTitle(in: window) == "저장 전으로 복원…")
             // 백업이 없으면 막히고 이유는 활동 기록을 보라고 알린다
             #expect(!action.isEnabled(in: window))
-            #expect(action.disabledReason(in: window) == "쓰기 전 백업이 없으니 활동 기록을 확인하세요")
+            #expect(action.disabledReason(in: window) == "저장 전 백업이 없으니 활동 기록을 확인하세요")
         }
         let backup = backups.appending(path: "2026-01-02-write")
         try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
         try Data().write(to: backup.appending(path: "master.db"))
         store.refreshWriteBackups()
-        for action in LibraryMenuAction.helpActions {
+        for action in restoreActions {
             #expect(action.isEnabled(in: window))
             #expect(action.disabledReason(in: window) == nil)
         }
         // 쓰는 동안은 막힌다(rekordbox 메뉴와 같은 잠금)
         store.isWritingRekordbox = true
-        for action in LibraryMenuAction.helpActions {
+        for action in restoreActions {
             #expect(!action.isEnabled(in: window))
-            #expect(action.disabledReason(in: window) == "rekordbox 쓰기가 끝난 뒤 다시 시도하세요")
+            #expect(action.disabledReason(in: window) == "rekordbox 저장이 끝난 뒤 다시 시도하세요")
         }
     }
 
@@ -90,24 +97,24 @@ struct MenuCommandTests {
         #expect(!content.contains("id: \"reflection\""))
         #expect(!content.contains("ReflectionMenu("))
         #expect(!FileManager.default.fileExists(atPath: root.appending(path: "Sources/DJCrate/Reflection/ReflectionMenu.swift").path))
-        // 쓰기·복원 입구가 남아 있다: 메뉴 막대 rekordbox(⇧⌘E)와 상태 팝오버
+        // 쓰기·복원 입구가 남아 있다: 메뉴 막대 rekordbox(⌘S)와 상태 팝오버
         #expect(LibraryMenuAction.rekordboxActions.contains(.reflect))
         #expect(ReflectionStatusModel.popoverActions.contains(.reflect) && ReflectionStatusModel.popoverActions.contains(.restore))
     }
 
     @Test func 쓰기와_복원은_확인을_예고하고_XML은_바로_만든다() {
-        #expect(LibraryMenuAction.reflect.title == "rekordbox에 쓰기")
-        #expect(LibraryMenuAction.restore.title == "쓰기 전으로 복원…")
+        #expect(LibraryMenuAction.reflect.title == "rekordbox에 저장")
+        #expect(LibraryMenuAction.restore.title == "저장 전으로 복원…")
         #expect(LibraryMenuAction.exportXML.title == "XML 만들기")
         #expect(LibraryMenuAction.exportLibraryXML.title == "라이브러리 XML 내보내기…", "저장 위치를 고르므로 …, 연동 파일을 만드는 XML 만들기와 이름이 겹치지 않는다")
-        #expect(LibraryMenuAction.pending.title == "쓰기 대기 목록 보기")
-        #expect(LibraryMenuAction.pointSnapshots.title == "시점 스냅샷…", "창을 여므로 …, 라이브러리 읽기 사본(스냅샷)과 구별한다")
+        #expect(LibraryMenuAction.pending.title == "저장 대기 목록 보기")
+        #expect(LibraryMenuAction.pointSnapshots.title == "복원 시점…", "창을 여므로 …, 라이브러리 읽기 사본(스냅샷)과 구별한다")
     }
 
     @Test func 앱_명령의_조합_단축키는_서로_겹치지_않는다() {
         #expect(LibraryMenuAction.addFiles.shortcut == KeyboardShortcut("o", modifiers: .command))
         #expect(LibraryMenuAction.snapshot.shortcut == KeyboardShortcut("r", modifiers: .command))
-        #expect(LibraryMenuAction.reflect.shortcut == KeyboardShortcut("e", modifiers: [.command, .shift]))
+        #expect(LibraryMenuAction.reflect.shortcut == KeyboardShortcut("s", modifiers: .command))
         // 편집 › 찾기(#338)
         #expect(LibraryMenuAction.find.shortcut == KeyboardShortcut("f", modifiers: .command))
         let shortcuts = LibraryMenuAction.allCases.filter { $0.shortcut != nil }
@@ -131,6 +138,8 @@ struct MenuCommandTests {
         #expect(!LibraryMenuAction.snapshot.isEnabled(in: window))
         store.phase = .loaded
         store.isWritingRekordbox = true
-        for action in LibraryMenuAction.allCases { #expect(!action.isEnabled(in: window)) }
+        // 읽기만 하는 연동 안내(#315)만 쓰는 동안에도 열린다
+        for action in LibraryMenuAction.allCases where action != .integrationGuide { #expect(!action.isEnabled(in: window)) }
+        #expect(LibraryMenuAction.integrationGuide.isEnabled(in: window))
     }
 }

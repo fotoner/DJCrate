@@ -33,7 +33,59 @@ struct AppQuitControllerTests {
         var terminateReenters = false
         /// 답하는 순간 초안 저장이 먼저 비워졌는지 보려고 남기는 순서
         var order: [String] = []
+        /// 자동 저장 엔진이 아직 디스크에 남기지 못한 기록 저장(사용자가 취소한 판). 시험이 끝낸다
+        var pendingRecord: Task<Void, Never>?
+        var finishRecord: (() -> Void)?
+        /// 자동 저장 엔진(R17): 자동 저장하는 실행인지·자동 저장이 쓰는 중인지는 시험이 정하고, ⌘Q 저장은 부른 순서와 답을 남긴다
+        var autoSaves = false
+        var autoWriting = false
+        var prepareCalls = 0
+        var cancelledPrepares = 0
+        var shutdowns: [Bool] = []
+        /// 시험이 답할 때까지 끝나지 않는 엔진의 ⌘Q 저장
+        var preparing: CheckedContinuation<QuitPreparation, Never>?
+        /// 켜면 입력 확정을 시험이 풀 때까지 붙잡는다(`commitHold`)
+        var holdsCommit = false
+        var commitHold: CheckedContinuation<Void, Never>?
         let model = QuitWaitModel()
+
+        lazy var link = QuitAutoSaveLink(
+            autoSaves: { [unowned self] in autoSaves },
+            autoWriting: { [unowned self] in autoWriting },
+            commitInput: { [unowned self] in
+                order.append("commit")
+                if holdsCommit { await withCheckedContinuation { commitHold = $0 } }
+            },
+            prepare: { [unowned self] in
+                prepareCalls += 1
+                order.append("prepare")
+                return await withCheckedContinuation { preparing = $0 }
+            },
+            cancel: { [unowned self] in
+                cancelledPrepares += 1
+                preparing?.resume(returning: .cancelled)
+                preparing = nil
+            },
+            shutdown: { [unowned self] in shutdowns.append($0) })
+
+        /// 엔진의 ⌘Q 저장이 시작될 때까지 기다린 뒤 답한다
+        func answerPrepare(_ result: QuitPreparation) async {
+            for _ in 0..<2000 where preparing == nil { await Task.yield() }
+            preparing?.resume(returning: result)
+            preparing = nil
+        }
+
+        /// 끝내 주기 전까지 끝나지 않는 기록 저장을 건다
+        func holdRecordSave() {
+            pendingRecord = Task { @MainActor [unowned self] in
+                await withCheckedContinuation { continuation in
+                    finishRecord = { [unowned self] in
+                        pendingRecord = nil
+                        continuation.resume()
+                    }
+                }
+            }
+        }
 
         lazy var controller: AppQuitController = AppQuitController(
             model: model, activity: { [unowned self] in activity },
@@ -50,7 +102,8 @@ struct AppQuitControllerTests {
             bringForward: { [unowned self] in raised += 1 },
             runState: { [unowned self] in run }, pending: { [unowned self] in pendingCount },
             present: { [unowned self] confirmation, answer in presented.append(confirmation); answers.append(answer) },
-            now: { [unowned self] in now })
+            now: { [unowned self] in now }, pendingRecordSave: { [unowned self] in pendingRecord },
+            autoSave: link)
     }
 
     let w = World()
@@ -68,6 +121,39 @@ struct AppQuitControllerTests {
         #expect(w.cancelled == 1 && w.model.current == nil && w.replies.isEmpty)
         // 쓰지 않았으니 알림창도 없다
         #expect(w.informed.isEmpty)
+    }
+
+    // MARK: - 자동 저장 엔진의 기록 저장(#404 5라운드, S15)
+
+    @Test func 취소한_자동_저장의_기록을_저장하는_중이면_저장이_끝난_뒤_끈다() async {
+        // 사용자가 자동 저장을 [취소]한 기록이 디스크에 닿기 전에 끄면, 다시 켠 뒤 같은 판을 자동으로 쓴다
+        w.activity = AppWriteActivity(rekordbox: .cancellable, writingUsb: false)
+        w.holdRecordSave()
+        w.terminateReenters = true
+        #expect(w.controller.requestTermination() == .terminateCancel, "기록 저장이 끝나기 전에는 끄지 않는다")
+        #expect(w.terminated == 0 && w.cancelled == 1)
+        await Task.yield()
+        #expect(w.terminated == 0)
+        w.finishRecord?()
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 }, "저장이 끝난 뒤 종료를 다시 요청한다")
+        w.activity = .idle
+        #expect(w.reentrantReplies == [.terminateNow], "다시 요청한 종료는 바로 끈다")
+    }
+
+    @Test func 미루는_방식도_기록_저장이_끝난_뒤_종료한다() async {
+        w.activity = AppWriteActivity(rekordbox: .idle, writingUsb: false)
+        w.holdRecordSave()
+        #expect(w.controller.requestTermination(nested: true) == .terminateLater)
+        await Task.yield()
+        #expect(w.replies.isEmpty, "저장이 끝나기 전에는 답하지 않는다")
+        w.finishRecord?()
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.replies == [true] })
+    }
+
+    @Test func 저장_중인_기록이_없으면_기다리지_않고_바로_끈다() {
+        w.activity = AppWriteActivity(rekordbox: .idle, writingUsb: false)
+        #expect(w.pendingRecord == nil)
+        #expect(w.controller.requestTermination() == .terminateNow)
     }
 
     @Test func 확인_창이_떠_있으면_취소를_부르지_않고_바로_끈다() {
@@ -301,6 +387,283 @@ struct AppQuitControllerTests {
         #expect(w.terminated == 0 && w.replies.isEmpty && w.raised == 1 && w.model.current == nil)
     }
 
+    // MARK: - ⌘Q 때 대기 중인 대상 편집을 저장하고 끈다(R17)
+
+    @Test func 끄기_전에는_쓰기_여부와_상관없이_초안_저장_큐를_비운다() {
+        // 편집 직후에는 초안 저장 큐에 쓰지 않은 편집이 있을 수 있다(쓰기를 하지 않았어도 비운다)
+        #expect(w.controller.requestTermination(nested: true) == .terminateNow)
+        #expect(w.flushed == 1)
+        w.activity = AppWriteActivity(rekordbox: .cancellable, writingUsb: false)
+        #expect(w.controller.requestTermination(nested: true) == .terminateNow)
+        #expect(w.flushed == 2)
+    }
+
+    @Test func 사용자_종료는_입력_칸을_확정하고_초안_저장_큐를_비운_뒤_엔진의_종료_저장을_기다린다() async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.model.isWaiting && w.model.allowsAutoSave && w.terminated == 0)
+        await w.answerPrepare(.finished(run: .stopped))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(Array(w.order.prefix(3)) == ["commit", "flush", "prepare"], "\(w.order)")
+        #expect(w.reentrantReplies == [.terminateNow], "저장을 마친 뒤 다시 한 요청은 다시 저장하지 않고 끈다")
+        #expect(w.prepareCalls == 1 && !w.model.isWaiting)
+    }
+
+    @Test func 엔진이_쓰지_못한_편집은_초안으로_남기고_끈다() async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        _ = w.controller.requestTermination()
+        await w.answerPrepare(.unwritten(nil))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.reentrantReplies == [.terminateNow] && w.presented.isEmpty)
+    }
+
+    /// 기다리는 동안 rekordboxAgent가 켜진 것을 엔진이 먼저 봤다: 감시 모델이 아직 꺼짐이어도 엔진이 본 상태로 시트를 띄운다(S6)
+    @Test func 엔진이_켜짐을_보고_돌려주면_그_실행_상태로_종료_시트를_띄운다() async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        w.run = .stopped
+        w.pendingCount = PendingWriteCount(items: 2, playlistEdits: 0)
+        _ = w.controller.requestTermination()
+        await w.answerPrepare(.unwritten(.agentRunning))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.presented.count == 1 })
+        #expect(w.presented.first?.running == .agentOnly && w.reentrantReplies == [.terminateCancel])
+    }
+
+    @Test func 자동_저장하지_않는_실행은_엔진을_기다리지_않고_바로_끈다() {
+        #expect(w.controller.requestTermination() == .terminateNow)
+        #expect(w.prepareCalls == 0 && w.flushed == 1 && !w.model.isWaiting)
+    }
+
+    @Test func 자동_저장의_미리_보기는_취소하지_않고_끝까지_기다린_뒤_종료_저장을_한다() async {
+        w.autoSaves = true
+        w.autoWriting = true
+        w.activity = AppWriteActivity(rekordbox: .cancellable, writingUsb: false)
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.cancelled == 0 && w.prepareCalls == 0 && w.model.isWaiting)
+        w.autoWriting = false
+        w.activity = .idle
+        w.controller.activityChanged()
+        await w.answerPrepare(.finished(run: .stopped))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.cancelled == 0 && w.prepareCalls == 1)
+    }
+
+    @Test func 수동_저장의_미리_보기는_취소하고_대기_중인_자동_저장을_한다() async {
+        w.autoSaves = true
+        w.activity = AppWriteActivity(rekordbox: .cancellable, writingUsb: false)
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.cancelled == 1)
+        w.activity = .idle
+        await w.answerPrepare(.finished(run: .stopped))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.prepareCalls == 1)
+    }
+
+    @Test func 종료_취소는_엔진의_종료_대기를_풀고_다시_요청하지_않는다() async {
+        w.autoSaves = true
+        _ = w.controller.requestTermination()
+        for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
+        w.model.cancel()
+        #expect(w.cancelledPrepares == 1 && !w.model.isWaiting && w.cancelledTerminations == 1)
+        for _ in 0..<20 { await Task.yield() }
+        #expect(w.terminated == 0)
+        // 두 번째 ⌘Q도 같다
+        _ = w.controller.requestTermination()
+        for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.cancelledPrepares == 2 && !w.model.isWaiting && w.terminated == 0)
+    }
+
+    // MARK: - 종료 저장 준비의 세대 표식(컨실 2라운드 D)
+
+    /// 입력 확정을 기다리는 사이 [종료 취소]를 누르면 그 요청은 엔진에 넘기지 않는다(엔진이 T_edit를 건너뛴 종료 대기에 들지 않게)
+    @Test func 입력_확정_중에_종료를_취소하면_엔진의_종료_저장을_부르지_않는다() async {
+        w.autoSaves = true
+        w.holdsCommit = true
+        _ = w.controller.requestTermination()
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.commitHold != nil })
+        w.model.cancel()
+        w.commitHold?.resume()
+        w.commitHold = nil
+        for _ in 0..<50 { await Task.yield() }
+        #expect(w.prepareCalls == 0 && w.terminated == 0 && !w.model.isWaiting)
+    }
+
+    /// 첫 대기를 취소한 직후(옛 저장 준비가 아직 돌아오기 전) 다시 ⌘Q를 누르면 새 요청이 저장한 뒤 끈다. 옛 결과(취소)로 끄지 않는다
+    @Test func 대기를_취소하고_곧바로_다시_종료하면_새_요청이_저장한_뒤_끈다() async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        _ = w.controller.requestTermination()
+        for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
+        w.model.cancel()
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.model.isWaiting)
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.prepareCalls == 2 || w.terminated > 0 })
+        for _ in 0..<20 { await Task.yield() }
+        #expect(w.prepareCalls == 2 && w.terminated == 0, "옛 결과로 끄지 않고 새 요청이 엔진의 종료 저장을 기다린다")
+        await w.answerPrepare(.finished(run: .stopped))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.reentrantReplies == [.terminateNow])
+    }
+
+    /// 확인할 경고창·USB 쓰기로 종료를 취소하면 엔진의 종료 대기도 푼다
+    @Test(arguments: [false, true])
+    func 경고창이나_USB_거절로_종료를_취소하면_엔진의_종료_대기를_푼다(_ usb: Bool) async {
+        w.autoSaves = true
+        _ = w.controller.requestTermination()
+        for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
+        w.activity = usb ? AppWriteActivity(rekordbox: .idle, writingUsb: true) : AppWriteActivity(rekordbox: .acknowledging, writingUsb: false)
+        w.controller.activityChanged()
+        #expect(!w.model.isWaiting && w.cancelledPrepares == 1 && w.terminated == 0)
+    }
+
+    // MARK: - 저장 대기 중 바뀐 종료 사유(컨실 2라운드 G·H·G14·J)
+
+    /// ⌘Q 저장을 기다리는 중 업데이트 다시 켜기가 오면 대기를 마치고 다시 한 요청은 시트 없이 끈다(업데이트를 시트가 막지 않는다)
+    @Test func 저장_대기_중_업데이트_다시_켜기가_오면_다시_요청한_종료에서_시트를_띄우지_않는다() async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        w.pendingCount = PendingWriteCount(items: 2, playlistEdits: 0)
+        w.run = .stopped
+        _ = w.controller.requestTermination()
+        for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
+        w.run = .running
+        #expect(w.controller.requestTermination(cause: .updateRelaunch) == .terminateCancel)
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.presented.isEmpty && w.reentrantReplies == [.terminateNow], "\(w.reentrantReplies)")
+    }
+
+    /// 업데이트 다시 켜기로 새 자동 저장을 막았는데 그 종료가 취소돼 앱이 다시 활성화되면 다시 연다
+    @Test func 막은_종료가_취소되고_앱이_다시_활성화되면_자동_저장을_다시_연다() {
+        w.autoSaves = true
+        #expect(w.controller.requestTermination(cause: .updateRelaunch) == .terminateNow)
+        #expect(w.shutdowns == [true])
+        w.controller.reopenAutoSaveAfterCancelledShutdown(poweringOffCancelled: false)
+        #expect(w.shutdowns == [true, false])
+        // 막은 것이 없으면 다시 열 것도 없다
+        w.controller.reopenAutoSaveAfterCancelledShutdown(poweringOffCancelled: false)
+        #expect(w.shutdowns == [true, false])
+    }
+
+    @Test func 종료를_기다리는_중에는_다시_활성화돼도_자동_저장을_다시_열지_않는다() {
+        w.autoSaves = true
+        w.activity = AppWriteActivity(rekordbox: .writing, writingUsb: false)
+        _ = w.controller.requestTermination(nested: true, cause: .systemShutdown)
+        #expect(w.model.isWaiting && w.shutdowns == [true])
+        w.controller.reopenAutoSaveAfterCancelledShutdown(poweringOffCancelled: true)
+        #expect(w.shutdowns == [true])
+    }
+
+    /// 알 수 없는 종료 사유는 사용자가 고른 종료가 아니다: 자동 저장을 기다리지 않는다(시트 판정과 같다)
+    @Test func 알_수_없는_종료_사유는_자동_저장을_기다리지_않는다() {
+        w.autoSaves = true
+        #expect(w.controller.requestTermination(cause: .unknown) == .terminateNow)
+        #expect(w.prepareCalls == 0 && !w.model.isWaiting && w.flushed == 1)
+    }
+
+    /// 대상 밖 편집만 남아 엔진이 다 썼다고 돌아와도 엔진이 본 실행 상태로 시트를 판정한다(감시 모델이 아직 꺼짐이어도)
+    @Test func 엔진이_다_썼다고_돌아와도_엔진이_본_실행_상태로_종료_시트를_띄운다() async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        w.run = .stopped
+        w.pendingCount = PendingWriteCount(items: 1, playlistEdits: 0)
+        _ = w.controller.requestTermination()
+        await w.answerPrepare(.finished(run: .agentOnly))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.presented.first?.running == .agentOnly && w.reentrantReplies == [.terminateCancel])
+    }
+
+    /// 엔진이 꺼짐·모름을 봤으면 시트는 지금처럼 감시 모델로 판정한다: 엔진이 본 뒤 rekordbox가 켜졌으면 시트를 띄운다(컨실 3라운드 Q)
+    @Test(arguments: [RekordboxRunState.stopped, .unknown])
+    func 엔진이_꺼짐이나_모름을_봤으면_감시_모델로_시트를_판정한다(_ seen: RekordboxRunState) async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        w.run = .stopped
+        w.pendingCount = PendingWriteCount(items: 1, playlistEdits: 0)
+        _ = w.controller.requestTermination()
+        for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
+        w.run = .running
+        await w.answerPrepare(.finished(run: seen))
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.presented.first?.running == .rekordbox && w.reentrantReplies == [.terminateCancel])
+    }
+
+    /// 업데이트 다시 켜기·알 수 없는 사유로 처음 시작한 미루는 대기도 쓰기가 끝나 다시 한 요청은 시트 없이 끈다(컨실 3라운드 T)
+    @Test(arguments: [AppQuitCause.updateRelaunch, .unknown])
+    func 사용자가_고르지_않은_종료로_시작한_대기는_다시_요청할_때_시트를_띄우지_않는다(_ cause: AppQuitCause) async {
+        w.autoSaves = true
+        w.terminateReenters = true
+        w.run = .running
+        w.pendingCount = PendingWriteCount(items: 2, playlistEdits: 0)
+        w.activity = AppWriteActivity(rekordbox: .writing, writingUsb: false)
+        #expect(w.controller.requestTermination(cause: cause) == .terminateCancel)
+        #expect(w.model.isWaiting && w.presented.isEmpty)
+        w.activity = .idle
+        w.controller.activityChanged()
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.terminated == 1 })
+        #expect(w.presented.isEmpty && w.reentrantReplies == [.terminateNow], "\(w.reentrantReplies)")
+    }
+
+    /// 로그아웃·재시작·전원 끔(알림 앞이든 뒤든)과 업데이트 다시 켜기는 새 자동 저장을 기다리지 않고 막는다
+    @Test(arguments: [(true, AppQuitCause.systemShutdown), (false, .systemShutdown), (false, .updateRelaunch)])
+    func 시스템_종료와_업데이트는_자동_저장을_기다리지_않고_새_쓰기를_막는다(_ nested: Bool, _ cause: AppQuitCause) {
+        w.autoSaves = true
+        #expect(w.controller.requestTermination(nested: nested, cause: cause) == .terminateNow)
+        #expect(w.prepareCalls == 0 && w.shutdowns == [true] && w.flushed == 1)
+    }
+
+    @Test func 시스템_종료가_취소되면_자동_저장을_다시_연다() {
+        w.autoSaves = true
+        w.activity = AppWriteActivity(rekordbox: .idle, writingUsb: true)
+        _ = w.controller.requestTermination(nested: true, cause: .systemShutdown)
+        #expect(w.shutdowns == [true, false] && w.cancelledTerminations == 1)
+    }
+
+    /// ⌘Q 저장을 기다리는 중 로그아웃이 오면 엔진의 종료 저장을 풀고 새 쓰기를 막은 뒤 곧바로 다시 판정한다(미리 보기는 취소한다)
+    @Test func 저장_대기_중_로그아웃이_오면_새_자동_저장을_막고_곧바로_다시_판정한다() async {
+        w.autoSaves = true
+        _ = w.controller.requestTermination()
+        for _ in 0..<2000 where w.preparing == nil { await Task.yield() }
+        // 엔진의 자동 저장이 미리 보기 중이다
+        w.activity = AppWriteActivity(rekordbox: .cancellable, writingUsb: false)
+        w.autoWriting = true
+        #expect(w.controller.requestTermination(nested: true, cause: .systemShutdown) == .terminateLater)
+        #expect(w.cancelledPrepares == 1 && w.shutdowns == [true] && !w.model.allowsAutoSave)
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.replies == [true] })
+        #expect(w.cancelled == 1, "아직 아무것도 쓰지 않은 미리 보기는 취소하고 끈다")
+    }
+
+    /// 취소 기록 저장을 기다리는 동안 다시 누른 ⌘Q는 종료를 하나 더 만들지 않고 기다림을 취소한다(#404 S18)
+    @Test func 기록_저장을_기다리는_중_두_번째_종료는_기다림을_취소하고_다시_요청하지_않는다() async {
+        w.holdRecordSave()
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(w.model.isWaiting, "기록 저장 대기도 종료 대기 상태다")
+        #expect(w.controller.requestTermination() == .terminateCancel)
+        #expect(!w.model.isWaiting && w.cancelledTerminations == 1)
+        // 기록 저장 작업이 시작해 끝낼 손잡이를 건 뒤에 끝낸다
+        #expect(await waitForState(safetyNet: .seconds(90)) { w.finishRecord != nil })
+        let saving = w.pendingRecord
+        w.finishRecord?()
+        await saving?.value
+        for _ in 0..<5 { await Task.yield() }
+        #expect(w.terminated == 0, "취소한 종료를 기록 저장 뒤에 다시 요청하지 않는다")
+    }
+
+    /// 종료 대기 동안 수동 입구(⌘S·복원·곡 넣기)는 지금처럼 거절하고, 종료가 기다리는 엔진 쓰기만 세션 잠금에서 연다(C)
+    @Test func 종료_저장을_기다리는_동안_수동_입구는_거절하고_세션_잠금만_연다() {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        let session = AppComposition.reflection(store: store, gate: .restoringOnly).session
+        store.quitWait.begin(at: Date(), onCancel: {})
+        #expect(store.writeRefusal != nil && session.ports.lock.isLocked())
+        store.quitWait.finish()
+        store.quitWait.begin(at: Date(), allowsAutoSave: true, onCancel: {})
+        #expect(store.writeRefusal != nil, "수동 입구는 종료 대기 중 거절한다")
+        #expect(!session.ports.lock.isLocked(), "종료가 기다리는 자동 저장은 세션 잠금을 지난다")
+        store.quitWait.finish()
+    }
+
     // MARK: - 켜진 채 종료 시트(#326)
 
     /// 켜져 있고 쓰기 대기가 있는 상태. 시트 판정표는 DJCDomainTests `QuitConfirmationTests`가 보고, 여기서는 시트가 흐름에 붙는 모습을 본다.
@@ -444,11 +807,11 @@ struct AppQuitControllerTests {
         delegate.store = store
         store.isPoweringOff = true
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateLater)
         #expect(store.quitWait.current != nil)
         // 중간 단계 변화로는 답하지 않는다
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…", completed: 1, total: 2)
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…", completed: 1, total: 2)
         await drainMainActor()
         #expect(replies.isEmpty)
         // 쓴 뒤 다시 읽기에 들어서면 종료한다
@@ -480,7 +843,7 @@ struct AppQuitControllerTests {
         delegate.terminateApp = { terminations += 1 }
                 delegate.store = store
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
         #expect(store.quitWait.isWaiting)
         store.setWriteLock(false)
@@ -503,6 +866,41 @@ struct AppQuitControllerTests {
         _ = try #require(usb.beginWrite(volume, title: "합성 쓰기"))
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
         #expect(!store.isPoweringOff)
+    }
+
+    /// 업데이트 다시 켜기로 엔진을 멈췄는데 그 종료가 취소돼 앱이 다시 활성화되면 엔진의 자동 저장을 다시 연다(컨실 2라운드 H)
+    @Test func 업데이트로_막은_자동_저장은_종료가_취소돼_다시_활성화되면_다시_연다() {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        let delegate = AppDelegate()
+        var shutdowns: [Bool] = []
+        delegate.quitAutoSave = QuitAutoSaveLink(autoSaves: { true }, shutdown: { shutdowns.append($0) })
+        delegate.consumeUpdateRelaunch = { true }
+        let center = NotificationCenter()
+        delegate.observePowerOff(center: center, activation: center)
+        delegate.store = store
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
+        #expect(shutdowns == [true])
+        center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        #expect(shutdowns == [true, false])
+    }
+
+    /// Mac을 끄는 중 알림으로 엔진을 멈춘 뒤 기다리던 종료를 취소하면 Mac을 끄는 중 표시와 함께 엔진의 자동 저장도 다시 연다(컨실 3라운드 U)
+    @Test func 전원_끔_알림으로_멈춘_자동_저장은_종료를_취소하면_다시_연다() {
+        let store = LibraryStore.test(activityLog: ActivityLog(url: nil))
+        let delegate = AppDelegate()
+        var shutdowns: [Bool] = []
+        delegate.quitAutoSave = QuitAutoSaveLink(autoSaves: { true }, shutdown: { shutdowns.append($0) })
+        let center = NotificationCenter()
+        delegate.observePowerOff(center: center, activation: center)
+        delegate.store = store
+        // ⌘Q가 쓰기를 기다리는 중 Mac을 끄는 중 알림이 왔다
+        store.setWriteLock(true)
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateCancel)
+        center.post(name: NSWorkspace.willPowerOffNotification, object: nil)
+        #expect(shutdowns == [true] && store.isPoweringOff)
+        store.quitWait.cancel()
+        #expect(!store.isPoweringOff && shutdowns == [true, false], "\(shutdowns)")
+        store.setWriteLock(false)
     }
 
     /// 창을 닫았다 열면 같은 저장소를 다시 알려 온다. 기다리는 중인 컨트롤러가 바뀌면 [종료 취소]가 끊긴다.
@@ -622,8 +1020,8 @@ struct AppQuitControllerTests {
 
     @Test func 시트는_취소가_기본_단추이고_그냥_종료가_두_번째다() {
         let alert = QuitConfirmationAlert.makeAlert(QuitConfirmation(running: .rekordbox, pending: PendingWriteCount(items: 2, playlistEdits: 0)))
-        #expect(alert.messageText == "쓰기 대기가 남아 있습니다")
-        #expect(alert.informativeText.hasPrefix("rekordbox가 켜져 있어 쓰기 대기 2건을"))
+        #expect(alert.messageText == "저장 대기가 남아 있습니다")
+        #expect(alert.informativeText.hasPrefix("rekordbox가 켜져 있어 저장 대기 2건을"))
         #expect(alert.buttons.map(\.title) == ["취소", "그냥 종료"])
         #expect(QuitConfirmationAlert.isQuitAnyway(.alertSecondButtonReturn))
         #expect(!QuitConfirmationAlert.isQuitAnyway(.alertFirstButtonReturn))

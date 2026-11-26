@@ -15,7 +15,7 @@ enum CLIGuards {
     /// 실험 명령이 쓰는 DB가 라이브 DB이면 거부한다(`live`는 시험에서 가짜 자리를 줄 때만 바꾼다)
     static func refuseLiveDatabase(_ database: URL, live: URL = CLIComposition.live.location.database) throws {
         if normalized(database) == normalized(live) {
-            throw Refusal(String(ui: "라이브 rekordbox DB에는 쓰지 않습니다. djc snapshot으로 만든 사본을 주세요"))
+            throw Refusal(String(ui: "라이브 rekordbox DB에는 저장하지 않습니다. djc snapshot으로 만든 사본을 주세요"))
         }
     }
 
@@ -24,7 +24,7 @@ enum CLIGuards {
                                 pioneer: URL = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Pioneer")) throws {
         let analysis = normalized(share.appending(path: "PIONEER/USBANLZ"))
         if normalized(share) == normalized(live) || analysis.hasPrefix(normalized(pioneer)) {
-            throw Refusal(String(ui: "라이브 rekordbox 분석 폴더에는 쓰지 않습니다. 사본 share를 주세요"))
+            throw Refusal(String(ui: "라이브 rekordbox 분석 폴더에는 저장하지 않습니다. 사본 share를 주세요"))
         }
     }
 

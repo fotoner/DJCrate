@@ -18,7 +18,7 @@ extension RekordboxWriter {
 
     /// 그림 파일을 쓸 곳에 링크가 있을 때 막는 이유(곡 정보 그림·분석 붙이기·곡 넣기 공통)
     static var artworkLinkReason: String {
-        String(ui: "앨범아트 폴더(share/PIONEER/Artwork) 아래에 링크가 있어 share 밖에 쓸 수 있으니 링크를 실제 폴더로 바꾼 뒤 다시 쓰세요")
+        String(ui: "앨범아트 폴더(share/PIONEER/Artwork) 아래에 링크가 있어 share 밖에 저장할 수 있으니 링크를 실제 폴더로 바꾼 뒤 다시 저장하세요")
     }
 
     /// `root` 아래 `url`까지 이미 있는 경로 조각 중 심볼릭 링크가 있는지(조각마다 lstat, `root` 자신 포함). 아직 없는 조각부터는 볼 것이 없다.
@@ -91,8 +91,11 @@ extension RekordboxWriter {
         return DeletionFiles(files: candidates.filter { FileManager.default.fileExists(atPath: $0.path) })
     }
 
-    static func backupDeletionFiles(_ files: [URL], in backup: URL?, shareRoot: URL?) throws {
-        guard let backup, !files.isEmpty else { return }
+    /// - Returns: 원래 파일 경로 → 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
+    @discardableResult
+    static func backupDeletionFiles(_ files: [URL], in backup: URL?, shareRoot: URL?) throws -> [String: URL] {
+        guard let backup, !files.isEmpty else { return [:] }
+        var copies: [String: URL] = [:]
         let folder = backup.appending(path: "anlz")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let manifestURL = folder.appending(path: "manifest.json")
@@ -101,8 +104,10 @@ extension RekordboxWriter {
             let name = "delete-\(manifest.count).\(file.pathExtension)"
             try FileManager.default.copyItem(at: file, to: folder.appending(path: name))
             manifest[name] = try backupRelativePaths([file.path], shareRoot: shareRoot)[0]
+            copies[file.path] = folder.appending(path: name)
         }
         try JSONEncoder().encode(manifest).write(to: manifestURL, options: .atomic)
+        return copies
     }
 
     static func removeOwnedFiles(_ files: [URL]) throws {

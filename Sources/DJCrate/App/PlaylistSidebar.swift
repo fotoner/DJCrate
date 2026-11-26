@@ -28,13 +28,13 @@ enum PlaylistDragType {
 }
 
 /// 사이드바 재생 목록(#40): 초안을 얹은 트리, 만들기·이름 바꾸기·지우기·옮기기, 곡을 끌어다 놓기(#39).
-/// 바꾼 것은 모두 초안이고 반영(⇧⌘E) 때 rekordbox에 쓴다.
+/// 바꾼 것은 모두 초안이고 저장(⌘S) 때 rekordbox에 쓴다.
 struct PlaylistSection: View {
     @Bindable var store: LibraryStore
     /// 폴더 펼침·이름 바꾸기(조립 지점이 한 번 만든 화면 모델)
     let sidebar: PlaylistSidebarModel
     /// 펼침 설정은 사이드바 본문이 아니라 여기서 든다(`@AppStorage`를 든 뷰는 부모가 다시 계산될 때마다 본문이 새로 계산된다, #141).
-    @AppStorage(SettingKeys.sidebarPlaylistsExpanded.name) private var isExpanded = SettingKeys.sidebarPlaylistsExpanded.defaultValue
+    @AppStorage(SettingKeys.sidebarPlaylistsExpanded.name, store: ViewPreferences.store) private var isExpanded = SettingKeys.sidebarPlaylistsExpanded.defaultValue
 
     var body: some View {
         Section(isExpanded: $isExpanded) {
@@ -47,8 +47,8 @@ struct PlaylistSection: View {
                 if store.playlists.hasPlaylistDrafts {
                     Image(systemName: DraftMark.symbol)
                         .foregroundStyle(UIColors.draft.color)
-                        .help(.ui("아직 쓰지 않은 재생 목록 초안 \(store.playlists.playlistDraft.steps.count)건"))
-                        .accessibilityLabel(.ui("재생 목록 초안 \(store.playlists.playlistDraft.steps.count)건"))
+                        .help(.ui("재생 목록 편집 \(store.playlists.playlistDraft.steps.count)건"))
+                        .accessibilityLabel(.ui("재생 목록 편집 \(store.playlists.playlistDraft.steps.count)건"))
                 }
                 Spacer(minLength: 0)
                 Menu {
@@ -140,7 +140,7 @@ struct PlaylistRow: View {
         content
             .badge(store.count(playlist: node))
             .lineLimit(1)
-            .help(node.blockedReason.map { String(ui: "이 목록의 초안 일부를 쓸 수 없습니다: \($0)") } ?? smartHelp ?? title)
+            .help(node.blockedReason.map { String(ui: "이 목록의 편집 일부를 저장할 수 없습니다: \($0)") } ?? smartHelp ?? title)
             .onDrag { PlaylistDragType.provider(for: node, ids: sidebar.dragIDs(for: node.id)) }
             .onDrop(of: PlaylistDrop.rowTypes, delegate: PlaylistRowDrop(node: node, store: store, sidebar: sidebar, isTargeted: $isTargeted))
             .background(isTargeted ? Color.accentColor.opacity(0.25) : .clear, in: RoundedRectangle(cornerRadius: 4))
@@ -173,7 +173,7 @@ struct PlaylistRow: View {
                     if node.blockedReason != nil {
                         Image(systemName: WarningMark.symbol)
                             .foregroundStyle(UIColors.warning.color)
-                            .accessibilityLabel(.ui("쓸 수 없는 초안"))
+                            .accessibilityLabel(.ui("저장할 수 없는 편집"))
                     }
                     if smartUnsupported != nil {
                         Image(systemName: WarningMark.symbol)
@@ -205,15 +205,15 @@ struct PlaylistSidebarMenu: ViewModifier {
             } else if items.count == 1, case let .history(id)? = items.first {
                 // USB에서 보존한 기록도 같다(컬렉션 짝이 있는 곡만 넣는다). 넣을 곡이 없으면 누를 수 없다
                 Button(.ui("재생 목록으로 만들기")) { store.playlists.createPlaylist(fromHistory: id) }
-                    .disabled(store.editsFrozen || store.playlists.historyPlaylistSource(id)?.rows.isEmpty != false)
+                    .disabled(store.playlists.isEditBlocked || store.playlists.historyPlaylistSource(id)?.rows.isEmpty != false)
                 // USB에서 보존한 기록(#43): rekordbox 쓰기 대기에서 빼거나 다시 넣는다(편집 › 실행 취소로 되돌린다)
                 if let archived = store.history.archivedHistory(id) {
                     if store.history.pendingHistoryIDs.contains(id) {
-                        Button(.ui("rekordbox 쓰기 대기에서 빼기")) { store.history.setHistoriesExcluded([id], excluded: true) }
-                            .disabled(store.editsFrozen)
+                        Button(.ui("rekordbox 저장 대기에서 빼기")) { store.history.setHistoriesExcluded([id], excluded: true) }
+                            .disabled(store.playlists.isEditBlocked)
                     } else if archived.excludedFromRekordbox, store.history.writesHistories {
-                        Button(.ui("rekordbox 쓰기 대기에 넣기")) { store.history.setHistoriesExcluded([id], excluded: false) }
-                            .disabled(store.editsFrozen)
+                        Button(.ui("rekordbox 저장 대기에 넣기")) { store.history.setHistoriesExcluded([id], excluded: false) }
+                            .disabled(store.playlists.isEditBlocked)
                     }
                 }
             } else if items.count == 1, case let .usb(target)? = items.first, let actions = store.usbEdits {
@@ -226,7 +226,7 @@ struct PlaylistSidebarMenu: ViewModifier {
                 store.playlists.blockSmartPlaylistEdit(id)
                 return
             }
-            guard !store.editsFrozen else { return }
+            guard !store.playlists.isEditBlocked else { return }
             sidebar.startRenaming(id)
         }
         // ⌫: 고른 목록·폴더를 지운다(초안, ⌘Z로 되돌림)
@@ -236,7 +236,7 @@ struct PlaylistSidebarMenu: ViewModifier {
             guard case let .playlist(id) = store.sidebar else { return }
             if store.playlists.blockSmartPlaylistEdit(id) { return }
             guard store.playlists.playlistIndex[id]?.isSmart == false,
-                  sidebar.renamingPlaylistID == nil, !store.editsFrozen else { return }
+                  sidebar.renamingPlaylistID == nil, !store.playlists.isEditBlocked else { return }
             PlaylistPanels.delete(store: store, id: id)
         }
     }
@@ -273,7 +273,7 @@ struct PlaylistContextMenu: View {
         }
         if node.isDraft || node.blockedReason != nil {
             Divider()
-            Button(.ui("이 목록의 초안 버리기")) { store.playlists.discardPlaylistDraft(node.id) }
+            Button(.ui("이 목록의 편집 버리기")) { store.playlists.discardPlaylistDraft(node.id) }
         }
     }
 
@@ -305,7 +305,7 @@ struct PlaylistMultiMenu: View {
 
     var body: some View {
         let count = sidebar.targets(ids).count
-        let enabled = !store.editsFrozen
+        let enabled = !store.playlists.isEditBlocked
         Menu(.ui("\(count)개 옮기기")) {
             Button(.ui("맨 위")) { sidebar.movePlaylists(ids, to: .into(PlaylistLayout.root)) }
             PlaylistFolderMenu(nodes: store.playlists.playlistTree, moving: Set(ids)) { sidebar.movePlaylists(ids, to: .into($0)) }
@@ -372,7 +372,7 @@ enum PlaylistDrop {
     /// 여럿을 끌어 놓으면 사이드바 순서대로 한 번에 옮긴다(`PlaylistSidebarModel.movePlaylists`).
     static func perform(_ providers: [NSItemProvider], on node: PlaylistOutlineNode, store: LibraryStore,
                         sidebar: PlaylistSidebarModel) -> Bool {
-        guard !store.editsFrozen else { return false }
+        guard !store.playlists.isEditBlocked else { return false }
         let tracks = providers.filter { $0.hasItemConformingToTypeIdentifier(PlaylistDragType.tracks.identifier) }
         if !tracks.isEmpty {
             guard store.playlists.canEditTracks(of: node.id) else {

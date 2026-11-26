@@ -242,7 +242,7 @@ public final class UsbExportSession {
         // 후보 로더는 없는 행·삭제된 행을 돌려주지 않는다. 요청과 견줘 조용한 누락을 막는다.
         let missingBlocks = ids.filter { !loadedIDs.contains($0) }.map {
             UsbBlock(code: "localTrackMissing", scope: .track($0),
-                     message: String(ui: "내보낼 곡이 로컬 스냅샷에 없습니다. 새 스냅샷을 뜬 뒤 다시 내보내세요"))
+                     message: String(ui: "내보낼 곡이 읽은 사본에 없습니다. ‘rekordbox와 동기화’를 한 뒤 다시 내보내세요"))
         }
         preview.blocks = missingBlocks
         if let syncProductionBlock {

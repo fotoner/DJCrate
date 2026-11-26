@@ -39,7 +39,7 @@ public enum UsbSyncSelectionStage {
 
     static var sourceNodeBlock: UsbBlock {
         UsbBlock(code: "syncSelectionSourceNode", scope: .volume,
-                 message: String(ui: "masterPlaylists6.xml에서 동기화할 목록을 찾지 못했습니다. rekordbox를 한 번 켰다가 종료하고 새 스냅샷을 읽은 뒤 동기화하세요"))
+                 message: String(ui: "masterPlaylists6.xml에서 동기화할 목록을 찾지 못했습니다. rekordbox를 한 번 켰다가 종료하고 ‘rekordbox와 동기화’를 한 뒤 동기화하세요"))
     }
 
     static var incompleteBlock: UsbBlock {

@@ -152,7 +152,7 @@ struct LibrarySyncTests {
         #expect(TagDraftStore.load(trackUUID: row.track.uuid, directory: directory) == nil)
         await store.refreshExternalDrafts()
         #expect(store.tagDrafts[row.track.uuid] == before)
-        #expect(store.lastError?.contains("태그 초안을 저장하지 못") == true)
+        #expect(store.lastError?.contains("태그 편집을 보관하지 못") == true)
         // 목록 위 줄 대신 닫을 때까지 남는 실패 알림으로 한 번 알린다. 1초마다 도는 확인이 같은 실패를 다시 띄우지 않는다(#307)
         #expect(store.toast?.kind == .failure && store.toast?.title == DraftSaveFailure.tagSaveMessage)
         await store.refreshExternalDrafts()

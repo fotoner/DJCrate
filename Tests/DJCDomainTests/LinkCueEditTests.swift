@@ -22,6 +22,37 @@ struct LinkCueEditTests {
         #expect(draft.memoryCount == 2)
     }
 
+    @Test func 같은_시작의_점과_끝이_다른_루프는_각각_저장하고_지운다() {
+        var draft = CueDraft(trackUUID: "t", rekordboxCues: [])
+        for out: UInt32? in [12_000, nil, 14_000] {
+            #expect(draft.apply(edit(0, 10_000, out: out), newID: { UUID() }) == .applied)
+        }
+        #expect(draft.apply(edit(0, 10_030, out: 14_000), newID: { UUID() }) == .unchanged)
+        #expect(draft.apply(edit(0, 10_000, out: 16_000, deleted: true), newID: { UUID() }) == .unchanged)
+        #expect(draft.apply(edit(0, 10_010, out: 14_000, deleted: true), newID: { UUID() }) == .applied)
+        #expect(draft.cues.compactMap { $0.loop?.end } == [12])
+        #expect(draft.apply(edit(0, 10_000, deleted: true), newID: { UUID() }) == .applied)
+        #expect(draft.cues.count == 1 && draft.cues.first?.loop?.end == 12)
+    }
+
+    @Test func 프레임으로_돌아온_루프는_정확한_끝을_우선하고_후보가_하나일_때만_고른다() {
+        func draft(_ ends: [Int]) -> CueDraft {
+            let cues = ends.map { Cue(id: String($0), contentID: "c", kind: 0, inMsec: 10_000,
+                                      name: "", colorTableIndex: nil, outMsec: $0) }
+            return CueDraft(trackUUID: "t", rekordboxCues: cues)
+        }
+        // 150프레임의 끝 1800(포함)을 다시 밀리초로 읽으면 12,007이다.
+        for (ends, remaining) in [([12_001, 12_050], [12_050]), ([12_001, 12_005], [12_001, 12_005]),
+                                  ([12_001, 12_007], [12_001]), ([12_010], [])] {
+            var value = draft(ends)
+            let before = value.cues
+            #expect(value.apply(edit(0, 10_000, out: 12_007), newID: { UUID() }) == .unchanged)
+            #expect(value.cues == before)
+            _ = value.apply(edit(0, 10_000, out: 12_007, deleted: true), newID: { UUID() })
+            #expect(value.cues.compactMap { $0.loop.map { Int(($0.end * 1000).rounded()) } } == remaining)
+        }
+    }
+
     @Test func 메모리_루프와_활성_루프를_받는다() throws {
         var draft = CueDraft(trackUUID: "t", rekordboxCues: [])
         #expect(draft.apply(edit(0, 1_000, out: 3_000), newID: { UUID() }) == .applied)

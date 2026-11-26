@@ -21,8 +21,8 @@ struct ArtworkReflectionTests {
         #expect(ArtworkWriteKind.replace.label == "앨범아트 바꾸기")
         #expect(ArtworkWriteKind.delete.label == "앨범아트 지우기")
         #expect(WritePart.artwork.summary(2) == "앨범아트 2곡")
-        #expect(WritePart.artwork.written == "앨범아트 쓰기 완료")
-        #expect(ReflectionSession.artworkRestoreFailureText(2).contains("앨범아트 초안 2곡"))
+        #expect(WritePart.artwork.written == "앨범아트 저장 완료")
+        #expect(ReflectionSession.artworkRestoreFailureText(2).contains("앨범아트 편집 2곡"))
     }
 
     func makeStore(_ fixture: RekordboxFixture) async -> LibraryStore {
@@ -193,7 +193,7 @@ struct ArtworkReflectionTests {
         let rows = try [spec.uuid, art.uuid].map { try #require(store.rowsByUUID[$0]) }
         let artwork = ArtworkInspectorModel(store: store)
         artwork.deleteArtwork(rows: rows)
-        #expect(store.artworkDrafts.isEmpty && artwork.message?.text.contains("저장하지 못했으니") == true)
+        #expect(store.artworkDrafts.isEmpty && artwork.message?.text.contains("보관하지 못했으니") == true)
         artwork.setArtwork(image, name: nil, rows: rows)
         #expect(artwork.message?.text.contains("2곡") == true)
     }

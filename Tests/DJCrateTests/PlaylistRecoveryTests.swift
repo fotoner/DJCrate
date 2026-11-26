@@ -46,7 +46,7 @@ struct PlaylistRecoveryTests {
         #expect(store.playlists.playlistDraft == original && saved == nil)
         let details = RecoverySummary.playlistDetails(review)
         let line = RecoveryLine(request: .playlist("A"))
-        #expect(line.label(for: .keep) == "다시 적용" && line.label(for: .useCurrent) == "초안 버리기")
+        #expect(line.label(for: .keep) == "다시 적용" && line.label(for: .useCurrent) == "편집 버리기")
         #expect(details.contains { $0.contains("외부 이름") })
         #expect(details.contains { $0.contains("내 이름") })
         try await store.playlists.applyPlaylistRecovery(review, reapply: true)

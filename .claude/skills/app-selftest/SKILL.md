@@ -12,12 +12,9 @@ description: 디버그 앱 자가 테스트(--write-selftest·--quit-wait-selfte
 1. 같은 checkout의 Swift 빌드·시험이 끝났는지 본다. 동시에 돌리지 않는다.
 2. `swift build`로 디버그 앱을 만든다.
 3. 늘 임시 데이터 폴더를 준다: `DJC_HOME=$(mktemp -d)`. 그래야 초안이 사용자 것과 섞이지 않는다.
-4. rekordbox 폴더가 필요하면 `DJC_REKORDBOX_DIR=<합성 또는 사본 폴더>`와 `--db <그 폴더/master.db>`를 함께 준다.
+4. rekordbox 폴더가 필요하면 `DJC_REKORDBOX_DIR=<합성 또는 사본 폴더>`와 `--db <그 폴더/master.db>`를 함께 준다. `--track-selftest=<음원 경로,…>`에는 `--db`와 `DJC_DB`를 생략한다.
 5. 사본의 `share/PIONEER/USBANLZ`는 링크로 두지 않는다. 실제 파일로 복사한다.
-6. 실행에 맞는 잠금을 잡는다.
-   - 무거운 실행: `lockf /tmp/djc-heavy.lock`. 성능 측정과 여러 앱 실행이 여기에 든다.
-   - 소리를 내는 실행: 본인이 잡은 `/tmp/djc-audio.lock`(5분 이하)
-   - 창을 앞에 두는 실행과 키를 넣는 실행: `/tmp/djc-gui.lock`
+6. [docs/ci.md의 실행 잠금](../../../docs/ci.md#잠금과-동시-실행)을 적용한다.
 7. `timeout 60`~`300`을 걸어 포그라운드로 돌린다.
 8. 출력은 파일로 받는다(`> <로그> 2>&1`). 그 뒤 필요한 줄만 grep한다.
 9. 결과는 그 줄과 종료 코드로 보고한다.
@@ -41,8 +38,10 @@ grep "루프 시험" /tmp/djc-loop.log
 | 인자 | 확인하는 것 | 추가 조건 |
 |---|---|---|
 | `--itunes-selftest` | iTunes 목록 순서·읽기 전용 제한·덱 핫큐·태그 초안·DB 불변 | `ITunesFixtureCapture` 합성 사본을 `DJC_REKORDBOX_DIR`·`--db`로. 다시 돌릴 때는 사본을 새로 만든다. 앞 실행의 동기화가 사본을 바꾸기 때문이다 |
-| `--write-selftest` | 반영(미리 보기·쓰기·조용한 다시 읽기·되돌리기) 전 과정. 재생 목록 초안(새 폴더·목록, 있던 목록에 곡)도 만들어 함께 쓰고 되돌린다 | `DJC_REKORDBOX_DIR` 사본 필수. 합성 사본은 `PlaylistWriteFixtureCapture` |
+| `--write-selftest` | 큐·그리드·태그·그림·재생 목록의 사본 쓰기·다시 읽기. 덱 기준 큐와 복원한 값·파일 확인. “쓰기·되돌림 시험 통과” | `DJC_PLAYLIST_FIXTURE_WRITE=1`을 주고 만든 `PlaylistWriteFixtureCapture` 사본, 임시 `DJC_REKORDBOX_DIR`·`DJC_HOME` |
+| `--track-selftest=<음원 경로,…>` | 넣기·빼기 복원 뒤 핫큐·메모리 큐 확인. 바깥 삭제 뒤 목록·선택·덱 확인. “곡 넣기·빼기 시험 통과” | 같은 합성 사본, 빈 추가 목록, 그리드 추정용 임시 음원. `--db`·`DJC_DB` 생략 |
 | `--quit-wait-selftest` | 쓰는 중 종료(#300): 쓰는 단계에서 종료를 요청해 [종료 취소]와 끝난 뒤 스스로 종료를 본다. 아래 자세히 | `PlaylistWriteFixtureCapture` 합성 사본을 `DJC_REKORDBOX_DIR`·`--db`로. 둘 다 임시 폴더 아래여야 한다(아니면 종료 코드 2) |
+| `--auto-reflect-selftest=<경우>` | 자동 저장(R18) 세 경우 `save`·`two-process`·`kill-detect`. 아래 자세히 | `AutoReflectFixtureCapture` 사본을 `DJC_REKORDBOX_DIR`로, 임시 `DJC_HOME`. `--db`는 주지 않는다(주면 종료 코드 2) |
 | `--history-selftest` | USB 보존 기록(#43)의 화면·쓰기 대기·미리 보기·쓰기·다시 읽기·복원 뒤 재대기("히스토리 시험 통과" 줄). `--history-capture=<임시 폴더>`로 대기·쓴 뒤·복원 뒤 창을 PNG로 남긴다 | `DJC_HISTORY_SELFTEST_FIXTURE=<없는 임시 폴더> swift test --filter HistorySelfTestFixtureCapture`로 만든 폴더를 `DJC_REKORDBOX_DIR`로, `--db <그 폴더>/history-snapshot.db`, 임시 `DJC_HOME`. 소리·실물 USB 없이 돈다 |
 | `--loop-selftest` | 활성 루프·즉석 루프·½·핫큐 저장·나가기 | `--select`로 활성 루프 있는 곡 |
 | `--loop-audio-selftest` | 루프 이음새가 샘플 단위로 맞는지(램프 WAV) | — |
@@ -52,7 +51,7 @@ grep "루프 시험" /tmp/djc-loop.log
 | `--flip-selftest` | Flip 기록이 들린 소리와 샘플 단위로 같은지, 출력 장치 변경이 점프로 남지 않는지("Flip 시험 통과" 줄). 아래 자세히 | — |
 | `--metronome-jump-selftest` | 핫큐 점프 직후 60→180 BPM 그리드의 클릭 간격·강박 전환(실제 오디오) | — |
 | `--metronome-selftest` | 메트로놈 클릭이 빠지지 않는지(실제 엔진으로 12초 재생해 클릭 수를 셈) | — |
-| `--switch-selftest` | 곡 전환·일시정지 뒤 소리 | — |
+| `--switch-selftest` | 곡 전환과 일시정지. 엔진 정지·출력 변경 뒤 위치 전진과 미터 신호. 마지막 줄은 “덱 전환 시험 통과” | 소리가 있는 합성 곡 둘 이상. `DJC_PLAYLIST_FIXTURE_WRITE=1` 사본과 임시 `DJC_HOME`·`DJC_REKORDBOX_DIR` |
 | `--scroll-perf` | 재생 중 목록 스크롤 때 프레임 간격 | `--perf-hide=zoom,label,…`로 A/B |
 | `--resize-perf=all` | 활성화·입력·재생 없이 가로·세로 40단계씩 창 크기를 바꾸며 잰 값을 JSON으로. 첫 왕복은 준비 측정. 아래 자세히 | `UIPerfFixtureCapture` 합성 라이브러리와 `DJC_DB`·`DJC_REKORDBOX_DIR`·임시 `DJC_HOME`, `/tmp/djc-heavy.lock` 필수. 실제 가장자리 드래그·표시 FPS는 별도 확인 |
 | `--ui-perf=all` | 조작마다 메인 스레드 일한 시간·프레임 간격·본문 다시 계산 횟수(`PerfProbe.body`)·메인 CPU. 아래 자세히 | `UIPerfFixtureCapture` 합성 라이브러리를 `DJC_REKORDBOX_DIR`·`--db`로 |
@@ -66,6 +65,14 @@ grep "루프 시험" /tmp/djc-loop.log
 | `--sidebar-multi-capture=<폴더>` | 사이드바 여러 개 고르기(#261)의 화면을 캡처한다. 고르기·지우기 확인 창·건너뛰기 알림·⌘Z·옮기기를 본다. 통과 줄은 "사이드바 여러 개 캡처 통과"다 | `DJC_PLAYLIST_FIXTURE_SMART=1`로 만든 `PlaylistWriteFixtureCapture` 사본(`$TMPDIR` 아래)을 `DJC_REKORDBOX_DIR`·`--db`로, 임시 `DJC_HOME` |
 | `--sidebar-multi-write=bulk\|single` | 같은 목록 편집을 묶음이나 하나씩 쌓아 사본에 쓴다. 통과 줄은 "사이드바 여러 개 쓰기 통과"다. 두 사본은 `djc lab db-diff`로 견준다 | 한 `PlaylistWriteFixtureCapture` 사본을 두 폴더에 넣어 하나씩 `DJC_REKORDBOX_DIR`로 준다. `--db`는 그 `master.db`를 따로 둔 사본 |
 | `--key-routing-selftest` | 앱 안 키 전달(검색칸·곡 목록·태그 시트·부착 시트·모달·곡 편집 창) | [captures.md](captures.md) |
+
+곡 넣기·빼기, 쓰기·되돌림, 덱 전환 시험은 실행 전에 임시 폴더와 사본을 확인한다. 경로·인자 조건을 채우지 못하면 종료 코드 2다. 시험 중 값이 다르면 종료 코드 1이다. 세 시험은 사용자 설정 이관을 생략한다. 화면 설정은 임시 영역에 둔다.
+
+`--track-selftest <음원 경로>`처럼 인자를 띄어 쓰면 종료 코드 2다. 출력은 `=값` 형식을 안내한다.
+
+옛 `--audio-selftest`, `--stale-cue-selftest`, `--analysis-play-selftest`, `--grid-selftest`, `--key-selftest`를 주면 디버그 시작 시 `--switch-selftest` 안내와 함께 종료 코드 2로 끝난다.
+
+캡처에서 실물 USB 이름을 숨기려면 디버그 실행에 `DJC_CAP_NO_VOLUMES=1`을 준다. 디스크 이미지는 계속 볼 수 있다.
 
 ### 인자별 자세히
 
@@ -87,8 +94,33 @@ grep "루프 시험" /tmp/djc-loop.log
 - `--quit-wait-capture=<폴더>`는 기다리는 카드를 `waiting-card.jpg`로 남긴다.
 - 끝난 뒤 `djc lab db-diff <전 사본> <후 사본>`으로 마지막 평점 변경만 있는지 본다.
 
+`--auto-reflect-selftest=<경우>`
+
+- 앱의 자동 저장 엔진이 사본에만 자동 저장하는 실행이다. 쓰기 전 확인을 못 채우면 종료 코드 2다. 확인하는 것은 임시 폴더, 실제 폴더와의 겹침, 링크다.
+- `save`: 연속 사인 곡을 덱에서 트는 동안 자동 저장을 10번 한다. 사본 DB 값과 곡 믹서 출력의 끊김 0을 본다.
+  - 끊김은 조용한 10ms 구간, 0.25초 넘게 오지 않은 버퍼, 받은 소리와 벽시계·재생 위치의 5% 넘는 차이로 센다.
+  - 누적 부족분은 버퍼의 렌더 시각으로 지난 시간에서 받은 소리를 뺀 값이다. 그 범위가 0.1초를 넘어도 끊김이다. 렌더 시각이 빠진 버퍼가 있으면 그 회 전체를 도착 시각으로 잰다.
+  - 측정 시작 표식부터 첫 버퍼, 마지막 버퍼부터 끝 표식까지가 0.125초를 넘어도 끊김이다.
+- `two-process`: 자식이 쓰는 동안 이 앱의 자동 저장이 잠금 보류로 기다리는지 본다.
+- `kill-detect`: 자식을 쓰다가 강제 종료한다. 다시 켠 앱이 중단으로 판정하는지 본다. 그 앱이 기록으로 복원한 결과도 본다.
+- 세 경우 모두 사용자 환경설정이 전후로 같은지 본다.
+- `two-process`·`kill-detect`는 같은 실행 파일을 자식으로 띄운다. 자식은 `DJC_HOME` 아래 `child-…` 폴더를 쓴다. 강제 종료는 띄운 자식 PID만 한다.
+- 통과 줄은 "자동 저장 시험 통과(<경우>)"다. 끝은 `_exit`로 한다. 뒤에서 도는 SQLCipher 열기와 `exit` 정리가 겹치면 가끔 죽는다.
+- `save`에 `DJC_AUTO_REFLECT_E1=<회차>`를 주면 출시 관문 측정(E1)을 한다. 전체 사본은 사용자 스냅샷 폴더의 최신 `master-*.db`를 `/bin/cp -c`로 복제해 만든다. `djc snapshot`은 쓰지 않는다.
+  - 회마다 시작한 파일 교체마다 재확인과 완료 짝을 대조한다. 하나라도 빠지면 그 회는 실패다. 끝에 시작으로 이어지지 않은 재확인이 남아도 실패다.
+  - 관문(2×E1 < 2.154초)을 넘지 못하면 종료 코드 1이다.
+- `--quit-wait-selftest`와 함께 주면 ⌘Q 저장(R17) 한 경우를 본다. `DJC_QUIT_WAIT_AUTOSAVE`로 고른다. 통과 줄은 "⌘Q 저장 시험 통과(<경우>)"다.
+  - `quiet`: 조용함 대기 중 ⌘Q
+  - `grace`: 대량 유예 중 ⌘Q
+  - `preview`: 자동 저장의 미리 보기 중 ⌘Q
+  - `instant`: 편집 직후 엔진이 신호를 받기 전 ⌘Q
+  - `chunks`: 묶음 둘이 필요한 대기열의 첫 묶음을 쓰는 중 ⌘Q
+- 조립 전에 인자·사본·`DJC_HOME` 격리를 본다. 못 채우면 종료 코드 2로 끝난다. 그때는 아무것도 건드리지 않는다.
+  - 다른 개발용 인자(`--sheet` 등)를 함께 주어도 종료 코드 2다. 그 인자가 사용자 환경설정에 쓸 수 있다. `--quit-wait-selftest`만 함께 돈다.
+
 `--resize-perf=all`
 
+- 합성 스냅샷 파일을 환경 변수 `DJC_DB`에 지정한다. `--db`로도 경로를 넘기면 같은 파일을 쓴다. 시작 검사는 `DJC_DB`·`DJC_REKORDBOX_DIR`·`DJC_HOME` 세 값을 모두 확인한다.
 - 단계별로 크기 요청, 레이아웃/표시 처리, 확대 파형 Canvas 시간, 본문 횟수를 잰다.
 - 왕복별로 프레임 간격 중앙값/최댓값, 메인 CPU, 부하를 잰다.
 - 축·반복·창 JPEG 캡처는 `--resize-perf=width,height`, `--resize-perf-repeats=3`, `--resize-perf-capture=<폴더>`로 정한다.
@@ -105,7 +137,7 @@ grep "루프 시험" /tmp/djc-loop.log
 - `--perf-trace-body`는 본문을 다시 계산한 이유를 찍는다.
 - `grid`·`drafts`·`capture`는 `all`에 없다.
 - `--ui-perf-delay=<초>`는 `xctrace record --attach <PID>`를 붙일 시간을 준다.
-- 옛 빌드와 전후를 잴 때 앱 바이너리만 다른 폴더로 복사하면 `@rpath`의 SQLCipher를 못 찾는다. 그러면 종료 코드 70으로 바로 끝난다. `.build/out/Products/Debug/SQLCipher.framework`와 `DJCrate_DJCrate.bundle`을 바이너리 옆에 함께 복사한다.
+- 옛 빌드와 전후를 잴 때 앱 바이너리만 다른 폴더로 복사하면 `@rpath`의 SQLCipher를 못 찾는다. 그러면 종료 코드 70으로 바로 끝난다. `.build/out/Products/Debug/`의 `SQLCipher.framework`, `Sparkle.framework`, `DJCrate_DJCrate.bundle`을 바이너리 옆에 함께 복사한다.
 
 `--edit-selftest`
 
@@ -123,6 +155,8 @@ grep "루프 시험" /tmp/djc-loop.log
 4. 되돌린다.
 5. 옮기기를 한다: Device Library만 내보내기 → OneLibrary 더하기 → 원래 파일 SHA-256 → 다시 붙여 읽기 → 되돌리기. "USB 시험 옮기기 통과" 줄을 본다.
 6. 끝에 "USB 시험 통과" 줄을 본다.
+
+rekordbox가 켜져 있으면 "USB 시험 건너뜀"으로 끝난다. 종료 코드는 2다.
 
 `--usb-snapshot-capture=<폴더>`
 
@@ -159,6 +193,7 @@ grep "루프 시험" /tmp/djc-loop.log
 ```bash
 W=$(mktemp -d); echo "픽스처 폴더: $W"
 DJC_EDIT_LAYOUT_FIXTURE=$W/edit scripts/check.sh --quick --filter EditLayoutFixtureCapture
+DJC_AUTO_REFLECT_FIXTURE=$W/auto scripts/check.sh --quick --filter AutoReflectFixtureCapture
 DJC_UI_PERF_FIXTURE=$W/perf scripts/check.sh --quick --filter UIPerfFixtureCapture
 DJC_PLAYLIST_FIXTURE=$W/playlist scripts/check.sh --quick --filter PlaylistWriteFixtureCapture
 DJC_ITUNES_FIXTURE=$W/itunes scripts/check.sh --quick --filter ITunesFixtureCapture

@@ -134,7 +134,7 @@ struct FirstRunReadTests {
         let entry = try #require(store.activityLog.entries.first)
         #expect(entry.kind == .warning)
         #expect(entry.title == "이 rekordbox 버전(7.3)은 아직 지원하지 않습니다")
-        #expect(entry.detail == "읽기만 하고 rekordbox에 쓰기는 막혀 있습니다")
+        #expect(entry.detail == "읽기만 하고 rekordbox에 저장은 막혀 있습니다")
         // 지금 목록은 실패 화면으로 바뀌지 않는다
         guard case .idle = store.phase else {
             Issue.record("알림만 띄워야 하는데 화면이 바뀌었다: \(store.phase)")

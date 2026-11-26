@@ -87,7 +87,7 @@ public struct EditArtwork: Sendable {
 
     /// 한 동작에서 저장·지우기에 실패한 곡이 있으면 알릴 문장
     public static func failureText(_ failed: Int) -> String? {
-        failed == 0 ? nil : String(ui: "\(failed)곡의 앨범아트 초안을 저장하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 하세요")
+        failed == 0 ? nil : String(ui: "\(failed)곡의 앨범아트 편집을 보관하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 하세요")
     }
 
     /// 초안의 그림 사본(넣기·바꾸기 초안만)

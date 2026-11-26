@@ -18,7 +18,7 @@ struct TrackListKeyEditTests {
         h.store.tags.setTag(.musicalKey, "8A", rows: [row])
         h.coordinator.updateTagRevision(h.store.tagRevision)
         #expect(cell.text == "8A" && cell.showsDraftMark)
-        #expect(cell.label.accessibilityValue() == "8A, 초안")
+        #expect(cell.label.accessibilityValue() == "8A, 저장 대기")
         h.undo.undo()
         h.coordinator.updateTagRevision(h.store.tagRevision)
         #expect(cell.text == "5A" && !cell.showsDraftMark)
@@ -43,7 +43,7 @@ struct TrackListKeyEditTests {
         try choose("8A", menu: menu)
         #expect(h.store.tags.confirmedStagedKey(uuid: row.track.uuid) == "8A")
         #expect(cell.text == "8A" && cell.showsDraftMark)
-        #expect(cell.label.accessibilityValue() == "8A, 초안")
+        #expect(cell.label.accessibilityValue() == "8A, 저장 대기")
     }
 
     /// 덱 제안 줄의 [적용]으로 생긴 키 초안도 목록 칸에 초안으로 보인다.

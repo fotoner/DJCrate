@@ -31,7 +31,9 @@ struct ReflectionSessionConfirmTests {
         h.script.preview = H.report(cues: [H.outcome("a", .written)], tags: [H.outcome("t", .written)])
         h.script.write = H.report(cues: [H.outcome("a", .written)], tags: [H.outcome("t", .written)], backup: "/tmp/djc-test-backup", dryRun: false)
         let outcome = await h.session.write(rows: ["a", "t"].map { H.row($0) })
-        #expect(h.prompts.isEmpty && h.locks == ["true", "false"])
+        // 쓰는 곡만 잠그고(R21) 덱은 잠그지 않는다
+        #expect(h.prompts.isEmpty && h.locks == ["곡 a,t", "초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false", "곡 -"]
+                && h.trackLocks == [["a", "t"], []])
         let written = try #require(h.gateCalls.value.writes.first)
         #expect(written.drafts.map(\.trackUUID) == ["a"] && written.tags.map(\.trackUUID) == ["t"])
         guard case let .written(report, _, _) = outcome else { Issue.record("\(outcome.name)"); return }
@@ -82,7 +84,9 @@ struct ReflectionSessionConfirmTests {
                                     gains: (1...100).map { H.outcome("gain-\($0)", .written, added: -250) })
         _ = await h.session.write(rows: rows)
         let written = try #require(h.gateCalls.value.writes.first)
-        #expect(h.prompts.isEmpty && written.grids.count == 100 && written.gains.count == 100 && h.locks == ["true", "false"])
+        #expect(h.prompts.isEmpty && written.grids.count == 100 && written.gains.count == 100
+                && Array(h.locks.dropFirst().prefix(4)) == ["초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false"] && h.locks.last == "곡 -"
+                && h.trackLocks == [Set(rows.map(\.track.uuid)), []])
     }
 
     // MARK: 넣기
@@ -166,7 +170,7 @@ struct ReflectionSessionConfirmTests {
             h.choice = choice
             _ = await h.session.restore(backup, confirmed: true)
             let prompt = try #require(h.prompts.first)
-            #expect(prompt.alternate == "복원하고 백업 초안으로 바꾸기" && prompt.confirm == "복원하고 지금 초안 남기기")
+            #expect(prompt.alternate == "복원하고 백업 편집으로 바꾸기" && prompt.confirm == "복원하고 지금 편집 남기기")
             #expect(prompt.details.contains("• a — 큐"))
             // 지금 초안을 남기면(확인) 그 곡의 백업 초안은 되살리지 않는다
             switch kept {

@@ -15,7 +15,7 @@ public extension UsbExportCandidates {
             guard visited.insert(item.id).inserted else { return }
             guard !item.isNew else {
                 throw UsbError.writeRefused([UsbBlock(code: "pendingPlaylist", scope: .playlist(item.id),
-                    message: String(ui: "미반영 재생 목록은 내보낼 수 없습니다. rekordbox에 목록을 쓴 뒤 내보내세요"))])
+                    message: String(ui: "미저장 재생 목록은 내보낼 수 없습니다. rekordbox에 목록을 저장한 뒤 내보내세요"))])
             }
             let attribute = item.isSmart ? 4 : item.isFolder ? 1 : 0
             result.append(UsbPlaylistInput(localID: item.id, name: item.name, parentLocalID: parent, attribute: attribute,

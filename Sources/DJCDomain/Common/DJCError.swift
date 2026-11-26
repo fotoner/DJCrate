@@ -37,8 +37,8 @@ public enum DJCError: Error, LocalizedError, CustomStringConvertible {
         case .invalidAnalysisFile: String(ui: "곡의 분석 파일을 읽지 못했습니다")
         case .invalidCueJSON: String(ui: "곡의 큐 정보를 읽지 못했습니다")
         case let .writeRefused(reason): reason
-        case .writeVerificationFailed: String(ui: "쓰기 결과가 예상과 달라 변경을 취소했습니다")
-        case .writeRolledBack: String(ui: "쓰기 결과를 확인하지 못해 쓰기 전 백업으로 복원했습니다")
+        case .writeVerificationFailed: String(ui: "저장 결과가 예상과 달라 변경을 취소했습니다")
+        case .writeRolledBack: String(ui: "저장 결과를 확인하지 못해 저장 전 백업으로 복원했습니다")
         case .restoreFailed, .pointRestoreFailed: String(ui: "라이브러리와 분석 파일의 상태를 확인하지 못했습니다")
         case let .editRefused(reason): reason
         }
@@ -49,11 +49,11 @@ public enum DJCError: Error, LocalizedError, CustomStringConvertible {
         case .keyDerivationFailed:
             String(ui: "rekordbox와 DJCrate의 지원 버전을 확인하세요.")
         case .databaseOpenFailed, .queryFailed, .sourceChangedDuringCopy:
-            String(ui: "rekordbox를 종료한 뒤 스냅샷을 다시 뜨세요.")
+            String(ui: "rekordbox를 종료한 뒤 ‘rekordbox와 동기화’를 하세요.")
         case .rekordboxRunning:
             String(ui: "rekordbox를 완전히 종료한 뒤 다시 시도하세요.")
         case .writeAheadLogPresent:
-            String(ui: "rekordbox를 한 번 켰다가 완전히 종료한 뒤 스냅샷을 다시 뜨세요.")
+            String(ui: "rekordbox를 한 번 켰다가 완전히 종료한 뒤 ‘rekordbox와 동기화’를 하세요.")
         case .snapshotNotFound:
             String(ui: "‘rekordbox와 동기화’로 라이브러리를 읽어 오세요.")
         case .invalidAnalysisFile:
@@ -63,11 +63,11 @@ public enum DJCError: Error, LocalizedError, CustomStringConvertible {
         case .writeRefused:
             String(ui: "안내된 조건과 DJCrate 업데이트를 확인한 뒤 다시 시도하세요.")
         case .writeVerificationFailed, .writeRolledBack:
-            String(ui: "라이브러리를 다시 불러오고 초안을 확인한 뒤 다시 시도하세요.")
+            String(ui: "라이브러리를 다시 불러오고 편집을 확인한 뒤 다시 시도하세요.")
         case .restoreFailed:
-            String(ui: "rekordbox를 켜지 말고 메뉴 막대 rekordbox › 쓰기 전으로 복원…으로 백업을 복원하세요.")
+            String(ui: "rekordbox를 켜지 말고 메뉴 막대 rekordbox › 저장 전으로 복원…으로 백업을 복원하세요.")
         case .pointRestoreFailed:
-            String(ui: "rekordbox를 켜지 말고 rekordbox › 시점 스냅샷…에서 ‘복원 직전’ 스냅샷으로 복원하세요.")
+            String(ui: "rekordbox를 켜지 말고 rekordbox › 복원 시점…에서 ‘복원 직전’ 복원 시점으로 복원하세요.")
         case .editRefused:
             String(ui: "안내된 마디 구간과 곡을 확인한 뒤 다시 시도하세요.")
         }
@@ -82,34 +82,34 @@ public enum DJCError: Error, LocalizedError, CustomStringConvertible {
         case let .queryFailed(sql, message):
             String(ui: "쿼리 실패: \(message)\n\(sql)")
         case .rekordboxRunning:
-            String(ui: "rekordbox가 실행 중입니다. 종료한 뒤 다시 시도하세요 (읽기 전용 스냅샷은 --force로 강행 가능).")
+            String(ui: "rekordbox가 실행 중입니다. 종료한 뒤 다시 시도하세요 (읽기 전용 사본은 --force로 강행 가능).")
         case let .writeAheadLogPresent(path):
             String(ui: "WAL 파일이 남아 있습니다: \(path). rekordbox를 완전히 종료한 뒤 다시 시도하세요.")
         case let .sourceChangedDuringCopy(path):
-            String(ui: "복사하는 동안 원본이 바뀌었습니다: \(path). 스냅샷을 버렸습니다.")
+            String(ui: "복사하는 동안 원본이 바뀌었습니다: \(path). 읽은 사본을 버렸습니다.")
         case .snapshotNotFound:
-            String(ui: "스냅샷이 없습니다. 먼저 `djc snapshot`을 실행하세요.")
+            String(ui: "읽은 사본이 없습니다. 먼저 `djc snapshot`을 실행하세요.")
         case let .invalidAnalysisFile(path):
             String(ui: "rekordbox 분석 파일 형식이 아닙니다: \(path)")
         case .invalidCueJSON:
             String(ui: "rekordbox 큐 JSON을 읽지 못했습니다.")
         case let .writeRefused(reason):
-            String(ui: "rekordbox에 쓰지 않았습니다: \(reason)")
+            String(ui: "rekordbox에 저장하지 않았습니다: \(reason)")
         case let .writeVerificationFailed(reason):
-            String(ui: "쓴 결과가 의도와 달라 rekordbox에 쓰지 않았습니다: \(reason)")
+            String(ui: "저장한 결과가 의도와 달라 rekordbox에 저장하지 않았습니다: \(reason)")
         case let .writeRolledBack(reason):
-            String(ui: "쓴 결과를 확인하지 못해 쓰기 전 백업으로 되돌렸습니다: \(reason)")
+            String(ui: "저장한 결과를 확인하지 못해 저장 전 백업으로 되돌렸습니다: \(reason)")
         case let .restoreFailed(reason, restoreError, backup, database):
             String(ui: """
-            쓴 결과를 확인하지 못했고 백업으로 자동 복원도 하지 못했습니다. rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다.
-            rekordbox를 켜지 말고 먼저 쓰기 전 백업으로 되돌리세요: \(Self.restoreCommand(backup: backup, database: database))
+            저장한 결과를 확인하지 못했고 백업으로 자동 복원도 하지 못했습니다. rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다.
+            rekordbox를 켜지 말고 먼저 저장 전 백업으로 되돌리세요: \(Self.restoreCommand(backup: backup, database: database))
             확인 실패: \(reason)
             복원 실패: \(restoreError)
             """)
         case let .pointRestoreFailed(reason, restoreError, snapshot, database):
             String(ui: """
-            시점 스냅샷 복원을 마치지 못했고 복원 전으로 자동으로 돌리지도 못했습니다. rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다.
-            rekordbox를 켜지 말고 먼저 복원 직전 시점 스냅샷으로 되돌리세요: \(Self.pointRestoreCommand(snapshot: snapshot, database: database))
+            복원 시점으로 복원하지 못했고 복원 전으로 자동으로 돌리지도 못했습니다. rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다.
+            rekordbox를 켜지 말고 먼저 ‘복원 직전’ 복원 시점으로 되돌리세요: \(Self.pointRestoreCommand(snapshot: snapshot, database: database))
             실패: \(reason)
             되돌리기 실패: \(restoreError)
             """)

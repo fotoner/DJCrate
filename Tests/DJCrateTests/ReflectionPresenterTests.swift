@@ -65,16 +65,16 @@ struct ReflectionPresenterTests {
     // MARK: - 안내
 
     @Test func 안내는_창_없이_경고_토스트로_알리고_쓰기_결과_없이_활동_기록에_남긴다() {
-        presenter.publish(.notice(title: "rekordbox가 켜져 있어 쓰지 않았습니다", text: ReflectionPrompts.quitRekordboxText, lines: []))
-        expectNotice("rekordbox가 켜져 있어 쓰지 않았습니다", detail: "rekordbox를 완전히 종료한 뒤 다시 누르세요")
-        presenter.publish(.notice(title: "복원하지 않았습니다", text: "시점 스냅샷으로 복원해서", lines: []))
-        #expect(store.toast?.title == "복원하지 않았습니다" && store.toast?.detail == "시점 스냅샷으로 복원해서")
+        presenter.publish(.notice(title: "rekordbox가 켜져 있어 저장하지 않았습니다", text: ReflectionPrompts.quitRekordboxText, lines: []))
+        expectNotice("rekordbox가 켜져 있어 저장하지 않았습니다", detail: "rekordbox를 완전히 종료한 뒤 다시 누르세요")
+        presenter.publish(.notice(title: "복원하지 않았습니다", text: "복원 시점으로 복원해서", lines: []))
+        #expect(store.toast?.title == "복원하지 않았습니다" && store.toast?.detail == "복원 시점으로 복원해서")
     }
 
     @Test func 안내의_이유_줄은_앞_둘과_남은_수만_보인다() {
         let lines = ["• 곡 a: 초안을 만든 뒤 rekordbox에서 바뀌었습니다", "• 곡 b: 바꿀 것 없음", "• 곡 c: 바꿀 것 없음"]
-        presenter.publish(.notice(title: "쓸 초안이 없습니다", text: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 초안이 없습니다.", lines: lines))
-        expectNotice("쓸 초안이 없습니다", detail: "곡 a: 초안을 만든 뒤 rekordbox에서 바뀌었습니다")
+        presenter.publish(.notice(title: "저장할 편집이 없습니다", text: "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 편집이 없습니다.", lines: lines))
+        expectNotice("저장할 편집이 없습니다", detail: "곡 a: 초안을 만든 뒤 rekordbox에서 바뀌었습니다")
         #expect(store.toast?.detail?.contains("외 1건") == true && store.toast?.detail?.contains("곡 c") == false)
     }
 
@@ -87,13 +87,31 @@ struct ReflectionPresenterTests {
 
     // MARK: - 쓰기 결과
 
-    @Test func 쓴_결과는_토스트에서_되돌릴_백업을_달고_결과에_남긴다() throws {
+    @Test func 막힘_없이_쓴_결과는_토스트_없이_활동_기록에만_남긴다() throws {
         var written = Self.preview(cues: [Self.outcome("a", .written)], tags: [Self.tagOutcome("t", .written)]).report
         written.backup = "/tmp/djc-test-backup"
         presenter.publish(.written(written, preview: written, followUp: []))
-        let toast = try #require(store.toast)
-        #expect(toast.kind == .success && toast.title == store.activityLog.latest?.result?.title)
-        #expect(toast.undoBackup == URL(filePath: "/tmp/djc-test-backup"))
+        // 저장할 때마다 뜨던 알림을 없앴다. 마지막 저장 시각과 저장 대기 수는 상태 줄이 보이고, 되돌리기는 메뉴의 「저장 전으로 복원…」이 맡는다
+        #expect(store.toast == nil)
+        let result = try #require(store.activityLog.latest?.result)
+        #expect(result.kind == .success && result.title.hasPrefix("rekordbox에 저장했습니다"))
+        #expect(result.backups == [URL(filePath: "/tmp/djc-test-backup")], "상태 줄의 마지막 저장·백업 표시가 이 기록을 읽는다")
+        #expect(store.activityLog.latest?.needsAttention == false, "읽지 않은 알림 수에 세지 않는다")
+    }
+
+    @Test(arguments: [AppToast.Kind.failure, .warning])
+    func 사용자가_누른_저장이_성공하면_앞서_뜬_알림을_닫고_음성으로만_알린다(_ kind: AppToast.Kind) {
+        var spoken: [AppMessage] = []
+        let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { spoken.append($0) }))
+        // 지난 ⌘S가 실패해 닫을 때까지 남는 알림이 떠 있다. 원인을 풀고 다시 저장해 성공했으면 그 알림을 남겨 두지 않는다
+        store.showToast(AppToast(kind: kind, title: "rekordbox에 저장하지 않았습니다"))
+        spoken = []
+        let written = Self.preview(cues: [Self.outcome("a", .written)]).report
+        ReflectionPresenter(store: store, prompter: ScriptedPrompter()).publish(.written(written, preview: written, followUp: []))
+        #expect(store.toast == nil)
+        let title = store.activityLog.latest?.result?.title
+        #expect(title?.hasPrefix("rekordbox에 저장했습니다") == true)
+        #expect(spoken == [AppMessage(kind: .success, text: title ?? "-")], "VoiceOver는 화면 알림 없이도 저장 결과를 듣는다")
     }
 
     @Test func 쓸_것이_제외뿐이면_제외한_이유를_결과_토스트에_남긴다() {
@@ -131,7 +149,8 @@ struct ReflectionPresenterTests {
         report.mergeOutcomes = [.init(trackUUID: "m", title: "남길 곡", status: .written, reason: nil, removed: 1, added: 0)]
         report.dryRun = false
         presenter.publish(.written(report, preview: report, followUp: []))
-        #expect(store.toast?.kind == .success && store.toast?.title.contains("합치기") == true)
+        #expect(store.toast == nil)
+        #expect(store.activityLog.latest?.result?.kind == .success && store.activityLog.latest?.title.contains("합치기") == true)
     }
 
     @Test func 뒤따른_경고는_쓰기_결과와_나눠_알린다() {
@@ -139,7 +158,7 @@ struct ReflectionPresenterTests {
         let note = ReflectionSession.reloadFailureText(restoring: false)
         presenter.publish(.written(report, preview: report, followUp: [note]))
         // 쓴 결과(제목)는 그대로 두고, 뒤따른 경고를 경고 토스트의 둘째 줄과 결과 전문에 나눠 적는다.
-        #expect(store.toast?.kind == .warning && store.toast?.title.hasPrefix("rekordbox에 썼습니다") == true)
+        #expect(store.toast?.kind == .warning && store.toast?.title.hasPrefix("rekordbox에 저장했습니다") == true)
         #expect(store.toast?.detail == note)
         #expect(store.activityLog.latest?.result?.text.hasSuffix("• \(note)") == true)
     }
@@ -169,7 +188,7 @@ struct ReflectionPresenterTests {
     @Test func 모두_막힌_경우도_전체_이유를_결과_보기에_남긴다() {
         presenter.publish(.nothingWritable(Self.preview(cues: (1...100).map { Self.outcome("blocked-\($0)", .blocked, reason: "막힌 이유") }), targets: []))
         var lines = store.activityLog.latest?.result?.text.components(separatedBy: "\n") ?? []
-        #expect(lines == (1...100).map { "• 곡 blocked-\($0) — 큐 쓰지 않음: 막힌 이유" })
+        #expect(lines == (1...100).map { "• 곡 blocked-\($0) — 큐 저장하지 않음: 막힌 이유" })
         let tracks = (1...100).map { Self.track("blocked-\($0)", written: false, reason: "막힌 이유") }
         presenter.publish(.nothingAdded(Self.addPreview(tracks)))
         lines = store.activityLog.latest?.result?.text.components(separatedBy: "\n") ?? []
@@ -184,20 +203,20 @@ struct ReflectionPresenterTests {
 
     @Test func 미리_보기를_취소하면_아무것도_쓰지_않았다고_알린다() {
         presenter.publish(.cancelled)
-        #expect(store.toast?.title.contains("취소") == true && store.toast?.detail?.contains("아무것도 쓰지 않았습니다") == true)
-        #expect(store.activityLog.latest?.result?.text == "rekordbox에 아무것도 쓰지 않았습니다.")
+        #expect(store.toast?.title.contains("취소") == true && store.toast?.detail?.contains("아무것도 저장하지 않았습니다") == true)
+        #expect(store.activityLog.latest?.result?.text == "rekordbox에 아무것도 저장하지 않았습니다.")
     }
 
     // MARK: - 실패
 
     @Test func 미리_보기가_실패하면_실패_토스트() {
-        presenter.publish(.failed(title: "rekordbox에 쓰지 않았습니다", error: FixtureFailure(), exclusions: []))
+        presenter.publish(.failed(title: "rekordbox에 저장하지 않았습니다", error: FixtureFailure(), exclusions: []))
         #expect(store.toast?.kind == .failure && store.toast?.detail == AppErrorMessage.message(for: FixtureFailure()))
         #expect(store.activityLog.latest?.result?.kind == .failure && store.activityLog.latest?.result?.text == AppErrorMessage.message(for: FixtureFailure()))
     }
 
     @Test func 쓰기_거부_토스트는_제목을_되풀이하지_않고_할_일을_안내한다() {
-        presenter.publish(.failed(title: "rekordbox에 쓰지 않았습니다", error: DJCError.writeRefused("지원하지 않는 버전입니다"), exclusions: []))
+        presenter.publish(.failed(title: "rekordbox에 저장하지 않았습니다", error: DJCError.writeRefused("지원하지 않는 버전입니다"), exclusions: []))
         let detail = store.toast?.detail ?? ""
         #expect(detail == AppErrorMessage.message(for: DJCError.writeRefused("지원하지 않는 버전입니다")))
         #expect(store.toast?.title.isEmpty == false && !detail.contains(store.toast?.title ?? "-"))
@@ -206,7 +225,7 @@ struct ReflectionPresenterTests {
 
     @Test func 쓰기_오류와_제외한_초안을_한_실패_토스트로_알린다() {
         let excluded = "곡 b: 합성 제외 이유"
-        presenter.publish(.failed(title: "rekordbox에 쓰지 않았습니다", error: FixtureFailure(), exclusions: ["• " + excluded]))
+        presenter.publish(.failed(title: "rekordbox에 저장하지 않았습니다", error: FixtureFailure(), exclusions: ["• " + excluded]))
         #expect(prompter.shown.isEmpty)
         #expect(store.toast?.kind == .failure && store.toast?.title == store.activityLog.latest?.result?.title)
         #expect(store.toast?.detail?.hasPrefix(AppErrorMessage.message(for: FixtureFailure())) == true)
@@ -217,7 +236,7 @@ struct ReflectionPresenterTests {
     @Test func 파일_오류_토스트는_NSError_원문을_숨긴다() {
         let error = NSError(domain: NSCocoaErrorDomain, code: NSFileWriteOutOfSpaceError,
                             userInfo: [NSLocalizedDescriptionKey: "Error Domain=NSCocoaErrorDomain SQL 원문"])
-        presenter.publish(.failed(title: "rekordbox에 쓰지 않았습니다", error: error, exclusions: []))
+        presenter.publish(.failed(title: "rekordbox에 저장하지 않았습니다", error: error, exclusions: []))
         #expect(store.toast?.detail == AppErrorMessage.message(for: error) && store.toast?.detail?.contains("SQL 원문") == false)
     }
 
@@ -225,7 +244,7 @@ struct ReflectionPresenterTests {
         store.showToast(AppToast(title: "이전 성공"))
         let backup = "/tmp/rekordbox-backups/2026-09-26T120000-write"
         let error = DJCError.restoreFailed(reason: "무결성 검사 실패: x", restoreError: "master.db: 권한 없음", backup: backup, database: nil)
-        for title in ["rekordbox에 쓰지 않았습니다", "rekordbox에 넣지 않았습니다", "rekordbox에서 빼지 않았습니다"] {
+        for title in ["rekordbox에 저장하지 않았습니다", "rekordbox에 넣지 않았습니다", "rekordbox에서 빼지 않았습니다"] {
             presenter.publish(.failed(title: title, error: error, exclusions: []))
         }
         #expect(store.toast == nil, "사라지는 토스트로 알리지 않는다")
@@ -276,7 +295,7 @@ struct ReflectionPresenterTests {
 
     @Test func 메뉴의_복원은_쓰기_백업이_없으면_알린다() {
         ReflectionCoordinator.test(store: store, prompter: prompter).startRestoreLatest()
-        #expect(store.toast?.title == "복원할 쓰기 기록이 없습니다" && store.writeTask == nil)
+        #expect(store.toast?.title == "복원할 저장 기록이 없습니다" && store.writeTask == nil)
     }
 
     // MARK: - 확인 창

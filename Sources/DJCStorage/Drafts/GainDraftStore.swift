@@ -20,12 +20,50 @@ public enum GainDraftStore {
 
     public static func uuids(url: URL = url) -> Set<String> { Set(all(url: url).keys) }
 
+    /// 게인 초안을 저장한다(nil이면 지우기). 지우면 그 곡의 base(`saveBase`)도 지운다(부르는 쪽이 초안 잠금을 쥔다). 값만 바꾸면 base는 그대로다
     public static func save(_ gainDB: Double?, trackUUID: String, url: URL = url) throws {
         try DamagedDrafts.preserveIfDamaged([String: Double].self, at: url, home: url.deletingLastPathComponent(), trackUUID: nil)
         var drafts = try read(url: url)
         drafts[trackUUID] = gainDB
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if gainDB == nil {
+            var bases = bases(url: url)
+            if bases.removeValue(forKey: trackUUID) != nil { try write(bases, url: url) }
+        }
         try JSONEncoder().encode(drafts).write(to: url, options: .atomic)
+    }
+
+    /// 게인 초안의 base(R23)를 옆 파일(`basesURL`)에 둔다(nil이면 지운다). 게인 파일 모양을 바꾸지 않아 옛 앱도 읽는다.
+    /// 값을 저장한 뒤 같은 저장 큐·초안 잠금 안에서 부른다: 지금 그 곡 게인 값의 판에 묶는다(컨실 S8·G9). 그 곡 base가 이미 있으면
+    /// base 값과 실행 경계는 다시 적지 않고 새 판에만 묶는다(컨실 O6: 초안을 만들 때 본 값을 지킨다)
+    public static func saveBase(_ base: GainDraftBase?, trackUUID: String, url: URL = url) throws {
+        let home = url.deletingLastPathComponent()
+        try DraftStampStore.withLock(home: home) {
+            var bases = bases(url: url)
+            if let base {
+                var entry = bases[trackUUID] ?? base
+                entry.revision = DraftStampStore.stamp(DraftKey(.gain, trackUUID), home: home)?.revision
+                guard bases[trackUUID] != entry else { return }
+                bases[trackUUID] = entry
+            } else {
+                guard bases.removeValue(forKey: trackUUID) != nil else { return }
+            }
+            try write(bases, url: url)
+        }
+    }
+
+    private static func write(_ bases: [String: GainDraftBase], url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(bases).write(to: basesURL(for: url), options: .atomic)
+    }
+
+    /// 게인 초안의 base 파일(게인 파일 옆)
+    public static func basesURL(for url: URL = url) -> URL { url.deletingLastPathComponent().appending(path: "gain-draft-bases.json") }
+
+    /// 곡 UUID → 게인 초안의 base. 없거나 읽지 못하면 빈 값: base를 모르는 초안은 자동으로 쓰지 않을 뿐 그대로 읽힌다(R23)
+    public static func bases(url: URL = url) -> [String: GainDraftBase] {
+        guard let data = try? Data(contentsOf: basesURL(for: url)) else { return [:] }
+        return (try? JSONDecoder().decode([String: GainDraftBase].self, from: data)) ?? [:]
     }
 
     public static func remove(trackUUID: String, url: URL = url) throws { try save(nil, trackUUID: trackUUID, url: url) }

@@ -8,7 +8,7 @@ import SwiftUI
 /// 쓰기 전 백업은 따로 정리되고 '쓰기 전으로 복원…'으로 되돌리므로 여기서는 보기만 한다(#223 결정).
 @MainActor
 final class PointSnapshotWindow: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
+    private(set) var window: NSWindow?
     private var model: PointSnapshotModel?
     /// 저장소의 대상(쓰기·복원과 같은 곳)으로 시점 스냅샷 유스케이스를 만든다(조립 지점이 실제 구현을 고른다)
     private let points: @MainActor (LibraryStore) -> PointSnapshots
@@ -25,7 +25,7 @@ final class PointSnapshotWindow: NSObject, NSWindowDelegate {
         }
         let model = PointSnapshotModel(store: store, reflection: reflection, points: points(store))
         let window = NSWindow(contentViewController: NSHostingController(rootView: PointSnapshotView(model: model)))
-        window.title = String(ui: "시점 스냅샷")
+        window.title = String(ui: "복원 시점")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -38,6 +38,9 @@ final class PointSnapshotWindow: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool { model?.isWorking != true }
+
+    /// 이 창에서 시점 스냅샷을 뜨거나 비교·복원하는 중(그동안 자동 저장을 시작하지 않는다, R16)
+    var isWorking: Bool { model?.isWorking == true }
 }
 
 struct PointSnapshotView: View {
@@ -50,7 +53,7 @@ struct PointSnapshotView: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { model.startCreate() }
                     .frame(maxWidth: 320)
-                Button(.ui("지금 스냅샷 남기기")) { model.startCreate() }
+                Button(.ui("지금 복원 시점 남기기")) { model.startCreate() }
                     .disabled(model.isWorking || model.blockReason != nil)
                     .help(model.blockReason ?? "")
                 if model.isWorking { ProgressView().controlSize(.small) }
@@ -60,7 +63,7 @@ struct PointSnapshotView: View {
                 }
                 Spacer()
             }
-            Text(.ui("rekordbox가 꺼져 있을 때만 남깁니다. 수동·고정 스냅샷은 지우지 않고, 쓰기 전 백업은 따로 정리됩니다."))
+            Text(.ui("rekordbox가 꺼져 있을 때만 남깁니다. 수동·고정 복원 시점은 지우지 않고, 저장 전 백업은 따로 정리됩니다."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

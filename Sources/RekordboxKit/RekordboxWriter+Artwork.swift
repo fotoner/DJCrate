@@ -118,12 +118,12 @@ extension RekordboxWriter {
         func block(_ reason: String) -> Blocked { Blocked(title: content.title, reason: reason) }
         guard !content.deleted else { throw block(String(ui: "rekordbox 컬렉션에서 지운 곡이니 컬렉션에서 곡을 확인한 뒤 DJCrate에서 다시 동기화하세요")) }
         guard let state = content.state, verifiedArtworkTrackStates.contains(state) else {
-            throw block(String(ui: "이 곡의 동기화 상태에서는 앨범아트 쓰기를 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
+            throw block(String(ui: "이 곡의 동기화 상태에서는 앨범아트 저장을 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
         }
-        guard let share else { throw block(String(ui: "사본 DB에는 share 폴더를 주어야 앨범아트를 씁니다")) }
+        guard let share else { throw block(String(ui: "사본 DB에는 share 폴더를 주어야 앨범아트를 저장합니다")) }
         // 묶음 2·#173 실험 곡은 모두 분석한 곡이었다. 분석 전 곡에 그림을 넣는 모양은 보지 못했다.
         guard !(content.analysis ?? "").isEmpty else {
-            throw block(String(ui: "분석 전 곡의 앨범아트 쓰기는 확인하지 못했으니 rekordbox에서 트랙 분석을 먼저 한 뒤 쓰세요"))
+            throw block(String(ui: "분석 전 곡의 앨범아트 저장은 확인하지 못했으니 rekordbox에서 트랙 분석을 먼저 한 뒤 저장하세요"))
         }
         let imagePath = TrackArtwork.imagePath(uuid: draft.trackUUID)
         let fileID = RekordboxTrackWriter.fileRowID(uuid: draft.trackUUID, path: imagePath)
@@ -145,18 +145,18 @@ extension RekordboxWriter {
                          [.text(content.id), .int(TrackArtwork.folder(uuid: draft.trackUUID).count + 1),
                           .text(TrackArtwork.folder(uuid: draft.trackUUID) + "/")]) == 0,
               try scalar(db, "SELECT count(*) FROM djmdContent WHERE FolderPath IN (?, ?, ?)", candidates.map { .text($0.path) }) == 0 else {
-            throw block(String(ui: "앨범아트 폴더가 예상과 달라(링크·다른 곡과 같은 폴더) 쓰지 않으니 rekordbox에서 앨범아트를 직접 고치세요"))
+            throw block(String(ui: "앨범아트 폴더가 예상과 달라(링크·다른 곡과 같은 폴더) 저장하지 않으니 rekordbox에서 앨범아트를 직접 고치세요"))
         }
         let present = candidates.filter { FileManager.default.fileExists(atPath: $0.path) }
 
         if current.isEmpty {
-            guard draft.change == .set else { throw block(String(ui: "앨범아트가 없는 곡이라 지울 것이 없으니 앨범아트 초안을 버리세요")) }
+            guard draft.change == .set else { throw block(String(ui: "앨범아트가 없는 곡이라 지울 것이 없으니 앨범아트 편집을 버리세요")) }
             guard live.isEmpty else {
-                throw block(String(ui: "앨범아트 경로는 비었는데 앨범아트 기록이 남아 있어 쓰지 않으니 rekordbox에서 앨범아트를 다시 넣은 뒤 쓰세요"))
+                throw block(String(ui: "앨범아트 경로는 비었는데 앨범아트 기록이 남아 있어 저장하지 않으니 rekordbox에서 앨범아트를 다시 넣은 뒤 저장하세요"))
             }
             if let row = dead.first {
                 guard dead.count == 1, row.id == fileID, row.base.path == imagePath else {
-                    throw block(String(ui: "지운 앨범아트 기록이 예상과 달라 쓰지 않으니 rekordbox에서 앨범아트를 직접 넣으세요"))
+                    throw block(String(ui: "지운 앨범아트 기록이 예상과 달라 저장하지 않으니 rekordbox에서 앨범아트를 직접 넣으세요"))
                 }
                 // 262(옛 동기화에서 지운 행, #173 S2 U08)·258(DJCrate·rekordbox가 지운 동기화 행, S5 W3b) 모두 같은 행을 되살린다.
                 guard row.base.status == 262 || row.base.status == 258 else {
@@ -164,17 +164,17 @@ extension RekordboxWriter {
                 }
                 plan.action = .revive
             }
-            guard present.isEmpty else { throw block(String(ui: "앨범아트 폴더에 파일이 이미 있어 쓰지 않으니 rekordbox에서 앨범아트를 확인하세요")) }
+            guard present.isEmpty else { throw block(String(ui: "앨범아트 폴더에 파일이 이미 있어 저장하지 않으니 rekordbox에서 앨범아트를 확인하세요")) }
         } else {
             guard current == imagePath else {
-                throw block(String(ui: "앨범아트 경로가 곡 폴더와 달라 쓰지 않으니 rekordbox에서 앨범아트를 다시 넣은 뒤 쓰세요"))
+                throw block(String(ui: "앨범아트 경로가 곡 폴더와 달라 저장하지 않으니 rekordbox에서 앨범아트를 다시 넣은 뒤 저장하세요"))
             }
             guard let row = live.first else {
-                throw block(String(ui: "앨범아트 기록(contentFile)이 없는 곡이라 쓰지 않으니 rekordbox에서 앨범아트를 다시 넣은 뒤 쓰세요"))
+                throw block(String(ui: "앨범아트 기록(contentFile)이 없는 곡이라 저장하지 않으니 rekordbox에서 앨범아트를 다시 넣은 뒤 저장하세요"))
             }
-            guard live.count == 1 else { throw block(String(ui: "앨범아트 기록이 여럿인 곡이라 쓰지 않으니 rekordbox에서 앨범아트를 확인하세요")) }
+            guard live.count == 1 else { throw block(String(ui: "앨범아트 기록이 여럿인 곡이라 저장하지 않으니 rekordbox에서 앨범아트를 확인하세요")) }
             guard row.id == fileID, row.base.path == imagePath else {
-                throw block(String(ui: "앨범아트 경로가 곡 폴더와 달라 쓰지 않으니 rekordbox에서 앨범아트를 다시 넣은 뒤 쓰세요"))
+                throw block(String(ui: "앨범아트 경로가 곡 폴더와 달라 저장하지 않으니 rekordbox에서 앨범아트를 다시 넣은 뒤 저장하세요"))
             }
             let status = row.base.status ?? -1
             switch draft.change {
@@ -193,12 +193,12 @@ extension RekordboxWriter {
             plan.existing = try present.map { ($0, try Data(contentsOf: $0)) }
         }
         guard ArtworkBase(imagePath: current, files: live.map(\.base)) == draft.base else {
-            throw block(String(ui: "초안을 만든 뒤 rekordbox에서 앨범아트가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
+            throw block(String(ui: "편집을 만든 뒤 rekordbox에서 앨범아트가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
         }
         if draft.change == .set {
             guard let image = edit.image else { throw block(String(ui: "앨범아트 사본이 없으니 앨범아트를 다시 고르세요")) }
             if let sha = draft.imageSHA256, sha != SHA256.hash(data: image).map({ String(format: "%02x", $0) }).joined() {
-                throw block(String(ui: "앨범아트 사본이 초안과 다르니 앨범아트를 다시 고르세요"))
+                throw block(String(ui: "앨범아트 사본이 편집과 다르니 앨범아트를 다시 고르세요"))
             }
             if let reason = TrackArtwork.unsupportedReason(image) { throw block(reason) }
             if prepare {
@@ -217,7 +217,7 @@ extension RekordboxWriter {
         for edit in edits {
             do {
                 guard seen.insert(edit.trackUUID).inserted else {
-                    throw Blocked(title: edit.trackUUID, reason: String(ui: "한 곡에 앨범아트 초안이 여럿이니 하나만 남기고 다시 쓰세요"))
+                    throw Blocked(title: edit.trackUUID, reason: String(ui: "한 곡에 앨범아트 편집이 여럿이니 하나만 남기고 다시 저장하세요"))
                 }
                 passed.append(try checkArtwork(edit, db: db, share: share, prepare: true))
             } catch let error as Blocked {
@@ -230,9 +230,12 @@ extension RekordboxWriter {
 
     /// 바꾸거나 지울 옛 그림 파일을 백업 `anlz/`에 둔다(이름 `artwork-<n>.jpg`, 원래 자리는 manifest.json에 더한다).
     /// 그리드 백업(`backupAnalysis`)이 manifest를 새로 쓰므로 그 뒤에 부른다.
-    static func backupArtworkFiles(_ plans: [ArtworkPlan], in backup: URL, shareRoot: URL) throws {
+    /// - Returns: 원래 파일 경로 → 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
+    @discardableResult
+    static func backupArtworkFiles(_ plans: [ArtworkPlan], in backup: URL, shareRoot: URL) throws -> [String: URL] {
         let files = plans.flatMap(\.existing)
-        guard !files.isEmpty else { return }
+        guard !files.isEmpty else { return [:] }
+        var copies: [String: URL] = [:]
         let folder = backup.appending(path: "anlz")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let manifestURL = folder.appending(path: "manifest.json")
@@ -241,8 +244,10 @@ extension RekordboxWriter {
             let name = "artwork-\(manifest.count).\(file.pathExtension)"
             try data.write(to: folder.appending(path: name))
             manifest[name] = try backupTarget(file.path, shareRoot: shareRoot).relative
+            copies[file.path] = folder.appending(path: name)
         }
         try JSONEncoder().encode(manifest).write(to: manifestURL, options: .atomic)
+        return copies
     }
 
     /// 그림 초안 하나를 트랜잭션 안에서 쓴다. 막히면 `Blocked`(부른 쪽이 SAVEPOINT로 되돌린다).
@@ -250,7 +255,7 @@ extension RekordboxWriter {
                              stamp: (db: String, json: String)) throws -> ArtworkExpectation {
         var plan = try checkArtwork(prepared.edit, db: db, share: share, prepare: false)
         guard plan.action == prepared.action else {
-            throw Blocked(title: plan.title, reason: String(ui: "초안을 만든 뒤 rekordbox에서 앨범아트가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
+            throw Blocked(title: plan.title, reason: String(ui: "편집을 만든 뒤 rekordbox에서 앨범아트가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
         }
         plan.files = prepared.files
         func fail(_ reason: String) -> DJCError { .writeVerificationFailed("\(reason) (\(plan.title))") }
@@ -263,7 +268,7 @@ extension RekordboxWriter {
             usn += 1
             guard try db.run("UPDATE djmdContent SET ImagePath = ?, \(savedStatus), rb_local_usn = ?, updated_at = ? WHERE ID = ?",
                              [.text(imagePath), .int(usn), .text(stamp.db), .text(plan.contentID)]) == 1 else {
-                throw fail(String(ui: "곡 행에 앨범아트 경로를 쓰지 못했습니다"))
+                throw fail(String(ui: "곡 행에 앨범아트 경로를 저장하지 못했습니다"))
             }
             track = ["ImagePath": .text(imagePath), "rb_data_status": raisedStatus(state), "rb_local_usn": .int(usn), "updated_at": .text(stamp.db)]
         }
@@ -326,46 +331,6 @@ extension RekordboxWriter {
             }
         } catch DJCError.writeVerificationFailed {
             throw DJCError.writeVerificationFailed("\(String(ui: "앨범아트 기록 확인 실패")) (\(expected.plan.title))")
-        }
-    }
-
-    /// 커밋 뒤 그림 파일을 쓰거나 지운다. 새로 만든 파일은 `created`에 더한다(실패하면 지우고, "쓰기 전으로 복원…"도 지운다).
-    /// 바꾸기·지우기의 옛 파일은 백업에 있어 실패하면 `restoreAnalysis`가 되살린다. 쓴 뒤 `artwork.jpg`의 MD5·크기가 파일 행과 같은지 본다.
-    static func writeArtworkFiles(_ expected: ArtworkExpectation, created: inout [URL]) throws {
-        let fm = FileManager.default
-        let plan = expected.plan
-        func fail(_ reason: String) -> DJCError { .writeVerificationFailed("\(reason) (\(plan.title))") }
-        // 확인한 뒤 링크가 생겼어도 share 밖에 쓰거나 지우지 않는다.
-        guard !(plan.files.map(\.0) + plan.existing.map(\.0)).contains(where: { hasSymlinkComponent($0, under: plan.share) }) else {
-            throw fail(artworkLinkReason)
-        }
-        switch plan.kind {
-        case .add, .replace:
-            for (url, data) in plan.files {
-                let existed = fm.fileExists(atPath: url.path)
-                if plan.kind == .add, existed { throw fail(String(ui: "파일이 이미 있습니다: \(url.lastPathComponent)")) }
-                try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try data.write(to: url, options: .atomic)
-                if !existed { created.append(url) }
-                guard try Data(contentsOf: url) == data else { throw fail(String(ui: "파일 확인 실패: \(url.lastPathComponent)")) }
-            }
-            guard let full = plan.files.first, case .text(md5(try Data(contentsOf: full.0)))? = expected.file?["Hash"],
-                  case .int(try Data(contentsOf: full.0).count)? = expected.file?["Size"] else {
-                throw fail(String(ui: "앨범아트 파일과 앨범아트 기록의 해시·크기가 다릅니다"))
-            }
-        case .delete:
-            // 폴더는 남긴다(묶음 2 S3·#173 S2 U09)
-            for (url, _) in plan.existing where fm.fileExists(atPath: url.path) { try fm.removeItem(at: url) }
-            guard plan.existing.allSatisfy({ !fm.fileExists(atPath: $0.0.path) }) else { throw fail(String(ui: "앨범아트 파일을 지우지 못했습니다")) }
-        }
-    }
-
-    /// 바꾸거나 지운 옛 그림을 원래 바이트로 되돌린다(쓰기 실패 뒤). 그대로인 파일은 건드리지 않는다(잠긴 폴더에서 쓰기 전에 실패한 경우).
-    static func restoreArtworkFiles(_ expectations: [ArtworkExpectation]) throws {
-        let files = expectations.flatMap(\.plan.existing).filter { (try? Data(contentsOf: $0.0)) != $0.1 }
-        try each(files) { url, original in
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try original.write(to: url, options: .atomic)
         }
     }
 

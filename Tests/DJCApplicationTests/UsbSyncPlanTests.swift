@@ -344,9 +344,60 @@ struct UsbSyncPlanTests {
         let desired = UsbSyncPlan.selectedLayout(source, selection: ITunesSyncSelection(selectedIDs: ["0"]))
         let preview = try UsbSyncPlan.playlistPlan(desired: desired, library: usb, bindings: bindings, linkedPlaylistIDs: linked,
                                                    newKey: { "renamed" })
-        #expect(preview.marks == ["new:renamed": .created, "12": .moved, "11": .unlinked])
+        // 지울 목록 Z(13)도 표시를 받는다(#313): 동기화 후 보기가 새로 만들 목록과 지울 목록을 한 트리에서 보인다
+        #expect(preview.marks == ["new:renamed": .created, "12": .moved, "11": .unlinked, "13": .deleted])
         #expect(preview.deleted.map(\.name) == ["Z"])
         #expect(preview.result.outline.map(\.id) == ["10", "11", "new:renamed", "12"])
+        // 지울 Z(13)는 지우기 전 맨 위 순서(폴더, Z, 옮긴 Y) 그대로 폴더와 옮긴 Y 사이에 남는다
+        #expect(preview.previewLayout.outline.map(\.id) == ["10", "11", "new:renamed", "13", "12"])
+    }
+
+    @Test("동기화 후 미리 보기는 지울 목록을 원래 자리에 남기고 지운 뒤의 결과 트리와 쓰기 편집은 바꾸지 않는다")
+    func previewKeepsDeletedPlaylistsInPlace() throws {
+        // 폴더(10)의 A(11)·B(12)·C(13)와 맨 위 X(14). B와 X를 선택에서 뺐다.
+        let source = layout([item("folder", "폴더", folder: true), item("a", "A", parent: "folder"), item("c", "C", parent: "folder")])
+        let usb = library([playlist(10, "폴더", folder: true), playlist(11, "A", parent: 10), playlist(12, "B", parent: 10, order: 1),
+                           playlist(13, "C", parent: 10, order: 2), playlist(14, "X", order: 1)])
+        let linked = ["folder": 10, "a": 11, "b": 12, "c": 13, "x": 14]
+        let bindings = linked.mapValues { UsbSyncPlaylistBinding(usbID: $0, path: [], isFolder: $0 == 10) }
+        let desired = UsbSyncPlan.selectedLayout(source, selection: ITunesSyncSelection(selectedIDs: ["folder"]))
+        let preview = try UsbSyncPlan.playlistPlan(desired: desired, library: usb, bindings: bindings, linkedPlaylistIDs: linked,
+                                                   newKey: { "never" })
+        #expect(preview.edits == [.delete(playlist: .id("12")), .delete(playlist: .id("14"))])
+        #expect(preview.result.outline.map(\.id) == ["10", "11", "13"])
+        // 지울 B는 A와 C 사이, 지울 X는 폴더 뒤 원래 자리
+        #expect(preview.previewLayout.outline.map(\.id) == ["10", "11", "12", "13", "14"])
+        #expect(preview.previewLayout.item("12")?.parentID == "10" && preview.previewLayout.item("14")?.parentID == PlaylistLayout.root)
+        #expect(preview.marks == ["12": .deleted, "14": .deleted])
+    }
+
+    @Test("지울 폴더는 안에 든 목록까지 지움 표시로 남긴다")
+    func previewKeepsDeletedFolderWithItsChildren() throws {
+        let source = layout([item("keep", "유지")])
+        let usb = library([playlist(10, "폴더", folder: true), playlist(11, "A", parent: 10), playlist(12, "하위", parent: 10, folder: true, order: 1),
+                           playlist(13, "B", parent: 12), playlist(14, "유지", order: 1)])
+        let linked = ["folder": 10, "a": 11, "sub": 12, "b": 13, "keep": 14]
+        let bindings = linked.mapValues { UsbSyncPlaylistBinding(usbID: $0, path: [], isFolder: [10, 12].contains($0)) }
+        let desired = UsbSyncPlan.selectedLayout(source, selection: ITunesSyncSelection(selectedIDs: ["keep"]))
+        let preview = try UsbSyncPlan.playlistPlan(desired: desired, library: usb, bindings: bindings, linkedPlaylistIDs: linked,
+                                                   newKey: { "never" })
+        #expect(preview.deleted.map(\.id) == ["10"])
+        #expect(preview.result.outline.map(\.id) == ["14"])
+        #expect(preview.previewLayout.outline.map(\.id) == ["10", "11", "12", "13", "14"])
+        #expect(preview.marks == ["10": .deleted, "11": .deleted, "12": .deleted, "13": .deleted])
+    }
+
+    @Test("지울 목록이 없으면 미리 보기 트리는 결과 트리와 같다")
+    func previewEqualsResultWithoutDeletions() throws {
+        let source = layout([item("a", "A")])
+        let usb = library([playlist(10, "A"), playlist(11, "연결 없음", order: 1)])
+        let desired = UsbSyncPlan.selectedLayout(source, selection: ITunesSyncSelection(selectedIDs: ["a"]))
+        let preview = try UsbSyncPlan.playlistPlan(desired: desired, library: usb,
+                                                   bindings: ["a": .init(usbID: 10, path: ["A"], isFolder: false)],
+                                                   linkedPlaylistIDs: ["a": 10], newKey: { "never" })
+        #expect(preview.deleted.isEmpty)
+        #expect(preview.previewLayout == preview.result)
+        #expect(preview.marks == ["11": .unlinked])
     }
 
     @Test("이은 목록끼리만 원본 순서로 맞추고 남은 목록은 그 자리에 둔다")

@@ -89,7 +89,7 @@ struct TrackListTagEditingRulesTests {
                 #expect(TrackListTagEditing.unavailableReason(subject, key: key)?.contains(words) == true, "\(subject.track.id) \(key)")
             }
             // 아직 초안이 없는 칸에서 "초안을 버리세요"라고 하지 않는다
-            #expect(TrackListTagEditing.unavailableReason(subject, key: .rating)?.contains("초안") != true)
+            #expect(TrackListTagEditing.unavailableReason(subject, key: .rating)?.contains("편집을 버리세요") != true)
             // 다른 태그 칸은 예전과 같다(스트리밍만 막는다)
             #expect((TrackListTagEditing.unavailableReason(subject, key: .title) == nil) == !subject.track.isStreaming)
         }

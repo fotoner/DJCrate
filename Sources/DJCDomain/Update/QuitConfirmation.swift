@@ -16,7 +16,7 @@ public struct PendingWriteCount: Equatable, Sendable {
 
     /// 「쓰기 대기 N건」. 곡이 없고 재생 목록 편집만 있으면 「재생 목록 편집 N건」
     public var text: String {
-        items > 0 ? String(ui: "쓰기 대기 \(items)건") : String(ui: "재생 목록 편집 \(playlistEdits)건")
+        items > 0 ? String(ui: "저장 대기 \(items)건") : String(ui: "재생 목록 편집 \(playlistEdits)건")
     }
 }
 
@@ -81,7 +81,7 @@ public struct QuitConfirmation: Equatable, Sendable {
         self.pending = pending
     }
 
-    public var title: String { String(ui: "쓰기 대기가 남아 있습니다") }
+    public var title: String { String(ui: "저장 대기가 남아 있습니다") }
 
     /// 본문. 수와 단위는 상태 줄 칩과 같다(곡이 있으면 「쓰기 대기 N건」, 재생 목록 편집만이면 「재생 목록 편집 N건」)
     public var message: String {
@@ -89,13 +89,13 @@ public struct QuitConfirmation: Equatable, Sendable {
         let count = playlistOnly ? pending.playlistEdits : pending.items
         switch (running, playlistOnly) {
         case (.rekordbox, false):
-            return String(ui: "rekordbox가 켜져 있어 쓰기 대기 \(count)건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 쓰세요")
+            return String(ui: "rekordbox가 켜져 있어 저장 대기 \(count)건을 아직 rekordbox에 저장하지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 저장하세요")
         case (.rekordbox, true):
-            return String(ui: "rekordbox가 켜져 있어 재생 목록 편집 \(count)건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 쓰세요")
+            return String(ui: "rekordbox가 켜져 있어 재생 목록 편집 \(count)건을 아직 rekordbox에 저장하지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordbox를 끈 뒤 DJCrate에서 저장하세요")
         case (.agentOnly, false):
-            return String(ui: "rekordboxAgent가 켜져 있어 쓰기 대기 \(count)건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordboxAgent를 종료한 뒤 DJCrate에서 쓰세요")
+            return String(ui: "rekordboxAgent가 켜져 있어 저장 대기 \(count)건을 아직 rekordbox에 저장하지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordboxAgent를 종료한 뒤 DJCrate에서 저장하세요")
         case (.agentOnly, true):
-            return String(ui: "rekordboxAgent가 켜져 있어 재생 목록 편집 \(count)건을 아직 rekordbox에 쓰지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordboxAgent를 종료한 뒤 DJCrate에서 쓰세요")
+            return String(ui: "rekordboxAgent가 켜져 있어 재생 목록 편집 \(count)건을 아직 rekordbox에 저장하지 않았습니다. 편집은 DJCrate에 남아 있으니 rekordboxAgent를 종료한 뒤 DJCrate에서 저장하세요")
         }
     }
 

@@ -49,7 +49,7 @@ public enum RekordboxPointSnapshot {
         let live = writeGuard.isLive(database)
         let share = try resolvedShare(database, shareRoot: shareRoot, guard: writeGuard)
         if live, writeGuard.isRekordboxRunning() {
-            throw DJCError.writeRefused(String(ui: "rekordbox가 켜져 있어 시점 스냅샷을 남기지 않았습니다. rekordbox를 완전히 종료한 뒤 다시 누르세요"))
+            throw DJCError.writeRefused(String(ui: "rekordbox가 켜져 있어 복원 시점을 남기지 않았습니다. rekordbox를 완전히 종료한 뒤 다시 누르세요"))
         }
         guard fm.fileExists(atPath: database.path) else {
             throw DJCError.writeRefused(String(ui: "rekordbox 라이브러리(master.db)를 찾지 못했습니다. rekordbox 폴더를 확인하세요"))
@@ -85,7 +85,7 @@ public enum RekordboxPointSnapshot {
             guard before[.size] as? Int == after[.size] as? Int,
                   before[.modificationDate] as? Date == after[.modificationDate] as? Date,
                   !(live && writeGuard.isRekordboxRunning()) else {
-                throw DJCError.writeRefused(String(ui: "스냅샷을 뜨는 동안 rekordbox 라이브러리가 바뀌어 그 스냅샷은 버렸습니다. rekordbox를 종료한 채로 다시 누르세요"))
+                throw DJCError.writeRefused(String(ui: "복원 시점을 남기는 동안 rekordbox 라이브러리가 바뀌어 그 복원 시점은 버렸습니다. rekordbox를 종료한 채로 다시 누르세요"))
             }
             let copy = partial.appending(path: "master.db")
             var metadata = Metadata(name: trimmed, kind: kind, createdAt: now, items: items,
@@ -133,7 +133,7 @@ public enum RekordboxPointSnapshot {
 
     static func copyFile(_ source: URL, to destination: URL) throws {
         guard try FileManager.default.attributesOfItem(atPath: source.path)[.type] as? FileAttributeType == .typeRegular else {
-            throw DJCError.writeRefused(String(ui: "\(source.lastPathComponent)가 일반 파일이 아니라 스냅샷에 담지 않았습니다. rekordbox 폴더를 확인하세요"))
+            throw DJCError.writeRefused(String(ui: "\(source.lastPathComponent)가 일반 파일이 아니라 복원 시점에 담지 않았습니다. rekordbox 폴더를 확인하세요"))
         }
         try FileManager.default.copyItem(at: source, to: destination)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
@@ -143,7 +143,7 @@ public enum RekordboxPointSnapshot {
     static func isPlainDirectory(_ url: URL) throws -> Bool {
         guard let type = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType else { return false }
         guard type == .typeDirectory else {
-            throw DJCError.writeRefused(String(ui: "\(url.lastPathComponent) 폴더가 심볼릭 링크이거나 폴더가 아니라 스냅샷을 남기지 않았습니다. rekordbox 폴더를 확인하세요"))
+            throw DJCError.writeRefused(String(ui: "\(url.lastPathComponent) 폴더가 심볼릭 링크이거나 폴더가 아니라 복원 시점을 남기지 않았습니다. rekordbox 폴더를 확인하세요"))
         }
         return true
     }
@@ -153,7 +153,7 @@ public enum RekordboxPointSnapshot {
         let enumerator = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isSymbolicLinkKey])
         while let url = enumerator?.nextObject() as? URL {
             if (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
-                throw DJCError.writeRefused(String(ui: "분석·앨범아트 폴더에 심볼릭 링크(\(url.lastPathComponent))가 있어 스냅샷을 남기지 않았습니다. 링크를 정리한 뒤 다시 시도하세요"))
+                throw DJCError.writeRefused(String(ui: "분석·앨범아트 폴더에 심볼릭 링크(\(url.lastPathComponent))가 있어 복원 시점을 남기지 않았습니다. 링크를 정리한 뒤 다시 시도하세요"))
             }
         }
     }
@@ -243,7 +243,7 @@ public enum RekordboxPointSnapshot {
     public static func setPinned(_ pinned: Bool, _ entry: URL, in directory: URL) throws -> Entry {
         let folder = try owned(entry, in: directory)
         guard var metadata = metadata(in: folder) else {
-            throw DJCError.writeRefused(String(ui: "시점 스냅샷 정보(snapshot.json)를 읽지 못했습니다. 스냅샷 목록을 새로 고친 뒤 다시 고르세요"))
+            throw DJCError.writeRefused(String(ui: "복원 시점 정보(snapshot.json)를 읽지 못했습니다. 복원 시점 목록을 새로 고친 뒤 다시 고르세요"))
         }
         metadata.pinned = pinned
         try save(metadata, in: folder)
@@ -253,8 +253,15 @@ public enum RekordboxPointSnapshot {
     /// 사용자가 고른 스냅샷을 지운다. 고정한 스냅샷은 고정을 푼 뒤에만 지운다.
     public static func delete(_ entry: URL, in directory: URL) throws {
         let folder = try owned(entry, in: directory)
+        // 기록 핀 게시와 겹치지 않게 저장소 잠금 아래에서 본다(S8)
+        let hold = try RekordboxWriteLocks.lockStore(directory)
+        defer { hold?.release() }
         if metadata(in: folder)?.pinned == true {
-            throw DJCError.writeRefused(String(ui: "고정한 시점 스냅샷은 지우지 않습니다. 고정을 푼 뒤 지우세요"))
+            throw DJCError.writeRefused(String(ui: "고정한 복원 시점은 지우지 않습니다. 고정을 푼 뒤 지우세요"))
+        }
+        // 중단된 쓰기 기록이 가리키는 시점은 기록이 남은 동안 지우지 않는다(R11: 기록으로 복원이 그 시점을 다시 쓴다)
+        if RekordboxWriter.journalFolders(in: directory).contains(folder.lastPathComponent) {
+            throw DJCError.writeRefused(String(ui: "끝나지 않은 저장 기록이 이 복원 시점을 쓰고 있어 지우지 않습니다. 상태 줄에서 복원하거나 이대로 둔 뒤 지우세요"))
         }
         try FileManager.default.removeItem(at: folder)
     }
@@ -264,7 +271,7 @@ public enum RekordboxPointSnapshot {
         let parent = entry.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath()
         guard parent.path == directory.standardizedFileURL.resolvingSymlinksInPath().path, !entry.lastPathComponent.hasPrefix("."),
               (try? FileManager.default.attributesOfItem(atPath: entry.path))?[.type] as? FileAttributeType == .typeDirectory else {
-            throw DJCError.writeRefused(String(ui: "시점 스냅샷 폴더 밖의 항목은 고치지 않습니다. 목록에서 스냅샷을 고르세요"))
+            throw DJCError.writeRefused(String(ui: "복원 시점 폴더 밖의 항목은 고치지 않습니다. 목록에서 복원 시점을 고르세요"))
         }
         return entry
     }
@@ -274,6 +281,9 @@ public enum RekordboxPointSnapshot {
     /// 10분 넘은 반쯤 뜬 폴더도 치운다(뜨는 중인 것은 건드리지 않는다).
     @discardableResult
     public static func prune(in directory: URL, autoDays: Int, now: Date = .now) -> [URL] {
+        // 기록 핀 게시와 겹치지 않게 저장소 잠금 아래에서 한다(S8). 잡지 못하면 솎지 않는다
+        guard let hold = try? RekordboxWriteLocks.lockStore(directory) else { return [] }
+        defer { hold.release() }
         let fm = FileManager.default
         var removed: [URL] = []
         let entries = list(in: directory).filter { !$0.metadata.pinned }
@@ -283,7 +293,9 @@ public enum RekordboxPointSnapshot {
         let expired = list(in: directory).filter { $0.metadata.kind == .auto && $0.metadata.createdAt < cutoff }
         removed += expired.dropFirst().filter { !$0.metadata.pinned }.map(\.url)
         removed += entries.filter { $0.metadata.kind == .beforeRestore }.dropFirst(beforeRestoreToKeep).map(\.url)
-        removed = removed.filter { (try? fm.removeItem(at: $0)) != nil }
+        // 중단된 쓰기 기록이 가리키는 시점은 기록이 남은 동안 솎지 않는다(R11)
+        let protected = RekordboxWriter.journalFolders(in: directory)
+        removed = removed.filter { !protected.contains($0.lastPathComponent) && (try? fm.removeItem(at: $0)) != nil }
         for stale in (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.creationDateKey])) ?? []
         where stale.lastPathComponent.hasPrefix(".partial-") {
             let created = (try? stale.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantFuture

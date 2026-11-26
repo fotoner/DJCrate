@@ -76,7 +76,7 @@ struct TagInspectorModelTests {
         let a = Self.row("a"), b = Self.row("b", comment: "다른 코멘트")
         #expect(model.issues([a]) == nil && model.recoverableRow([a]) == nil)
         model.setText(.year, "올해", rows: [a])
-        #expect(model.issues([a]) == "연도를 숫자로 고친 뒤 rekordbox에 쓰세요")
+        #expect(model.issues([a]) == "연도를 숫자로 고친 뒤 rekordbox에 저장하세요")
         #expect(model.recoverableRow([a]) == a && model.recoverableRow([a, b]) == nil)
         #expect(!model.isRecoveringDraft)
         #expect(model.commentEvaluation([a]) == nil, "프리셋이 없으면 분류하지 않는다")

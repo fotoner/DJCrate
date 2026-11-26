@@ -5,43 +5,326 @@ import Synchronization
 /// 파일 없이 메모리에만 두는 초안 저장소(`DraftStore`의 메모리 구현). 유스케이스·화면 시험이 디스크·저장 큐 없이 쓴다.
 /// 실제 구현과 같은 규칙을 따른다(고친 것이 없는 초안 저장은 지우기, 게인 nil은 지우기). 저장은 바로 끝나고 실패하지 않는다.
 /// 같은 규칙인지는 DJCAdaptersTests의 계약 시험이 실제 구현과 함께 본다.
+///
+/// 초안마다 도장(출처·판·해시, R5·R22)을 적는다. 판은 이 저장소 전체에서 늘어나는 번호이고, 출처는 저장한 포트의 출처를 모은다.
+/// 바깥에서 고친 초안은 `editOutside`·`editPlaylistOutside`로 흉내 낸다(도장은 그대로, 내용만 바뀐다).
 public final class MemoryDrafts: Sendable {
     private struct State {
         var cues: [String: CueDraft] = [:]
         var grids: [String: GridDraft] = [:]
         var gains: [String: Double] = [:]
+        /// 게인 초안의 base(R23, 실제 저장소의 옆 파일과 같다)
+        var gainBases: [String: GainDraftBase] = [:]
         var tags: [String: TagDraft] = [:]
         var artwork: [String: ArtworkEdit] = [:]
         var playlist = PlaylistDraft()
         var merges: [DuplicateMergeDraft] = []
         var revision: UInt64 = 0
+        var stamps: [DraftKey: DraftStamp] = [:]
+        /// 업데이트 전 곡 초안 이관을 마쳤다(#295 E1)
+        var adoptedLegacy = false
+        /// 재생 목록 단계 도장 줄(실제 저장소의 사이드카와 같다: 단계 식별자별)
+        var playlistEntries: [PlaylistStampEntry] = []
+        /// 마지막으로 준 판(저장소 전체에서 늘어난다)
+        var lastDraftRevision: UInt64 = 0
+        /// 남긴 재생 목록 단계 사본(사본 자리 → 사본)
+        var playlistCopies: [URL: PlaylistStepCopy] = [:]
+        var failsPlaylistCopies = false
+
+        /// 저장한 초안의 도장을 새 판으로 바꾼다(내용이 nil이면 초안이 없어져 도장도 지운다)
+        mutating func restamp(_ key: DraftKey, hash: DraftContentHash?, origin: DraftOrigin) {
+            guard let hash else {
+                stamps[key] = nil
+                return
+            }
+            stamps[key] = newStamp(origins: (stamps[key]?.origins ?? []).union([origin]), hash: hash)
+        }
+
+        /// 그 초안을 제안으로 바꾼다: 출처에 모름을 더하고 지금 내용의 해시로 새 판을 준다. 새 판(초안이 없으면 nil)
+        mutating func markSuggestion(_ key: DraftKey) -> DraftRevision? {
+            guard let old = stamps[key] else { return nil }
+            let stamp = newStamp(origins: old.origins.union([.unknown]), hash: currentHash(key) ?? old.contentHash)
+            stamps[key] = stamp
+            return stamp.revision
+        }
+
+        /// 재생 목록 초안의 단계 식별자·도장을 맞춘다(실제 저장소의 `PlaylistStepStamping.adopt`와 같은 규칙, 읽을 때와 정리 앞에서 한다)
+        mutating func adoptPlaylist() -> PlaylistStepStamping.Result? {
+            var next = lastDraftRevision
+            guard let result = try? PlaylistStepStamping.adopt(playlist, entries: playlistEntries, newID: { MemoryCueIDs.next() },
+                                                               newRevision: { next += 1; return DraftRevision(next) }) else { return nil }
+            lastDraftRevision = next
+            playlist = result.draft
+            playlistEntries = result.entries
+            return result
+        }
+
+        mutating func newStamp(origins: Set<DraftOrigin>, hash: DraftContentHash) -> DraftStamp {
+            lastDraftRevision += 1
+            return DraftStamp(revision: DraftRevision(lastDraftRevision), origins: origins, contentHash: hash)
+        }
+
+        /// 지금 내용의 해시(초안이 없으면 nil)
+        func currentHash(_ key: DraftKey) -> DraftContentHash? {
+            switch key.kind {
+            case .cue: cues[key.id].flatMap { MemoryDrafts.hash($0) }
+            case .grid: grids[key.id].flatMap { MemoryDrafts.hash($0) }
+            case .gain: gains[key.id].flatMap { MemoryDrafts.hash($0) }
+            case .tag: tags[key.id].flatMap { MemoryDrafts.hash($0) }
+            case .artwork: artwork[key.id].flatMap { MemoryDrafts.hash($0) }
+            case .merge: merges.first(where: { $0.id == key.id }).flatMap { MemoryDrafts.hash($0) }
+            }
+        }
+
+        mutating func remove(_ key: DraftKey) {
+            switch key.kind {
+            case .cue: cues[key.id] = nil
+            case .grid: grids[key.id] = nil
+            case .gain: gains[key.id] = nil; gainBases[key.id] = nil
+            case .tag: tags[key.id] = nil
+            case .artwork: artwork[key.id] = nil
+            case .merge: merges.removeAll { $0.id == key.id }
+            }
+            stamps[key] = nil
+        }
     }
     private let state = Mutex(State())
 
     public init() {}
 
+    static func hash(_ value: some Encodable) -> DraftContentHash? { try? DraftContentHash(of: value) }
+    /// 그림 초안의 해시: 실제 저장소와 같은 함수(`DraftContentHash(artwork:)`, 그림 바이트는 넣지 않는다)
+    static func hash(_ edit: ArtworkEdit) -> DraftContentHash? { try? DraftContentHash(artwork: edit) }
+
     public func cue(_ uuid: String) -> CueDraft? { state.withLock { $0.cues[uuid] } }
     public func grid(_ uuid: String) -> GridDraft? { state.withLock { $0.grids[uuid] } }
     public func gain(_ uuid: String) -> Double? { state.withLock { $0.gains[uuid] } }
     public func tag(_ uuid: String) -> TagDraft? { state.withLock { $0.tags[uuid] } }
+    /// 초안의 도장(없으면 nil)
+    public func stamp(_ key: DraftKey) -> DraftStamp? { state.withLock { $0.stamps[key] } }
+    public var playlistStamps: [DraftStamp] { state.withLock { $0.adoptPlaylist()?.entries.map(\.stamp) ?? [] } }
 
-    public func save(_ draft: CueDraft) {
-        state.withLock { $0.revision += 1; $0.cues[draft.trackUUID] = draft.hasChanges ? draft : nil }
+    public func save(_ draft: CueDraft, origin: DraftOrigin = .human) {
+        state.withLock {
+            $0.revision += 1
+            $0.cues[draft.trackUUID] = draft.hasChanges ? draft : nil
+            $0.restamp(DraftKey(.cue, draft.trackUUID), hash: draft.hasChanges ? Self.hash(draft) : nil, origin: origin)
+        }
     }
-    public func save(_ draft: GridDraft) {
-        state.withLock { $0.revision += 1; $0.grids[draft.trackUUID] = draft.hasChanges ? draft : nil }
+    public func save(_ draft: GridDraft, origin: DraftOrigin = .human) {
+        state.withLock {
+            $0.revision += 1
+            $0.grids[draft.trackUUID] = draft.hasChanges ? draft : nil
+            $0.restamp(DraftKey(.grid, draft.trackUUID), hash: draft.hasChanges ? Self.hash(draft) : nil, origin: origin)
+        }
     }
-    public func save(gain: Double?, _ uuid: String) {
-        state.withLock { $0.revision += 1; $0.gains[uuid] = gain }
+    /// 게인 초안(nil이면 지우기: base도 지운다. 값만 바꾸면 base는 그대로다)
+    public func save(gain: Double?, _ uuid: String, origin: DraftOrigin = .human) {
+        state.withLock {
+            $0.revision += 1
+            $0.gains[uuid] = gain
+            if gain == nil { $0.gainBases[uuid] = nil }
+            $0.restamp(DraftKey(.gain, uuid), hash: gain.flatMap { Self.hash($0) }, origin: origin)
+        }
     }
-    public func save(_ draft: TagDraft) {
-        state.withLock { $0.tags[draft.trackUUID] = draft.hasChanges ? draft : nil }
+    /// base와 함께 게인 초안을 저장한다(R23): 값을 저장한 뒤 base를 그 값의 판에 묶는다. 실행 경계는 이 저장소의 지금 경계다
+    public func save(gain: Double?, base: Double?, _ uuid: String, origin: DraftOrigin = .human) {
+        save(gain: gain, uuid, origin: origin)
+        if gain != nil { saveGainBase(base.map { GainDraftBase(db: $0, run: runEpoch.current) }, uuid) }
+    }
+    /// 게인 초안의 base(R23, nil이면 지운다). 실제 저장소처럼 지금 값의 판에 묶고, 이미 있으면 값·경계는 그대로 둔다
+    public func saveGainBase(_ base: GainDraftBase?, _ uuid: String) {
+        state.withLock { state in
+            guard let base else {
+                state.gainBases[uuid] = nil
+                return
+            }
+            var entry = state.gainBases[uuid] ?? base
+            entry.revision = state.stamps[DraftKey(.gain, uuid)]?.revision
+            state.gainBases[uuid] = entry
+        }
+    }
+    public func gainBase(_ uuid: String) -> GainDraftBase? { state.withLock { $0.gainBases[uuid] } }
+    /// rekordbox 실행 경계(R23): 자동 저장 엔진 시험이 rekordbox 켜짐·꺼짐을 넘긴다
+    public let runEpoch = RekordboxRunEpoch(session: "memory")
+    public func save(_ draft: TagDraft, origin: DraftOrigin = .human) {
+        state.withLock {
+            $0.tags[draft.trackUUID] = draft.hasChanges ? draft : nil
+            $0.restamp(DraftKey(.tag, draft.trackUUID), hash: draft.hasChanges ? Self.hash(draft) : nil, origin: origin)
+        }
     }
     public func removeGrid(_ uuid: String) { save(GridDraft(trackUUID: uuid, base: [], segments: [])) }
 
-    /// 이 메모리 초안을 읽고 쓰는 포트
-    public var store: DraftStore {
-        DraftStore(
+    /// 바깥(다른 프로세스)이 초안 파일만 고친 것처럼 한다: 내용만 바뀌고 도장은 그대로다(해시가 기록과 어긋난다)
+    public func editOutside(_ draft: CueDraft) { state.withLock { $0.cues[draft.trackUUID] = draft } }
+    public func editOutside(_ draft: GridDraft) { state.withLock { $0.grids[draft.trackUUID] = draft } }
+    public func editOutside(_ draft: TagDraft) { state.withLock { $0.tags[draft.trackUUID] = draft } }
+    public func editOutside(gain: Double, _ uuid: String) { state.withLock { $0.gains[uuid] = gain } }
+
+    private func saveArtwork(_ edit: ArtworkEdit, origin: DraftOrigin) {
+        state.withLock {
+            $0.artwork[edit.trackUUID] = edit
+            $0.restamp(DraftKey(.artwork, edit.trackUUID), hash: Self.hash(edit), origin: origin)
+        }
+    }
+
+    private func removeArtwork(_ uuid: String) {
+        state.withLock {
+            $0.artwork[uuid] = nil
+            $0.stamps[DraftKey(.artwork, uuid)] = nil
+        }
+    }
+
+    /// 합치기 초안 목록을 통째로 저장한다: 내용이 같은 초안은 도장을 그대로 두고, 바뀌거나 새로 든 초안만 새 판을 받는다
+    private func saveMerges(_ drafts: [DuplicateMergeDraft], origin: DraftOrigin) {
+        state.withLock { state in
+            let ids = Set(drafts.map(\.id))
+            for key in state.stamps.keys where key.kind == .merge && !ids.contains(key.id) { state.stamps[key] = nil }
+            for draft in drafts {
+                let key = DraftKey(.merge, draft.id), hash = Self.hash(draft)
+                if let old = state.stamps[key], old.contentHash == hash { continue }
+                state.restamp(key, hash: hash, origin: origin)
+            }
+            state.merges = drafts
+        }
+    }
+
+    /// 그 판의 초안을 제안으로 바꾼다(`DraftStore.markSuggestions`의 규칙)
+    public func markSuggestions(_ drafts: [WrittenDraft], playlistSteps: Set<DraftRevision>) -> [DraftRevision: DraftRevision] {
+        state.withLock { state in
+            var marked: [DraftRevision: DraftRevision] = [:]
+            for item in drafts where state.stamps[item.key]?.revision == item.revision {
+                marked[item.revision] = state.markSuggestion(item.key)
+            }
+            if !playlistSteps.isEmpty, let adopted = state.adoptPlaylist() {
+                for index in adopted.entries.indices where playlistSteps.contains(adopted.entries[index].stamp.revision) {
+                    let old = adopted.entries[index].stamp
+                    let hash = Self.stepHash(state.playlist.steps[index], in: state.playlist)
+                    state.playlistEntries[index].stamp = state.newStamp(origins: old.origins.union([.unknown]), hash: hash)
+                    marked[old.revision] = state.playlistEntries[index].stamp.revision
+                }
+            }
+            return marked
+        }
+    }
+
+    /// 재생 목록 단계의 해시(단계와 그 단계가 기대는 base, 실제 저장소와 같은 함수)
+    static func stepHash(_ step: PlaylistDraft.Step, in draft: PlaylistDraft) -> DraftContentHash {
+        (try? DraftContentHash(step: step, in: draft)) ?? DraftContentHash(hex: "")
+    }
+
+    /// 재생 목록 초안을 통째로 저장한다: 단계 식별자를 맞추고 도장을 갱신한다(실제 저장소와 같은 `PlaylistStepStamping.save`)
+    private func savePlaylist(_ draft: PlaylistDraft, origin: DraftOrigin, freshOrigins: [Int: Set<DraftOrigin>] = [:]) {
+        state.withLock { state in
+            var next = state.lastDraftRevision
+            guard let result = try? PlaylistStepStamping.save(draft, previous: state.playlist, entries: state.playlistEntries, origin: origin,
+                                                              freshOrigins: freshOrigins, newID: { MemoryCueIDs.next() },
+                                                              newRevision: { next += 1; return DraftRevision(next) }) else { return }
+            state.lastDraftRevision = next
+            state.playlist = result.draft
+            state.playlistEntries = result.entries
+        }
+    }
+
+    /// 바깥(다른 프로세스)이 재생 목록 초안 파일만 고친 것처럼 한다: 도장은 그대로 두고 내용만 바꾼다. 바깥 도구는 단계 식별자를 모를 수 있어
+    /// 넘긴 초안의 식별자를 그대로 쓴다(없으면 파일에 식별자가 없는 것과 같다)
+    public func editPlaylistOutside(_ draft: PlaylistDraft) {
+        state.withLock { $0.playlist = draft }
+    }
+
+    /// 남긴 재생 목록 단계 사본(사본 자리 → 사본). 실제 구현은 백업 폴더의 파일이다
+    public var playlistCopies: [URL: PlaylistStepCopy] { state.withLock { $0.playlistCopies } }
+    /// 재생 목록 단계 사본 남기기를 실패하게 한다(R22 실패 주입)
+    public func failPlaylistCopies(_ fails: Bool = true) { state.withLock { $0.failsPlaylistCopies = fails } }
+
+    /// 판 지정 삭제(`DraftStore.removeWritten`의 규칙)
+    public func removeWritten(_ written: [WrittenDraft]) -> DraftRemoval {
+        state.withLock { state in
+            var result = DraftRemoval()
+            for item in written {
+                guard let stamp = state.stamps[item.key], stamp.revision == item.revision, let current = state.currentHash(item.key) else {
+                    result.kept.append(item)
+                    continue
+                }
+                if current == item.contentHash {
+                    state.remove(item.key)
+                    result.removed.append(item)
+                } else {
+                    // 바깥에서 고친 초안: 같은 잠금 안에서 새 판을 주고 제안으로 기록한다(내용이 저장 당시로 돌아와도,
+                    // 같은 미정리 목록으로 정리를 다시 해도 지우지 않는다)
+                    _ = state.markSuggestion(item.key)
+                    result.suggested.append(item)
+                }
+            }
+            return result
+        }
+    }
+
+    /// 쓴 재생 목록 단계 정리(`DraftStore.removeWrittenSteps`의 규칙). 연결 ID 옮기기는 하지 않는다(쓴 뒤 정리 `EditPlaylists`가 남은 단계에 옮긴다)
+    public func removeWrittenSteps(_ cleanup: PlaylistStepCleanup) -> PlaylistStepRemoval {
+        state.withLock { state in
+            var result = PlaylistStepRemoval()
+            guard let adopted = state.adoptPlaylist() else { return result }
+            var offsets: [Int] = []
+            for written in cleanup.written {
+                guard let offset = adopted.entries.firstIndex(where: { $0.stamp.revision == written.revision }) else {
+                    result.notFound.insert(written.revision)
+                    continue
+                }
+                let step = state.playlist.steps[offset]
+                let current = Self.stepHash(step, in: state.playlist)
+                if current != written.contentHash {
+                    // 바깥에서 고친 단계: 사본을 남긴 뒤에만 뺀다
+                    guard !state.failsPlaylistCopies else {
+                        result.copyFailed.insert(written.revision)
+                        continue
+                    }
+                    let playlistID: String? = switch step.edit.playlist {
+                    case let .id(id): id
+                    case .new: cleanup.newPlaylistIDs[step.edit.playlist.description]
+                    case .root: nil
+                    }
+                    let depends = Set(step.depends)
+                    let url = PlaylistStepCopy.url(folder: cleanup.copyFolder, revision: written.revision)
+                    state.playlistCopies[url] = PlaylistStepCopy(revision: written.revision, playlistID: playlistID, step: step,
+                                                                 base: state.playlist.base.filter { depends.contains($0.key) },
+                                                                 writtenHash: written.contentHash, currentHash: current)
+                    result.copied[written.revision] = url
+                }
+                offsets.append(offset)
+                result.removed.insert(written.revision)
+            }
+            let removing = Set(offsets)
+            state.playlist.removeSteps(at: offsets.sorted())
+            state.playlistEntries = state.playlistEntries.enumerated().filter { !removing.contains($0.offset) }.map(\.element)
+            return result
+        }
+    }
+
+    /// 업데이트 전 곡 초안 이관(#295 E1)의 메모리 구현: 도장 없는 큐·그리드·태그·게인 초안에 사람 편집 도장을 한 번 붙인다
+    /// (표지·완료 기록의 세부 규칙은 실제 구현 `LegacyDraftAdoption`이 DJCStorageTests에서 본다). 두 번째부터는 빈 배열
+    public func adoptLegacyDrafts() -> [DraftKey] {
+        state.withLock { state in
+            guard !state.adoptedLegacy else { return [] }
+            state.adoptedLegacy = true
+            let keys = state.cues.keys.map { DraftKey(.cue, $0) } + state.grids.keys.map { DraftKey(.grid, $0) }
+                + state.tags.keys.map { DraftKey(.tag, $0) } + state.gains.keys.map { DraftKey(.gain, $0) }
+            var adopted: [DraftKey] = []
+            for key in keys.sorted() where state.stamps[key] == nil {
+                guard let hash = state.currentHash(key) else { continue }
+                state.stamps[key] = state.newStamp(origins: [.human], hash: hash)
+                adopted.append(key)
+            }
+            return adopted
+        }
+    }
+
+    /// 이 메모리 초안을 사람 편집으로 읽고 쓰는 포트(앱의 편집 포트와 같다)
+    public var store: DraftStore { store(origin: .human) }
+
+    /// 이 메모리 초안을 그 출처로 읽고 쓰는 포트
+    public func store(origin: DraftOrigin) -> DraftStore {
+        var store = DraftStore(
             flush: {},
             saveRevision: { self.state.withLock { $0.revision } },
             failures: { [] },
@@ -56,29 +339,42 @@ public final class MemoryDrafts: Sendable {
             cueDraftUUIDs: { Set(self.state.withLock { $0.cues.keys }) },
             cueDraft: { self.cue($0) },
             pendingCue: { _ in nil },
-            saveCue: { draft, completion in self.save(draft); completion(nil) },
+            saveCue: { draft, completion in self.save(draft, origin: origin); completion(nil) },
             gridDraftUUIDs: { Set(self.state.withLock { $0.grids.keys }) },
             gridDraft: { self.grid($0) },
             pendingGrid: { _ in nil },
-            saveGrid: { draft, completion in self.save(draft); completion(nil) },
+            saveGrid: { draft, completion in self.save(draft, origin: origin); completion(nil) },
             gainDraftUUIDs: { Set(self.state.withLock { $0.gains.keys }) },
             gainDrafts: { self.state.withLock { $0.gains } },
             pendingGain: { _ in nil },
-            saveGain: { gain, uuid, completion in self.save(gain: gain, uuid); completion(nil) },
+            saveGain: { gain, uuid, completion in self.save(gain: gain, uuid, origin: origin); completion(nil) },
             tagDraftUUIDs: { Set(self.state.withLock { $0.tags.keys }) },
             tagDraft: { self.tag($0) },
-            saveTags: { drafts in for draft in drafts { self.save(draft) } },
+            saveTags: { drafts in for draft in drafts { self.save(draft, origin: origin) } },
             artworkDraftUUIDs: { Set(self.state.withLock { $0.artwork.keys }) },
             artworkDrafts: { self.state.withLock { $0.artwork.mapValues(\.draft) } },
             artworkEdit: { uuid in self.state.withLock { $0.artwork[uuid] } },
-            saveArtwork: { edit in self.state.withLock { $0.artwork[edit.trackUUID] = edit } },
-            removeArtwork: { uuid in self.state.withLock { $0.artwork[uuid] = nil } },
-            playlistDraft: { self.state.withLock { $0.playlist } },
-            readPlaylistDraft: { self.state.withLock { $0.playlist } },
-            savePlaylistDraft: { draft in self.state.withLock { $0.playlist = draft } },
+            saveArtwork: { edit in self.saveArtwork(edit, origin: origin) },
+            removeArtwork: { uuid in self.removeArtwork(uuid) },
+            playlistDraft: { self.state.withLock { $0.adoptPlaylist()?.draft ?? $0.playlist } },
+            readPlaylistDraft: { self.state.withLock { $0.adoptPlaylist()?.draft ?? $0.playlist } },
+            savePlaylistDraft: { draft in self.savePlaylist(draft, origin: origin) },
             mergeDrafts: { self.state.withLock { $0.merges } },
-            saveMergeDrafts: { drafts in self.state.withLock { $0.merges = drafts } },
+            saveMergeDrafts: { drafts in self.saveMerges(drafts, origin: origin) },
             newCueID: { MemoryCueIDs.next() })
+        store.origin = origin
+        store.gainBases = { self.state.withLock { $0.gainBases } }
+        store.saveGainBase = { base, uuid in self.saveGainBase(base, uuid) }
+        store.runEpoch = runEpoch
+        store.originVariant = { self.store(origin: $0) }
+        store.stamp = { self.stamp($0) }
+        store.playlistStamps = { self.playlistStamps }
+        store.removeWritten = { self.removeWritten($0) }
+        store.removeWrittenSteps = { self.removeWrittenSteps($0) }
+        store.markSuggestions = { self.markSuggestions($0, playlistSteps: $1) }
+        store.adoptLegacyDrafts = { self.adoptLegacyDrafts() }
+        store.savePlaylistDraftOrigins = { draft, origins in self.savePlaylist(draft, origin: origin, freshOrigins: origins) }
+        return store
     }
 }
 

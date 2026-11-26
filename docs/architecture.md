@@ -138,7 +138,7 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 | import 예외 | 조립 지점은 파일 이름 목록 `ASSEMBLY_FILES` 5개다. 아래 층을 모두 import한다 |
 | import 예외 | 디버그 자가 테스트(`Sources/DJCrate/Diagnostics/`), 실험 명령(`Sources/djc/Lab/`)은 `BROAD_FOLDERS`에 적은 import만 더 받는다 |
 | import 제한 | 외부 모듈 Sparkle은 `EXTERNAL_FILES`에 적은 파일 하나(`Sources/DJCrate/App/AppUpdater.swift`)만 import한다. 화면 모델과 핵심부로 번지지 않게 한다 |
-| import 제한 | DJLinkKit 패키지의 제품(`DJLinkKit`·`DJLinkControl`·`DJLinkPassive`·`DJLinkExport`)은 DJCLink만 import한다. DJCLink도 `ALLOWED`에 적은 제품만 쓴다 |
+| import 제한 | DJLinkKit 패키지 타깃은 DJCLink만 import한다. 패키지 전체는 `DJLINK_MODULES`에, 실제로 쓰는 제품과 내부 타깃은 `ALLOWED["DJCLink"]`에 적는다 |
 | api | 핵심부(DJCDomain·DJCApplication)는 `FileManager`, `ProcessInfo`, `UserDefaults`를 직접 쓰지 않는다 |
 | api | 핵심부는 `Bundle` 타입, `Date()`·`Date.now`, `UUID()`도 직접 쓰지 않는다. `.init()` 꼴도 같다. 시계·ID·환경·파일·번들은 포트나 주입으로 받는다 |
 | api | 핵심부는 `Locale`·`TimeZone`·`Calendar`의 `.current`·`.autoupdatingCurrent`를 쓰지 않는다. 타입 없이 쓴 `.main`·`.current`·`.now`도 쓰지 않는다 |
@@ -312,9 +312,20 @@ DJCApplication은 기능별 폴더에 유스케이스와 포트를 둔다. 유�
 
 DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HOME`으로 이 자리를 바꾼다. 시험 프로세스는 임시 폴더를 쓴다. 로그는 `~/Library/Logs/DJCrate/`에 있다. 환경 변수는 `docs/cli.md` "환경 변수"에 있다.
 
-- 초안: `cue-drafts/`, `grid-drafts/`, `gain-drafts.json`, `tag-drafts/`
+- 초안: `cue-drafts/`, `grid-drafts/`, `gain-drafts.json`(base는 `gain-draft-bases.json`), `tag-drafts/`
 - 앨범아트 초안: `artwork-drafts/`. 앨범아트 초안과 고른 앨범아트 사본이 있다.
 - 재생 목록 초안: `playlist-drafts.json`. 재생 목록 편집을 순서대로 적는다. 옆의 `playlist-drafts.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다.
+- 초안 도장: `draft-stamps/`. 초안마다 출처, 판, 내용 해시를 적는다.
+  - 판은 저장할 때마다 새로 받는 번호다.
+  - 옆의 `draft-stamps.lock`은 앱과 CLI가 함께 쓰는 잠금 파일이다. 판을 받을 때와 쓴 판을 지울 때 잡는다.
+  - 재생 목록 단계는 단계마다 식별자 `id`를 `playlist-drafts.json`에 적는다. 도장은 그 식별자로 단계를 잇는다.
+  - 단계를 확인할 수 없으면 옛 판을 붙이지 않는다. 그 단계는 새 판과 모름 출처를 받는다.
+  - 식별자가 없는 옛 파일은 앱이 읽을 때와 CLI가 단계를 쌓기 전에 식별자를 채워 적는다.
+  - 도장이 없는 초안은 출처를 모르는 초안이다. 앱이 자동으로 쓰지 않는다.
+  - 예외는 업데이트 전 곡 초안이다(#295). 자동 저장하는 앱은 처음 켤 때 한 번 그 초안에 사람 편집 출처를 붙인다. 첫 읽기 전에 한다.
+    - 대상은 도장이 없는 큐, 그리드, 태그, 게인 초안이다. 재생 목록 단계는 붙이지 않는다.
+    - 표지는 `legacy-drafts-adopted.json`이다. 표지에 대상과 해시를 먼저 적는다. 그다음 도장을 붙인다. 끝나면 완료를 적는다.
+    - 그 뒤에 생긴 도장 없는 초안은 붙이지 않는다.
 - `damaged-drafts/`: 읽지 못한 초안 파일을 옮겨 둔 곳이다. 그 파일을 지우지 않는다. 빈 값으로 덮지도 않는다. 합치기 초안 `merge-drafts.json`과 추가 목록 `staged.json`도 여기로 옮긴다. 앱은 읽기·저장 때 파일을 옮긴 뒤 창 아래 알림으로 알린다.
 - 추가한 곡: `staged.json`
 - 활동 기록: `activity-log.json`(권한 0600). 창 알림과 쓰기 결과의 최근 200건이다.
@@ -324,7 +335,7 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - 쓰기 전 백업: `rekordbox-backups/`
 - 시점 스냅샷: `point-snapshots/`(#224)
 - 캐시: `analysis/`, `waveforms/`, `loudness.json`
-- LINK WAV 변환본: 데이터 폴더가 아니라 `~/Music/DJCrate/LINK`다. `DJC_HOME`이 있으면 그 안 `link-audio/`다. CDJ가 NFS로 읽으므로 음원이 보통 있는 음악 폴더에 둔다(#277·#287).
+- LINK WAV 변환본은 [LINK의 WAV 변환](#link의-wav-변환)에 있다.
 - USB 백업과 초안: `usb-backups/`, `usb-drafts/`
 - USB DB의 Mac 사본: `usb-snapshots/`
 - USB 시점 스냅샷: `usb-point-snapshots/<볼륨>/`(#226). 사용자가 남긴 것이라 캐시가 아니다.
@@ -333,6 +344,26 @@ DJCrate 데이터는 `~/Library/Application Support/DJCrate/`에 있다. `DJC_HO
 - USB에서 가져와 보존한 기기 재생 기록: `usb-histories/`. 기록마다 JSON 한 파일이다. 캐시가 아니므로 지우지 않는다(#43).
 - 스냅샷·백업·DB 사본에는 rekordbox 클라우드 토큰이 들어 있다. 이 파일을 커밋·이슈·로그에 넣지 않는다.
 - 캐시 종류별 비우기는 `docs/cli.md` "캐시 보기·비우기"에 있다.
+
+### LINK의 WAV 변환
+
+FLAC·ALAC을 못 읽는 기종(`LinkPlayerFormats`)에 실을 때만 WAV로 바꾼다(`LinkAudioConverter`). 바꾸는 때는 아래 둘이다.
+
+- DJCrate에서 끌어 놓아 실을 때: 바꾼 뒤 싣는다.
+- CDJ에서 고를 때: 플레이어가 NFS로 원본을 찾으면 백그라운드에서 바꿔 끼운다(`LinkSession.fileRequested`).
+
+바꿀 때는 다음 순서를 지킨다.
+
+- 바꾸는 동안 그 요청에 답하지 않는다(`LinkFileHold`). CDJ가 1초쯤 뒤 다시 묻는 요청에 WAV로 답해 첫 싣기부터 실린다. 원본으로 답해 E-8305로 실패시키지 않는다.
+- 15초(`LinkFileHold.limit`) 안에 못 바꾸면 원본으로 답한다. 그 싣기는 실패하므로 다 바꾼 뒤 다시 실으라고 알린다. 바꿀 필요가 없는 곡은 곧바로 원본으로 답한다. 바꾸지 못한 곡도 그렇다.
+- 바꾸지 못한 원본은 그 연결에서 기억한다(#287). CDJ가 다시 찾아도 다시 바꾸지 않는다. 알림도 다시 띄우지 않는다. 끌어 놓으면 다시 바꿔 본다.
+- 같은 원본을 바꿔 끼우는 일은 연결마다 하나다(`LinkSession.prepare`). 끌어 놓기·CDJ 요청이 그 일을 함께 기다린다. 그래서 바꿔 끼운 뒤에 싣는다(#287).
+- 보류 풀기와 바꿔 끼우기는 그 변환을 시작한 연결 차례가 지금 차례일 때만 한다(#287). 앞 연결의 변환이 새 연결의 보류를 풀지 않는다.
+- CDJ가 처음 받은 파일 이름을 기억하므로 WAV도 세션의 같은 이름으로 내어 준다(`redirect_file`). 곡 정보에서 파일 형식을 WAV로 바꾼다. 이미 열린 핸들은 원본을 이어 읽는다.
+- DJLinkKit 0.1.6은 깊은 음원 경로의 앞 세 단계 폴더를 NFS로 연다. `LinkExportFiles`는 경로와 열린 일반 파일을 확인한 뒤 그 파일 디스크립터에서 세션 사본을 만든다. NFS에는 사본의 세 단계 경로(`/.vol/<볼륨 번호>/<파일 번호>`)만 등록한다. 라이브러리가 지정한 분석 파일과 그림은 크기별 그림·추가 분석 파일까지 하나씩 확인한다. APFS 복제가 불가능한 볼륨 간에는 같은 디스크립터에서 내용을 복사한다(#282).
+- 바꾼 파일은 `DJCCachePaths.linkAudio`에만 쓴다. 자리는 `~/Music/DJCrate/LINK`다. `DJC_HOME`이 있으면 그 안 `link-audio/`다. 시험은 임시 폴더에서만 바꾼다.
+- 코덱 확인과 변환은 세션 음원 사본을 읽는다. 캐시 이름은 컬렉션 경로와 사본의 수정 시각·내용으로 정한다. CDJ에 내어 줄 WAV도 캐시에서 세션 폴더로 복사한다. 연결을 끄면 서버가 사본을 놓는다. 진행 중인 코덱 확인과 변환은 끝날 때 사본을 놓는다.
+- 바꾼 파일은 캐시 종류 `link-audio`다(#287). 저장 공간 설정·`djc cache`가 용량을 보인다. 비우기도 거기서 한다. LINK로 내어 주는 동안 앱 화면은 이 종류를 비우지 않는다. 비우는 사이 LINK를 켜면 다 비운 뒤에 내어 준다(`LinkBarModel.beginCacheClear`).
 
 ## 데이터 흐름
 
@@ -417,19 +448,38 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
   - 마우스를 올린 동안과 알림 안 단추에 키보드 포커스가 있는 동안은 시간을 세지 않는다(`AppToastTimer`). VoiceOver가 켜져 있으면 닫지 않는다.
   - 활동 기록은 최근 200건이다. 바로 앞 항목과 종류·제목·내용(쓰기 결과는 백업도)이 같으면 새 항목 대신 시각과 횟수를 고친다.
   - 모두 막힌 초안과 미리 보기에서 제외한 초안은 결과 토스트와 결과 보기로 알린다.
-- **쓰는 동안 덱은 재생을 멈춘 채 조작을 막는다.**
+- **초안을 쓰는 동안 덱은 재생을 멈추지 않는다(R21, #401).** 창 덮개도 뜨지 않는다. 쓰는 묶음에 든 곡의 편집만 막는다.
+  - 복원, 곡 넣기·빼기는 옛 동작 그대로 통째로 잠근다. 덱이 멈춘다. 편집은 모두 막힌다. 덮개가 뜬다.
 - **쓰기 잠금은 용도별 값으로 읽는다(#301).** 원천은 `LibraryStore.isWritingRekordbox` 하나다. 쓰기·복원 중에 켜진다. 읽는 쪽은 용도에 맞는 값을 읽는다.
-  - `libraryBusy`는 라이브러리 내부 배타다. 아래가 쓰기와 겹치지 않게 막는다. 초안 파일 잠금(flock)도 이 동안 든다.
+  - `libraryBusy`는 라이브러리 내부 배타다. 쓰는 동안 늘 참이다. 초안 파일 잠금(flock)도 이 동안 든다. 아래가 쓰기와 겹치지 않게 막는다.
     - 읽기, 복원, USB, iTunes
     - 자동 시점 스냅샷, 재생 목록 복구, 곡 추가 목록
-    - 사이드바·상세를 통째로 막는 줄. 안쪽에 가드가 없는 조작을 막아 준다.
-  - `editsFrozen`은 편집 잠금이다. 아래를 막는다.
-    - 덱의 큐·그리드·게인 편집과 재생
-    - 태그·그림·재생 목록 편집
-    - 키 입력, ⌘Z 기록
-  - 덱은 사본 `DeckModel.editsFrozen`을 든다. iTunes 동기화는 덱을 잠그지 않아 저장소 값과 다를 수 있다.
+    - 재생 목록·재생 기록 편집. 재생 목록 얼리기(W2-G2) 전까지 곡 단위로 풀지 않는다.
+  - `lockedTracks`는 곡 단위 편집 잠금이다. 쓰기 포트 `WriteLock.setTracks`가 쓰기 시작 전에 정한다. 끝나면 비운다.
+    - 곡은 고른 곡과 합치기로 묶인 곡이다.
+    - 재생 목록·재생 기록만 쓰는 묶음은 곡이 없다. 이 경우를 위해 `isDraftWrite`(`WriteLock.setDraftWriting`)를 따로 둔다.
+    - `isTrackScopedWrite`는 `isDraftWrite`이거나 `lockedTracks`가 비어 있지 않을 때 참이다. 곡 단위로 쓰는 중이라는 뜻이다.
+  - `editsFrozen`은 통째 편집 잠금이다. `isWritingRekordbox && !isTrackScopedWrite`라서 초안을 쓰는 동안은 거짓이다.
+    - 덱 재생과 곡 올리기, 키 입력, ⌘Z 기록을 막는다.
+    - 사이드바와 상세를 통째로 막는 줄(`ContentView`)도 이 값이다. 복원·곡 넣기·빼기에서만 막는다.
+  - `isEditLocked(_:)`는 곡 하나의 편집을 막는지다. 통째 잠금이면 참이다. 그 곡이 `lockedTracks`에 들어도 참이다.
+    - 덱의 큐·그리드·게인 편집이 읽는다.
+    - 태그·그림 편집, 목록 칸과 태그 시트 편집, 곡 편집 창 열기도 읽는다.
+    - 덱은 저장한 곡의 새 초안·기준값을 적용하는 동안(`writeRefreshing`)에도 그 곡의 편집을 막는다. 쓰기 잠금이 먼저 풀려도 늦은 읽기가 편집을 덮지 않게 한다.
+    - 다시 읽기가 실패하면 저장한 곡을 `writePending`이 잡아 둔다. 다음 읽기가 성공하면 새 기준값을 적용하고 푼다.
+    - 덱의 곡 내용 적용에는 세대(`contentGeneration`)가 있다. 덱이 저장 뒤 갱신을 시작하면 먼저 시작한 최초 불러오기는 옛 큐·기준값을 적용하지 않는다.
+  - 덱은 사본 `DeckModel.editsFrozen`과 `DeckModel.lockedTracks`를 든다. `LibraryStore.connectWriteLocks`가 잇는다.
+    - 덱의 편집 가드는 `isEditLocked`다.
+    - iTunes 동기화는 덱을 잠그지 않아 저장소 값과 다를 수 있다.
+  - `showsWriteOverlay`는 진행 카드로 창을 덮을지다. 곡 단위로 쓰는 동안은 거짓이다. 종료를 기다리는 안내는 따로 뜬다.
+  - `showsWriteProgressChip`은 곡 단위로 쓰는 동안 취소할 수 있는 단계인지다. 상태 줄의 쓰기 상태 칩이 1초 뒤 단계와 [취소]를 보인다(`ReflectionStatusModel.preparingStage`). 보이는 [취소]가 Esc도 받는다. `KeyRouter`는 준비 단계의 Esc를 넘기기만 한다. 목록과 상태 줄 사이에 띠를 끼우면 목록 높이가 바뀌어 저장마다 목록이 출렁였다.
+  - 초안 쓰기 뒤 읽기는 ⌘Z 기록을 통째로 지우지 않는다. 쓰기 잠금이 먼저 꺼져도 `draftWriteReadPending`이 성공한 읽기까지 남는다. 저장한 곡과 기준값을 옮긴 곡의 태그 단계만 `tagUndoGeneration`으로 건너뛴다. 이 읽기가 태그 초안을 바꾼 곡도 같다.
+  - 태그 인스펙터의 글자 칸은 입력을 시작할 때 대상 곡의 UUID를 고정한다(`beginInput`). 확정할 때 그 곡의 최신 행 가운데 아직 편집할 수 있는 곡에만 넣는다.
   - `quitBlocked`는 앱 종료와 업데이트 설치 판단이다. `writeActivity`의 rekordbox 단계가 이 값을 읽는다(#300).
-  - 지금은 셋이 늘 같은 값이다(`WriteLockSplitTests`). 편집 잠금만 풀 때는 `editsFrozen`의 정의와 그 시험의 기대를 함께 바꾼다.
+  - 사이드바와 상세 안쪽 조작은 각자 가드를 든다. 새 조작을 더하면 가드를 함께 둔다.
+    - 라이브러리 읽기·쓰기 조작은 `libraryBusy`를 읽는다. USB 조작도 같다.
+    - 추가 목록과 재생 목록 조작도 `libraryBusy`를 읽는다.
+    - 곡 편집은 `isEditLocked`를 읽는다.
   - 판단이 어려운 자리는 `libraryBusy`를 읽는다.
 - **되돌리기는 쓰기 전 전체 백업으로 한다.** 백업은 `rekordbox-backups/<시각>-write/`에 최근 20개를 남긴다. 백업에 그때 쓴 초안도 넣어 두어, 되돌릴 때는 DB·분석 파일의 복원과 함께 초안도 다시 살린다.
   - 가장 최근이 아닌 백업이면 그 뒤 백업들의 분석·그림 파일도 최신부터 차례로 되돌린다. 그래서 파일이 DB와 같은 시점에 맞는다(#222). 구현은 `RekordboxWriter+RestoreChain`이다.
@@ -625,6 +675,9 @@ clickNode(메트로놈) ──────────────────�
 - **클립 가장자리를 끌면 끈 자리를 원곡 시각으로 바꿔 가까운 마디 줄에 붙인다(`BarLayout.trimmed`).** 손을 뗄 때 한 번에 바꿔 실행 취소 하나로 남긴다.
   - 가장자리 폭은 5포인트, 좁은 클립은 길이의 ¼이다.
   - 다듬기로 곡 머리를 넣을 수 있는 클립은 맨 앞 클립뿐이다. 잘린 끝 마디는 맨 뒤 클립만 넣을 수 있다.
+- **커서와 가장자리 핸들은 포인터가 가리키는 것(`EditHover`)이 정한다(#312).** `EditPointerContext`의 `outputHover`와 `sourceHover`가 가린다. 누르기·끌기와 같은 판정을 쓴다. 가르는 것은 가장자리, 클립, 고른 구간이다. 눈금 위는 가리키는 것이 없다.
+  - 올린 자리는 뷰 안 `@State`로만 든다. 마우스가 가만있는 채 목록이나 보이는 자리가 바뀌면 마지막 마우스 자리(`EditHoverSpot`)로 다시 정한다. 지우기·실행 취소·확대가 그런 경우다. 핸들은 큰 클립 층(`EditOutputLayer`)과 따로 그려 마우스를 움직여도 클립 층을 다시 그리지 않는다(UI-1). 끄는 동안(`pointer.mode`가 있을 때)은 핸들을 감춘다.
+  - 빈 결과 줄의 점선 칸(`EditEmptyDrop`)도 같은 까닭으로 따로 그린다. 끌어 오는 구간 값(`insertPreview`)을 큰 클립 층은 읽지 않는다.
 - **원곡에서 고른 구간 안을 아래로 끌면 결과 줄 위에 놓을 자리(`insertion`)를 보여 준다.** 놓으면 그 자리에 넣는다. 옆으로 끌면 예전처럼 구간을 새로 고른다.
   - 놓을 자리는 가운데를 지난 클립 수로 정한다. 곡 머리로 시작하는 결과의 맨 앞은 피한다.
 
@@ -916,6 +969,7 @@ DJCApplication 유스케이스 `UsbMigrateSession`이 아래 순서를 부른다
   - 원본 목록 트리
   - 고른 곡
   - 미리 보기
+- **시트의 미리 보기는 형식·원본이 바뀔 때마다 스스로 계산한다(#314).** `UsbExportSheetModel`이 고른 것(`UsbExportSelection.previewInputs`)을 지켜본다. 바뀌면 앞 계산의 결과를 버리고 `UsbWriteFlow.preview`로 다시 계산한다. 미리 보기는 볼륨 잠금을 하나만 쓰므로 새 계산은 앞 계산이 끝난 뒤에 돈다. 그 사이에 바뀐 선택은 건너뛴다. 계산이 막히면(`previewStopped`) 시트에 [다시 시도]가 보인다.
 - **무엇을 물을지와 순서는 DJCApplication 유스케이스 `UsbWriteFlow`가 정한다.** 확인 창은 `UserConfirmation` 포트가 답만 한다. 화면 쪽 `UsbWriteCoordinator`는 포트를 붙여 부르기만 한다. 흐름은 아래 순서로 간다.
   1. rekordbox와 rekordboxAgent가 꺼져 있는지 본다.
   2. `UsbStore.beginWrite`로 볼륨을 잠근다.

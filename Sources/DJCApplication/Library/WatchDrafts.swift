@@ -191,8 +191,10 @@ public struct WatchDrafts: Sendable {
     /// - Parameters:
     ///   - memoryTags: 화면의 태그 초안(고친 것이 있는 것만 다시 저장한다)
     ///   - memoryPlaylist: 화면의 재생 목록 초안(비어 있으면 저장하지 않는다)
+    ///   - carried: 화면이 재생 목록 저장에 실패한 동안 기억한 출처(식별자 없는 단계에 더한다, `DraftStore.savePlaylist(_:freshOrigins:carrying:)`)
     @MainActor
-    public func recoverMoved(_ moved: [DamagedDraftFile], memoryTags: [String: TagDraft], memoryPlaylist: PlaylistDraft) -> MovedRecovery {
+    public func recoverMoved(_ moved: [DamagedDraftFile], memoryTags: [String: TagDraft], memoryPlaylist: PlaylistDraft,
+                             carrying carried: Set<DraftOrigin> = []) -> MovedRecovery {
         var recovery = MovedRecovery()
         guard !moved.isEmpty else { return recovery }
         // 옮긴 파일은 이 저장소의 초안 폴더 것이다. 저장 대기 입력도 같은 폴더에서 본다.
@@ -216,7 +218,7 @@ public struct WatchDrafts: Sendable {
         if moved.contains(where: { $0.kind == .gain }) { recovery.gainDraftUUIDs = gainDraftUUIDs() }
         if moved.contains(where: { $0.kind == .playlist }), !memoryPlaylist.isEmpty {
             do {
-                try drafts.savePlaylistDraft(memoryPlaylist)
+                try drafts.savePlaylist(memoryPlaylist, carrying: carried)
                 recovery.playlist = PlaylistResave(draft: memoryPlaylist)
             } catch {
                 recovery.playlist = PlaylistResave(draft: memoryPlaylist, error: error)

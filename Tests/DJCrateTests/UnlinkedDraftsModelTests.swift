@@ -77,7 +77,7 @@ struct UnlinkedDraftsModelTests {
         model.reload()
         model.chooseAll()
         model.discard()
-        #expect(model.failure == "1곡의 초안을 버리지 못했으니 초안 폴더의 접근 권한을 확인한 뒤 다시 버리세요.")
+        #expect(model.failure == "1곡의 편집을 버리지 못했으니 편집 폴더의 접근 권한을 확인한 뒤 다시 버리세요.")
         fake.failed = 0
         model.setSelected("a", true)
         model.discard()

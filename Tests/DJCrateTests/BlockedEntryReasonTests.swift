@@ -68,14 +68,14 @@ struct BlockedEntryReasonTests {
         store.allowsLibrarySync = { false }
         let unconfirmed = try #require(LibraryMenuAction.snapshot.disabledReason(in: window))
         #expect(reading != unconfirmed, "읽는 중과 덱 입력 미확정을 다른 이유로 알린다")
-        #expect(LibraryMenuAction.reflect.disabledReason(in: window)?.contains("초안") == true)
+        #expect(LibraryMenuAction.reflect.disabledReason(in: window)?.contains("편집") == true)
         #expect(LibraryMenuAction.exportXML.disabledReason(in: window)?.contains("큐·그리드") == true)
         #expect(LibraryMenuAction.restore.disabledReason(in: window)?.contains("백업") == true)
         #expect(LibraryMenuAction.removeTracks.disabledReason(in: window)?.contains("고르세요") == true)
         LibraryMenuAction.reflect.perform(in: window)
         #expect(store.activityLog.latest?.text == LibraryMenuAction.reflect.disabledReason(in: window))
         store.isWritingRekordbox = true
-        #expect(LibraryMenuAction.snapshot.disabledReason(in: window)?.contains("쓰기") == true)
+        #expect(LibraryMenuAction.snapshot.disabledReason(in: window)?.contains("저장") == true)
     }
 
     @Test func 루프_길이_한도와_곡_끝을_알리고_기존_값을_보존한다() async throws {

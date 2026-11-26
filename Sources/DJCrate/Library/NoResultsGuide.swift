@@ -12,11 +12,13 @@ struct NoResultsGuide: Equatable {
     var filterNote: String?
     var offersClearSearch: Bool
     var offersClearFilter: Bool
+    /// 숨긴 스트리밍 곡이 지금 검색·필터에 맞을 때(#348). 맞는 곡이 거기 있다고 글로 말하지 않고, 단추 이름 그대로 바로 풀게 한다
+    var offersShowStreaming: Bool
     /// 아직 rekordbox에 쓰지 않은 편집이 있을 때 필터가 거르는 기준을 알리는 작은 글씨
     var footnote: String?
 
     /// 검색어도 필터도 없으면 nil(이 안내를 쓰지 않는다)
-    init?(search: String, isFiltered: Bool, hasUnwrittenEdits: Bool) {
+    init?(search: String, isFiltered: Bool, hasUnwrittenEdits: Bool, hiddenStreamingMatches: Int = 0) {
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty || isFiltered else { return nil }
         if query.isEmpty {
@@ -29,6 +31,7 @@ struct NoResultsGuide: Equatable {
         filterNote = !query.isEmpty && isFiltered ? String(ui: "필터도 켜져 있습니다") : nil
         offersClearSearch = !query.isEmpty
         offersClearFilter = isFiltered
+        offersShowStreaming = hiddenStreamingMatches > 0
         footnote = isFiltered && hasUnwrittenEdits ? String(ui: "필터는 rekordbox에 들어 있는 값으로 거릅니다") : nil
     }
 }

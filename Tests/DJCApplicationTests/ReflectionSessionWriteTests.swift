@@ -12,6 +12,7 @@ extension ReflectionOutcome {
         case .notice: "notice"
         case .cancelled: "cancelled"
         case .written: "written"
+        case .autoWritten: "autoWritten"
         case .nothingWritable: "nothingWritable"
         case .added: "added"
         case .nothingAdded: "nothingAdded"
@@ -62,7 +63,7 @@ struct ReflectionSessionWriteTests {
         pendingCue("a")
         h.running = true
         let outcome = await h.session.write(rows: [H.row("a")])
-        #expect(outcome.notice?.title == "rekordbox가 켜져 있어 쓰지 않았습니다" && outcome.notice?.text == ReflectionPrompts.quitRekordboxText)
+        #expect(outcome.notice?.title == "rekordbox가 켜져 있어 저장하지 않았습니다" && outcome.notice?.text == ReflectionPrompts.quitRekordboxText)
         #expect(h.locks.isEmpty && h.gateCalls.value.order.isEmpty && h.published.map(\.name) == ["notice"])
     }
 
@@ -78,8 +79,8 @@ struct ReflectionSessionWriteTests {
         // 읽지 못해 옮겨 둔 큐 초안: 반영 대기 표시는 없지만 빠진 이유는 알린다
         h.state.unreadableDraftKinds["b"] = [.cue]
         let outcome = await h.session.write(rows: [H.row("a"), H.row("b")])
-        #expect(outcome.notice?.title == "쓸 초안이 없습니다")
-        #expect(outcome.notice?.text == "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 초안이 없습니다.")
+        #expect(outcome.notice?.title == "저장할 편집이 없습니다")
+        #expect(outcome.notice?.text == "고른 곡에 rekordbox와 다른 큐·그리드·게인·태그 편집이 없습니다.")
         #expect(outcome.notice?.lines.count == 2 && outcome.notice?.lines.last?.contains("곡 b") == true)
         #expect(h.locks.isEmpty && h.prompts.isEmpty)
     }
@@ -91,7 +92,8 @@ struct ReflectionSessionWriteTests {
         guard case let .nothingWritable(preview, targets) = outcome else { Issue.record("\(outcome.name)"); return }
         #expect(targets.map(\.id) == ["a", "b"] && preview.report.blocked.map(\.trackUUID) == ["a"])
         #expect(h.prompts.isEmpty && h.gateCalls.value.writes.isEmpty)
-        #expect(h.locks == ["true", "false"] && h.stages.last == .some(nil) && h.published.map(\.name) == ["nothingWritable"])
+        #expect(h.locks == ["곡 a,b", "초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false", "곡 -"] && h.trackLocks == [["a", "b"], []]
+                && h.stages.last == .some(nil) && h.published.map(\.name) == ["nothingWritable"])
     }
 
     @Test func 미리_보기는_막힌_초안의_빠진_이유를_함께_든다() async throws {
@@ -100,7 +102,25 @@ struct ReflectionSessionWriteTests {
         h.state.gridDraftUUIDs.insert("b")
         h.state.rows["b"] = H.row("b")
         let preview = try await h.session.previewWrite(rows: [H.row("a"), H.row("b")], playlists: false)
-        #expect(preview.exclusions == ["• 곡 b: " + WritePart.grid.blocked("초안을 불러오지 못했으니 초안 파일과 접근 권한을 확인한 뒤 다시 불러오세요")])
+        #expect(preview.exclusions == ["• 곡 b: " + WritePart.grid.blocked("편집을 불러오지 못했으니 편집 파일과 접근 권한을 확인한 뒤 다시 불러오세요")])
+    }
+
+    /// R21: 쓰는 동안 잠그는 것은 쓰는 곡(합치기로 묶인 곡 포함)의 편집뿐이다. 덱은 잠그지 않아 재생이 멈추지 않는다.
+    @Test func 쓰는_동안_쓰는_곡만_잠그고_덱은_잠그지_않는다() async {
+        pendingCue("a", "other")
+        h.state.rows["r1"] = H.row("r1")
+        h.state.rows["r2"] = H.row("r2")
+        h.state.mergeDrafts = [Self.merge("m1", members: ["a", "r1"]), Self.merge("m2", members: ["r2"])]
+        h.script.preview = H.report(cues: [H.outcome("a", .written)])
+        var duringWrite: (locked: Bool, tracks: Set<String>, deckLocks: [String])?
+        h.onStage = { [h] stage in
+            if stage?.text == String(ui: "rekordbox에 저장하는 중…") { duringWrite = (h.locked, h.lockedTrackSet, h.locks) }
+        }
+        _ = await h.session.write(rows: [H.row("a")])
+        #expect(duringWrite?.locked == true, "쓰는 중에는 라이브러리를 쓰는 중으로 묶는다")
+        #expect(duringWrite?.tracks == ["a", "r1", "m1"], "고른 곡과 같은 합치기(남기는 곡·빼는 곡)로 묶인 곡만. 고르지 않은 곡과 다른 합치기의 곡은 잠그지 않는다")
+        #expect(duringWrite?.deckLocks == ["곡 a,m1,r1", "초안 쓰기 true", "true (덱 빼고)"], "곡·초안 쓰기를 먼저 정하고 쓰는 중으로 바꾸며 덱은 잠그지 않는다")
+        #expect(h.lockedTrackSet.isEmpty && !h.locked && Array(h.locks.suffix(3)) == ["false (덱 빼고)", "초안 쓰기 false", "곡 -"], "끝나면 쓰는 중을 먼저 풀고 초안 쓰기·곡 잠금을 비운다")
     }
 
     @Test func 취소하면_쓰지_않고_잠금을_푼다() async {
@@ -138,7 +158,9 @@ struct ReflectionSessionWriteTests {
         let outcome = await h.session.write(rows: ["a", "b", "c", "d"].map { H.row($0) })
         let written = try #require(h.gateCalls.value.writes.first)
         #expect(written.drafts.map(\.trackUUID) == ["a"] && written.grids.map(\.trackUUID) == ["a"] && written.gains == ["d": -3])
-        #expect(h.gateCalls.value.writeTargets == [h.session.target] && h.locks == ["true", "false"])
+        #expect(h.gateCalls.value.writeTargets == [h.session.target]
+                && Array(h.locks.dropFirst().prefix(4)) == ["초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false"]
+                && h.locks.last == "곡 -" && h.trackLocks.last == [])
         guard case let .written(report, preview, _) = outcome else { Issue.record("\(outcome.name)"); return }
         #expect(report.dryRun == false && preview.dryRun == true)
     }
@@ -163,7 +185,7 @@ struct ReflectionSessionWriteTests {
         h.script.preview = playlistReport([
             PlaylistOutcome(edit: .create(key: "k", name: "세트", isFolder: false, parent: .root), playlistID: "1", name: "세트", status: .written, reason: nil),
             PlaylistOutcome(edit: .addTracks(playlist: .id("9"), contentIDs: ["1"]), playlistID: nil, name: "옛 목록", status: .blocked,
-                            reason: "초안을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 초안을 버리세요."),
+                            reason: "편집을 만든 뒤 rekordbox에서 이 목록이 바뀌었으니 현재 목록을 비교해 다시 적용하거나 편집을 버리세요."),
         ])
         #expect(await h.session.write(rows: []).name == "written")
         #expect(h.gateCalls.value.previews.first?.playlists == draft)
@@ -176,11 +198,134 @@ struct ReflectionSessionWriteTests {
 
     @Test func 곡을_골라_쓸_때는_재생_목록_초안을_넣지_않는다() async {
         h.state.playlistDraft = playlistDraft()
-        #expect(await h.session.write(rows: [H.row("a")], playlists: false).notice?.title == "쓸 초안이 없습니다")
+        #expect(await h.session.write(rows: [H.row("a")], playlists: false).notice?.title == "저장할 편집이 없습니다")
         pendingCue("a")
         h.script.preview = H.report(cues: [H.outcome("a", .written)])
         _ = await h.session.write(rows: [H.row("a")], playlists: false)
         #expect(h.gateCalls.value.previews.first?.playlists == nil && h.gateCalls.value.writes.first?.playlists == nil)
+    }
+
+    static let playlistHeldText = "재생 목록 편집을 확인하지 못해 이번에는 재생 목록을 건드리지 않았습니다. 잠시 뒤 다시 해 주세요."
+
+    @Test func S10_재생_목록만_있는데_동기화_실패_표시가_남았으면_저장할_편집이_없다고_하지_않고_이유를_알린다() async {
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftNeedsSync = true
+        let outcome = await h.session.write(rows: [])
+        #expect(outcome.notice?.title == "rekordbox에 저장하지 않았습니다")
+        #expect(outcome.notice?.text == Self.playlistHeldText)
+        // 보류 여부는 쓰기 잠금을 건 뒤(초안 파일 잠금 시도·동기화 뒤)에 정하므로 잠갔다 풀었고 아무것도 쓰지 않았다
+        #expect(h.gateCalls.value.writes.isEmpty && h.gateCalls.value.previews.isEmpty && !h.locked && h.locks.last == "곡 -")
+    }
+
+    @Test func S10_곡_편집도_있으면_곡은_쓰고_결과에_재생_목록을_뺀_이유를_담는다() async {
+        pendingCue("a")
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftNeedsSync = true
+        h.script.preview = H.report(cues: [H.outcome("a", .written)])
+        let outcome = await h.session.write(rows: [H.row("a")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(followUp.contains(Self.playlistHeldText))
+        #expect(h.gateCalls.value.previews.first?.playlists == nil && h.gateCalls.value.writes.first?.playlists == nil, "재생 목록은 쓰기 묶음에서 빠진다")
+        #expect(h.gateCalls.value.writes.first?.drafts.map(\.trackUUID) == ["a"])
+    }
+
+    @Test func S1_재생_목록_초안_파일_잠금을_쥐지_못했으면_재생_목록은_쓰기_묶음에서_빠지고_곡은_쓰며_이유를_알린다() async {
+        pendingCue("a")
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftFileLocked = false
+        h.script.preview = H.report(cues: [H.outcome("a", .written)])
+        let outcome = await h.session.write(rows: [H.row("a")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(followUp.contains(Self.playlistHeldText))
+        #expect(h.gateCalls.value.previews.first?.playlists == nil && h.gateCalls.value.writes.first?.playlists == nil)
+        #expect(h.gateCalls.value.writes.first?.drafts.map(\.trackUUID) == ["a"])
+    }
+
+    @Test func S1_잠금을_쥐지_못했고_곡도_없으면_저장할_편집이_없다고_하지_않고_이유를_알린다() async {
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftFileLocked = false
+        let outcome = await h.session.write(rows: [])
+        #expect(outcome.notice?.title == "rekordbox에 저장하지 않았습니다" && outcome.notice?.text == Self.playlistHeldText)
+        #expect(h.gateCalls.value.writes.isEmpty)
+    }
+
+    @Test func S10_잠금을_거는_중_동기화에_실패하면_재생_목록을_빼고_이유를_알린다() async {
+        pendingCue("a")
+        h.state.playlistDraft = playlistDraft()
+        h.script.preview = H.report(cues: [H.outcome("a", .written)])
+        // 잠금 전에는 읽을 수 있었는데 쓰기 잠금을 거는 순간(잠금 시도 + 동기화) 읽지 못했다
+        h.onLock = { [h] locked in if locked { h.state.playlistDraftNeedsSync = true } }
+        let outcome = await h.session.write(rows: [H.row("a")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(followUp.contains(Self.playlistHeldText))
+        #expect(h.gateCalls.value.writes.first?.playlists == nil)
+    }
+
+    @Test func S10_잠금을_거는_중_동기화가_회복되면_재생_목록까지_쓰고_건드리지_않았다고_알리지_않는다() async {
+        pendingCue("a")
+        let draft = playlistDraft()
+        h.state.playlistDraft = draft
+        h.state.playlistDraftNeedsSync = true
+        var report = H.report(cues: [H.outcome("a", .written)])
+        report.playlistOutcomes = [PlaylistOutcome(edit: draft.steps[0].edit, playlistID: "1", name: "세트", status: .written)]
+        h.script.preview = report
+        h.onLock = { [h] locked in if locked { h.state.playlistDraftNeedsSync = false } }
+        let outcome = await h.session.write(rows: [H.row("a")])
+        guard case let .written(_, _, followUp) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(!followUp.contains(Self.playlistHeldText))
+        #expect(h.gateCalls.value.previews.first?.playlists == draft && h.gateCalls.value.writes.first?.playlists == draft)
+    }
+
+    @Test func S1_초안_파일_잠금을_쥐지_못해_재생_목록을_뺐으면_재생_기록만_넣는_묶음에서도_재생_목록_초안을_다시_저장하지_않는다() async {
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftUnsaved = true
+        h.state.playlistDraftFileLocked = false
+        h.state.pendingHistories = [ReflectionSessionHistoryTests.history("a")]
+        h.script.preview = ReflectionSessionHistoryTests.report([ReflectionSessionHistoryTests.outcome("a", .written)])
+
+        let outcome = await h.session.write(rows: [])
+
+        #expect(outcome.name == "written")
+        #expect(!h.log.contains("save playlist"), "재생 목록 초안은 저장 재시도조차 하지 않는다(바깥이 더한 단계를 덮지 않게)")
+        #expect(h.gateCalls.value.writes.first?.playlists == nil && h.gateCalls.value.writes.first?.histories.count == 1, "재생 기록은 쓴다")
+    }
+
+    @Test func S1_재생_목록을_뺀_묶음은_재생_목록_초안_파일이_손상돼도_재생_기록을_쓴다() async {
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftFileLocked = false
+        h.state.pendingHistories = [ReflectionSessionHistoryTests.history("a")]
+        h.preserved = [DamagedDraftFile(name: "playlist-drafts.json", preserved: URL(filePath: "/drafts/damaged-drafts/playlist-drafts.json"),
+                                        trackUUID: nil)]
+        h.script.preview = ReflectionSessionHistoryTests.report([ReflectionSessionHistoryTests.outcome("a", .written)])
+
+        let outcome = await h.session.write(rows: [])
+
+        #expect(outcome.name == "written", "묶음에 넣지 않은 재생 목록 초안 파일 때문에 재생 기록 쓰기를 막지 않는다")
+        #expect(h.gateCalls.value.writes.first?.playlists == nil && h.gateCalls.value.writes.first?.histories.count == 1)
+    }
+
+    @Test func S10_재생_목록을_뺐고_곡도_모두_막혀_쓸_것이_없으면_그_결과에도_이유를_담는다() async {
+        pendingCue("a")
+        h.state.playlistDraft = playlistDraft()
+        h.state.playlistDraftFileLocked = false
+        h.script.preview = H.report(cues: [H.outcome("a", .blocked, reason: "VBR MP3")])
+
+        let outcome = await h.session.write(rows: [H.row("a")])
+
+        guard case let .nothingWritable(preview, _) = outcome else { Issue.record("\(outcome.name)"); return }
+        #expect(preview.exclusions.contains(Self.playlistHeldText), "곡이 막혀 쓸 것이 없어도 재생 목록을 건드리지 않은 이유를 보인다")
+    }
+
+    @Test func S16_잠금_전에는_재생_목록_초안이_비었어도_잠금_동안_받은_초안은_묶음에_넣는다() async {
+        // 재생 기록만 대기 중이고 재생 목록 초안은 비어 있다. 쓰기 잠금을 거는 동안(동기화) CLI가 더한 초안을 받았다
+        let draft = playlistDraft()
+        h.state.pendingHistories = [ReflectionSessionHistoryTests.history("a")]
+        h.script.preview = ReflectionSessionHistoryTests.report([ReflectionSessionHistoryTests.outcome("a", .written)])
+        h.onLock = { [h] locked in if locked { h.state.playlistDraft = draft } }
+
+        _ = await h.session.write(rows: [])
+
+        #expect(h.gateCalls.value.previews.first?.playlists == draft, "잠금 전 초안이 비었다는 이유로 빠뜨리지 않는다")
     }
 
     @Test func 재생_목록_편집이_모두_막히면_쓰지_않는다() async {
@@ -211,7 +356,7 @@ struct ReflectionSessionWriteTests {
         h.memory.save(H.grid("n"))
         h.memory.save(H.grid("h"))
         h.script.preview = H.report(analyses: [H.outcome("n", .written, added: 96),
-                                               H.outcome("h", .blocked, reason: "rekordbox에서 트랙 분석을 먼저 한 뒤 쓰세요")])
+                                               H.outcome("h", .blocked, reason: "rekordbox에서 트랙 분석을 먼저 한 뒤 저장하세요")])
         _ = await h.session.write(rows: ["n", "h"].map { H.row($0) })
         #expect(h.prompts == [ReflectionPrompts.confirmation(h.script.preview)])
         let written = try #require(h.gateCalls.value.writes.first)
@@ -245,7 +390,7 @@ struct ReflectionSessionWriteTests {
         h.state.rows["b"] = H.row("b")
         h.script.previewError = FixtureFailure()
         let outcome = await h.session.write(rows: [H.row("a"), H.row("b")])
-        #expect(outcome.failure?.title == "rekordbox에 쓰지 않았습니다" && outcome.failure?.error is FixtureFailure)
+        #expect(outcome.failure?.title == "rekordbox에 저장하지 않았습니다" && outcome.failure?.error is FixtureFailure)
         #expect(outcome.failure?.exclusions.count == 1 && outcome.failure?.exclusions.first?.contains("곡 b") == true)
         #expect(h.stages.last == .some(nil) && !h.locked)
     }
@@ -255,7 +400,9 @@ struct ReflectionSessionWriteTests {
         h.script.preview = H.report(cues: [H.outcome("a", .written)])
         h.script.writeError = DJCError.writeRolledBack("무결성 검사 실패: x")
         let outcome = await h.session.write(rows: [H.row("a")])
-        #expect(outcome.failure?.error is DJCError && h.locks == ["true", "false"] && h.stages.last == .some(nil))
+        #expect(outcome.failure?.error is DJCError
+                && h.locks == ["곡 a", "초안 쓰기 true", "true (덱 빼고)", "false (덱 빼고)", "초안 쓰기 false", "곡 -"] && h.trackLocks == [["a"], []]
+                && h.stages.last == .some(nil))
         // 쓴 뒤 정리를 하지 않는다
         #expect(h.memory.cue("a") != nil && h.reloads.isEmpty)
     }
@@ -374,7 +521,7 @@ struct ReflectionSessionWriteTests {
         h.saveFailuresAfterWrite = [DraftSaveFailure(kind: .cue, trackUUID: "a", revision: 1, reason: "디스크가 가득 찼습니다")]
         h.script.write = H.report(cues: [H.outcome("a", .written)], backup: "/backups/w1", dryRun: false)
         _ = try await h.session.writeDrafts(DraftWriteBatch(drafts: [H.cue("a")]), to: h.session.target)
-        #expect(h.followUp == ["rekordbox에는 썼지만 초안을 정리하지 못했습니다. 큐 초안을 저장하지 못했습니다. 디스크가 가득 찼습니다"])
+        #expect(h.followUp == ["rekordbox에는 저장했지만 편집을 정리하지 못했습니다. 큐 편집을 보관하지 못했습니다. 디스크가 가득 찼습니다"])
     }
 
     @Test func 쓴_합치기_초안만_빼고_묶인_곡을_다시_읽은_뒤_알린다() async throws {
@@ -398,7 +545,7 @@ struct ReflectionSessionWriteTests {
         batch.playlists = PlaylistDraft()
         _ = try await h.session.writeDrafts(batch, to: h.session.target)
         #expect(h.changeNames.contains("playlist written"))
-        #expect(h.followUp == ["rekordbox에는 썼지만 재생 목록 초안을 정리하지 못했습니다. " + ReflectionSession.playlistSaveFailureText])
+        #expect(h.followUp == ["rekordbox에는 저장했지만 재생 목록 편집을 정리하지 못했습니다. " + ReflectionSession.playlistSaveFailureText])
     }
 
     @Test func 쓴_앨범아트_초안을_지우고_화면이_그림을_새로_읽게_한다() async throws {

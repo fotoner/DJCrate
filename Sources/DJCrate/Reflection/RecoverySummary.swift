@@ -13,7 +13,7 @@ enum RecoverySummary {
     /// 무엇이 rekordbox에서 바뀌었는지(곡·종류 하나) 한 줄. 바뀐 것이 없으면 그렇게 알린다.
     static func summary(_ review: DraftRecoveryReview) -> String {
         let changes = changeClauses(review)
-        guard !changes.isEmpty else { return String(ui: "rekordbox의 현재 값이 초안의 기준과 같아 바뀐 것이 없습니다") }
+        guard !changes.isEmpty else { return String(ui: "rekordbox의 현재 값이 편집의 기준과 같아 바뀐 것이 없습니다") }
         var clauses = changes
         if case let (.tags(draft), .tags(current)) = (review.original, review.current) {
             // 태그는 내가 고친 칸과 같은 칸을 둘 다 바꾼 칸도 함께 보인다.
@@ -179,7 +179,7 @@ enum RecoverySummary {
     /// 무엇이 rekordbox에서 바뀌었는지(목록 하나) 한 줄
     static func playlistSummary(_ review: PlaylistRecoveryReview) -> String {
         let id = review.playlistID, layout = review.current.layout
-        guard let base = bases(review)[id] else { return String(ui: "초안을 만든 뒤 rekordbox의 이 목록이 바뀌었습니다") }
+        guard let base = bases(review)[id] else { return String(ui: "편집을 만든 뒤 rekordbox의 이 목록이 바뀌었습니다") }
         var clauses: [String] = []
         if id == PlaylistLayout.root {
             if base.childIDs != layout.childIDs(of: id) { clauses.append(String(ui: "맨 위 항목 순서가 바뀜")) }
@@ -192,7 +192,7 @@ enum RecoverySummary {
             clauses.append(String(ui: "목록이 사라짐"))
         }
         if clauses.isEmpty, let reason = review.recovery.refused.values.sorted().first { return reason }
-        return clauses.isEmpty ? String(ui: "초안을 만든 뒤 rekordbox의 이 목록이 바뀌었습니다") : String(ui: "rekordbox에서 바뀐 것: \(clauses.joined(separator: " · "))")
+        return clauses.isEmpty ? String(ui: "편집을 만든 뒤 rekordbox의 이 목록이 바뀌었습니다") : String(ui: "rekordbox에서 바뀐 것: \(clauses.joined(separator: " · "))")
     }
 
     /// 다시 적용하지 못하는 편집의 이유

@@ -10,19 +10,19 @@ TDD로 일하되, 단계마다 돌리는 범위를 달리해 매번 전체 검�
 |---|---|---|---|
 | 편집 중 | Swift 파일을 고칠 때마다 | 모듈 경계 검사(Claude Code는 PostToolUse 훅이 `scripts/check-imports.py`를 알아서 돌린다) | 수 초 |
 | 빨강·초록 | 시험을 쓰고 고칠 때 | `scripts/check.sh --quick --filter '^DJCDomainTests\.LoopPlannerTests/'`(시험·Suite 하나) | 10~60초(빌드 포함) |
-| 작업 끝·합치기 | "됐다"고 말하기 전, `dev`에 합치기 직전, PR·`dev` 푸시 CI | `scripts/check.sh --changed` | 문서만 몇 초, Suite 몇 개 30초 안팎, 쓰기 그룹 변경 약 5분 |
-| 릴리스 | `main`·`release/*` CI, 수동 실행, 사용자 요청 | `scripts/check.sh`(전체) | 8~9분 |
+| 작업 끝·합치기 | "됐다"고 말하기 전, `dev`에 합치기 직전 | `scripts/check.sh --changed` | 문서만 몇 초, Suite 몇 개 30초 안팎, 쓰기 그룹 변경 약 5분 |
+| 릴리스 | 로컬 릴리스 준비, 사용자 요청 | `scripts/check.sh`(전체) | 8~9분 |
 | 특수 | 해당 영역을 고칠 때만 | `--stress`(SQLCipher), 아래 "선택 실행 장치", 앱 자가 테스트 | — |
 
-전체 검사는 릴리스 때만 돈다(2026-10-10 결정). 로컬에서는 릴리스 준비, 사용자 요청, `--changed`가 전체로 넓힐 때만 돌린다. `dev`에 합칠 때는 `--changed`로 확인한다. PR·`dev` 푸시 CI도 `--changed`만 돈다([CI 구성](#ci-구성)). `--changed`가 놓치는 회귀와 코어 커버리지(60%)는 릴리스 전체 검사가 잡는다.
+로컬에서는 릴리스 준비, 사용자 요청, `--changed`가 전체로 넓힐 때 전체 검사를 돌린다. 자동 실행 범위와 선택 검사의 한계는 [CI 구성](#ci-구성)에 있다.
 
 | 명령 | 범위 | 쓰임 |
 |---|---|---|
-| `scripts/check.sh` | 가벼운 검사(빌드 전, 십여 초), 디버그·릴리스 앱, 번역, 전체 시험, 커버리지 목표(쓰기 80%, 코어 60%) | 릴리스·요청·넓히기 때 전체 검사 |
+| `scripts/check.sh` | 가벼운 검사, 디버그·릴리스 빌드, 번역, 전체 시험과 커버리지, 로컬 USB 이미지 자가 테스트 | 릴리스·요청 때 전체 검사 |
 | `scripts/check.sh --changed [--base <rev>]` | 바꾼 파일에 닿는 시험·검사만(아래) | 작업 끝·`dev` 합치기·PR CI |
 | `scripts/check.sh --quick --filter '<정규식>'` | 필터에 맞는 시험만, 같은 계측 빌드 재사용 | 편집 중 빨강·초록 |
 | `scripts/check.sh --stress` | `CipherColdOpenTests` 필터(경쟁 1개·설정 계약 3개), `DJC_CIPHER_STRESS=1` | SQLCipher 처음 열기 경쟁(`.claude/rules/cipher.md`) |
-| `scripts/check.sh --coverage` | 전체에서 릴리스 빌드만 제외. 앞의 가벼운 검사도 돈다 | 릴리스 CI에서 별도 러너의 `--release`와 함께 전체 검사 |
+| `scripts/check.sh --coverage` | 가벼운 검사, 계측 디버그 빌드, 번역, 전체 시험과 커버리지 | 릴리스 CI에서 별도 러너의 `--release`와 함께 전체 검사 |
 | `scripts/check.sh --release` | 릴리스 앱 빌드만 | 릴리스 CI에서 별도 러너의 `--coverage`와 함께 전체 검사 |
 
 전체 검사와 `--coverage`는 빌드 전에 십여 초 걸리는 가벼운 검사를 먼저 돈다.
@@ -31,6 +31,8 @@ TDD로 일하되, 단계마다 돌리는 범위를 달리해 매번 전체 검�
 - 문서 검사(`scripts/check-docs.py`)와 문장 규칙(`scripts/check-prose.py`)
 - 훅 검사(`scripts/test-harness.py`)
 - 시험 지도 검사(`python3 scripts/affected-tests.py --check-map`)
+
+로컬 전체 검사는 커버리지를 잰 뒤 `UsbSelfTestScenarioCapture`를 따로 돌린다. 실행마다 빈 임시 폴더를 `DJC_USB_SELFTEST_SCRATCH`로 준다. USB 쓰기·옮기기 통과 줄과 이미지 분리 확인 줄을 남긴다. 통과하면 임시 폴더를 지운다. 실패하면 출력에 나온 임시 폴더와 단계 로그를 확인한다.
 
 quick·stress·changed는 릴리스 빌드와 전체 커버리지 보고를 하지 않는다. 계측 디버그 빌드는 모드마다 다르게 만든다.
 
@@ -115,10 +117,12 @@ Swift·Package 변경이 없으면(문서만) 빌드와 시험 없이 가벼운 
 | `usb-safety` | 모든 모듈의 `Usb/`, USB 조립 지점·명령·lab | USB 쓰기 안전·실물 관문·임시 폴더·CLI·앱 실물 거부 시험 |
 | `test-isolation` | 환경 읽기, 데이터 폴더 위치 | 시험 격리 시험 |
 
-지도 문법은 `scripts/test-map.txt` 머리에 있다. 그중 `require <글>` 줄은 `--changed`가 대신하지 않는 필수 검사다. 그래서 통과해도 요약 끝에 `⚠ 남은 필수 검사: …`가 남는다. 지금 필수 검사는 다음 둘이다.
+지도 문법은 `scripts/test-map.txt` 머리에 있다. 그중 `require <글>` 줄은 `--changed`가 대신하지 않는 필수 검사다. 그래서 통과해도 요약 끝에 `⚠ 남은 필수 검사: …`가 남는다. 경로별 필수 검사는 다음과 같다.
 
 - cipher → `--stress`
 - 관찰 범위 → `DJC_LAYOUT_RECOMPUTE_TESTS=1 … LayoutRecomputeTests`
+- rekordbox 쓰기 → 사본에서 호환성·쓰기 전후 값과 앱 쓰기 자가 테스트 확인
+- USB 쓰기 → 임시 디스크 이미지의 쓰기·복원과 앱 USB 자가 테스트 확인
 
 이 줄은 결과 보고에 함께 적는다. 필수 검사에 해당하는 변경이면 그 검사를 돌린다.
 
@@ -226,6 +230,7 @@ Claude Code의 Stop 훅(`scripts/hooks/stop-verify-reminder.py`)은 작업 끝 �
 |---|---|---|---|
 | `DJC_CIPHER_STRESS=1` | 미설정·`0`: cold-open 새 프로세스 4개 | 새 프로세스 100개(`scripts/check.sh --stress`가 켠다, 그 밖의 값은 실패) | `CipherDatabase` 초기화·`CipherLab`·cold-open 경쟁 변경(필수) |
 | `DJC_FULL_RELEASE_COMBINATIONS=1` | `RekordboxTagReleaseTests`의 여러 칸 한 번에 쓰기를 짝 조합 42가지로 | 칸 묶음 26 × 값 종류 3 × 상태 2 = 156가지 전부 | 아티스트·앨범 아티스트·앨범·작곡가·장르 쓰기 순서·행 버리기 규칙을 고칠 때 |
+| `DJC_APPKIT_MINIMIZE_TEST=1` | Apple Music 가져오기 창의 최소화 상태와 복원 요청을 시험한다 | 실제 macOS Dock에서 최소화하고 같은 창과 선택이 돌아오는지 확인한다 | 데스크톱에서 `scripts/check.sh --quick --filter AppleMusicImportWindowTests`와 함께 |
 | `DJC_LAYOUT_RECOMPUTE_TESTS=1` | `LayoutRecomputeTests`(창 크기·여닫기 때 본문 다시 계산 횟수) 스위트 전체를 건너뛴다. 전체 검사도 켜지 않는다 | 실제 창을 띄워(`orderBack`, 활성화·입력 없음) 횟수 상한을 본다 | 관찰 범위·덱 높이·레이아웃을 고칠 때. 다른 UI 시험과 겹치지 않게 단독으로 |
 | `DJC_LAYOUT_BENCHMARK_DB=<사본>` | 꺼짐 | 위 스위트를 그 사본으로 돌리고 `저부하_배치_성능_기록`도 돈다 | 성능 A/B 기록 |
 | `.perfContract` 태그 | 다른 시험과 함께 돈다(`LayoutRecomputeTests`만 위 변수 필요) | — | 관찰 범위를 좁혀 둔 곳이나 이 태그의 시험을 고칠 때. 묶음 전체를 다시 돌린다 |
@@ -479,7 +484,7 @@ DB 연결은 SQLCipher 키 유도 때문에 비싸므로, 시험은 필요한 �
 | 릴리스 | `release` | 릴리스 앱 빌드, 검사 스크립트 회귀(`scripts/test-check.py`) |
 | 수동 실행에서 `run_stress=true` | `stress` | 별도 러너에서 stress 검사 |
 
-릴리스는 전체 검사를 두 러너에 나눠 동시에 돌린다. 시험 수와 커버리지는 Actions의 Job summary에 남긴다. changed job의 Job summary에는 비교 기준, 고른 범위, 끝 요약 블록이 남는다. CI는 오디오·UI 앱 자가 테스트를 돌리지 않는다. 앱 설치·서명·배포도 하지 않는다.
+릴리스는 전체 검사를 두 러너에 나눠 동시에 돌린다. 시험 수와 커버리지는 Actions의 Job summary에 남긴다. changed job의 Job summary에는 비교 기준, 고른 범위, 끝 요약 블록이 남는다. CI는 오디오·UI 앱 자가 테스트를 돌리지 않는다. 러너에서 이미지 붙이기·떼기를 검증할 때까지 USB 이미지 자가 테스트는 로컬 전체 검사에서만 돈다. 앱 설치·서명·배포도 하지 않는다.
 
 ### changed의 비교 기준
 
@@ -517,7 +522,7 @@ Swift가 바뀌면 `--changed`가 그 가운데 안전 시험 선택 경우만 �
 
 마지막 `빌드·테스트·커버리지` job은 기존 필수 체크 이름을 유지한다. 이 job은 그 실행의 모든 검사 job이 성공해야 통과한다. 모든 검사 job은 changed 하나, 또는 릴리스의 coverage·release·선택한 stress다. 실패·취소·미실행은 통과시키지 않는다. 한 검사가 실패해도 다른 검사 로그를 잃지 않도록 matrix의 `fail-fast`는 끈다.
 
-릴리스와 요청 때 쓰는 인자 없는 `scripts/check.sh`는 전체 검사를 순서대로 돈다. CI 분할용 `--coverage`는 릴리스 빌드만 빼서 돈다. `--release`는 릴리스 빌드만 돈다.
+로컬 단일 실행과 분할 실행의 명령별 범위는 [로컬 검증 운영](#로컬-검증-운영)에 있다.
 
 두 명령을 같은 작업 폴더에서 동시에 돌리지 않는다. CI에서는 두 명령이 서로 다른 러너와 `.build`를 쓰므로 SwiftPM 잠금과 산출물이 부딪치지 않는다. 작업 중 로컬 검증은 위 [로컬 검증 운영](#로컬-검증-운영)의 단계대로 범위를 좁힌다.
 
@@ -626,14 +631,7 @@ inode는 다시 컴파일과 관계가 없다. 수정 시각이 다시 컴파일
 
 ## 하네스·문서 검사
 
-하네스는 따로 본다. Claude Code 훅은 에이전트의 실수를 줄이는 안내이자 센서일 뿐, 안전 경계가 아니다. 안전 경계는 다음 코드 관문이다.
-
-- `RekordboxWriteGuard`
-- `TestProcess`
-- `UsbPhysicalWriteGate`
-- `CLIGuards`
-
-막는 훅의 범위와 알려진 한계는 `.claude/rules/harness.md`에 있다.
+훅과 코드 관문의 역할, 훅의 범위와 한계는 [하네스 규칙의 훅 절](../.claude/rules/harness.md#훅)에 있다(HAR-26~33).
 
 몇 초 걸리는 `python3 scripts/check-docs.py`는 지침에 적힌 다음 항목을 확인한다. 지침은 AGENTS.md와 CLAUDE.md다. `.claude/rules`·`.claude/skills`·`.claude/agents` 아래 문서도 지침이다.
 

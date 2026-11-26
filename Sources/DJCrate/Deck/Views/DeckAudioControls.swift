@@ -128,7 +128,7 @@ struct GainDraftDiscardButton: View {
 
     var body: some View {
         if deck.hasGainOverride {
-            Button(.ui("게인 초안 버리기")) { deck.clearGainDraft() }
+            Button(.ui("게인 편집 버리기")) { deck.clearGainDraft() }
                 .font(.scaled(.caption, textScale))
                 .controlSize(ControlSize.small.scaled(textScale))
         }
@@ -319,11 +319,11 @@ struct GainSettings: View {
                             Button { deck.adjustTrackGain(by: 0.1) } label: { Text(verbatim: "+0.1") }
                             Button { deck.adjustTrackGain(by: 1) } label: { Text(verbatim: "+1") }
                             if deck.gainDraft != nil {
-                                Button(.ui("게인 초안 버리기")) { deck.clearGainDraft() }
+                                Button(.ui("게인 편집 버리기")) { deck.clearGainDraft() }
                             }
                         }
                         .controlSize(.small)
-                        .help(deck.gainDraft != nil ? "" : String(ui: "이 곡의 rekordbox 오토게인을 고칩니다(초안)"))
+                        .help(deck.gainDraft != nil ? "" : String(ui: "이 곡의 rekordbox 오토게인을 고칩니다(편집)"))
                     } else {
                         Text(.ui("rekordbox 값 없음(분석 전)")).foregroundStyle(.secondary)
                     }

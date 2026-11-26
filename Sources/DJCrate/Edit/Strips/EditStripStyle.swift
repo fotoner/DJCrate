@@ -41,6 +41,14 @@ func drawBarRuler(_ context: GraphicsContext, layout: BarLayout, bars: ClosedRan
     }
 }
 
+/// 마우스가 마지막으로 있던 자리(줄 좌표). 올린 자리(`EditHover`)는 마우스를 움직일 때만 새로 들어온다.
+/// 마우스가 가만있는 채 목록·보이는 자리·고른 구간이 바뀌면(⌫·⌘Z·확대) 이 자리로 다시 정한다.
+/// 참조 형식이라 값을 바꿔도 뷰를 다시 그리지 않는다.
+final class EditHoverSpot {
+    var point: CGPoint?
+    var width: CGFloat = 0
+}
+
 /// 줄 테두리: 스페이스바·←→가 움직이는 줄은 강조색으로 두른다.
 struct LaneFrame: ViewModifier {
     let focused: Bool

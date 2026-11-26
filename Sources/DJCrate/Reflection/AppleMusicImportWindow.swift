@@ -5,13 +5,19 @@ import SwiftUI
 
 @MainActor
 final class AppleMusicImportWindow: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
-    private var model: AppleMusicImportModel?
+    private(set) var window: NSWindow?
+    private(set) var model: AppleMusicImportModel?
 
-    func open(store: LibraryStore) {
-        if let window, window.isVisible { window.makeKeyAndOrderFront(nil); return }
-        let model = AppleMusicImportModel(staging: store.staging, appleMusic: store.useCases.appleMusic)
-        let window = NSWindow(contentViewController: NSHostingController(rootView: AppleMusicImportView(model: model)))
+    func open(store: LibraryStore, makeWindow: (NSViewController) -> NSWindow = { NSWindow(contentViewController: $0) }) {
+        // 최소화한 창은 isVisible이 false라 닫은 창과 같아 보인다. 새로 만들지 않고 그 창을 되살린다(#378). 닫은 창은 새 창·새 모델로 연다.
+        if let window, window.isVisible || window.isMiniaturized {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        let model = AppleMusicImportModel(staging: store.staging, appleMusic: store.useCases.appleMusic,
+                                          openGuide: { [weak store] in store?.showIntegrationGuide?($0) })
+        let window = makeWindow(NSHostingController(rootView: AppleMusicImportView(model: model)))
         window.title = String(ui: "Apple Music XML 가져오기")
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.isReleasedWhenClosed = false
@@ -32,8 +38,7 @@ private struct AppleMusicImportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(.ui("Music의 파일 › 보관함 › 보관함 내보내기에서 XML을 저장하세요. 재생 목록 내보내기에서 XML을 골라도 됩니다."))
-            Text(.ui("로컬 음원만 ‘추가한 곡’에 넣습니다. ‘재생 목록도 만들기’를 켜면 컬렉션에 넣은 뒤 원래 소속과 순서로 목록 초안을 만듭니다."))
+            Text(.ui("로컬 음원만 ‘추가한 곡’에 넣습니다. ‘재생 목록도 만들기’를 켜면 컬렉션에 넣은 뒤 원래 소속과 순서로 목록 편집을 만듭니다."))
                 .font(.callout).foregroundStyle(.secondary)
             Toggle(.ui("재생 목록도 만들기"), isOn: $model.createPlaylists)
                 .toggleStyle(.checkbox)
@@ -43,6 +48,8 @@ private struct AppleMusicImportView: View {
             }
             HStack {
                 Button(.ui("XML 파일 선택…")) { model.chooseXML() }
+                Button(.ui("가져오는 방법")) { model.showGuide() }
+                    .buttonStyle(.link)
                 if model.isBusy { ProgressView().controlSize(.small) }
                 Spacer()
                 Text(.ui("선택한 곡 \(model.selectedTracks.count)개"))

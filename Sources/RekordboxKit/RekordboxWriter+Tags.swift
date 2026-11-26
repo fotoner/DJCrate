@@ -204,7 +204,7 @@ extension RekordboxWriter {
         guard !content.deleted else { throw block(String(ui: "rekordbox 컬렉션에서 지운 곡이니 컬렉션에서 곡을 확인한 뒤 DJCrate에서 다시 동기화하세요")) }
         let closed = draft.changedKeys.filter { !writable.contains($0) }
         guard closed.isEmpty else {
-            throw block(String(ui: "rekordbox에 쓰는 규칙을 아직 확인하지 않은 칸(\(closed.map(\.label).joined(separator: "·")))이 있습니다. 그 칸을 되돌리면 나머지는 쓸 수 있습니다"))
+            throw block(String(ui: "rekordbox에 저장하는 규칙을 아직 확인하지 않은 칸(\(closed.map(\.label).joined(separator: "·")))이 있습니다. 그 칸을 되돌리면 나머지는 저장할 수 있습니다"))
         }
         if let issue = draft.issues.first { throw block(issue) }
         for key in [TagFields.Key.year, .trackNumber] where draft.changedKeys.contains(key) {
@@ -212,7 +212,7 @@ extension RekordboxWriter {
         }
         // 앨범을 비우면 rekordbox가 앨범 아티스트도 함께 비운다(2026-09-27 실험곡 3). 비운 앨범에 새 앨범 아티스트는 쓸 수 없다.
         if draft.changedKeys.contains(.albumArtist), draft.fields.album.isEmpty, !draft.fields.albumArtist.isEmpty {
-            throw block(String(ui: "앨범이 없는 곡에는 앨범 아티스트를 쓸 수 없습니다"))
+            throw block(String(ui: "앨범이 없는 곡에는 앨범 아티스트를 저장할 수 없습니다"))
         }
         try checkTagState(draft, state: content.state, block: block)
         // 칸별로 확인한 범위(평점·곡 색, #65). 판단은 `TagWriteScope` 한 곳이다.
@@ -233,7 +233,7 @@ extension RekordboxWriter {
         var comparable = current
         for key in TagFields.Key.independent where !draft.changedKeys.contains(key) { comparable?[key] = draft.base[key] }
         guard comparable == draft.base else {
-            throw block(String(ui: "초안을 만든 뒤 rekordbox에서 곡 정보가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
+            throw block(String(ui: "편집을 만든 뒤 rekordbox에서 곡 정보가 바뀌었습니다. DJCrate에서 다시 불러와 확인하세요"))
         }
         let keyID = draft.changedKeys.contains(.musicalKey) ? try resolveKeyID(draft.fields.musicalKey, db: db, block: block) : nil
         if draft.changedKeys.contains(.color) { try checkColorID(draft.fields.color, db: db, block: block) }
@@ -421,7 +421,7 @@ extension RekordboxWriter {
     /// (#171 2026-10-01 코멘트, #173 2026-10-04 S1·S2: 아홉 칸 모두·코멘트 비우기). 그 밖의 상태는 확인하지 않아 막는다.
     private static func checkTagState(_ draft: TagDraft, state: Int?, block: (String) -> Blocked) throws {
         guard let state, verifiedTagStates.contains(state) else {
-            throw block(String(ui: "이 곡의 동기화 상태에서는 태그 쓰기를 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
+            throw block(String(ui: "이 곡의 동기화 상태에서는 태그 저장을 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
         }
     }
 
@@ -438,11 +438,11 @@ extension RekordboxWriter {
                      [.text(contentID)]) { oldState = $0.int(0) ?? -1; oldAlbumArtist = $0.string(1) ?? "" }
         // 앨범 행은 자기 상태로 저장된다: 0 그대로, 256 → 257, 257 그대로(#173 S1 T02·T03·T05·X1, S2 U01·U02·U07·U14, S3 V01·V03·V05).
         guard Self.verifiedTagStates.contains(oldState) else {
-            throw block(String(ui: "이 앨범의 동기화 상태에서는 태그 쓰기를 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
+            throw block(String(ui: "이 앨범의 동기화 상태에서는 태그 저장을 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
         }
         guard keys.contains(.album) || keys.contains(.albumArtist), !draft.fields.album.isEmpty else { return }
         if keys.contains(.album) && keys.contains(.albumArtist) {
-            throw block(String(ui: "앨범과 앨범 아티스트를 함께 바꾸는 규칙은 확인하지 못했으므로 한 칸씩 쓰세요"))
+            throw block(String(ui: "앨범과 앨범 아티스트를 함께 바꾸는 규칙은 확인하지 못했으므로 한 칸씩 저장하세요"))
         }
         guard checks == .all else { return }
         var albums: [(id: String, artist: String, state: Int?)] = []
@@ -455,7 +455,7 @@ extension RekordboxWriter {
         }
         guard let album = albums.first else { return }
         guard let state = album.state, Self.verifiedTagStates.contains(state) else {
-            throw block(String(ui: "이 앨범의 동기화 상태에서는 태그 쓰기를 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
+            throw block(String(ui: "이 앨범의 동기화 상태에서는 태그 저장을 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
         }
         if keys.contains(.albumArtist) {
             // 동기화 앨범은 지운 곡을 세지 않는다(#173 S2 U01·U14: 지운 곡도 쓰던 동기화 앨범의 앨범 아티스트를 제자리에서 넣고 비웠다).
@@ -495,7 +495,7 @@ extension RekordboxWriter {
         /// 기존 앨범 행 저장: 앨범 아티스트(nil이면 NULL만 ''로) + 상태 256 → 257 + 변경 번호·시각
         func saveAlbum(_ album: String, albumArtist: String?) throws {
             guard case let .live(status?) = try liveNameState(db, table: .album, id: album), verifiedTagStates.contains(status) else {
-                throw Blocked(title: content.title, reason: String(ui: "이 앨범의 동기화 상태에서는 태그 쓰기를 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
+                throw Blocked(title: content.title, reason: String(ui: "이 앨범의 동기화 상태에서는 태그 저장을 확인하지 못했으므로 rekordbox에서 직접 고치세요"))
             }
             usn += 1
             let artist = albumArtist == nil ? "ifnull(AlbumArtistID, '')" : "?"
@@ -599,7 +599,7 @@ extension RekordboxWriter {
     /// 곡의 태그·카운터·변경 번호가 쓴 그대로인지 다시 읽어 확인한다(트랜잭션 안과 커밋 뒤).
     static func verifyTags(db: CipherDatabase, _ expected: TagExpectation) throws {
         func fail(_ reason: String) -> DJCError { .writeVerificationFailed("\(reason) (ContentID \(expected.contentID))") }
-        guard try currentTags(db: db, contentID: expected.contentID) == expected.fields else { throw fail(String(ui: "곡 정보가 초안과 다릅니다")) }
+        guard try currentTags(db: db, contentID: expected.contentID) == expected.fields else { throw fail(String(ui: "곡 정보가 편집과 다릅니다")) }
         var stored: (info: String?, type: String?, usn: Int?, status: Int?)?
         try db.query("SELECT TrackInfoUpdated, typeof(TrackInfoUpdated), rb_local_usn, rb_data_status FROM djmdContent WHERE ID = ?",
                      [.text(expected.contentID)]) { stored = ($0.string(0), $0.string(1), $0.int(2), $0.int(3)) }
@@ -610,7 +610,7 @@ extension RekordboxWriter {
             // ScaleName 조인으로는 '0'·''·NULL이 모두 키 없음이라 칸 자체를 본다(지우기는 '0' 글자)
             var raw: (value: String?, type: String?)?
             try db.query("SELECT KeyID, typeof(KeyID) FROM djmdContent WHERE ID = ?", [.text(expected.contentID)]) { raw = ($0.string(0), $0.string(1)) }
-            guard raw?.value == keyID, raw?.type == "text" else { throw fail(String(ui: "곡의 키(KeyID)가 쓴 것과 다릅니다")) }
+            guard raw?.value == keyID, raw?.type == "text" else { throw fail(String(ui: "곡의 키(KeyID)가 저장한 것과 다릅니다")) }
         }
         if expected.rating != nil || expected.colorID != nil {
             // 읽기 규칙으로는 평점 0·NULL, 색 '0'·''·NULL이 모두 없음이라 칸 자체(값·자료형)를 본다
@@ -619,23 +619,23 @@ extension RekordboxWriter {
                 raw = ($0.int(0), $0.string(1), $0.string(2), $0.string(3))
             }
             if let rating = expected.rating, raw?.rating != rating || raw?.ratingType != "integer" {
-                throw fail(String(ui: "곡의 평점(Rating)이 쓴 것과 다릅니다"))
+                throw fail(String(ui: "곡의 평점(Rating)이 저장한 것과 다릅니다"))
             }
             if let color = expected.colorID, raw?.color != color || raw?.colorType != "text" {
-                throw fail(String(ui: "곡의 곡 색(ColorID)이 쓴 것과 다릅니다"))
+                throw fail(String(ui: "곡의 곡 색(ColorID)이 저장한 것과 다릅니다"))
             }
         }
         if let album = expected.albumID {
             var stored: String?
             try db.query("SELECT AlbumID FROM djmdContent WHERE ID = ?", [.text(expected.contentID)]) { stored = $0.string(0) }
-            guard stored == album else { throw fail(String(ui: "곡의 앨범 행이 쓴 것과 다르니 rekordbox를 그대로 둔 채 문제를 알려 주세요")) }
+            guard stored == album else { throw fail(String(ui: "곡의 앨범 행이 저장한 것과 다르니 rekordbox를 그대로 둔 채 문제를 알려 주세요")) }
         }
         for (id, album) in expected.touchedAlbums {
             guard try scalar(db, "SELECT rb_local_usn FROM djmdAlbum WHERE ID = ? AND AlbumArtistID IS NOT NULL", [.text(id)]) == album.usn else {
                 throw fail(String(ui: "앨범 행의 변경 번호가 다릅니다"))
             }
             guard try scalar(db, "SELECT rb_data_status FROM djmdAlbum WHERE ID = ? AND rb_local_deleted = 0", [.text(id)]) == album.status else {
-                throw fail(String(ui: "앨범 행의 동기화 상태(rb_data_status)가 쓴 것과 다르니 rekordbox를 그대로 둔 채 문제를 알려 주세요"))
+                throw fail(String(ui: "앨범 행의 동기화 상태(rb_data_status)가 저장한 것과 다르니 rekordbox를 그대로 둔 채 문제를 알려 주세요"))
             }
         }
         for (table, id) in expected.deletedNames {
@@ -647,7 +647,7 @@ extension RekordboxWriter {
                          [.text(name.id)]) { rows.append(($0.int(0), $0.int(1), $0.int(2), $0.string(3), $0.int(4))) }
             guard rows.count == 1, let row = rows.first, row.status == 258, row.deleted == 1, row.usn == name.usn,
                   row.cloud == name.cloudUSN, row.synced == name.synced else {
-                throw fail(String(ui: "더 쓰지 않는 동기화 이름 행의 표시가 쓴 것과 다르니 rekordbox를 그대로 둔 채 문제를 알려 주세요"))
+                throw fail(String(ui: "더 쓰지 않는 동기화 이름 행의 표시가 저장한 것과 다르니 rekordbox를 그대로 둔 채 문제를 알려 주세요"))
             }
         }
     }

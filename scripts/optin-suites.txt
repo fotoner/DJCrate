@@ -13,6 +13,7 @@ regression DJCrateTests.LayoutRecomputeTests DJC_LAYOUT_RECOMPUTE_TESTS=1 DJC_LA
 
 # 앱 자가 테스트·화면 확인용 픽스처를 만드는 도구(.claude/skills/app-selftest/SKILL.md)
 tool DJCrateTests.AsyncGuidanceFixtureCapture DJC_ASYNC_FIXTURE=<임시경로>
+tool DJCrateTests.AutoReflectFixtureCapture DJC_AUTO_REFLECT_FIXTURE=<임시경로>
 tool DJCrateTests.EditLayoutFixtureCapture DJC_EDIT_LAYOUT_FIXTURE=<임시경로>
 tool DJCrateTests.HistorySelfTestFixtureCapture DJC_HISTORY_SELFTEST_FIXTURE=<임시경로>
 tool DJCrateTests.ITunesFixtureCapture DJC_ITUNES_FIXTURE=<임시경로>

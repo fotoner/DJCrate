@@ -30,33 +30,22 @@ struct ReflectionPromptLayoutTests {
         #expect(scroll.frame.height < 100)
     }
 
-    @Test func 연동_안내는_경로만_본문에_두고_단계는_스크롤로_보여_준다() throws {
-        _ = NSApplication.shared
-        let url = URL(filePath: "/tmp/djc-layout/djcrate-rekordbox.xml")
-        let alert = RekordboxLink.setupAlert(for: url)
-        #expect(alert.informativeText.components(separatedBy: "\n").count == 2)
-        #expect(alert.informativeText.contains(url.path))
-        #expect(!alert.informativeText.contains("1. rekordbox"))
-        #expect(alert.buttons.map(\.title) == ["확인", "Finder에서 보기"])
-        let scroll = try #require(alert.accessoryView as? NSScrollView)
-        let textView = try #require(scroll.documentView as? NSTextView)
-        #expect(scroll.frame.height <= 240)
-        #expect(textView.string.contains("1. rekordbox") && textView.string.contains("2. 트리에"))
-        #expect(textView.string.contains("Import To Collection") && textView.string.contains("라이브러리 백업"))
-    }
-
     /// XML 만들기는 연동 파일만 쓰므로 묻지 않고, 막혀서 뺀 곡과 XML에 넣지 않은 초안을 결과 알림에 적는다(#212, #307).
     @Test func XML_결과_알림은_막힌_곡과_넣지_않은_초안을_알린다() {
         var plan = Reflection.plan(track: Fixture.row("x").track, rawCues: [], cueDraft: nil, gridDraft: nil)
         plan.blockers = ["막힌 이유"]
         let clean = ReflectionPanels.resultMessage(written: 2, blocked: [], exclusions: [])
         #expect(clean.kind == .success && clean.title == "2곡을 연동 XML에 썼습니다")
-        #expect(clean.detail?.contains("Import To Collection") == true && !clean.showsResult)
+        // 가져오는 순서(메뉴 경로)는 결과 줄에 다시 쓰지 않는다: 결과 한 줄과 [가져오는 방법]뿐이다(#315)
+        #expect(clean.detail == nil && !clean.showsResult)
+        #expect(clean.action == .openIntegrationGuide(.rekordbox) && clean.action?.title == "가져오는 방법")
         let warned = ReflectionPanels.resultMessage(written: 1, blocked: [plan],
-                                                    exclusions: ["• 곡 x: 막힌 이유", "• 곡 t: 태그 쓰지 않음: 기존 곡의 XML은 큐·그리드만 지원하니…"])
+                                                    exclusions: ["• 곡 x: 막힌 이유", "• 곡 t: 태그 저장하지 않음: 기존 곡의 XML은 큐·그리드만 지원하니…"])
         #expect(warned.kind == .warning)
+        #expect(warned.action == .openIntegrationGuide(.rekordbox))
         #expect(warned.detail?.contains("막혀서 뺀 곡 1: 곡 x(막힌 이유)") == true)
-        #expect(warned.detail?.contains("XML에 넣지 않은 초안 1: 곡 t: 태그 쓰지 않음") == true)
+        #expect(warned.text.contains("Import To Collection") == false && warned.text.contains("새로고침") == false)
+        #expect(warned.detail?.contains("XML에 넣지 않은 편집 1: 곡 t: 태그 저장하지 않음") == true)
     }
 
     /// XML로 만들 곡이 없으면 확인 창을 띄우지 않고 결과 알림으로 남긴다(#230, #307). 막힌 곡은 결과처럼 앞 둘과 수를 적는다.
@@ -70,7 +59,7 @@ struct ReflectionPromptLayoutTests {
         #expect(message.kind == .warning)
         #expect(message.title == "XML로 만들 곡이 없습니다" && message.detail == "막혀서 뺀 곡 100: 곡 xml-1(막힌 이유), 곡 xml-2(막힌 이유)")
         let empty = ReflectionPanels.blockedMessage([])
-        #expect(empty.kind == .warning && empty.title == "XML로 만들 곡이 없습니다" && empty.detail == "고른 곡에 rekordbox와 다른 큐·그리드 초안이 없습니다.")
+        #expect(empty.kind == .warning && empty.title == "XML로 만들 곡이 없습니다" && empty.detail == "고른 곡에 rekordbox와 다른 큐·그리드 편집이 없습니다.")
     }
 
     /// 곡이 많아도 쓴 곡마다의 결과는 쓰기 결과에 남는다(묻지 않고 모두 쓰는 판정은 반영 세션 시험).
@@ -80,7 +69,7 @@ struct ReflectionPromptLayoutTests {
                                      gains: (1...100).map { Fixture.outcome("gain-\($0)", .written, added: -250) }).report
         ReflectionPresenter(store: store, prompter: ScriptedPrompter()).publish(.written(report, preview: report, followUp: []))
         let lines = try #require(store.activityLog.latest?.result).text.components(separatedBy: "\n")
-        #expect(lines.contains("• 곡 grid-100 — 그리드 쓰기 완료") && lines.contains("• 곡 gain-100 — 게인 쓰기 완료"))
+        #expect(lines.contains("• 곡 grid-100 — 그리드 저장 완료") && lines.contains("• 곡 gain-100 — 게인 저장 완료"))
     }
 
     @Test func 쓰지_않는_이유는_끝까지_보이고_쓰는_곡_줄은_넣지_않는다() throws {
@@ -91,7 +80,7 @@ struct ReflectionPromptLayoutTests {
         let prompt = ReflectionPrompts.confirmation(preview.report)
         #expect(prompt.text.count < 180)
         let lines = try detailText(prompt).components(separatedBy: "\n")
-        #expect(lines == ["쓰지 않는 것 100:"] + (1...100).map { "• 곡 blocked-\($0): 분석 전" })
+        #expect(lines == ["저장하지 않는 것 100:"] + (1...100).map { "• 곡 blocked-\($0): 분석 전" })
         #expect(!lines.contains { $0.hasPrefix("… 외") })
     }
 
@@ -156,7 +145,7 @@ struct ReflectionPromptLayoutTests {
 
     @Test func 읽기_전용_목록이_기본_버튼의_입력_초점을_빼앗지_않는다() throws {
         _ = NSApplication.shared
-        let prompt = ReflectionPrompt(title: "목록 시험", text: "안내", confirm: "쓰기",
+        let prompt = ReflectionPrompt(title: "목록 시험", text: "안내", confirm: "저장",
                                       details: (1...200).map { "• 시험 곡 \($0)" })
         let alert = AlertPrompter().makeAlert(prompt)
         alert.layout()

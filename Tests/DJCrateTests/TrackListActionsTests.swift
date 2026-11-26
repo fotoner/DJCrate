@@ -68,7 +68,7 @@ struct TrackListActionsTests {
             let action = try #require(item.action, "\(title)")
             #expect(NSApp.sendAction(action, to: item.target, from: item))
         }
-        try press("선택한 곡 rekordbox에 쓰기 (1곡)")
+        try press("선택한 곡 rekordbox에 저장 (1곡)")
         try press("선택한 곡 XML 만들기 (1곡)")
         try press("rekordbox에 바로 넣기 (1곡)")
         try press("rekordbox 컬렉션에서 빼기 (1곡)…")

@@ -31,12 +31,12 @@ struct EditDeckControl {
 extension DeckModel {
     /// 덱에 곡이 다 올라와(초안·그리드를 읽음) 곡 편집 창을 열 수 있는지
     var canOpenTrackEdit: Bool {
-        row != nil && draft != nil && !editsFrozen
+        row != nil && draft != nil && !isEditLocked
     }
 
     var trackEditUnavailableReason: String? {
-        if editsFrozen { return String(ui: "rekordbox 쓰기가 끝난 뒤 곡 편집 창을 여세요") }
-        if row == nil || draft == nil { return String(ui: "곡을 덱에 불러오고 초안 읽기가 끝난 뒤 곡 편집 창을 여세요") }
+        if isEditLocked { return String(ui: "rekordbox 저장이 끝난 뒤 곡 편집 창을 여세요") }
+        if row == nil || draft == nil { return String(ui: "곡을 덱에 불러오고 편집 읽기가 끝난 뒤 곡 편집 창을 여세요") }
         return nil
     }
 

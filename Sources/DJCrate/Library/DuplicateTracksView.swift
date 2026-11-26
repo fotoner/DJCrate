@@ -15,22 +15,23 @@ struct DuplicateTracksView: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(.ui("제목·아티스트 같음 · 길이 차이 2초 이내 · 버전 표기 구분"))
                 .font(.callout).padding(.horizontal, 12).padding(.top, 8)
-            Text(.ui("스냅샷 기준 · 후보가 같은 음원인지는 직접 확인하세요 · 한 곡이 여러 묶음에 나올 수 있습니다"))
+            Text(.ui("읽은 사본 기준 · 후보가 같은 음원인지는 직접 확인하세요 · 한 곡이 여러 묶음에 나올 수 있습니다"))
                 .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.bottom, 8)
             ForEach(store.mergeDrafts) { draft in
                 HStack {
-                    Text(.ui("합치기 쓰기 대기 · \(draft.keeping.title) 유지 · \(draft.removing.count)곡 빼기"))
+                    Text(.ui("합치기 저장 대기 · \(draft.keeping.title) 유지 · \(draft.removing.count)곡 빼기"))
                     Spacer()
-                    Button(.ui("초안 버리기")) {
-                        do { try store.setMergeDrafts(store.mergeDrafts.filter { $0.id != draft.id }) }
+                    Button(.ui("편집 버리기")) {
+                        do { try store.discardMerge(draft.id) }
                         catch { store.showToast(.notice(text: error.localizedDescription, kind: .warning)) }
                     }
+                    .disabled(store.libraryBusy)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 4)
             }
             if store.displayDuplicateGroups.isEmpty {
                 ContentUnavailableView(.ui("중복 후보가 없습니다"), systemImage: "square.on.square",
-                                       description: store.search.isEmpty ? Text(.ui("현재 스냅샷에서 조건이 맞는 곡이 없습니다")) : Text(.ui("검색어를 지우고 다시 확인하세요")))
+                                       description: store.search.isEmpty ? Text(.ui("읽은 사본에 조건이 맞는 곡이 없습니다")) : Text(.ui("검색어를 지우고 다시 확인하세요")))
             } else {
                 GeometryReader { geometry in
                     ScrollView(.horizontal) {
@@ -69,7 +70,6 @@ struct DuplicateTracksView: View {
                 }
             }
         }
-        .disabled(store.editsFrozen)
         .navigationTitle(store.sidebarTitle)
         .navigationSubtitle(String(ui: "\(store.displayDuplicateGroups.count)묶음 · \(store.displayRows.count)곡"))
     }
@@ -110,7 +110,8 @@ struct DuplicateTracksView: View {
                     model.startMerge(keeping: member.id, removing: group.tracks.filter { $0.id != member.id }.map(\.id))
                 }
                 .buttonStyle(.borderless)
-                .disabled(model.isPreparing || group.tracks.contains { store.pendingUUIDs.contains($0.track.uuid) })
+                // 합치기는 쓰는 동안 시작하지 않는다(`prepareMerge`·`stageMerge`도 같은 가드). 목록과 덱에 불러오기는 그대로 된다
+                .disabled(model.isPreparing || store.libraryBusy || group.tracks.contains { store.pendingUUIDs.contains($0.track.uuid) })
             }
         }
     }

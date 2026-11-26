@@ -317,7 +317,7 @@ struct LayoutRecomputeTests {
         #expect(field.stringValue.isEmpty)
     }
 
-    /// 머리 줄 필터(#339): 필터를 바꿔도 주 창 본문(`ContentView`·`LibraryDetail`)과 머리 줄은 다시 계산하지 않는다.
+    /// 머리 줄 필터(#339·#351): 필터를 바꿔도 주 창 본문(`ContentView`·`LibraryDetail`)과 머리 줄은 다시 계산하지 않는다.
     /// 필터 값을 읽는 곳은 필터 단추(`AttributeFilterMenu`)와 칩(`ListFilterChips`) 잎뿐이다. 칩을 눌러 끄는 길도 같다.
     @Test func 필터를_바꿔도_주_창_본문은_다시_계산하지_않고_필터_잎만_다시_계산한다() async throws {
         PerfProbe.countsBodies = true
@@ -332,11 +332,13 @@ struct LayoutRecomputeTests {
             if PerfProbe.bodySnapshot().isEmpty { break }
         }
         PerfProbe.resetBodyCounts()
-        // 평점만 → 곡 색도 → 평점 끔 → 평점 다시 → 모두 끔. 아무 곡도 걸리지 않는 조합도 거친다(결과 없음 안내가 뜬다)
-        let steps: [(rating: Int, color: String?)] = [(3, nil), (3, "2"), (0, "2"), (5, "2"), (0, nil)]
+        // 평점만 → 곡 색도 → 평점 끔 → 평점 다시 → BPM·키·장르 → 모두 끔. 아무 곡도 걸리지 않는 조합도 거친다(결과 없음 안내가 뜬다)
+        let steps: [TrackFilter] = [TrackFilter(minimumRating: 3), TrackFilter(minimumRating: 3, colorIDs: ["2"]), TrackFilter(colorIDs: ["2"]),
+                                    TrackFilter(minimumRating: 5, colorIDs: ["2"]),
+                                    TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("8A", mode: .compatible), genre: "House"),
+                                    TrackFilter()]
         for step in steps {
-            store.minimumRating = step.rating
-            store.colorFilter = step.color
+            store.filter = step
             try await settle(window)
         }
         print("TRACE 필터 \(steps.count)번:", PerfProbe.bodySummary() ?? "-")
@@ -346,13 +348,12 @@ struct LayoutRecomputeTests {
         #expect(PerfProbe.bodyCount("ListFilterChips") >= steps.count)
 
         // 칩을 눌러 끄는 길(그 조건만, 모두)도 같은 잎만 다시 계산한다
-        store.minimumRating = 4
-        store.colorFilter = "6"
+        store.filter = TrackFilter(minimumRating: 4, colorIDs: ["6"], bpm: BPMRange(lower: 100, upper: nil))
         try await settle(window)
         PerfProbe.resetBodyCounts()
         store.clearAttributeFilter(.rating(4))
         try await settle(window)
-        #expect(store.minimumRating == 0 && store.colorFilter == "6")
+        #expect(store.minimumRating == 0 && store.colorFilters == ["6"] && store.filter.bpm != nil)
         store.clearAttributeFilters()
         try await settle(window)
         #expect(!store.isAttributeFiltered)

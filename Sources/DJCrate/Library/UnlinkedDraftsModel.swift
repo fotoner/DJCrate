@@ -55,7 +55,7 @@ final class UnlinkedDraftsModel: Identifiable {
     /// 확인 창의 "초안 버리기". 고른 곡의 초안을 버리고 목록을 다시 읽는다.
     func discard() {
         let failed = discardDrafts(selected)
-        failure = failed == 0 ? nil : String(ui: "\(failed)곡의 초안을 버리지 못했으니 초안 폴더의 접근 권한을 확인한 뒤 다시 버리세요.")
+        failure = failed == 0 ? nil : String(ui: "\(failed)곡의 편집을 버리지 못했으니 편집 폴더의 접근 권한을 확인한 뒤 다시 버리세요.")
         reload()
     }
 }

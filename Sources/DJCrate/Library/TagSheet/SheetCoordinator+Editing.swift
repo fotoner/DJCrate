@@ -20,7 +20,7 @@ extension SheetCoordinator {
         syncAccessibilitySelection(announceFocus: false)
         editing = cursor
         editingOriginal = text(row: cursor.row, column: cursor.column)
-        let field = cell.beginEditing(text: initialText ?? editingOriginal)
+        let field = cell.beginEditing(text: initialText ?? editingOriginal, original: editingOriginal)
         field.delegate = self
         table.window?.makeFirstResponder(field)
         if let editor = field.currentEditor() {
@@ -89,12 +89,12 @@ extension SheetCoordinator {
         let tsv = rect.rows.filter { rows.indices.contains($0) }
             .map { r in rect.columns.map { TSV.quote(text(row: r, column: $0)) }.joined(separator: "\t") }
             .joined(separator: "\n")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(tsv, forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString(tsv, forType: .string)
     }
 
     func paste() {
-        paste(string: NSPasteboard.general.string(forType: .string))
+        paste(string: pasteboard.string(forType: .string))
     }
 
     /// 붙여넣을 글자를 직접 받는다(시험이 사용자 클립보드를 건드리지 않게)

@@ -21,10 +21,10 @@ struct StatusBarModelTests {
         log.record(AppToast(title: "현재 rekordbox 내용을 불러왔습니다"))
         #expect(model.unreadCount == 0)
         clock += 1
-        log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", nil))
         #expect(model.unreadCount == 1 && model.unreadKind == .warning)
         clock += 1
-        log.record(WriteResult(kind: .failure, title: "rekordbox에 쓰지 않았습니다", text: "• 곡 a — 실패"))
+        log.record(WriteResult(kind: .failure, title: "rekordbox에 저장하지 않았습니다", text: "• 곡 a — 실패"))
         // 점은 가장 무거운 종류의 색이다
         #expect(model.unreadCount == 2 && model.unreadKind == .failure)
     }
@@ -34,7 +34,7 @@ struct StatusBarModelTests {
         let log = ActivityLog(now: { clock })
         let settings = Self.settings()
         let model = StatusBarModel(log: log, settings: settings)
-        let warning = log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        let warning = log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", nil))
         clock += 1
         model.togglePopover()
         #expect(model.isPresented && model.unreadCount == 0)
@@ -48,7 +48,7 @@ struct StatusBarModelTests {
         #expect(reopened.unreadCount == 0 && reopened.seenThrough == model.seenThrough)
         // 같은 알림이 다시 뜨면(합친 항목의 시각이 늦어져) 다시 읽지 않음이 된다
         clock += 1
-        log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", nil))
         #expect(log.entries.count == 1 && reopened.unreadCount == 1)
     }
 
@@ -57,7 +57,7 @@ struct StatusBarModelTests {
         var clock = Self.start + 100
         let log = ActivityLog(now: { clock })
         let model = StatusBarModel(log: log, settings: Self.settings())
-        log.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        log.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", nil))
         clock = Self.start + 10
         log.record(AppToast(title: "현재 rekordbox 내용을 불러왔습니다"))
         #expect(model.unreadCount == 1)
@@ -119,12 +119,12 @@ struct StatusBarModelTests {
     }
 
     @Test func 결과_보기가_없는_경고와_실패_알림에만_열기를_붙인다() {
-        #expect(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil).opensActivity)
+        #expect(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", nil).opensActivity)
         #expect(AppToast(kind: .failure, title: "USB에 쓰지 못했습니다", isUsb: true).opensActivity)
         // 성공 알림과 결과 보기가 있는 쓰기 결과에는 붙이지 않는다
         #expect(!AppToast.notice("할 것이 없습니다", nil, kind: .success).opensActivity)
-        #expect(!AppToast(kind: .warning, title: "일부 곡을 썼습니다").opensActivity)
-        #expect(!AppToast(kind: .failure, title: "rekordbox에 쓰지 않았습니다").opensActivity)
+        #expect(!AppToast(kind: .warning, title: "일부 곡을 저장했습니다").opensActivity)
+        #expect(!AppToast(kind: .failure, title: "rekordbox에 저장하지 않았습니다").opensActivity)
     }
 
     @Test func 조립_지점이_상태_줄의_모두_보기를_주_창의_활동_기록에_잇는다() {
@@ -142,7 +142,7 @@ struct StatusBarModelTests {
         var clock = Self.start
         let store = LibraryStore.test(activityLog: ActivityLog(url: nil, now: { clock }), saveTagDrafts: { _ in })
         let app = AppComposition(store: store, deck: DeckModel.test(audio: FakeDeckAudio(), storage: .memory(MemoryDrafts()), runsAnalysis: false))
-        store.activityLog.record(AppToast.notice("rekordbox가 켜져 있어 쓰지 않았습니다", nil))
+        store.activityLog.record(AppToast.notice("rekordbox가 켜져 있어 저장하지 않았습니다", nil))
         #expect(app.statusBar.unreadCount == 1)
         app.libraryWindow.showActivityLog()
         #expect(app.statusBar.unreadCount == 0)

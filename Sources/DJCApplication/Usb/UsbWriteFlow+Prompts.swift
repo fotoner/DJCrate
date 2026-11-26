@@ -89,7 +89,7 @@ extension UsbWriteFlow {
                 if case let .blocked(reason) = outcome { "• " + String(ui: "편집 \(number): \(reason)") } else { nil }
             }
             if !blocked.isEmpty {
-                lines.append(String(ui: "막힌 편집 \(blocked.count)건(초안에 남깁니다):"))
+                lines.append(String(ui: "막힌 편집 \(blocked.count)건(쓰기 대기에 남깁니다):"))
                 lines += blocked
             }
         }
@@ -132,8 +132,8 @@ extension UsbWriteFlow {
 
     /// 시점 스냅샷으로 되돌리기 직전의 백업으로 되돌리는(되돌리기를 취소하는) 확인 창
     public static func pointUndoConfirmation(_ volume: UsbVolumeInfo) -> ReflectionPrompt {
-        ReflectionPrompt(title: String(ui: "시점 스냅샷 되돌리기를 취소할까요?"),
-                         text: String(ui: "\(volume.name)을 시점 스냅샷으로 되돌리기 직전의 백업으로 되돌립니다."),
+        ReflectionPrompt(title: String(ui: "복원 시점 되돌리기를 취소할까요?"),
+                         text: String(ui: "\(volume.name)을 복원 시점으로 되돌리기 직전의 백업으로 되돌립니다."),
                          confirm: String(ui: "되돌리기 취소"), destructive: true,
                          details: volumeLines(volume, isTestVolume: volume.isDiskImage))
     }

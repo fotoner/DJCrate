@@ -200,11 +200,13 @@ extension DevSelfTests {
             await waitUntil { find(SheetTableView.self, in: window.contentView) != nil }
             if let sheet = find(SheetTableView.self, in: window.contentView), let coordinator = sheet.coordinator {
                 window.makeFirstResponder(sheet)
-                coordinator.select(.init(row: 0, column: 1), extend: false)
+                // 열 번호는 이름으로 찾는다(앞에 열이 더해져도 제목·아티스트 칸이다)
+                let titleColumn = sheet.column(withIdentifier: .init("title")), artistColumn = sheet.column(withIdentifier: .init("artist"))
+                coordinator.select(.init(row: 0, column: titleColumn), extend: false)
                 let before = deck.playhead
                 capture(window, "tag-sheet-before")
                 await send(window, code: 124, text: "\u{f703}")
-                check(coordinator.cursor == .init(row: 0, column: 2) && deck.playhead == before, "태그 시트 방향키")
+                check(coordinator.cursor == .init(row: 0, column: artistColumn) && deck.playhead == before, "태그 시트 방향키")
                 capture(window, "tag-sheet-after")
                 let cues = deck.memoryCueCount, zoom = deck.zoomSeconds
                 capture(window, "tag-input-before")
@@ -215,10 +217,10 @@ extension DevSelfTests {
                 capture(window, "tag-return-before")
                 await send(window, code: 36, text: "\r")
                 check(!coordinator.isEditing && window.firstResponder === sheet
-                      && coordinator.cursor == .init(row: 1, column: 2)
+                      && coordinator.cursor == .init(row: 1, column: artistColumn)
                       && store.tags.tagCell(coordinator.rows[0], .artist) == "m", "태그 Return은 칸 확정으로")
                 capture(window, "tag-return-after")
-                coordinator.select(.init(row: 0, column: 2), extend: false)
+                coordinator.select(.init(row: 0, column: artistColumn), extend: false)
                 await send(window, code: 24, text: "=")
                 capture(window, "tag-escape-before")
                 await send(window, code: 53, text: "\u{1b}")

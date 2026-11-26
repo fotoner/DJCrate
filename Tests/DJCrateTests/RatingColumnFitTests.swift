@@ -217,7 +217,7 @@ struct RatingColumnFitTests {
         h.coordinator.store.tags.setTag(.rating, "5", rows: [row])
         h.coordinator.updateTagRevision(h.coordinator.store.tagRevision)
         h.relayout()
-        #expect(cell.text == "5★" && cell.showsDraftMark && cell.label.accessibilityValue() as? String == "별 5개, 초안")
+        #expect(cell.text == "5★" && cell.showsDraftMark && cell.label.accessibilityValue() as? String == "별 5개, 저장 대기")
     }
 
     // MARK: 곡 색 칸

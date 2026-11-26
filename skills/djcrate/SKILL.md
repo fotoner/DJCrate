@@ -1,11 +1,11 @@
 ---
 name: djcrate
-description: DJCrate의 명령줄 도구 djc로 rekordbox 라이브러리(스냅샷 사본)를 조회하고 정리할 것을 제안하며, 사용자가 고른 제안만 djc draft로 큐·태그·재생 목록 초안을 만든다. 사용자가 rekordbox·DJCrate 라이브러리에서 곡을 찾거나(BPM·키·재생 목록·코멘트 조건), 큐 없는 곡·빈 코멘트·규칙 밖 코멘트를 찾거나, 코멘트·태그 정리안이나 큐 초안, 재생 목록 정리·새 구조, DJ 세트용 곡 후보·순서를 원할 때 쓴다. rekordbox에는 쓰지 않는다(반영은 사람이 앱에서 한다).
+description: DJCrate의 명령줄 도구 djc로 rekordbox 라이브러리(스냅샷 사본)를 조회하고 정리할 것을 제안하며, 사용자가 고른 제안만 djc draft로 큐·태그·재생 목록 초안을 만든다. 사용자가 rekordbox·DJCrate 라이브러리에서 곡을 찾거나(BPM·키·재생 목록·코멘트 조건), 큐 없는 곡·빈 코멘트·규칙 밖 코멘트를 찾거나, 코멘트·태그 정리안이나 큐 초안, 재생 목록 정리·새 구조, DJ 세트용 곡 후보·순서를 원할 때 쓴다. rekordbox에는 저장하지 않는다(저장은 사람이 앱에서 한다).
 ---
 
 # DJCrate 라이브러리 조회·제안·초안 (djc)
 
-`djc` 읽기 명령으로 rekordbox 라이브러리의 **스냅샷 사본**을 읽고, 고칠 것을 표로 제안한다. 사용자가 고른 것만 `djc draft`로 DJCrate의 **초안**(큐·태그·재생 목록)을 만든다. rekordbox에 쓰는 반영은 사람이 DJCrate 앱에서 한다. AI 연동은 CLI와 이 스킬로 한다. MCP 서버나 별도 플러그인 설치는 필요 없다.
+`djc` 읽기 명령으로 rekordbox 라이브러리의 **스냅샷 사본**을 읽고, 고칠 것을 표로 제안한다. 사용자가 고른 것만 `djc draft`로 DJCrate의 **초안**(큐·태그·재생 목록)을 만든다. rekordbox에 저장하는 일은 사람이 DJCrate 앱에서 한다. AI 연동은 CLI와 이 스킬로 한다. MCP 서버나 별도 플러그인 설치는 필요 없다.
 
 ## 안전 규칙 (먼저 지킨다)
 
@@ -34,12 +34,12 @@ description: DJCrate의 명령줄 도구 djc로 rekordbox 라이브러리(스냅
    3. 같은 명령을 `--dry-run --json`으로 먼저 돌려 결과(`hasChanges`, 바뀐 값)를 보여 준다. 오류가 나면 거기서 멈춘다.
       재생 목록은 `results[]`의 `status`를 본다. `skipped`가 있으면 그 이유를 보여 준다. 그다음 나머지만 쌓을지 사용자에게 묻는다.
    4. `--dry-run`을 빼고 실제 초안을 만든다.
-   5. 앱에서 확인하라고 안내한다. 큐 초안은 대기 목록과 곡 덱에서, 태그 초안은 태그 편집(⌘I)·태그 시트와 대기 목록에서 본다. 재생 목록 초안은 사이드바와 쓰기 미리 보기(⇧⌘E)에서 본다. 앱이 켜져 있으면 약 1초 뒤 다시 읽는다. 재생 목록 초안을 다시 읽으면 앱은 태그·재생 목록 ⌘Z 기록을 비운다.
+   5. 앱에서 확인하라고 안내한다. 큐 편집은 저장 대기 목록과 곡 덱에서 본다. 태그 편집은 태그 편집(⌘I)·태그 시트와 저장 대기 목록에서 본다. 재생 목록 편집은 사이드바와 저장 미리 보기(⌘S)에서 본다. 앱이 켜져 있으면 약 1초 뒤 다시 읽는다. 재생 목록 초안을 다시 읽으면 앱은 태그·재생 목록 ⌘Z 기록을 비운다.
    - `djc draft rm`은 사용자가 그 곡의 초안을 버리라고 할 때만 쓴다. 앱에서 한 편집까지 그 종류의 초안 **전체**가 사라진다.
-   - 같은 곡을 앱에서 편집하는 중이면 마지막 저장이 앞선 저장을 덮는다. 앱에서 그 곡 편집을 마친 뒤 만든다.
-4. **반영은 사람이 한다.** 사람이 rekordbox를 완전히 끈 뒤 DJCrate 앱에서 초안과 쓰기 미리 보기(⇧⌘E)를 확인하고 rekordbox에 쓴다.
-   - 반영할 수 있는 초안은 두 가지다. 컬렉션 곡의 큐, 그리드, 게인, 태그 초안과 재생 목록 초안이다.
-   - 태그는 rekordbox 곡 정보에만 쓴다. 음원 파일의 태그는 바꾸지 않는다. 이 스킬이 만드는 초안은 큐·태그·재생 목록이다.
+   - 같은 곡을 앱에서 편집하는 중이면 마지막 보관이 앞선 보관을 덮는다. 앱에서 그 곡 편집을 마친 뒤 만든다.
+4. **저장은 사람이 한다.** 사람이 rekordbox를 완전히 끈 뒤 DJCrate 앱에서 편집과 저장 미리 보기(⌘S)를 확인하고 rekordbox에 저장한다.
+   - 저장할 수 있는 편집은 두 가지다. 컬렉션 곡의 큐, 그리드, 게인, 태그 편집과 재생 목록 편집이다.
+   - 태그는 rekordbox 곡 정보에만 저장한다. 음원 파일의 태그는 바꾸지 않는다. 이 스킬이 만드는 초안은 큐·태그·재생 목록이다.
 5. **라이브러리 정보를 밖으로 내보내지 않는다.** 스냅샷·DB 사본·백업에는 rekordbox 클라우드 토큰이 들어 있다. 복사·업로드·출력하지 않는다. 곡 목록, 파일 경로, 곡 수는 이슈나 PR, 웹 서비스에 올리지 않는다.
 
 ## 준비
@@ -70,14 +70,14 @@ description: DJCrate의 명령줄 도구 djc로 rekordbox 라이브러리(스냅
 
 | 명령 | 하는 것 | `data` |
 |---|---|---|
-| `djc search <검색어> [--bpm 최소-최대] [--key 키] [--playlist ID] [--filter 필터] [--comment-preset none\|anisong] --json` | 곡 찾기. 검색어는 제목·아티스트·코멘트·장르 부분 일치, `''`는 전체. 조건은 모두 함께 적용 | `{tracks}` |
+| `djc search <검색어> [--bpm 최소-최대] [--key 키] [--playlist ID] [--filter 필터] [--comment-preset none\|anisong] --json` | 곡 찾기. 검색 칸은 제목·아티스트·앨범·앨범 아티스트·작곡가·코멘트·장르·파일 이름이다. 낱말은 부분 일치이고, 띄어 쓴 낱말은 모두 맞아야 한다. `''`는 전체. 조건은 모두 함께 적용 | `{tracks}` |
 | `djc track <ContentID> --json` | 곡 하나의 태그·큐·그리드·게인·소속 재생 목록·초안 여부 | `{track, cues, grid, gain?, playlists, drafts}` |
 | `djc playlists [--tree] --json` | 재생 목록·폴더 | `{playlists}` |
 | `djc playlist <ID> --json` | 재생 목록 곡을 순서대로(폴더면 하위 목록을 합침) | `{playlist, tracks}` |
 | `djc histories --json` | 재생 기록을 날짜순으로 | `{histories}` |
 | `djc history <ID> --json` | 기록 안의 곡을 재생 순서대로(반복 곡 유지) | `{history, entries}` |
 | `djc duplicates --json` | 중복 후보 묶음·큐 수·직접 소속 목록 수·재생 수·형식·비트레이트 비교(읽기 전용) | `{lengthToleranceSeconds, groups}` |
-| `djc drafts --json` | 초안이 있는 곡과 종류(cue·grid·gain·tag·artwork, 그림 초안은 앱에서만 만든다) | `{drafts}` |
+| `djc drafts --json` | 초안이 있는 곡과 종류(cue·grid·gain·tag·artwork, 그림 초안은 앱에서만 만든다), 종류별 출처와 제안 사유 | `{drafts}` |
 | `djc report [--files] [--comment-preset none\|anisong] --json` | 라이브러리 현황 집계(코멘트 분류·큐 유무·확장자 등, `--files`면 없는 파일 수) | 집계 칸 |
 | `djc parse "<코멘트>" --json` | 코멘트가 규칙(`TVA 작품명 OP 1` 꼴)에 맞는지 판정 | `{classification, parsed?}` |
 | `djc path <제목> --json` | 제목으로 파일 경로 찾기(대소문자 구분) | `{paths}` |
@@ -174,7 +174,8 @@ JSON 약속은 아래와 같다. 자세한 칸은 저장소의 `docs/cli.md`에 
     - `unverified_field`: 동기화 곡이나 재생 목록에 든 곡의 평점·곡 색은 아직 쓰기를 확인하지 않았다.
     - `playlist_edit_blocked`: 재생 목록 편집이 모두 막혀 하나도 쌓지 않았다. `message`에 편집 번호와 이유가 있다.
     - `draft_changed`: 계획하는 동안 앱이나 다른 실행이 재생 목록 초안을 바꿨다. 같은 명령을 다시 실행한다.
-    - `draft_busy`: DJCrate 앱이 rekordbox에 쓰는 중이거나 다른 djc가 재생 목록 초안을 고치는 중이라 쌓지 않았다. 그 일이 끝난 뒤 다시 실행한다.
+    - `draft_busy`: DJCrate 앱이 rekordbox에 저장하는 중이거나 다른 djc가 재생 목록 초안을 고치는 중이라 쌓지 않았다. 그 일이 끝난 뒤 다시 실행한다.
+    - `draft_busy`면 잠시 뒤 다시 시도한다. 앱의 자동 저장이 쓰는 동안에도 난다. 몇 번 다시 해도 같으면 그때 사용자에게 알린다.
 - ID는 모두 문자열이다. 값이 없는 선택 칸은 키가 빠진다. 모르는 키는 무시한다.
 - `Track`: `id`(ContentID), `title`, `artist`, `genre`, `comment`, `bpm`, `key`, `lengthSeconds`, `path`, `importedOn` 등. 값은 스냅샷 기준이다. 초안을 반영하지 않는다.
 - `Cue`: `kind`, `hotCueSlot`, `inMsec`, `isLoop`, `isAutoGenerated`.
@@ -210,7 +211,7 @@ djc search '' --bpm 125-130 --key 8A --json \
 # 101	시험 Alpha	합성 아티스트	128	8A
 ```
 
-- 키 표기는 라이브러리 값 그대로 비교한다. 대소문자만 무시한다. 먼저 결과의 `key` 값이 `8A`(Camelot)인지 `Am`인지 보고 같은 표기로 준다.
+- 키는 Camelot 이름으로 바꿔 비교한다. `--key 8A`는 키가 `Am`인 곡도 찾는다. `--key Am`은 키가 `8A`인 곡도 찾는다. Camelot으로 바꿀 수 없는 값은 글자가 같을 때만 맞는다. 이웃 번호의 어울리는 키는 `--key`로 찾을 수 없다. 번호를 바꿔 다시 묻는다.
 - 범위를 좁히려면 `--playlist <ID>`를 준다. ID는 `djc playlists --tree --json`에서 찾는다. 말로 찾으려면 검색어를 준다.
 
 ### 2. 큐 없는 곡 찾기와 큐 초안
@@ -237,7 +238,7 @@ djc drafts --json | jq -r '.data.drafts[] | [.contentID, .title, (.kinds | join(
 # 101	시험 Alpha	cue
 ```
 
-- 끝나면 이렇게 안내한다: "DJCrate 앱에서 101 시험 Alpha의 큐 초안을 확인한 뒤, rekordbox를 끄고 rekordbox에 쓰세요(⇧⌘E)."
+- 끝나면 이렇게 안내한다: "DJCrate 앱에서 101 시험 Alpha의 큐 편집을 확인한 뒤, rekordbox를 끄고 rekordbox에 저장하세요(⌘S)."
 
 ### 3. 코멘트·태그 정리 제안과 태그 초안
 
@@ -266,7 +267,7 @@ djc draft tag 102 --comment 'TVA 시험 ED 1' --json | jq '.data.hasChanges'
 djc drafts --json | jq -r '.data.drafts[] | select(.kinds | index("tag")) | [.contentID, .title] | @tsv'
 ```
 
-- 끝나면 이렇게 안내한다: "DJCrate 앱에서 태그 초안을 확인한 뒤, rekordbox를 끄고 rekordbox에 쓰세요(⇧⌘E). 음원 파일의 태그는 바뀌지 않습니다."
+- 끝나면 이렇게 안내한다: "DJCrate 앱에서 태그 편집을 확인한 뒤, rekordbox를 끄고 rekordbox에 저장하세요(⌘S). 음원 파일의 태그는 바뀌지 않습니다."
 
 ### 4. 세트용 곡 후보 뽑기
 
@@ -311,7 +312,7 @@ djc draft playlist order new:… 102 101 --dry-run --json   # 앞선 결과의 p
 
 - 제안 표 칸: `번호 | 편집 | 목록(ID·이름) | 바뀌는 것 | 이유`. 지우기·옮기기는 그 목록의 곡 수와 함께 적는다.
 - 고른 편집만 파일에 넣는다. `--dry-run` 결과에 `skipped`가 있으면 이유를 보인다. 그다음 다시 묻는다.
-- 끝나면 이렇게 안내한다: "DJCrate 앱의 사이드바에서 재생 목록 초안을 확인하세요. 그다음 rekordbox를 끈 뒤 rekordbox에 쓰세요(⇧⌘E)."
+- 끝나면 이렇게 안내한다: "DJCrate 앱의 사이드바에서 재생 목록 편집을 확인하세요. 그다음 rekordbox를 끈 뒤 rekordbox에 저장하세요(⌘S)."
 
 
 ## 제안을 보여 줄 때
@@ -319,7 +320,7 @@ djc draft playlist order new:… 102 101 --dry-run --json   # 앞선 결과의 p
 - 곡마다 ContentID와 제목을 함께 적는다. 사람이 앱에서 찾을 수 있어야 한다.
 - 바꿀 값은 "지금 값 → 제안 값"과 이유 한 줄로 쓴다. 확실하지 않으면 그렇다고 적는다.
 - 표 끝에 "고른 줄만 초안으로 만들까요?"라고 묻는다. 답을 받기 전에는 `djc draft`를 실행하지 않는다.
-- 초안을 만든 뒤에는 만든 곡·종류와 앱에서 확인할 곳을 적는다. 그다음 "DJCrate 앱에서 초안을 확인한 뒤, rekordbox를 끄고 rekordbox에 쓰세요(⇧⌘E)"를 한 줄 붙인다.
+- 초안을 만든 뒤에는 만든 곡·종류와 앱에서 확인할 곳을 적는다. 그다음 "DJCrate 앱에서 편집을 확인한 뒤, rekordbox를 끄고 rekordbox에 저장하세요(⌘S)"를 한 줄 붙인다.
 
 ## 문제 해결
 
@@ -335,4 +336,4 @@ djc draft playlist order new:… 102 101 --dry-run --json   # 앞선 결과의 p
 | `unverified_field` | 그 곡의 평점·곡 색은 rekordbox에서 직접 고치라고 안내한다. 다른 칸 초안은 그대로 만들 수 있다 |
 | `playlist_edit_blocked` | `message`의 편집 번호와 이유를 보인다. 인텔리전트 목록은 rekordbox에서 고치라고 안내하고, 이름이 겹치면 ID로 다시 가리킨다 |
 | `draft_changed` | 앱에서 재생 목록을 편집하는 중일 수 있다. 같은 명령을 다시 실행한다 |
-| `draft_busy` | 사용자가 앱에서 rekordbox에 쓰는 중이거나 다른 djc가 도는 중이다. 끝났는지 사용자에게 물은 뒤 같은 명령을 다시 실행한다 |
+| `draft_busy` | 앱이 저장하는 중(자동 저장 포함)이거나 다른 djc가 도는 중이다. 잠시 뒤 같은 명령을 다시 실행한다. 몇 번 해도 같으면 사용자에게 알린다 |

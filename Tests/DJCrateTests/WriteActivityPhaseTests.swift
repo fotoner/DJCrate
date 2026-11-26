@@ -33,7 +33,7 @@ struct WriteActivityPhaseTests {
         #expect(store.rekordboxWritePhase == .writing)
         store.writeStage = WriteStage("미리 보기 1/2단계 · 사본을 만드는 중…", completed: 0, total: 2, cancellable: true)
         #expect(store.rekordboxWritePhase == .cancellable)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(store.rekordboxWritePhase == .writing)
         store.writeStage = .reloadingLibrary
         #expect(store.rekordboxWritePhase == .readingBack)
@@ -43,7 +43,7 @@ struct WriteActivityPhaseTests {
 
     @Test func 확인_창과_경고창이_떠_있는_동안은_진행_안내보다_앞선다() {
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         store.isAwaitingConfirmation = true
         #expect(store.rekordboxWritePhase == .confirming)
         store.isAwaitingAcknowledgement = true
@@ -81,7 +81,7 @@ struct WriteActivityPhaseTests {
         let coordinator = ReflectionCoordinator.test(store: store, prompter: prompter)
         prompter.phase = { [store] in store.rekordboxWritePhase }
         store.setWriteLock(true)
-        _ = coordinator.session.ports.confirmation.confirm(ReflectionPrompt(title: "쓸까요?", text: "확인"))
+        _ = coordinator.session.ports.confirmation.confirm(ReflectionPrompt(title: "저장할까요?", text: "확인"))
         _ = coordinator.session.ports.confirmation.choose(ReflectionPrompt(title: "복원할까요?", text: "확인"))
         #expect(prompter.phases == [.confirming, .confirming])
         #expect(store.rekordboxWritePhase == .writing, "답한 뒤에는 풀린다")
@@ -94,13 +94,13 @@ struct WriteActivityPhaseTests {
         store.setWriteLock(true)
         let backup = RekordboxWriter.Backup(url: URL(filePath: "/tmp/test-backup"), createdAt: .now, isWrite: true, report: nil)
         presenter.publish(.restoreFailed(backup, error: FixtureFailure()))
-        presenter.publish(.failed(title: "rekordbox에 쓰지 않았습니다",
+        presenter.publish(.failed(title: "rekordbox에 저장하지 않았습니다",
                                   error: DJCError.restoreFailed(reason: "검증 실패", restoreError: "복원 실패", backup: "/tmp/b", database: nil),
                                   exclusions: []))
         #expect(prompter.phases == [.acknowledging, .acknowledging])
         #expect(store.rekordboxWritePhase == .writing)
         // 복원이 일어나지 않은 평범한 실패는 토스트로 알리니 확인이 필요하지 않다
-        presenter.publish(.failed(title: "rekordbox에 쓰지 않았습니다", error: FixtureFailure(), exclusions: []))
+        presenter.publish(.failed(title: "rekordbox에 저장하지 않았습니다", error: FixtureFailure(), exclusions: []))
         #expect(prompter.phases.count == 2)
     }
 
@@ -109,10 +109,10 @@ struct WriteActivityPhaseTests {
     @Test func 종료를_기다리거나_Mac을_끄는_중에는_새_쓰기를_거절한다() {
         #expect(store.writeRefusal == nil)
         store.isPoweringOff = true
-        #expect(store.writeRefusal == "Mac을 끄는 중이라 rekordbox에 쓰지 않았습니다. 다시 켠 뒤 쓰세요")
+        #expect(store.writeRefusal == "Mac을 끄는 중이라 rekordbox에 저장하지 않았습니다. 다시 켠 뒤 저장하세요")
         store.isPoweringOff = false
         store.quitWait.begin(at: Date(timeIntervalSince1970: 0), onCancel: {})
-        #expect(store.writeRefusal == "종료하는 중이라 rekordbox에 쓰지 않았습니다. 종료를 취소한 뒤 다시 쓰세요")
+        #expect(store.writeRefusal == "종료하는 중이라 rekordbox에 저장하지 않았습니다. 종료를 취소한 뒤 다시 저장하세요")
         store.quitWait.finish()
         #expect(store.writeRefusal == nil)
     }
@@ -124,7 +124,7 @@ struct WriteActivityPhaseTests {
         coordinator.startAddTracks(rows: [])
         coordinator.startDeleteTracks(rows: [])
         #expect(store.writeTask == nil && !store.isWritingRekordbox)
-        #expect(store.toast?.title == "Mac을 끄는 중이라 rekordbox에 쓰지 않았습니다. 다시 켠 뒤 쓰세요")
+        #expect(store.toast?.title == "Mac을 끄는 중이라 rekordbox에 저장하지 않았습니다. 다시 켠 뒤 저장하세요")
         #expect(store.toast?.isNotice == true)
         // 복원은 백업이 없으면 그 안내가 먼저다. 어느 쪽이든 쓰기를 시작하지 않는다
         coordinator.startRestoreLatest()
@@ -163,7 +163,7 @@ struct WriteActivityPhaseTests {
         delegate.store = store
         store.isPoweringOff = true
         store.setWriteLock(true)
-        store.writeStage = WriteStage("rekordbox에 쓰는 중…")
+        store.writeStage = WriteStage("rekordbox에 저장하는 중…")
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateLater)
         store.writeStage = .reloadingLibrary
         #expect(await waitForState { replies == [true] })

@@ -5,12 +5,14 @@ import SwiftUI
 struct CueListView: View {
     @Environment(\.textScale) private var textScale
     @Bindable var deck: DeckModel
+    /// 늘 보이는 스크롤 막대가 가져가는 폭(#347). 시험이 값을 넣는다.
+    var gutter: ScrollerGutter = .system
     @State private var storedFilter = ObservedSetting(SettingKeys.cueListFilter)
 
     private var filter: CueListFilter {
         CueListFilter(rawValue: storedFilter.value) ?? .all
     }
-    private var visibleCues: [EditableCue] { (deck.draft?.cues ?? []).filter(filter.includes) }
+    private var visibleCues: [EditableCue] { deck.displayedCues.filter(filter.includes) }
     private var changedCueIDs: Set<EditableCue.ID> {
         Set((deck.draft?.changes ?? []).compactMap { change in
             switch change {
@@ -22,7 +24,7 @@ struct CueListView: View {
 
     var body: some View {
         let _ = PerfProbe.body(Self.self)
-        let cues = deck.draft?.cues ?? []
+        let cues = deck.displayedCues
         let hotCount = cues.filter { if case .hot = $0.kind { true } else { false } }.count
         let changedIDs = changedCueIDs
         let segmentHeight = CGFloat(TextScale.length(28, scale: textScale))
@@ -55,7 +57,22 @@ struct CueListView: View {
             .accessibilityLabel(.ui("큐 목록 보기"))
             List(selection: $deck.selectedCueID) {
                 ForEach(visibleCues) { cue in
-                    CueRow(deck: deck, cue: cue, expectedTrackUUID: deck.row?.track.uuid)
+                    Group {
+                        if deck.readOnlyLoops.contains(where: { $0.id == cue.id }), let loop = cue.loop {
+                            Button { deck.selectCueFromList(cue.id) } label: {
+                                HStack {
+                                    Label(.ui("활성 루프"), systemImage: "repeat.circle.fill")
+                                        .foregroundStyle(UIColors.loop.color)
+                                    Text(verbatim: "\(cue.time.clockText)–\(loop.end.clockText)").monospacedDigit()
+                                    Text(cue.name).lineLimit(1)
+                                }
+                                .font(.scaled(.caption, textScale))
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            CueRow(deck: deck, cue: cue, expectedTrackUUID: deck.row?.track.uuid, scrollerWidth: gutter.width)
+                        }
+                    }
                         .tag(cue.id)
                         // 선택색은 List가 그리도록 두고, 선택하지 않은 초안 행만 물들인다.
                         .listRowBackground(changedIDs.contains(cue.id) && deck.selectedCueID != cue.id
@@ -75,7 +92,7 @@ struct CueListView: View {
             }
             HStack {
                 Spacer()
-                Button(.ui("큐 초안 버리기")) { deck.revertDraft() }
+                Button(.ui("큐 편집 버리기")) { deck.revertDraft() }
                     .buttonStyle(.plain)
                     .font(.scaled(.caption, textScale))
                     .padding(.horizontal, 8).padding(.vertical, 5)
@@ -89,8 +106,8 @@ struct CueListView: View {
                 Label(issues.joined(separator: " · "), systemImage: "exclamationmark.triangle")
                     .font(.scaled(.caption, textScale)).foregroundStyle(UIColors.warning.color)
             }
-            if deck.editsFrozen {
-                Text(.ui("rekordbox에 쓰는 중이라 큐 편집을 잠시 막았습니다.")).font(.scaled(.caption2, textScale)).foregroundStyle(.secondary)
+            if deck.isEditLocked {
+                Text(.ui("rekordbox에 저장하는 중이라 큐 편집을 잠시 막았습니다.")).font(.scaled(.caption2, textScale)).foregroundStyle(.secondary)
             }
         }
     }
@@ -153,6 +170,7 @@ private final class CueListRowHeightProbe: NSView {
             table = findTable(in: content, covering: point)
         }
         guard let table else {
+            // SwiftUI가 List의 표를 아직 창에 붙이지 않았을 수 있어 잠시 뒤 다시 찾는다(최대 3번)
             if retries < 3 {
                 retries += 1
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.scheduleConfiguration() }
@@ -176,11 +194,25 @@ private final class CueListRowHeightProbe: NSView {
     }
 }
 
+/// 큐 행의 폭 계산
+enum CueRowLayout {
+    /// 시각 칸이 자동 큐 표시 자리로 잡아 두는 기준 폭(글자 배율 1). 시각 글자(약 39pt)보다 넓어 남는 자리가 있다.
+    static let timeColumnReserve = 56.0
+
+    /// 시각 칸의 최소 폭. 세로 스크롤 막대가 행 폭을 가져간 만큼 예비 자리를 줄여, 가장 낮은 우선순위인 이름 칸이
+    /// 막대 없을 때와 같은 폭을 남기게 한다(#347). 글자 배율 1 이상에서는 예비 자리(17×배율 이상)가 막대 폭보다 커 다 돌려받는다.
+    static func timeColumnMinWidth(scale: Double, scrollerWidth: Double) -> Double {
+        max(0, TextScale.length(timeColumnReserve, scale: scale) - scrollerWidth)
+    }
+}
+
 struct CueRow: View {
     @Environment(\.textScale) private var textScale
     let deck: DeckModel
     let cue: EditableCue
     var expectedTrackUUID: String? = nil
+    /// 목록의 세로 스크롤 막대가 행 폭에서 가져간 폭(#347)
+    var scrollerWidth: CGFloat = 0
     @State private var showDetails = false
 
     var body: some View {
@@ -232,7 +264,7 @@ struct CueRow: View {
                 .buttonStyle(.plain).help(.ui("이 위치로 이동"))
                 autoBadge
             }
-            .frame(minWidth: TextScale.length(56, scale: textScale), alignment: .leading)
+            .frame(minWidth: CueRowLayout.timeColumnMinWidth(scale: textScale, scrollerWidth: scrollerWidth), alignment: .leading)
             .layoutPriority(1)
             Text(cue.name).font(.scaled(.caption, textScale)).lineLimit(1).layoutPriority(-1)
                 .allowsHitTesting(false)

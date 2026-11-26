@@ -30,12 +30,14 @@ extension DeckModel {
         storage.drafts.removeGrid(uuid, completion: draftSaveCompletion(.grid, uuid: uuid))
     }
 
+    /// 게인 초안에는 지금 덱이 본 rekordbox 오토게인을 base로 단다(R23: base가 있어야 자동 저장 대상이고, 쓸 때 rekordbox 값과 견준다)
     func persistGain(_ gain: Double?, uuid: String) {
-        storage.drafts.saveGain(gain, trackUUID: uuid, completion: draftSaveCompletion(.gain, uuid: uuid))
+        let base = row?.track.uuid == uuid ? rekordboxGainDB : nil
+        storage.drafts.saveGain(gain, base: base, trackUUID: uuid, completion: draftSaveCompletion(.gain, uuid: uuid))
     }
 
     func retryDraftSaves() {
-        guard !editsFrozen, let uuid = row?.track.uuid else { return }
+        guard !isEditLocked, let uuid = row?.track.uuid else { return }
         let failures = currentDraftSaveFailures
         // 덱에 읽어 둔 초안이 있으면 그것(끌던 편집 포함)을 저장한다. 아직 읽는 중이면 비어 있는 것을 지우기로 보지 않고
         // 실패한 마지막 입력(저장이든 지우기든)을 그대로 다시 저장한다.
@@ -47,7 +49,7 @@ extension DeckModel {
             if let gridDraft, gridDraft.trackUUID == uuid { persistGrid(gridDraft) }
             else { storage.drafts.retry(.grid, trackUUID: uuid, completion: draftSaveCompletion(.grid, uuid: uuid)) }
         }
-        // 게인은 곡을 고를 때 바로 읽으므로(`loadGain`) 덱의 값이 마지막 입력이다.
+        // 게인은 곡을 고를 때 바로 읽으므로(`prepareAudio`의 `gainDraft`) 덱의 값이 마지막 입력이다.
         if failures.contains(where: { $0.kind == .gain }) { persistGain(gainDraft, uuid: uuid) }
     }
 }

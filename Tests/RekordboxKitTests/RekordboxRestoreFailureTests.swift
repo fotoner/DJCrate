@@ -65,7 +65,7 @@ struct RekordboxRestoreFailureTests {
         let error = try #require(throws: DJCError.self) { try writeCue(fixture, draft) }
         guard case let .writeVerificationFailed(reason) = error else { Issue.record("커밋 전 실패가 아님: \(error)"); return }
         #expect(reason == "변경 카운터가 맞지 않습니다")
-        #expect(error.description == "쓴 결과가 의도와 달라 rekordbox에 쓰지 않았습니다: 변경 카운터가 맞지 않습니다")
+        #expect(error.description == "저장한 결과가 의도와 달라 rekordbox에 저장하지 않았습니다: 변경 카운터가 맞지 않습니다")
         #expect(try state(fixture) == before)
     }
 
@@ -77,7 +77,7 @@ struct RekordboxRestoreFailureTests {
         let error = try #require(throws: DJCError.self) { try writeCue(fixture, draft) }
         guard case let .writeRolledBack(reason) = error else { Issue.record("되돌림 오류가 아님: \(error)"); return }
         #expect(reason.hasPrefix("큐 기록의 개수·변경 번호가 다릅니다"), "머리말 없이 사유만")
-        #expect(error.description.hasPrefix("쓴 결과를 확인하지 못해 쓰기 전 백업으로 되돌렸습니다: 큐 기록의"))
+        #expect(error.description.hasPrefix("저장한 결과를 확인하지 못해 저장 전 백업으로 되돌렸습니다: 큐 기록의"))
         #expect(try state(fixture) == before)
     }
 
@@ -468,8 +468,8 @@ struct RekordboxRestoreFailureTests {
         let error = DJCError.restoreFailed(reason: "무결성 검사 실패: x", restoreError: "master.db: 권한 없음",
                                            backup: "/Users/a/Application Support/DJCrate/rekordbox-backups/2026-09-26T120000-write", database: nil)
         let lines = error.description.components(separatedBy: "\n")
-        #expect(lines.first == "쓴 결과를 확인하지 못했고 백업으로 자동 복원도 하지 못했습니다. rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다.")
-        #expect(lines.contains("rekordbox를 켜지 말고 먼저 쓰기 전 백업으로 되돌리세요: "
+        #expect(lines.first == "저장한 결과를 확인하지 못했고 백업으로 자동 복원도 하지 못했습니다. rekordbox 라이브러리(master.db)와 분석 파일이 어떤 상태인지 알 수 없습니다.")
+        #expect(lines.contains("rekordbox를 켜지 말고 먼저 저장 전 백업으로 되돌리세요: "
                                + "djc rekordbox-restore --backup '/Users/a/Application Support/DJCrate/rekordbox-backups/2026-09-26T120000-write' --live"))
         #expect(lines.contains("확인 실패: 무결성 검사 실패: x") && lines.contains("복원 실패: master.db: 권한 없음"))
         #expect(DJCError.restoreCommand(backup: "/b/it's", database: "/c d/master.db") == #"djc rekordbox-restore --backup '/b/it'\''s' --db '/c d/master.db'"#)
@@ -478,7 +478,7 @@ struct RekordboxRestoreFailureTests {
     @Test func 사유만_넘겨_머리말이_두_번_붙지_않는다() {
         #expect(DJCError.reason(of: DJCError.writeVerificationFailed("곡의 변경 번호가 다릅니다")) == "곡의 변경 번호가 다릅니다")
         #expect(DJCError.reason(of: DJCError.writeRolledBack("무결성 검사 실패")) == "무결성 검사 실패")
-        #expect(DJCError.reason(of: DJCError.writeRefused("rekordbox가 켜져 있습니다")) == "rekordbox에 쓰지 않았습니다: rekordbox가 켜져 있습니다")
+        #expect(DJCError.reason(of: DJCError.writeRefused("rekordbox가 켜져 있습니다")) == "rekordbox에 저장하지 않았습니다: rekordbox가 켜져 있습니다")
         let file = DJCError.reason(of: CocoaError(.fileWriteNoPermission))
         #expect(!file.isEmpty && !file.contains("NSCocoaErrorDomain"), "파일 오류는 UserInfo 덤프가 아니라 문장으로")
     }

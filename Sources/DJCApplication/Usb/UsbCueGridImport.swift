@@ -16,7 +16,7 @@ public struct UsbCueGridImportSummary: Sendable {
     }
 
     public var message: String {
-        let counts = String(ui: "큐 \(cueCount)곡·그리드 \(gridCount)곡을 초안으로 가져왔습니다. \(skippedCount)곡은 건너뛰었습니다.")
+        let counts = String(ui: "큐 \(cueCount)곡·그리드 \(gridCount)곡을 편집으로 가져왔습니다. \(skippedCount)곡은 건너뛰었습니다.")
         return details.first.map { counts + "\n" + $0 } ?? counts
     }
 }
@@ -81,10 +81,10 @@ public enum UsbCueGridDraftImport {
         }
         guard draft.hasChanges else { return draft }
         guard !local.contains(where: { ($0.colorTableIndex ?? 0) != 0 || (1...8).contains($0.color ?? 255) }) else {
-            throw issue(String(ui: "로컬 색 큐를 초안으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
+            throw issue(String(ui: "로컬 색 큐를 편집으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
         }
         guard !local.contains(where: { $0.activeLoop != 0 }) else {
-            throw issue(String(ui: "로컬 활성 루프를 초안으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
+            throw issue(String(ui: "로컬 활성 루프를 편집으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
         }
         guard !legacy || !local.contains(where: \.isLoop) else {
             throw issue(String(ui: "확장 큐 정보가 없어 로컬 루프 정보를 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
@@ -98,13 +98,13 @@ public enum UsbCueGridDraftImport {
             throw issue(String(ui: "박 위치가 곡 길이를 벗어나니 rekordbox에서 그리드를 확인한 뒤 다시 가져오세요."))
         }
         guard canRepresent(local, duration: duration), canRepresent(imported, duration: duration) else {
-            throw issue(String(ui: "이 그리드의 박 위치나 박 번호를 초안으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
+            throw issue(String(ui: "이 그리드의 박 위치나 박 번호를 편집으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
         }
         let draft = GridDraft(trackUUID: uuid, base: GridDraft.segments(from: local), segments: GridDraft.segments(from: imported))
         // 경계 처리는 base에 따라 달라지므로 실제 반환 초안에서도 USB의 모든 박을 검사한다.
         let rebuilt = draft.grid(duration: max(duration + 1, imported.beats.last!.time + 0.01))
         guard preservesBeats(imported, in: rebuilt) else {
-            throw issue(String(ui: "이 그리드의 박 위치나 박 번호를 초안으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
+            throw issue(String(ui: "이 그리드의 박 위치나 박 번호를 편집으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
         }
         return draft
     }
@@ -167,7 +167,7 @@ public enum UsbCueGridImport {
             var reasons = item.reasons
             if let draft = item.cues, draft.hasChanges {
                 if hasDraft(uuid, .cue) || files.cueExists(uuid) {
-                    reasons.append(String(ui: "큐 초안이 이미 있으니 먼저 반영하거나 버린 뒤 다시 가져오세요."))
+                    reasons.append(String(ui: "큐 편집이 이미 있으니 먼저 저장하거나 버린 뒤 다시 가져오세요."))
                 } else {
                     do {
                         try files.saveCue(draft)
@@ -178,7 +178,7 @@ public enum UsbCueGridImport {
             }
             if let draft = item.grid, draft.hasChanges {
                 if hasDraft(uuid, .grid) || files.gridExists(uuid) {
-                    reasons.append(String(ui: "그리드 초안이 이미 있으니 먼저 반영하거나 버린 뒤 다시 가져오세요."))
+                    reasons.append(String(ui: "그리드 편집이 이미 있으니 먼저 저장하거나 버린 뒤 다시 가져오세요."))
                 } else {
                     do {
                         try files.saveGrid(draft)
@@ -200,7 +200,7 @@ public enum UsbCueGridImport {
     }
 
     private static var saveFailure: String {
-        String(ui: "초안을 저장하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 가져오세요.")
+        String(ui: "편집을 보관하지 못했으니 DJCrate 데이터 폴더의 쓰기 권한을 확인한 뒤 다시 가져오세요.")
     }
 }
 
@@ -305,11 +305,11 @@ public struct UsbCueGridImportPlan: Sendable {
                         guard let datStamp = try device.stat(dat), let extStamp = try device.stat(ext),
                               datStamp.isRegularFile, extStamp.isRegularFile,
                               datStamp.modificationDate <= snapshotTime, extStamp.modificationDate <= snapshotTime else {
-                            throw UsbCueGridDraftImport.issue(String(ui: "로컬 분석 파일이 스냅샷 뒤에 바뀌었으니 새 스냅샷을 뜬 뒤 그리드를 가져오세요."))
+                            throw UsbCueGridDraftImport.issue(String(ui: "로컬 분석 파일이 동기화 뒤에 바뀌었으니 ‘rekordbox와 동기화’를 한 뒤 그리드를 가져오세요."))
                         }
                         let localGrid = try engine.cueGrid.localGrid(dat)
                         guard try device.stat(dat) == datStamp, try device.stat(ext) == extStamp else {
-                            throw UsbCueGridDraftImport.issue(String(ui: "읽는 동안 로컬 분석 파일이 바뀌었으니 새 스냅샷을 뜬 뒤 그리드를 가져오세요."))
+                            throw UsbCueGridDraftImport.issue(String(ui: "읽는 동안 로컬 분석 파일이 바뀌었으니 ‘rekordbox와 동기화’를 한 뒤 그리드를 가져오세요."))
                         }
                         item.grid = try UsbCueGridDraftImport.gridDraft(uuid: row.track.uuid, local: localGrid,
                                                                        imported: grid, duration: Double(row.track.lengthSeconds))

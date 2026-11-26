@@ -9,7 +9,7 @@ import Testing
 struct AppErrorMessageTests {
     @Test func 조회_오류는_원문_대신_스냅샷을_다시_뜨도록_안내한다() {
         let error = DJCError.queryFailed(sql: "SELECT private_field FROM fixture", message: "no such column: private_field")
-        #expect(AppErrorMessage.message(for: error) == "라이브러리 정보를 읽지 못했습니다: rekordbox를 종료한 뒤 스냅샷을 다시 뜨세요.")
+        #expect(AppErrorMessage.message(for: error) == "라이브러리 정보를 읽지 못했습니다: rekordbox를 종료한 뒤 ‘rekordbox와 동기화’를 하세요.")
     }
 
     @Test func 실행_중_오류는_종료를_안내하고_CLI_옵션을_숨긴다() {

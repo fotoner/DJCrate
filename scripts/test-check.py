@@ -49,6 +49,7 @@ TRANSLATIONS = "scripts/i18n.swift check --enable-code-coverage"
 TEST = "test --skip-build --enable-code-coverage"
 QUICK = TEST + " --filter SampleTests"
 STRESS = TEST + " --filter CipherColdOpenTests"
+USB_SELFTEST = TEST + " --filter UsbSelfTestScenarioCapture"
 RELEASE_LATER = "릴리스 빌드는 릴리스 검사에서"
 PARTITIONS = {
     "coverage-only": (["--coverage"], "ok", 0, [DEBUG, TRANSLATIONS, TEST]),
@@ -102,7 +103,6 @@ PARTITIONS = {
 
 # 합성 저장소의 패키지 타깃(이름, 종류, 경로 — None이면 Sources/<이름>·Tests/<이름>). 모듈 경계 검사가 dump-package로 읽는다.
 PREPARE_TARGETS = [
-    ("SQLCipher", "binary", None),
     *((name, "regular", None) for name in ("DJCDomain", "DJCEnvironment", "DJCApplication", "RekordboxKit", "DJCStorage",
                                            "DJCAnalysis", "DJCLink", "DJCAdapters", "DJCrate", "djc")),
     ("DJCrateExecutable", "executable", None), ("djcExecutable", "executable", None),
@@ -111,6 +111,7 @@ PREPARE_TARGETS = [
     *((name, "test", None) for name in ("DJCDomainTests", "RekordboxKitTests", "DJCAnalysisTests", "DJCLinkTests", "DJCStorageTests",
                                         "DJCApplicationTests", "DJCAdaptersTests", "djcTests", "DJCrateTests")),
 ]
+SQLCIPHER_PRODUCT = {"product": ["SQLCipher", "SQLCipher.swift", None, None]}
 
 
 def import_rules():
@@ -125,7 +126,8 @@ def import_rules():
 def package_dump(targets):
     out = []
     for name, kind, path in targets:
-        target = {"name": name, "type": kind, "dependencies": []}
+        dependencies = [SQLCIPHER_PRODUCT] if name in {"RekordboxKit", "RekordboxFixtures"} else []
+        target = {"name": name, "type": kind, "dependencies": dependencies}
         if path:
             target["path"] = path
         out.append(target)
@@ -160,6 +162,13 @@ def prepare(root):
     for folder, modules in rules.BROAD_FOLDERS.items():
         (root / folder).mkdir(parents=True, exist_ok=True)
         (root / folder / "Placeholder.swift").write_text("".join(f"import {name}\n" for name in sorted(modules)))
+    # 쓰기 입구 호출처(SAFE-4·USB-7)의 고정 파일은 있어야 하고 허용한 입구를 불러야 한다(자리 채움).
+    for group in rules.WRITE_ENTRY_GROUPS:
+        for relative, entries in group["files"].items():
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            head = path.read_text() if path.exists() else "import Foundation\n"
+            path.write_text(head + "".join(f"_ = try {call}()\n" for call in entries or group["entries"]))
     # 모듈 경계 검사가 타깃 이름·경로를 읽는 합성 패키지(dump-package는 가짜 swift가 dump.json을 낸다).
     (root / "Package.swift").write_text("// 합성 패키지\n")
     (root / "dump.json").write_text(package_dump(PREPARE_TARGETS))
@@ -190,6 +199,18 @@ with open("defaults-prefix.txt", "a") as log:
 if args[0] == "test":
     with open("kdf-env.txt", "a") as log:
         log.write(os.environ.get("DJC_CHECK_TEST_KDF", "unset") + "\n")
+    with open("usb-scratch-env.txt", "a") as log:
+        log.write(os.environ.get("DJC_USB_SELFTEST_SCRATCH", "unset") + "\n")
+    if args[-2:] == ["--filter", "UsbSelfTestScenarioCapture"]:
+        scratch = pathlib.Path(os.environ["DJC_USB_SELFTEST_SCRATCH"])
+        assert scratch.is_absolute() and scratch.is_dir() and not list(scratch.iterdir()), scratch
+        print("USB 시험 통과 · 합성")
+        if mode != "usb-migration-missing":
+            print("USB 시험 옮기기 통과 · 합성")
+        if mode != "usb-detach-missing":
+            print("USB 시험 분리 확인 · 합성")
+        print("✔ Test scenario() passed after 0.1 seconds.")
+        sys.exit(0)
 # SwiftPM 모델(#270): 빌드 타깃마다 번들을 만들고, --skip-build 시험은 필터와 상관없이 패키지의 모든 시험 번들을 열어 본다.
 # 타깃을 하나씩 빌드하면 그 타깃이 쓰지 않는 Sparkle.framework를 지울 수 있다(SPARKLE_REMOVERS에 든 타깃). 앱 시험 번들이 그것을 링크한다.
 if os.environ.get("SWIFTPM_ALL_BUNDLES") == "1":
@@ -409,7 +430,7 @@ def check_case(case, expected):
         env = dict(os.environ, PATH=str(root / "bin") + ":" + os.environ["PATH"], CASE=case, HOME=str(root / "home"),
                    LEAKS=json.dumps(LEAKS), PREFERENCE_LEAKS=json.dumps(PREFERENCE_LEAKS))
         for name in ("DJC_TEST_DEFAULTS_PREFIX", "DJC_CHECK_LOG_ROOT", "DJC_CIPHER_STRESS", "DJC_CHECK_VERBOSE",
-                     "DJC_HOME", "DJC_REKORDBOX_DIR"):
+                     "DJC_HOME", "DJC_REKORDBOX_DIR", "DJC_USB_SELFTEST_SCRATCH", "GITHUB_ACTIONS"):
             env.pop(name, None)
         if case in VERBOSE_CASES:
             env["DJC_CHECK_VERBOSE"] = "1"
@@ -521,7 +542,7 @@ def check_case(case, expected):
         if case == "test-fail" and summary and ("✘" not in summary or "error: 합성 테스트 실패" not in summary
                                                 or "실패한_시험" not in summary or "통과한_시험" in summary):
             errors.append("실패 요약에 실패한 시험·첫 오류 줄이 없음:\n" + summary)
-        if case == "ok" and summary and ("✔ 통과" not in summary or len(summary.strip().splitlines()) > 13):
+        if case == "ok" and summary and ("✔ 통과" not in summary or len(summary.strip().splitlines()) > 15):
             errors.append("통과 요약이 짧지 않음:\n" + summary)
         if case not in VERBOSE_CASES and "✔ Test synthetic() passed" in content:
             errors.append("시험 통과 줄을 화면에 쏟음")
@@ -635,6 +656,11 @@ def check_partition(arguments, case, expected, expected_calls):
 DEBT_LINE = "Sources/DJCApplication/Reader.swift\timport\tRekordboxKit\n"
 # 뷰 규칙 경우의 합성 뷰 머리
 VIEW_HEAD = "import SwiftUI\nstruct LibraryView: View {\n    var body: some View {\n        "
+SLEEP_TEST = "Tests/DJCrateTests/SleepTests.swift"
+SLEEP_ALLOW = "scripts/test-sleep-allow.txt"
+SLEEP_POLL = "while !ready() { try await Task.sleep(for: .milliseconds(10)) }"
+SLEEP_ALLOW_LINE = f"{SLEEP_TEST}\t상태 확인\t{SLEEP_POLL}\t1\n"
+SLEEP_DEBT_LINE = f"{SLEEP_TEST}\ttest-sleep\tsleep 1곳\n"
 IMPORT_CASES = {
     "imports-clean": ({"Sources/DJCApplication/Ok.swift": "import DJCDomain\nimport Foundation\n"}, "", 0, "위반 0개", True),
     "imports-new-violation": ({"Sources/DJCApplication/Reader.swift": "import RekordboxKit\n"}, "", 1,
@@ -658,6 +684,30 @@ IMPORT_CASES = {
     "imports-unknown-module": ({"Sources/NewModule/New.swift": "import Foundation\n"}, "", 1, "규칙이 없는 모듈입니다: NewModule", False),
     "imports-test-defaults": ({"Tests/DJCrateTests/LeakTests.swift": 'let d = UserDefaults(suiteName: "x")!\n'}, "", 1,
                               "LeakTests.swift\ttest-defaults", False),
+    "imports-test-sleep-fixed": ({SLEEP_TEST: "try await Task<Never, Never>.sleep(\nfor: .milliseconds(30))\n"
+                                            "Thread.sleep(forTimeInterval: 0.03)\nDarwin.usleep(30_000)\n"
+                                            "try await ContinuousClock().sleep(until: deadline)\n"},
+                                 "", 1, "SleepTests.swift\ttest-sleep\tsleep 4곳", False),
+    "imports-test-sleep-allowed": ({SLEEP_TEST: SLEEP_POLL + "\nawait waitForState(until: ready)\n"
+                                               "await fakeClock.sleep(.seconds(2))\n"
+                                               '// Task.sleep(for: .seconds(1))\nlet s = "Darwin.usleep(100)"\n',
+                                   SLEEP_ALLOW: SLEEP_ALLOW_LINE}, "", 0, "위반 0개", True),
+    "imports-test-sleep-added": ({SLEEP_TEST: SLEEP_POLL + "\n" + SLEEP_POLL + "\n",
+                                 SLEEP_ALLOW: SLEEP_ALLOW_LINE}, "", 1, "SleepTests.swift\ttest-sleep\tsleep 1곳", False),
+    "imports-test-sleep-poll-removed": ({
+        SLEEP_TEST: "try await Task.sleep(for: .milliseconds(10))\n#expect(ready())\n",
+        SLEEP_ALLOW: f"{SLEEP_TEST}\t상태 확인\twhile !ready() {{ >> try await Task.sleep(for: .milliseconds(10))\t1\n",
+    }, "", 1, "SleepTests.swift\ttest-sleep\tsleep 1곳", False),
+    "imports-test-sleep-poll-multiline": ({
+        SLEEP_TEST: "while !ready() {\n    try await Task.sleep(for: .milliseconds(10))\n}\n",
+        SLEEP_ALLOW: f"{SLEEP_TEST}\t상태 확인\twhile !ready() {{ >> try await Task.sleep(for: .milliseconds(10))\t1\n",
+    }, "", 0, "위반 0개", True),
+    "imports-test-sleep-allow-stale": ({SLEEP_TEST: "await waitForState(until: ready)\n", SLEEP_ALLOW: SLEEP_ALLOW_LINE},
+                                       "", 1, "더는 쓰지 않는 시험 대기 허용 줄", False),
+    "imports-test-sleep-debt-grew": ({SLEEP_TEST: "sleep(1)\nusleep(300)\n"}, SLEEP_DEBT_LINE, 1,
+                                     "SleepTests.swift\ttest-sleep\tsleep(빚 1곳 → 지금 2곳)", False),
+    "imports-test-sleep-debt-paid": ({SLEEP_TEST: "await waitForState(until: ready)\n"}, SLEEP_DEBT_LINE, 1,
+                                     "✘ 갚은 빚(빚 목록에서 지워도 됨): " + SLEEP_DEBT_LINE.strip(), False),
     "imports-bad-debt-line": ({}, "파일만 있는 줄\n", 1, "빚 목록 줄 모양이 틀렸습니다", False),
     # 어느 타깃에도 속하지 않는 Swift 파일(재료 폴더를 옮기고 Package.swift만 고침)은 검사에서 빠지지 않고 실패한다.
     "imports-no-target": ({"Tests/Support/Moved/Fake.swift": "import RekordboxKit\n"}, "", 1,
@@ -682,14 +732,19 @@ IMPORT_CASES = {
                                  "UpdateSettingsModel.swift\timport\tSparkle", False),
     "imports-external-stale": ({"Sources/DJCrate/App/AppUpdater.swift": None}, "", 1,
                                "예외 목록의 파일이 없습니다: Sources/DJCrate/App/AppUpdater.swift", False),
-    # DJLinkKit 패키지(Pro DJ Link, #268)는 DJCLink만 import한다. 그 DJCLink도 적은 제품(DJLinkKit)만 쓴다.
-    "imports-link-only": ({"Sources/DJCLink/LinkDevice.swift": "import DJLinkKit\n",
+    # DJLinkKit 패키지(Pro DJ Link, #268)는 DJCLink만 import한다. 그 DJCLink도 적은 타깃만 쓴다.
+    "imports-link-only": ({"Sources/DJCLink/LinkDevice.swift": "import DJLinkKit\ninternal import DJLinkExportDBServer\n",
                            "Tests/DJCLinkTests/LinkDeviceTests.swift": "import DJCLink\nimport Testing\n"}, "", 0, "위반 0개", True),
     "imports-link-outside": ({"Sources/DJCAdapters/Link/LinkPorts+Live.swift": "import DJLinkKit\n",
                               "Sources/DJCrate/Link/LinkModel.swift": "import DJLinkControl\n",
                               "Sources/DJCLink/Passive.swift": "import DJLinkPassive\n",
                               "Tests/DJCLinkTests/LinkDeviceTests.swift": "import DJLinkKit\n"}, "", 1,
                              "LinkPorts+Live.swift\timport\tDJLinkKit", False),
+    "imports-link-internal-targets": ({"Sources/DJCAdapters/Link/LinkPorts+Live.swift": "internal import DJLinkExportDBServer\n",
+                                       "Sources/DJCLink/Unused.swift": "internal import DJLinkExportANLZ\n",
+                                       "Sources/djc/CLIComposition.swift": "import CPcap\n",
+                                       "Tests/DJCLinkTests/LinkDeviceTests.swift": "import DJLinkExportTestSupport\n"},
+                                      "", 1, "LinkPorts+Live.swift\timport\tDJLinkExportDBServer", False),
     # 넓은 예외 폴더도 허용 import는 적은 것만: 목록 밖 모듈은 위반이고, 적었는데 아무도 쓰지 않으면 목록을 줄이게 한다.
     "imports-broad-folder": ({"Sources/djc/Lab/LabCipher.swift": "import SQLCipher\n"}, "", 1,
                              "LabCipher.swift\timport\tSQLCipher", False),
@@ -750,6 +805,51 @@ IMPORT_CASES = {
                                  VIEW_HEAD + 'Button("a") { Task { save() } }\n    }\n}\n'},
                                 "Sources/DJCrate/Library/LibraryView.swift\tview-task\tTask 2곳\n", 1,
                                 "✘ 갚은 빚(빚 목록 고치기): Sources/DJCrate/Library/LibraryView.swift\tview-task\tTask(빚 2곳 → 지금 1곳)", False),
+    # 쓰기 입구 호출처(SAFE-4·USB-7, #380): Sources/ 안에서 목록 밖 파일이 입구를 부르면 실패하고, 안내는 규칙 ID와 포트를 적는다.
+    # rekordbox 입구는 Lab/ 폴더도 부르지만 USB 입구(UsbWriter)는 UsbImageLab.swift의 write만이라 다른 Lab/ 파일은 실패한다.
+    "imports-write-entry-lab-usb": ({"Sources/djc/Lab/OtherLab.swift": "import Foundation\nlet r = try UsbWriter.write(changes, root: root)\n"}, "", 1,
+                                    "Sources/djc/Lab/OtherLab.swift:2: USB-7: ", False),
+    "imports-write-entry-usb-method": ({"Sources/djc/Lab/UsbImageLab.swift":
+                                        "import Foundation\nlet r = try UsbWriter.write(changes)\ntry UsbWriter.recover(root: root)\n"}, "", 1,
+                                       "Sources/djc/Lab/UsbImageLab.swift:3: USB-7: ", False),
+    # 문자열 보간 안의 호출도 호출이고, 별칭·.self로 넘기면 허용 메서드를 건너뛸 수 있어 함께 막는다.
+    "imports-write-entry-interpolation": ({"Sources/djc/Lab/OtherLab.swift":
+                                           'import Foundation\nprint("결과: \\(try UsbWriter.recover(root: root).outcome)")\n'}, "", 1,
+                                          "Sources/djc/Lab/OtherLab.swift:2: USB-7: ", False),
+    "imports-write-entry-alias": ({"Sources/djc/Lab/UsbImageLab.swift":
+                                   "import Foundation\ntypealias W = UsbWriter\nlet r = try UsbWriter.write(changes)\nlet m = UsbWriter.self\n"}, "", 1,
+                                  "Sources/djc/Lab/UsbImageLab.swift:2: USB-7: ", False),
+    "imports-write-entry-alias-module": ({"Sources/djc/Lab/UsbImageLab.swift":
+                                          "import Foundation\nlet r = try UsbWriter.write(changes)\ntypealias W = RekordboxKit.UsbWriter\n"}, "", 1,
+                                         "Sources/djc/Lab/UsbImageLab.swift:3: USB-7: ", False),
+    # 중첩 타입을 가르는 확인은 같은 줄만 본다: 다음 줄이 문자열로 시작해 .write가 이어져도 별칭을 놓치지 않는다
+    "imports-write-entry-alias-next-line": ({"Sources/djc/Lab/UsbImageLab.swift":
+                                             'import Foundation\nlet r = try UsbWriter.write(changes)\ntypealias W = UsbWriter\n"복구 시작".write(to: &log)\n'
+                                             'let x = try W.recover(root: root)\n'}, "", 1,
+                                            "Sources/djc/Lab/UsbImageLab.swift:3: USB-7: ", False),
+    # 보간 안의 블록 주석이 괄호 깊이를 흐리지 않는다: 닫는 괄호 뒤의 호출도 잡는다
+    "imports-write-entry-interpolation-comment": ({"Sources/djc/Lab/OtherLab.swift":
+                                                   'import Foundation\nprint("\\(String(/* 기준 */ 0) + String(describing: try UsbWriter.recover(root: root).outcome))")\n'},
+                                                  "", 1, "Sources/djc/Lab/OtherLab.swift:2: USB-7: ", False),
+    "imports-write-entry-app": ({"Sources/DJCrate/Library/LibraryModel.swift":
+                                 "final class LibraryModel {\n    func save() throws { try RekordboxWriter.write(drafts: []) }\n}\n"}, "", 1,
+                                "Sources/DJCrate/Library/LibraryModel.swift:2: SAFE-4: ", False),
+    # 입구 이름이 둘레 글자와 이어진 것(writesHistories), 주석·문자열, 입구 자신(RekordboxKit), 시험 파일, 허용한 Lab/ 파일은 보지 않거나 허용한다.
+    "imports-write-entry-ok": ({"Sources/DJCrate/Library/HistoryStore.swift":
+                                '// RekordboxWriter.write는 반영 세션만\nlet s = "RekordboxTrackWriter.delete"\nlet h = RekordboxWriter.writesHistories\n'
+                                'let t = "\\(count)곡 RekordboxWriter.write 안내 \\(name.count)"\n'
+                                'typealias Status = UsbWriter.JournalStatus\n',
+                                "Sources/RekordboxKit/Inner.swift": "func f() { try RekordboxWriter.write(drafts: []) }\n",
+                                "Tests/DJCrateTests/WriteTests.swift": "func t() { try RekordboxWriter.restore(backup) }\nlet u = UsbWriter.write\n",
+                                "Sources/djc/Lab/CueLab.swift": "func g() { try RekordboxWriter.write(drafts: [])\n try RekordboxTrackWriter.add([]) }\n"},
+                               "", 0, "위반 0개", True),
+    # 고정 파일이 없어지거나 더는 입구를 부르지 않으면 목록을 지금 모양으로 고치게 한다.
+    "imports-write-entry-stale-rekordbox": ({"Sources/DJCrate/Diagnostics/TrackSelfTest.swift": "import Foundation\n"}, "", 1,
+                                            "쓰기 입구를 더는 부르지 않는 고정 파일입니다: Sources/DJCrate/Diagnostics/TrackSelfTest.swift", False),
+    "imports-write-entry-stale-usb": ({"Sources/djc/Lab/UsbImageLab.swift": "import Foundation\nlet r = RekordboxWriter.write(drafts: [])\n"}, "", 1,
+                                      "쓰기 입구를 더는 부르지 않는 고정 파일입니다: Sources/djc/Lab/UsbImageLab.swift", False),
+    "imports-write-entry-missing": ({"Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift": None}, "", 1,
+                                    "예외 목록의 파일이 없습니다: Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift", False),
     # --summary는 빚 표와 함께 예외 목록을 보이고 폴더 예외가 넓다는 사실을 따로 적는다.
     "imports-summary": ({}, "", 0, "위반 0개", True),
 }
@@ -792,6 +892,10 @@ def check_imports(case, files, debt, expected, note, built):
             for line in ("LinkModel.swift\timport\tDJLinkControl", "Sources/DJCLink/Passive.swift\timport\tDJLinkPassive",
                          "Tests/DJCLinkTests/LinkDeviceTests.swift\timport\tDJLinkKit"):
                 assert line in result.stdout, f"출력에 {line!r} 없음\n{result.stdout}"
+        if case == "imports-link-internal-targets":
+            for line in ("Unused.swift\timport\tDJLinkExportANLZ", "CLIComposition.swift\timport\tCPcap",
+                         "LinkDeviceTests.swift\timport\tDJLinkExportTestSupport"):
+                assert line in result.stdout, f"출력에 {line!r} 없음\n{result.stdout}"
         if case == "imports-summary":
             summary = subprocess.run([sys.executable, str(root / "scripts/check-imports.py"), "--summary"], cwd=root, env=env,
                                      capture_output=True, text=True, timeout=20)
@@ -812,12 +916,13 @@ def check_imports(case, files, debt, expected, note, built):
 # 바꾼 파일 → 시험 고르기(scripts/affected-tests.py). 실제 모듈 이름을 쓴 작은 합성 패키지로 본다
 # (모듈 경계 검사가 모르는 모듈 이름을 거부하므로). 시험 타깃 4개, Suite 9개.
 SYNTHETIC_TARGETS = [
-    ("SQLCipher", "binary", None, []),
     ("DJCDomain", "regular", None, []),
     ("DJCApplication", "regular", None, ["DJCDomain"]),
     ("RekordboxKit", "regular", None, ["DJCDomain", "SQLCipher"]),
     ("djc", "regular", None, ["DJCApplication"]),
     ("DJCrate", "regular", None, ["DJCApplication"]),
+    # 쓰기 입구 호출처의 고정 파일(prepare)이 이 타깃 안에 있다
+    ("DJCAdapters", "regular", None, ["DJCApplication"]),
     ("djcExecutable", "executable", None, ["djc"]),
     ("DJCTestKit", "regular", "Tests/Support/Kit", ["DJCDomain"]),
     ("DJCDomainTests", "test", None, ["DJCDomain", "DJCTestKit"]),
@@ -882,7 +987,9 @@ needs djcTests djc
 def synthetic_dump():
     targets = []
     for name, kind, path, dependencies in SYNTHETIC_TARGETS:
-        target = {"name": name, "type": kind, "dependencies": [{"byName": [d, None]} for d in dependencies]}
+        target = {"name": name, "type": kind, "dependencies": [
+            SQLCIPHER_PRODUCT if d == "SQLCipher" else {"byName": [d, None]} for d in dependencies
+        ]}
         if path:
             target["path"] = path
         targets.append(target)
@@ -1568,13 +1675,38 @@ def check_real_safety(case, path, required):
     assert not missing, f"{path}: 안전 시험을 고르지 않음: {missing}"
 
 
+def check_write_requirements(path, commands, other_commands):
+    root = Path(__file__).resolve().parent.parent
+    result = subprocess.run([sys.executable, str(AFFECTED), "--files", path, "--json"], cwd=root,
+                            capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    assert plan["checks"]["write-coverage"], path
+    required = "\n".join(plan["required"])
+    for command in commands:
+        assert command in required, f"{path}: 남은 확인 누락: {command!r}\n{required}"
+    for command in other_commands:
+        assert command not in required, f"{path}: 다른 쓰기의 확인을 안내함: {command!r}\n{required}"
+
+
+REKORDBOX_WRITE_COMMANDS = ("djc compat", "cue-write", "--dry-run", "grid-write-test", "--write-selftest")
+USB_WRITE_COMMANDS = ("usb-image-check", "--usb-selftest")
+WRITE_REQUIREMENT_CASES = {
+    "safety-require-rekordbox": ("Sources/DJCAdapters/Reflection/RekordboxWriteGate+Live.swift",
+                                REKORDBOX_WRITE_COMMANDS, USB_WRITE_COMMANDS),
+    "safety-require-usb": ("Sources/DJCAdapters/Usb/UsbLibraryEngine+Writer.swift",
+                           USB_WRITE_COMMANDS, REKORDBOX_WRITE_COMMANDS),
+}
+
+
 def check_env(root, case="ok", **extra):
     # GitHub macOS 러너의 로캘(en_US.UTF-8)로 돈다. 이 로캘에서 macOS awk는 한글 문자열을 strcoll로 비교해 모두 같다고 본다
     env = dict(os.environ, PATH=str(root / "bin") + ":" + os.environ["PATH"], CASE=case, HOME=str(root / "home"),
                LEAKS=json.dumps(LEAKS), PREFERENCE_LEAKS=json.dumps(PREFERENCE_LEAKS),
                **{"LANG": "en_US.UTF-8", "LC_ALL": "en_US.UTF-8", **extra})
     for name in ("DJC_TEST_DEFAULTS_PREFIX", "DJC_CHECK_LOG_ROOT", "DJC_CIPHER_STRESS", "DJC_CHECK_VERBOSE",
-                 "DJC_HOME", "DJC_REKORDBOX_DIR", "DJC_LAYOUT_RECOMPUTE_TESTS", "DJC_CHECK_TEST_KDF"):
+                 "DJC_HOME", "DJC_REKORDBOX_DIR", "DJC_LAYOUT_RECOMPUTE_TESTS", "DJC_CHECK_TEST_KDF",
+                 "DJC_USB_SELFTEST_SCRATCH", "GITHUB_ACTIONS"):
         if name not in extra:
             env.pop(name, None)
     return env
@@ -1588,6 +1720,38 @@ def run_check(root, env, *arguments):
 def swift_calls(root):
     calls = root / "calls.txt"
     return calls.read_text().splitlines() if calls.exists() else []
+
+
+USB_RELEASE_CASES = {
+    "usb-release-pass": ("ok", False, 0),
+    "usb-release-migration-missing": ("usb-migration-missing", False, 1),
+    "usb-release-detach-missing": ("usb-detach-missing", False, 1),
+    "usb-release-ci": ("ok", True, 0),
+}
+
+
+def check_usb_release(mode, ci, expected):
+    with tempfile.TemporaryDirectory(prefix="djc-check-usb-release-") as directory:
+        root = Path(directory)
+        env = check_env(root, mode, TMPDIR=str(root), GITHUB_ACTIONS="true" if ci else "")
+        prepare(root)
+        result = run_check(root, env)
+        output = result.stdout + result.stderr
+        assert result.returncode == expected, f"종료코드 {result.returncode}, 기대값 {expected}\n{output}"
+        calls = [DEBUG, RELEASE, TRANSLATIONS, TEST]
+        assert swift_calls(root) == (calls if ci else calls + [USB_SELFTEST]), output
+        scratch = (root / "usb-scratch-env.txt").read_text().splitlines()
+        if ci:
+            assert scratch == ["unset"] and "USB 이미지 자가 테스트" not in output, output
+            return
+        assert scratch[0] == "unset" and len(scratch) == 2 and Path(scratch[1]).parent == root, scratch
+        run, = (root / ".build/check-logs").glob("run.*")
+        assert (run / "usb-selftest.log").is_file(), output
+        assert (run / "exit-code.txt").read_text().strip() == str(expected), output
+        if expected:
+            assert "USB 자가 테스트 통과 줄이 없습니다" in output and Path(scratch[1]).is_dir(), output
+        else:
+            assert "✔ USB 자가 테스트 결과" in output and not Path(scratch[1]).exists(), output
 
 
 def check_reuse(case):
@@ -2124,7 +2288,9 @@ runs += [("optin-real", check_optin_real, ("optin-real",))]
 runs += [(case, check_ui_diff, (case, *arguments)) for case, arguments in UI_DIFF_CASES.items()]
 runs += [("affected-real-map", check_real_map, ())]
 runs += [(case, check_real_safety, (case, *arguments)) for case, arguments in REAL_SAFETY_CASES.items()]
+runs += [(case, check_write_requirements, arguments) for case, arguments in WRITE_REQUIREMENT_CASES.items()]
 runs += [(case, check_reuse, (case,)) for case in REUSE_CASES]
+runs += [(case, check_usb_release, arguments) for case, arguments in USB_RELEASE_CASES.items()]
 runs += [(case, check_changed, (case, *arguments)) for case, arguments in CHANGED_CASES.items()]
 runs += [(case, check_bundles, (case, *arguments)) for case, arguments in BUNDLE_CASES.items()]
 runs += [("bundles-quick-fresh", check_bundles_quick, ())]

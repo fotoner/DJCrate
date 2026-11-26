@@ -93,4 +93,21 @@ struct CueDraftTests {
         draft.place(EditableCue(kind: .memory, time: 500))
         #expect(!draft.issues(duration: 269).isEmpty)
     }
+    /// 지운 큐를 되살릴 때(#405 R12) 색을 지우기 전과 같게 쓰도록 rekordbox가 적어 둔 색을 큐에 둔다.
+    /// 기본 색(메모리 -1, 루프 255·표 0)은 두지 않는다: 쓰기가 기본 색을 그대로 만들고, 옛 초안 파일 모양이 바뀌지 않는다.
+    @Test func rekordbox_큐에_지정한_색만_편집_큐에_둔다() throws {
+        let colored = Cue(id: "5", contentID: "c", kind: 2, inMsec: 1000, name: "", colorTableIndex: 3, color: 16711680)
+        let plain = Cue(id: "6", contentID: "c", kind: 0, inMsec: 2000, name: "", colorTableIndex: nil, color: -1)
+        let loop = Cue(id: "7", contentID: "c", kind: 1, inMsec: 3000, name: "", colorTableIndex: 0, outMsec: 7000, color: 255)
+        let memory = Cue(id: "8", contentID: "c", kind: 0, inMsec: 4000, name: "", colorTableIndex: 5, color: -1)
+        let draft = CueDraft(trackUUID: "t", rekordboxCues: [colored, plain, loop, memory])
+        #expect(draft.cues.first { $0.sourceID == "5" }?.color == EditableCue.ColorMark(color: 16711680, tableIndex: 3, memory: false))
+        #expect(draft.cues.first { $0.sourceID == "6" }?.color == nil)
+        #expect(draft.cues.first { $0.sourceID == "7" }?.color == nil)
+        #expect(draft.cues.first { $0.sourceID == "8" }?.color == EditableCue.ColorMark(color: -1, tableIndex: 5, memory: true))
+        // 색이 없는 큐는 파일에 색 칸을 적지 않는다(옛 초안과 같은 모양·해시)
+        let json = String(decoding: try JSONEncoder().encode(draft.cues.first { $0.sourceID == "6" }!), as: UTF8.self)
+        #expect(!json.contains("color"))
+        #expect(try JSONDecoder().decode(CueDraft.self, from: JSONEncoder().encode(draft)) == draft)
+    }
 }

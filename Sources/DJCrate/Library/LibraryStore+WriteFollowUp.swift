@@ -16,6 +16,7 @@ extension LibraryStore {
     /// 쓰기 결과를 활동 기록에 먼저 남기고 종료하려는 것이다. 종료를 기다리지 않으면 아무것도 하지 않고 거짓이다.
     func postponeReloadForQuit(written: Set<String>, playlistEdits: [PlaylistEdit]) -> Bool {
         guard quitWait.isWaiting else { return false }
+        if isDraftWrite { draftWriteReadPending = true }
         writtenAwaitingReload.formUnion(written)
         playlists.playlistEditsAwaitingReload += playlistEdits
         reloadPostponedForQuit = true
@@ -52,6 +53,7 @@ extension LibraryStore {
         let uuids = writtenAwaitingReload
         writtenAwaitingReload = []
         onRekordboxWritten?(uuids)
+        for uuid in uuids { writtenCueIDs[uuid] = nil }
         // 쓰거나 되돌린 곡은 새 rekordbox 큐를 LINK로 내어 준다(#281)
         publishLinkCues(uuids)
     }

@@ -314,4 +314,116 @@ struct HideStreamingTests {
         #expect(results[1].rows.map { $0["ContentID"] ?? "" } == ["2", "4", "6", "1"])
         #expect(results[1].rows.map { $0["TrackNo"] ?? "" } == ["1", "2", "3", "4"])
     }
+
+    // MARK: 검색·필터가 숨긴 스트리밍 곡에만 맞을 때(#348)
+
+    /// 키·BPM이 있는 합성 라이브러리. 로컬 1은 3B·BPM 90, 로컬 3·5·6은 키가 없다. 숨기는 스트리밍 곡 2는 8A·BPM 128, 4는 8B·BPM 128이다.
+    static func keyedFixture() throws -> RekordboxFixture {
+        let fixture = try Self.fixture()
+        for (id, name) in [("k8", "8A"), ("kb", "8B"), ("k3", "3B")] {
+            try fixture.insert("djmdKey", ["ID": .text(id), "ScaleName": .text(name), "Seq": .int(1), "UUID": .text("key-\(id)"),
+                                           "rb_data_status": .int(256), "rb_local_deleted": .int(0), "rb_local_usn": .int(1)])
+        }
+        try fixture.execute("UPDATE djmdContent SET KeyID = 'k3', BPM = 9000 WHERE ID = '1'")
+        try fixture.execute("UPDATE djmdContent SET KeyID = 'k8', BPM = 12800 WHERE ID = '2'")
+        try fixture.execute("UPDATE djmdContent SET KeyID = 'kb', BPM = 12800 WHERE ID = '4'")
+        return fixture
+    }
+
+    /// 보고 있는 화면에서 검색·필터를 걸었을 때 가운데 안내가 [스트리밍 곡 보이기]를 내놓는가
+    private func offersShowStreaming(_ store: LibraryStore) -> Bool {
+        guard case let .noResults(guide) = EmptyListNotice.resolve(store: store) else { return false }
+        return guide.offersShowStreaming
+    }
+
+    @Test func 검색이_숨긴_스트리밍_곡에만_맞으면_빈_목록_안내가_보이기를_바로_내놓는다() async throws {
+        let fixture = try Self.fixture()
+        let store = await Self.makeStore(fixture, hideStreaming: true)
+        store.search = "합성 2"
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 1)
+        let notice = EmptyListNotice.resolve(store: store)
+        guard case let .noResults(guide) = notice else { Issue.record("검색 결과 없음 안내가 와야 한다: \(notice)"); return }
+        #expect(guide.offersShowStreaming && guide.offersClearSearch)
+        #expect(guide.title == "‘합성 2’에 맞는 곡을 찾지 못했습니다", "새 설명 문구를 더하지 않는다")
+        // 그 단추가 부르는 입구: 검색어는 그대로 두고 숨긴 곡만 푼다
+        store.showHiddenStreaming()
+        #expect(!store.hideStreaming && store.search == "합성 2")
+        #expect(Self.ids(store) == ["2"] && store.streamingHiddenMatching == 0)
+        withExtendedLifetime(fixture) {}
+    }
+
+    @Test func 어떤_곡에도_안_맞는_검색은_보이기를_내놓지_않는다() async throws {
+        let fixture = try Self.fixture()
+        let store = await Self.makeStore(fixture, hideStreaming: true)
+        store.search = "없는 곡"
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 0)
+        #expect(!offersShowStreaming(store))
+        // 숨기기가 꺼져 있으면 숨긴 곡이 없다
+        store.hideStreaming = false
+        #expect(store.streamingHiddenMatching == 0 && !offersShowStreaming(store))
+        withExtendedLifetime(fixture) {}
+    }
+
+    @Test func 보이는_곡이_있으면_숨긴_곡을_세지_않는다() async throws {
+        let fixture = try Self.fixture()
+        let store = await Self.makeStore(fixture, hideStreaming: true)
+        store.search = "합성"
+        #expect(Self.ids(store) == ["1", "3", "5", "6"] && store.streamingHiddenInView == 2)
+        #expect(store.streamingHiddenMatching == 0, "목록이 비었을 때만 따진다")
+        withExtendedLifetime(fixture) {}
+    }
+
+    @Test func 검색과_BPM_범위와_키_조건을_함께_걸어도_같은_함수로_숨긴_곡을_판정한다() async throws {
+        let fixture = try Self.keyedFixture()
+        let store = await Self.makeStore(fixture, hideStreaming: true)
+        // 검색 + BPM 범위 + 같은 키: 숨긴 2(8A·128)만 맞는다. 로컬 곡은 BPM·키가 맞지 않아 목록은 빈다
+        store.search = "합성"
+        store.filter = TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("8A"))
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 1)
+        #expect(offersShowStreaming(store))
+        // 어울리는 키: 9A는 8A와 이웃이라 2가 맞고, 번호도 글자도 다른 8B인 4는 맞지 않는다
+        store.filter = TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("9A", mode: .compatible))
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 1)
+        // 어느 곡이 맞았는지는 숨기기를 끈 실제 목록으로 본다: 2뿐이다
+        store.hideStreaming = false
+        #expect(Self.ids(store) == ["2"])
+        store.hideStreaming = true
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 1)
+        // 다른 표기: Camelot으로 바꿔 비교하므로 `Am`도 8A다
+        store.filter = TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("Am"))
+        #expect(store.streamingHiddenMatching == 1)
+        // BPM 범위가 숨긴 곡을 모두 벗어나면 안내는 그대로이고 보이기는 없다
+        store.filter = TrackFilter(bpm: BPMRange(lower: 80, upper: 100), key: KeyCondition("8A"))
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 0 && !offersShowStreaming(store))
+        // 검색이 숨긴 곡에 맞아도 키가 다르면 맞지 않는다(검색 "합성 4"는 4, 같은 키 8A는 8B와 다르다)
+        store.search = "합성 4"
+        store.filter = TrackFilter(key: KeyCondition("8A"))
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 0 && !offersShowStreaming(store))
+        // 필터만 걸어도(검색어 없음) 같다: 8A와 어울리는 키(같은 번호의 8B 포함)에 BPM 120–130이면 숨긴 2·4가 맞는다
+        store.search = ""
+        store.filter = TrackFilter(bpm: BPMRange(lower: 120, upper: 130), key: KeyCondition("8A", mode: .compatible))
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 2 && offersShowStreaming(store))
+        // 보이기를 누르면 그 조건에 맞는 곡이 돌아온다
+        store.showHiddenStreaming()
+        #expect(Self.ids(store) == ["2", "4"] && store.streamingHiddenMatching == 0)
+        withExtendedLifetime(fixture) {}
+    }
+
+    @Test func 목록이나_검색을_바꾸면_숨긴_곡_수를_다시_센다() async throws {
+        let fixture = try Self.fixture()
+        let store = await Self.makeStore(fixture, hideStreaming: true)
+        store.sidebar = .playlist("R")
+        store.search = "합성 2"
+        #expect(store.displayRows.isEmpty && store.streamingHiddenMatching == 0, "목록 R에는 스트리밍 곡이 없다")
+        store.sidebar = .playlist("Q")
+        #expect(store.streamingHiddenMatching == 1)
+        store.search = ""
+        #expect(store.streamingHiddenMatching == 0, "검색어도 필터도 없으면 이 안내가 아니라 스트리밍 곡뿐 안내가 말한다")
+        // 쓰기 대기 같은 숨기지 않는 목록은 세지 않는다: 스트리밍 곡 2에 초안이 있으면 쓰기 대기는 그 곡을 숨기지 않고 그대로 보인다
+        store.tagDrafts["hide-2"] = TagDraft(trackUUID: "hide-2", base: TagFields())
+        store.search = "합성 2"
+        store.sidebar = .pending
+        #expect(Self.ids(store) == ["2"] && store.streamingHiddenMatching == 0)
+        withExtendedLifetime(fixture) {}
+    }
 }

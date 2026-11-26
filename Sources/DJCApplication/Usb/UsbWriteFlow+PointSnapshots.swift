@@ -23,7 +23,7 @@ extension UsbWriteFlow {
                 return false
             }
             guard !summary.result.isUnchanged else {
-                notify(Text.nothingToWriteTitle, String(ui: "USB가 이미 시점 스냅샷과 같습니다"))
+                notify(Text.nothingToWriteTitle, String(ui: "USB가 이미 복원 시점과 같습니다"))
                 return false
             }
             guard confirmation.confirm(Self.pointRestoreConfirmation(volume, entry: entry, summary: summary)) else { return false }
@@ -43,7 +43,7 @@ extension UsbWriteFlow {
                     session.pointRestoreBackups[key] = written.report?.backup.map { URL(filePath: $0) }
                     session.end(key)
                     ended = true
-                    results.show(.success(title: String(ui: "USB를 시점 스냅샷으로 되돌렸습니다"),
+                    results.show(.success(title: String(ui: "USB를 복원 시점으로 되돌렸습니다"),
                                           detail: entry.displayName, ejectVolumeKey: key))
                     await screen.refresh()
                     return true
@@ -83,19 +83,19 @@ extension UsbWriteFlow {
         details.append(String(ui: "바꿀 DB \(result.databases)개 · 만들 파일 \(result.created)개 · 덮을 파일 \(result.overwritten)개 · 지울 파일 \(result.removed)개"))
         details += result.notes
         return ReflectionPrompt(title: String(ui: "USB를 ‘\(entry.displayName)’ 시점으로 되돌릴까요?"),
-                                text: String(ui: "\(volume.name)의 라이브러리 파일을 이 스냅샷으로 바꿉니다. 음원과 동기화 선택은 그대로 두며, 쓰기 전 백업으로 되돌리기를 취소할 수 있습니다."),
+                                text: String(ui: "\(volume.name)의 라이브러리 파일을 이 복원 시점으로 바꿉니다. 음원과 동기화 선택은 그대로 두며, 쓰기 전 백업으로 되돌리기를 취소할 수 있습니다."),
                                 confirm: String(ui: "되돌리기"), destructive: true, details: details)
     }
 
     public static func pointDeviceChangesPrompt(_ volume: UsbVolumeInfo) -> ReflectionPrompt {
-        ReflectionPrompt(title: String(ui: "스냅샷 뒤의 기기 변경을 버릴까요?"),
-                         text: String(ui: "\(volume.name)을 되돌리면 스냅샷 뒤에 DJCrate가 모르게 바뀐 내용(기기의 재생 기록 등)을 잃습니다(버려도 될 때만 동의하세요)."),
+        ReflectionPrompt(title: String(ui: "동기화 뒤의 기기 변경을 버릴까요?"),
+                         text: String(ui: "\(volume.name)을 되돌리면 복원 시점 뒤에 DJCrate가 모르게 바뀐 내용(기기의 재생 기록 등)을 잃습니다(버려도 될 때만 동의하세요)."),
                          confirm: String(ui: "변경을 버리고 되돌리기"), critical: true, destructive: true)
     }
 
     static func pointSnapshotBlockText(_ block: UsbBlock) -> String {
         if block.code == "pointSnapshotNewDatabase" {
-            return String(ui: "스냅샷 뒤 새 DB가 생겨 되돌릴 수 없으니, 그 DB를 만든 쓰기를 `djc usb-restore`로 먼저 되돌리세요")
+            return String(ui: "복원 시점 뒤 새 DB가 생겨 되돌릴 수 없으니, 그 DB를 만든 쓰기를 `djc usb-restore`로 먼저 되돌리세요")
         }
         return block.message
     }

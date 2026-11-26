@@ -7,11 +7,11 @@ import Foundation
 extension DeckModel {
     // MARK: - 그리드 편집 (초안만 바뀐다)
 
-    var canEditGrid: Bool { !editsFrozen && gridDraft != nil && gridEditBlockedReason == nil }
+    var canEditGrid: Bool { !isEditLocked && gridDraft != nil && gridEditBlockedReason == nil }
 
     /// 그리드 초안 버리기: 편집 중이거나, 편집이 막힌 초안(막히면 편집 잠금을 풀 수 없어도 버릴 수는 있어야 한다)
     var canDiscardGridDraft: Bool {
-        guard !editsFrozen, gridDraft?.hasChanges == true else { return false }
+        guard !isEditLocked, gridDraft?.hasChanges == true else { return false }
         return gridEditBlockedReason != nil || (canEditGrid && gridEditing)
     }
 
@@ -57,7 +57,7 @@ extension DeckModel {
 
     func revertGrid() {
         guard canDiscardGridDraft || canEditGrid else { return }
-        mutateGrid(name: String(ui: "그리드 초안 버리기"), allowingBlocked: true) { $0.revert() }
+        mutateGrid(name: String(ui: "그리드 편집 버리기"), allowingBlocked: true) { $0.revert() }
     }
 
     /// 그리드 편집 막대의 ‹ › 버튼을 누르고 있는 동안 그리드 전체를 옮긴다(한 번의 편집으로 저장).
@@ -69,7 +69,7 @@ extension DeckModel {
     }
 
     func dragGrid(by seconds: Double) {
-        guard !editsFrozen, var base = gridDragBase, base.trackUUID == row?.track.uuid else { return }
+        guard !isEditLocked, var base = gridDragBase, base.trackUUID == row?.track.uuid else { return }
         let from = base.segments
         base.shift(by: seconds)
         gridDraft = base
@@ -85,7 +85,7 @@ extension DeckModel {
 
     func endGridDrag() {
         guard gridDragBase != nil else { return }
-        guard !editsFrozen else { return }
+        guard !isEditLocked else { return }
         gridDragBase = nil
         cueDragBase = nil
         if let draft { persist(draft) }
@@ -124,9 +124,9 @@ extension DeckModel {
     }
 
     func mutateGrid(name: String = String(ui: "그리드 편집"), allowingBlocked: Bool = false, _ change: (inout GridDraft) -> Void) {
-        guard !editsFrozen else { return }
+        guard !isEditLocked else { return }
         guard var gridDraft, gridDraft.trackUUID == row?.track.uuid else {
-            showToast(String(ui: "편집할 그리드 초안이 준비되지 않았으니 곡을 덱에 다시 불러온 뒤 편집하세요"), kind: .warning)
+            showToast(String(ui: "편집할 그리드 편집이 준비되지 않았으니 곡을 덱에 다시 불러온 뒤 편집하세요"), kind: .warning)
             return
         }
         guard canEditGrid || allowingBlocked else {
@@ -139,7 +139,7 @@ extension DeckModel {
         guard self.gridDraft != gridDraft else { return }
         // 복잡한 원본을 대체한 초안은 승인한 모양(템포 구간 하나)을 벗어나는 편집을 받지 않는다(받으면 편집 전체가 막힌다).
         if gridDraft.replacementSource != nil, let originalGrid, !gridDraft.isVerifiedReplacement(of: originalGrid, duration: duration) {
-            showToast(String(ui: "복잡한 rekordbox 그리드를 대체한 초안은 템포 구간을 하나로만 둘 수 있으니 변속 지점은 rekordbox에서 편집하세요"), kind: .failure)
+            showToast(String(ui: "복잡한 rekordbox 그리드를 대체한 편집은 템포 구간을 하나로만 둘 수 있으니 변속 지점은 rekordbox에서 편집하세요"), kind: .failure)
             return
         }
         self.gridDraft = gridDraft
@@ -253,14 +253,14 @@ extension DeckModel {
 
     /// 추정 그리드를 초안으로 적용한다(원본이 있으면 원본은 그대로 두고 구간만 바꾼다).
     func applyGridSuggestion(recordingUndo: Bool = true) {
-        guard !editsFrozen, let suggestion = gridSuggestion, let uuid = row?.track.uuid else { return }
+        guard !isEditLocked, let suggestion = gridSuggestion, let uuid = row?.track.uuid else { return }
         let base = gridDraft?.base ?? []
         let before = gridDraft?.segments ?? originalGrid.map(GridDraft.segments(from:)) ?? []
         var draft = GridDraft(trackUUID: uuid, base: base, segments: suggestion.segments)
         if let originalGrid, !originalGrid.beats.isEmpty {
             // 초안을 만든 뒤 rekordbox 그리드가 바뀌었으면 어느 쪽도 덮지 않는다.
             guard base == GridDraft.segments(from: originalGrid) else {
-                showToast(String(ui: "초안을 만든 뒤 rekordbox에서 그리드가 바뀌었으니 그리드 현재값 가져오기로 비교하세요"), kind: .failure)
+                showToast(String(ui: "편집을 만든 뒤 rekordbox에서 그리드가 바뀌었으니 그리드 현재값 가져오기로 비교하세요"), kind: .failure)
                 return
             }
             // 템포 구간으로 다시 만들 수 없는 원본만 명시 대체로 승인한다(단순한 원본은 보통 초안이다).
@@ -301,7 +301,7 @@ extension DeckModel {
     /// rekordbox XML 가져오기(#72)가 만든 이 곡의 그리드 초안을 받아 덱 저장 경로로 쓴다.
     /// 덱 초안을 바꿨거나(끄는 중 포함) 다른 곡이면 받지 않는다(덱 편집을 덮지 않는다).
     func adoptImportedGridDraft(_ draft: GridDraft) -> Bool {
-        guard !editsFrozen, row?.track.uuid == draft.trackUUID, gridDragBase == nil, gridDraft?.hasChanges != true else { return false }
+        guard !isEditLocked, row?.track.uuid == draft.trackUUID, gridDragBase == nil, gridDraft?.hasChanges != true else { return false }
         // 실행 취소 이력의 옛 그리드가 가져온 초안을 덮지 않게 비운다.
         clearDraftUndo()
         gridDraft = draft

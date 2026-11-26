@@ -15,7 +15,7 @@ public enum UsbEditText {
         case let .addTracks(ids, .none): return String(ui: "곡 \(ids.count)개 더하기")
         case let .addTracks(ids, .some(playlist)): return String(ui: "곡 \(ids.count)개 더하기 · ‘\(name(playlist))’에 넣기")
         case let .removeTracks(ids): return String(ui: "곡 \(ids.count)개 USB에서 빼기")
-        case let .refreshTracks(ids, _): return String(ui: "곡 \(ids.count)개 로컬 변경 반영")
+        case let .refreshTracks(ids, _): return String(ui: "곡 \(ids.count)개 로컬 변경 쓰기")
         case let .syncPlaylist(playlist, ids): return String(ui: "‘\(name(playlist))’ 동기화 · 곡 \(ids.count)개")
         case let .syncSelection(draft):
             return draft.enabledOnly ? String(ui: "USB 동기화 켜짐 저장") : String(ui: "USB 동기화 선택 저장")

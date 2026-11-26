@@ -125,13 +125,13 @@ public enum UsbCueGridReader {
                     try validate(kind: kind, hot: entry.hotCue, type: entry.type, start: entry.inMsec, end: entry.outMsec)
                     let expectedColor: [UInt8] = kind == 0 ? [0, 0, 0, 0] : entry.type == 2 ? [0, 255, 140, 0] : [0, 26, 255, 0]
                     guard entry.colorID == 0, entry.color == expectedColor else {
-                        throw failure(String(ui: "색 큐를 초안으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
+                        throw failure(String(ui: "색 큐를 편집으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
                     }
                     let numerator = Int(entry.beatNumerator), denominator = Int(entry.beatDenominator)
                     guard (numerator == 0 && denominator == 0) || (entry.type == 2 && numerator > 0 && denominator > 0) else { throw cueMismatch() }
                     let beats: Double? = numerator > 0 ? Double(numerator) / Double(denominator) : nil
                     guard beats == nil || EditableCue.Loop.beats(beatLoopSize: EditableCue.Loop.beatLoopSize(beats: beats)) == beats else {
-                        throw failure(String(ui: "이 루프의 박 수를 초안으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
+                        throw failure(String(ui: "이 루프의 박 수를 편집으로 보존할 수 없으니 rekordbox에서 직접 가져오세요."))
                     }
                     cues.append(EditableCue(id: UUID(), kind: kind == 0 ? .memory : .hot(Int(entry.hotCue) - 1),
                                             time: Double(entry.inMsec) / 1000, name: entry.comment,

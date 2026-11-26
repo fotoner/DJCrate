@@ -49,7 +49,7 @@ public struct DeckGridGate: Sendable, Equatable {
         let worst = GridEditEligibility.reconstructionErrorMilliseconds(original: original, rebuilt: rebuilt)
         let replacement = draft.map { $0.trackUUID == trackUUID && $0.isVerifiedReplacement(of: original, duration: duration) } ?? false
         if draft?.replacementSource != nil, !replacement {
-            return String(ui: "초안을 만든 뒤 rekordbox에서 그리드가 바뀌었으니 그리드 현재값 가져오기로 비교하세요")
+            return String(ui: "편집을 만든 뒤 rekordbox에서 그리드가 바뀌었으니 그리드 현재값 가져오기로 비교하세요")
         }
         if worst > 2, !replacement {
             return String(ui: "이 곡의 그리드는 템포 구간 \(fresh.segments.count)개로 정확히 재현되지 않으니(최대 \(worst, specifier: "%.0f")ms) 추정 그리드를 적용하거나 rekordbox에서 직접 편집하세요")

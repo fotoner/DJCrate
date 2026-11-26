@@ -10,7 +10,10 @@ struct TagInspector: View {
     let model: TagInspectorModel
 
     var body: some View {
-        let rows = model.rows
+        // 쓰는 곡과 아닌 곡을 함께 고르면 쓰는 곡은 편집 대상에서 빠진다(값 표시·편집·그림 단추가 같은 곡 집합을 쓴다). 모두 쓰는 곡이면 칸을 막는다
+        let selected = model.rows
+        let locked = model.isWriteLocked(selected)
+        let rows = locked ? selected : model.writableRows(selected)
         Form {
             if rows.isEmpty {
                 Text(.ui("목록에서 곡을 선택하세요. 여러 곡을 고르면 한꺼번에 편집합니다."))
@@ -24,7 +27,7 @@ struct TagInspector: View {
                             Spacer()
                             let changed = model.draftCount(rows)
                             if changed > 0 {
-                                Text(.ui("초안 \(changed)곡")).font(.scaled(.caption, textScale).bold()).foregroundStyle(UIColors.draft.color)
+                                Text(.ui("편집 \(changed)곡")).font(.scaled(.caption, textScale).bold()).foregroundStyle(UIColors.draft.color)
                             }
                         }
                     }
@@ -59,22 +62,25 @@ struct TagInspector: View {
                         Button(.ui("태그 현재값 가져오기…")) { reflection?.startRecovery(row: row, kind: .tags) }
                             .disabled(model.isRecoveringDraft)
                     }
-                    Button(.ui("태그 초안 버리기")) { model.revert(rows: rows) }
+                    Button(.ui("태그 편집 버리기")) { model.revert(rows: rows) }
                     // 태그·앨범아트 모두 rekordbox 라이브러리에만 쓰고 음원 파일은 읽기만 한다(#1·#66 결정). 인스펙터에서 한 번만 말한다(#328).
-                    Text(.ui("태그·앨범아트는 라이브러리에만 쓰고 음원 파일은 바꾸지 않습니다."))
+                    Text(.ui("태그·앨범아트는 라이브러리에만 저장하고 음원 파일은 바꾸지 않습니다."))
                         .font(.scaled(.caption, textScale)).foregroundStyle(.secondary)
                 }
             }
         }
         .formStyle(.grouped)
         .font(.scaled(.body, textScale))
+        .disabled(locked)
     }
 
     private func field(_ key: TagFields.Key, rows: [TrackRow], axis: Axis = .horizontal) -> some View {
         let current = model.field(key, rows: rows)
         return VStack(alignment: .leading, spacing: 4) {
-            CommitTextField(label: key.label, value: current.value, mixed: current.mixed, edited: current.edited, axis: axis) { text in
-                model.setText(key, text, rows: rows)
+            // 입력을 시작할 때 대상 곡을 고정하고(`begin`), 확정할 때 그 대상 가운데 아직 편집할 수 있는 곡에만 넣는다(S9)
+            CommitTextField(label: key.label, value: current.value, mixed: current.mixed, edited: current.edited, axis: axis,
+                            begin: { model.beginInput(key, rows: rows) }, cancel: { model.endInput(key) }) { text in
+                model.commitText(key, text, rows: rows)
             }
             .id(model.fieldID(key))
             .disabled(model.isTextLocked(rows))
@@ -92,6 +98,10 @@ private struct CommitTextField: View {
     let mixed: Bool
     let edited: Bool
     let axis: Axis
+    /// 입력을 시작했다(칸의 글자가 값과 달라졌다)
+    let begin: () -> Void
+    /// 입력을 확정하지 않고 거뒀다(글자가 다시 값과 같아졌다)
+    let cancel: () -> Void
     let commit: (String) -> Void
     @State private var text = ""
     @State private var dirty = false
@@ -115,9 +125,16 @@ private struct CommitTextField: View {
             .foregroundStyle(edited ? UIColors.draft.color : .primary)
             .onAppear { text = value }
             .onChange(of: value) { if !focused { text = value } }
-            .onChange(of: text) { dirty = text != value }
+            .onChange(of: text) {
+                let wasDirty = dirty
+                dirty = text != value
+                if dirty, !wasDirty { begin() } else if !dirty, wasDirty { cancel() }
+            }
             .onSubmit(apply)
             .onChange(of: focused) { if !focused { apply() } }
+            // 칸이 사라질 때(다른 곡을 골라 칸이 새로 만들어짐) 포커스 확정이 불리지 않을 수 있다: 입력 중이던 값을 확정하고 대기를 푼다.
+            // 대상은 입력을 시작할 때 고정한 곡이다(`beginInput`). 대기가 남으면 ⌘S가 매번 확정을 기다리다 저장하지 못한다
+            .onDisappear(perform: apply)
     }
 
     private func apply() {

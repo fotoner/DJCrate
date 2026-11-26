@@ -77,7 +77,7 @@ public struct UsbPointSnapshots: Sendable {
         let named = entries.filter { !$0.metadata.name.isEmpty && $0.metadata.name == key }
         guard named.count == 1 else {
             throw UsbError.writeRefused([UsbBlock(code: "pointSnapshotNotFound", scope: .volume,
-                                                  message: String(ui: "그 USB 스냅샷을 찾지 못했습니다. 목록에서 ID를 확인한 뒤 다시 주세요"))])
+                                                  message: String(ui: "그 USB 복원 시점을 찾지 못했습니다. 목록에서 ID를 확인한 뒤 다시 주세요"))])
         }
         return named[0]
     }
@@ -130,7 +130,7 @@ public struct UsbPointSnapshots: Sendable {
     /// 기기가 바꾼 USB를 되돌리려 할 때(앱은 이 막힘을 보고 버릴지 묻는다)
     public static var deviceChangedBlock: UsbBlock {
         UsbBlock(code: "deviceChanged", scope: .volume,
-                 message: String(ui: "스냅샷 뒤 USB에 DJCrate가 모르는 변경이 있습니다(기기가 쓴 기록 등). 되돌리면 그 내용을 잃습니다. 그래도 되돌리려면 --discard-device-changes를 주세요"))
+                 message: String(ui: "복원 시점 뒤 USB에 DJCrate가 모르는 변경이 있습니다(기기가 쓴 기록 등). 되돌리면 그 내용을 잃습니다. 그래도 되돌리려면 --discard-device-changes를 주세요"))
     }
 
     // MARK: - 순서
@@ -149,7 +149,7 @@ public struct UsbPointSnapshots: Sendable {
         // 2. 이 볼륨의 스냅샷만 되돌린다(다른 USB의 파일로 덮지 않게)
         guard entry.metadata.volumeUUID.uppercased() == volumeKey else {
             return blocked([UsbBlock(code: "pointSnapshotOtherVolume", scope: .volume,
-                                     message: String(ui: "다른 USB의 스냅샷입니다. 이 USB에서 뜬 스냅샷을 고르세요"))])
+                                     message: String(ui: "다른 USB의 복원 시점입니다. 이 USB에서 뜬 복원 시점을 고르세요"))])
         }
         // 3. 저널: 끝나지 않은 쓰기는 막는다. 닫힌 저널의 ID 상한은 잇는다
         var highWater: [String: Int] = [:]

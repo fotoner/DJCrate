@@ -29,7 +29,7 @@ extension RekordboxWriter {
             .filter { $0.standardizedFileURL.comparablePath != selected.comparablePath }
         let inside = selected.deletingLastPathComponent().comparablePath == directory.standardizedFileURL.comparablePath
         if !inside, backupStamp(selected) == nil, !folders.isEmpty {
-            throw invalidBackup(String(ui: "백업 폴더 밖에 있고 이름에 뜬 시각이 없어 그 뒤 쓰기를 알 수 없음"))
+            throw invalidBackup(String(ui: "백업 폴더 밖에 있고 이름에 뜬 시각이 없어 그 뒤 저장을 알 수 없음"))
         }
         return folders.filter { isNewer($0, than: selected) && !isITunesSyncOnly($0) }
             .sorted { isNewer($0, than: $1) }
@@ -120,35 +120,57 @@ extension RekordboxWriter {
     }
 
     /// 단계마다 분석·그림 파일을 쓰기 전 내용으로 되살리고, 그 쓰기가 만든 파일을 지운다(최신 단계부터).
-    static func applyRestoreSteps(_ steps: [RestoreStep]) throws {
+    /// 파일 하나를 바꾸거나 지우기 바로 직전마다 rekordbox 실행을 다시 본다(R10, `run`이 있을 때).
+    static func applyRestoreSteps(_ steps: [RestoreStep], run: WriteRun? = nil) throws {
         let fm = FileManager.default
         for step in steps {
             for file in step.analysis {
+                try run?.recheck(.fileReplace)
+                try run?.before(.fileReplace)
+                run?.changed = true
                 // 곡을 지우면서 폴더째 지운 경우가 있다.
                 try fm.createDirectory(at: file.target.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try file.data.write(to: file.target, options: .atomic)
+                try run?.after(.fileReplace)
             }
-            try removeOwnedFiles(step.created.filter { fm.fileExists(atPath: $0.path) })
+            for file in step.created where fm.fileExists(atPath: file.path) {
+                try run?.recheck(.fileReplace)
+                try run?.before(.fileReplace)
+                run?.changed = true
+                try removeOwnedFiles([file])
+                try run?.after(.fileReplace)
+            }
         }
     }
 
     /// 복원 도중 실패하면 DB·XML·건드린 파일을 복원 전으로 돌린다. 그것도 못 하면 복원 직전 백업으로 되돌릴 명령을 준다.
-    static func rollbackRestore(_ failure: any Error, saved: URL, database: URL, touched: [TouchedFile], live: Bool) -> any Error {
+    /// 쓰기 기록(`run`)이 있으면 켜짐부터 다시 보고(켜졌으면 기록을 그대로 둔 채 멈춘다), 첫 변경 전에 "복구 중"을 적고, 다 돌리면 기록을 지우고,
+    /// 못 돌리면 "복구 실패"로 남긴다(R7·R11).
+    static func rollbackRestore(_ failure: any Error, saved: URL, database: URL, touched: [TouchedFile], live: Bool, run: WriteRun? = nil) -> any Error {
         let fm = FileManager.default
+        if let run, let refused = run.markRecovering(failure) { return refused }
         do {
-            try restoreFiles(from: saved, to: database)
+            try restoreFiles(from: saved, to: run?.resolved ?? database, run: run)
             for file in touched {
                 if let original = file.original {
+                    guard (try? Data(contentsOf: file.url)) != original else { continue }
+                    try run?.recheck(.fileReplace)
                     try fm.createDirectory(at: file.url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    if (try? Data(contentsOf: file.url)) != original { try original.write(to: file.url, options: .atomic) }
+                    try original.write(to: file.url, options: .atomic)
                 } else if fm.fileExists(atPath: file.url.path) {
+                    try run?.recheck(.fileReplace)
                     try removeOwnedFiles([file.url])
                 }
             }
+            try run?.after(.recovery)
+            try run?.finish()
             return failure
         } catch {
+            if let run, let passed = run.passThrough(error) { return passed }
+            if let run { try? run.update { $0.marks.insert(.recoveryFailed) } }
+            // 기록이 남으니 안내는 기록이 받는 백업(그 백업으로 되돌리면 기록으로 복원한다)을 가리킨다
             return DJCError.restoreFailed(reason: DJCError.reason(of: failure), restoreError: DJCError.reason(of: error),
-                                          backup: saved.path, database: live ? nil : database.path)
+                                          backup: run?.journal?.basis.writeBackup ?? saved.path, database: live ? nil : database.path)
         }
     }
 }

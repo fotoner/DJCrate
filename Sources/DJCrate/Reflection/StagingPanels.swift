@@ -28,15 +28,21 @@ enum StagingPanels {
                 store.showToast(.notice(text: result.skipped.joined(separator: "\n"), kind: .failure))
                 return
             }
-            // 재생 목록 이름 "DJCrate 추가"는 XML에 쓰는 이름 그대로다(번역하지 않음).
-            var detail = String(ui: "rekordbox: rekordbox xml 새로고침 › \"DJCrate 추가\" › Import To Collection")
-            if result.withoutGrid > 0 { detail += " · " + String(ui: "\(result.withoutGrid)곡은 그리드 없이(rekordbox가 분석)") }
-            if !result.skipped.isEmpty { detail += "\n" + result.skipped.joined(separator: "\n") }
-            store.showToast(.notice(String(ui: "\(result.count)곡을 연동 XML에 썼습니다"), detail,
-                                    kind: result.withoutGrid > 0 || !result.skipped.isEmpty ? .warning : .success))
-            RekordboxLink.showSetupIfNeeded(store.linkedXMLFile)
+            store.showToast(resultMessage(count: result.count, withoutGrid: result.withoutGrid, skipped: result.skipped))
+            RekordboxLink.showSetupIfNeeded(store: store)
         } catch {
             store.showToast(.notice(text: String(ui: "내보내지 못했습니다. 저장 위치와 권한을 확인하세요: \(error.localizedDescription)"), kind: .failure))
         }
+    }
+
+    /// 추가한 곡의 XML을 만든 뒤의 알림: 결과 한 줄과 [가져오는 방법]. 그리드 없이 넣은 곡·뺀 곡의 이유는 있을 때만 붙는다(#315)
+    static func resultMessage(count: Int, withoutGrid: Int, skipped: [String]) -> AppToast {
+        var lines: [String] = []
+        if withoutGrid > 0 { lines.append(String(ui: "\(withoutGrid)곡은 그리드 없이(rekordbox가 분석)")) }
+        lines += skipped
+        var toast = AppToast.notice(String(ui: "\(count)곡을 연동 XML에 썼습니다"), lines.joined(separator: "\n"),
+                                    kind: withoutGrid > 0 || !skipped.isEmpty ? .warning : .success)
+        toast.action = .openIntegrationGuide(.rekordbox)
+        return toast
     }
 }
