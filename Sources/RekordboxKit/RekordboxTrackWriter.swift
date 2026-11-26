@@ -787,8 +787,9 @@ public enum RekordboxTrackWriter {
         let run = dryRun ? nil : try WriteRun.locked(database, guard: writeGuard, backups: backups, refusesHardLinks: false)
         do {
             try run?.prepareWrite()
-            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { reader.close() }
+            let snapshot = try WriteReadSnapshot(database)
+            defer { snapshot.close() }
+            let reader = snapshot.db
             try RekordboxCompatibility.checkSchema(reader)
             let counters = try RekordboxCompatibility.updateCounters(reader)
             if let local = counters.local { try RekordboxCompatibility.checkCounters(local: local, cloud: counters.cloud) }
@@ -859,10 +860,10 @@ public enum RekordboxTrackWriter {
             try run?.databaseChanged()
             try run?.after(.commit)
             try run?.before(.verify)
-            try RekordboxWriter.checkIntegrity(of: database)
-            let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { db.close() }
-            try check(db)
+            let snapshot = try WriteReadSnapshot(database)
+            defer { snapshot.close() }
+            try RekordboxWriter.checkIntegrity(snapshot.db)
+            try check(snapshot.db)
             try run?.after(.verify)
         } catch {
             throw RekordboxWriter.recover(from: error, run: run, database: database, backup: backup, live: live)

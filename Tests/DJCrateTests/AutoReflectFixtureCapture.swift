@@ -44,6 +44,9 @@ struct AutoReflectFixtureCapture {
             .joined(separator: "\r\n")
         try xml.write(to: fixture.root.appending(path: "masterPlaylists6.xml"), atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: fixture.root.appending(path: "share/PIONEER/USBANLZ"), withIntermediateDirectories: true)
+        // 실제 라이브러리처럼 WAL 형식이어야 첫 저장의 검증이 다음 자동 저장을 막는 회귀를 잡는다.
+        let mode = try fixture.session { try $0.rows("PRAGMA journal_mode=WAL") }
+        try #require(mode.first?["journal_mode"] == "wal")
         try FileManager.default.copyItem(at: fixture.root, to: root)
     }
 

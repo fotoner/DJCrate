@@ -333,20 +333,9 @@ extension RekordboxWriter {
 
     /// master.db 사본에서 변경 카운터를 읽는다(SAFE-6: 라이브 DB를 열지 않는다). 사본은 곧바로 지운다(클라우드 토큰이 든다, SAFE-15)
     static func snapshotCounter(of database: URL) throws -> Int {
-        let fm = FileManager.default
-        let folder = fm.temporaryDirectory.appending(path: "djc-journal-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        defer { try? fm.removeItem(at: folder) }
-        let copy = folder.appending(path: "master.db")
-        try fm.copyItem(at: database, to: copy)
-        let wal = URL(filePath: database.path + "-wal")
-        if let size = (try? fm.attributesOfItem(atPath: wal.path))?[.size] as? Int, size > 0 {
-            try fm.copyItem(at: wal, to: URL(filePath: copy.path + "-wal"))
-            try CipherDatabase.mergeWriteAheadLog(ofCopyAt: copy.path, key: RekordboxKey.derive())
-        }
-        let db = try CipherDatabase(path: copy.path, key: RekordboxKey.derive())
-        defer { db.close() }
-        guard let value = try scalar(db, "SELECT int_1 FROM agentRegistry WHERE registry_id = 'localUpdateCount'", []) else {
+        let snapshot = try WriteReadSnapshot(database)
+        defer { snapshot.close() }
+        guard let value = try scalar(snapshot.db, "SELECT int_1 FROM agentRegistry WHERE registry_id = 'localUpdateCount'", []) else {
             throw DJCError.writeRefused(String(ui: "rekordbox 변경 카운터를 찾지 못했습니다"))
         }
         return value

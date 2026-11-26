@@ -129,9 +129,10 @@ public enum RekordboxWriter {
         /// 준비 폴더를 둘 루트(R10): XML은 DB 폴더, 분석·그림은 분석 루트. 남은 준비 폴더는 쓰기 전에 지운다
         let stagingRoots = [run?.resolved.deletingLastPathComponent(), gridRoot].compactMap { $0 }
         if let run { removeStaging(roots: stagingRoots, key: run.key) }
+        let preflight = try WriteReadSnapshot(database)
+        defer { preflight.close() }
+        let reader = preflight.db
         do {
-            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { reader.close() }
             try RekordboxCompatibility.checkSchema(reader)
             // 백업(약 150MB)을 뜨기 전에 막힐 조건을 먼저 본다.
             let counters = try RekordboxCompatibility.updateCounters(reader)
@@ -141,8 +142,6 @@ public enum RekordboxWriter {
         var tagOutcomes: [Outcome] = []
         var xmlTags: [String: String] = [:]
         if !tags.isEmpty {
-            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { reader.close() }
             let checked = try checkTagDrafts(tags, db: reader, writable: tagKeys, mergesPending: !merges.isEmpty,
                                              playlistSteps: playlistSteps, scopes: tagScopes)
             tags = checked.passed
@@ -153,8 +152,6 @@ public enum RekordboxWriter {
         var artworkPlans: [ArtworkPlan] = []
         var artworkOutcomes: [Outcome] = []
         if !artworks.isEmpty {
-            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { reader.close() }
             (artworkPlans, artworkOutcomes) = try checkArtworkDrafts(artworks, db: reader, share: gridRoot)
         }
         // 재생 목록 편집과 곡 정보 쓰기는 DB 옆 masterPlaylists6.xml도 고친다(곡 정보는 그 곡이 든 목록의 Timestamp, #173).
@@ -201,8 +198,6 @@ public enum RekordboxWriter {
         var mergeOutcomes: [Outcome] = []
         var mergePlans: [DuplicateMergeDraft] = []
         if !merges.isEmpty {
-            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { reader.close() }
             let edited = Set(drafts.filter(\.hasChanges).map(\.trackUUID) + grids.map(\.trackUUID)
                 + Array(gains.keys) + tags.map(\.trackUUID) + artworkPlans.map(\.uuid))
             var reserved = Set<String>()
@@ -235,8 +230,6 @@ public enum RekordboxWriter {
                                                 merged: Set(mergePlans.flatMap { $0.members.map(\.trackUUID) }))
         var historyPlans: [(index: Int, history: HistoryImport)] = []
         if !histories.isEmpty {
-            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { reader.close() }
             var seen = Set<String>()
             var historyTrackCounts: [String: Int] = [:]
             var historyTrackIDs: [Int: Set<String>] = [:]
@@ -286,8 +279,6 @@ public enum RekordboxWriter {
         var attachPlans: [AttachPlan] = []
         var analysisOutcomes: [Outcome] = []
         if !grids.isEmpty {
-            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { reader.close() }
             for draft in grids {
                 var info: (title: String, anlz: String?, bpm: Int, path: String, id: String, fileName: String)?
                 try reader.query("""
@@ -351,6 +342,7 @@ public enum RekordboxWriter {
             report.historyOutcomes = historyReport()
             return refusingAll(report)
         }
+        preflight.close()
         let backup = dryRun ? nil : try makeBackup(of: run?.resolved ?? database, in: backups, now: now, label: "write")
         // 분석 파일도 원본을 백업에 둔다(되돌리기용).
         /// 원래 파일 경로 → 쓰기 전 백업 안 사본(쓰기 기록이 되돌릴 근거로 적는다)
@@ -792,9 +784,10 @@ public enum RekordboxWriter {
                     try run.databaseChanged()
                     try run.after(.commit)
                     try run.before(.verify)
-                    try checkIntegrity(of: database)
-                    let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-                    defer { db.close() }
+                    let verification = try WriteReadSnapshot(database)
+                    defer { verification.close() }
+                    let db = verification.db
+                    try checkIntegrity(db)
                     for item in written { try verify(db: db, contentID: item.contentID, item.expectation) }
                     // 분석을 붙인 뒤 태그·재생 기록도 쓴 곡은 곡 정보 변경 횟수를 그쪽에서 본다.
                     let taggedIDs = Set(tagged.map(\.contentID)).union(historyPlays.keys)
