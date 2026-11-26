@@ -121,7 +121,16 @@ final class ReflectionPresenter {
         case let .notice(title, text, lines): notify(title, text, lines: lines)
         case .cancelled: publishCancelled()
         case let .written(report, preview, followUp):
-            publish(WriteResult.written(report, preview: preview).followedUp(followUp), undo: report.backup)
+            let result = WriteResult.written(report, preview: preview).followedUp(followUp)
+            // 막힘 없이 저장했으면 알리지 않는다(저장할 때마다 뜨던 알림이 목록을 가렸다). 마지막 저장 시각·저장 대기 수는 상태 줄이 보이고,
+            // 되돌리기는 메뉴의 「저장 전으로 복원…」이 맡는다. 저장하지 못한 것·뒤처리 경고가 있으면 알린다
+            guard result.kind != .success else {
+                // 사용자가 누른 저장이라 앞서 뜬 알림(지난 저장 실패 등)을 남기지 않는다(성공 알림이 덮던 자리). VoiceOver로는 결과를 알린다
+                store?.dismissToast()
+                store?.feedback.announce(AppMessage(kind: .success, text: result.title))
+                return recordQuietly(result)
+            }
+            publish(result, undo: report.backup)
         case let .autoWritten(report, followUp):
             publishAutoWritten(report, followUp: followUp)
         case let .nothingWritable(preview, _):
@@ -156,40 +165,20 @@ final class ReflectionPresenter {
         }
     }
 
-    /// 처음 이만큼의 성공한 자동 저장만 「N곡을 저장했습니다 · [되돌리기]」 토스트를 보인다(R15, `AutoReflectionTiming.standard.successToasts`)
-    static let autoWriteToasts = AutoReflectionTiming.standard.successToasts
-
-    /// 성공한 자동 저장은 활동 기록에만 남긴다. 처음 몇 번만 토스트를 보이고 그 횟수는 설정에 남겨 다시 켜도 이어 센다.
-    /// 뒤처리에 남은 경고(`followUp`)가 있으면 횟수와 덮어쓰기 제한 없이 경고로 알린다(조용한 성공이 아니다)
+    /// 자동 저장의 결과는 활동 기록에만 남긴다(처음 몇 번 보이던 「N곡을 저장했습니다」 토스트도 없앴다).
+    /// 뒤처리에 남은 경고(`followUp`)가 있으면 떠 있는 알림과 상관없이 경고로 알린다(조용한 성공이 아니다)
     private func publishAutoWritten(_ report: RekordboxWriteReport, followUp: [String]) {
         guard let store else { return }
         let result = WriteResult.written(report, preview: report).followedUp(followUp)
-        let shown = Int(store.settings.value(SettingKeys.writeToastsShown))
-        // 사용자가 누르지 않은 결과라 떠 있는 경고·실패나 단추가 있는 알림을 덮지 않는다(기존 규칙): 활동 기록에만 남기고 횟수에 세지 않는다
-        // 뒤처리에 남은 경고는 성공 토스트의 덮어쓰기 제한·횟수와 상관없이 늘 보인다(조용한 성공이 아니다)
-        if !followUp.isEmpty {
-            var toast = result.toast
-            toast.undoBackup = report.backup.map { URL(filePath: $0) }
-            store.showToast(toast, for: result)
-            return
-        }
-        guard store.canReplaceToast, shown < Self.autoWriteToasts else {
-            _ = store.activityLog.record(result)
-            return
-        }
+        guard !followUp.isEmpty else { return recordQuietly(result) }
         var toast = result.toast
-        let tracks = Self.writtenTracks(report)
-        if tracks > 0 { toast.title = String(ui: "\(tracks)곡을 저장했습니다") }
-        store.settings.set(SettingKeys.writeToastsShown, Double(shown + 1))
         toast.undoBackup = report.backup.map { URL(filePath: $0) }
         store.showToast(toast, for: result)
     }
 
-    /// 쓴 곡 수(같은 곡의 큐·태그 등은 한 곡)
-    static func writtenTracks(_ report: RekordboxWriteReport) -> Int {
-        let groups: [[RekordboxWriteOutcome]] = [report.written, report.gridWritten, report.analysisWritten, report.gainWritten, report.tagWritten,
-                                                 report.artworkWritten, report.mergeWritten]
-        return Set(groups.flatMap { $0.map(\.trackUUID) }).count
+    /// 알리지 않는 저장 결과: 활동 기록에만 남긴다(떠 있는 알림은 그대로 둔다). 상태 줄의 마지막 저장·백업 표시가 이 기록을 읽는다
+    private func recordQuietly(_ result: WriteResult) {
+        _ = store?.activityLog.record(result)
     }
 
     /// 복원까지 실패한 경고창을 띄워 확인을 기다린다. 확인하기 전에는 앱을 끄지 않는다(#300).

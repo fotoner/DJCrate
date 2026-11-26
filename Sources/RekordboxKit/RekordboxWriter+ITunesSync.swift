@@ -22,8 +22,9 @@ extension RekordboxWriter {
         guard try Data(contentsOf: target) == change.base else { throw iTunesSyncConflict }
         let counters: (local: Int?, cloud: Int?)
         do {
-            let reader = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
-            defer { reader.close() }
+            let snapshot = try WriteReadSnapshot(database)
+            defer { snapshot.close() }
+            let reader = snapshot.db
             try RekordboxCompatibility.checkSchema(reader)
             counters = try RekordboxCompatibility.updateCounters(reader)
             if let local = counters.local { try RekordboxCompatibility.checkCounters(local: local, cloud: counters.cloud) }

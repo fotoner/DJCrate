@@ -451,7 +451,7 @@ struct UsbHistoryWriteTests {
         #expect(result.title == "rekordbox에 저장했습니다 · 재생 기록 1건")
         #expect(result.text.hasPrefix("• \(target.name) — 재생 기록 저장 완료: "))
         #expect(result.text.contains("컬렉션에 없는 1곡은 뺐습니다"))
-        #expect(store.toast?.undoBackup != nil)
+        #expect(!result.backups.isEmpty, "되돌릴 백업은 활동 기록의 결과에 남는다(막힘 없는 저장은 알림을 띄우지 않는다)")
 
         // 보존본(화면·파일)에 rekordbox 기록 ID를 남겼다
         let historyID = try #require(store.history.archivedHistory(target.id)?.rekordboxHistoryID)

@@ -88,9 +88,6 @@ public enum SettingKeys {
     /// 상태 줄이 읽지 않은 수로 센다. 0은 아직 읽은 적 없음이다
     public static let activitySeenThrough = SettingKey<Double>("activity.seenThrough", 0, in: nil)
 
-    /// 성공한 자동 저장 토스트를 보인 횟수(R15: 처음 몇 번만 「N곡을 저장했습니다」를 보인다). 자동 저장을 켜고 끄는 설정이 아니다
-    public static let writeToastsShown = SettingKey<Double>("activity.writeToastsShown", 0, in: 0...100_000)
-
     /// rekordbox 연동 안내(#315)를 처음 XML을 만들 때 저절로 연 적이 있는지. 옛 UserDefaults 키 그대로다(UI-11). 이후에는 도움말 메뉴 「연동 안내」로만 연다
     public static let rekordboxLinkSetupShown = SettingKey("rekordboxLinkSetupShown", false)
 

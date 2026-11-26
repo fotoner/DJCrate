@@ -648,7 +648,7 @@ struct TrackWriteLockFollowUpTests {
         lock.setTracks([])
     }
 
-    // MARK: - S7 곡 단위 쓰기에는 덮개 대신 작은 진행·취소 자리가 있다
+    // MARK: - S7 곡 단위 쓰기에는 덮개 대신 상태 줄의 진행·취소가 있다
 
     @Test(.enabled(if: LiveDraftHome.isIsolated))
     func 곡_단위_쓰기_중_취소_동작은_세션_쓰기를_취소하고_잠금을_푼다() async throws {
@@ -665,7 +665,7 @@ struct TrackWriteLockFollowUpTests {
         #expect(await waitForState(until: { store.writeStage?.cancellable == true }), "미리 보기 단계에 닿지 못함")
         #expect(store.libraryBusy && store.lockedTracks == [rig.writing.uuid])
         #expect(!store.showsWriteOverlay, "곡 단위 쓰기는 창을 덮지 않는다")
-        #expect(store.showsWriteProgressChip, "대신 작은 진행·취소 자리를 보인다")
+        #expect(store.showsWriteProgressChip, "대신 상태 줄이 진행·취소를 보인다")
 
         store.cancelWritePreparation()
         #expect(await waitForState(until: { store.writeTask == nil }), "취소가 세션 쓰기에 닿지 않았다")

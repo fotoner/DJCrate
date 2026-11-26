@@ -75,7 +75,8 @@ final class KeyRouter {
         if context.hasShortcutModifiers { return event }
         let lock = WriteLockPolicy(isWriting: deck.editsFrozen, canCancelPreparation: store?.writeStage?.cancellable == true)
         if lock.blocksKey(event.keyCode, in: context) { return nil }
-        // 준비 단계(취소할 수 있는 단계)의 Esc는 취소 단추가 받는다: 통째 잠금의 덮개와 곡 단위 쓰기의 작은 취소 자리(R21) 모두
+        // 준비 단계(취소할 수 있는 단계)의 Esc는 취소 단추가 받는다: 통째 잠금의 덮개와 곡 단위 쓰기(R21)의 상태 줄 [취소] 모두.
+        // 상태 줄 [취소]는 1초 뒤에야 보인다. 보이기 전의 Esc는 아무것도 하지 않는다(보이지 않는 저장을 취소하지 않고, 덱·입력 칸으로도 가지 않는다)
         if lock.canCancelPreparation, event.keyCode == Self.escape { return event }
         if let editor = responder as? NSTextView {
             return routeWhileTyping(event, editor: editor, window: window)

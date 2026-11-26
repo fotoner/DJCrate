@@ -472,7 +472,7 @@ rekordbox master.db ──(스냅샷 사본)──▶ RekordboxLibrary ──▶
     - 덱의 편집 가드는 `isEditLocked`다.
     - iTunes 동기화는 덱을 잠그지 않아 저장소 값과 다를 수 있다.
   - `showsWriteOverlay`는 진행 카드로 창을 덮을지다. 곡 단위로 쓰는 동안은 거짓이다. 종료를 기다리는 안내는 따로 뜬다.
-  - `showsWriteProgressChip`은 곡 단위로 쓰는 동안 취소할 수 있는 단계에 작은 진행·취소 자리(`WritingProgressChip`)를 보일지다. 목록과 상태 줄 사이의 고정 띠에 놓아 목록 행을 가리지 않는다. Esc도 이 자리가 받는다.
+  - `showsWriteProgressChip`은 곡 단위로 쓰는 동안 취소할 수 있는 단계인지다. 상태 줄의 쓰기 상태 칩이 1초 뒤 단계와 [취소]를 보인다(`ReflectionStatusModel.preparingStage`). 보이는 [취소]가 Esc도 받는다. `KeyRouter`는 준비 단계의 Esc를 넘기기만 한다. 목록과 상태 줄 사이에 띠를 끼우면 목록 높이가 바뀌어 저장마다 목록이 출렁였다.
   - 초안 쓰기 뒤 읽기는 ⌘Z 기록을 통째로 지우지 않는다. 쓰기 잠금이 먼저 꺼져도 `draftWriteReadPending`이 성공한 읽기까지 남는다. 저장한 곡과 기준값을 옮긴 곡의 태그 단계만 `tagUndoGeneration`으로 건너뛴다. 이 읽기가 태그 초안을 바꾼 곡도 같다.
   - 태그 인스펙터의 글자 칸은 입력을 시작할 때 대상 곡의 UUID를 고정한다(`beginInput`). 확정할 때 그 곡의 최신 행 가운데 아직 편집할 수 있는 곡에만 넣는다.
   - `quitBlocked`는 앱 종료와 업데이트 설치 판단이다. `writeActivity`의 rekordbox 단계가 이 값을 읽는다(#300).

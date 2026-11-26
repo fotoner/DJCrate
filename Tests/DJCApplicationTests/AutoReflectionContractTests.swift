@@ -69,7 +69,7 @@ struct AutoReflectionContractTests {
         let fakes = AutoReflectionFakes()
         let engine = AutoReflection(session: harness.session, ports: fakes.ports(), run: .live,
                                     timing: AutoReflectionTiming(editDelay: .zero, quietDelay: .zero, bulkDelay: .zero, bulkTracks: 1,
-                                                                 rowLimit: 1, successToasts: 0))
+                                                                 rowLimit: 1))
         engine.edited()
         engine.setActivity([.fieldEditing, .composing])
         engine.enqueue(.undo(ReflectionUndoEdit(id: "u", batch: DraftWriteBatch(), rowCount: 1)))
@@ -81,7 +81,7 @@ struct AutoReflectionContractTests {
         #expect(fakes.locks.taken.isEmpty && fakes.records.saves == 0 && fakes.publishedStatuses.isEmpty)
         #expect(harness.gateCalls.value.order.isEmpty)
         #expect(AutoReflectionTiming.standard == AutoReflectionTiming(editDelay: .seconds(1), quietDelay: .seconds(10), bulkDelay: .seconds(30),
-                                                                     bulkTracks: 50, rowLimit: 200, successToasts: 5))
+                                                                     bulkTracks: 50, rowLimit: 200))
         #expect(EditActivity([.pointerDown]).isEditing && !EditActivity().isEditing)
     }
 

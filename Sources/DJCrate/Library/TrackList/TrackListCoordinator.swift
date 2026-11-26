@@ -141,8 +141,9 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
                 replaceRows(table)
                 applySelection(selection, table: table, scroll: true)
             } else {
-                // 순서는 같고 내용만 바뀜(새 스냅샷): 보이는 줄만 다시 그린다.
-                reloadVisible(table)
+                // 순서는 같고 내용만 바뀜(저장 뒤 새 사본 등): 만들어 둔 줄의 칸을 제자리에서 다시 채운다.
+                // `reloadData(forRowIndexes:)`는 칸을 떼었다 붙여 파형·그림이 비었다가 다시 그려지고 스크롤 막대가 떠서 저장마다 목록이 깜박였다
+                refillRows(table)
             }
         } else if edited != self.edited {
             let changed = edited.symmetricDifference(self.edited)
@@ -225,6 +226,11 @@ final class TrackListCoordinator: NSObject, NSTableViewDataSource, NSTableViewDe
             table.noteNumberOfRowsChanged()
         }
         syncing = false
+        refillRows(table)
+    }
+
+    /// 만들어 둔 줄(보이는 줄과 미리 준비한 줄)의 칸을 지금 줄로 제자리에서 다시 채운다
+    private func refillRows(_ table: NSTableView) {
         let columns = table.tableColumns.map(\.identifier.rawValue)
         table.enumerateAvailableRowViews { rowView, index in
             guard rows.indices.contains(index) else { return }

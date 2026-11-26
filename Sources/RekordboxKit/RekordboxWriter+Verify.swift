@@ -86,7 +86,12 @@ extension RekordboxWriter {
 
     /// 파일 전체 무결성(SQLite 구조 + SQLCipher 페이지 인증).
     static func checkIntegrity(of database: URL) throws {
-        let db = try CipherDatabase(path: database.path, key: RekordboxKey.derive())
+        let snapshot = try WriteReadSnapshot(database)
+        defer { snapshot.close() }
+        try checkIntegrity(snapshot.db)
+    }
+
+    static func checkIntegrity(_ db: CipherDatabase) throws {
         var quick: [String] = []
         try db.query("PRAGMA quick_check") { quick.append($0.string(0) ?? "") }
         guard quick == ["ok"] else { throw DJCError.writeVerificationFailed(String(ui: "무결성 검사 실패: \(quick.prefix(3).joined(separator: " / "))")) }

@@ -2851,34 +2851,6 @@
         }
       }
     },
-    "%lld곡을 저장했습니다" : {
-      "localizations" : {
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Saved %lld track"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "Saved %lld tracks"
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld曲を保存しました"
-          }
-        }
-      }
-    },
     "%lld곡을 추가 목록에서 뺐습니다(파일은 그대로)." : {
       "localizations" : {
         "en" : {

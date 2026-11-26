@@ -467,8 +467,8 @@ final class LibraryStore {
     func isEditLocked(_ trackUUID: String) -> Bool { editsFrozen || lockedTracks.contains(trackUUID) }
     /// 쓰는 동안 창 전체를 덮는 진행 카드를 띄울지. 곡 단위로 쓰는 동안에는 단계만 알리고 덮지 않는다(R21). 종료 기다림 안내는 따로 뜬다.
     var showsWriteOverlay: Bool { writeStage != nil && !isTrackScopedWrite }
-    /// 곡 단위로 쓰는 동안 취소할 수 있는 단계(사본 만들기·음량 재기)에 덮개 대신 작은 진행·취소 자리를 보일지.
-    /// 취소할 수 없는 단계의 진행은 상태 줄이 보인다.
+    /// 곡 단위로 쓰는 동안 취소할 수 있는 단계(사본 만들기·음량 재기)인지. 덮개 대신 상태 줄 칩이 단계와 [취소]를 보이고(`ReflectionStatusModel.preparingStage`)
+    /// 보이는 [취소]가 Esc도 받는다. 취소할 수 없는 단계의 진행도 상태 줄이 보인다.
     var showsWriteProgressChip: Bool { isWritingRekordbox && isTrackScopedWrite && writeStage?.cancellable == true }
     func setLockedTracks(_ uuids: Set<String>) { lockedTracks = uuids }
     /// 태그 ⌘Z 단계가 가리키는 곡의 기준이 바뀐 횟수(곡별). 저장한 곡·기준값이 옮겨진 곡의 단계는 건너뛰어 옛 기준의 초안을 되살리지 않는다.

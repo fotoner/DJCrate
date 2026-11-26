@@ -218,7 +218,9 @@ struct ActivityLogTests {
 
     @Test func 쓰기_결과는_결과와_함께_한_항목으로_남는다() throws {
         let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { _ in }))
-        var written = ReflectionPresenterTests.preview(cues: [ReflectionPresenterTests.outcome("a", .written)]).report
+        // 저장하지 못한 곡이 있어 알림이 뜨는 결과로 본다(막힘 없는 저장은 알림 없이 기록만 남는다, ReflectionPresenterTests)
+        var written = ReflectionPresenterTests.preview(cues: [ReflectionPresenterTests.outcome("a", .written),
+                                                              ReflectionPresenterTests.outcome("b", .blocked, reason: "합성 막힘")]).report
         written.backup = "/tmp/djc-synthetic-backup"
         ReflectionPresenter(store: store, prompter: ScriptedPrompter()).publish(.written(written, preview: written, followUp: []))
         let entry = try #require(store.activityLog.latest)

@@ -226,6 +226,10 @@ final class ReflectionStatusModel {
 
     /// 상태 줄 칩이 보이는 것(R3 표의 "상태 줄" 칸)
     var line: ReflectionStatusLine {
+        if let stage = preparingStage {
+            let progress = stage.completed.flatMap { done in stage.total.map { " \(done)/\($0)" } } ?? ""
+            return ReflectionStatusLine(title: stage.text + progress, symbol: .writing)
+        }
         guard let feed, let conditions = window.saveConditions else { return legacyLine }
         var line = ReflectionStatusText.line(status: feed.status, conditions: conditions, row: saveRow, count: store.pendingWriteSummary,
                                              showsWriting: showsWriting)
@@ -255,6 +259,16 @@ final class ReflectionStatusModel {
 
     /// 대량 유예의 [취소]. 초안은 남고 다음 편집이나 ⌘S까지 자동 저장하지 않는다
     func cancelGrace() { reflection?.cancelGrace() }
+
+    /// 곡 단위로 쓰기 전 취소할 수 있는 단계(사본 만들기·바꿀 내용 확인·음량 재기). 1초 넘게 이어지면 칩이 이 단계를 보이고 옆에 [취소]를 둔다.
+    /// 목록과 상태 줄 사이에 진행 띠를 끼우던 때는 띠가 뜨고 질 때마다 목록 높이가 바뀌어 저장마다 목록이 출렁였다
+    var preparingStage: WriteStage? {
+        guard showsWriting, store.showsWriteProgressChip else { return nil }
+        return store.writeStage
+    }
+
+    /// 준비 단계의 [취소]. 보이는 동안 Esc도 같다
+    func cancelPreparation() { store.cancelWritePreparation() }
 
     /// 중단 알림의 단추(R11): 보통은 복원이 먼저다. 백업 뒤 rekordbox에서 라이브러리가 바뀌었으면 이대로 두기를 먼저 보인다
     var journalActions: [JournalAction] {
@@ -288,9 +302,16 @@ final class ReflectionStatusModel {
         return phase == .writing || phase == .readingBack
     }
 
+    /// 칩이 진행을 보일 때: 실제로 쓰는 중이거나, 곡 단위 쓰기의 취소할 수 있는 준비 단계다(통째로 잠그는 쓰기의 준비는 창 덮개가 보인다)
+    private var showsProgress: Bool { isWriting || store.showsWriteProgressChip }
+
     /// 칩 옆 [저장] 단추를 보일 때. 엔진이 있으면 R3 표의 줄이 정한다(자동 저장이 멈췄거나 스스로 저장하지 않을 편집이 남았을 때만).
     /// 엔진이 없으면 지금처럼 쓰기 대기가 있을 때(쓸 수 없을 때는 보이지 않는다, 화면 표시만, 메뉴·팝오버 항목은 지금 판단 그대로)
-    var showsWriteButton: Bool { feed == nil ? chip.isPending : saveRow.showsSaveButton }
+    var showsWriteButton: Bool {
+        // 쓰기를 준비하는 동안에는 [저장] 대신 [취소]다
+        guard preparingStage == nil else { return false }
+        return feed == nil ? chip.isPending : saveRow.showsSaveButton
+    }
 
     /// rekordbox가 꺼진 것을 확인해 [지금 쓰기]를 강조할 때(#326). 단추는 같고 글자와 모양만 다르다
     /// 엔진이 있으면 꺼진 것을 확인한 뒤 저장은 자동 저장이 맡으므로 강조하지 않는다(단추가 보이는 줄은 이 신호와 상관없다)
@@ -361,7 +382,7 @@ final class ReflectionStatusModel {
 
     /// 저장소 값에서 상태를 다시 읽는다. 바뀐 값만 쓴다(같은 값을 다시 쓰면 상태 줄이 쓸데없이 다시 그려진다)
     func refresh() {
-        updateWritingDelay(isWriting)
+        updateWritingDelay(showsProgress)
         let count = store.pendingWriteCount
         let playlistEdits = store.playlists.playlistDraft.steps.count
         let run = runState()
@@ -383,6 +404,7 @@ final class ReflectionStatusModel {
             _ = store.pendingWriteCount
             _ = store.playlists.playlistDraft.steps.count
             _ = store.rekordboxWritePhase
+            _ = store.showsWriteProgressChip
             _ = store.hasWriteBackup
             _ = store.activityLog.entries
             _ = store.writeBlock
@@ -468,7 +490,7 @@ final class ReflectionStatusModel {
         let sleep = sleep
         writingDelayTask = Task { [weak self] in
             do { try await sleep(Self.writingDelay) } catch { return }
-            guard let self, !Task.isCancelled, isWriting else { return }
+            guard let self, !Task.isCancelled, showsProgress else { return }
             showsWriting = true
             writingDelayTask = nil
             refresh()
