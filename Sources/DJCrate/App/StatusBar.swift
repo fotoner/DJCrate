@@ -141,6 +141,7 @@ struct ActivityPopoverRow: View {
 /// rekordbox 쓰기 상태 구역(#324, #404): 보조 글(마지막 쓰기) + 상태 칩 + 줄에 따라 붙는 단추. 칩을 누르면 상태 팝오버가 열린다.
 /// 칩 글자와 단추는 엔진 상태를 R3 표의 줄 순서대로 읽은 것이다(`ReflectionStatusModel`). 엔진이 없는 조립은 지금처럼 저장 대기가 있으면 [저장]이다.
 /// 단추: 자동 저장이 멈췄거나 스스로 저장하지 않을 편집이 남았을 때만 [저장], 대량 유예 중에는 「N초 뒤 저장」 옆 [취소],
+/// 곡 단위 쓰기를 1초 넘게 준비하는 동안에는 단계 옆 [취소],
 /// 쓰다가 끊긴 기록이 남았을 때는 [기록으로 복원…]·[이대로 두기…]. rekordbox가 꺼진 것을 확인해 강조하던 [지금 저장](#326)은 엔진이 없을 때만 남는다.
 /// 이 구역만 쓰기 상태를 읽는다. 값과 클로저만 잎 뷰에 넘긴다.
 struct WriteStatusSection: View {
@@ -163,6 +164,11 @@ struct WriteStatusSection: View {
                 }
             if model.graceSecondsLeft != nil {
                 WriteStatusActionButton(title: String(ui: "취소"), frameKey: "statusBarGraceCancel", action: { model.cancelGrace() })
+            }
+            if model.preparingStage != nil {
+                // 보이는 동안만 Esc를 받는다(`KeyRouter`가 준비 단계의 Esc를 넘긴다)
+                WriteStatusActionButton(title: String(ui: "취소"), frameKey: "statusBarPrepareCancel", action: { model.cancelPreparation() })
+                    .keyboardShortcut(.cancelAction)
             }
             ForEach(model.journalActions, id: \.self) { action in
                 WriteStatusActionButton(title: action.title, frameKey: "statusBarJournal", action: { model.perform(action) })

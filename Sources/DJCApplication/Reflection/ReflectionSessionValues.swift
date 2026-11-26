@@ -150,7 +150,7 @@ public enum ReflectionOutcome: Sendable {
     /// 미리 보기 단계에서 취소했다(아무것도 쓰지 않았다)
     case cancelled
     case written(RekordboxWriteReport, preview: RekordboxWriteReport, followUp: [String])
-    /// 자동 저장이 썼다(#403). 확인 창 없이 쓴 결과라 화면은 활동 기록에 남긴다(토스트는 처음 몇 번만, R15)
+    /// 자동 저장이 썼다(#403). 확인 창 없이 쓴 결과라 화면은 활동 기록에만 남긴다(토스트 없음)
     case autoWritten(RekordboxWriteReport, followUp: [String])
     /// 미리 보니 쓸 것이 없다(막혔거나 제외). 고른 곡(`targets`)의 막힌 초안은 화면이 복구 시트로 고치게 한다(#232)
     case nothingWritable(WritePreview, targets: [TrackRow])

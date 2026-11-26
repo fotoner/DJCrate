@@ -51,19 +51,10 @@ struct ContentView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if let link = app.link { LinkBar(model: link) }
                 }
-                // 곡 단위로 쓰는 동안 취소할 수 있는 단계에는 덮개 대신 작은 진행·취소 자리를 둔다(R21). 목록·태그 시트 바깥, 목록과 상태 줄 사이의
-                // 고정 띠라서 행 클릭을 가로채지 않고 덱 컨트롤과도 겹치지 않는다. 그 단계가 끝나면 띠는 사라진다
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if store.showsWriteProgressChip, let stage = store.writeStage {
-                        HStack(spacing: 0) {
-                            WritingProgressChip(stage: stage, onCancel: { store.cancelWritePreparation() })
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                    }
-                }
                 // 창 맨 아래 상태 줄(#298). LINK 막대처럼 상세 열 안에 둔다: 사이드바를 접어도 상세 열은 늘 있고,
-                // 분할 화면 전체 아래에 붙이면 열의 화면이 막대를 덮었다(#274). 읽지 않은 수는 상태 줄만 읽는다
+                // 분할 화면 전체 아래에 붙이면 열의 화면이 막대를 덮었다(#274). 읽지 않은 수는 상태 줄만 읽는다.
+                // 곡 단위로 쓰는 동안 취소할 수 있는 단계(R21)의 진행·[취소]도 이 줄의 쓰기 상태 칩이 보인다. 목록과 상태 줄 사이에
+                // 띠를 끼우던 때는 띠가 뜨고 질 때마다 목록 높이가 바뀌어 저장마다 목록이 출렁였다
                 .safeAreaInset(edge: .bottom, spacing: 0) { StatusBar(model: app.statusBar) }
                 // 본문(덱·목록)에 바로 붙이면 인스펙터를 연 뒤 임시 높이의 본문 사본이 생겨, 창 크기를 바꿀 때마다
                 // 크기 측정이 진짜 본문과 번갈아 와서 본문을 두 번씩 다시 계산했다(#138). 상세 열 전체에 붙인다.

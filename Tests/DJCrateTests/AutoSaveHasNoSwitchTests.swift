@@ -2,7 +2,6 @@ import Foundation
 import Testing
 
 /// 자동 저장은 기본 동작이고 끄는 설정이 없다(#404, R3 첫 문장). 설정 키와 설정 화면의 소스에 자동 저장을 켜고 끄는 항목이 없다.
-/// 성공 토스트를 보인 횟수 키(`activity.writeToastsShown`)는 켜고 끄는 값이 아니라 센 수다.
 @Suite("자동 저장 끄는 설정 없음")
 struct AutoSaveHasNoSwitchTests {
     static let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

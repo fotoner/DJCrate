@@ -20,8 +20,7 @@ final class AutoReflectionWorld {
     /// 엔진을 만든 뒤 시작하기 전에 한다(앱의 첫 읽기가 엔진 시작보다 먼저 끝나는 경우)
     var beforeStart: (@MainActor (AutoReflection) -> Void)?
     var run: AutoReflectionRun = .live
-    var timing = AutoReflectionTiming(editDelay: .seconds(3), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50, rowLimit: 200,
-                                      successToasts: 5)
+    var timing = AutoReflectionTiming(editDelay: .seconds(3), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50, rowLimit: 200)
     private(set) var engine: AutoReflection!
 
     init(fakes: AutoReflectionFakes = AutoReflectionFakes()) {

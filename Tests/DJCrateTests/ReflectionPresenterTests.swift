@@ -87,13 +87,31 @@ struct ReflectionPresenterTests {
 
     // MARK: - 쓰기 결과
 
-    @Test func 쓴_결과는_토스트에서_되돌릴_백업을_달고_결과에_남긴다() throws {
+    @Test func 막힘_없이_쓴_결과는_토스트_없이_활동_기록에만_남긴다() throws {
         var written = Self.preview(cues: [Self.outcome("a", .written)], tags: [Self.tagOutcome("t", .written)]).report
         written.backup = "/tmp/djc-test-backup"
         presenter.publish(.written(written, preview: written, followUp: []))
-        let toast = try #require(store.toast)
-        #expect(toast.kind == .success && toast.title == store.activityLog.latest?.result?.title)
-        #expect(toast.undoBackup == URL(filePath: "/tmp/djc-test-backup"))
+        // 저장할 때마다 뜨던 알림을 없앴다. 마지막 저장 시각과 저장 대기 수는 상태 줄이 보이고, 되돌리기는 메뉴의 「저장 전으로 복원…」이 맡는다
+        #expect(store.toast == nil)
+        let result = try #require(store.activityLog.latest?.result)
+        #expect(result.kind == .success && result.title.hasPrefix("rekordbox에 저장했습니다"))
+        #expect(result.backups == [URL(filePath: "/tmp/djc-test-backup")], "상태 줄의 마지막 저장·백업 표시가 이 기록을 읽는다")
+        #expect(store.activityLog.latest?.needsAttention == false, "읽지 않은 알림 수에 세지 않는다")
+    }
+
+    @Test(arguments: [AppToast.Kind.failure, .warning])
+    func 사용자가_누른_저장이_성공하면_앞서_뜬_알림을_닫고_음성으로만_알린다(_ kind: AppToast.Kind) {
+        var spoken: [AppMessage] = []
+        let store = LibraryStore.test(activityLog: ActivityLog(), feedback: AppFeedback(announce: { spoken.append($0) }))
+        // 지난 ⌘S가 실패해 닫을 때까지 남는 알림이 떠 있다. 원인을 풀고 다시 저장해 성공했으면 그 알림을 남겨 두지 않는다
+        store.showToast(AppToast(kind: kind, title: "rekordbox에 저장하지 않았습니다"))
+        spoken = []
+        let written = Self.preview(cues: [Self.outcome("a", .written)]).report
+        ReflectionPresenter(store: store, prompter: ScriptedPrompter()).publish(.written(written, preview: written, followUp: []))
+        #expect(store.toast == nil)
+        let title = store.activityLog.latest?.result?.title
+        #expect(title?.hasPrefix("rekordbox에 저장했습니다") == true)
+        #expect(spoken == [AppMessage(kind: .success, text: title ?? "-")], "VoiceOver는 화면 알림 없이도 저장 결과를 듣는다")
     }
 
     @Test func 쓸_것이_제외뿐이면_제외한_이유를_결과_토스트에_남긴다() {
@@ -131,7 +149,8 @@ struct ReflectionPresenterTests {
         report.mergeOutcomes = [.init(trackUUID: "m", title: "남길 곡", status: .written, reason: nil, removed: 1, added: 0)]
         report.dryRun = false
         presenter.publish(.written(report, preview: report, followUp: []))
-        #expect(store.toast?.kind == .success && store.toast?.title.contains("합치기") == true)
+        #expect(store.toast == nil)
+        #expect(store.activityLog.latest?.result?.kind == .success && store.activityLog.latest?.title.contains("합치기") == true)
     }
 
     @Test func 뒤따른_경고는_쓰기_결과와_나눠_알린다() {

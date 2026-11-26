@@ -133,8 +133,7 @@ struct AutoReflectionPlanTests {
         // 곡만이면 K+1곡이 두 번에 나뉜다
         let only = AutoReflectionInventory(tracks: tracks)
         #expect(only.chunk(rowLimit: 4)?.tracks.keys.sorted() == ["t0", "t1", "t2", "t3"])
-        #expect(only.isBulk(timing: AutoReflectionTiming(editDelay: .zero, quietDelay: .zero, bulkDelay: .zero, bulkTracks: 5, rowLimit: 200,
-                                                         successToasts: 0)))
+        #expect(only.isBulk(timing: AutoReflectionTiming(editDelay: .zero, quietDelay: .zero, bulkDelay: .zero, bulkTracks: 5, rowLimit: 200)))
         #expect(!only.isBulk(timing: .standard))
     }
 

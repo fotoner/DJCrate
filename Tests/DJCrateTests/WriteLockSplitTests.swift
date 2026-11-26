@@ -211,7 +211,8 @@ struct WriteLockSplitTests {
         write.release()
         await writing.value
         rig.probe.take("쓰기 끝")
-        #expect(rig.store.toast?.undoBackup != nil, "합성 사본에 써서 되돌릴 백업이 남아야 한다")
+        // 막힘 없는 저장은 알림을 띄우지 않는다. 쓴 결과와 되돌릴 백업은 활동 기록에 남는다
+        #expect(rig.store.activityLog.latest?.result?.backups.isEmpty == false, "합성 사본에 써서 되돌릴 백업이 남아야 한다")
 
         let backups = rig.store.session.writeBackups()
         let backup = try #require(backups.first { $0.isWrite })
@@ -250,7 +251,7 @@ struct WriteLockSplitTests {
         await coordinator.write(rows: [rig.row])
         rig.probe.take("거절 뒤")
         Self.expect(rig.probe, ["시작 전": .idle, "미리 보기": .tracks([rig.track.uuid]), "확인 창": .tracks([rig.track.uuid]), "거절 뒤": .idle])
-        #expect(rig.store.toast?.undoBackup == nil, "거절했으니 쓰지 않았다")
+        #expect(rig.store.activityLog.entries.allSatisfy { $0.result?.backups.isEmpty ?? true }, "거절했으니 쓰지 않았다")
     }
 
     // MARK: - 실패

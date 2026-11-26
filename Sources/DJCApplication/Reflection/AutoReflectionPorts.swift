@@ -17,8 +17,6 @@ public struct AutoReflectionTiming: Equatable, Sendable {
     public var bulkTracks: Int
     /// K: 자동 저장 한 번에 갱신할 곡 행의 상한
     public var rowLimit: Int
-    /// 처음 몇 번만 성공 토스트를 보인다(R15)
-    public var successToasts: Int
     /// 덱 편집 뒤 저장까지(#295 E3). 덱은 쓰는 곡의 편집을 조용히 버리므로(쓰기 잠금) 덱에서 이어 고치는 동안 쓰기가 끼지 않게 T_edit보다 길게 둔다.
     /// 라이브러리·태그 편집은 T_edit 그대로다
     public var deckEditDelay: Duration = .seconds(3)
@@ -27,18 +25,17 @@ public struct AutoReflectionTiming: Equatable, Sendable {
     /// 기다릴 것이 없을 때 쉬는 길이(편집·요청 신호가 깨운다)
     public var idleInterval: Duration = .seconds(3600)
 
-    public init(editDelay: Duration, quietDelay: Duration, bulkDelay: Duration, bulkTracks: Int, rowLimit: Int, successToasts: Int) {
+    public init(editDelay: Duration, quietDelay: Duration, bulkDelay: Duration, bulkTracks: Int, rowLimit: Int) {
         self.editDelay = editDelay
         self.quietDelay = quietDelay
         self.bulkDelay = bulkDelay
         self.bulkTracks = bulkTracks
         self.rowLimit = rowLimit
-        self.successToasts = successToasts
     }
 
-    /// 스펙 가정 절의 값: 1초·10초·30초·50곡·200행·5번(T_edit는 사용감 값이라 1초로 줄였다, #295 E3)
+    /// 스펙 가정 절의 값: 1초·10초·30초·50곡·200행(T_edit는 사용감 값이라 1초로 줄였다, #295 E3)
     public static let standard = Self(editDelay: .seconds(1), quietDelay: .seconds(10), bulkDelay: .seconds(30), bulkTracks: 50,
-                                      rowLimit: 200, successToasts: 5)
+                                      rowLimit: 200)
 }
 
 /// 엔진의 시계(핵심부는 시각·잠자기를 직접 쓰지 않는다)

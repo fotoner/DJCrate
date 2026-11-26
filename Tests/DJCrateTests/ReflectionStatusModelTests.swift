@@ -201,6 +201,40 @@ struct ReflectionStatusModelTests {
         #expect(h.model.chip == .pending(items: 1, playlistEdits: 0))
     }
 
+    @Test func 곡_단위_쓰기의_취소할_수_있는_단계는_1초_뒤_상태_줄에_단계와_취소를_보인다() async {
+        let h = Harness()
+        h.addRows("a")
+        h.store.setDraftMark(.cue, trackUUID: "a", exists: true)
+        var cancelled: [Bool] = []
+        h.store.cancelAutoWrite = { cancelled.append($0); return true }
+        // 목록과 상태 줄 사이에 끼우던 진행 띠는 목록 높이를 바꿔 저장마다 목록이 출렁였다. 상태 줄 칩이 단계를 맡는다
+        let lock = h.store.reflection.session.ports.lock
+        lock.setTracks(["a"])
+        lock.setDraftWriting(true)
+        lock.set(true, false)
+        h.store.writeStage = WriteStage("미리 보기 1/2단계 · 사본을 만드는 중…", completed: 0, total: 2, cancellable: true)
+        h.model.refresh()
+        #expect(h.model.preparingStage == nil, "짧은 준비가 깜빡이지 않게 1초 안에는 보이지 않는다")
+        h.gate.release()
+        #expect(await waitForState { h.model.preparingStage != nil })
+        #expect(h.model.line.symbol == .writing && h.model.line.title.hasPrefix("미리 보기 1/2단계 · 사본을 만드는 중…"))
+        #expect(!h.model.showsWriteButton, "준비하는 동안에는 [저장] 대신 [취소]다")
+        h.model.cancelPreparation()
+        #expect(cancelled == [true], "[취소]는 사용자가 멈춘 것으로 쓰기 준비를 취소한다")
+
+        // 실제로 쓰는 단계로 넘어가면 [취소]는 사라지고 「저장하는 중」이 이어진다(기다림을 다시 걸지 않는다)
+        h.store.writeStage = WriteStage("rekordbox에 저장하는 중…")
+        h.model.refresh()
+        #expect(h.model.preparingStage == nil && h.model.line.title == "rekordbox에 저장하는 중…")
+        #expect(h.gate.requested == [.seconds(1)])
+        h.store.writeStage = nil
+        lock.set(false, false)
+        lock.setDraftWriting(false)
+        lock.setTracks([])
+        h.model.refresh()
+        #expect(h.model.preparingStage == nil && h.model.line.symbol != .writing)
+    }
+
     // MARK: - 마지막 쓰기
 
     @Test func 마지막_쓰기는_활동_기록의_가장_최근_성공한_쓰기_결과다() {

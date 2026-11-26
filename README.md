@@ -53,7 +53,7 @@ swift build -c release --product djc  # .build/release/djc
 2. 덱·목록에서 고친다. 고친 곡에는 저장 대기 표시가 붙는다. 사이드바 [rekordbox 저장 대기]에 그 곡이 모인다.
 3. rekordbox와 rekordboxAgent를 완전히 끈다.
 4. [rekordbox에 저장]을 누른다. DJCrate는 사본에 미리 저장해 본다. 막힌 것이나 빠지는 것이 있을 때만 확인 창에 그 목록을 보인다. 그 밖에는 바로 저장한다.
-5. 되돌리려면 결과 알림의 [저장 전으로 복원]을 누른다.
+5. 되돌리려면 메뉴 막대 rekordbox › [저장 전으로 복원…]을 누른다.
 
 사본·편집·백업은 `~/Library/Application Support/DJCrate/`에 보관한다. 여기에는 클라우드 토큰이 들어 있으니 공유하지 않는다.
 

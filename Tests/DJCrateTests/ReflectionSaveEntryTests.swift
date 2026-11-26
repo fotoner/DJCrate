@@ -276,7 +276,7 @@ struct ReflectionSaveEntryTests {
                                             publish: { feed.update($0, $1) })
             // 자동 저장 시험대는 대기를 짧게 줘 엔진이 스스로 쓰게 한다(어떤 판정도 이 길이로 하지 않는다: 상태를 기다린다, TEST-30)
             let timing = AutoReflectionTiming(editDelay: .milliseconds(5), quietDelay: .milliseconds(5), bulkDelay: .milliseconds(5),
-                                              bulkTracks: 50, rowLimit: 200, successToasts: 5)
+                                              bulkTracks: 50, rowLimit: 200)
             engine = AutoReflection(session: coordinator.session, ports: ports, run: autoSave ? .live : .off(.debugBuild),
                                     timing: autoSave ? timing : .standard)
             coordinator.engine = engine

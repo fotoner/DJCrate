@@ -200,29 +200,6 @@ struct WritingOverlay: View {
     }
 }
 
-/// 곡 단위로 쓰는 동안(R21) 취소할 수 있는 단계의 작은 진행·취소 자리. 창을 덮지 않고 목록·덱을 가리지 않는다(`LibraryStore.showsWriteProgressChip`).
-/// 새 문구 없이 단계 문구와 기존 [취소]를 쓴다. Esc는 이 단추가 받는다(`KeyRouter`가 준비 단계의 Esc를 넘긴다).
-struct WritingProgressChip: View {
-    @Environment(\.textScale) private var textScale
-    let stage: WriteStage
-    var onCancel: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ProgressView().controlSize(.small)
-            Text(stage.text).font(.scaled(.caption, textScale))
-            if let done = stage.completed, let total = stage.total {
-                Text(verbatim: "\(done)/\(total)").font(.scaled(.caption, textScale).monospacedDigit()).foregroundStyle(.secondary)
-            }
-            Button(.ui("취소"), action: onCancel).keyboardShortcut(.cancelAction).controlSize(.small)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .shadow(color: .black.opacity(0.2), radius: 8, y: 3)
-        .accessibilityElement(children: .contain)
-    }
-}
-
 /// 쓰기 진행 카드: 단계 문구 + (진행 막대) + 안내 + (취소) + (종료 기다림).
 struct WritingStageCard: View {
     @Environment(\.textScale) private var textScale
